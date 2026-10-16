@@ -464,7 +464,6 @@ class DriveModeBoundaryTests(unittest.TestCase):
                 perception.wait_started(1)
                 drive_mode = _drive_mode_class()(host_telemetry=adapter)
                 drive_mode.run("user", 0.1, 0.2, 0.0, 0.0)
-                self.assertFalse(part.due())
                 part.run(image_array=object(), mode="user")
                 drive_mode.run("user", 0.3, 0.4, 0.0, 0.0)
                 records = adapter.records(after_sequence=0, limit=128, now_ms=10_000)
@@ -474,15 +473,14 @@ class DriveModeBoundaryTests(unittest.TestCase):
                     records["records"][0]["source_frame"],
                     records["records"][1]["source_frame"],
                 )
-                self.assertEqual(part.frames_captured, 2)
+                self.assertEqual(part.frames_captured, 3)
                 self.assertEqual(records["records"][1]["host_tick"]["skipped_since_previous"], 0)
                 perception.release[1].set()
                 part.wait_for_cycle()
-                self.assertTrue(part.due())
                 part.run(image_array=object(), mode="user")
                 part.wait_for_cycle()
-                self.assertEqual(part.latest_state.frame_index, 2)
-                self.assertEqual(part.frames_captured, 3)
+                self.assertEqual(part.latest_state.frame_index, 3)
+                self.assertEqual(part.frames_captured, 4)
         finally:
             perception.release_all()
             part.wait_for_cycle()

@@ -130,6 +130,7 @@ def _host_runtime_status(
             "status": worker_status,
             "run_id": None,
             "frames_captured": observation.get("frames_captured", 0),
+            "frames_superseded": observation.get("frames_superseded"),
             "processed_count": observation.get("processed_count", 0),
             "num_decisions": (autonomy.get("session") or {}).get("configuration", {}).get(
                 "num_decisions", 0
@@ -1239,6 +1240,7 @@ def _collect_automation_status(
                     "run_id": state.get("run_id"),
                     "pipeline": state.get("pipeline"),
                     "frames_captured": state.get("frames_captured", 0),
+                    "frames_superseded": state.get("frames_superseded"),
                     "processed_count": state.get("processed_count", 0),
                     "num_decisions": state.get("num_decisions"),
                     "recording": state.get("recording"),
@@ -1440,6 +1442,7 @@ def _run_label(state: dict[str, Any]) -> str:
     fields = {
         "id": state["run_id"],
         "captured": state.get("frames_captured") or 0,
+        "superseded": state.get("frames_superseded"),
         "decisions": f"{state.get('processed_count') or 0}/{num_decisions or 'unbounded'}",
         "recording": state.get("recording"),
         "control": state.get("control_source"),

@@ -30,54 +30,48 @@ def _failing_memory(_context, _observation):
 
 
 class OnboardCaptureCadenceTests(unittest.TestCase):
-    def test_due_is_false_while_a_decision_or_frame_is_held(self) -> None:
+    def test_ticks_replace_waiting_frame_and_decide_only_the_newest(self) -> None:
         perception = GatedPerception(2)
         part = _part(perception)
         image = np.zeros((2, 2, 3), dtype=np.uint8)
         try:
             part.start(RunConfiguration(mode="observe_only"))
-            self.assertTrue(part.due())
             part.run(image_array=image, mode="user")
             perception.wait_started(0)
-            self.assertTrue(part._decision_inflight)
-            self.assertIsNone(part._pending_frame)
-            self.assertFalse(part.due())
             part.run(image_array=np.full_like(image, 1), mode="user")
-            self.assertEqual(part.observation_status()["frames_captured"], 1)
-            self.assertFalse(part.due())
+            part.run(image_array=np.full_like(image, 2), mode="user")
+            status = part.observation_status()
+            self.assertEqual((status["frames_captured"], status["frames_superseded"], status["processed_count"]), (3, 1, 0))
+            self.assertEqual(part.publish_latest_camera()["frame"]["frame_index"], 2)
             perception.release[0].set()
             part.wait_for_cycle()
-            self.assertFalse(part._decision_inflight)
-            self.assertIsNone(part._pending_frame)
-            self.assertTrue(part.due())
-            part.run(image_array=np.full_like(image, 2), mode="user")
-            part.wait_for_cycle()
-            self.assertTrue(part.due())
+            self.assertEqual([c.frame_index for c in perception.contexts], [0, 2])
+            self.assertEqual(int(perception.contexts[1].sensor_frame.readings["front_camera"].value[0, 0, 0]), 2)
             status = part.observation_status()
-            self.assertEqual((status["frames_captured"], status["processed_count"]), (2, 2))
+            self.assertEqual((status["frames_captured"], status["frames_superseded"], status["processed_count"]), (3, 1, 2))
+            self.assertEqual(part.publish_latest()["frames_superseded"], 1)
+            self.assertNotIn("frames_superseded", part.host.last_context.metadata)
         finally:
             perception.release_all()
             part.wait_for_cycle()
             part.shutdown()
 
-        # A failed memory update halts the worker, so the next capture waits
-        # with no decision in flight and the loop takes no further captures.
+    def test_memory_halt_keeps_capturing_without_deciding(self):
         held = _part(GatedPerception(2, blocked=()), memory=_failing_memory)
         try:
             held.start(RunConfiguration(mode="observe_only"))
-            held.run(image_array=image, mode="user")
+            held.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
             held.wait_for_cycle()
             self.assertTrue(held.observation_status()["memory_update_halted"])
-            self.assertTrue(held.due())
-            held.run(image_array=np.full_like(image, 1), mode="user")
+            held.run(image_array=np.ones((2, 2, 3), dtype=np.uint8), mode="user")
+            held.run(image_array=np.full((2, 2, 3), 2, dtype=np.uint8), mode="user")
             status = held.observation_status()
             self.assertFalse(status["perception_inflight"])
-            self.assertEqual((status["frames_captured"], status["processed_count"]), (2, 1))
-            self.assertFalse(held.due())
+            self.assertEqual((status["frames_captured"], status["frames_superseded"], status["processed_count"]), (3, 1, 1))
         finally:
             held.shutdown()
 
-    def test_drive_ticks_during_a_cycle_are_not_captures(self) -> None:
+    def test_stopped_or_completed_run_discards_waiting_capture(self) -> None:
         for bounded in (False, True):
             with self.subTest(bounded=bounded):
                 perception = GatedPerception(1)
@@ -94,7 +88,9 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                     perception.release[0].set()
                     part.wait_for_cycle()
                     self.assertEqual(len(perception.contexts), 1)
-                    self.assertEqual(part.observation_status()["frames_captured"], 1)
+                    status = part.observation_status()
+                    self.assertEqual((status["frames_captured"], status["frames_superseded"], status["processed_count"]), (3, 1, 1))
+                    self.assertIsNone(part._pending_frame)
                     self.assertEqual(part.host.run_state, "completed" if bounded else "stopped")
                 finally:
                     perception.release_all()

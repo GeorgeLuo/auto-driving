@@ -1,7 +1,8 @@
 """Donkey part that feeds camera memory to the shared frame loop.
 
-The loop (``autonomy.runtime.frame_loop``) owns when a capture is due, the
-decision worker, publications, and the applied identity. This part translates
+Each drive tick submits camera memory. The loop
+(``autonomy.runtime.frame_loop``) owns the latest waiting frame, the decision
+worker, publications, and the applied identity. This part translates
 Donkey's drive-mode vocabulary, hands the car back to the operator when a run
 ends, and passes completed source frames to the DriveMode telemetry observer.
 """
@@ -76,11 +77,10 @@ class AutonomyPilotPart(FrameLoop):
         elif execution_mode(self._drive_mode) == "autonomy" and self.host.run_state != "running":
             # The host ended the run: bounded decisions completed or a cycle failed.
             self._hand_back()
-        if self.due():
-            self.submit(
-                detach_image(image_array), mode=mode_name,
-                user_steering=user_steering, user_throttle=user_throttle,
-            )
+        self.submit(
+            detach_image(image_array), mode=mode_name,
+            user_steering=user_steering, user_throttle=user_throttle,
+        )
         self._publish_host_source_frame()
         self.last_status = self.status()
         return self._held_outputs(mode_name)
@@ -118,8 +118,8 @@ class AutonomyPilotPart(FrameLoop):
 
         This is a bounded in-process identity handoff. The source frame is
         copied from the runtime-owned latest observation state and is never
-        created by the DriveMode observer. A tick that is not due repeats the
-        same source identity instead of becoming a new frame.
+        created by the DriveMode observer. Until a decision finishes, drive ticks
+        repeat the completed source identity while camera capture advances.
         """
 
         setter = getattr(self.host_telemetry, "set_source_frame", None)

@@ -1,11 +1,10 @@
 """The latest-frame decision loop every vehicle runtime hosts.
 
-Pull adapters ask ``due()`` before capturing. Streaming adapters may keep
-calling ``submit()`` while a cycle runs: the single pending slot always holds
-the newest sample. One background worker runs decisions sequentially, while
-camera publication can advance independently. The cycle host owns movement
-authority, freshness, stopping, and recording; this loop owns the pending frame, its publications,
-and the applied decision identity.
+PiCar ticks and Chase streams submit continuously: one pending slot holds the
+newest sample while one worker runs decisions sequentially. Replacing a waiting
+sample increments frames_superseded. Chase atomic pulls use due() before capture.
+The cycle host owns movement authority, freshness, stopping, and recording;
+this loop owns pending frames, publications, and the applied decision identity.
 """
 from __future__ import annotations
 
@@ -232,6 +231,7 @@ class FrameLoop:
         self.frame_index = 0
         self._capture_sequence = 0
         self.frames_captured = 0
+        self.frames_superseded = 0
         self.processed_count = 0
         self._cycle_duration_ms: float | None = None
         self._pending_frame: _PendingFrame | None = None
@@ -307,6 +307,7 @@ class FrameLoop:
                 "runtime": self.runtime,
                 "processed_count": self.processed_count,
                 "frames_captured": self.frames_captured,
+                "frames_superseded": self.frames_superseded,
                 "perception_inflight": self._decision_inflight,
                 "memory_update_halted": self._memory_update_halted,
                 "presets": dict(self.presets),
@@ -543,6 +544,8 @@ class FrameLoop:
                 frame_index=frame_index,
                 metadata=metadata, jpeg_bytes=jpeg_bytes,
             )
+            if self._pending_frame is not None:
+                self.frames_superseded += 1
             self._pending_frame = _PendingFrame(
                 camera, mode, float(user_steering or 0.0), float(user_throttle or 0.0)
             )
@@ -573,6 +576,7 @@ class FrameLoop:
                 "stale_after_ms": threshold_ms,
                 "frame": None,
                 "frames_captured": self.frames_captured,
+                "frames_superseded": self.frames_superseded,
                 "perception_state": perception_state,
                 "perception_frame_id": perception_frame_id,
                 "perception_inflight": self._decision_inflight,
@@ -609,6 +613,7 @@ class FrameLoop:
                 "frame_path": CAMERA_LATEST_FRAME_PATH,
             },
             "frames_captured": self.frames_captured,
+            "frames_superseded": self.frames_superseded,
             "perception_state": perception_state,
             "perception_frame_id": perception_frame_id,
             "perception_inflight": self._decision_inflight,
@@ -667,6 +672,7 @@ class FrameLoop:
                 "result_age_ms": None,
                 "stale_after_ms": threshold_ms,
                 "frames_captured": self.frames_captured,
+                "frames_superseded": self.frames_superseded,
                 "processed_count": processed_count,
                 "presets": presets,
                 "generation_id": generation_id,
@@ -715,6 +721,7 @@ class FrameLoop:
             "result_age_ms": age_ms,
             "stale_after_ms": threshold_ms,
             "frames_captured": self.frames_captured,
+            "frames_superseded": self.frames_superseded,
             "processed_count": processed_count,
             "presets": dict(latest.presets),
             "generation_id": generation_id,

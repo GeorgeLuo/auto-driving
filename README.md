@@ -727,10 +727,10 @@ rebuilt from the current catalog, including its configs; any other staged
 selection keeps its plugins, specs and configs. Every deployed step records the
 same release and bundle paths. The Pi loads those activations. The Donkey assembly runs the
 shared autonomy cycle independently of `run_pilot`. The drive loop still runs at
-`DRIVE_LOOP_HZ` (20 Hz). It captures a sample only when the frame loop is due,
-which is as soon as the previous cycle finishes, so `/autonomy/camera/latest`
-updates when the decision worker is free. The background decision worker runs
-the cycle on that sample at once, and no backlog builds. The matched result remains
+`DRIVE_LOOP_HZ` (20 Hz) and submits a detached sample every tick, so
+`/autonomy/camera/latest` updates at the drive-loop rate. Each background
+decision takes the newest waiting sample; replaced samples increment
+`frames_superseded`, and no backlog builds. The matched result remains
 `/autonomy/observation/latest`. While mode remains `user`, pilot outputs stay
 zero and Donkey DriveMode keeps manual input authoritative.
 
@@ -785,7 +785,8 @@ old `hold` activation, stage `selected` on that vehicle. `hold` remains availabl
 as a deliberately idle plugin; a custom action plugin can change the requested
 command but cannot bypass runtime movement authority.
 
-Capture status uses `frames_captured` on both vehicles.
+Capture status uses `frames_captured` and `frames_superseded` on both vehicles.
+Superseded frames are waiting captures replaced before a decision consumed them.
 Automation `run` and `restart` use `--num-decisions` in place of `--frames`.
 Run configuration and automation status use `num_decisions` (zero means
 unbounded, explicitly requested with `--unbounded` for movement-enabled runs); host session status

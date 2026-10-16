@@ -60,6 +60,7 @@ def new_run_state(
         "started_at_ms": started_at_ms,
         "updated_at_ms": started_at_ms,
         "frames_captured": 0,
+        "frames_superseded": None,
         "processed_count": 0,
         "num_decisions": configuration.num_decisions,
         "pipeline": "latest_frame_async_decision",
@@ -287,10 +288,13 @@ def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
             ]
         )
     if status == "completed":
+        superseded = state.get("frames_superseded")
+        superseded = "unavailable" if superseded is None else superseded
         return 0, "\n".join(
             [
                 f"Automation completed: {vehicle_id}",
                 f"Frames captured: {state['frames_captured']}",
+                f"Frames superseded before decision: {superseded}",
                 f"Decisions completed: {state['processed_count']}",
                 f"Control source: {state['control_source']}",
                 f"Action policy: {state['action_policy']}",

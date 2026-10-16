@@ -61,6 +61,13 @@ def _frames_captured(host: dict[str, Any]) -> int:
     return count
 
 
+def _frames_superseded(host: dict[str, Any]) -> int | None:
+    components = host.get("components") or {}
+    observation = components.get("observation") or {}
+    count = observation.get("frames_superseded")
+    return count if type(count) is int and count >= 0 else None
+
+
 def _host_status(client: RuntimeClient) -> dict[str, Any]:
     autonomy = client.host_status().get("autonomy")
     if not isinstance(autonomy, dict):
@@ -130,6 +137,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
     try:
         host = _host_status(client)
         capture_base = _frames_captured(host)
+        superseded_base = _frames_superseded(host)
         record_host_status(state, host)
         response = client.start(configuration, record=True) if record else client.start(configuration)
         run_id = str(response["host_run_id"])
@@ -173,7 +181,10 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
                 raise RuntimeError("the runtime host restarted during this run")
             session = runtime["session"]
             host = _host_status(client)
+            superseded = _frames_superseded(host)
             state.update(
+                frames_superseded=(max(0, superseded - superseded_base)
+                                   if superseded is not None and superseded_base is not None else None),
                 session=session, execution=session["execution"],
                 processed_count=session["processed_decisions"],
                 frames_captured=max(0, _frames_captured(host) - capture_base),

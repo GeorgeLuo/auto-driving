@@ -1,4 +1,4 @@
-"""Associate the simulator's cardboard detections within one inspection run."""
+"""Map this frame's cardboard detection to host-owned object identities."""
 
 from __future__ import annotations
 
@@ -9,17 +9,14 @@ from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
     PerceptionSignal,
-    ViewLocation,
 )
 from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginContract,
     PerceptionPluginInputs,
 )
-from implementations.decision_cycle.perception.feeds.camera import FRONT_CAMERA_RGB_INPUT
-from implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin import (
-    SimCardboardObstaclePlugin,
-)
-from implementations.decision_cycle.perception.shared.obstructions.boxes import center_distance, zone
+from implementations.decision_cycle.perception.shared.obstructions.boxes import center_distance
+
+FEATURE_PLUGIN_ID = "sim_cardboard_obstacle"
 
 
 class SimCardboardPermanencePlugin:
@@ -27,22 +24,23 @@ class SimCardboardPermanencePlugin:
 
     plugin_id = "sim_cardboard_permanence"
     contract = PerceptionPluginContract(
-        inputs=(FRONT_CAMERA_RGB_INPUT,),
+        inputs=(),
         state_mode="windowed",
         memory_required=True,
-        description="Associate simulator cardboard boxes and remember short detector gaps.",
+        description="Map the earlier cardboard detection to a nearby known object.",
         assumptions=(
-            "the base detector identifies the simulator's orange-brown cardboard",
-            "a cardboard object's image-space center moves gradually between frames",
+            "sim_cardboard_obstacle runs earlier in the same selection",
+            "a known object's image-space center moves gradually between sightings",
         ),
         emits=(
-            "signals obstacle_in_sight and cardboard_object_permanence",
-            "one obstruction_evidence thing per observed or remembered object",
+            "signal cardboard_object_permanence",
+            "one obstruction_evidence thing for the feature that is visible this frame",
         ),
         limitations=(
             "identity is image-space and holds within one reset-bounded run",
             "nearby objects may be confused and large image-space jumps start new identities",
-            "the base detector provides one box and no metric depth",
+            "a gap longer than max_missed_frames starts a new identity",
+            "no feature plugin means no detection",
         ),
     )
 
@@ -51,11 +49,9 @@ class SimCardboardPermanencePlugin:
         *,
         max_center_shift: float = 0.25,
         max_missed_frames: int = 3,
-        **detector_config: Any,
     ) -> None:
         self.max_center_shift = max(0.0, float(max_center_shift))
         self.max_missed_frames = max(0, int(max_missed_frames))
-        self._detector = SimCardboardObstaclePlugin(**detector_config)
 
     @property
     def _memory_key(self) -> str:
@@ -68,42 +64,38 @@ class SimCardboardPermanencePlugin:
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         if inputs.shared_memory is None:
             raise ValueError(f"{self.plugin_id} requires host shared memory")
-        detected = self._detector.perceive(inputs)
-        obstacle = detected.measurements["obstacle"]
+        feature = _feature(inputs.prior_things)
+        bbox = None if feature is None else feature.location.bbox_xyxy_norm
         objects, next_id = _restore_history(inputs.shared_memory.get(self._memory_key))
         objects_read = len(objects)
-        bbox = obstacle["bbox_xyxy_norm"] if obstacle["present"] else None
-        matched = None
-        if bbox is not None:
-            nearest = min(
-                objects,
-                key=lambda item: center_distance(item["bbox_xyxy_norm"], bbox),
-                default=None,
-            )
-            if nearest is not None and center_distance(nearest["bbox_xyxy_norm"], bbox) <= self.max_center_shift:
-                matched = nearest
+        matched = _match(
+            [item for item in objects if item["missed_frames"] <= self.max_missed_frames],
+            bbox,
+            self.max_center_shift,
+        )
 
         kept: list[dict[str, Any]] = []
         things: list[PerceivedThing] = []
         forgotten: list[int] = []
         for item in objects:
             if item is matched:
+                assert feature is not None
                 item.update(
                     bbox_xyxy_norm=list(bbox),
                     seen_frames=item["seen_frames"] + 1,
                     missed_frames=0,
                 )
-                event = "matched"
-            else:
-                item["missed_frames"] += 1
-                if item["missed_frames"] > self.max_missed_frames:
-                    forgotten.append(item["object_id"])
-                    continue
-                event = "remembered"
+                kept.append(item)
+                things.append(_thing(item, "matched", feature))
+                continue
+            item["missed_frames"] += 1
+            if item["missed_frames"] > self.max_missed_frames:
+                forgotten.append(item["object_id"])
+                continue
             kept.append(item)
-            things.append(_thing(item, event, obstacle["solidity"] if item is matched else None))
 
         if bbox is not None and matched is None:
+            assert feature is not None
             item = {
                 "object_id": next_id,
                 "bbox_xyxy_norm": list(bbox),
@@ -112,12 +104,11 @@ class SimCardboardPermanencePlugin:
             }
             next_id += 1
             kept.append(item)
-            things.append(_thing(item, "new", obstacle["solidity"]))
+            things.append(_thing(item, "new", feature))
 
         inputs.shared_memory[self._memory_key] = {"objects": kept, "next_object_id": next_id}
         return PerceptionEvidenceBatch(
             signals=(
-                *detected.signals,
                 PerceptionSignal(
                     signal_id="cardboard_object_permanence",
                     value=len(kept),
@@ -125,8 +116,36 @@ class SimCardboardPermanencePlugin:
                 ),
             ),
             things=tuple(things),
-            measurements=detected.measurements,
         )
+
+
+def _feature(things: tuple[PerceivedThing, ...]) -> PerceivedThing | None:
+    """The current cardboard detection, including its location and confidence."""
+
+    for thing in things:
+        bbox = thing.location.bbox_xyxy_norm
+        if (
+            thing.source_plugin_id == FEATURE_PLUGIN_ID
+            and thing.kind == "obstruction_evidence"
+            and bbox is not None
+        ):
+            return thing
+    return None
+
+
+def _match(
+    objects: list[dict[str, Any]],
+    bbox: tuple[float, float, float, float] | None,
+    max_center_shift: float,
+) -> dict[str, Any] | None:
+    """Associate this detection with the nearest remembered box inside the gate."""
+
+    if bbox is None or not objects:
+        return None
+    nearest = min(objects, key=lambda item: center_distance(item["bbox_xyxy_norm"], bbox))
+    if center_distance(nearest["bbox_xyxy_norm"], bbox) <= max_center_shift:
+        return nearest
+    return None
 
 
 def _restore_history(history: Any) -> tuple[list[dict[str, Any]], int]:
@@ -164,14 +183,19 @@ def _restore_history(history: Any) -> tuple[list[dict[str, Any]], int]:
     return objects, max(next_id, max(ids, default=0) + 1)
 
 
-def _thing(item: dict[str, Any], event: str, confidence: float | None) -> PerceivedThing:
-    bbox = tuple(item["bbox_xyxy_norm"])
+def _label(object_id: int, event: str) -> str:
+    if event == "new":
+        return "new cardboard"
+    return f"known cardboard {object_id:03d}"
+
+
+def _thing(item: dict[str, Any], event: str, feature: PerceivedThing) -> PerceivedThing:
     return PerceivedThing(
         thing_id=f"cardboard_object_{item['object_id']:03d}",
         kind="obstruction_evidence",
-        label="cardboard obstacle",
-        location=ViewLocation(frame="image", zone=zone(bbox), bbox_xyxy_norm=bbox),
-        confidence=confidence,
+        label=_label(item["object_id"], event),
+        location=feature.location,
+        confidence=feature.confidence,
         properties={
             "object_id": item["object_id"],
             "event": event,

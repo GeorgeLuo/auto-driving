@@ -168,7 +168,7 @@ PERCEPTION_PLUGINS: tuple[dict[str, Any], ...] = (
     },
     {
         "spec": "implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin:SimCardboardPermanencePlugin",
-        "description": "Image-space cardboard identities remembered across short detector gaps.",
+        "description": "Map the earlier cardboard detection to a nearby known object.",
         "default_config": {},
     },
     {

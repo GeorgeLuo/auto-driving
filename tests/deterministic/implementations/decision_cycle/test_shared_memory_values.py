@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -31,6 +32,9 @@ from implementations.decision_cycle.perception.plugins.motion_tracks.plugin impo
 from implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin import (
     MultiObstructionTracksPlugin,
 )
+from implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin import (
+    SimCardboardObstaclePlugin,
+)
 from implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin import (
     SimCardboardPermanencePlugin,
 )
@@ -57,7 +61,12 @@ def _emitted(batch: PerceptionEvidenceBatch) -> dict[str, Any]:
     }
 
 
-def _inputs(index: int, rgb: np.ndarray, memory: dict[str, Any]) -> PerceptionPluginInputs:
+def _inputs(
+    index: int,
+    rgb: np.ndarray,
+    memory: dict[str, Any],
+    prior_things: tuple[Any, ...] = (),
+) -> PerceptionPluginInputs:
     timestamp_ms = 100 + index * 100
     frame = CameraFrame(
         "front_camera",
@@ -73,6 +82,14 @@ def _inputs(index: int, rgb: np.ndarray, memory: dict[str, Any]) -> PerceptionPl
         _QuietDiagnostics(),
         {"sequence_index": index},
         shared_memory=memory,
+        prior_things=prior_things,
+    )
+
+
+def _feature_things(index: int, rgb: np.ndarray) -> tuple[Any, ...]:
+    batch = SimCardboardObstaclePlugin().perceive(_inputs(index, rgb, {}))
+    return tuple(
+        replace(thing, source_plugin_id="sim_cardboard_obstacle") for thing in batch.things
     )
 
 
@@ -108,12 +125,19 @@ class SharedMemoryValueTests(unittest.TestCase):
         scene[:] = (213, 197, 172)
         scene[30:70, 40:100] = (158, 107, 56)
         memory: dict[str, Any] = {}
-        SimCardboardPermanencePlugin().perceive(_inputs(0, scene, memory))
+        SimCardboardPermanencePlugin().perceive(
+            _inputs(0, scene, memory, _feature_things(0, scene))
+        )
         restored = _round_trip(memory)
         shifted = np.roll(scene, 4, axis=1)
+        shifted_features = _feature_things(1, shifted)
 
-        original = SimCardboardPermanencePlugin().perceive(_inputs(1, shifted, memory))
-        replayed = SimCardboardPermanencePlugin().perceive(_inputs(1, shifted, restored))
+        original = SimCardboardPermanencePlugin().perceive(
+            _inputs(1, shifted, memory, shifted_features)
+        )
+        replayed = SimCardboardPermanencePlugin().perceive(
+            _inputs(1, shifted, restored, shifted_features)
+        )
 
         self.assertEqual(_emitted(original), _emitted(replayed))
         self.assertEqual(memory, restored)

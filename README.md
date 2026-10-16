@@ -463,8 +463,18 @@ document. For example, save this as `seed.json` to continue cardboard object 7:
 ```
 
 ```sh
-./cli/automa vehicles perception inspect path/to/next-frame.png --plugin sim_cardboard_permanence --shared-memory seed.json --json
+./cli/automa vehicles perception inspect path/to/next-frame.png --plugin sim_cardboard_obstacle --plugin sim_cardboard_permanence --shared-memory seed.json --json
 ```
+
+`sim_cardboard_obstacle` detects the object. `sim_cardboard_permanence` runs after
+it and maps the detection to the nearest remembered object within a normalized
+center distance of 0.25. A match is labeled `known cardboard 007`; a detection
+without a match receives a new identity and is labeled `new cardboard`.
+The two plugins emit overlapping boxes at the current detection. Remembered
+objects stay in shared memory through three missed frames by default, and a
+frame with no detection draws no box. Large jumps and expired history start
+new identities. This association uses image geometry and cannot establish
+physical identity after arbitrary motion or long disappearances.
 
 Each invocation decodes a fresh map. Plugin state keys follow
 `<step>.<plugin_id>.<name>`. Records use

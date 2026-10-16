@@ -21,8 +21,19 @@ from cli.automa_cli.vehicle_access import VehicleAccess
 from implementations.decision_cycle.catalog import selection_activation
 
 KEY = "perception.sim_cardboard_permanence.history"
+PLUGINS = ["sim_cardboard_obstacle", "sim_cardboard_permanence"]
 LEDGER_KEY = "memory.bounded_evidence.ledger"
 LEDGER_SPEC = "implementations.decision_cycle.memory.shared.evidence_ledger.ledger:EvidenceLedger"
+
+
+def _identity(frame: dict) -> dict:
+    found = [
+        thing for thing in frame["perception"]["things"]
+        if str(thing.get("thing_id", "")).startswith("cardboard_object_")
+    ]
+    if len(found) != 1:
+        raise AssertionError(found)
+    return found[0]
 
 
 class InspectionSharedMemoryTests(unittest.TestCase):
@@ -61,19 +72,30 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.message)
         return json.loads(result.message)
 
+    def assert_current_pair(self, frame: dict, object_id: int, event: str) -> None:
+        things = frame["perception"]["things"]
+        self.assertEqual(len(things), 2)
+        detection, mapped = things
+        self.assertEqual(detection["source_plugin_id"], "sim_cardboard_obstacle")
+        self.assertEqual(mapped["source_plugin_id"], "sim_cardboard_permanence")
+        self.assertEqual(mapped["location"], detection["location"])
+        self.assertEqual(mapped["properties"]["object_id"], object_id)
+        self.assertEqual(mapped["properties"]["event"], event)
+
     def test_perception_inspect_continues_a_seeded_object(self) -> None:
         seeded = self.report(inspect_perception(
-            self.image, plugins=["sim_cardboard_permanence"],
+            self.image, plugins=PLUGINS,
             shared_memory_file=self.seed_file, json_output=True, record=True,
         ))
         plain = self.report(inspect_perception(
-            self.image, plugins=["sim_cardboard_permanence"], json_output=True,
+            self.image, plugins=PLUGINS, json_output=True,
         ))
-        continued = seeded["frames"][0]["perception"]["things"][0]
+        continued = _identity(seeded["frames"][0])
+        self.assert_current_pair(seeded["frames"][0], 7, "matched")
         self.assertEqual(continued["thing_id"], "cardboard_object_007")
         self.assertEqual(continued["properties"]["event"], "matched")
         self.assertEqual(continued["properties"]["seen_frames"], 4)
-        fresh = plain["frames"][0]["perception"]["things"][0]
+        fresh = _identity(plain["frames"][0])
         self.assertEqual(fresh["thing_id"], "cardboard_object_001")
         self.assertEqual(fresh["properties"]["event"], "new")
         self.assertNotIn("shared_memory_seed", plain)
@@ -81,8 +103,37 @@ class InspectionSharedMemoryTests(unittest.TestCase):
 
         # Replaying the recording starts fresh; its seed is provenance only.
         replayed = self.report(inspect_perception(Path(seeded["run_dir"]), json_output=True))
-        self.assertEqual(replayed["frames"][0]["perception"]["things"][0]["thing_id"], "cardboard_object_001")
+        self.assertEqual(_identity(replayed["frames"][0])["thing_id"], "cardboard_object_001")
         self.assertNotIn("shared_memory_seed", replayed)
+
+    def test_a_far_seed_does_not_draw_a_stale_box_or_claim_a_known_match(self) -> None:
+        self.document["values"][KEY]["objects"][0]["bbox_xyxy_norm"] = [0.8, 0.25, 0.98, 0.58]
+        self.write_seed()
+        report = self.report(inspect_perception(
+            self.image, plugins=PLUGINS,
+            shared_memory_file=self.seed_file, json_output=True,
+        ))
+        self.assert_current_pair(report["frames"][0], 8, "new")
+
+    def test_the_seeded_identity_returns_after_a_gap_at_the_current_detection(self) -> None:
+        Image.new("RGB", (160, 120), (213, 197, 172)).save(self.source / "02.png")
+        rgb = np.empty((120, 160, 3), dtype=np.uint8)
+        rgb[:] = (213, 197, 172)
+        rgb[30:70, 44:104] = (158, 107, 56)
+        Image.fromarray(rgb).save(self.source / "03.png")
+        report = self.report(inspect_perception(
+            self.source, plugins=PLUGINS,
+            shared_memory_file=self.seed_file, json_output=True,
+        ))
+        first, gap, returned = report["frames"]
+        self.assert_current_pair(first, 7, "matched")
+        self.assertEqual(gap["perception"]["things"], [])
+        self.assert_current_pair(returned, 7, "matched")
+        self.assertEqual(_identity(returned)["properties"]["seen_frames"], 5)
+        self.assertNotEqual(
+            _identity(first)["location"]["bbox_xyxy_norm"],
+            _identity(returned)["location"]["bbox_xyxy_norm"],
+        )
 
     def test_memory_inspect_starts_from_a_seeded_ledger(self) -> None:
         self.document["values"] = {LEDGER_KEY: {
@@ -165,14 +216,14 @@ class InspectionSharedMemoryTests(unittest.TestCase):
                 car=FrameCar(), image_extension="png", front_camera_endpoint="frame",
             )),
             patch("cli.automa_cli.perception_runs.live_perception_selection", return_value=selection_activation(
-                "perception", plugins=["sim_cardboard_permanence"],
+                "perception", plugins=PLUGINS,
             )),
         ):
             report = self.report(inspect_perception(
                 frames=1, interval_s=0, shared_memory_file=self.seed_file,
                 record=True, json_output=True,
             ))
-        thing = report["frames"][0]["perception"]["things"][0]
+        thing = _identity(report["frames"][0])
         self.assertEqual(thing["thing_id"], "cardboard_object_007")
         self.assertEqual(thing["properties"]["event"], "matched")
         saved = json.loads((self.record_root / report["run_id"] / "report.json").read_text(encoding="utf-8"))

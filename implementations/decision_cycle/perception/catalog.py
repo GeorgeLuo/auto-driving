@@ -162,6 +162,11 @@ PERCEPTION_PLUGINS: tuple[dict[str, Any], ...] = (
         "default_config": {},
     },
     {
+        "spec": "implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin:SimCardboardObstaclePlugin",
+        "description": "One image-space bounding box for the Chase cardboard obstacle.",
+        "default_config": {},
+    },
+    {
         "spec": "implementations.decision_cycle.perception.plugins.vlm_prep.plugin:VlmPrepPlugin",
         "description": "",
         "default_config": {},

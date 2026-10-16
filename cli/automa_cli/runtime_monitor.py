@@ -38,6 +38,16 @@ MONITOR_POLL_INTERVAL_S = 1 / 30
 # The decision copy stays off the recording export. A batch can take longer
 # than the decision stays fresh, so the copy cannot wait for that read.
 DECISION_COPY_INTERVAL_S = 1 / 30
+MAX_POLL_GAP_S = 0.1
+
+
+def _pause_s(started: float, interval_s: float) -> float:
+    """Target the interval on fast hosts; back off after slower passes.
+
+    A 30 ms pass waits 30 ms (~16.7 Hz); a 200 ms pass waits 100 ms.
+    """
+    elapsed = max(0.0, time.monotonic() - started)
+    return max(interval_s - elapsed, min(elapsed, MAX_POLL_GAP_S))
 
 
 def _frames_captured(host: dict[str, Any]) -> int:
@@ -80,7 +90,7 @@ def _copy_latest_decision(
             server.decision.invalidate_latest()
             published, reason = False, f"{type(exc).__name__}: {exc}"
         copied["result"] = (published, reason)
-        stop.wait(max(0.0, DECISION_COPY_INTERVAL_S - (time.monotonic() - started)))
+        stop.wait(_pause_s(started, DECISION_COPY_INTERVAL_S))
 
 
 def _join_decision_copy(copier: threading.Thread | None, stop: threading.Event) -> None:
@@ -137,7 +147,6 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
         ).start()
         decision_view = DecisionViewAdapter(
             vehicle_id=vehicle_id, base_url=base_url, view_server=server, timeout_s=timeout_s,
-            publish_perception=False,
         )
         state.update(
             run_id=run_id, status="running", published_view=server.describe(),
@@ -254,7 +263,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
             write_json_atomically(state_path, state)
             if session["status"] != "running":
                 break
-            time.sleep(max(0.0, MONITOR_POLL_INTERVAL_S - (time.monotonic() - poll_started)))
+            time.sleep(_pause_s(poll_started, MONITOR_POLL_INTERVAL_S))
     except KeyboardInterrupt:
         stop_error = _stop(client, state, run_dir=run_dir, recording_id=recording_id)
         _join_decision_copy(copier, stop_copy)

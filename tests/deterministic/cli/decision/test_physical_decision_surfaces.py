@@ -8,6 +8,7 @@ import unittest
 from copy import deepcopy
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
+from urllib.error import HTTPError
 from urllib.request import urlopen
 
 import numpy as np
@@ -19,7 +20,6 @@ from cli.automa_cli.bundles import controller_bundle_paths
 from cli.automa_cli.decision import accept_decision_publication, decision_view_frame
 from cli.automa_cli.decision_live import DecisionViewAdapter, _provider_identity
 from cli.automa_cli.decision_records import activations_from_payloads
-from cli.automa_cli.memory_report import plugin_states
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.step_activations import replace_metadata
 from implementations.decision_cycle.catalog import packaged_activation
@@ -33,7 +33,7 @@ from tests.shared.cli.invoke import invoke_automa
 
 
 class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
-    def test_decision_copier_can_leave_perception_publication_to_the_monitor(self) -> None:
+    def test_decision_adapter_never_writes_perception(self) -> None:
         now_ms = int(time.time() * 1000)
         normalized = accept_decision_publication(
             self._physical_publication(published_at_ms=now_ms), vehicle_id="piracer", now_ms=now_ms,
@@ -44,7 +44,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         adapter = DecisionViewAdapter(
             vehicle_id="piracer", base_url="http://host.invalid", view_server=server,
-            timeout_s=0.1, publish_perception=False,
+            timeout_s=0.1,
         )
         with patch("cli.automa_cli.decision_live.read_host_telemetry_panel", return_value={}), \
                 patch.object(server.perception, "publish_frame") as frame, \
@@ -201,15 +201,10 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         generation = server.decision.generation_id
         self.assertIsNotNone(generation)
         assert server.url is not None
-        with urlopen(f"{server.url.rstrip('/')}/api/latest", timeout=1.0) as response:
-            perception_payload = json.loads(response.read().decode("utf-8"))
-        self.assertEqual(perception_payload["frame"]["frame_id"], "frame_001")
-        self.assertEqual(perception_payload["memory"]["evidence_publisher"], "decision_evidence")
-        self.assertEqual(
-            dict(plugin_states(perception_payload["memory"]))["decision_evidence"]["record_count"],
-            1,
-        )
-        self.assertIsNotNone(perception_payload["perception"])
+        with self.assertRaises(HTTPError) as warming:
+            urlopen(f"{server.url.rstrip('/')}/api/latest", timeout=1.0)
+        self.assertEqual(warming.exception.code, 503)
+        warming.exception.close()
 
         with urlopen(f"{server.url.rstrip('/')}/perception", timeout=1.0) as response:
             perception_page = response.read().decode("utf-8")

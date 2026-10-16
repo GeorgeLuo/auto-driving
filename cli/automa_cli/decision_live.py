@@ -195,13 +195,11 @@ class DecisionViewAdapter:
         base_url: str,
         view_server: RuntimeViewServer,
         timeout_s: float,
-        publish_perception: bool = True,
     ) -> None:
         self.vehicle_id = vehicle_id
         self.base_url = base_url
         self.view_server = view_server
         self.timeout_s = timeout_s
-        self.publish_perception = publish_perception
 
     def publish_frame(
         self,
@@ -225,24 +223,6 @@ class DecisionViewAdapter:
         if not published:
             self.view_server.decision.invalidate_latest()
             return False
-        if not self.publish_perception:
-            return True
-
-        # Keep the decision, perception, and memory pages on one
-        # RuntimeViewServer session. The decision image is already the exact
-        # matched image, so do not fetch a second potentially different frame.
-        try:
-            image_bytes, content_type = image
-            suffix = ".png" if content_type == "image/png" else ".jpg"
-            frame_path = self.view_server.automation_dir / f"latest_frame{suffix}"
-            frame_path.write_bytes(image_bytes)
-            self.view_server.perception.publish_frame(
-                frame_path=frame_path,
-                frame_record=frame_record,
-            )
-            self.view_server.perception.publish_perception(frame_record=frame_record)
-        except Exception:  # noqa: BLE001 - side view publication is nonfatal
-            pass
         return published
 
     def refresh(self) -> bool:

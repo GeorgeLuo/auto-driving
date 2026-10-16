@@ -239,5 +239,15 @@ class ControlRecordTests(unittest.TestCase):
         )
 
 
+class MonitorPacingTests(unittest.TestCase):
+    def test_adaptive_pause_keeps_a_gap_on_fast_and_slow_hosts(self):
+        for elapsed_ms, expected_ms in [(5, 1000 / 30 - 5), (20, 20), (30, 30),
+                                        (100, 100), (200, 100)]:
+            with self.subTest(elapsed_ms=elapsed_ms), mock.patch.object(
+                runtime_monitor.time, "monotonic", return_value=10 + elapsed_ms / 1000,
+            ):
+                self.assertAlmostEqual(runtime_monitor._pause_s(10, 1 / 30) * 1000, expected_ms)
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -20,14 +20,11 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 
-import numpy as np
-from PIL import Image
-
 from autonomy.runtime.assembly import staged_runtime
 from autonomy.runtime.frame_loop import FrameLoop
 from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 from implementations.vehicle.chase_sim import (
     ChasePassiveCaptureError,
     ChaseSimCar,
@@ -54,11 +51,9 @@ RECORD_CHECK_S = 1.0
 class ChaseFrameLoop(FrameLoop):
     """Capture simulator frames into the shared loop while a session runs."""
 
-    def __init__(self, *, car: ChaseSimCar, capture_dir: Path, **options: Any) -> None:
+    def __init__(self, *, car: ChaseSimCar, **options: Any) -> None:
         self.car = car
-        self.capture_dir = Path(capture_dir)
         self._passive_baseline: dict[str, Any] | None = None
-        self._capture_count = 0
         self._capture_generation = 0
         self._active_stream: Any = None
         self._stream_counters = {"frames_received": 0, "frames_replaced": 0}
@@ -116,45 +111,24 @@ class ChaseFrameLoop(FrameLoop):
         """Read one simulator frame and submit it with its simulator identity."""
 
         generation = self._capture_generation
-        read_camera_frame = getattr(self.car, "read_camera_frame", None)
-        sensor_frame = read_camera_frame() if callable(read_camera_frame) else self.car.read_sensors(
-            SensorReadRequest(
-                output_dir=self.capture_dir,
-                read_id=f"capture_{self._capture_count:06d}",
-                requested_sensors=(FRONT_CAMERA_SENSOR_ID,),
-                image_extension="png",
-                front_camera_endpoint="atomic-evaluation-capture",
-            )
-        )
+        sensor_frame = self.car.read_camera_frame()
         self._submit_sensor_frame(sensor_frame, check_passive=True, generation=generation)
 
     def _submit_sensor_frame(self, sensor_frame: Any, *, check_passive: bool,
                              generation: int | None = None) -> None:
-        self._capture_count += 1
         reading = sensor_frame.readings.get(FRONT_CAMERA_SENSOR_ID)
-        path = Path(reading.path) if reading is not None and isinstance(reading.path, str) else None
-        try:
-            if check_passive and self.host.configuration.mode == "observe_only":
-                self._check_passive_session()
-            index = simulator_frame_index_from_sensor_frame(sensor_frame)
-            if index is None:
-                index = self.car.last_simulator_frame_index
-            epoch = simulator_epoch_from_sensor_frame(sensor_frame)
-            if index is None or epoch is None:
-                raise ValueError("Chase capture is missing the simulator frameIndex or simulationEpoch")
-            if reading is not None and reading.value is not None:
-                array = reading.value
-            elif path is None:
-                raise ValueError("Chase capture returned no front camera image")
-            else:
-                with Image.open(path) as image:
-                    array = np.asarray(image.convert("RGB"))
-        finally:
-            if path is not None:
-                path.unlink(missing_ok=True)
+        index = simulator_frame_index_from_sensor_frame(sensor_frame)
+        epoch = simulator_epoch_from_sensor_frame(sensor_frame)
+        if index is None or epoch is None:
+            raise ValueError("Chase capture is missing the simulator frameIndex or simulationEpoch")
+        if reading is None or reading.value is None:
+            raise ValueError("Chase capture returned no front camera image")
+        array = reading.value
         with self._lock:
             if generation is not None and generation != self._capture_generation:
                 return
+            if check_passive and self.host.configuration.mode == "observe_only":
+                self._check_passive_session()
             self.submit(
                 array, frame_id=format_chase_frame_id(index), frame_index=index,
                 captured_at_ms=reading.captured_at_ms, jpeg_bytes=reading.jpeg_bytes,
@@ -269,9 +243,8 @@ class ChaseRuntimeHost:
     def __init__(self, *, car: Any, runtime_dir: Path, vehicle_id: str, port: int = 0,
                  on_restart: Callable[[], None] | None = None) -> None:
         host, options = staged_runtime(runtime_dir, lambda steps: create_host(car, steps=steps))
-        self._capture_dir = tempfile.TemporaryDirectory(prefix="chase-capture-")
         self.loop = ChaseFrameLoop(
-            host=host, car=car, capture_dir=Path(self._capture_dir.name), vehicle_id=vehicle_id, **options,
+            host=host, car=car, vehicle_id=vehicle_id, **options,
         )
         self.server = RuntimeHTTPServer(("127.0.0.1", port), RuntimeRoutes(self.loop, on_restart=on_restart))
         self.base_url = f"http://127.0.0.1:{self.server.server_address[1]}"
@@ -295,7 +268,6 @@ class ChaseRuntimeHost:
         for thread in self._threads:
             thread.join(timeout=5.0)
         self.loop.shutdown()
-        self._capture_dir.cleanup()
 
     def __enter__(self) -> "ChaseRuntimeHost":
         return self.start()

@@ -2,7 +2,10 @@ from __future__ import annotations
 import json
 import time
 from contextlib import ExitStack, contextmanager
+from dataclasses import replace
 from pathlib import Path
+import numpy as np
+
 from PIL import Image
 from unittest.mock import patch
 from autonomy.decision_cycle.activation import step_activation
@@ -63,12 +66,20 @@ class _FakeCar:
         raise AssertionError("observe-only automation must not send idle control")
 
     def read_sensors(self, request):
-        now_ms = int(time.time() * 1000)
+        frame = self.read_camera_frame()
         path = request.front_camera_path()
         path.parent.mkdir(parents=True, exist_ok=True)
+        reading = frame.readings[FRONT_CAMERA_SENSOR_ID]
+        Image.fromarray(reading.value).save(path)
+        return replace(frame, read_id=request.read_id, request=request.to_dict(), readings={
+            FRONT_CAMERA_SENSOR_ID: replace(reading, path=str(path), value=None),
+        })
+
+    def read_camera_frame(self):
+        now_ms = int(time.time() * 1000)
         # Simulate advancing Chase play_debug frameIndex values.
         simulator_frame_index = 100 + self.simulator_frame_stride * self.capture_count
-        Image.new("RGB", (64, 48), (self.capture_count % 256, 40, 60)).save(path)
+        image = np.array(Image.new("RGB", (64, 48), (self.capture_count % 256, 40, 60)))
         self.capture_count += 1
         self.last_simulator_frame_index = simulator_frame_index
         self.last_passive_capture = {
@@ -100,7 +111,7 @@ class _FakeCar:
             sensor_id=FRONT_CAMERA_SENSOR_ID,
             sensor_kind="camera",
             captured_at_ms=now_ms,
-            path=str(path),
+            value=image,
             metadata={
                 "content_type": "image/png",
                 "simulator_frame_index": simulator_frame_index,
@@ -110,11 +121,10 @@ class _FakeCar:
             },
         )
         return SensorFrame(
-            read_id=request.read_id,
+            read_id=f"capture-{self.capture_count}",
             readings={FRONT_CAMERA_SENSOR_ID: reading},
             started_at_ms=now_ms,
             completed_at_ms=now_ms,
-            request=request.to_dict(),
             metadata={
                 "simulator_frame_index": simulator_frame_index,
                 "simulation_epoch": "chase-run:test",

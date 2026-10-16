@@ -1,7 +1,6 @@
 """A passive camera subscription with one waiting frame, decoded in memory."""
 from __future__ import annotations
 
-import socket
 import threading
 import time
 from typing import Any
@@ -46,6 +45,10 @@ class ChaseCameraStream:
         self._reader: threading.Thread | None = None
         self._subscription_id: str | None = None
         self._baseline: dict[str, Any] = {}
+        self._session_baseline: dict[str, Any] = {}
+        self._state_request_number = 0
+        self._state_request_id: str | None = None
+        self._state_reply: dict[str, Any] | None = None
         self._last_index = -1
         self._last_source_us = -1
         self._first_source_us: int | None = None
@@ -88,6 +91,18 @@ class ChaseCameraStream:
             self._ws._require_sock().settimeout(None)
             self._reader = threading.Thread(target=self._receive, name="chase-camera-stream", daemon=True)
             self._reader.start()
+            self._session_baseline = build_chase_session_fingerprint(
+                state=self._request_state(), debug={"gameId": "chase",
+                                                    "simulationEpoch": self._baseline["simulation_epoch"]},
+            )
+            missing = [name for name in ("scenario_id", "control_source")
+                       if self._session_baseline.get(name) is None]
+            if missing:
+                raise ChasePassiveCaptureError(
+                    code="simulator_capability_missing",
+                    message="Camera stream requires sidebar rows scenario-select and chaser-control-source.",
+                    details={"unknown_fields": missing, "mutation_attempted": False},
+                )
             return self
         except Exception:
             self.close()
@@ -176,6 +191,14 @@ class ChaseCameraStream:
                 self._raise_protocol_error(message)
                 if message.get("type") == "play_camera_stream_frame":
                     self._accept_frame(message.get("payload"))
+                elif message.get("type") == "state_update":
+                    with self._condition:
+                        if (self._state_request_id is not None
+                                and message.get("request_id") == self._state_request_id):
+                            if not isinstance(message.get("payload"), dict):
+                                raise MetricsUiWebSocketError("Camera state reply must contain an object")
+                            self._state_reply = message["payload"]
+                            self._condition.notify_all()
                 elif message.get("type") == "play_camera_stream_result":
                     payload = _record(message.get("payload"))
                     if payload.get("event") == "ended":
@@ -186,6 +209,37 @@ class ChaseCameraStream:
                     self._error = exc
                     self._latest = None
                     self._condition.notify_all()
+
+    def _request_state(self) -> dict[str, Any]:
+        deadline = time.monotonic() + self.client.timeout_s
+        with self._condition:
+            if self._closed.is_set():
+                raise MetricsUiWebSocketError("Camera stream is closed")
+            if self._error is not None:
+                raise self._error
+            self._state_request_number += 1
+            request_id = f"automa-camera-state-{self._state_request_number}"
+            self._state_request_id, self._state_reply = request_id, None
+        try:
+            self._ws.send_json({"type": "get_state", "request_id": request_id}, deadline=deadline)
+            with self._condition:
+                self._condition.wait_for(
+                    lambda: self._state_reply is not None or self._error is not None or self._closed.is_set(),
+                    timeout=max(0.0, deadline - time.monotonic()),
+                )
+                if self._error is not None:
+                    raise self._error
+                if self._closed.is_set():
+                    raise MetricsUiWebSocketError("Camera stream closed during state request")
+                if self._state_reply is None or time.monotonic() >= deadline:
+                    raise MetricsUiWebSocketError("Camera stream state request timed out")
+                return self._state_reply
+        except Exception:
+            self._ws.abort()
+            raise
+        finally:
+            with self._condition:
+                self._state_request_id, self._state_reply = None, None
 
     def read_camera_frame(self, *, timeout_s: float = 0.1) -> SensorFrame | None:
         with self._condition:
@@ -213,7 +267,7 @@ class ChaseCameraStream:
         }, include_image_array=True)
         if sensor["image"]["content_type"] != "image/jpeg":
             raise self._invalid("sensor.image.contentType", "camera stream must contain JPEG images")
-        self._check_session(self.client.get_state(), sensor)
+        self._check_session(self._request_state(), sensor)
         return SensorFrame(
             read_id=sensor["frame_id"],
             readings={FRONT_CAMERA_SENSOR_ID: SensorReading(
@@ -236,7 +290,7 @@ class ChaseCameraStream:
             "simulationEpoch": sensor["simulation_epoch"],
         })
         receipt = compare_chase_session_fingerprints(
-            self._baseline, current, field_names=STABLE_SESSION_FIELDS,
+            self._session_baseline, current, field_names=STABLE_SESSION_FIELDS,
         )
         if not receipt["preserved"]:
             raise ChasePassiveCaptureError(
@@ -250,7 +304,7 @@ class ChaseCameraStream:
         if now_ms - max(self._last_progress_ms, self._last_idle_check_ms) < self.client.timeout_s * 1000:
             return
         self._last_idle_check_ms = now_ms
-        state = self.client.get_state()
+        state = self._request_state()
         self._check_session(state, self._baseline)
         if _record(state.get("playback")).get("isPlaying") is False:
             return
@@ -268,16 +322,19 @@ class ChaseCameraStream:
         self._closed.set()
         with self._condition:
             self._latest = None
+            request_pending = self._state_request_id is not None
             self._condition.notify_all()
-        sock = self._ws.sock
-        if sock is not None:
-            try:
-                if self._subscription_id is not None:
-                    self._ws.send_json({"type": "play_camera_stream_unsubscribe",
-                                        "subscriptionId": self._subscription_id})
-                sock.shutdown(socket.SHUT_RDWR)
-            except OSError:
-                pass
-        self._ws.close()
-        if self._reader is not None:
+        try:
+            if request_pending:
+                self._ws.abort()
+            elif self._ws.sock is not None and self._subscription_id is not None:
+                self._ws.send_json({"type": "play_camera_stream_unsubscribe",
+                                    "subscriptionId": self._subscription_id},
+                                   deadline=time.monotonic() + 0.1)
+        except (OSError, MetricsUiWebSocketError):
+            pass
+        finally:
+            self._ws.abort()
+            self._ws.close()
+        if self._reader is not None and self._reader is not threading.current_thread():
             self._reader.join(timeout=1.0)

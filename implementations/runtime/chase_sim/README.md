@@ -14,8 +14,9 @@ image and frame identity.
 
 Subscription startup validates the passive preservation receipt. Each frame
 validates actor, camera, epoch, advancing frame index, timestamps, image MIME,
-dimensions, and raster contents. A state read checks the scenario and control
-source before perception. Session changes, stream failures, and malformed data
+dimensions, and raster contents. A correlated state request on the subscription socket checks the scenario and
+control source against a state-derived startup baseline before perception. Its
+deadline includes writing and waiting for the reply; stop interrupts either. Session changes, stream failures, and malformed data
 end the run. Stop and restart close the subscription and discard prior-session
 captures. Subscribing does not acquire vehicle control.
 An idle stream checks playback after the capture timeout: app/game pauses keep

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import queue
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -46,6 +47,9 @@ class _Connection:
         self.result = _subscribed() if result is None else result
         self.sock = self
         self.closed = False
+        self.state = mock.Mock(return_value=_session_state())
+        self.answer_state = True
+        self.state_requested = threading.Event()
 
     def connect(self):
         pass
@@ -56,12 +60,18 @@ class _Connection:
     def settimeout(self, _timeout):
         pass
 
-    def send_json(self, message):
+    def send_json(self, message, *, deadline=None):
         self.sent.append(message)
         if message["type"] == "register":
             self.messages.put({"type": "ack", "payload": "registered as agent"})
         elif message["type"] == "play_camera_stream_subscribe":
             self.messages.put({"type": "play_camera_stream_result", "payload": self.result})
+
+        elif message["type"] == "get_state":
+            self.state_requested.set()
+            if self.answer_state:
+                self.messages.put({"type": "state_update", "request_id": message["request_id"],
+                                   "payload": self.state()})
 
     def recv_json(self, *, timeout_s=None):
         message = self.messages.get(timeout=timeout_s)
@@ -74,6 +84,9 @@ class _Connection:
 
     def shutdown(self, _how):
         self.messages.put(MetricsUiWebSocketError("connection closed"))
+
+    def abort(self):
+        self.close()
 
     def close(self):
         self.closed = True
@@ -89,11 +102,9 @@ class ChaseCameraStreamTests(unittest.TestCase):
             "implementations.vehicle.chase_sim.camera_stream._WebSocketConnection",
             return_value=self.connection,
         )
-        self.patch.start()
+        self.factory = self.patch.start()
         self.addCleanup(self.patch.stop)
-        state_patch = mock.patch.object(self.client, "get_state", return_value=_session_state())
-        self.state = state_patch.start()
-        self.addCleanup(state_patch.stop)
+        self.state = self.connection.state
 
     def test_subscription_decodes_in_memory_and_unsubscribes_without_movement(self):
         with ChaseCameraStream(self.client) as stream:
@@ -104,7 +115,7 @@ class ChaseCameraStreamTests(unittest.TestCase):
             self.assertEqual(frame.metadata["camera_transport"], "stream")
         self.assertTrue(self.connection.closed)
         self.assertEqual([m["type"] for m in self.connection.sent], [
-            "register", "play_camera_stream_subscribe", "play_camera_stream_unsubscribe",
+            "register", "play_camera_stream_subscribe", "get_state", "get_state", "play_camera_stream_unsubscribe",
         ])
 
     def test_slow_consumer_gets_only_the_newest_waiting_frame(self):
@@ -180,8 +191,8 @@ class ChaseCameraStreamTests(unittest.TestCase):
                 stream.read_camera_frame(timeout_s=1)
 
     def test_control_source_changes_are_rejected_before_perception(self):
-        self.state.return_value = _session_state(control_source="keyboard")
         with ChaseCameraStream(self.client) as stream:
+            self.state.return_value = _session_state(control_source="keyboard")
             with self.assertRaises(ChasePassiveCaptureError) as raised:
                 stream.read_camera_frame()
         self.assertIn("control_source", raised.exception.details["session_preservation"]["changed_fields"])
@@ -215,6 +226,67 @@ class ChaseCameraStreamTests(unittest.TestCase):
                 self.assertIsNone(stream.read_camera_frame(timeout_s=0.001))
                 debug.assert_called_once()
             self.assertFalse(self.connection.closed)
+
+    def test_state_baseline_uses_sidebar_naming_and_one_connection(self):
+        self.state.return_value = _session_state(control_source="keyboard")
+        with mock.patch.object(self.client, "get_state", side_effect=AssertionError("new connection")):
+            with ChaseCameraStream(self.client) as stream:
+                for index in range(43, 46):
+                    self.connection.push(_frame(index))
+                    self.assertIsNotNone(stream.read_camera_frame(timeout_s=1))
+        self.factory.assert_called_once_with(self.client.url, timeout_s=self.client.timeout_s)
+        self.assertEqual(sum(m["type"] == "register" for m in self.connection.sent), 1)
+
+    def test_missing_sidebar_fails_at_subscription(self):
+        self.state.return_value = {}
+        with self.assertRaises(ChasePassiveCaptureError) as raised:
+            with ChaseCameraStream(self.client):
+                self.fail("missing sidebar accepted")
+        self.assertEqual(raised.exception.code, "simulator_capability_missing")
+        self.assertTrue(self.connection.closed)
+
+    def test_malformed_matching_state_reply_is_fatal(self):
+        self.state.return_value = []
+        with self.assertRaisesRegex(MetricsUiWebSocketError, "must contain an object"):
+            with ChaseCameraStream(self.client):
+                self.fail("malformed state accepted")
+        self.assertTrue(self.connection.closed)
+
+    def test_state_timeout_ends_subscription(self):
+        self.client.timeout_s = 0.05
+        self.connection.answer_state = False
+        with self.assertRaisesRegex(MetricsUiWebSocketError, "timed out"):
+            with ChaseCameraStream(self.client):
+                self.fail("missing reply accepted")
+        self.assertTrue(self.connection.closed)
+
+    def test_unrelated_or_unsolicited_state_cannot_satisfy_request(self):
+        self.client.timeout_s = 0.05
+        self.connection.answer_state = False
+        self.connection.messages.put({"type": "state_update", "payload": _session_state()})
+        self.connection.messages.put({"type": "state_update", "request_id": "wrong", "payload": _session_state()})
+        with self.assertRaisesRegex(MetricsUiWebSocketError, "timed out"):
+            with ChaseCameraStream(self.client):
+                self.fail("unrelated reply accepted")
+
+    def test_close_wakes_a_waiting_state_request(self):
+        stream = ChaseCameraStream(self.client).__enter__()
+        self.connection.answer_state = False
+        self.connection.state_requested.clear()
+        errors = []
+        def read():
+            try:
+                stream.read_camera_frame()
+            except Exception as exc:
+                errors.append(exc)
+        worker = threading.Thread(target=read)
+        worker.start()
+        self.assertTrue(self.connection.state_requested.wait(1))
+        stream.close()
+        worker.join(1)
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(len(errors), 1)
+        self.assertIsInstance(errors[0], MetricsUiWebSocketError)
 
 
 class ChaseCameraMemoryTests(unittest.TestCase):

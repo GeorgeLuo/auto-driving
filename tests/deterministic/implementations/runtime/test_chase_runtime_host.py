@@ -31,8 +31,11 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             def __enter__(self):
                 return self
 
-            def __exit__(self, *_exc):
+            def close(self):
                 self.closed = True
+
+            def __exit__(self, *_exc):
+                self.close()
 
             def read_camera_frame(self):
                 time.sleep(0.005)
@@ -46,7 +49,9 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                         sensor_id=FRONT_CAMERA_SENSOR_ID, sensor_kind="camera", captured_at_ms=now,
                         value=np.full((4, 4, 3), self.count % 256, dtype=np.uint8),
                     )},
-                    metadata={"simulator_frame_index": self.count, "simulation_epoch": "fixture"},
+                    metadata={"simulator_frame_index": self.count, "simulation_epoch": "fixture",
+                              "camera_transport": "stream", "frames_received": self.count,
+                              "capture_duration_ms": 2, "source_timestamp_us": 100},
                 )
 
         stream = Stream()
@@ -70,6 +75,10 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 session = _wait(lambda: (s := client.status()["session"])["status"] == "completed" and s,
                                 message="stream session did not complete")
                 _wait(lambda: stream.closed, message="terminal run did not unsubscribe")
+                context_metadata = host.loop.latest_state.context["metadata"]
+                self.assertNotIn("frames_received", context_metadata)
+                self.assertNotIn("capture_duration_ms", context_metadata)
+                self.assertNotIn("source_timestamp_us", context_metadata)
         self.assertEqual(session["processed_decisions"], 2)
         self.assertGreater(stream.count, 2)
         self.assertEqual(car.capture_count, 0, "stream path used file-based capture")
@@ -102,6 +111,63 @@ class ChaseRuntimeHostTests(unittest.TestCase):
         self.assertEqual(observation["latest"]["mode"], "observe_only")
         self.assertFalse(observation["latest"]["control"]["applied"])
         self.assertEqual(decision["status"], "ready", decision)
+
+    def test_restart_closes_previous_stream_and_reports_transport(self):
+        streams = []
+        class Stream:
+            frames_received = 3
+            frames_replaced = 1
+            def __init__(self):
+                self.closed = threading.Event()
+            def __enter__(self):
+                return self
+            def close(self):
+                self.closed.set()
+            def __exit__(self, *_exc):
+                self.close()
+            def read_camera_frame(self):
+                self.closed.wait(0.01)
+                return None
+        car = _FakeCar()
+        def open_stream():
+            car.camera_transport = {"transport": "stream", "reason": "fixture"}
+            stream = Stream()
+            streams.append(stream)
+            return stream
+        car.camera_stream = open_stream
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = controller_bundle_paths(Path(tmp) / "chase-sim-chaser")
+            _write_activations(bundle)
+            with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]),
+                                  vehicle_id="chase-sim-chaser") as host:
+                host.loop.start(RunConfiguration(mode="observe_only"))
+                _wait(lambda: len(streams) == 1, message="first stream did not open")
+                host.loop.start(RunConfiguration(mode="observe_only"))
+                _wait(lambda: len(streams) == 2, message="restart stream did not open")
+                self.assertTrue(streams[0].closed.is_set())
+                status = host.loop.observation_status()
+                self.assertEqual(status["camera_transport"]["transport"], "stream")
+                self.assertEqual((status["frames_received"], status["frames_replaced"]), (3, 1))
+                host.loop.stop()
+                self.assertTrue(streams[1].closed.is_set())
+                self.assertEqual(host.loop.host.run_state, "stopped")
+                self.assertEqual(host.loop.observation_status()["frames_received"], 3)
+
+    def test_capability_timeout_ends_run_without_atomic_capture(self):
+        from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
+        car = _FakeCar()
+        def timeout():
+            raise MetricsUiWebSocketError("capability timed out")
+        car.camera_stream = timeout
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = controller_bundle_paths(Path(tmp) / "chase-sim-chaser")
+            _write_activations(bundle)
+            with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]),
+                                  vehicle_id="chase-sim-chaser") as host:
+                host.loop.start(RunConfiguration(mode="observe_only"))
+                _wait(lambda: host.loop.host.run_state == "error", message="timeout was hidden")
+                self.assertIn("capability timed out", host.loop.host.last_error)
+                self.assertEqual(car.capture_count, 0)
 
 
 if __name__ == "__main__":

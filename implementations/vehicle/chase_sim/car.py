@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import logging
 import math
 import time
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +34,8 @@ from autonomy.vehicle import (
 
 
 CHASE_SET_CHASER_INPUT = "set-chaser-input"
+logger = logging.getLogger(__name__)
+
 CHASE_SET_CHASER_CONTROL_SOURCE = "set-chaser-control-source"
 CHASE_ATOMIC_EVALUATION_QUERY = "atomic-evaluation-capture"
 CHASE_PASSIVE_CAMERA_ID = "front_camera"
@@ -271,7 +275,10 @@ class ChaseSimCar(CarInterface):
         }
         self._last_passive_capture: dict[str, Any] | None = None
         self._last_simulator_frame_index: int | None = None
+        self._capture_session_lock = threading.Lock()
+        self._capture_session = 0
         self._passive_receipt_supported = False
+        self.camera_transport: dict[str, Any] | None = None
         self._capabilities = VehicleCapabilities(
             vehicle_id=vehicle_id,
             vehicle_kind="chase-sim-ws",
@@ -525,11 +532,14 @@ class ChaseSimCar(CarInterface):
         deadline = started + operation_timeout
         phases: dict[str, dict[str, Any]] = {}
 
+        with self._capture_session_lock:
+            capture_session = self._capture_session
+            receipt_supported = self._passive_receipt_supported
         before: dict[str, Any] = {}
         # Discover receipt support once. Older frontends still need the
         # surrounding state/debug reads, while an atomic receipt proves
         # preservation for each subsequent capture without those round trips.
-        if not self._passive_receipt_supported:
+        if not receipt_supported:
             before_state = self._passive_phase(
                 "state_before",
                 phases,
@@ -574,20 +584,22 @@ class ChaseSimCar(CarInterface):
         )
         passive_observation = capture.get("passiveObservation")
         if isinstance(passive_observation, dict):
-            result = self._passive_receipt_result(
-                capture=capture,
-                passive_observation=passive_observation,
-                fallback_environment=before,
-                phases=phases,
-                operation_timeout=operation_timeout,
-                started=started,
-                include_image=include_image,
-                include_image_array=include_image_array,
-            )
-            if result["status"] == "available":
-                self._passive_receipt_supported = True
-            return result
-        if self._passive_receipt_supported:
+            with self._capture_session_lock:
+                self._require_capture_session(capture_session)
+                result = self._passive_receipt_result(
+                    capture=capture,
+                    passive_observation=passive_observation,
+                    fallback_environment=before,
+                    phases=phases,
+                    operation_timeout=operation_timeout,
+                    started=started,
+                    include_image=include_image,
+                    include_image_array=include_image_array,
+                )
+                if result["status"] == "available":
+                    self._passive_receipt_supported = True
+                return result
+        if receipt_supported:
             # Without a before read, a legacy response cannot prove that this
             # capture preserved the session. Never accept a receipt downgrade.
             raise ChasePassiveCaptureError(
@@ -674,26 +686,28 @@ class ChaseSimCar(CarInterface):
             raw_image = raw_sensor.get("image") if isinstance(raw_sensor, dict) else None
             result["image"] = dict(raw_image) if isinstance(raw_image, dict) else None
 
-        self._last_capture_chaser_reference = (
-            evaluator.get("reference")
-            if evaluator.get("status") == "available"
-            and isinstance(evaluator.get("reference"), dict)
-            else None
-        )
-        self._last_evaluator_reference = evaluator_status
-        self._last_simulator_frame_index = int(sensor["simulator_frame_index"])
-        self._last_passive_capture = {
-            key: value for key, value in result.items() if key != "image"
-        }
-        stored_sensor = self._last_passive_capture.get("sensor")
-        if isinstance(stored_sensor, dict) and isinstance(stored_sensor.get("image"), dict):
-            stored_sensor = dict(stored_sensor)
-            stored_image = dict(stored_sensor["image"])
-            stored_image.pop("validated_bytes", None)
-            stored_image.pop("image_array", None)
-            stored_sensor["image"] = stored_image
-            self._last_passive_capture["sensor"] = stored_sensor
-        return result
+        with self._capture_session_lock:
+            self._require_capture_session(capture_session)
+            self._last_capture_chaser_reference = (
+                evaluator.get("reference")
+                if evaluator.get("status") == "available"
+                and isinstance(evaluator.get("reference"), dict)
+                else None
+            )
+            self._last_evaluator_reference = evaluator_status
+            self._last_simulator_frame_index = int(sensor["simulator_frame_index"])
+            self._last_passive_capture = {
+                key: value for key, value in result.items() if key != "image"
+            }
+            stored_sensor = self._last_passive_capture.get("sensor")
+            if isinstance(stored_sensor, dict) and isinstance(stored_sensor.get("image"), dict):
+                stored_sensor = dict(stored_sensor)
+                stored_image = dict(stored_sensor["image"])
+                stored_image.pop("validated_bytes", None)
+                stored_image.pop("image_array", None)
+                stored_sensor["image"] = stored_image
+                self._last_passive_capture["sensor"] = stored_sensor
+            return result
 
     def _passive_receipt_result(
         self,
@@ -880,7 +894,7 @@ class ChaseSimCar(CarInterface):
             _passive_receipt_environment(before)
             if not before["unknown_fields"]
             else {
-                key: fallback_environment.get(key)
+                key: fallback_environment.get(key, _passive_receipt_environment(before).get(key))
                 for key in (
                     "game_id",
                     "scenario_id",
@@ -1089,19 +1103,41 @@ class ChaseSimCar(CarInterface):
             },
         )
 
+    def _require_capture_session(self, capture_session: int) -> None:
+        if capture_session != self._capture_session:
+            raise ChasePassiveCaptureError(
+                code="simulator_state_changed", message="Capture belongs to a previous runtime session.",
+                details={"mutation_attempted": False},
+            )
+
+    def begin_capture_session(self) -> None:
+        """Rediscover capabilities and preservation receipts for each run."""
+        with self._capture_session_lock:
+            self._capture_session += 1
+            self._passive_receipt_supported = False
+            self._last_passive_capture = None
+            self.camera_transport = None
+
     def camera_stream(self) -> Any:
-        """Use the advertised stream; retain atomic capture on older frontends."""
-        try:
-            usage = self.client.command(
-                {"type": "get_play_game_usage"}, response_type="play_game_usage",
-            ).payload
-        except MetricsUiWebSocketError as exc:
-            if exc.code in FRONTEND_DELIVERY_PROTOCOL_CODES:
-                raise
-            return None
-        protocol = usage.get("protocol") if isinstance(usage, dict) else None
+        """Use an advertised stream; only absent capability selects atomic."""
+        with self._capture_session_lock:
+            capture_session = self._capture_session
+        usage = self.client.command(
+            {"type": "get_play_game_usage"}, response_type="play_game_usage",
+        ).payload
+        if not isinstance(usage, dict):
+            raise MetricsUiWebSocketError("Camera capability response must contain an object")
+        protocol = usage.get("protocol")
         capability = protocol.get("cameraStream") if isinstance(protocol, dict) else None
-        if not isinstance(capability, dict) or capability.get("supported") is not True:
+        supported = isinstance(capability, dict) and capability.get("supported") is True
+        with self._capture_session_lock:
+            self._require_capture_session(capture_session)
+            self.camera_transport = {
+                "transport": "stream" if supported else "atomic",
+                "reason": "advertised_camera_stream" if supported else "camera_stream_capability_absent",
+            }
+        logger.info("Chase camera transport: %s", self.camera_transport)
+        if not supported:
             return None
         from .camera_stream import ChaseCameraStream
 

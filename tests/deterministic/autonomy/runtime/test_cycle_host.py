@@ -244,6 +244,36 @@ class CycleHostMemoryTests(unittest.TestCase):
 
 
 class CycleHostStepTests(unittest.TestCase):
+    def test_an_inflight_success_cannot_clear_an_external_stop_error(self):
+        from unittest import mock
+        from autonomy.runtime.session import RunConfiguration
+        from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
+        perception = GatedPerception(1)
+        host = AutonomyCycleHost(steps=replace(decision_steps(), perception=perception), target=mock.Mock())
+        errors = []
+        def run():
+            try:
+                host.run(DecisionFrameContext("frame_1", 0, int(time.time() * 1000)))
+            except Exception as exc:
+                errors.append(exc)
+        worker = threading.Thread(target=run)
+        try:
+            host.start(RunConfiguration(mode="observe_only"))
+            worker.start()
+            perception.wait_started(0)
+            host.stop(reason="error", error="simulator_state_changed: control source changed")
+            perception.release_all()
+            worker.join(2)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(errors, [])
+            self.assertEqual(host.run_state, "error")
+            self.assertIn("simulator_state_changed", host.last_error)
+        finally:
+            perception.release_all()
+            worker.join(2)
+            host.close()
+
+
     def test_runtime_activations_load_with_builtin_fallbacks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

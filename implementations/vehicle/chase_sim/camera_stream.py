@@ -60,6 +60,8 @@ class ChaseCameraStream:
 
     def __enter__(self) -> ChaseCameraStream:
         try:
+            if self._closed.is_set():
+                raise MetricsUiWebSocketError("Camera stream is closed")
             self._ws.connect()
             deadline = time.monotonic() + self.client.timeout_s
             self._ws.send_json({"type": "register", "role": "agent"})

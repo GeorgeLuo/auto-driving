@@ -373,6 +373,8 @@ class AutonomyCycleHost:
                 if self.execution is not None:
                     result = replace(result, application=self.execution.apply(result, ticket))
                 with self._session_lock:
+                    if run_generation == self._run_generation:
+                        self.last_error = None
                     if self.run_state == "running" and run_generation == self._run_generation:
                         if self.recording is not None:
                             self.recording.append(result)
@@ -383,7 +385,6 @@ class AutonomyCycleHost:
                         ):
                             self.stop(reason="completed")
                 self.cycle_count += 1
-                self.last_error = None
                 self.last_result = result
                 self._record_applied_decision()
             except Exception as exc:

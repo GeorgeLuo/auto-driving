@@ -85,6 +85,8 @@ def _response_for(message: dict) -> dict | None:
         }
     if message_type == "get_state":
         return _message("state_update", request_id, _state())
+    if message_type == "get_play_game_usage":
+        return _message("play_game_usage", request_id, {"protocol": {"cameraStream": {"supported": False}}})
     if message_type == "get_play_debug":
         return _message("play_debug", request_id, _debug())
     if message_type == "play_game_query":

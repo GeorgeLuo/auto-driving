@@ -317,6 +317,51 @@ class ChaseCameraMemoryTests(unittest.TestCase):
             with self.assertRaises(ChasePassiveCaptureError):
                 car.read_camera_frame()
 
+    def test_a_late_atomic_receipt_cannot_enable_support_in_a_new_session(self):
+        car = ChaseSimCar(ws_url="ws://example.test/ws")
+        def late_capture(*_args, **_kwargs):
+            car.begin_capture_session()
+            return _with_passive_receipt(_atomic_capture())
+        with mock.patch.object(car.client, "get_state", return_value=_session_state()), \
+                mock.patch.object(car.client, "get_play_debug", return_value=_session_debug()), \
+                mock.patch.object(car.client, "play_game_query", side_effect=late_capture):
+            with self.assertRaises(ChasePassiveCaptureError):
+                car.read_camera_frame()
+        self.assertFalse(car._passive_receipt_supported)
+        self.assertIsNone(car.last_passive_capture)
+
+    def test_a_late_capability_reply_cannot_select_a_new_sessions_transport(self):
+        car = ChaseSimCar(ws_url="ws://example.test/ws")
+        def late_reply(*_args, **_kwargs):
+            car.begin_capture_session()
+            return mock.Mock(payload={"protocol": {"cameraStream": {"supported": True}}})
+        with mock.patch.object(car.client, "command", side_effect=late_reply):
+            with self.assertRaises(ChasePassiveCaptureError):
+                car.camera_stream()
+        self.assertIsNone(car.camera_transport)
+
+    def test_new_session_rediscovers_receipts_on_a_legacy_frontend(self):
+        car = ChaseSimCar(ws_url="ws://example.test/ws")
+        with mock.patch.object(car.client, "get_state", return_value=_session_state()), \
+                mock.patch.object(car.client, "get_play_debug", return_value=_session_debug()), \
+                mock.patch.object(car.client, "play_game_query", side_effect=[
+                    _with_passive_receipt(_atomic_capture()), _atomic_capture(frame_index=43),
+                ]):
+            car.read_camera_frame()
+            self.assertTrue(car._passive_receipt_supported)
+            car.begin_capture_session()
+            self.assertFalse(car._passive_receipt_supported)
+            car.read_camera_frame()
+
+    def test_capability_errors_never_silently_select_atomic(self):
+        car = ChaseSimCar(ws_url="ws://example.test/ws")
+        for code in (None, "frontend_unresponsive", "arbitrary_error"):
+            with self.subTest(code=code), mock.patch.object(car.client, "command", side_effect=
+                    MetricsUiWebSocketError("failed", code=code)):
+                with self.assertRaises(MetricsUiWebSocketError):
+                    car.camera_stream()
+                self.assertIsNone(car.camera_transport)
+
     def test_older_frontend_without_stream_capability_keeps_atomic_capture(self):
         car = ChaseSimCar(ws_url="ws://example.test/ws")
         with mock.patch.object(car.client, "command", return_value=mock.Mock(payload={"protocol": {}})):

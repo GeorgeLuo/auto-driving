@@ -60,12 +60,57 @@ class ChaseFrameLoop(FrameLoop):
         self._passive_baseline: dict[str, Any] | None = None
         self._capture_count = 0
         self._capture_generation = 0
+        self._active_stream: Any = None
+        self._stream_counters = {"frames_received": 0, "frames_replaced": 0}
         super().__init__(runtime="chase_sim", camera_source="chase_sim_front_camera", frame_prefix="chase", **options)
 
-    def _session_started(self, configuration: RunConfiguration) -> None:
-        self._passive_baseline = None
+    def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
         with self._lock:
+            old_stream = self._active_stream
+            self._active_stream = None
             self._capture_generation += 1
+            self._passive_baseline = None
+            self._stream_counters = {"frames_received": 0, "frames_replaced": 0}
+            begin = getattr(self.car, "begin_capture_session", None)
+            if callable(begin):
+                begin()
+            status = super().start(configuration, record=record)
+        if old_stream is not None:
+            old_stream.close()
+        return status
+
+    def _detach_stream(self) -> Any:
+        with self._lock:
+            stream = self._active_stream
+            if stream is not None:
+                self._stream_counters = self._counters(stream)
+                self._active_stream = None
+            return stream
+
+    @staticmethod
+    def _counters(stream: Any) -> dict[str, int]:
+        return {name: getattr(stream, name, 0) for name in ("frames_received", "frames_replaced")}
+
+    def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, Any]:
+        with self._lock:
+            status = super().stop(reason=reason, error=error)
+            stream = self._detach_stream()
+        if stream is not None:
+            stream.close()
+        return status
+
+    def shutdown(self) -> None:
+        stream = self._detach_stream()
+        if stream is not None:
+            stream.close()
+        super().shutdown()
+
+    def observation_status(self) -> dict[str, Any]:
+        with self._lock:
+            return {**super().observation_status(),
+                    "camera_transport": getattr(self.car, "camera_transport", None),
+                    **(self._counters(self._active_stream) if self._active_stream is not None
+                       else self._stream_counters)}
 
     def capture(self) -> None:
         """Read one simulator frame and submit it with its simulator identity."""
@@ -113,7 +158,8 @@ class ChaseFrameLoop(FrameLoop):
             self.submit(
                 array, frame_id=format_chase_frame_id(index), frame_index=index,
                 captured_at_ms=reading.captured_at_ms,
-                metadata={**sensor_frame.metadata, "simulator_frame_index": index, "simulation_epoch": epoch},
+                metadata={"simulator_frame_index": index, "simulation_epoch": epoch,
+                          "camera_transport": sensor_frame.metadata.get("camera_transport", "atomic")},
             )
 
     def submit(self, image: Any, **frame: Any) -> Any:
@@ -164,6 +210,10 @@ class ChaseFrameLoop(FrameLoop):
                         else:
                             stop.wait(CAPTURE_POLL_S)
                 else:
+                    with self._lock:
+                        if generation != self._capture_generation or self.host.run_state != "running":
+                            continue
+                        self._active_stream = stream
                     with stream:
                         while (not stop.is_set() and self.host.run_state == "running"
                                and generation == self._capture_generation):
@@ -172,8 +222,12 @@ class ChaseFrameLoop(FrameLoop):
                                 self._submit_sensor_frame(frame, check_passive=False, generation=generation)
             except Exception as exc:  # noqa: BLE001 - reported on the session
                 logger.exception("Chase capture failed")
-                if generation == self._capture_generation:
+                if generation == self._capture_generation and self.host.run_state == "running":
                     self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
+            finally:
+                with self._lock:
+                    if generation == self._capture_generation:
+                        self._detach_stream()
 
 
 class _RouteHandler(BaseHTTPRequestHandler):

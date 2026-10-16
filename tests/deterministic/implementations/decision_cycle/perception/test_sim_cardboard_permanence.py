@@ -35,11 +35,15 @@ _PLUGINS = ("sim_cardboard_obstacle", "sim_cardboard_permanence")
 
 
 def _perceive(memory: dict, box: tuple[int, int, int, int] | None):
+    return _perceive_rgb(memory, _scene(box))
+
+
+def _perceive_rgb(memory: dict, rgb: np.ndarray):
     reading = SensorReading(
         sensor_id=FRONT_CAMERA_SENSOR_ID,
         sensor_kind="camera",
         captured_at_ms=10,
-        value=_scene(box),
+        value=rgb,
         metadata={"color_space": "RGB"},
     )
     frame = SensorFrame(
@@ -65,6 +69,76 @@ def _identities(result):
 
 
 class SimCardboardPermanenceTests(unittest.TestCase):
+    def assert_detection_pairs(self, result, count: int) -> None:
+        self.assertEqual(result.status, "ok")
+        detections = [thing for thing in result.things if thing.source_plugin_id == "sim_cardboard_obstacle"]
+        identities = _identities(result)
+        self.assertEqual(len(detections), count)
+        self.assertEqual(len(identities), count)
+        self.assertEqual(len({thing.thing_id for thing in identities}), count)
+        self.assertEqual([thing.location for thing in identities], [thing.location for thing in detections])
+        self.assertEqual([thing.confidence for thing in identities], [thing.confidence for thing in detections])
+
+    def test_multiple_identities_survive_detection_order_changes(self) -> None:
+        memory = {}
+        first = _scene()
+        first[30:60, 15:40] = (158, 107, 56)
+        first[20:80, 100:145] = (158, 107, 56)
+        second = _scene()
+        second[20:85, 10:50] = (158, 107, 56)
+        second[32:62, 110:140] = (158, 107, 56)
+        initial = _perceive_rgb(memory, first)
+        continued = _perceive_rgb(memory, second)
+
+        self.assert_detection_pairs(initial, 2)
+        self.assert_detection_pairs(continued, 2)
+        self.assertEqual(
+            [thing.properties["object_id"] for thing in _identities(initial)], [1, 2],
+        )
+        self.assertEqual(
+            [thing.properties["object_id"] for thing in _identities(continued)], [2, 1],
+        )
+        self.assertTrue(all(thing.properties["event"] == "matched" for thing in _identities(continued)))
+        self.assertTrue(all(thing.properties["seen_frames"] == 2 for thing in _identities(continued)))
+
+    def test_one_seeded_identity_cannot_be_claimed_by_two_detections(self) -> None:
+        memory = {KEY: {"objects": [{
+            "object_id": 7, "bbox_xyxy_norm": [0.15, 0.25, 0.31, 0.58],
+            "seen_frames": 3, "missed_frames": 0,
+        }], "next_object_id": 8}}
+        rgb = _scene()
+        rgb[30:70, 24:49] = (158, 107, 56)
+        rgb[30:70, 58:82] = (158, 107, 56)
+        result = _perceive_rgb(memory, rgb)
+
+        self.assert_detection_pairs(result, 2)
+        self.assertEqual([thing.properties["object_id"] for thing in _identities(result)], [7, 8])
+        self.assertEqual([thing.properties["event"] for thing in _identities(result)], ["matched", "new"])
+
+    def test_three_seeded_objects_are_all_mapped_and_only_a_missing_object_ages(self) -> None:
+        boxes = [(10, 30, 35, 70), (65, 40, 90, 75), (120, 50, 145, 80)]
+        objects = [{
+            "object_id": object_id,
+            "bbox_xyxy_norm": [x1 / 159, y1 / 119, (x2 - 1) / 159, (y2 - 1) / 119],
+            "seen_frames": 3, "missed_frames": 0,
+        } for object_id, (x1, y1, x2, y2) in zip((7, 19, 23), boxes)]
+        memory = {KEY: {"objects": list(reversed(objects)), "next_object_id": 24}}
+        rgb = _scene()
+        for x1, y1, x2, y2 in boxes:
+            rgb[y1:y2, x1:x2] = (158, 107, 56)
+        initial = _perceive_rgb(memory, rgb)
+        self.assert_detection_pairs(initial, 3)
+        self.assertEqual({thing.properties["object_id"] for thing in _identities(initial)}, {7, 19, 23})
+        self.assertTrue(all(thing.properties["event"] == "matched" for thing in _identities(initial)))
+        rgb[40:75, 65:90] = (213, 197, 172)
+        missing = _perceive_rgb(memory, rgb)
+        self.assert_detection_pairs(missing, 2)
+        self.assertEqual({thing.properties["object_id"] for thing in _identities(missing)}, {7, 23})
+        history = {item["object_id"]: item for item in memory[KEY]["objects"]}
+        self.assertEqual(history[19]["missed_frames"], 1)
+        self.assertEqual(history[7]["missed_frames"], 0)
+        self.assertEqual(history[23]["missed_frames"], 0)
+
     def assert_overlapping_boxes(self, result, object_id: int, event: str) -> None:
         self.assertEqual(result.status, "ok")
         self.assertEqual(len(result.things), 2)

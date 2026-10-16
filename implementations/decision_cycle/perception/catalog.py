@@ -163,12 +163,12 @@ PERCEPTION_PLUGINS: tuple[dict[str, Any], ...] = (
     },
     {
         "spec": "implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin:SimCardboardObstaclePlugin",
-        "description": "One image-space bounding box for the Chase cardboard obstacle.",
+        "description": "Image-space bounding boxes for visible Chase cardboard obstacles.",
         "default_config": {},
     },
     {
         "spec": "implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin:SimCardboardPermanencePlugin",
-        "description": "Map the earlier cardboard detection to a nearby known object.",
+        "description": "Map each earlier cardboard detection to a distinct nearby known object.",
         "default_config": {},
     },
     {

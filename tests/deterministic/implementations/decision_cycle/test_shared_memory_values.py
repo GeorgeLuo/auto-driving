@@ -120,6 +120,24 @@ def _observation(observation_id: str, created_at_ms: int, thing_id: str) -> Obse
 
 
 class SharedMemoryValueTests(unittest.TestCase):
+    def test_multiple_cardboard_identities_match_after_a_round_trip(self) -> None:
+        scene = np.empty((120, 160, 3), dtype=np.uint8)
+        scene[:] = (213, 197, 172)
+        scene[25:65, 10:40] = (158, 107, 56)
+        scene[45:75, 100:125] = (158, 107, 56)
+        memory: dict[str, Any] = {}
+        SimCardboardPermanencePlugin().perceive(_inputs(0, scene, memory, _feature_things(0, scene)))
+        restored = _round_trip(memory)
+        shifted = np.roll(scene, 3, axis=1)
+        features = _feature_things(1, shifted)
+
+        original = SimCardboardPermanencePlugin().perceive(_inputs(1, shifted, memory, features))
+        replayed = SimCardboardPermanencePlugin().perceive(_inputs(1, shifted, restored, features))
+
+        self.assertEqual(len(original.things), 2)
+        self.assertEqual(_emitted(original), _emitted(replayed))
+        self.assertEqual(memory, restored)
+
     def test_cardboard_permanence_matches_after_a_round_trip(self) -> None:
         scene = np.empty((120, 160, 3), dtype=np.uint8)
         scene[:] = (213, 197, 172)

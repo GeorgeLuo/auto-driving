@@ -1,4 +1,4 @@
-"""The cardboard plugin boxes the brown block and leaves the beige floor alone."""
+"""The cardboard plugin boxes visible blocks and leaves the beige floor alone."""
 
 from __future__ import annotations
 
@@ -57,6 +57,41 @@ def _contains(bbox: tuple[float, float, float, float], x: float, y: float) -> bo
 
 
 class SimCardboardObstacleTests(unittest.TestCase):
+    def test_each_separated_block_gets_a_box_including_the_smaller_distant_one(self) -> None:
+        rgb = _scene()
+        boxes = [(10, 20, 45, 75), (70, 40, 96, 65), (125, 60, 135, 66)]
+        for x1, y1, x2, y2 in boxes:
+            rgb[y1:y2, x1:x2] = _CARDBOARD
+        result = _perceive(rgb)
+
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(len(result.things), 3)
+        self.assertEqual(len({thing.thing_id for thing in result.things}), 3)
+        self.assertEqual(result.signals[0].properties["obstacle_count"], 3)
+        for x1, y1, x2, y2 in boxes:
+            center = ((x1 + x2) / (2 * 159), (y1 + y2) / (2 * 119))
+            self.assertEqual(sum(_contains(thing.location.bbox_xyxy_norm, *center) for thing in result.things), 1)
+
+    def test_touching_blocks_with_different_ground_edges_get_separate_boxes(self) -> None:
+        rgb = _scene()
+        boxes = [(20, 35, 50, 80), (45, 40, 80, 86), (75, 55, 115, 93)]
+        for x1, y1, x2, y2 in boxes:
+            rgb[y1:y2, x1:x2] = _CARDBOARD
+        result = _perceive(rgb)
+
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(len(result.things), 3)
+        self.assertEqual(result.signals[0].properties["obstacle_count"], 3)
+
+    def test_a_single_sloped_base_is_not_split_into_multiple_obstacles(self) -> None:
+        rgb = _scene()
+        for x in range(20, 130):
+            rgb[25:65 + (x - 20) // 6, x] = _CARDBOARD
+        result = _perceive(rgb)
+
+        self.assertEqual(len(result.things), 1)
+        self.assertEqual(result.signals[0].properties["obstacle_count"], 1)
+
     def test_brown_block_is_one_box_and_the_floor_is_not(self) -> None:
         found = _perceive(_scene((40, 30, 100, 70)))
         empty = _perceive(_scene())

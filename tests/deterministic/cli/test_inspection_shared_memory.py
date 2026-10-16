@@ -115,6 +115,34 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         ))
         self.assert_current_pair(report["frames"][0], 8, "new")
 
+    def test_all_visible_obstacles_receive_distinct_seeded_identities(self) -> None:
+        boxes = [(10, 30, 35, 70), (65, 40, 90, 75), (120, 50, 145, 80)]
+        rgb = np.empty((120, 160, 3), dtype=np.uint8)
+        rgb[:] = (213, 197, 172)
+        objects = []
+        for object_id, (x1, y1, x2, y2) in zip((7, 19, 23), boxes):
+            rgb[y1:y2, x1:x2] = (158, 107, 56)
+            objects.append({
+                "object_id": object_id,
+                "bbox_xyxy_norm": [x1 / 159, y1 / 119, (x2 - 1) / 159, (y2 - 1) / 119],
+                "seen_frames": 3, "missed_frames": 0,
+            })
+        Image.fromarray(rgb).save(self.image)
+        self.document["values"][KEY] = {"objects": list(reversed(objects)), "next_object_id": 24}
+        self.write_seed()
+        report = self.report(inspect_perception(
+            self.image, plugins=PLUGINS, shared_memory_file=self.seed_file, json_output=True,
+        ))
+        things = report["frames"][0]["perception"]["things"]
+        detections = [thing for thing in things if thing["source_plugin_id"] == PLUGINS[0]]
+        identities = [thing for thing in things if thing["source_plugin_id"] == PLUGINS[1]]
+        self.assertEqual(len(detections), 3)
+        self.assertEqual(len(identities), 3)
+        self.assertEqual({thing["properties"]["object_id"] for thing in identities}, {7, 19, 23})
+        self.assertEqual([thing["location"] for thing in detections], [thing["location"] for thing in identities])
+        self.assertTrue(all(thing["properties"]["event"] == "matched" for thing in identities))
+        self.assertTrue(all(thing["properties"]["seen_frames"] == 4 for thing in identities))
+
     def test_the_seeded_identity_returns_after_a_gap_at_the_current_detection(self) -> None:
         Image.new("RGB", (160, 120), (213, 197, 172)).save(self.source / "02.png")
         rgb = np.empty((120, 160, 3), dtype=np.uint8)

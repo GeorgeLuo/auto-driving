@@ -1,4 +1,4 @@
-"""Map this frame's cardboard detection to host-owned object identities."""
+"""Map this frame's cardboard detections to host-owned object identities."""
 
 from __future__ import annotations
 
@@ -27,14 +27,14 @@ class SimCardboardPermanencePlugin:
         inputs=(),
         state_mode="windowed",
         memory_required=True,
-        description="Map the earlier cardboard detection to a nearby known object.",
+        description="Map each earlier cardboard detection to a distinct nearby known object.",
         assumptions=(
             "sim_cardboard_obstacle runs earlier in the same selection",
             "a known object's image-space center moves gradually between sightings",
         ),
         emits=(
             "signal cardboard_object_permanence",
-            "one obstruction_evidence thing for the feature that is visible this frame",
+            "one obstruction_evidence thing per cardboard detection visible this frame",
         ),
         limitations=(
             "identity is image-space and holds within one reset-bounded run",
@@ -64,29 +64,46 @@ class SimCardboardPermanencePlugin:
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         if inputs.shared_memory is None:
             raise ValueError(f"{self.plugin_id} requires host shared memory")
-        feature = _feature(inputs.prior_things)
-        bbox = None if feature is None else feature.location.bbox_xyxy_norm
+        features = _features(inputs.prior_things)
         objects, next_id = _restore_history(inputs.shared_memory.get(self._memory_key))
         objects_read = len(objects)
         matched = _match(
             [item for item in objects if item["missed_frames"] <= self.max_missed_frames],
-            bbox,
+            features,
             self.max_center_shift,
         )
 
-        kept: list[dict[str, Any]] = []
         things: list[PerceivedThing] = []
-        forgotten: list[int] = []
-        for item in objects:
-            if item is matched:
-                assert feature is not None
+        observed_ids: set[int] = set()
+        new_objects: list[dict[str, Any]] = []
+        for index, feature in enumerate(features):
+            bbox = feature.location.bbox_xyxy_norm
+            item = matched.get(index)
+            if item is not None:
                 item.update(
                     bbox_xyxy_norm=list(bbox),
                     seen_frames=item["seen_frames"] + 1,
                     missed_frames=0,
                 )
+                event = "matched"
+            else:
+                item = {
+                    "object_id": next_id,
+                    "bbox_xyxy_norm": list(bbox),
+                    "seen_frames": 1,
+                    "missed_frames": 0,
+                }
+                next_id += 1
+                new_objects.append(item)
+                event = "new"
+            observed_ids.add(item["object_id"])
+            things.append(_thing(item, event, feature))
+
+        kept: list[dict[str, Any]] = []
+        forgotten: list[int] = []
+        for item in objects:
+            if item["object_id"] in observed_ids:
                 kept.append(item)
-                things.append(_thing(item, "matched", feature))
                 continue
             item["missed_frames"] += 1
             if item["missed_frames"] > self.max_missed_frames:
@@ -94,17 +111,7 @@ class SimCardboardPermanencePlugin:
                 continue
             kept.append(item)
 
-        if bbox is not None and matched is None:
-            assert feature is not None
-            item = {
-                "object_id": next_id,
-                "bbox_xyxy_norm": list(bbox),
-                "seen_frames": 1,
-                "missed_frames": 0,
-            }
-            next_id += 1
-            kept.append(item)
-            things.append(_thing(item, "new", feature))
+        kept.extend(new_objects)
 
         inputs.shared_memory[self._memory_key] = {"objects": kept, "next_object_id": next_id}
         return PerceptionEvidenceBatch(
@@ -119,33 +126,38 @@ class SimCardboardPermanencePlugin:
         )
 
 
-def _feature(things: tuple[PerceivedThing, ...]) -> PerceivedThing | None:
-    """The current cardboard detection, including its location and confidence."""
+def _features(things: tuple[PerceivedThing, ...]) -> tuple[PerceivedThing, ...]:
+    """All current cardboard detections, with their location and confidence."""
 
-    for thing in things:
-        bbox = thing.location.bbox_xyxy_norm
-        if (
-            thing.source_plugin_id == FEATURE_PLUGIN_ID
-            and thing.kind == "obstruction_evidence"
-            and bbox is not None
-        ):
-            return thing
-    return None
+    return tuple(
+        thing for thing in things
+        if thing.source_plugin_id == FEATURE_PLUGIN_ID
+        and thing.kind == "obstruction_evidence"
+        and thing.location.bbox_xyxy_norm is not None
+    )
 
 
 def _match(
     objects: list[dict[str, Any]],
-    bbox: tuple[float, float, float, float] | None,
+    features: tuple[PerceivedThing, ...],
     max_center_shift: float,
-) -> dict[str, Any] | None:
-    """Associate this detection with the nearest remembered box inside the gate."""
+) -> dict[int, dict[str, Any]]:
+    """Assign the nearest valid pairs, using each detection and identity once."""
 
-    if bbox is None or not objects:
-        return None
-    nearest = min(objects, key=lambda item: center_distance(item["bbox_xyxy_norm"], bbox))
-    if center_distance(nearest["bbox_xyxy_norm"], bbox) <= max_center_shift:
-        return nearest
-    return None
+    pairs = []
+    for object_index, item in enumerate(objects):
+        for feature_index, feature in enumerate(features):
+            distance = center_distance(item["bbox_xyxy_norm"], feature.location.bbox_xyxy_norm)
+            if distance <= max_center_shift:
+                pairs.append((distance, object_index, feature_index))
+    matches: dict[int, dict[str, Any]] = {}
+    used_objects: set[int] = set()
+    for _distance, object_index, feature_index in sorted(pairs):
+        if object_index in used_objects or feature_index in matches:
+            continue
+        used_objects.add(object_index)
+        matches[feature_index] = objects[object_index]
+    return matches
 
 
 def _restore_history(history: Any) -> tuple[list[dict[str, Any]], int]:

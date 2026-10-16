@@ -94,7 +94,7 @@ def _encode(value: Any, path: str) -> Any:
     if _json_scalar(value):
         return value
     if _is_record(value):
-        spec = _record_spec(type(value))
+        spec = _record_spec(type(value), path)
         try:
             data = value.to_dict()
         except SharedMemoryValueError:
@@ -107,6 +107,8 @@ def _encode(value: Any, path: str) -> Any:
     if isinstance(value, (list, tuple)):
         return [_encode(item, f"{path}[{index}]") for index, item in enumerate(value)]
     if isinstance(value, dict):
+        if "$record" in value:
+            raise SharedMemoryValueError(path, "dict key '$record' is reserved for records")
         encoded: dict[str, Any] = {}
         for key, item in value.items():
             if type(key) is not str:
@@ -188,12 +190,12 @@ def _load_record_class(spec: str, path: str) -> type:
     return current
 
 
-def _record_spec(cls: type) -> str:
+def _record_spec(cls: type, path: str) -> str:
     module_name = cls.__module__
     qualname = cls.__qualname__
-    if not module_name or module_name == "builtins" or not qualname:
+    if not module_name or module_name == "builtins" or not qualname or "<locals>" in qualname:
         raise SharedMemoryValueError(
-            "values", f"{cls.__name__} has no importable record spec"
+            path, f"{cls.__name__} has no importable record spec"
         )
     return f"{module_name}:{qualname}"
 

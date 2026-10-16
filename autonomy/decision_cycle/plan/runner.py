@@ -98,14 +98,13 @@ class PlanRunner(StepRunner[PlanPlugin]):
                 return None
             candidates = proposal.candidates if proposal is not None else ()
             source = deepcopy(proposal.source) if proposal is not None else None
-            shared_memory = context.shared_memory
             self.run_count += 1
             with self._timed_single() as plugin:
                 try:
                     plan = plugin.plan(
                         tuple(candidates),
                         source,
-                        shared_memory,
+                        context.shared_memory,
                         frame_id=context.frame_id,
                         timestamp_ms=context.timestamp_ms,
                     )

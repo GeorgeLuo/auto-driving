@@ -99,6 +99,18 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(json.loads(custom.message)["perception"]["preset"], "custom")
         self.assertEqual(json.loads(custom.message)["perception"]["plugins"], ["frame"])
 
+    def test_inspect_does_not_reset_its_fresh_runner_over_the_map(self) -> None:
+        """Regression: a reset before frame 0 removed each plugin's history from the map."""
+
+        with tempfile.TemporaryDirectory() as tmp:
+            image = Path(tmp) / "single.jpg"
+            Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
+            with patch.object(PerceptionRunner, "reset") as reset:
+                result = inspect_perception(image, plugins=["frame"], json_output=True)
+
+        self.assertEqual(result.exit_code, 0, result.message)
+        reset.assert_not_called()
+
     def test_inspect_restages_perception_from_frame_metadata(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

@@ -308,14 +308,13 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             except Exception:
                 return fail("decision_data_source_invalid", source=None)
 
-            plugin_memory = shared_memory
             applied = self.applied
             candidates: list[ActionProposal] = []
             try:
                 for definition, plugin in applied:
                     try:
                         candidates.append(
-                            self._execute_plugin(definition, plugin, source, plugin_memory)
+                            self._execute_plugin(definition, plugin, source, shared_memory)
                         )
                     except ActionProposalMatrixError:
                         return fail("action_proposal_matrix_violated", source=source)

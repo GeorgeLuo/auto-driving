@@ -132,6 +132,31 @@ class SharedMemoryDocumentTests(unittest.TestCase):
 
         self.assertIn("bad", str(caught.exception))
 
+    def test_a_plain_dict_with_a_record_key_names_its_key(self) -> None:
+        """Regression: it encoded, then decoded as a record."""
+
+        with self.assertRaises(SharedMemoryValueError) as caught:
+            shared_memory_document({"slot": {"$record": "x", "data": {}}})
+
+        self.assertIn("slot", str(caught.exception))
+
+    def test_a_record_class_defined_in_a_function_names_its_key(self) -> None:
+        """Regression: it encoded a spec no decode can import."""
+
+        class Local:
+            def to_dict(self) -> dict:
+                return {}
+
+            @classmethod
+            def from_dict(cls, data: dict) -> Local:
+                del data
+                return cls()
+
+        with self.assertRaises(SharedMemoryValueError) as caught:
+            shared_memory_document({"slot": Local()})
+
+        self.assertIn("slot", str(caught.exception))
+
     def test_a_malformed_record_names_its_key(self) -> None:
         with self.assertRaises(SharedMemoryValueError) as caught:
             shared_memory_from_document(_document({"slot": {"$record": "x"}}))

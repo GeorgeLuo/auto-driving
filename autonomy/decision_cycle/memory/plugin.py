@@ -6,9 +6,8 @@ memory plugin keeps the history later frames need in the host map,
 anything other plugins read. ``update`` runs once per cycle. ``reset`` is
 optional and may omit the map; when present it starts a new epoch and writes
 the plugin's fresh state to the map. The runner calls it through
-``reset_plugin``. ``status`` is an
-optional JSON summary of that state for diagnostics. Framework code owns
-selection, timing, and failure isolation.
+``reset_plugin``. ``status`` is an optional JSON summary of that state for
+diagnostics. Framework code owns selection, timing, and failure isolation.
 
 A memory plugin reads the host map and the ``observation``; it does not read
 the feed. The context it receives has no ``sensor_frame``. Anything memory needs

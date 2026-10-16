@@ -65,7 +65,12 @@ def inspect_memory(
         overrides = None
         if preset is not None or plugins is not None:
             overrides = {"memory": selection_activation("memory", preset=preset, plugins=plugins)}
-        replay = StepReplay(manifest, steps=("perception", "observation", "memory"), overrides=overrides)
+        replay = StepReplay(
+            manifest,
+            steps=("perception", "observation", "memory"),
+            overrides=overrides,
+            first_frame=image_source.frames[0],
+        )
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not load plugins for memory inspect: {type(exc).__name__}: {exc}")
 

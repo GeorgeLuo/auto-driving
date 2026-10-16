@@ -477,7 +477,9 @@ def inspect_decision_step(
         overrides = None
         if preset is not None or plugins is not None:
             overrides = {step: selection_activation(step, preset=preset, plugins=plugins)}
-        replay = StepReplay(manifest, steps=_REPLAY_STEPS, overrides=overrides)
+        replay = StepReplay(
+            manifest, steps=_REPLAY_STEPS, overrides=overrides, first_frame=image_source.frames[0]
+        )
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not load plugins for {step} inspect: {type(exc).__name__}: {exc}")
 

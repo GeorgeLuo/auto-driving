@@ -194,7 +194,12 @@ class MultiObstructionTracksPlugin:
             if isinstance(previous_gray, StoredImage)
             else None
         )
-        tracker._next_track_id = history.get("next_track_id", tracker._next_track_id)
+        # The restore numbers past every restored track; a recorded id never goes lower.
+        try:
+            next_track_id = int(history.get("next_track_id", tracker._next_track_id))
+        except (TypeError, ValueError):
+            next_track_id = tracker._next_track_id
+        tracker._next_track_id = max(next_track_id, tracker._next_track_id)
         active, events, association = tracker._associate(candidates, gray=gray)
 
         things = tuple(

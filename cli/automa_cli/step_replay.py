@@ -1,9 +1,9 @@
 """Replay an image source through a prefix of the cycle's steps, offline.
 
-Memory, proposal, plan and action inspect all replay a source this way: the
-source's recorded selections, restaged per frame, unless overridden; then a
-report of the inspected step after every frame, optionally recorded as a run
-that replays as a source again.
+Perception, memory, proposal, plan and action inspect all replay a source this
+way: the source's recorded selections, restaged per frame, unless overridden;
+then a report of the inspected step after every frame, optionally recorded as a
+run that replays as a source again.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from implementations.decision_cycle.catalog import selection_activation
 
 from .inspection_runs import (
     recorded_runner, recorded_selection, recorded_selections, replay_step, replayed_selection,
-    selection_record,
+    selection_report,
 )
 from .paths import safe_path_part
 from .workbench_frames import FrameOutcome, run_frame
@@ -63,10 +63,13 @@ def default_selection(step: str) -> StepActivation | None:
 class StepReplay:
     """Step runners that replay a source with the selections it recorded.
 
-    Each step uses its override, else the selection the source recorded, else
-    ``default_selection``. A frame that recorded a restage replaces that step's
-    selection from then on, unless the step is overridden. Constructing the
-    runners raises before any frame runs.
+    Each step uses its override, else the selection ``first_frame`` recorded,
+    else the selection the source recorded, else ``default_selection``. A frame
+    that recorded a restage replaces that step's selection from then on, unless
+    the step is overridden; the replaced runner is reset over the map. Starting
+    from the first frame's selection, its restage keeps the runners and the map.
+    Constructing the runners raises before any frame runs, including for a
+    recorded release that is not available locally.
     """
 
     def __init__(
@@ -75,13 +78,17 @@ class StepReplay:
         *,
         steps: tuple[str, ...],
         overrides: dict[str, StepActivation] | None = None,
+        first_frame: ReplayFrame | None = None,
     ) -> None:
         self.overrides = dict(overrides or {})
+        first = recorded_selections(first_frame.metadata) if first_frame is not None else {}
         recorded = recorded_selections(manifest)
         self.activations: dict[str, StepActivation | None] = {}
         for step in steps:
             if step in self.overrides:
                 self.activations[step] = self.overrides[step]
+            elif step in first:
+                self.activations[step] = replayed_selection(step, first[step])
             elif step in recorded:
                 self.activations[step] = replayed_selection(step, recorded[step])
             else:
@@ -119,8 +126,7 @@ class StepReplay:
         """Each step's current selection, as a report records it for replay."""
 
         return {
-            step: {**selection_record(activation), "plugins": list(activation.plugins)}
-            if activation is not None else None
+            step: selection_report(activation) if activation is not None else None
             for step, activation in self.activations.items()
         }
 

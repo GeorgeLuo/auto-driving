@@ -121,6 +121,24 @@ class SharedMemoryValueTests(unittest.TestCase):
 
         self.assertEqual(_emitted(original), _emitted(replayed))
 
+    def test_multi_obstruction_next_id_stays_above_the_restored_tracks(self) -> None:
+        """Regression: a recorded next id below a restored track, or not a number, was kept."""
+
+        plugin = MultiObstructionTracksPlugin()
+        track = {"slot": "lost", "track_id": 4, "bbox": [0.1, 0.1, 0.3, 0.3], "lost_age": 1}
+        for recorded in (2, "nope"):
+            with self.subTest(next_track_id=recorded):
+                memory: dict[str, Any] = {
+                    plugin._memory_key: {"tracks": [track], "previous_gray": None, "next_track_id": recorded}
+                }
+
+                perceive_frame(plugin, 0, OBSTRUCTION_LEFT_EDGES[0], memory)
+
+                history = memory[plugin._memory_key]
+                self.assertGreater(history["next_track_id"], 4)
+                ids = [item["track_id"] for item in history["tracks"]]
+                self.assertEqual(len(ids), len(set(ids)))
+
     def test_motion_tracks_match_after_a_round_trip(self) -> None:
         rgb = np.random.default_rng(7).integers(0, 256, (72, 96, 3), dtype=np.uint8)
         plugin = MotionTracksPlugin(max_features=50, search_radius=8, min_group_size=4)
@@ -186,16 +204,17 @@ class SharedMemoryValueTests(unittest.TestCase):
 
         plugin._restore_history(
             {
-                "_last_bbox": [0.1, 0.2, 0.3, 0.4],
-                "_last_confidence": 0.5,
-                "_misses": 1,
-                "_age": 3,
+                "last_bbox": [0.1, 0.2, 0.3, 0.4],
+                "last_confidence": 0.5,
+                "misses": 1,
+                "age": 3,
                 "smoothing_alpha": 0.99,
                 "max_hold_frames": 0,
             }
         )
 
         self.assertEqual(plugin._last_bbox, (0.1, 0.2, 0.3, 0.4))
+        self.assertEqual((plugin._last_confidence, plugin._misses, plugin._age), (0.5, 1, 3))
         self.assertEqual(plugin.smoothing_alpha, alpha)
         self.assertEqual(plugin.max_hold_frames, hold)
 
@@ -223,4 +242,3 @@ class SharedMemoryValueTests(unittest.TestCase):
         )
 
         self.assertEqual(memory[LEDGER_KEY].to_dict(), restored[LEDGER_KEY].to_dict())
-        self.assertEqual(LEDGER_KEY, "memory.bounded_evidence.ledger")

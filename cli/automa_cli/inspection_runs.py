@@ -100,6 +100,12 @@ def selection_record(activation: StepActivation) -> dict[str, Any]:
     }
 
 
+def selection_report(activation: StepActivation) -> dict[str, Any]:
+    """A report's selection entry: the selection record and its plugin IDs."""
+
+    return {**selection_record(activation), "plugins": list(activation.plugins)}
+
+
 def recorded_selection(step: str, manifest: dict[str, Any]) -> StepActivation | None:
     """Restore a recorded selection, including an explicitly empty one.
 

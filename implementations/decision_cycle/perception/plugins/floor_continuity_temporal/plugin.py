@@ -103,17 +103,17 @@ class TemporalFloorContinuityPlugin:
         self._initialize_history()
         if not isinstance(history, dict):
             return
-        bbox = history.get("_last_bbox")
+        bbox = history.get("last_bbox")
         if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
             try:
                 self._last_bbox = tuple(float(value) for value in bbox)
             except (TypeError, ValueError):
                 self._last_bbox = None
-        confidence = history.get("_last_confidence")
+        confidence = history.get("last_confidence")
         if type(confidence) in (int, float):
             self._last_confidence = float(confidence)
-        misses = history.get("_misses")
-        age = history.get("_age")
+        misses = history.get("misses")
+        age = history.get("age")
         if type(misses) is int:
             self._misses = misses
         if type(age) is int:
@@ -122,12 +122,12 @@ class TemporalFloorContinuityPlugin:
     def _history(self) -> dict[str, Any]:
         bbox = self._last_bbox
         return {
-            "_last_bbox": None if bbox is None else [float(value) for value in bbox],
-            "_last_confidence": (
+            "last_bbox": None if bbox is None else [float(value) for value in bbox],
+            "last_confidence": (
                 None if self._last_confidence is None else float(self._last_confidence)
             ),
-            "_misses": int(self._misses),
-            "_age": int(self._age),
+            "misses": int(self._misses),
+            "age": int(self._age),
         }
 
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:

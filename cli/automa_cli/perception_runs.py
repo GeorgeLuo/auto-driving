@@ -26,7 +26,7 @@ from autonomy.vehicle import (
 )
 from implementations.decision_cycle.catalog import selection_activation
 
-from .inspection_runs import selection_record
+from .inspection_runs import selection_report
 from .step_replay import StepReplay
 from .workbench_frames import run_perception
 from .paths import ROOT, display_path, safe_path_part
@@ -150,7 +150,7 @@ def _inspect_vehicle(
         access = create_vehicle_access(vehicle, timeout_s=timeout_s)
         activation = live_perception_selection(vehicle, preset=preset, plugins=plugins)
         runner = load_staged_runner(activation)
-        perception_record = _perception_record(activation)
+        perception_record = selection_report(activation)
     except Exception as exc:
         return CommandResult(2, f"Could not prepare perception runtime: {type(exc).__name__}: {exc}")
 
@@ -269,7 +269,10 @@ def _inspect_images(
                 )
             }
         replay = StepReplay(
-            source_manifest, steps=("perception",), overrides=overrides
+            source_manifest,
+            steps=("perception",),
+            overrides=overrides,
+            first_frame=image_source.frames[0],
         )
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(
@@ -289,9 +292,6 @@ def _inspect_images(
             results_dir = working_dir / "results"
             if record:
                 results_dir.mkdir(parents=True, exist_ok=True)
-            runner = replay.runners["perception"]
-            if runner is not None:
-                runner.reset(replay.shared_memory)
             frame_records: list[dict[str, Any]] = []
             for frame in image_source.frames:
                 replay.restage(frame)
@@ -351,12 +351,6 @@ def _inspect_images(
     if json_output:
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True))
     return CommandResult(exit_code, _format_inspect_report(report))
-
-
-def _perception_record(activation: Any) -> dict[str, Any]:
-    """The report's ``perception`` entry, the same shape memory inspect records."""
-
-    return {**selection_record(activation), "plugins": list(activation.plugins)}
 
 
 def _create_record_dir(run_id: str) -> tuple[Path | None, CommandResult | None]:

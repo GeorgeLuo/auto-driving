@@ -11,7 +11,7 @@ plugin lives in `plugins/highest_confidence/`.
   timestamp_ms)`, the `PlanPlugin` protocol in
   `autonomy/decision_cycle/plan/plugin.py`. `source` is a detached copy of
   the proposal step's `DecisionDataSource`, or `None` without a proposal
-  step; `shared_memory` is the host map, or `{}` without one.
+  step; `shared_memory` is the host map, or `None` without one.
   `ActionProposal.is_active(frame_id)` says which candidates a plan may act
   on. Ids match
   `[A-Za-z0-9._:-]{1,64}` and are unique within the plan step:

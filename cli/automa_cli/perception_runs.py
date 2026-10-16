@@ -13,7 +13,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
@@ -27,10 +26,9 @@ from autonomy.vehicle import (
 )
 from implementations.decision_cycle.catalog import selection_activation
 
-from .inspection_runs import (
-    recorded_runner, recorded_selection, recorded_selections, replay_step, replayed_selection,
-    selection_record,
-)
+from .inspection_runs import selection_record
+from .step_replay import StepReplay
+from .workbench_frames import run_perception
 from .paths import ROOT, display_path, safe_path_part
 from .perception import live_perception_selection
 from .perception_evaluation import evaluate_perception_frames
@@ -262,15 +260,17 @@ def _inspect_images(
     source_name = source.stem if source.is_file() else source.name
 
     try:
+        # An explicit empty plugin list still overrides the recorded selection.
+        overrides = None
         if plugins is not None or preset is not None:
-            activation = selection_activation(
-                "perception", preset=preset, plugins=plugins
-            )
-        else:
-            activation = recorded_selection(
-                "perception", source_manifest
-            ) or selection_activation("perception")
-        runner = recorded_runner(activation)
+            overrides = {
+                "perception": selection_activation(
+                    "perception", preset=preset, plugins=plugins
+                )
+            }
+        replay = StepReplay(
+            source_manifest, steps=("perception",), overrides=overrides
+        )
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(
             2,
@@ -289,15 +289,13 @@ def _inspect_images(
             results_dir = working_dir / "results"
             if record:
                 results_dir.mkdir(parents=True, exist_ok=True)
-            shared_memory: dict[str, Any] = {}
-            runner.reset()
+            runner = replay.runners["perception"]
+            if runner is not None:
+                runner.reset(replay.shared_memory)
             frame_records: list[dict[str, Any]] = []
             for frame in image_source.frames:
-                if plugins is None and preset is None:
-                    selections = recorded_selections(frame.metadata)
-                    if "perception" in selections:
-                        activation = replayed_selection("perception", selections["perception"])
-                        runner = replay_step(runner, activation, shared_memory)
+                replay.restage(frame)
+                runner = replay.runners["perception"]
                 frame_id = frame.frame_id
                 frame_index = frame.frame_index
                 captured_at_ms = frame.timestamp_ms
@@ -327,20 +325,20 @@ def _inspect_images(
                     frame_id=frame_id,
                     frame_index=frame_index,
                     image_path=image_path,
-                    shared_memory=shared_memory,
+                    shared_memory=replay.shared_memory,
                     metadata={"run_id": run_id, "frame_index": frame_index},
                     result_dir=(results_dir / f"frame_{frame.position:06d}")
                     if record
                     else None,
                     absence_reason=frame.absence_reason if frame.absent else None,
                 )
-                item["steps"] = {"perception": activation.to_payload()}
+                item["steps"] = replay.step_payloads()
                 frame_records.append(item)
 
             report = _inspect_report(
                 run_id=run_id,
                 source={"kind": "images", "path": str(source)},
-                perception=_perception_record(activation),
+                perception=replay.selection_records()["perception"],
                 frames=frame_records,
                 run_dir=record_dir,
             )
@@ -403,26 +401,6 @@ def _select_vehicle(
     else:
         reason = "simulator preferred for observation-only experiments"
     return selected, reason, None
-
-
-def run_perception(
-    runner: Any,
-    sensor_frame: SensorFrame,
-    *,
-    shared_memory: dict[str, Any],
-    metadata: dict[str, Any],
-    output_dir: Path | None = None,
-):
-    """Run perception on one sensor frame; the step every consumer shares."""
-
-    return runner.perceive(
-        build_perception_request(
-            sensor_frame,
-            shared_memory=shared_memory,
-            output_dir=output_dir,
-            metadata=metadata,
-        )
-    )
 
 
 def perceive_sensor_frame(

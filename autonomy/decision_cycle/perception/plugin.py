@@ -41,9 +41,9 @@ class PerceptionPluginContract:
     History that later frames must see lives in the host map, ``shared_memory``.
     Instances may retain configuration and reusable model resources.
     ``state_mode`` is that temporal horizon. ``memory_required`` means the
-    plugin needs the host map. Plugins that set it implement
-    ``reset(shared_memory)`` and drop only their own keys. They own history
-    shape, bounds, and commit policy.
+    plugin needs the host map to perceive. Reset is optional and may omit the
+    map; ``reset_plugin`` chooses by signature. Plugins that keep history drop
+    only their own keys. They own history shape, bounds, and commit policy.
     """
 
     inputs: tuple[PerceptionPluginInput, ...] = ()

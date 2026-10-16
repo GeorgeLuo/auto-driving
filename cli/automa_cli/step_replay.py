@@ -92,7 +92,9 @@ class StepReplay:
         }
         self.shared_memory: dict[str, Any] = {}
 
-    def run(self, frame: ReplayFrame) -> FrameOutcome:
+    def restage(self, frame: ReplayFrame) -> None:
+        """Apply this frame's recorded selections, unless the step is overridden."""
+
         selections = recorded_selections(frame.metadata)
         for step in self.activations:
             if step not in selections or step in self.overrides:
@@ -100,6 +102,9 @@ class StepReplay:
             activation = replayed_selection(step, selections[step])
             self.runners[step] = replay_step(self.runners[step], activation, self.shared_memory)
             self.activations[step] = activation
+
+    def run(self, frame: ReplayFrame) -> FrameOutcome:
+        self.restage(frame)
         return run_frame(frame, steps=self.runners, shared_memory=self.shared_memory)
 
     def step_payloads(self) -> dict[str, Any]:

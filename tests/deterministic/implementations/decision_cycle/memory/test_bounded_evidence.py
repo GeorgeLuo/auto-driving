@@ -120,17 +120,20 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(memory[LEDGER_KEY].record_count, 0)
         self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-1")
 
-    def test_foreign_value_at_the_ledger_key_starts_from_empty(self) -> None:
+    def test_foreign_value_at_the_ledger_key_is_rejected(self) -> None:
         memory = {LEDGER_KEY: "written by another producer"}
         ledger = BoundedEvidenceLedger(max_records=8)
 
-        ledger.update(
-            DecisionFrameContext("f1", 1, 100, shared_memory=memory),
-            _observation("o1", created_at_ms=90, things=(_thing("a"),)),
-        )
+        with self.assertRaises(TypeError) as caught:
+            ledger.update(
+                DecisionFrameContext("f1", 1, 100, shared_memory=memory),
+                _observation("o1", created_at_ms=90, things=(_thing("a"),)),
+            )
 
-        self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-1")
-        self.assertEqual(memory[LEDGER_KEY].record_count, 1)
+        self.assertIn(LEDGER_KEY, str(caught.exception))
+        ledger.reset(memory)
+        self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-2")
+        self.assertEqual(memory[LEDGER_KEY].record_count, 0)
 
     def test_retains_things_and_signals_with_origin(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)

@@ -22,6 +22,7 @@ from autonomy.decision_cycle.runner import (
     StepRunner,
     describe_exception,
     describe_plugin,
+    reset_plugin,
 )
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition, PluginManager
@@ -375,14 +376,8 @@ class PerceptionRunner(StepRunner[Any]):
         self._pending_providers = None
 
     def _reset_plugin(self, plugin: Any, shared_memory=None) -> None:
-        reset = getattr(plugin, "reset", None)
-        if not callable(reset):
-            return
         try:
-            if plugin.contract.memory_required:
-                reset(shared_memory)
-            else:
-                reset()
+            reset_plugin(plugin, shared_memory)
         except Exception:
             if FAILURE_POLICY.reset == "propagate":
                 raise

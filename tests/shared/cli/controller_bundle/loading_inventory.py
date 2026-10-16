@@ -137,6 +137,10 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
 
     # Formerly exported by autonomy.memory
     ("autonomy.shared_memory", "SharedMemory", "autonomy.shared_memory", "SharedMemory"),
+    ("autonomy.shared_memory", "SHARED_MEMORY_SCHEMA", "autonomy.shared_memory", "SHARED_MEMORY_SCHEMA"),
+    ("autonomy.shared_memory", "SharedMemoryValueError", "autonomy.shared_memory", "SharedMemoryValueError"),
+    ("autonomy.shared_memory", "shared_memory_document", "autonomy.shared_memory", "shared_memory_document"),
+    ("autonomy.shared_memory", "shared_memory_from_document", "autonomy.shared_memory", "shared_memory_from_document"),
     ("autonomy.decision_cycle.memory.runner", "format_exception_safely", "autonomy.decision_cycle.memory.runner", "format_exception_safely"),
 
     # autonomy.serialization

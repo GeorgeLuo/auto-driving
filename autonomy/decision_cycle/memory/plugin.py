@@ -3,8 +3,10 @@
 Concrete plugins live under implementations/. Like perception plugins, a
 memory plugin keeps the history later frames need in the host map,
 ``context.shared_memory``, under keys it owns, and chooses where to publish
-anything other plugins read. ``update`` runs once per cycle; ``reset`` starts a
-new epoch and writes the plugin's fresh state to the map. ``status`` is an
+anything other plugins read. ``update`` runs once per cycle. ``reset`` is
+optional and may omit the map; when present it starts a new epoch and writes
+the plugin's fresh state to the map. The runner calls it through
+``reset_plugin``. ``status`` is an
 optional JSON summary of that state for diagnostics. Framework code owns
 selection, timing, and failure isolation.
 
@@ -39,7 +41,8 @@ class MemoryPlugin(Protocol):
     """Loadable memory plugin.
 
     The runner that applies a selection of these is a ``MemoryBackend``
-    (``interface``). A plugin does not describe the step's schema.
+    (``interface``). A plugin does not describe the step's schema. ``reset``
+    is optional and may omit the map.
     """
 
     plugin_id: str
@@ -50,9 +53,6 @@ class MemoryPlugin(Protocol):
         observation: Observation | None,
     ) -> None:
         """Remember one observation in ``context.shared_memory``; raise on failure."""
-
-    def reset(self, shared_memory: SharedMemory) -> None:
-        """Begin a new epoch: replace this plugin's keys with fresh state."""
 
 
 def plugin_status(plugin: Any, shared_memory: SharedMemory | None) -> dict[str, Any] | None:

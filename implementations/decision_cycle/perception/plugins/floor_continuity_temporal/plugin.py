@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from copy import copy, deepcopy
+from copy import copy
 from typing import Any
 
 import numpy as np
@@ -97,18 +97,46 @@ class TemporalFloorContinuityPlugin:
         if shared_memory is not None:
             shared_memory.pop(self._memory_key, None)
 
+    def _restore_history(self, history: Any) -> None:
+        """Restore the four history fields. Other names are ignored."""
+
+        self._initialize_history()
+        if not isinstance(history, dict):
+            return
+        bbox = history.get("_last_bbox")
+        if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
+            try:
+                self._last_bbox = tuple(float(value) for value in bbox)
+            except (TypeError, ValueError):
+                self._last_bbox = None
+        confidence = history.get("_last_confidence")
+        if type(confidence) in (int, float):
+            self._last_confidence = float(confidence)
+        misses = history.get("_misses")
+        age = history.get("_age")
+        if type(misses) is int:
+            self._misses = misses
+        if type(age) is int:
+            self._age = age
+
+    def _history(self) -> dict[str, Any]:
+        bbox = self._last_bbox
+        return {
+            "_last_bbox": None if bbox is None else [float(value) for value in bbox],
+            "_last_confidence": (
+                None if self._last_confidence is None else float(self._last_confidence)
+            ),
+            "_misses": int(self._misses),
+            "_age": int(self._age),
+        }
+
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         if inputs.shared_memory is None:
             raise ValueError(f"{self.plugin_id} requires host shared memory")
         step = copy(self)
-        step._initialize_history()
-        for name, value in deepcopy(inputs.shared_memory.get(self._memory_key, {})).items():
-            setattr(step, name, value)
+        step._restore_history(inputs.shared_memory.get(self._memory_key))
         batch = step._perceive_frame(inputs)
-        inputs.shared_memory[self._memory_key] = {
-            name: getattr(step, name)
-            for name in ("_last_bbox", "_last_confidence", "_misses", "_age")
-        }
+        inputs.shared_memory[self._memory_key] = step._history()
         return batch
 
     def _perceive_frame(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:

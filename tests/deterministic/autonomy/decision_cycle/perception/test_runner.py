@@ -83,6 +83,24 @@ class WorkingPlugin:
         )
 
 
+class MemoryRequiredNoArgReset:
+    plugin_id = "memory_required_reset"
+    contract = PerceptionPluginContract(
+        memory_required=True,
+        state_mode="windowed",
+    )
+
+    def __init__(self) -> None:
+        self.reset_count = 0
+
+    def reset(self) -> None:
+        self.reset_count += 1
+
+    def perceive(self, inputs):
+        del inputs
+        return PerceptionEvidenceBatch()
+
+
 class ExplodingPlugin:
     plugin_id = "exploding"
     contract = PerceptionPluginContract(inputs=(TEST_INPUT,))
@@ -210,6 +228,18 @@ class PluginRunnerTests(unittest.TestCase):
         mapper.reset()
 
         self.assertEqual(plugin.reset_count, 2)
+
+    def test_memory_required_plugin_with_no_argument_reset_is_reset(self) -> None:
+        mapper = PerceptionRunner.from_selection(
+            plugins=["memory_required_reset"],
+            plugin_specs={
+                "memory_required_reset": f"{__name__}:MemoryRequiredNoArgReset",
+            },
+        )
+
+        mapper.reset({})
+
+        self.assertEqual(mapper.plugins["memory_required_reset"].reset_count, 1)
 
     def test_missing_input_short_circuits_plugin_as_unavailable(self) -> None:
         mapper = PerceptionRunner.from_selection(

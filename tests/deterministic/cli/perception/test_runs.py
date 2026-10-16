@@ -99,6 +99,36 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(json.loads(custom.message)["perception"]["preset"], "custom")
         self.assertEqual(json.loads(custom.message)["perception"]["plugins"], ["frame"])
 
+    def test_inspect_restages_perception_from_frame_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            Image.new("RGB", (48, 32), (25, 35, 45)).save(root / "a.png")
+            Image.new("RGB", (48, 32), (30, 40, 50)).save(root / "b.png")
+            switched = selection_activation("perception", plugins=["frame"])
+            manifest = {
+                "source_id": "restage-source",
+                "frames": [
+                    {"image_path": "a.png"},
+                    {
+                        "image_path": "b.png",
+                        "steps": {"perception": switched.to_payload()},
+                    },
+                ],
+            }
+            (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+            result = inspect_perception(root, json_output=True)
+
+        self.assertEqual(result.exit_code, 0, result.message)
+        report = json.loads(result.message)
+        self.assertEqual(
+            [run["plugin_id"] for run in report["frames"][0]["plugin_runs"]],
+            ["frame", "floor_plane"],
+        )
+        self.assertEqual(
+            [run["plugin_id"] for run in report["frames"][1]["plugin_runs"]],
+            ["frame"],
+        )
+
     def test_perceive_sensor_frame_returns_the_record_and_saves_results_only_on_request(self) -> None:
         runner = PerceptionRunner.from_activation(preset_activation("perception", "lightweight_observer"))
         with tempfile.TemporaryDirectory() as tmp:

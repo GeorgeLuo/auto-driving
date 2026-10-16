@@ -122,6 +122,17 @@ class ProposalRunnerTests(unittest.TestCase):
             [f"from_p{index}" for index in range(6)],
         )
 
+    def test_a_missing_map_reaches_plugins_as_none(self) -> None:
+        plugin = _RecordsSource(plugin_id="reader")
+        runner = ProposalRunner.from_plugins({"reader": plugin})
+
+        result = runner.run(
+            frame_id="frame-1", frame_index=0, timestamp_ms=0, shared_memory=None
+        )
+
+        self.assertEqual(result.status, "ok")
+        self.assertIsNone(plugin.shared_memory)
+
     def test_empty_selection_proposes_nothing(self) -> None:
         runner = ProposalRunner.from_activation(_activation([]))
         self.assertEqual(runner.plugins, {})

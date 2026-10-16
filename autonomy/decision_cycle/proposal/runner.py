@@ -308,8 +308,7 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             except Exception:
                 return fail("decision_data_source_invalid", source=None)
 
-            # Without a host map (offline replay), plugins still get a map to read.
-            plugin_memory: SharedMemory = shared_memory if shared_memory is not None else {}
+            plugin_memory = shared_memory
             applied = self.applied
             candidates: list[ActionProposal] = []
             try:
@@ -337,7 +336,7 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         definition: PluginDefinition,
         plugin: ProposalPlugin,
         source: DecisionDataSource,
-        shared_memory: SharedMemory,
+        shared_memory: SharedMemory | None,
     ) -> ActionProposal:
         started = clock()
         error: str | None = None

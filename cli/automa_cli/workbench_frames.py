@@ -8,17 +8,18 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.observation.perception_summary import observation_from_perception
 from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
-from .perception_runs import run_perception
 from .step_hosting import plugin_report
 from .workbench_contract import WORKBENCH_SEQUENCE_ID
 from .workbench_source import ReplayFrame
@@ -88,6 +89,26 @@ class FrameOutcome:
     decision: dict[str, Any] | None
     # Each step runner's plugin report after the frame, by step.
     plugin_reports: dict[str, dict[str, Any] | None]
+
+
+def run_perception(
+    runner: Any,
+    sensor_frame: SensorFrame,
+    *,
+    shared_memory: dict[str, Any],
+    metadata: dict[str, Any],
+    output_dir: Path | None = None,
+):
+    """Run perception on one sensor frame; the step every consumer shares."""
+
+    return runner.perceive(
+        build_perception_request(
+            sensor_frame,
+            shared_memory=shared_memory,
+            output_dir=output_dir,
+            metadata=metadata,
+        )
+    )
 
 
 def run_frame(

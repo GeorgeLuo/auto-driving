@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import numpy as np
@@ -20,6 +21,27 @@ from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget
 
 
 class ObservationPublicationTests(unittest.TestCase):
+    def test_repeated_image_reads_encode_each_processed_frame_once(self) -> None:
+        from autonomy.runtime.frame_loop import encode_jpeg
+
+        part = self._hold_part()
+        self.addCleanup(part.shutdown)
+        part.run(image_array=np.zeros((8, 12, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
+        with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", wraps=encode_jpeg) as encode:
+            first, metadata = part.publish_latest_frame_jpeg()
+            repeated, _ = part.publish_latest_frame_jpeg()
+            _, transaction_image = part.publish_decision_transaction()
+            self.assertEqual(first, repeated)
+            self.assertEqual(first, transaction_image)
+            self.assertEqual(encode.call_count, 1)
+            part.run(image_array=np.full((8, 12, 3), 200, dtype=np.uint8), mode="user")
+            part.wait_for_cycle()
+            second, next_metadata = part.publish_latest_frame_jpeg()
+            self.assertNotEqual(first, second)
+            self.assertNotEqual(metadata["frame"]["frame_id"], next_metadata["frame"]["frame_id"])
+            self.assertEqual(encode.call_count, 2)
+
     def _hold_part(self) -> AutonomyPilotPart:
         activations = {step: packaged_activation(step) for step in DECISION_STEPS}
         return AutonomyPilotPart(

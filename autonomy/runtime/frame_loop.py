@@ -1,11 +1,10 @@
 """The latest-frame decision loop every vehicle runtime hosts.
 
-A vehicle adapter asks ``due()`` before each capture and hands the sample to
-``submit()``. ``due()`` stays false while a cycle runs or a sample waits, so
-the next capture starts when the previous cycle finishes and the camera
-publication updates once per cycle. One background worker runs the cycle on
-the pending sample. The cycle host owns movement authority, freshness,
-stopping, and recording; this loop owns the pending frame, its publications,
+Pull adapters ask ``due()`` before capturing. Streaming adapters may keep
+calling ``submit()`` while a cycle runs: the single pending slot always holds
+the newest sample. One background worker runs decisions sequentially, while
+camera publication can advance independently. The cycle host owns movement
+authority, freshness, stopping, and recording; this loop owns the pending frame, its publications,
 and the applied decision identity.
 """
 from __future__ import annotations
@@ -136,6 +135,7 @@ class LatestObservationState:
     decision_publication: dict[str, Any] | None = None
     decision_error: str | None = None
     context: dict[str, Any] | None = None
+    jpeg_bytes: bytes | None = field(default=None, repr=False)
 
     def to_status_dict(self) -> dict[str, Any]:
         """Bounded status view without the raw image or full perception payload."""
@@ -172,6 +172,7 @@ class LatestCameraFrame:
     image: Any
     sequence: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+    jpeg_bytes: bytes | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -357,7 +358,7 @@ class FrameLoop:
         if not same_frame or image is None:
             return publication, None
         try:
-            return publication, encode_jpeg(image)
+            return publication, self._frame_jpeg(latest)
         except Exception:  # noqa: BLE001 - a bad image must not replace the decision
             logger.exception("Decision transaction image encode failed")
             return publication, None
@@ -403,8 +404,7 @@ class FrameLoop:
         with self._lock:
             latest = self.latest_state
             publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
-            image = None if latest is None else latest.image
-        return self._jpeg(image, publication)
+        return self._jpeg(latest, publication)
 
     def publish_latest_camera(self, *, now_ms: int | None = None) -> dict[str, Any]:
         """Return the newest camera sample, whether or not perception has finished."""
@@ -418,15 +418,21 @@ class FrameLoop:
         with self._lock:
             camera = self.latest_camera_frame
             publication = self._camera_publication_from_locked_state(read_at_ms=read_at_ms)
-            image = None if camera is None else camera.image
-        return self._jpeg(image, publication)
+        return self._jpeg(camera, publication)
 
     @staticmethod
-    def _jpeg(image: Any, publication: dict[str, Any]) -> tuple[bytes | None, dict[str, Any]]:
-        if image is None:
+    def _frame_jpeg(frame: LatestCameraFrame | LatestObservationState) -> bytes:
+        if frame.jpeg_bytes is None:
+            frame.jpeg_bytes = encode_jpeg(frame.image)
+        return frame.jpeg_bytes
+
+    @classmethod
+    def _jpeg(cls, frame: LatestCameraFrame | LatestObservationState | None,
+              publication: dict[str, Any]) -> tuple[bytes | None, dict[str, Any]]:
+        if frame is None or frame.image is None:
             return None, publication
         try:
-            return encode_jpeg(image), publication
+            return cls._frame_jpeg(frame), publication
         except Exception as exc:
             return None, {
                 **publication,
@@ -1075,6 +1081,7 @@ class FrameLoop:
                     decision_publication=decision_publication,
                     decision_error=decision_error,
                     context=context,
+                    jpeg_bytes=camera.jpeg_bytes,
                 )
                 self._last_control = control_dict
                 self._last_cycle = cycle_dict

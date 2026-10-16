@@ -195,11 +195,13 @@ class DecisionViewAdapter:
         base_url: str,
         view_server: RuntimeViewServer,
         timeout_s: float,
+        publish_perception: bool = True,
     ) -> None:
         self.vehicle_id = vehicle_id
         self.base_url = base_url
         self.view_server = view_server
         self.timeout_s = timeout_s
+        self.publish_perception = publish_perception
 
     def publish_frame(
         self,
@@ -223,6 +225,8 @@ class DecisionViewAdapter:
         if not published:
             self.view_server.decision.invalidate_latest()
             return False
+        if not self.publish_perception:
+            return True
 
         # Keep the decision, perception, and memory pages on one
         # RuntimeViewServer session. The decision image is already the exact

@@ -34,10 +34,10 @@ from .decision_live import DecisionViewAdapter
 from .staged_bundle import write_json_atomically
 from .plugin_catalog import PluginCatalogClient
 
-MONITOR_POLL_INTERVAL_S = 0.1
+MONITOR_POLL_INTERVAL_S = 1 / 30
 # The decision copy stays off the recording export. A batch can take longer
 # than the decision stays fresh, so the copy cannot wait for that read.
-DECISION_COPY_INTERVAL_S = 0.05
+DECISION_COPY_INTERVAL_S = 1 / 30
 
 
 def _frames_captured(host: dict[str, Any]) -> int:
@@ -71,6 +71,7 @@ def _copy_latest_decision(
     """
 
     while not stop.is_set():
+        started = time.monotonic()
         try:
             published = decision_view.refresh()
             reason = "decision_view_exact_transaction_unavailable"
@@ -79,7 +80,7 @@ def _copy_latest_decision(
             server.decision.invalidate_latest()
             published, reason = False, f"{type(exc).__name__}: {exc}"
         copied["result"] = (published, reason)
-        stop.wait(DECISION_COPY_INTERVAL_S)
+        stop.wait(max(0.0, DECISION_COPY_INTERVAL_S - (time.monotonic() - started)))
 
 
 def _join_decision_copy(copier: threading.Thread | None, stop: threading.Event) -> None:
@@ -136,6 +137,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
         ).start()
         decision_view = DecisionViewAdapter(
             vehicle_id=vehicle_id, base_url=base_url, view_server=server, timeout_s=timeout_s,
+            publish_perception=False,
         )
         state.update(
             run_id=run_id, status="running", published_view=server.describe(),
@@ -156,6 +158,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
         last_capture = None
         frames_seen = 0
         while True:
+            poll_started = time.monotonic()
             runtime = client.status()
             if runtime["host_run_id"] != run_id:
                 raise RuntimeError("the runtime host restarted during this run")
@@ -251,7 +254,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
             write_json_atomically(state_path, state)
             if session["status"] != "running":
                 break
-            time.sleep(MONITOR_POLL_INTERVAL_S)
+            time.sleep(max(0.0, MONITOR_POLL_INTERVAL_S - (time.monotonic() - poll_started)))
     except KeyboardInterrupt:
         stop_error = _stop(client, state, run_dir=run_dir, recording_id=recording_id)
         _join_decision_copy(copier, stop_copy)

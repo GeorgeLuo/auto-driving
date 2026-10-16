@@ -33,6 +33,27 @@ from tests.shared.cli.invoke import invoke_automa
 
 
 class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
+    def test_decision_copier_can_leave_perception_publication_to_the_monitor(self) -> None:
+        now_ms = int(time.time() * 1000)
+        normalized = accept_decision_publication(
+            self._physical_publication(published_at_ms=now_ms), vehicle_id="piracer", now_ms=now_ms,
+        )
+        server = RuntimeViewServer(
+            vehicle_id="piracer", automation_dir=self.runtime_root / "view",
+            run_id=normalized["run_id"], decision_identity=_provider_identity(normalized),
+        )
+        adapter = DecisionViewAdapter(
+            vehicle_id="piracer", base_url="http://host.invalid", view_server=server,
+            timeout_s=0.1, publish_perception=False,
+        )
+        with patch("cli.automa_cli.decision_live.read_host_telemetry_panel", return_value={}), \
+                patch.object(server.perception, "publish_frame") as frame, \
+                patch.object(server.perception, "publish_perception") as perception:
+            self.assertTrue(adapter.publish_frame(normalized, (b"fixture-jpeg", "image/jpeg")))
+        self.assertIsNotNone(server.decision.health_payload()["latest_transaction_id"])
+        frame.assert_not_called()
+        perception.assert_not_called()
+
     def test_physical_decision_acceptance_rejects_bounded_unavailable_cases(
         self,
     ) -> None:

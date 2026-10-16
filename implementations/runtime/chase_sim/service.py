@@ -59,26 +59,37 @@ class ChaseFrameLoop(FrameLoop):
         self.capture_dir = Path(capture_dir)
         self._passive_baseline: dict[str, Any] | None = None
         self._capture_count = 0
+        self._capture_generation = 0
         super().__init__(runtime="chase_sim", camera_source="chase_sim_front_camera", frame_prefix="chase", **options)
 
     def _session_started(self, configuration: RunConfiguration) -> None:
         self._passive_baseline = None
+        with self._lock:
+            self._capture_generation += 1
 
     def capture(self) -> None:
         """Read one simulator frame and submit it with its simulator identity."""
 
-        sensor_frame = self.car.read_sensors(SensorReadRequest(
-            output_dir=self.capture_dir,
-            read_id=f"capture_{self._capture_count:06d}",
-            requested_sensors=(FRONT_CAMERA_SENSOR_ID,),
-            image_extension="png",
-            front_camera_endpoint="atomic-evaluation-capture",
-        ))
+        generation = self._capture_generation
+        read_camera_frame = getattr(self.car, "read_camera_frame", None)
+        sensor_frame = read_camera_frame() if callable(read_camera_frame) else self.car.read_sensors(
+            SensorReadRequest(
+                output_dir=self.capture_dir,
+                read_id=f"capture_{self._capture_count:06d}",
+                requested_sensors=(FRONT_CAMERA_SENSOR_ID,),
+                image_extension="png",
+                front_camera_endpoint="atomic-evaluation-capture",
+            )
+        )
+        self._submit_sensor_frame(sensor_frame, check_passive=True, generation=generation)
+
+    def _submit_sensor_frame(self, sensor_frame: Any, *, check_passive: bool,
+                             generation: int | None = None) -> None:
         self._capture_count += 1
         reading = sensor_frame.readings.get(FRONT_CAMERA_SENSOR_ID)
         path = Path(reading.path) if reading is not None and isinstance(reading.path, str) else None
         try:
-            if self.host.configuration.mode == "observe_only":
+            if check_passive and self.host.configuration.mode == "observe_only":
                 self._check_passive_session()
             index = simulator_frame_index_from_sensor_frame(sensor_frame)
             if index is None:
@@ -86,18 +97,24 @@ class ChaseFrameLoop(FrameLoop):
             epoch = simulator_epoch_from_sensor_frame(sensor_frame)
             if index is None or epoch is None:
                 raise ValueError("Chase capture is missing the simulator frameIndex or simulationEpoch")
-            if path is None:
+            if reading is not None and reading.value is not None:
+                array = reading.value
+            elif path is None:
                 raise ValueError("Chase capture returned no front camera image")
-            with Image.open(path) as image:
-                array = np.asarray(image.convert("RGB"))
+            else:
+                with Image.open(path) as image:
+                    array = np.asarray(image.convert("RGB"))
         finally:
             if path is not None:
                 path.unlink(missing_ok=True)
-        self.submit(
-            array, frame_id=format_chase_frame_id(index), frame_index=index,
-            captured_at_ms=sensor_frame.completed_at_ms,
-            metadata={"simulator_frame_index": index, "simulation_epoch": epoch},
-        )
+        with self._lock:
+            if generation is not None and generation != self._capture_generation:
+                return
+            self.submit(
+                array, frame_id=format_chase_frame_id(index), frame_index=index,
+                captured_at_ms=reading.captured_at_ms,
+                metadata={**sensor_frame.metadata, "simulator_frame_index": index, "simulation_epoch": epoch},
+            )
 
     def submit(self, image: Any, **frame: Any) -> Any:
         # The simulator is captured only for a session, so a capture that lands
@@ -129,17 +146,34 @@ class ChaseFrameLoop(FrameLoop):
             )
 
     def serve_captures(self, stop: threading.Event) -> None:
-        """Capture when the loop is due; a failed capture ends the session with its error."""
+        """Receive camera frames during decisions; old frontends use atomic pulls."""
 
         while not stop.is_set():
-            if self.host.run_state != "running" or not self.due():
+            if self.host.run_state != "running":
                 stop.wait(CAPTURE_POLL_S)
                 continue
             try:
-                self.capture()
+                generation = self._capture_generation
+                open_stream = getattr(self.car, "camera_stream", None)
+                stream = open_stream() if callable(open_stream) else None
+                if stream is None:
+                    while (not stop.is_set() and self.host.run_state == "running"
+                           and generation == self._capture_generation):
+                        if self.due():
+                            self.capture()
+                        else:
+                            stop.wait(CAPTURE_POLL_S)
+                else:
+                    with stream:
+                        while (not stop.is_set() and self.host.run_state == "running"
+                               and generation == self._capture_generation):
+                            frame = stream.read_camera_frame()
+                            if frame is not None:
+                                self._submit_sensor_frame(frame, check_passive=False, generation=generation)
             except Exception as exc:  # noqa: BLE001 - reported on the session
                 logger.exception("Chase capture failed")
-                self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
+                if generation == self._capture_generation:
+                    self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
 
 
 class _RouteHandler(BaseHTTPRequestHandler):

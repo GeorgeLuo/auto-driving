@@ -1,7 +1,8 @@
 """Donkey part that feeds camera memory to the shared frame loop.
 
-The loop (``autonomy.runtime.frame_loop``) owns when a capture is due, the
-decision worker, publications, and the applied identity. This part translates
+Each drive tick submits camera memory. The loop
+(``autonomy.runtime.frame_loop``) owns the latest waiting frame, the decision
+worker, publications, and the applied identity. This part translates
 Donkey's drive-mode vocabulary, hands the car back to the operator when a run
 ends, and passes completed source frames to the DriveMode telemetry observer.
 """
@@ -63,33 +64,39 @@ class AutonomyPilotPart(FrameLoop):
     ):
         mode = mode or drive_mode("manual")
         mode_name = execution_mode(mode)
-        operator_changed = mode != self._observed_drive_mode and mode != self._drive_mode
-        self._observed_drive_mode = mode
-        if operator_changed:
-            self._drive_mode = mode
-            with self._lock:
-                self._discard_pending_locked()
-            if mode_name == "autonomy":
-                self.host.start(RunConfiguration())
-            else:
-                self.host.stop()
-        elif execution_mode(self._drive_mode) == "autonomy" and self.host.run_state != "running":
-            # The host ended the run: bounded decisions completed or a cycle failed.
-            self._hand_back()
-        if self.due():
-            self.submit(
-                detach_image(image_array), mode=mode_name,
-                user_steering=user_steering, user_throttle=user_throttle,
-            )
+        with self._lifecycle_lock:
+            operator_changed = mode != self._observed_drive_mode and mode != self._drive_mode
+            self._observed_drive_mode = mode
+            if operator_changed:
+                self._drive_mode = mode
+                with self._lock:
+                    self._discard_pending_locked()
+                if mode_name == "autonomy":
+                    self.host.start(RunConfiguration())
+                else:
+                    self.host.stop()
+            elif execution_mode(self._drive_mode) == "autonomy" and self.host.run_state != "running":
+                # The host ended the run: bounded decisions completed or a cycle failed.
+                self._hand_back()
+        self.submit(
+            detach_image(image_array), mode=mode_name,
+            user_steering=user_steering, user_throttle=user_throttle,
+        )
         self._publish_host_source_frame()
         self.last_status = self.status()
         return self._held_outputs(mode_name)
 
-    def _session_started(self, configuration: RunConfiguration) -> None:
-        self._show_drive_mode(drive_mode(configuration.mode))
+    def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
+        with self._lifecycle_lock:
+            status = super().start(configuration, record=record)
+            self._show_drive_mode(drive_mode(configuration.mode))
+            return status
 
-    def _session_stopped(self) -> None:
-        self._hand_back()
+    def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, Any]:
+        with self._lifecycle_lock:
+            status = super().stop(reason=reason, error=error)
+            self._hand_back()
+            return status
 
     def _frame_completed(self) -> None:
         self._publish_host_source_frame()
@@ -118,8 +125,8 @@ class AutonomyPilotPart(FrameLoop):
 
         This is a bounded in-process identity handoff. The source frame is
         copied from the runtime-owned latest observation state and is never
-        created by the DriveMode observer. A tick that is not due repeats the
-        same source identity instead of becoming a new frame.
+        created by the DriveMode observer. Until a decision finishes, drive ticks
+        repeat the completed source identity while camera capture advances.
         """
 
         setter = getattr(self.host_telemetry, "set_source_frame", None)

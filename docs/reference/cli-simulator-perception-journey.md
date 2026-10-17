@@ -200,13 +200,11 @@ It is excluded from perception, observation, memory, and decision inputs.
 Reference-dependent scoring remains unavailable until a valid reference is
 present.
 
-When Metrics UI returns `protocol.passiveObservation` and an atomic
-`passiveObservation.preservation` receipt, Automa validates the advertised
-actor, camera, preserved fields, equal before/after fingerprints, and matching
-sensor identity. The receipt is authoritative because it is produced inside
-the same frontend query as the camera capture. Older payloads fall back to
-separate read-only state/debug checks and remain fail-closed when required
-fields are unavailable.
+Metrics UI must return an atomic `passiveObservation.preservation` receipt.
+Automa validates its declared fields, nested fingerprints, and agreement with
+the captured sensor identity. The receipt is authoritative because it is
+produced inside the same frontend query as the camera capture. A missing
+receipt requires updating Metrics UI; no surrounding-read fallback is accepted.
 
 ## Timeout Semantics
 

@@ -24,7 +24,7 @@ class PerceptionView:
 
     def __init__(self, *, vehicle_id: str) -> None:
         self.vehicle_id = vehicle_id
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
         self._frame_bytes: bytes | None = None
         self._frame_content_type = "application/octet-stream"
         self._frames: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
@@ -78,6 +78,21 @@ class PerceptionView:
             self._latest_perception_record = frame_record
             self._latest_perception_frame_id = frame_id
             self._perception_published_at_ms = _timestamp_ms()
+
+    def publish_matched(self, *, frame_path: Path, frame_record: dict[str, Any]) -> None:
+        """Replace the image and findings together for an accepted transaction."""
+        with self._lock:
+            self.publish_frame(frame_path=frame_path, frame_record=frame_record)
+            self.publish_perception(frame_record=frame_record)
+
+    def invalidate_latest(self) -> None:
+        """An unavailable publication must not leave a usable latest pair."""
+        with self._lock:
+            self._latest_frame = None
+            self._latest_frame_id = None
+            self._frame_bytes = None
+            self._latest_perception_record = None
+            self._latest_perception_frame_id = None
 
     def health_payload(self) -> dict[str, Any]:
         with self._lock:

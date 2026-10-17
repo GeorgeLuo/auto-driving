@@ -19,7 +19,7 @@ from .decision import (
 )
 from .decision_view import unavailable_host_telemetry_panel
 from .host_publications import (
-    fetch_decision_transaction,
+    fetch_decision_transaction, TransactionCache,
     HostTelemetryError,
     fetch_host_telemetry_latest,
     fetch_host_telemetry_records,
@@ -153,13 +153,14 @@ def _accepted_pair(
     *,
     vehicle_id: str,
     timeout_s: float,
+    cache: TransactionCache | None = None,
 ) -> tuple[dict[str, Any], tuple[bytes, str]]:
     """Accept the decision and image the host published as one snapshot."""
 
     deadline = time.monotonic() + min(1.0, max(0.2, float(timeout_s)))
     last_error = "matched decision image is unavailable"
     while time.monotonic() < deadline:
-        transaction = fetch_decision_transaction(base_url, timeout_s=timeout_s)
+        transaction = fetch_decision_transaction(base_url, timeout_s=timeout_s, cache=cache)
         publication = transaction.get("publication") if isinstance(transaction, dict) else None
         try:
             normalized = accept_decision_publication(
@@ -176,11 +177,13 @@ def _accepted_pair(
             last_error = exc.message_text
             time.sleep(0.04)
             continue
-        image = _transaction_image(transaction)
+        image = cache.image if cache is not None and cache.image is not None else _transaction_image(transaction)
         if image is None:
             last_error = "matched decision image is unavailable"
             time.sleep(0.04)
             continue
+        if cache is not None:
+            cache.image = image
         return normalized, image
     raise ConnectionError(last_error)
 
@@ -200,6 +203,7 @@ class DecisionViewAdapter:
         self.base_url = base_url
         self.view_server = view_server
         self.timeout_s = timeout_s
+        self._transaction_cache = TransactionCache()
 
     def publish_frame(
         self,
@@ -223,29 +227,13 @@ class DecisionViewAdapter:
         if not published:
             self.view_server.decision.invalidate_latest()
             return False
-
-        # Keep the decision, perception, and memory pages on one
-        # RuntimeViewServer session. The decision image is already the exact
-        # matched image, so do not fetch a second potentially different frame.
-        try:
-            image_bytes, content_type = image
-            suffix = ".png" if content_type == "image/png" else ".jpg"
-            frame_path = self.view_server.automation_dir / f"latest_frame{suffix}"
-            frame_path.write_bytes(image_bytes)
-            self.view_server.perception.publish_frame(
-                frame_path=frame_path,
-                frame_record=frame_record,
-            )
-            self.view_server.perception.publish_perception(frame_record=frame_record)
-        except Exception:  # noqa: BLE001 - side view publication is nonfatal
-            pass
         return published
 
     def refresh(self) -> bool:
         normalized, image = _accepted_pair(
             self.base_url,
             vehicle_id=self.vehicle_id,
-            timeout_s=self.timeout_s,
+            timeout_s=self.timeout_s, cache=self._transaction_cache,
         )
         return self.publish_frame(normalized, image)
 

@@ -334,8 +334,8 @@ class RunRecording:
             self.count += 1
 
     def status(self) -> dict[str, Any]:
-        with self._lock:
-            return {"run_id": self.run_id, "recorded_count": self.count}
+        # Count is published after append commits; export must not block status.
+        return {"run_id": self.run_id, "recorded_count": self.count}
 
     def read(self, *, run_id: str, after: int) -> dict[str, Any]:
         with self._lock:

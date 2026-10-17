@@ -69,6 +69,7 @@ class AutonomyCycleHost:
         self.last_result: DecisionCycleResult | None = None
         self.last_context: DecisionFrameContext | None = None
         self._session_lock = threading.RLock()
+        self._session_view: dict[str, Any] = {}
         self.configuration = RunConfiguration(mode="manual")
         self.run_state = "stopped"
         self.run_decisions = 0
@@ -373,6 +374,8 @@ class AutonomyCycleHost:
                 if self.execution is not None:
                     result = replace(result, application=self.execution.apply(result, ticket))
                 with self._session_lock:
+                    if run_generation == self._run_generation:
+                        self.last_error = None
                     if self.run_state == "running" and run_generation == self._run_generation:
                         if self.recording is not None:
                             self.recording.append(result)
@@ -382,8 +385,8 @@ class AutonomyCycleHost:
                             and self.run_decisions >= self.configuration.num_decisions
                         ):
                             self.stop(reason="completed")
+                    self._refresh_session_view()
                 self.cycle_count += 1
-                self.last_error = None
                 self.last_result = result
                 self._record_applied_decision()
             except Exception as exc:
@@ -419,10 +422,19 @@ class AutonomyCycleHost:
         configuration = configuration or RunConfiguration()
         with self._session_lock:
             self.stop()
+            self.last_error = None
             self.configuration = configuration
             self.recording = recording
             self.run_decisions = 0
-            self.set_mode(configuration.mode)
+            self.run_state = "starting"
+            self._refresh_session_view()
+            try:
+                self.set_mode(configuration.mode)
+            except Exception as exc:
+                self.run_state = "error"
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                self._refresh_session_view()
+                raise
             self._run_generation += 1
             self.run_state = "running"
             return self.session_status()
@@ -430,22 +442,36 @@ class AutonomyCycleHost:
     def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, Any]:
         with self._session_lock:
             self._run_generation += 1
-            self.run_state = reason
+            self.run_state = "stopping"
+            self._refresh_session_view()
             if error is not None:
                 self.last_error = error
-            if self.execution is not None and not self.execution.status()["closed"]:
-                self.set_mode("manual")
+            try:
+                if self.execution is not None and not self.execution.status()["closed"]:
+                    self.set_mode("manual")
+            except Exception as exc:
+                self.run_state = "error"
+                self.last_error = f"{type(exc).__name__}: {exc}"
+                self._refresh_session_view()
+                raise
+            self.run_state = reason
             return self.session_status()
 
+    def _refresh_session_view(self) -> None:
+        self._session_view = {
+            "status": self.run_state, "configuration": self.configuration.to_dict(),
+            "processed_decisions": self.run_decisions,
+            "recording": self.recording.status() if self.recording is not None else None,
+        }
+
     def session_status(self) -> dict[str, Any]:
-        with self._session_lock:
-            return {
-                "status": self.run_state,
-                "configuration": self.configuration.to_dict(),
-                "processed_decisions": self.run_decisions,
-                "recording": self.recording.status() if self.recording is not None else None,
-                "execution": self.execution.status() if self.execution is not None else None,
-            }
+        if self._session_lock.acquire(blocking=False):
+            try:
+                self._refresh_session_view()
+            finally:
+                self._session_lock.release()
+        return {**deepcopy(self._session_view),
+                "execution": self.execution.status() if self.execution is not None else None}
 
     def set_mode(self, mode: str) -> dict[str, Any]:
         if self.execution is None:
@@ -459,6 +485,7 @@ class AutonomyCycleHost:
                 return
             self._run_generation += 1
             self.run_state = "stopped"
+            self._refresh_session_view()
             if self.execution is not None:
                 self.execution.close()
 

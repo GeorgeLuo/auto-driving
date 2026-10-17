@@ -2,12 +2,15 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
 import threading
 import unittest
 from dataclasses import replace
+from unittest.mock import patch
 
 import numpy as np
+from PIL import Image
 
 from autonomy.decision_cycle.activation import step_activation
 from autonomy.decision_cycle.memory.runner import MemoryRunner
@@ -94,7 +97,6 @@ class RuntimeRoutesTests(unittest.TestCase):
     def test_submitted_frames_publish_observation_camera_and_jpeg(self) -> None:
         loop, routes = _routes()
         self.assertEqual(_json(routes.handle("GET", "/autonomy/observation/latest"))[1]["health"], "warming")
-        self.assertTrue(loop.due())
         loop.submit(np.zeros((4, 6, 3), dtype=np.uint8), frame_id="sim_frame_000042", frame_index=42,
                     metadata={"simulator_frame_index": 42})
         loop.wait_for_cycle()
@@ -108,6 +110,51 @@ class RuntimeRoutesTests(unittest.TestCase):
         status, headers, _ = routes.handle("HEAD", "/autonomy/camera/latest/frame.jpg")
         self.assertEqual((status, headers["X-Frame-Index"]), (200, "42"))
         self.assertEqual(_json(routes.handle("GET", "/autonomy/camera/latest"))[1]["perception_state"], "matched")
+
+    def test_transaction_paths_are_handled_and_reject_write_methods(self):
+        _, routes = _routes()
+        for path in ["/autonomy/observation/transaction", "/autonomy/decision/transaction"]:
+            self.assertTrue(routes.handles(path))
+            self.assertEqual(routes.handle("POST", path)[0], 405)
+
+    def test_observation_transaction_warms_without_an_image(self) -> None:
+        _, routes = _routes()
+        status, transaction = _json(routes.handle("GET", "/autonomy/observation/transaction"))
+        self.assertEqual(status, 503)
+        self.assertEqual(transaction["publication"]["health"], "warming")
+        self.assertIsNone(transaction["image_base64"])
+
+    def test_observation_transaction_keeps_its_image_when_a_new_cycle_finishes(self) -> None:
+        loop, routes = _routes()
+        loop.submit(np.zeros((4, 6, 3), dtype=np.uint8), frame_id="first", frame_index=1)
+        loop.wait_for_cycle()
+        encode = FrameLoop.frame_jpeg
+
+        def advance_before_encoding(frame):
+            loop.submit(np.full((4, 6, 3), 255, dtype=np.uint8), frame_id="second", frame_index=2)
+            loop.wait_for_cycle()
+            return encode(frame)
+
+        with patch.object(FrameLoop, "frame_jpeg", side_effect=advance_before_encoding):
+            status, transaction = _json(routes.handle("GET", "/autonomy/observation/transaction"))
+        self.assertEqual(status, 200, transaction)
+        self.assertEqual(transaction["schema"], "automa_observation_transaction_v0")
+        self.assertEqual(transaction["publication"]["frame"]["frame_id"], "first")
+        self.assertEqual(transaction["image_frame_id"], "first")
+        self.assertEqual(transaction["image_content_type"], "image/jpeg")
+        with Image.open(io.BytesIO(base64.b64decode(transaction["image_base64"]))) as image:
+            self.assertEqual(image.getpixel((0, 0)), (0, 0, 0))
+        self.assertEqual(loop.publish_latest()["frame"]["frame_id"], "second")
+
+    def test_observation_transaction_reports_encoding_failure(self) -> None:
+        loop, routes = _routes()
+        loop.submit(np.zeros((4, 6, 3), dtype=np.uint8), frame_id="first", frame_index=1)
+        loop.wait_for_cycle()
+        with patch.object(FrameLoop, "frame_jpeg", side_effect=ValueError("bad image")):
+            status, transaction = _json(routes.handle("GET", "/autonomy/observation/transaction"))
+        self.assertEqual(status, 503)
+        self.assertEqual(transaction["publication"]["health"], "error")
+        self.assertIsNone(transaction["image_base64"])
 
     def test_decision_transaction_image_stays_with_its_completed_cycle(self) -> None:
         from autonomy.decision_cycle.activation import DECISION_STEPS
@@ -134,7 +181,6 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertEqual(transaction["image_content_type"], "image/jpeg")
         self.assertTrue(base64.b64decode(transaction["image_base64"]).startswith(b"\xff\xd8"))
         try:
-            self.assertTrue(loop.due())
             loop.submit(
                 np.full((4, 6, 3), 255, dtype=np.uint8),
                 frame_id="sim_frame_000043",

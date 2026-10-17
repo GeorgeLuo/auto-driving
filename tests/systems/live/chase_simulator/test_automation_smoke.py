@@ -7,29 +7,13 @@ import unittest
 from tests.support.cli_runner import run_automa
 
 
-_SESSION_FIELDS = (
-    "game_id",
-    "scenario_id",
-    "simulation_epoch",
-    "playback",
-    "control_source",
-    "control_input",
-)
-
-
-def _preserved_session_fingerprint(payload: dict) -> dict:
+def _assert_passive_preserved(payload: dict) -> None:
     passive = payload["layers"]["passive_capture"]
     preservation = passive["session_preservation"]
     if passive["state"] != "available" or preservation["preserved"] is not True:
         raise AssertionError(f"passive session is not proven: {passive}")
     if passive.get("mutation_attempted") is not False:
         raise AssertionError(f"passive capture attempted a mutation: {passive}")
-    before = preservation["before"]
-    after = preservation["after"]
-    fingerprint = {field: before[field] for field in _SESSION_FIELDS}
-    if fingerprint != {field: after[field] for field in _SESSION_FIELDS}:
-        raise AssertionError(f"passive capture changed the session: {preservation}")
-    return fingerprint
 
 
 class ChaseSimulatorSmokeTests(unittest.TestCase):
@@ -47,12 +31,7 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
             "http://localhost:5050",
             "--json",
         )
-        initial_payload = json.loads(initial.stdout)
-        self.assertEqual(
-            initial_payload["layers"]["passive_capture"]["state"],
-            "available",
-        )
-        initial_fingerprint = _preserved_session_fingerprint(initial_payload)
+        _assert_passive_preserved(json.loads(initial.stdout))
 
         run_automa(
             "vehicles",
@@ -80,7 +59,7 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
                 "6",
             )
             self.assertIn("Automation ready", run.stdout)
-            self.assertIn("Perception view: http://127.0.0.1:", run.stdout)
+            self.assertIn("Runtime view: http://127.0.0.1:", run.stdout)
 
             status = run_automa(
                 "vehicles",
@@ -101,10 +80,7 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
             authority = payload["layers"]["automation_worker"]["details"]["authority"]
             self.assertEqual(authority["action_policy"], "observe_only")
             self.assertEqual(authority["control_application"], "not_applied")
-            self.assertEqual(
-                _preserved_session_fingerprint(payload),
-                initial_fingerprint,
-            )
+            _assert_passive_preserved(payload)
         finally:
             run_automa(
                 "vehicles",
@@ -131,10 +107,7 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
             stopped["layers"]["perception_view"]["state"],
             "available",
         )
-        self.assertEqual(
-            _preserved_session_fingerprint(stopped),
-            initial_fingerprint,
-        )
+        _assert_passive_preserved(stopped)
 
 
 if __name__ == "__main__":

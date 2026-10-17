@@ -38,7 +38,7 @@ from .runtime_hosts import RuntimeHostError, bundle_paths, runtime_base_url
 from .step_activations import decision_identity
 from .step_replay import StepReplay, inspect_run_id, read_replay_source, record_inspect_run
 from .step_schema import format_staged_step, staged_step_info
-from .streaming import _read_publication, _view_line, _ViewFeed
+from .streaming import _view_line, _ViewFeed
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationError
 
 # Each decision step replays every step before it, from perception on.
@@ -187,7 +187,7 @@ def stream_vehicle_step(
 
     def accept() -> dict[str, Any]:
         if view is not None:
-            view.publish(_read_publication(base_url, timeout_s=timeout_s)[0])
+            view.publish(view.read_observation()[0])
         try:
             publication = fetch_decision_publication(base_url, timeout_s=timeout_s)
         except (ConnectionError, OSError) as exc:

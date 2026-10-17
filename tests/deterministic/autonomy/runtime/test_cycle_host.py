@@ -7,6 +7,7 @@ import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.activation import (
@@ -108,6 +109,24 @@ def _state(report: dict) -> dict:
 
 
 class CycleHostMemoryTests(unittest.TestCase):
+    def test_failed_start_reports_its_error_instead_of_the_previous_run_error(self):
+        host, _ = _host()
+        host.stop(reason="error", error="earlier failure")
+        original = host.set_mode
+        def mode(value):
+            if value != "manual":
+                raise RuntimeError("new acquisition failure")
+            return original(value)
+        with patch.object(host, "set_mode", side_effect=mode):
+            with self.assertRaisesRegex(RuntimeError, "new acquisition failure"):
+                host.start()
+        self.assertEqual(host.last_error, "RuntimeError: new acquisition failure")
+        self.assertEqual(host.run_state, "error")
+        with patch.object(host, "set_mode", return_value={}):
+            host.start()
+        self.assertIsNone(host.last_error)
+        host.close()
+
     def test_cycle_result_report_is_detached_from_step_owned_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             step = _memory_step(Path(tmp))
@@ -244,6 +263,36 @@ class CycleHostMemoryTests(unittest.TestCase):
 
 
 class CycleHostStepTests(unittest.TestCase):
+    def test_an_inflight_success_cannot_clear_an_external_stop_error(self):
+        from unittest import mock
+        from autonomy.runtime.session import RunConfiguration
+        from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
+        perception = GatedPerception(1)
+        host = AutonomyCycleHost(steps=replace(decision_steps(), perception=perception), target=mock.Mock())
+        errors = []
+        def run():
+            try:
+                host.run(DecisionFrameContext("frame_1", 0, int(time.time() * 1000)))
+            except Exception as exc:
+                errors.append(exc)
+        worker = threading.Thread(target=run)
+        try:
+            host.start(RunConfiguration(mode="observe_only"))
+            worker.start()
+            perception.wait_started(0)
+            host.stop(reason="error", error="simulator_state_changed: control source changed")
+            perception.release_all()
+            worker.join(2)
+            self.assertFalse(worker.is_alive())
+            self.assertEqual(errors, [])
+            self.assertEqual(host.run_state, "error")
+            self.assertIn("simulator_state_changed", host.last_error)
+        finally:
+            perception.release_all()
+            worker.join(2)
+            host.close()
+
+
     def test_runtime_activations_load_with_builtin_fallbacks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

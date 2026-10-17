@@ -1,12 +1,10 @@
 """The latest-frame decision loop every vehicle runtime hosts.
 
-A vehicle adapter asks ``due()`` before each capture and hands the sample to
-``submit()``. ``due()`` stays false while a cycle runs or a sample waits, so
-the next capture starts when the previous cycle finishes and the camera
-publication updates once per cycle. One background worker runs the cycle on
-the pending sample. The cycle host owns movement authority, freshness,
-stopping, and recording; this loop owns the pending frame, its publications,
-and the applied decision identity.
+PiCar ticks and Chase streams submit continuously: one pending slot holds the
+newest sample while one worker runs decisions sequentially. Replacing a waiting
+sample increments frames_dropped.
+The cycle host owns movement authority, freshness, stopping, and recording;
+this loop owns pending frames, publications, and the applied decision identity.
 """
 from __future__ import annotations
 
@@ -18,7 +16,7 @@ import time
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.activation import (
@@ -41,6 +39,8 @@ ONBOARD_OBSERVATION_STATE_SCHEMA = "automa_onboard_observation_state_v0"
 OBSERVATION_PUBLICATION_SCHEMA = "automa_physical_observation_publication_v0"
 DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
 LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
+OBSERVATION_TRANSACTION_PATH = "/autonomy/observation/transaction"
+OBSERVATION_TRANSACTION_SCHEMA = "automa_observation_transaction_v0"
 LATEST_JSON_PATH = "/autonomy/observation/latest"
 CAMERA_LATEST_FRAME_PATH = "/autonomy/camera/latest/frame.jpg"
 CAMERA_LATEST_JSON_PATH = "/autonomy/camera/latest"
@@ -118,6 +118,18 @@ def stale_after_ms(cycle_duration_ms: float | None) -> int:
 
 
 @dataclass
+class _FrameJpegCache:
+    data: bytes | None = field(default=None, repr=False)
+    lock: Any = field(default_factory=threading.Lock, repr=False, compare=False)
+
+    def get(self, image: Any) -> bytes:
+        with self.lock:
+            if self.data is None:
+                self.data = encode_jpeg(image)
+            return self.data
+
+
+@dataclass
 class LatestObservationState:
     """One detached observation retained in memory for inspection."""
 
@@ -136,6 +148,7 @@ class LatestObservationState:
     decision_publication: dict[str, Any] | None = None
     decision_error: str | None = None
     context: dict[str, Any] | None = None
+    jpeg_cache: _FrameJpegCache = field(default_factory=_FrameJpegCache, repr=False, compare=False)
 
     def to_status_dict(self) -> dict[str, Any]:
         """Bounded status view without the raw image or full perception payload."""
@@ -172,6 +185,12 @@ class LatestCameraFrame:
     image: Any
     sequence: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+    jpeg_cache: _FrameJpegCache = field(default_factory=_FrameJpegCache, repr=False, compare=False)
+    image_loader: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+
+    @property
+    def has_image(self) -> bool:
+        return self.image is not None or self.jpeg_cache.data is not None
 
 
 @dataclass(frozen=True)
@@ -216,9 +235,11 @@ class FrameLoop:
         # Each step's preset label, refreshed from every frame's applied activations.
         self.presets = dict(presets or {})
         self._lock = threading.RLock()
+        self._lifecycle_lock = threading.RLock()
         self.frame_index = 0
         self._capture_sequence = 0
-        self.frames_captured = 0
+        self.frames_received = 0
+        self.frames_dropped = 0
         self.processed_count = 0
         self._cycle_duration_ms: float | None = None
         self._pending_frame: _PendingFrame | None = None
@@ -227,8 +248,10 @@ class FrameLoop:
         self._decision_inflight = False
         self._memory_update_halted = False
         self._inflight_frame_id: str | None = None
+        self._inflight_camera: LatestCameraFrame | None = None
         self._decision_thread: threading.Thread | None = None
         self.latest_state: LatestObservationState | None = None
+        self._publication_revision = 0
         # The last cycle's result, the decision-step runners that produced it,
         # and whether that cycle failed. Replacing a decision step's runner
         # retires the result.
@@ -264,12 +287,6 @@ class FrameLoop:
     # Adapter hooks. A vehicle adapter overrides these to mirror the shared
     # session in its own vocabulary; the loop never depends on them.
 
-    def _session_started(self, configuration: RunConfiguration) -> None:
-        pass
-
-    def _session_stopped(self) -> None:
-        pass
-
     def _frame_completed(self) -> None:
         pass
 
@@ -292,7 +309,8 @@ class FrameLoop:
             return {
                 "runtime": self.runtime,
                 "processed_count": self.processed_count,
-                "frames_captured": self.frames_captured,
+                "frames_received": self.frames_received,
+                "frames_dropped": self.frames_dropped,
                 "perception_inflight": self._decision_inflight,
                 "memory_update_halted": self._memory_update_halted,
                 "presets": dict(self.presets),
@@ -334,33 +352,13 @@ class FrameLoop:
         with self._lock:
             return self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
 
-    def publish_decision_transaction(self) -> tuple[dict[str, Any], bytes | None]:
-        """Return the current decision and its image from one locked snapshot.
-
-        A cycle can complete between two separate reads, so the image and the
-        decision can come from different cycles. Cycles run back to back, so
-        this happens often. Callers that publish the live view need both from
-        the same completed cycle.
-        """
-
-        read_at_ms = timestamp_ms()
+    def transaction_snapshot(self, kind: str) -> tuple[dict[str, Any], LatestObservationState | None, str]:
+        """Snapshot publication, capture and content revision before JPEG work."""
         with self._lock:
-            publication = self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
-            latest = self.latest_state
-            image = None if latest is None else latest.image
-            decision = publication.get("decision")
-            same_frame = (
-                latest is not None
-                and isinstance(decision, dict)
-                and decision.get("frame_id") == latest.frame_id
-            )
-        if not same_frame or image is None:
-            return publication, None
-        try:
-            return publication, encode_jpeg(image)
-        except Exception:  # noqa: BLE001 - a bad image must not replace the decision
-            logger.exception("Decision transaction image encode failed")
-            return publication, None
+            publication = (self._decision_publication_from_locked_state(read_at_ms=timestamp_ms())
+                           if kind == "decision" else self._publication_from_locked_state(read_at_ms=timestamp_ms()))
+            revision = f"{self.run_id}:{kind}:{self._publication_revision}:{self._queue_generation}"
+            return publication, self.latest_state, revision
 
     def reset_memory(self) -> dict[str, Any]:
         """Reset the live memory step under the same lock as observation cycles.
@@ -388,6 +386,8 @@ class FrameLoop:
                 cycle = dict(self.latest_state.cycle)
                 cycle["memory"] = deepcopy(report)
                 self.latest_state = replace(self.latest_state, cycle=cycle)
+                self._publication_revision += 1
+            self._memory_update_halted = False
             step = self.host.step("memory")
             step_status = step.status() if step is not None and callable(getattr(step, "status", None)) else None
             return {
@@ -403,8 +403,7 @@ class FrameLoop:
         with self._lock:
             latest = self.latest_state
             publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
-            image = None if latest is None else latest.image
-        return self._jpeg(image, publication)
+        return self._jpeg(latest, publication)
 
     def publish_latest_camera(self, *, now_ms: int | None = None) -> dict[str, Any]:
         """Return the newest camera sample, whether or not perception has finished."""
@@ -418,15 +417,19 @@ class FrameLoop:
         with self._lock:
             camera = self.latest_camera_frame
             publication = self._camera_publication_from_locked_state(read_at_ms=read_at_ms)
-            image = None if camera is None else camera.image
-        return self._jpeg(image, publication)
+        return self._jpeg(camera, publication)
 
     @staticmethod
-    def _jpeg(image: Any, publication: dict[str, Any]) -> tuple[bytes | None, dict[str, Any]]:
-        if image is None:
+    def frame_jpeg(frame: LatestCameraFrame | LatestObservationState) -> bytes:
+        return frame.jpeg_cache.get(frame.image)
+
+    @classmethod
+    def _jpeg(cls, frame: LatestCameraFrame | LatestObservationState | None,
+              publication: dict[str, Any]) -> tuple[bytes | None, dict[str, Any]]:
+        if frame is None or (frame.image is None and frame.jpeg_cache.data is None):
             return None, publication
         try:
-            return encode_jpeg(image), publication
+            return cls.frame_jpeg(frame), publication
         except Exception as exc:
             return None, {
                 **publication,
@@ -451,40 +454,40 @@ class FrameLoop:
         """Return the pilot tuple from the last finished cycle."""
         return self._held_outputs(mode)
 
+    def _recording_jpeg(self, image: Any) -> bytes:
+        # The owning worker's capture outlives its recording callback. The
+        # per-capture cache serializes encoding without a publication lock.
+        camera = self._inflight_camera
+        if camera is not None and image is camera.image:
+            return self.frame_jpeg(camera)
+        return encode_jpeg(image)
+
     def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
-        if record and (self.recording_root is None or self.vehicle_id is None):
-            raise RuntimeError("recording requires a runtime directory and vehicle identity")
-        recording = RunRecording(
-            self.recording_root, vehicle_id=self.vehicle_id, encode_image=encode_jpeg,
-        ) if record else None
-        with self._lock:
-            self._session_frame_id = None
-            self._discard_pending_locked()
-        status = self.host.start(configuration, recording=recording)
-        self._session_started(configuration)
-        return status
+        with self._lifecycle_lock:
+            if record and (self.recording_root is None or self.vehicle_id is None):
+                raise RuntimeError("recording requires a runtime directory and vehicle identity")
+            recording = RunRecording(
+                self.recording_root, vehicle_id=self.vehicle_id, encode_image=self._recording_jpeg,
+            ) if record else None
+            with self._lock:
+                self._session_frame_id = None
+                self._memory_update_halted = False
+                self._discard_pending_locked()
+            status = self.host.start(configuration, recording=recording)
+            return status
 
     def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, Any]:
-        with self._lock:
-            self._discard_pending_locked()
-        status = self.host.stop(reason=reason, error=error)
-        self._session_stopped()
-        return status
+        with self._lifecycle_lock:
+            with self._lock:
+                self._discard_pending_locked()
+            status = self.host.stop(reason=reason, error=error)
+            return status
 
     def shutdown(self) -> None:
         with self._lock:
             self._shutdown = True
             self._discard_pending_locked()
         self.host.close()
-
-    def due(self) -> bool:
-        """The next capture can start when no cycle is holding a frame."""
-        with self._lock:
-            return (
-                not self._shutdown
-                and not self._decision_inflight
-                and self._pending_frame is None
-            )
 
     def submit(
         self,
@@ -497,15 +500,19 @@ class FrameLoop:
         frame_id: str | None = None,
         frame_index: int | None = None,
         metadata: dict[str, Any] | None = None,
-    ) -> LatestCameraFrame:
+        jpeg_bytes: bytes | None = None,
+        image_loader: Callable[[], Any] | None = None,
+    ) -> LatestCameraFrame | None:
         """Publish one camera sample and make it the newest pending frame.
 
         ``metadata`` carries vehicle frame identity (for example a simulator
         frame index and epoch) onto the sensor frame and the cycle context.
         """
         if mode is None:
-            mode = self.host.execution.status()["mode"]
+            mode = self.host.execution.mode
         with self._lock:
+            if self._shutdown:
+                return None
             if frame_id is not None and frame_id == self._session_frame_id:
                 # A paused simulator repeats its frame; there is nothing new to decide.
                 return self.latest_camera_frame
@@ -515,8 +522,13 @@ class FrameLoop:
                 timestamp_ms() if captured_at_ms is None else int(captured_at_ms),
                 frame_id=frame_id,
                 frame_index=frame_index,
-                metadata=metadata,
+                metadata=metadata, jpeg_bytes=jpeg_bytes,
             )
+            camera.image_loader = image_loader
+            if self._memory_update_halted:
+                return camera
+            if self._pending_frame is not None:
+                self.frames_dropped += 1
             self._pending_frame = _PendingFrame(
                 camera, mode, float(user_steering or 0.0), float(user_throttle or 0.0)
             )
@@ -536,7 +548,7 @@ class FrameLoop:
         observation = self.latest_state
         perception_frame_id = None if observation is None else observation.frame_id
         if camera is None:
-            health = PUBLICATION_HEALTH_WARMING if self.frames_captured == 0 else PUBLICATION_HEALTH_ABSENT
+            health = PUBLICATION_HEALTH_WARMING if self.frames_received == 0 else PUBLICATION_HEALTH_ABSENT
             perception_state = "pending" if self._decision_inflight else "absent"
             return {
                 "schema": CAMERA_PUBLICATION_SCHEMA,
@@ -546,7 +558,8 @@ class FrameLoop:
                 "result_age_ms": None,
                 "stale_after_ms": threshold_ms,
                 "frame": None,
-                "frames_captured": self.frames_captured,
+                "frames_received": self.frames_received,
+                "frames_dropped": self.frames_dropped,
                 "perception_state": perception_state,
                 "perception_frame_id": perception_frame_id,
                 "perception_inflight": self._decision_inflight,
@@ -554,7 +567,7 @@ class FrameLoop:
                 "latest_camera_frame_path": CAMERA_LATEST_FRAME_PATH,
             }
         age_ms = max(0, read_at_ms - int(camera.captured_at_ms))
-        if camera.image is None:
+        if not camera.has_image:
             health = PUBLICATION_HEALTH_UNAVAILABLE
         elif age_ms > threshold_ms:
             health = PUBLICATION_HEALTH_STALE
@@ -579,10 +592,11 @@ class FrameLoop:
                 "frame_id": camera.frame_id,
                 "frame_index": camera.frame_index,
                 "captured_at_ms": camera.captured_at_ms,
-                "has_image": camera.image is not None,
+                "has_image": camera.has_image,
                 "frame_path": CAMERA_LATEST_FRAME_PATH,
             },
-            "frames_captured": self.frames_captured,
+            "frames_received": self.frames_received,
+            "frames_dropped": self.frames_dropped,
             "perception_state": perception_state,
             "perception_frame_id": perception_frame_id,
             "perception_inflight": self._decision_inflight,
@@ -598,6 +612,7 @@ class FrameLoop:
         frame_id: str | None = None,
         frame_index: int | None = None,
         metadata: dict[str, Any] | None = None,
+        jpeg_bytes: bytes | None = None,
     ) -> LatestCameraFrame:
         sequence = self._capture_sequence
         frame = LatestCameraFrame(
@@ -607,10 +622,11 @@ class FrameLoop:
             image=image,
             sequence=sequence,
             metadata=dict(metadata or {}),
+            jpeg_cache=_FrameJpegCache(jpeg_bytes),
         )
         self.latest_camera_frame = frame
         self._capture_sequence += 1
-        self.frames_captured += 1
+        self.frames_received += 1
         return frame
 
     def _discard_pending_locked(self) -> None:
@@ -638,7 +654,8 @@ class FrameLoop:
                 "read_at_ms": read_at_ms,
                 "result_age_ms": None,
                 "stale_after_ms": threshold_ms,
-                "frames_captured": self.frames_captured,
+                "frames_received": self.frames_received,
+                "frames_dropped": self.frames_dropped,
                 "processed_count": processed_count,
                 "presets": presets,
                 "generation_id": generation_id,
@@ -686,7 +703,8 @@ class FrameLoop:
             "read_at_ms": read_at_ms,
             "result_age_ms": age_ms,
             "stale_after_ms": threshold_ms,
-            "frames_captured": self.frames_captured,
+            "frames_received": self.frames_received,
+            "frames_dropped": self.frames_dropped,
             "processed_count": processed_count,
             "presets": dict(latest.presets),
             "generation_id": generation_id,
@@ -937,13 +955,29 @@ class FrameLoop:
                         # so a concurrent capture can start another worker.
                         self._decision_inflight = False
                         self._inflight_frame_id = None
+                        self._inflight_camera = None
                         self._decision_thread = None
                         return
                     self._pending_frame = None
                     camera = pending.camera
                     self._inflight_frame_id = camera.frame_id
+                    self._inflight_camera = camera
                     generation = self._queue_generation
                     was_running = getattr(self.host, "run_state", None) == "running"
+                try:
+                    if camera.image_loader is not None:
+                        camera.image = camera.image_loader()
+                        camera.image_loader = None
+                except Exception as exc:
+                    with self._lifecycle_lock:
+                        with self._lock:
+                            current = generation == self._queue_generation
+                        if current:
+                            self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
+                    continue
+                with self._lock:
+                    if generation != self._queue_generation:
+                        continue
                 succeeded = self._process_frame(
                     camera=camera,
                     mode_name=pending.mode_name,
@@ -959,6 +993,7 @@ class FrameLoop:
                 if self._decision_thread is threading.current_thread():
                     self._decision_inflight = False
                     self._inflight_frame_id = None
+                    self._inflight_camera = None
                     self._decision_thread = None
             self.last_status = self.status()
 
@@ -1075,10 +1110,12 @@ class FrameLoop:
                     decision_publication=decision_publication,
                     decision_error=decision_error,
                     context=context,
+                    jpeg_cache=camera.jpeg_cache,
                 )
                 self._last_control = control_dict
                 self._last_cycle = cycle_dict
                 self.latest_state = latest
+                self._publication_revision += 1
                 self.frame_index = frame_index + 1
                 self.processed_count += 1
         finally:

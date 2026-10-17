@@ -84,6 +84,19 @@ class ObservationSampleTests(unittest.TestCase):
                 self.assertIsInstance(read.call_args.args[0], str)
                 self.assertEqual(read.call_count, 3)
 
+    def test_a_body_read_timeout_clears_the_cache(self):
+        class _Stalled(_Response):
+            def read(self, *_args):
+                raise TimeoutError()
+
+        for fetch in (publications.fetch_observation_sample, publications.fetch_decision_transaction):
+            cache = publications.TransactionCache("old", {"publication": {}}, (b"old", "image/jpeg"))
+            with self.subTest(fetch=fetch.__name__), patch.object(
+                    publications.urllib.request, "urlopen", return_value=_Stalled(_transaction())):
+                with self.assertRaisesRegex(ConnectionError, "timed out"):
+                    fetch("http://host.invalid", cache=cache)
+                self.assertEqual((cache.etag, cache.payload, cache.image), (None, None, None))
+
     def test_both_transactions_require_an_updated_host(self):
         for fetch in (publications.fetch_observation_sample, publications.fetch_decision_transaction):
             for response in (_Response(_transaction(), headers={}),

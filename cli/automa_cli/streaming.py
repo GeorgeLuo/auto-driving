@@ -25,7 +25,7 @@ from .host_publications import (
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     fetch_autonomy_status,
-    fetch_observation_frame,
+    fetch_observation_sample, TransactionCache,
     fetch_observation_publication,
     perception_text_from_publication,
     presets_text,
@@ -93,7 +93,8 @@ def stream_vehicle_perception(
     view = None if json_output else _ViewFeed(vehicle_id, base_url=base_url, timeout_s=timeout_s)
 
     def probe() -> tuple[dict[str, Any], Any]:
-        publication, fetch_error = _read_publication(base_url, timeout_s=timeout_s)
+        publication, fetch_error = (view.read_observation() if view is not None
+                                    else _read_publication(base_url, timeout_s=timeout_s))
         live = _probe_perception(
             vehicle_id=vehicle_id,
             base_url=base_url,
@@ -241,6 +242,9 @@ class _ViewFeed:
         self.decision: DecisionViewAdapter | None = None
         self.error: str | None = None
         self.decision_error: str | None = None
+        self._observation_cache = TransactionCache()
+        self._observation: tuple[dict[str, Any], bytes | None] | None = None
+        self._last_capture: tuple[Any, ...] | None = None
         try:
             self.server = RuntimeViewServer(
                 vehicle_id=vehicle_id,
@@ -266,6 +270,18 @@ class _ViewFeed:
         line = f"action view: {self.server.url.rstrip('/')}{page}"
         return f"{line}  (latest unavailable: {self.decision_error})" if self.decision_error else line
 
+    def read_observation(self) -> tuple[dict[str, Any] | None, str | None]:
+        try:
+            self._observation = fetch_observation_sample(self.base_url, timeout_s=self.timeout_s,
+                                                         cache=self._observation_cache)
+            return self._observation[0], None
+        except (ConnectionError, OSError, TypeError, ValueError) as exc:
+            self._observation = None
+            self.error = f"{type(exc).__name__}: {exc}"
+            if self.server is not None:
+                self.server.perception.invalidate_latest()
+            return None, self.error
+
     def publish(self, publication: dict[str, Any] | None) -> None:
         if self.server is None or self.decision is None:
             return
@@ -278,17 +294,29 @@ class _ViewFeed:
         # The observation publishes last, as the latest perception and memory.
         if publication is None:
             return
-        frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else None
-        if frame is None or not frame.get("has_image"):
-            return
         try:
-            jpeg, _headers = fetch_observation_frame(self.base_url, timeout_s=self.timeout_s)
-            self.frame_path.write_bytes(jpeg)
-            frame_record = publication_to_frame_record(publication)
-            self.server.perception.publish_frame(frame_path=self.frame_path, frame_record=frame_record)
-            self.server.perception.publish_perception(frame_record=frame_record)
+            pair = self._observation
+            if pair is None or pair[0] is not publication:
+                publication, error = self.read_observation()
+                if error is not None:
+                    return
+                pair = self._observation
+            publication, jpeg = pair
+            if jpeg is None:
+                self.server.perception.invalidate_latest()
+                self._last_capture = None
+                return
+            frame = publication_to_frame_record(publication)
+            capture = (frame.get("frame_id"), frame.get("captured_at_ms"),
+                       frame.get("perception_completed_at_ms"), frame.get("generation_id"))
+            if capture != self._last_capture:
+                self.frame_path.write_bytes(jpeg)
+                self.server.perception.publish_matched(frame_path=self.frame_path, frame_record=frame)
+                self._last_capture = capture
             self.error = None
         except (ConnectionError, OSError, TypeError, ValueError) as exc:
+            self.server.perception.invalidate_latest()
+            self._last_capture = None
             self.error = f"{type(exc).__name__}: {exc}"
 
     def stop(self) -> None:
@@ -330,7 +358,8 @@ def _probe_perception(
         health=health,
         presets=publication.get("presets"),
         mode=publication.get("mode"),
-        frames_captured=publication.get("frames_captured"),
+        frames_received=publication.get("frames_received"),
+        frames_dropped=publication.get("frames_dropped"),
         processed_count=publication.get("processed_count"),
     )
     if health != "healthy":
@@ -484,7 +513,7 @@ def stream_vehicle_memory(
 
     def render(live: dict[str, Any], _source: Any) -> str:
         assert view is not None
-        publication, fetch_error = _read_publication(base_url, timeout_s=timeout_s)
+        publication, fetch_error = view.read_observation()
         view.publish(publication)
         return _memory_screen(
             vehicle_id=vehicle_id,

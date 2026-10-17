@@ -7,6 +7,7 @@ import json
 import socketserver
 import struct
 import threading
+import time
 from contextlib import contextmanager
 from typing import Iterator
 
@@ -16,6 +17,8 @@ _PNG_DATA_URL = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
 )
 
+
+_JPEG_DATA_URL = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0aHBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/2wBDAQkJCQwLDBgNDRgyIRwhMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjIyMjL/wAARCAABAAEDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwDzeiiiuw5D/9k='
 
 @contextmanager
 def fake_metrics_ui_server() -> Iterator[str]:
@@ -60,19 +63,48 @@ class _MetricsUiHandler(socketserver.BaseRequestHandler):
                 "\r\n"
             ).encode("ascii")
         )
-        while True:
-            frame = _read_frame(self.request)
-            if frame is None:
-                return
-            opcode, payload = frame
-            if opcode == 0x8:
-                return
-            if opcode != 0x1:
-                continue
-            message = json.loads(payload.decode("utf-8"))
-            response = _response_for(message)
-            if response is not None:
-                _send_text(self.request, json.dumps(response))
+        send_lock = threading.Lock()
+        stopped = threading.Event()
+        sender = None
+        def send(message):
+            with send_lock:
+                _send_text(self.request, json.dumps(message))
+        def produce():
+            while not stopped.wait(1 / 30):
+                try:
+                    send({"type": "play_camera_stream_frame", "payload": _stream_frame(next(_FRAME_INDEXES))})
+                except OSError:
+                    stopped.set()
+        try:
+            while True:
+                frame = _read_frame(self.request)
+                if frame is None or frame[0] == 0x8:
+                    return
+                if frame[0] != 0x1:
+                    continue
+                message = json.loads(frame[1].decode("utf-8"))
+                if message.get("type") == "play_camera_stream_subscribe":
+                    first = _atomic_capture(next(_FRAME_INDEXES))
+                    send(_message("play_camera_stream_result", message.get("request_id"), {
+                        "event": "subscribed", "subscriptionId": "fixture-stream",
+                        "cameraStream": {"supported": True}, "playback": {"advanced": False},
+                        "preservation": first["passiveObservation"]["preservation"],
+                        "frame": _stream_frame(first["frameIdentity"]["frameIndex"]),
+                    }))
+                    sender = threading.Thread(target=produce, daemon=True)
+                    sender.start()
+                elif message.get("type") == "play_camera_stream_unsubscribe":
+                    stopped.set()
+                else:
+                    response = _response_for(message)
+                    if response is not None:
+                        send(response)
+        except (ConnectionError, OSError):
+            return
+        finally:
+            stopped.set()
+            if sender is not None:
+                sender.join(timeout=1)
 
 
 def _response_for(message: dict) -> dict | None:
@@ -85,6 +117,8 @@ def _response_for(message: dict) -> dict | None:
         }
     if message_type == "get_state":
         return _message("state_update", request_id, _state())
+    if message_type == "get_play_game_usage":
+        return _message("play_game_usage", request_id, {"protocol": {"cameraStream": {"supported": True}}})
     if message_type == "get_play_debug":
         return _message("play_debug", request_id, _debug())
     if message_type == "play_game_query":
@@ -283,3 +317,13 @@ def _atomic_capture(frame_index: int) -> dict:
             },
         },
     }
+
+
+def _stream_frame(index):
+    capture = _atomic_capture(index)
+    capture["sensor"]["image"] = {"contentType": "image/jpeg", "width": 1, "height": 1,
+                                  "dataUrl": _JPEG_DATA_URL}
+    now_us = time.monotonic_ns() // 1000
+    return {"subscriptionId": "fixture-stream", "actorId": "chaser", "cameraId": "front_camera",
+            "frameIdentity": capture["frameIdentity"], "sensor": capture["sensor"],
+            "playback": {"advanced": False}, "sourceTimestampUs": now_us, "publishedAtUs": now_us}

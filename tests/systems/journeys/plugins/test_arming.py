@@ -153,10 +153,13 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(current["state"]["run_id"], original["state"]["run_id"])
                 self.assertEqual(current["state"]["pid"], original["state"]["pid"])
                 self.assertEqual(current["state"]["action_policy"], "observe_only")
-                cli("automation", "stop", "--id", "chase-sim-chaser")
+                # The 30 Hz stream records throughout all of the CLI calls.
+                # Allow its final export to drain before forced termination.
+                cli("automation", "stop", "--id", "chase-sim-chaser", "--wait-s", "10")
                 automation_dir = runtime / "chase-sim-chaser" / "bundle/runtime/automation"
                 state = json.loads((automation_dir / "state.json").read_text())
                 self.assertEqual(state["status"], "stopped", state.get("error"))
+                self.assertNotEqual(state["stop_reason"], "stop_command_forced")
                 self.assertGreater(state["recorded_count"], 0)
                 self.assertEqual(state["recorded_count"], state["processed_count"])
                 # The CLI exports beside the host's history, never into it.

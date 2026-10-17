@@ -460,9 +460,9 @@ def _is_number(value: Any) -> bool:
 def _median_cycle_period_ms(samples: list[dict[str, Any]]) -> float | None:
     """The median capture-to-capture spacing per processed cycle.
 
-    Each capture starts when the previous cycle finishes, so the spacing
-    covers capture and cycle together. Dividing by the processed_count step
-    keeps the period right when the poll misses cycles.
+    Each decision consumes the newest waiting sample. Its capture spacing
+    approximates decision cadence within the source tick interval. Dividing
+    by the processed_count step accounts for polls that miss completed cycles.
     """
     periods: list[float] = []
     previous: tuple[float, int] | None = None

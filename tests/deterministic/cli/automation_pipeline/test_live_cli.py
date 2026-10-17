@@ -14,6 +14,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.request import urlopen
 
+from cli.automa_cli.host_publications import fetch_observation_sample
 from cli.automa_cli.streaming import _ViewFeed, _read_publication
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import VEHICLE_ID
 from tests.shared.cli.invoke import invoke_automa
@@ -29,10 +30,26 @@ class LiveCommandsTests(LiveHostTestCase):
         self.addCleanup(feed.stop)
         feed.decision.refresh = Mock(side_effect=ConnectionError("decision route down"))
         publication = _read_publication(self.host.base_url, timeout_s=3.0)[0]
-        feed.publish(publication)
+        samples = []
+
+        def sample(*args, **kwargs):
+            pair = fetch_observation_sample(*args, **kwargs)
+            samples.append(pair)
+            return pair
+
+        with patch("cli.automa_cli.streaming.fetch_observation_sample", side_effect=sample):
+            feed.publish(publication)
         self.assertIn("ConnectionError: decision route down", feed.decision_line())
         with urlopen(f"{feed.url.rstrip('/')}/api/latest", timeout=5) as response:
-            self.assertEqual(json.load(response)["frame"]["frame_id"], publication["frame"]["frame_id"])
+            latest = json.load(response)
+        # The host may advance after the terminal's publication. The view must
+        # use its transaction's findings and image even when decision is down.
+        matched, jpeg = samples[0]
+        self.assertEqual(latest["frame"]["frame_id"], matched["frame"]["frame_id"])
+        self.assertEqual(latest["overlay"]["source_frame_id"], latest["frame"]["frame_id"])
+        self.assertEqual(latest["overlay"]["status"], "current")
+        with urlopen(f"{feed.url.rstrip('/')}{latest['frame']['url']}", timeout=5) as response:
+            self.assertEqual(response.read(), jpeg)
 
     def automa(self, *args: str):
         return invoke_automa("vehicles", *args, "--id", VEHICLE_ID, runtime_root=self.runtime_root, check=False)

@@ -20,22 +20,13 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Callable
 
-import numpy as np
-from PIL import Image
-
 from autonomy.runtime.assembly import staged_runtime
 from autonomy.runtime.frame_loop import FrameLoop
 from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
 from implementations.vehicle.chase_sim import (
-    ChasePassiveCaptureError,
-    ChaseSimCar,
-    format_chase_frame_id,
-    simulator_epoch_from_sensor_frame,
-    simulator_frame_index_from_sensor_frame,
+    ChaseCameraCapture, ChaseSimCar,
 )
-from implementations.vehicle.chase_sim.metrics_ws import compare_chase_session_fingerprints
 
 from . import create_host
 
@@ -44,102 +35,96 @@ logger = logging.getLogger(__name__)
 # The supervisor starts a fresh host from the current release on this code.
 RESTART_EXIT_CODE = 75
 HOST_RECORD_SCHEMA = "automa_runtime_host_v0"
-# An observe-only run lets playback and input evolve; simulator identity and
-# control authority must hold until the run stops.
-PASSIVE_RUN_STABLE_FIELDS = ("game_id", "scenario_id", "simulation_epoch", "control_source")
 CAPTURE_POLL_S = 0.01
 RECORD_CHECK_S = 1.0
 
 
 class ChaseFrameLoop(FrameLoop):
-    """Capture simulator frames into the shared loop while a session runs."""
+    """Receive encoded captures into the shared latest-only decision slot."""
 
-    def __init__(self, *, car: ChaseSimCar, capture_dir: Path, **options: Any) -> None:
+    def __init__(self, *, car: ChaseSimCar, **options: Any) -> None:
         self.car = car
-        self.capture_dir = Path(capture_dir)
-        self._passive_baseline: dict[str, Any] | None = None
-        self._capture_count = 0
+        self._capture_generation = 0
+        self._capture_enabled = False
+        self._active_stream: Any = None
         super().__init__(runtime="chase_sim", camera_source="chase_sim_front_camera", frame_prefix="chase", **options)
 
-    def _session_started(self, configuration: RunConfiguration) -> None:
-        self._passive_baseline = None
-
-    def capture(self) -> None:
-        """Read one simulator frame and submit it with its simulator identity."""
-
-        sensor_frame = self.car.read_sensors(SensorReadRequest(
-            output_dir=self.capture_dir,
-            read_id=f"capture_{self._capture_count:06d}",
-            requested_sensors=(FRONT_CAMERA_SENSOR_ID,),
-            image_extension="png",
-            front_camera_endpoint="atomic-evaluation-capture",
-        ))
-        self._capture_count += 1
-        reading = sensor_frame.readings.get(FRONT_CAMERA_SENSOR_ID)
-        path = Path(reading.path) if reading is not None and isinstance(reading.path, str) else None
-        try:
-            if self.host.configuration.mode == "observe_only":
-                self._check_passive_session()
-            index = simulator_frame_index_from_sensor_frame(sensor_frame)
-            if index is None:
-                index = self.car.last_simulator_frame_index
-            epoch = simulator_epoch_from_sensor_frame(sensor_frame)
-            if index is None or epoch is None:
-                raise ValueError("Chase capture is missing the simulator frameIndex or simulationEpoch")
-            if path is None:
-                raise ValueError("Chase capture returned no front camera image")
-            with Image.open(path) as image:
-                array = np.asarray(image.convert("RGB"))
-        finally:
-            if path is not None:
-                path.unlink(missing_ok=True)
-        self.submit(
-            array, frame_id=format_chase_frame_id(index), frame_index=index,
-            captured_at_ms=sensor_frame.completed_at_ms,
-            metadata={"simulator_frame_index": index, "simulation_epoch": epoch},
-        )
-
-    def submit(self, image: Any, **frame: Any) -> Any:
-        # The simulator is captured only for a session, so a capture that lands
-        # after the session ended is dropped instead of deciding past its bound.
+    def _retire_capture(self) -> Any:
         with self._lock:
-            if self.host.run_state != "running":
-                return None
-            return super().submit(image, **frame)
+            self._capture_enabled = False
+            self._capture_generation += 1
+            self._discard_pending_locked()
+            stream, self._active_stream = self._active_stream, None
+            return stream
 
-    def _check_passive_session(self) -> None:
-        passive = self.car.last_passive_capture or {}
-        preservation = passive.get("session_preservation") or {}
-        before, after = preservation.get("before"), preservation.get("after")
-        if self._passive_baseline is None and isinstance(before, dict):
-            self._passive_baseline = before
-        if self._passive_baseline is None or not isinstance(after, dict):
-            return
-        receipt = compare_chase_session_fingerprints(
-            self._passive_baseline, after, field_names=PASSIVE_RUN_STABLE_FIELDS,
-        )
-        if not receipt.get("preserved"):
-            raise ChasePassiveCaptureError(
-                code="simulator_state_changed" if receipt.get("changed_fields") else "simulator_capability_missing",
-                message=(
-                    "the simulator identity or control authority changed during an observe-only run "
-                    f"(changed: {', '.join(receipt.get('changed_fields') or []) or 'unknown'})"
-                ),
-                details={"session_preservation": receipt, "mutation_attempted": False},
+    def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
+        with self._lifecycle_lock:
+            stream = self._retire_capture()
+            if stream is not None:
+                stream.close()
+            status = super().start(configuration, record=record)
+            with self._lock:
+                self._capture_enabled = True
+            return status
+
+    def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, Any]:
+        with self._lifecycle_lock:
+            stream = self._retire_capture()
+            if stream is not None:
+                stream.close()
+            return super().stop(reason=reason, error=error)
+
+    def shutdown(self) -> None:
+        stream = self._retire_capture()
+        if stream is not None:
+            stream.close()
+        super().shutdown()
+
+    def _submit_capture(self, capture: ChaseCameraCapture, *, generation: int) -> None:
+        with self._lock:
+            if (generation != self._capture_generation or not self._capture_enabled
+                    or self.host.run_state != "running"):
+                return
+            self.submit(
+                None, frame_id=capture.frame_id, frame_index=capture.frame_index,
+                captured_at_ms=capture.captured_at_ms, jpeg_bytes=capture.jpeg_bytes,
+                image_loader=capture.load_image,
+                metadata={"simulator_frame_index": capture.frame_index,
+                          "simulation_epoch": capture.simulation_epoch},
             )
 
     def serve_captures(self, stop: threading.Event) -> None:
-        """Capture when the loop is due; a failed capture ends the session with its error."""
-
         while not stop.is_set():
-            if self.host.run_state != "running" or not self.due():
+            if not self._capture_enabled or self.host.run_state != "running":
                 stop.wait(CAPTURE_POLL_S)
                 continue
+            generation = self._capture_generation
+            stream = None
             try:
-                self.capture()
-            except Exception as exc:  # noqa: BLE001 - reported on the session
-                logger.exception("Chase capture failed")
-                self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
+                stream = self.car.camera_stream()
+                with self._lock:
+                    if generation != self._capture_generation or not self._capture_enabled:
+                        continue
+                    self._active_stream = stream
+                with stream:
+                    stream.set_consumer(
+                        lambda capture, generation=generation: self._submit_capture(capture, generation=generation)
+                    )
+                    logger.info("Chase camera stream subscribed (generation %s)", generation)
+                    while (not stop.is_set() and self._capture_enabled
+                           and self.host.run_state == "running" and generation == self._capture_generation):
+                        stream.check_progress()
+                        stop.wait(CAPTURE_POLL_S)
+            except Exception as exc:
+                if generation == self._capture_generation and self._capture_enabled:
+                    logger.exception("Chase capture failed")
+                    self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
+                else:
+                    logger.info("Capture ended after the run changed: %s: %s", type(exc).__name__, exc)
+            finally:
+                with self._lock:
+                    if self._active_stream is stream:
+                        self._active_stream = None
 
 
 class _RouteHandler(BaseHTTPRequestHandler):
@@ -181,9 +166,8 @@ class ChaseRuntimeHost:
     def __init__(self, *, car: Any, runtime_dir: Path, vehicle_id: str, port: int = 0,
                  on_restart: Callable[[], None] | None = None) -> None:
         host, options = staged_runtime(runtime_dir, lambda steps: create_host(car, steps=steps))
-        self._capture_dir = tempfile.TemporaryDirectory(prefix="chase-capture-")
         self.loop = ChaseFrameLoop(
-            host=host, car=car, capture_dir=Path(self._capture_dir.name), vehicle_id=vehicle_id, **options,
+            host=host, car=car, vehicle_id=vehicle_id, **options,
         )
         self.server = RuntimeHTTPServer(("127.0.0.1", port), RuntimeRoutes(self.loop, on_restart=on_restart))
         self.base_url = f"http://127.0.0.1:{self.server.server_address[1]}"
@@ -207,7 +191,6 @@ class ChaseRuntimeHost:
         for thread in self._threads:
             thread.join(timeout=5.0)
         self.loop.shutdown()
-        self._capture_dir.cleanup()
 
     def __enter__(self) -> "ChaseRuntimeHost":
         return self.start()

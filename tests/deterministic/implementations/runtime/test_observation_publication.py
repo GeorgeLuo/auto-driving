@@ -1,13 +1,22 @@
 from __future__ import annotations
 
+import asyncio
+import base64
+import json
+from types import SimpleNamespace
 import threading
+import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 import numpy as np
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id
 from autonomy.decision_cycle.steps import decision_steps
+from autonomy.runtime.session import RunConfiguration
+from autonomy.runtime.routes import RuntimeRoutes
+from autonomy.runtime.frame_loop import DECISION_TRANSACTION_PATH
 from autonomy.runtime.execution import ControlExecution
 from implementations.decision_cycle.catalog import packaged_activation, selection_activation
 from autonomy.runtime.frame_loop import (
@@ -20,6 +29,85 @@ from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget
 
 
 class ObservationPublicationTests(unittest.TestCase):
+    def _decision_image(self, part):
+        status, _, body = RuntimeRoutes(part).handle("GET", DECISION_TRANSACTION_PATH)
+        self.assertEqual(status, 200, body)
+        return base64.b64decode(json.loads(body)["image_base64"], validate=True)
+
+    def test_repeated_image_reads_encode_each_processed_frame_once(self) -> None:
+        from autonomy.runtime.frame_loop import encode_jpeg
+
+        part = self._hold_part()
+        self.addCleanup(part.shutdown)
+        part.run(image_array=np.zeros((8, 12, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
+        with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", wraps=encode_jpeg) as encode:
+            first, metadata = part.publish_latest_frame_jpeg()
+            repeated, _ = part.publish_latest_frame_jpeg()
+            transaction_image = self._decision_image(part)
+            self.assertEqual(first, repeated)
+            self.assertEqual(first, transaction_image)
+            self.assertEqual(encode.call_count, 1)
+            part.run(image_array=np.full((8, 12, 3), 200, dtype=np.uint8), mode="user")
+            part.wait_for_cycle()
+            second, next_metadata = part.publish_latest_frame_jpeg()
+            self.assertNotEqual(first, second)
+            self.assertNotEqual(metadata["frame"]["frame_id"], next_metadata["frame"]["frame_id"])
+            self.assertEqual(encode.call_count, 2)
+
+    def test_wire_jpeg_is_reused_by_camera_decision_and_recording(self):
+        from autonomy.runtime.frame_loop import encode_jpeg
+        image = np.full((8, 12, 3), 70, dtype=np.uint8)
+        wire = encode_jpeg(image)
+        part = self._hold_part()
+        self.addCleanup(part.shutdown)
+        with tempfile.TemporaryDirectory() as tmp:
+            part.recording_root = Path(tmp)
+            part.start(RunConfiguration(mode="observe_only"), record=True)
+            with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", side_effect=AssertionError("reencoded")):
+                part.submit(image, jpeg_bytes=wire)
+                part.wait_for_cycle()
+                camera, _ = part.publish_latest_camera_jpeg()
+                observation, _ = part.publish_latest_frame_jpeg()
+                decision = self._decision_image(part)
+            self.assertEqual((camera, observation, decision), (wire, wire, wire))
+            files = list(Path(tmp).glob("*/frames/*.jpg"))
+            self.assertEqual(len(files), 1)
+            self.assertEqual(files[0].read_bytes(), wire)
+            self.assertNotIn("jpeg_bytes", part.host.last_context.sensor_frame.readings["front_camera"].to_dict())
+
+    def test_recording_and_concurrent_camera_read_share_one_encode(self):
+        from autonomy.runtime.frame_loop import encode_jpeg
+        part = self._hold_part()
+        self.addCleanup(part.shutdown)
+        entered, release = threading.Event(), threading.Event()
+        def encode(image):
+            entered.set()
+            if not release.wait(2):
+                raise AssertionError("JPEG encode was not released")
+            return encode_jpeg(image)
+        with tempfile.TemporaryDirectory() as tmp:
+            part.recording_root = Path(tmp)
+            part.start(RunConfiguration(mode="observe_only"), record=True)
+            published = []
+            with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", side_effect=encode) as encoder:
+                part.run(image_array=np.zeros((8, 12, 3), dtype=np.uint8), mode="user")
+                self.assertTrue(entered.wait(1))
+                reader = threading.Thread(target=lambda: published.append(part.publish_latest_camera_jpeg()[0]))
+                reader.start()
+                release.set()
+                part.wait_for_cycle()
+                reader.join(1)
+                self.assertFalse(reader.is_alive())
+                observation, _ = part.publish_latest_frame_jpeg()
+                decision = self._decision_image(part)
+                self.assertEqual(encoder.call_count, 1)
+            self.assertEqual(published, [observation])
+            self.assertEqual(decision, observation)
+            files = list(Path(tmp).glob("*/frames/*.jpg"))
+            self.assertEqual(len(files), 1)
+            self.assertEqual(files[0].read_bytes(), observation)
+
     def _hold_part(self) -> AutonomyPilotPart:
         activations = {step: packaged_activation(step) for step in DECISION_STEPS}
         return AutonomyPilotPart(
@@ -90,9 +178,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(part.observation_status()["presets"], applied)
 
     def test_publication_includes_the_memory_report_when_step_present(self) -> None:
-        from autonomy.decision_cycle.context import DecisionFrameContext
         from autonomy.decision_cycle.cycle import DecisionSteps
-        from autonomy.decision_cycle.observation.values import Observation
         from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
         from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
@@ -393,13 +479,37 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertIn('+            (r"/(?:autonomy/.*|api/plugins)", AutonomyRoutesAPI),', patch)
         self.assertNotIn("/autonomy/mode", patch)
         dispatcher = patch.split("+class AutonomyRoutesAPI", 1)[1].split(" class WsTest", 1)[0]
-        compile(
+        code = compile(
             "class AutonomyRoutesAPI(RequestHandler):\n" + "\n".join(
                 line[1:] for line in dispatcher.splitlines() if line.startswith("+")
             ),
             "AutonomyRoutesAPI",
             "exec",
         )
+
+        class Handler:
+            def set_status(self, status):
+                self.status = status
+            def set_header(self, key, value):
+                pass
+            def write(self, body):
+                if self.status == 304:
+                    raise AssertionError("304 must not write even an empty chunk")
+                self.body = body
+
+        namespace = {"RequestHandler": Handler, "asyncio": asyncio, "json": json}
+        exec(code, namespace)
+        for status, body in ((200, b"payload"), (304, b"")):
+            route = mock.Mock()
+            route.handle.return_value = status, {"ETag": "test"}, body
+            handler = namespace["AutonomyRoutesAPI"]()
+            handler.application = SimpleNamespace(autonomy_routes=route)
+            handler.request = SimpleNamespace(method="GET", uri="/autonomy/observation/transaction",
+                body=b"", headers={"If-None-Match": "test"}, protocol="http", host="car.test")
+            asyncio.run(handler._dispatch())
+            self.assertEqual(handler.status, status)
+            self.assertEqual(route.handle.call_args.kwargs["headers"], {"If-None-Match": "test"})
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

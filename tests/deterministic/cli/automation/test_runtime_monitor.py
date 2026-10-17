@@ -76,7 +76,7 @@ def _session(status: str, processed: int) -> dict:
 def _host(camera: int, *, last_error: str | None = None) -> dict:
     return {
         "autonomy": {
-            "components": {"observation": {"frames_captured": camera}},
+            "components": {"observation": {"frames_received": camera, "frames_dropped": 0}},
             "steps": {"memory": {"plugin_ids": ["recent"], "last_error": None}, "proposal": None},
             "cycle_count": camera,
             "error_count": 0 if last_error is None else 1,
@@ -107,25 +107,16 @@ class RuntimeMonitorTests(unittest.TestCase):
         jpeg = io.BytesIO()
         Image.new("RGB", (4, 4)).save(jpeg, format="JPEG")
         publications = [_publication(0), _publication(1)]
-        current: dict = {}
-
-        def publication(*_args, **_kwargs) -> dict:
+        def sample(*_args, **_kwargs):
             # The latest publication repeats once the host has no newer frame.
-            current["publication"] = publications.pop(0) if len(publications) > 1 else publications[0]
-            return current["publication"]
-
-        def frame(*_args, **_kwargs) -> tuple[bytes, dict]:
-            return jpeg.getvalue(), {"frame_id": current["publication"]["frame"]["frame_id"]}
+            publication = publications.pop(0) if len(publications) > 1 else publications[0]
+            return publication, jpeg.getvalue()
 
         client = _FakeClient(sessions, hosts)
         output = io.StringIO()
         with (
             mock.patch.object(runtime_monitor, "RuntimeClient", return_value=client),
-            mock.patch.object(runtime_monitor, "fetch_observation_publication", side_effect=publication),
-            mock.patch.object(runtime_monitor, "fetch_observation_frame", side_effect=frame),
-            mock.patch.object(
-                runtime_monitor, "frame_id_from_headers", side_effect=lambda headers: headers["frame_id"]
-            ),
+            mock.patch.object(runtime_monitor, "fetch_observation_sample", side_effect=sample),
             mock.patch.object(runtime_monitor, "DecisionViewAdapter", _FakeDecisionView),
         ):
             code, message = runtime_monitor.monitor_runtime(
@@ -144,18 +135,22 @@ class RuntimeMonitorTests(unittest.TestCase):
         return client, code, message, output.getvalue().splitlines(), state
 
     def test_a_run_prints_and_records_the_host_session(self) -> None:
+        hosts = [_host(10), _host(11), _host(13)]
+        for host, count in zip(hosts, (4, 5, 6)):
+            host["autonomy"]["components"]["observation"]["frames_dropped"] = count
         with tempfile.TemporaryDirectory() as tmp:
             automation_dir = Path(tmp) / "automation"
             client, code, message, lines, state = self._monitor(
                 automation_dir,
                 sessions=[_session("running", 1), _session("completed", 2)],
-                hosts=[_host(10), _host(11), _host(13)],
+                hosts=hosts,
             )
 
         self.assertTrue(client.stopped)
         self.assertEqual(client.started_with.mode, "autonomy")
         self.assertEqual(client.started_with.num_decisions, 2)
         self.assertEqual(state["num_decisions"], 2)
+        self.assertEqual(state["frames_dropped"], 2)
         self.assertEqual(
             [line for line in lines if not line.startswith("Runtime view: ")],
             [
@@ -174,10 +169,11 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertRegex(lines[8], r"^Runtime view: http://")
         self.assertEqual(code, 0)
         self.assertEqual(
-            message.splitlines()[:5],
+            message.splitlines()[:6],
             [
                 f"Automation completed: {VEHICLE_ID}",
-                "Frames captured: 3",
+                "Frames received: 3",
+                "Frames dropped before decision: 2",
                 "Decisions completed: 2",
                 "Control source: runtime_host",
                 "Action policy: autonomy",
@@ -205,8 +201,8 @@ class RuntimeMonitorTests(unittest.TestCase):
 
     def test_a_missing_capture_counter_is_unavailable_rather_than_zero(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "does not report"):
-            runtime_monitor._frames_captured({"components": {"observation": {}}})
-        self.assertEqual(runtime_monitor._frames_captured(_host(0)["autonomy"]), 0)
+            runtime_monitor._frames_received({"components": {"observation": {}}})
+        self.assertEqual(runtime_monitor._frames_received(_host(0)["autonomy"]), 0)
 
     def test_a_host_cycle_error_fails_the_run_with_the_host_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -237,6 +233,26 @@ class ControlRecordTests(unittest.TestCase):
             [control_application(autonomy), control_application(observe)],
             ["shared_execution", "not_applied"],
         )
+
+
+class MonitorPacingTests(unittest.TestCase):
+    def test_missing_or_invalid_counters_require_a_host_update(self):
+        for read, counter in ((runtime_monitor._frames_received, "frames_received"),
+                              (runtime_monitor._frames_dropped, "frames_dropped")):
+            for host in ({}, {"components": []}, {"components": {"observation": []}},
+                         *({"components": {"observation": {counter: value}}}
+                           for value in (None, True, -1, 1.5, "2"))):
+                with self.subTest(counter=counter, host=host), self.assertRaisesRegex(RuntimeError, "update"):
+                    read(host)
+        self.assertEqual(runtime_monitor._frames_dropped(_host(2)["autonomy"]), 0)
+
+    def test_adaptive_pause_keeps_a_gap_on_fast_and_slow_hosts(self):
+        for elapsed_ms, expected_ms in [(5, 1000 / 30 - 5), (20, 20), (30, 30),
+                                        (100, 100), (200, 100)]:
+            with self.subTest(elapsed_ms=elapsed_ms), mock.patch.object(
+                runtime_monitor.time, "monotonic", return_value=10 + elapsed_ms / 1000,
+            ):
+                self.assertAlmostEqual(runtime_monitor._pause_s(10, 1 / 30) * 1000, expected_ms)
 
 
 if __name__ == "__main__":

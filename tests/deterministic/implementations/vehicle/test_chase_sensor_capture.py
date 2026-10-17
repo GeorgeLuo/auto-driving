@@ -5,7 +5,7 @@ import base64
 from pathlib import Path
 from unittest import mock
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
-from implementations.vehicle.chase_sim.car import (
+from implementations.vehicle.chase_sim import (
     CHASE_ATOMIC_EVALUATION_QUERY,
     CHASE_PASSIVE_CAMERA_ID,
     ChaseSimCar,
@@ -73,9 +73,8 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
             },
             timeout_s=mock.ANY,
         )
-        self.assertEqual(get_state.call_count, 2)
-        self.assertEqual(get_debug.call_count, 2)
-        self.assertEqual(car.last_simulator_frame_index, 123)
+        self.assertEqual(get_state.call_count, 1)
+        self.assertEqual(get_debug.call_count, 1)
         self.assertEqual(simulator_frame_index_from_sensor_frame(sensor_frame), 123)
         self.assertEqual(simulator_epoch_from_sensor_frame(sensor_frame), "chase-run:test")
         reading = sensor_frame.readings[FRONT_CAMERA_SENSOR_ID]
@@ -126,7 +125,7 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
                 )
             )
         self.assertIsNone(car.last_capture_chaser_reference)
-        self.assertEqual(car.last_simulator_frame_index, 10)
+        self.assertEqual(simulator_frame_index_from_sensor_frame(sensor_frame), 10)
         self.assertEqual(car.last_evaluator_reference["status"], "invalid")
         self.assertEqual(
             car.last_evaluator_reference["path"],

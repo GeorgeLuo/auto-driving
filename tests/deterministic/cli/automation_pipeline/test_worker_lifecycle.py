@@ -5,9 +5,14 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from autonomy.decision_cycle.steps import decision_steps
+from autonomy.runtime.session import RunConfiguration
+from implementations.runtime.picar import AutonomyPilotPart, create_host
 from unittest.mock import patch
 from cli.automa_cli.automation import (
     CommandResult,
+    _wait_for_automation_startup,
     record_vehicle_automation_terminal_result,
     start_vehicle_automation_background,
     stop_vehicle_automation,
@@ -19,6 +24,79 @@ from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
 
 
 class AutomationLivePipelineTests(unittest.TestCase):
+    def test_picar_stale_decoder_cannot_stop_restart_or_overwrite_its_drive_mode(self):
+        controller = SimpleNamespace(mode="user", angle=0., throttle=0., mode_latch=None)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), controller=controller)
+        self.addCleanup(part.shutdown)
+        decoded, fail_old, failed = threading.Event(), threading.Event(), threading.Event()
+        starting, finish_start = threading.Event(), threading.Event()
+        errors = []
+        def old_loader():
+            decoded.set()
+            if not fail_old.wait(2):
+                raise TimeoutError("test did not release old decoder")
+            failed.set()
+            raise ValueError("retired decoder")
+        original_start = part.host.start
+        def blocked_start(*args, **kwargs):
+            starting.set()
+            if not finish_start.wait(2):
+                raise TimeoutError("test did not release start")
+            return original_start(*args, **kwargs)
+        def restart():
+            try:
+                part.start(RunConfiguration(mode="autonomy"))
+            except Exception as exc:
+                errors.append(exc)
+        part.start(RunConfiguration(mode="observe_only"))
+        part.submit(None, frame_id="old", image_loader=old_loader)
+        self.assertTrue(decoded.wait(1))
+        with patch.object(part.host, "start", side_effect=blocked_start):
+            worker = threading.Thread(target=restart, daemon=True)
+            worker.start()
+            try:
+                self.assertTrue(starting.wait(1))
+                began = time.monotonic()
+                part.publish_latest()
+                self.assertLess(time.monotonic()-began, .25, "publication waited for lifecycle transport")
+                fail_old.set()
+                self.assertTrue(failed.wait(1))
+            finally:
+                fail_old.set()
+                finish_start.set()
+                worker.join(2)
+                part.wait_for_cycle()
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(part.host.run_state, "running")
+        self.assertEqual(part.host.execution.mode, "autonomy")
+        self.assertEqual((controller.mode, controller.mode_latch), ("local", "local"))
+        self.assertIsNone(part.host.last_error)
+
+
+    def test_startup_accepts_a_correlated_view_that_advanced_during_export(self) -> None:
+        state = {
+            "status": "running", "pid": _RunningProcess.pid, "run_id": "current-run",
+            "frames_received": 3, "processed_count": 2,
+            "last_frame": {"frame_id": "frame_000001"},
+        }
+        view = {
+            "available": True, "url": "http://127.0.0.1:8555/",
+            "has_perception": True, "latest_perception_frame_id": "frame_000002",
+            "perception_frame_buffered": True,
+        }
+        with (
+            patch("cli.automa_cli.automation._read_json", return_value=state),
+            patch("cli.automa_cli.automation.get_perception_view_status", return_value=view) as status,
+        ):
+            result = _wait_for_automation_startup(
+                process=_RunningProcess(), automation_dir=Path("unused"), timeout_s=0.2,
+            )
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["frame_id"], "frame_000002")
+        self.assertEqual(status.call_args.kwargs["expected_run_id"], "current-run")
+        self.assertEqual(status.call_args.kwargs["expected_worker_pid"], _RunningProcess.pid)
+
     def test_background_start_fails_when_child_exits_before_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
@@ -65,7 +143,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                         {
                             "status": "running",
                             "pid": _RunningProcess.pid,
-                            "frames_captured": 1,
+                            "frames_received": 1,
                             "processed_count": 1,
                             "last_capture": {
                                 "frame_id": "frame_000000",

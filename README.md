@@ -786,10 +786,12 @@ rebuilt from the current catalog, including its configs; any other staged
 selection keeps its plugins, specs and configs. Every deployed step records the
 same release and bundle paths. The Pi loads those activations. The Donkey assembly runs the
 shared autonomy cycle independently of `run_pilot`. The drive loop still runs at
-`DRIVE_LOOP_HZ` (20 Hz). It captures a sample only when the frame loop is due,
-which is as soon as the previous cycle finishes, so `/autonomy/camera/latest`
-updates when the decision worker is free. The background decision worker runs
-the cycle on that sample at once, and no backlog builds. The matched result remains
+`DRIVE_LOOP_HZ` (20 Hz) and submits a detached sample every tick, so
+`/autonomy/camera/latest` updates at the drive-loop rate. Each background
+decision takes the newest waiting sample; received samples increment
+`frames_received` and waiting samples replaced by newer arrivals increment
+`frames_dropped`. No backlog builds. A memory halt keeps camera inspection
+available without accumulating pending work or overload drops. The matched result remains
 `/autonomy/observation/latest`. While mode remains `user`, pilot outputs stay
 zero and Donkey DriveMode keeps manual input authoritative.
 
@@ -844,7 +846,11 @@ old `hold` activation, stage `selected` on that vehicle. `hold` remains availabl
 as a deliberately idle plugin; a custom action plugin can change the requested
 command but cannot bypass runtime movement authority.
 
-Capture status uses `frames_captured` on both vehicles.
+Capture status uses only `frames_received` and `frames_dropped` on both vehicles
+and the Chase stream. Received frames are distinct captures accepted at
+runtime ingress; dropped frames are received captures replaced before processing.
+Counters accumulate for the host process; run summaries show deltas. Intentional
+halt/stop discards and uncaptured simulator frame-index gaps are excluded.
 Automation `run` and `restart` use `--num-decisions` in place of `--frames`.
 Run configuration and automation status use `num_decisions` (zero means
 unbounded, explicitly requested with `--unbounded` for movement-enabled runs); host session status
@@ -938,11 +944,15 @@ The Donkey server exposes:
 - `http://piracer.local:8887/autonomy/status`
 - `http://piracer.local:8887/autonomy/observation/latest`
 - `http://piracer.local:8887/autonomy/observation/latest/frame.jpg`
+- `http://piracer.local:8887/autonomy/observation/transaction`
 
 `/frame.jpg` is the live camera feed. The `/autonomy/observation/latest*`
 endpoints publish the exact onboard-processed frame and its matching
 findings (in-memory only; no default history or disk writes). The JPEG
 response includes `X-Frame-Id` so clients can pair image and JSON.
+The CLI viewer uses `/autonomy/observation/transaction`, which returns the
+publication and its JPEG together so a newer frame cannot split the pair
+between requests over Wi-Fi.
 
 Run the optional local DonkeyCar frontend with:
 

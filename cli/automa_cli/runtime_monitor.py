@@ -21,8 +21,7 @@ from autonomy.runtime.client import RuntimeClient
 from .paths import display_path
 from .perception_view import perception_view_ready
 from .host_publications import (
-    fetch_observation_publication, fetch_observation_frame,
-    frame_id_from_headers, publication_to_frame_record, perception_text_from_publication,
+    fetch_observation_sample, TransactionCache, publication_to_frame_record, perception_text_from_publication,
 )
 from .run_record import (
     control_source, finish_run, frame_line, frame_readiness,
@@ -35,19 +34,39 @@ from .staged_bundle import write_json_atomically
 from .plugin_catalog import PluginCatalogClient
 
 MONITOR_POLL_INTERVAL_S = 0.1
+PERCEPTION_COPY_INTERVAL_S = 1 / 30
 # The decision copy stays off the recording export. A batch can take longer
 # than the decision stays fresh, so the copy cannot wait for that read.
-DECISION_COPY_INTERVAL_S = 0.05
+DECISION_COPY_INTERVAL_S = 1 / 30
+MAX_POLL_GAP_S = 0.1
 
 
-def _frames_captured(host: dict[str, Any]) -> int:
+def _pause_s(started: float, interval_s: float) -> float:
+    """Target the interval on fast hosts; back off after slower passes.
+
+    A 30 ms pass waits 30 ms (~16.7 Hz); a 200 ms pass waits 100 ms.
+    """
+    elapsed = max(0.0, time.monotonic() - started)
+    return max(interval_s - elapsed, min(elapsed, MAX_POLL_GAP_S))
+
+
+def _frames_received(host: dict[str, Any]) -> int:
     """The host's cumulative camera capture counter."""
 
     components = host.get("components") if isinstance(host.get("components"), dict) else {}
     observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
-    count = observation.get("frames_captured")
+    count = observation.get("frames_received")
     if type(count) is not int or count < 0:
-        raise RuntimeError("The runtime host does not report a capture counter; update core and autonomy.")
+        raise RuntimeError("The runtime host does not report a received-frame counter; update core and autonomy.")
+    return count
+
+
+def _frames_dropped(host: dict[str, Any]) -> int:
+    components = host.get("components") if isinstance(host.get("components"), dict) else {}
+    observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
+    count = observation.get("frames_dropped")
+    if type(count) is not int or count < 0:
+        raise RuntimeError("The runtime host does not report a dropped-frame counter; update core and autonomy.")
     return count
 
 
@@ -71,6 +90,7 @@ def _copy_latest_decision(
     """
 
     while not stop.is_set():
+        started = time.monotonic()
         try:
             published = decision_view.refresh()
             reason = "decision_view_exact_transaction_unavailable"
@@ -79,7 +99,50 @@ def _copy_latest_decision(
             server.decision.invalidate_latest()
             published, reason = False, f"{type(exc).__name__}: {exc}"
         copied["result"] = (published, reason)
-        stop.wait(DECISION_COPY_INTERVAL_S)
+        stop.wait(_pause_s(started, DECISION_COPY_INTERVAL_S))
+
+
+def _copy_latest_perception(
+    base_url: str, server: RuntimeViewServer, stop: threading.Event,
+    copied: dict[str, Any], *, frames_dir: Path, json_path: Path, text_path: Path,
+    identity: dict[str, Any], timeout_s: float,
+) -> None:
+    """Perception never waits for the monitor's recording export."""
+    cache = TransactionCache()
+    last_capture = None
+    try:
+        while not stop.is_set():
+            started = time.monotonic()
+            try:
+                publication, jpeg = fetch_observation_sample(base_url, timeout_s=timeout_s, cache=cache)
+                if stop.is_set():
+                    break
+                frame = publication_to_frame_record(publication)
+                capture = (frame.get("frame_id"), frame.get("captured_at_ms"),
+                           frame.get("perception_completed_at_ms"), frame.get("generation_id"))
+                if jpeg is None:
+                    server.perception.invalidate_latest()
+                    last_capture = None
+                    copied["error"] = publication.get("error") or publication.get("health")
+                elif capture != last_capture and frame.get("frame_id"):
+                    frame.update(identity)
+                    frame_path = frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
+                    frame_path.write_bytes(jpeg)
+                    server.perception.publish_matched(frame_path=frame_path, frame_record=frame)
+                    write_json_atomically(json_path, frame)
+                    text_path.write_text(perception_text_from_publication(publication) + "\n", encoding="utf-8")
+                    last_capture = capture
+                    copied["frame"] = frame
+                    copied["error"] = None
+            except Exception as exc:
+                server.perception.invalidate_latest()
+                last_capture = None
+                copied["error"] = f"{type(exc).__name__}: {exc}"
+            finally:
+                copied["ready"].set()
+            stop.wait(_pause_s(started, PERCEPTION_COPY_INTERVAL_S))
+    finally:
+        copied["ready"].set()
 
 
 def _join_decision_copy(copier: threading.Thread | None, stop: threading.Event) -> None:
@@ -105,6 +168,8 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
     run_dir = None
     recording_id = None
     copier = None
+    perception_copier = None
+    perception_copy: dict[str, Any] = {"frame": None, "error": None, "ready": threading.Event()}
     stop_copy = threading.Event()
     copied: dict[str, tuple[bool, str] | None] = {"result": None}
     state = new_run_state(
@@ -118,7 +183,8 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
     state.update(selections=selections, decision=decision)
     try:
         host = _host_status(client)
-        capture_base = _frames_captured(host)
+        capture_base = _frames_received(host)
+        dropped_base = _frames_dropped(host)
         record_host_status(state, host)
         response = client.start(configuration, record=True) if record else client.start(configuration)
         run_id = str(response["host_run_id"])
@@ -153,91 +219,88 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
         )
         worker.start()
         copier = worker
+        perception_copier = threading.Thread(
+            target=_copy_latest_perception, args=(base_url, server, stop_copy, perception_copy),
+            kwargs={"frames_dir": frames_dir, "json_path": latest_json_path, "text_path": latest_text_path,
+                    "timeout_s": timeout_s,
+                    "identity": {key: state[key] for key in ("run_id", "steps", "action_policy", "control_source", "control_application")}},
+            name="automa-perception-copy", daemon=True,
+        )
+        perception_copier.start()
+        perception_copy["ready"].wait(min(1.0, timeout_s))
         last_capture = None
         frames_seen = 0
         while True:
+            poll_started = time.monotonic()
             runtime = client.status()
             if runtime["host_run_id"] != run_id:
                 raise RuntimeError("the runtime host restarted during this run")
             session = runtime["session"]
             host = _host_status(client)
+            dropped = _frames_dropped(host)
             state.update(
+                frames_dropped=max(0, dropped - dropped_base),
                 session=session, execution=session["execution"],
                 processed_count=session["processed_decisions"],
-                frames_captured=max(0, _frames_captured(host) - capture_base),
+                frames_received=max(0, _frames_received(host) - capture_base),
             )
             record_host_status(state, host)
+            if session["status"] in {"starting", "stopping"}:
+                state["updated_at_ms"] = timestamp_ms()
+                write_json_atomically(state_path, state)
+                time.sleep(_pause_s(poll_started, MONITOR_POLL_INTERVAL_S))
+                continue
+            if session["status"] != "running":
+                perception_copy["ready"].clear()
+                perception_copy["ready"].wait(min(timeout_s, 0.5))
             # A terminal session is drained before manual observations can replace
             # its final decision in the live latest-only publication.
             if run_dir is not None and session["status"] != "running":
                 break
-            # The host captures at its own cadence; the monitor never executes
-            # a decision or chooses a vehicle command. The decision copy runs
-            # beside this poll, which exports one recording batch per pass.
-            publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
-            frame = publication_to_frame_record(publication)
-            frame_id = frame.get("frame_id")
-            # A paused simulator repeats its frame index, so a new cycle is a new capture.
-            capture = (frame_id, frame.get("captured_at_ms"))
-            if frame_id and capture != last_capture and session["processed_decisions"]:
-                jpeg, headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
-                if frame_id_from_headers(headers) == frame_id:
-                    frame.update(
-                        run_id=run_id, steps=state["steps"],
-                        action_policy=state["action_policy"],
-                        control_source=state["control_source"],
-                        control_application=state["control_application"],
-                    )
-                    result = copied["result"]
-                    if result is not None and not result[0] and state["decision"]["published"]:
-                        state["decision"]["latest_frame_publish_skips"] += 1
-                        state["decision"]["latest_frame_publish_skip_reason"] = result[1]
-                    # The decision copy publishes the matched decision image on
-                    # its own thread. This perception frame is the observation
-                    # the run record keeps.
-                    frame_path = frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
-                    frame_path.write_bytes(jpeg)
-                    server.perception.publish_frame(frame_path=frame_path, frame_record=frame)
-                    server.perception.publish_perception(frame_record=frame)
-                    write_json_atomically(latest_json_path, frame)
-                    perception_text = perception_text_from_publication(publication) + "\n"
-                    latest_text_path.write_text(perception_text, encoding="utf-8")
-                    frame_json_path, frame_text_path = latest_json_path, latest_text_path
-                    captured_at_ms = frame.get("captured_at_ms")
-                    found = frame["perception"] or {}
-                    signals, things = len(found.get("signals") or []), len(found.get("things") or [])
-                    completed_at_ms = frame.get("perception_completed_at_ms")
-                    state["last_capture"] = {
-                        "frame_id": frame_id,
-                        "frame_index": frame.get("frame_index"),
-                        "captured_at_ms": captured_at_ms,
-                        "front_camera": display_path(frame_path),
-                    }
-                    state["last_frame"] = {
-                        "frame_id": frame_id,
-                        "frame_index": frame.get("frame_index"),
-                        "captured_at_ms": captured_at_ms,
-                        "perception_completed_at_ms": completed_at_ms,
-                        "perception_duration_ms": frame.get("perception_duration_ms"),
-                        "capture_to_perception_ms": (
-                            completed_at_ms - captured_at_ms
-                            if isinstance(completed_at_ms, int) and isinstance(captured_at_ms, int)
-                            else None
-                        ),
-                        "cycle_duration_ms": frame.get("cycle_duration_ms"),
-                        "perception_json": display_path(frame_json_path),
-                        "perception_text": display_path(frame_text_path),
-                        "things": things,
-                        "signals": signals,
-                        "control": frame.get("control"),
-                        "generation_id": frame.get("generation_id"),
-                    }
-                    last_capture = capture
-                    frames_seen += 1
-                    if output is not None and reports_frame(frames_seen, verbose=verbose):
-                        action = (frame.get("control") or {}).get("reason")
-                        line = frame_line(frame_id, signals=signals, things=things, action=action)
-                        print(line, file=output, flush=True)
+            # Both view copiers run independently of this status/export pass.
+            frame = perception_copy["frame"]
+            frame_id = frame.get("frame_id") if frame else None
+            capture = (frame_id, frame.get("captured_at_ms")) if frame else None
+            if frame_id and capture != last_capture:
+                result = copied["result"]
+                if result is not None and not result[0] and state["decision"]["published"]:
+                    state["decision"]["latest_frame_publish_skips"] += 1
+                    state["decision"]["latest_frame_publish_skip_reason"] = result[1]
+                captured_at_ms = frame.get("captured_at_ms")
+                found = frame["perception"] or {}
+                signals, things = len(found.get("signals") or []), len(found.get("things") or [])
+                completed_at_ms = frame.get("perception_completed_at_ms")
+                state["last_capture"] = {
+                    "frame_id": frame_id,
+                    "frame_index": frame.get("frame_index"),
+                    "captured_at_ms": captured_at_ms,
+                    "front_camera": display_path(frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"),
+                }
+                state["last_frame"] = {
+                    "frame_id": frame_id,
+                    "frame_index": frame.get("frame_index"),
+                    "captured_at_ms": captured_at_ms,
+                    "perception_completed_at_ms": completed_at_ms,
+                    "perception_duration_ms": frame.get("perception_duration_ms"),
+                    "capture_to_perception_ms": (
+                        completed_at_ms - captured_at_ms
+                        if isinstance(completed_at_ms, int) and isinstance(captured_at_ms, int)
+                        else None
+                    ),
+                    "cycle_duration_ms": frame.get("cycle_duration_ms"),
+                    "perception_json": display_path(latest_json_path),
+                    "perception_text": display_path(latest_text_path),
+                    "things": things,
+                    "signals": signals,
+                    "control": frame.get("control"),
+                    "generation_id": frame.get("generation_id"),
+                }
+                last_capture = capture
+                frames_seen += 1
+                if output is not None and reports_frame(frames_seen, verbose=verbose):
+                    action = (frame.get("control") or {}).get("reason")
+                    line = frame_line(frame_id, signals=signals, things=things, action=action)
+                    print(line, file=output, flush=True)
             # One batch keeps the export near the capture rate. The stop path
             # drains whatever remains, and the decision copy does not wait here.
             if run_dir is not None:
@@ -251,10 +314,11 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
             write_json_atomically(state_path, state)
             if session["status"] != "running":
                 break
-            time.sleep(MONITOR_POLL_INTERVAL_S)
+            time.sleep(_pause_s(poll_started, MONITOR_POLL_INTERVAL_S))
     except KeyboardInterrupt:
         stop_error = _stop(client, state, run_dir=run_dir, recording_id=recording_id)
         _join_decision_copy(copier, stop_copy)
+        _join_decision_copy(perception_copier, stop_copy)
         if stop_error is None:
             finish_run(state, server, status="stopped", stop_reason="keyboard_interrupt")
         else:
@@ -263,6 +327,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
         error = f"{type(exc).__name__}: {exc}"
         stop_error = _stop(client, state, run_dir=run_dir, recording_id=recording_id)
         _join_decision_copy(copier, stop_copy)
+        _join_decision_copy(perception_copier, stop_copy)
         finish_run(state, server, status="error",
                    error=error if stop_error is None else f"{error}; {stop_error}")
     else:
@@ -270,6 +335,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
         reason = session["status"]
         stop_error = _stop(client, state, run_dir=run_dir, recording_id=recording_id)
         _join_decision_copy(copier, stop_copy)
+        _join_decision_copy(perception_copier, stop_copy)
         if reason == "error":
             finish_run(state, server, status="error", stop_reason=reason,
                        error=host.get("last_error") or "the runtime cycle failed")

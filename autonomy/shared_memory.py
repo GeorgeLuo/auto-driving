@@ -63,18 +63,17 @@ class SharedMemoryValueError(ValueError):
         super().__init__(f"{path}: {detail}")
 
 
-def read_shared_memory_file(path: str | Path) -> dict[str, Any]:
-    """Read a validated document; hosts decode a fresh map for each run."""
+def read_shared_memory_file(path: str | Path) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Decode a file into a fresh map; return the map and the document it holds."""
 
     try:
         document = json.loads(Path(path).read_text(encoding="utf-8"))
-    except json.JSONDecodeError as exc:
-        raise SharedMemoryValueError(str(path), f"not JSON: {exc}") from exc
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise SharedMemoryValueError(str(path), f"not UTF-8 JSON: {exc}") from exc
     try:
-        shared_memory_from_document(document)
+        return shared_memory_from_document(document), document
     except SharedMemoryValueError as exc:
         raise SharedMemoryValueError(str(path), str(exc)) from exc
-    return document
 
 
 def shared_memory_document(shared_memory: Mapping[str, Any]) -> dict[str, Any]:
@@ -197,6 +196,10 @@ def _load_record_class(spec: str, path: str) -> type:
         module = importlib.import_module(module_name)
     except ImportError as exc:
         raise SharedMemoryValueError(path, f"unknown module {module_name!r}") from exc
+    except Exception as exc:
+        raise SharedMemoryValueError(
+            path, f"{module_name} import failed ({type(exc).__name__}: {exc})"
+        ) from exc
     current: Any = module
     for part in qualname.split("."):
         if not part.isidentifier():

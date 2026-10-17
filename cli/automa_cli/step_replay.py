@@ -20,8 +20,8 @@ from autonomy.decision_cycle.steps import builtin_activation
 from implementations.decision_cycle.catalog import selection_activation
 
 from .inspection_runs import (
-    recorded_runner, recorded_selection, recorded_selections, replay_step, replayed_selection,
-    selection_report,
+    SharedMemorySeed, recorded_runner, recorded_selection, recorded_selections, replay_step,
+    replayed_selection, selection_report,
 )
 from .paths import safe_path_part
 from .workbench_frames import FrameOutcome, run_frame
@@ -63,27 +63,27 @@ def default_selection(step: str) -> StepActivation | None:
 class StepReplay:
     """Step runners that replay a source with the selections it recorded.
 
-    Each step uses its override, else the selection ``first_frame`` recorded,
-    else the selection the source recorded, else ``default_selection``. A frame
-    that recorded a restage replaces that step's selection from then on, unless
-    the step is overridden; the replaced runner is reset over the map. Starting
-    from the first frame's selection, its restage keeps the runners and the map.
-    Constructing the runners raises before any frame runs, including for a
-    recorded release that is not available locally.
-    An optional shared-memory map starts the run with host-supplied history.
+    Each step uses its override, else the selection the source's first frame
+    recorded, else the selection the source recorded, else
+    ``default_selection``. A frame that recorded a restage replaces that step's
+    selection from then on, unless the step is overridden; the replaced runner
+    is reset over the map. Starting from the first frame's selection, its
+    restage keeps the runners and the map. Constructing the runners raises
+    before any frame runs, including for a recorded release that is not
+    available locally. A seed starts the run from its decoded map.
     """
 
     def __init__(
         self,
+        image_source: ImageSource,
         manifest: dict[str, Any],
         *,
         steps: tuple[str, ...],
         overrides: dict[str, StepActivation] | None = None,
-        first_frame: ReplayFrame | None = None,
-        shared_memory: dict[str, Any] | None = None,
+        seed: SharedMemorySeed | None = None,
     ) -> None:
         self.overrides = dict(overrides or {})
-        first = recorded_selections(first_frame.metadata) if first_frame is not None else {}
+        first = recorded_selections(image_source.frames[0].metadata)
         recorded = recorded_selections(manifest)
         self.activations: dict[str, StepActivation | None] = {}
         for step in steps:
@@ -99,7 +99,7 @@ class StepReplay:
             step: recorded_runner(activation) if activation is not None else None
             for step, activation in self.activations.items()
         }
-        self.shared_memory = shared_memory if shared_memory is not None else {}
+        self.shared_memory = seed.shared_memory if seed is not None else {}
 
     def restage(self, frame: ReplayFrame) -> None:
         """Apply this frame's recorded selections, unless the step is overridden."""

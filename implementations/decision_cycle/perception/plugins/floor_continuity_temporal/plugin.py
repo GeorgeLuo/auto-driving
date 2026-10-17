@@ -21,6 +21,11 @@ from implementations.decision_cycle.perception.feeds.camera import (
     FRONT_CAMERA_RGB_INPUT,
 )
 from implementations.decision_cycle.perception.plugins.floor_continuity.plugin import FloorContinuityPlugin
+from implementations.decision_cycle.perception.shared.serialization.history import (
+    history_bbox,
+    history_float,
+    history_int,
+)
 
 
 class TemporalFloorContinuityPlugin:
@@ -103,20 +108,13 @@ class TemporalFloorContinuityPlugin:
         self._initialize_history()
         if not isinstance(history, dict):
             return
-        bbox = history.get("last_bbox")
-        if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
-            try:
-                self._last_bbox = tuple(float(value) for value in bbox)
-            except (TypeError, ValueError):
-                self._last_bbox = None
-        confidence = history.get("last_confidence")
-        if type(confidence) in (int, float):
-            self._last_confidence = float(confidence)
-        misses = history.get("misses")
-        age = history.get("age")
-        if type(misses) is int:
+        self._last_bbox = history_bbox(history.get("last_bbox"))
+        self._last_confidence = history_float(history.get("last_confidence"))
+        misses = history_int(history.get("misses"))
+        age = history_int(history.get("age"))
+        if misses is not None:
             self._misses = misses
-        if type(age) is int:
+        if age is not None:
             self._age = age
 
     def _history(self) -> dict[str, Any]:

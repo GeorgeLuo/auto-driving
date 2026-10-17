@@ -91,8 +91,6 @@ class MemoryPluginRuntime:
         if shared_memory is not None:
             self._shared_memory = shared_memory
         try:
-            if self._shared_memory is None:
-                raise ValueError("memory reset requires a shared-memory map")
             reset_plugin(self.implementation, self._shared_memory)
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - step isolation boundary

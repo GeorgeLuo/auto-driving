@@ -9,7 +9,7 @@ whatever is checked out or staged now.
 
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -19,21 +19,35 @@ from autonomy.decision_cycle.activation import (
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.plugin_loader import code_source_from_activation, load_runner
 from autonomy.runtime.recording import recorded_selections
-from autonomy.shared_memory import read_shared_memory_file, shared_memory_from_document
+from autonomy.shared_memory import read_shared_memory_file
 from implementations.decision_cycle.catalog import selection_activation
 
 from .runtime_hosts import release_code_dir
 
 
-def read_shared_memory_seed(
-    path: Path | None,
-) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-    """A fresh run map and its original file document as provenance."""
+@dataclass(frozen=True)
+class SharedMemorySeed:
+    """A run's starting map and the file document it was decoded from."""
+
+    path: Path
+    document: dict[str, Any]
+    shared_memory: dict[str, Any]
+
+
+def read_shared_memory_seed(path: Path | None) -> SharedMemorySeed | None:
+    """Decode the file once into a fresh run map, keeping its document."""
 
     if path is None:
-        return None, None
-    document = read_shared_memory_file(path)
-    return shared_memory_from_document(document), {"path": str(path), "document": document}
+        return None
+    shared_memory, document = read_shared_memory_file(path)
+    return SharedMemorySeed(path, document, shared_memory)
+
+
+def add_seed_provenance(report: dict[str, Any], seed: SharedMemorySeed | None) -> None:
+    """Record a seeded run's file path and document under ``shared_memory_seed``."""
+
+    if seed is not None:
+        report["shared_memory_seed"] = {"path": str(seed.path), "document": seed.document}
 
 
 def replay_step(runner: Any, activation: StepActivation | None, shared_memory: dict[str, Any]) -> Any:

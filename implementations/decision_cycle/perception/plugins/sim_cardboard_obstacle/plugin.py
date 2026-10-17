@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 import cv2
 import numpy as np
@@ -22,14 +21,14 @@ from implementations.decision_cycle.perception.feeds.camera import (
     CameraFrame,
     FRONT_CAMERA_RGB_INPUT,
 )
+from implementations.decision_cycle.perception.shared.obstructions.boxes import zone
 
 
 @dataclass(frozen=True)
 class _Obstacle:
-    present: bool
-    bbox_xyxy_norm: tuple[float, float, float, float] | None = None
-    area_fraction: float = 0.0
-    solidity: float = 0.0
+    bbox_xyxy_norm: tuple[float, float, float, float]
+    area_fraction: float
+    solidity: float
 
 
 class SimCardboardObstaclePlugin:
@@ -83,16 +82,12 @@ class SimCardboardObstaclePlugin:
             close_px=self.close_px,
             open_px=self.open_px,
         )
-        # Retain the primary-box fields for readers of the original detector.
-        primary = obstacles[0] if obstacles else _Obstacle(False)
         return PerceptionEvidenceBatch(
-            signals=(_sight_signal(primary, len(obstacles)),),
+            signals=(_sight_signal(obstacles),),
             things=tuple(_obstacle_thing(obstacle, index) for index, obstacle in enumerate(obstacles)),
             measurements={
                 "working_width": int(working.shape[1]),
                 "working_height": int(working.shape[0]),
-                "obstacle": _obstacle_dict(primary),
-                "obstacles": [_obstacle_dict(obstacle) for obstacle in obstacles],
             },
         )
 
@@ -145,7 +140,6 @@ def _detect(
             )
             solidity = area / max(1, (x2 - x1 + 1) * (y2 - y1 + 1))
             obstacles.append(_Obstacle(
-                present=True,
                 bbox_xyxy_norm=bbox,
                 area_fraction=round(float(fraction), 5),
                 solidity=round(float(min(1.0, solidity)), 5),
@@ -230,12 +224,12 @@ def _kernel(size: int) -> np.ndarray:
 def _obstacle_thing(obstacle: _Obstacle, index: int) -> PerceivedThing:
     bbox = obstacle.bbox_xyxy_norm
     return PerceivedThing(
-        thing_id="cardboard_obstacle" if index == 0 else f"cardboard_obstacle_{index:03d}",
+        thing_id=f"cardboard_obstacle_{index:03d}",
         kind="obstruction_evidence",
         label="cardboard obstacle",
         location=ViewLocation(
             frame="image",
-            zone=_zone(bbox),
+            zone=zone(bbox),
             bbox_xyxy_norm=bbox,
         ),
         confidence=obstacle.solidity,
@@ -243,50 +237,14 @@ def _obstacle_thing(obstacle: _Obstacle, index: int) -> PerceivedThing:
             "evidence": "cardboard_color",
             "area_fraction": obstacle.area_fraction,
             "solidity": obstacle.solidity,
-            "direction": _direction(bbox),
         },
     )
 
 
-def _sight_signal(obstacle: _Obstacle, count: int) -> PerceptionSignal:
+def _sight_signal(obstacles: tuple[_Obstacle, ...]) -> PerceptionSignal:
     return PerceptionSignal(
         signal_id="obstacle_in_sight",
-        value=obstacle.present,
-        confidence=obstacle.solidity if obstacle.present else 0.0,
-        properties={
-            "obstacle_count": count,
-            "bbox_xyxy_norm": obstacle.bbox_xyxy_norm,
-            "area_fraction": obstacle.area_fraction,
-            "direction": _direction(obstacle.bbox_xyxy_norm),
-        },
+        value=bool(obstacles),
+        confidence=max((obstacle.solidity for obstacle in obstacles), default=0.0),
+        properties={"obstacle_count": len(obstacles)},
     )
-
-
-def _obstacle_dict(obstacle: _Obstacle) -> dict[str, Any]:
-    return {
-        "present": obstacle.present,
-        "bbox_xyxy_norm": obstacle.bbox_xyxy_norm,
-        "area_fraction": obstacle.area_fraction,
-        "solidity": obstacle.solidity,
-        "direction": _direction(obstacle.bbox_xyxy_norm),
-        "zone": _zone(obstacle.bbox_xyxy_norm),
-    }
-
-
-def _direction(bbox: tuple[float, float, float, float] | None) -> str:
-    if bbox is None:
-        return "unknown"
-    center = (bbox[0] + bbox[2]) / 2.0
-    if center < 0.4:
-        return "left"
-    if center > 0.6:
-        return "right"
-    return "center"
-
-
-def _zone(bbox: tuple[float, float, float, float] | None) -> str:
-    if bbox is None:
-        return "unknown"
-    center_y = (bbox[1] + bbox[3]) / 2.0
-    vertical = "near" if center_y > 0.66 else "far" if center_y < 0.33 else "mid"
-    return f"{vertical}_{_direction(bbox)}"

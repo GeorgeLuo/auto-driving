@@ -31,14 +31,17 @@ from implementations.decision_cycle.perception.plugins.motion_tracks.plugin impo
 )
 from implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin import (
     MultiObstructionTracksPlugin,
+    _restore_history as restore_obstruction_history,
 )
 from implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin import (
     SimCardboardObstaclePlugin,
 )
 from implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin import (
     SimCardboardPermanencePlugin,
+    _restore_history as restore_cardboard_history,
 )
 from implementations.decision_cycle.perception.shared.image.stored import StoredImage
+from implementations.decision_cycle.perception.shared.obstructions.tracker import ObstructionTrackState
 from tests.deterministic.implementations.decision_cycle.perception.tracks_replay import (
     OBSTRUCTION_LEFT_EDGES,
     perceive_frame,
@@ -86,7 +89,7 @@ def _inputs(
     )
 
 
-def _feature_things(index: int, rgb: np.ndarray) -> tuple[Any, ...]:
+def _detection_things(index: int, rgb: np.ndarray) -> tuple[Any, ...]:
     batch = SimCardboardObstaclePlugin().perceive(_inputs(index, rgb, {}))
     return tuple(
         replace(thing, source_plugin_id="sim_cardboard_obstacle") for thing in batch.things
@@ -126,13 +129,13 @@ class SharedMemoryValueTests(unittest.TestCase):
         scene[25:65, 10:40] = (158, 107, 56)
         scene[45:75, 100:125] = (158, 107, 56)
         memory: dict[str, Any] = {}
-        SimCardboardPermanencePlugin().perceive(_inputs(0, scene, memory, _feature_things(0, scene)))
+        SimCardboardPermanencePlugin().perceive(_inputs(0, scene, memory, _detection_things(0, scene)))
         restored = _round_trip(memory)
         shifted = np.roll(scene, 3, axis=1)
-        features = _feature_things(1, shifted)
+        detections = _detection_things(1, shifted)
 
-        original = SimCardboardPermanencePlugin().perceive(_inputs(1, shifted, memory, features))
-        replayed = SimCardboardPermanencePlugin().perceive(_inputs(1, shifted, restored, features))
+        original = SimCardboardPermanencePlugin().perceive(_inputs(1, shifted, memory, detections))
+        replayed = SimCardboardPermanencePlugin().perceive(_inputs(1, shifted, restored, detections))
 
         self.assertEqual(len(original.things), 2)
         self.assertEqual(_emitted(original), _emitted(replayed))
@@ -144,17 +147,17 @@ class SharedMemoryValueTests(unittest.TestCase):
         scene[30:70, 40:100] = (158, 107, 56)
         memory: dict[str, Any] = {}
         SimCardboardPermanencePlugin().perceive(
-            _inputs(0, scene, memory, _feature_things(0, scene))
+            _inputs(0, scene, memory, _detection_things(0, scene))
         )
         restored = _round_trip(memory)
         shifted = np.roll(scene, 4, axis=1)
-        shifted_features = _feature_things(1, shifted)
+        shifted_detections = _detection_things(1, shifted)
 
         original = SimCardboardPermanencePlugin().perceive(
-            _inputs(1, shifted, memory, shifted_features)
+            _inputs(1, shifted, memory, shifted_detections)
         )
         replayed = SimCardboardPermanencePlugin().perceive(
-            _inputs(1, shifted, restored, shifted_features)
+            _inputs(1, shifted, restored, shifted_detections)
         )
 
         self.assertEqual(_emitted(original), _emitted(replayed))
@@ -198,6 +201,23 @@ class SharedMemoryValueTests(unittest.TestCase):
                 self.assertGreater(history["next_track_id"], 4)
                 ids = [item["track_id"] for item in history["tracks"]]
                 self.assertEqual(len(ids), len(set(ids)))
+
+    def test_every_history_counter_takes_only_a_json_integer(self) -> None:
+        """Regression: motion and multi-obstruction read "9", True or 9.5 as a next id."""
+
+        for recorded, valid in ((9, True), ("9", False), (True, False), (9.5, False)):
+            with self.subTest(next_id=recorded):
+                motion = MotionTracksPlugin()
+                motion._restore_history({"tracks": [], "next_track_id": recorded})
+                tracker = ObstructionTrackState()
+                restore_obstruction_history(tracker, {"tracks": [], "next_track_id": recorded})
+                _objects, next_object_id = restore_cardboard_history(
+                    {"objects": [], "next_object_id": recorded}
+                )
+
+                self.assertEqual(motion._next_track_id, 9 if valid else 1)
+                self.assertEqual(tracker._next_track_id, 9 if valid else 0)
+                self.assertEqual(next_object_id, 9 if valid else 1)
 
     def test_motion_tracks_match_after_a_round_trip(self) -> None:
         rgb = np.random.default_rng(7).integers(0, 256, (72, 96, 3), dtype=np.uint8)

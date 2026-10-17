@@ -26,6 +26,9 @@ plugin lives in `plugins/frame/`.
   plugins inside frame execution; an error in that reset is isolated as the
   plugin's frame error. A `partial` frame can include an empty or warming-up
   plugin alongside an error or unavailable plugin; it need not contain evidence.
+- `inputs.prior_things` holds the things earlier plugins emitted this frame,
+  in selection order. They are the same objects the frame publishes, so read
+  them and build new things from them; never modify one or its `properties`.
 - Reuse goes through `../shared/`. Subclassing another plugin's public class
   is allowed. Importing another plugin's private names is not.
 - Variants of a plugin, such as `floor_continuity_temporal`, get their own

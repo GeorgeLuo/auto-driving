@@ -14,10 +14,12 @@ from PIL import Image
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.app import build_parser
 from cli.automa_cli.decision_steps import inspect_decision_step
+from cli.automa_cli.inspection_runs import SharedMemorySeed
 from cli.automa_cli.memory_runs import inspect_memory
 from cli.automa_cli.perception_runs import inspect_perception
 from cli.automa_cli.step_replay import StepReplay
 from cli.automa_cli.vehicle_access import VehicleAccess
+from cli.automa_cli.workbench_source import normalize_image_file
 from implementations.decision_cycle.catalog import selection_activation
 
 KEY = "perception.sim_cardboard_permanence.history"
@@ -257,7 +259,7 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         saved = json.loads((self.record_root / report["run_id"] / "report.json").read_text(encoding="utf-8"))
         self.assertEqual(saved["shared_memory_seed"]["document"], self.document)
 
-    def test_a_replay_uses_the_supplied_map_even_when_it_is_empty(self) -> None:
-        memory = {}
-        replay = StepReplay({}, steps=("perception",), shared_memory=memory)
-        self.assertIs(replay.shared_memory, memory)
+    def test_a_replay_uses_the_seeded_map_even_when_it_is_empty(self) -> None:
+        seed = SharedMemorySeed(self.seed_file, self.document, {})
+        replay = StepReplay(normalize_image_file(self.image), {}, steps=("perception",), seed=seed)
+        self.assertIs(replay.shared_memory, seed.shared_memory)

@@ -12,6 +12,12 @@ from autonomy.decision_cycle.perception.evidence.values import (
     ViewLocation,
 )
 from implementations.decision_cycle.perception.shared.obstructions.boxes import clamp, zone
+from implementations.decision_cycle.perception.shared.serialization.history import (
+    history_bbox,
+    history_float,
+    history_int,
+    next_history_id,
+)
 
 @dataclass
 class _Track:
@@ -28,34 +34,38 @@ class _Track:
 
 
 def _track_from_lookback(item: Any) -> _Track | None:
+    """A track from its lookback item; a missing or invalid count or score is zero."""
+
     if not isinstance(item, dict):
         return None
-    bbox = item.get("bbox")
-    if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+    track_id = history_int(item.get("track_id"))
+    bbox = history_bbox(item.get("bbox"))
+    if track_id is None or bbox is None:
         return None
     try:
-        return _Track(
-            track_id=int(item["track_id"]),
-            bbox=(float(bbox[0]), float(bbox[1]), float(bbox[2]), float(bbox[3])),
-            confidence=float(item.get("confidence") or 0.0),
-            shape_support=float(item.get("shape_support") or 0.0),
-            flow_support=float(item.get("flow_support") or 0.0),
-            age_frames=int(item.get("age_frames") or 0),
-            missed_frames=int(item.get("missed_frames") or 0),
-            last_association_score=float(item.get("last_association_score") or 0.0),
-            lost_age=int(item.get("lost_age") or 0),
-            points=np.asarray(item["points"], dtype=np.float32) if item.get("points") is not None else None,
-        )
-    except (TypeError, ValueError, KeyError):
+        points = np.asarray(item["points"], dtype=np.float32) if item.get("points") is not None else None
+    except (TypeError, ValueError):
         return None
+    return _Track(
+        track_id=track_id,
+        bbox=bbox,
+        confidence=history_float(item.get("confidence")) or 0.0,
+        shape_support=history_float(item.get("shape_support")) or 0.0,
+        flow_support=history_float(item.get("flow_support")) or 0.0,
+        age_frames=history_int(item.get("age_frames")) or 0,
+        missed_frames=history_int(item.get("missed_frames")) or 0,
+        last_association_score=history_float(item.get("last_association_score")) or 0.0,
+        lost_age=history_int(item.get("lost_age")) or 0,
+        points=points,
+    )
 
 
 class ObstructionTrackState:
     """Association of region candidates into tracks across frames.
 
     A perception plugin builds one per frame, restores it from the history it
-    keeps in the host map (``_restore_from_history``, ``_previous_gray``,
-    ``_next_track_id``), associates, and writes the history back
+    keeps in the host map (``_restore_from_history`` with the recorded next
+    track id, and ``_previous_gray``), associates, and writes the history back
     (``_lookback_tracks``).
     """
 
@@ -96,7 +106,7 @@ class ObstructionTrackState:
         self._previous_gray: np.ndarray | None = None
 
 
-    def _restore_from_history(self, history: Any) -> int:
+    def _restore_from_history(self, history: Any, next_track_id: Any = None) -> int:
         """Replace track continuity with the previous frame's shared-map history."""
 
         active: dict[int, _Track] = {}
@@ -111,8 +121,7 @@ class ObstructionTrackState:
                 active[track.track_id] = track
         self._tracks = active
         self._lost = lost
-        used = set(active) | set(lost)
-        self._next_track_id = (max(used) + 1) if used else 0
+        self._next_track_id = next_history_id(next_track_id, (*active, *lost), first=0)
         return len(active) + len(lost)
 
 

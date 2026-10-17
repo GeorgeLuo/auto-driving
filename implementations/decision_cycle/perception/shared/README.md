@@ -13,7 +13,7 @@ when more than one plugin, a memory plugin, or a tool needs it.
 | `motion/` | Scene motion between frames. |
 | `obstructions/` | Box geometry (clamping, zones, center distance) and the obstruction track associator. |
 | `regions/` | Color-region detection. |
-| `serialization/` | Canonical JSON for digests and payloads. |
+| `serialization/` | Canonical JSON for digests and payloads, and the field readers plugins use to restore history from shared memory. |
 
 ## Rules
 

@@ -22,7 +22,7 @@ from implementations.decision_cycle.catalog import selection_activation
 
 from .decision_steps import format_step_timing
 from .memory_report import evidence_publisher, ledger_is_empty, plugin_summaries
-from .inspection_runs import read_shared_memory_seed
+from .inspection_runs import add_seed_provenance, read_shared_memory_seed
 from .paths import ROOT, display_path
 from .runtime_hosts import runtime_base_url
 from .streaming import _live_plugins, _live_step_fields, probe_live_memory
@@ -61,7 +61,7 @@ def inspect_memory(
     """
 
     try:
-        seed, seed_record = read_shared_memory_seed(shared_memory_file)
+        seed = read_shared_memory_seed(shared_memory_file)
     except (OSError, SharedMemoryValueError) as exc:
         return CommandResult(2, f"Could not read shared memory file: {exc}")
     try:
@@ -73,11 +73,11 @@ def inspect_memory(
         if preset is not None or plugins is not None:
             overrides = {"memory": selection_activation("memory", preset=preset, plugins=plugins)}
         replay = StepReplay(
+            image_source,
             manifest,
             steps=("perception", "observation", "memory"),
             overrides=overrides,
-            first_frame=image_source.frames[0],
-            shared_memory=seed,
+            seed=seed,
         )
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not load plugins for memory inspect: {type(exc).__name__}: {exc}")
@@ -122,8 +122,7 @@ def inspect_memory(
         "final": replay.runners["memory"].report(),
         "run_dir": None,
     }
-    if seed_record is not None:
-        report["shared_memory_seed"] = seed_record
+    add_seed_provenance(report, seed)
     if record:
         run_dir = INSPECT_ROOT / run_id
         try:

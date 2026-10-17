@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
@@ -74,14 +76,29 @@ def _document(values: dict) -> dict:
 
 class SharedMemoryDocumentTests(unittest.TestCase):
     def test_a_seed_file_names_itself_when_it_cannot_be_decoded(self) -> None:
-        for content in ("not JSON", json.dumps(_document({"slot": {"$record": "bad"}}))):
+        cases = (
+            (b"not JSON", "not UTF-8 JSON"),
+            (json.dumps(_document({})).encode("utf-16"), "not UTF-8 JSON"),
+            (json.dumps(_document({"slot": {"$record": "bad"}})).encode("utf-8"), "slot"),
+        )
+        for content, detail in cases:
             with self.subTest(content=content), tempfile.TemporaryDirectory() as tmp:
                 path = Path(tmp) / "seed.json"
-                path.write_text(content, encoding="utf-8")
+                path.write_bytes(content)
                 with self.assertRaises(SharedMemoryValueError) as caught:
                     read_shared_memory_file(path)
                 self.assertIn(str(path), str(caught.exception))
-                self.assertIn("not JSON" if content == "not JSON" else "slot", str(caught.exception))
+                self.assertIn(detail, str(caught.exception))
+
+    def test_a_seed_file_decodes_once_into_a_map_beside_its_document(self) -> None:
+        document = json.loads(json.dumps(shared_memory_document({"ledger": _ledger()})))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "seed.json"
+            path.write_text(json.dumps(document), encoding="utf-8")
+            shared_memory, read = read_shared_memory_file(path)
+
+        self.assertEqual(read, document)
+        self.assertEqual(shared_memory, {"ledger": _ledger()})
 
     def test_json_passes_through(self) -> None:
         original = {
@@ -184,6 +201,21 @@ class SharedMemoryDocumentTests(unittest.TestCase):
 
         self.assertIn("slot", str(caught.exception))
         self.assertIn("not.a.real.module", str(caught.exception))
+
+    def test_a_module_that_cannot_be_imported_names_its_key(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            Path(tmp, "shared_memory_broken_record.py").write_text(
+                "raise RuntimeError('broken at import')\n", encoding="utf-8"
+            )
+            for spec, detail in (
+                (".relative:Thing", "TypeError"),
+                ("shared_memory_broken_record:Thing", "broken at import"),
+            ):
+                with self.subTest(spec=spec), patch.object(sys, "path", [tmp, *sys.path]):
+                    with self.assertRaises(SharedMemoryValueError) as caught:
+                        shared_memory_from_document(_document({"slot": {"$record": spec, "data": {}}}))
+                    self.assertIn("slot", str(caught.exception))
+                    self.assertIn(detail, str(caught.exception))
 
     def test_an_unknown_class_names_its_key(self) -> None:
         with self.assertRaises(SharedMemoryValueError) as caught:

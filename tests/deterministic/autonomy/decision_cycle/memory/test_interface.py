@@ -79,6 +79,7 @@ class MemoryInterfaceTests(unittest.TestCase):
         runner = MemoryRunner.from_plugins({plugin.plugin_id: plugin})
 
         self.assertEqual(runner.reset({}), {})
+        self.assertEqual(runner.reset(), {})
         self.assertEqual(runner.failure_count, 0)
 
     def test_serializing_a_report_detaches_nested_plugin_state(self) -> None:

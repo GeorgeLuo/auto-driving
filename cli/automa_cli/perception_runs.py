@@ -27,7 +27,9 @@ from autonomy.vehicle import (
 )
 from implementations.decision_cycle.catalog import selection_activation
 
-from .inspection_runs import read_shared_memory_seed, selection_report
+from .inspection_runs import (
+    SharedMemorySeed, add_seed_provenance, read_shared_memory_seed, selection_report,
+)
 from .step_replay import StepReplay
 from .workbench_frames import run_perception
 from .paths import ROOT, display_path, safe_path_part
@@ -84,7 +86,7 @@ def inspect_perception(
     """
 
     try:
-        seed, seed_record = read_shared_memory_seed(shared_memory_file)
+        seed = read_shared_memory_seed(shared_memory_file)
     except (OSError, SharedMemoryValueError) as exc:
         return CommandResult(2, f"Could not read shared memory file: {exc}")
     if max_frames <= 0:
@@ -110,7 +112,6 @@ def inspect_perception(
             plugins=plugins,
             max_frames=max_frames,
             seed=seed,
-            seed_record=seed_record,
         )
     return _inspect_vehicle(
         vehicle_id=vehicle_id,
@@ -122,7 +123,6 @@ def inspect_perception(
         preset=preset,
         plugins=plugins,
         seed=seed,
-        seed_record=seed_record,
     )
 
 
@@ -136,8 +136,7 @@ def _inspect_vehicle(
     json_output: bool,
     preset: str | None,
     plugins: list[str] | None,
-    seed: dict[str, Any] | None,
-    seed_record: dict[str, Any] | None,
+    seed: SharedMemorySeed | None,
 ) -> CommandResult:
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
@@ -182,8 +181,7 @@ def _inspect_vehicle(
             if record:
                 results_dir.mkdir(parents=True, exist_ok=True)
 
-            shared_memory = seed if seed is not None else {}
-            runner.reset()
+            shared_memory = seed.shared_memory if seed is not None else {}
             frame_records: list[dict[str, Any]] = []
             for index in range(frame_count):
                 frame_id = f"frame_{index:06d}"
@@ -233,8 +231,7 @@ def _inspect_vehicle(
                 frames=frame_records,
                 run_dir=record_dir,
             )
-            if seed_record is not None:
-                report["shared_memory_seed"] = seed_record
+            add_seed_provenance(report, seed)
             if record_dir is not None:
                 _write_report(record_dir, report)
     except Exception as exc:  # Plugins are third-party code; name the frame that broke.
@@ -254,8 +251,7 @@ def _inspect_images(
     preset: str | None,
     plugins: list[str] | None,
     max_frames: int,
-    seed: dict[str, Any] | None,
-    seed_record: dict[str, Any] | None,
+    seed: SharedMemorySeed | None,
 ) -> CommandResult:
     source = source.expanduser()
     try:
@@ -285,11 +281,11 @@ def _inspect_images(
                 )
             }
         replay = StepReplay(
+            image_source,
             source_manifest,
             steps=("perception",),
             overrides=overrides,
-            first_frame=image_source.frames[0],
-            shared_memory=seed,
+            seed=seed,
         )
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(
@@ -359,8 +355,7 @@ def _inspect_images(
                 frames=frame_records,
                 run_dir=record_dir,
             )
-            if seed_record is not None:
-                report["shared_memory_seed"] = seed_record
+            add_seed_provenance(report, seed)
             if record_dir is not None:
                 _write_report(record_dir, report)
     except Exception as exc:  # Plugins are third-party code; name the frame that broke.

@@ -26,6 +26,12 @@ from implementations.decision_cycle.perception.shared.motion.scene_motion import
     analyze_scene_motion_images,
 )
 from implementations.decision_cycle.perception.shared.serialization.canonical import json_safe
+from implementations.decision_cycle.perception.shared.serialization.history import (
+    history_bbox,
+    history_float,
+    history_int,
+    next_history_id,
+)
 
 
 @dataclass
@@ -137,12 +143,7 @@ class MotionTracksPlugin:
                 if track is not None:
                     tracks[track.track_id] = track
         self._tracks = tracks
-        try:
-            next_track_id = int(history.get("next_track_id", 1))
-        except (TypeError, ValueError):
-            next_track_id = 1
-        highest = max(tracks, default=0)
-        self._next_track_id = max(next_track_id, highest + 1)
+        self._next_track_id = next_history_id(history.get("next_track_id"), tracks)
 
     def _history(self) -> dict[str, Any]:
         return {
@@ -319,25 +320,30 @@ def _scene_track_dict(track: _SceneTrack) -> dict[str, Any]:
 def _scene_track_from_item(item: Any) -> _SceneTrack | None:
     if not isinstance(item, dict):
         return None
-    try:
-        bbox = item["bbox"]
-        if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
-            return None
-        properties = item.get("properties", {})
-        if not isinstance(properties, dict):
-            return None
-        return _SceneTrack(
-            track_id=int(item["track_id"]),
-            bbox=tuple(float(value) for value in bbox),
-            age_frames=int(item["age_frames"]),
-            support_frames=int(item["support_frames"]),
-            missed_frames=int(item["missed_frames"]),
-            confidence=float(item["confidence"]),
-            kind_hint=str(item["kind_hint"]),
-            properties=dict(properties),
-        )
-    except (KeyError, TypeError, ValueError):
+    track_id = history_int(item.get("track_id"))
+    bbox = history_bbox(item.get("bbox"))
+    age_frames = history_int(item.get("age_frames"))
+    support_frames = history_int(item.get("support_frames"))
+    missed_frames = history_int(item.get("missed_frames"))
+    confidence = history_float(item.get("confidence"))
+    kind_hint = item.get("kind_hint")
+    properties = item.get("properties", {})
+    if (
+        track_id is None or bbox is None or age_frames is None or support_frames is None
+        or missed_frames is None or confidence is None
+        or type(kind_hint) is not str or not isinstance(properties, dict)
+    ):
         return None
+    return _SceneTrack(
+        track_id=track_id,
+        bbox=bbox,
+        age_frames=age_frames,
+        support_frames=support_frames,
+        missed_frames=missed_frames,
+        confidence=confidence,
+        kind_hint=kind_hint,
+        properties=dict(properties),
+    )
 
 
 def _group_candidate(

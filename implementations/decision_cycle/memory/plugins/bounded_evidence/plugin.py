@@ -57,11 +57,12 @@ class BoundedEvidenceLedger:
     def status(self, shared_memory: SharedMemory | None) -> dict[str, Any]:
         return self.ledger(shared_memory).to_dict()
 
-    def reset(self, shared_memory: SharedMemory) -> None:
-        try:
-            previous = self.ledger(shared_memory)
-        except TypeError:
-            previous = self._empty
+    def reset(self, shared_memory: SharedMemory | None) -> None:
+        if shared_memory is None:
+            raise ValueError("bounded evidence requires a shared-memory map")
+        # A reset replaces any value at the key, including one update rejects.
+        current = shared_memory.get(LEDGER_KEY)
+        previous = current if isinstance(current, EvidenceLedger) else self._empty
         next_epoch = _numbered_epoch(previous.epoch_id) + 1
         epoch = f"epoch-{next_epoch}"
         publish_ledger(

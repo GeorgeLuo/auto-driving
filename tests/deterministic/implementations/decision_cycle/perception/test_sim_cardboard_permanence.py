@@ -21,6 +21,10 @@ from implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.
 KEY = "perception.sim_cardboard_permanence.history"
 
 
+class _VariantDetector(SimCardboardObstaclePlugin):
+    plugin_id = "cardboard_variant"
+
+
 def _scene(box: tuple[int, int, int, int] | None = None) -> np.ndarray:
     rgb = np.empty((120, 160, 3), dtype=np.uint8)
     rgb[:50] = (215, 214, 211)
@@ -183,7 +187,7 @@ class SimCardboardPermanenceTests(unittest.TestCase):
         result = _perceive(memory, (120, 30, 150, 70))
         self.assertEqual(
             [thing.thing_id for thing in result.things if thing.source_plugin_id == "sim_cardboard_obstacle"],
-            ["cardboard_obstacle"],
+            ["cardboard_obstacle_000"],
         )
         self.assert_overlapping_boxes(result, 2, "new")
         self.assertEqual(_identities(result)[0].label, "new cardboard")
@@ -200,7 +204,7 @@ class SimCardboardPermanenceTests(unittest.TestCase):
         self.assert_overlapping_boxes(_perceive(memory, (48, 30, 108, 70)), 1, "matched")
         self.assertEqual(memory[KEY]["objects"][0]["seen_frames"], 3)
 
-    def test_the_mapper_reuses_the_earlier_detection_instead_of_running_it_again(self) -> None:
+    def test_permanence_reuses_the_earlier_detection_instead_of_running_it_again(self) -> None:
         with patch.object(
             SimCardboardObstaclePlugin, "perceive", autospec=True,
             side_effect=SimCardboardObstaclePlugin.perceive,
@@ -269,6 +273,31 @@ class SimCardboardPermanenceTests(unittest.TestCase):
             [("cardboard_object_007", "matched")],
         )
         self.assertEqual(sorted(item["object_id"] for item in memory[KEY]["objects"]), [2, 7])
+
+    def test_a_detector_variant_is_mapped_when_configured(self) -> None:
+        specs = step_plugins("perception")
+        frame = SensorFrame(
+            read_id="renamed-detector",
+            readings={FRONT_CAMERA_SENSOR_ID: SensorReading(
+                sensor_id=FRONT_CAMERA_SENSOR_ID, sensor_kind="camera", captured_at_ms=10,
+                value=_scene((40, 30, 100, 70)), metadata={"color_space": "RGB"},
+            )},
+            started_at_ms=10,
+            completed_at_ms=10,
+        )
+        runner = PerceptionRunner.from_selection(
+            plugins=["cardboard_variant", "sim_cardboard_permanence"],
+            plugin_specs={
+                "cardboard_variant": f"{__name__}:_VariantDetector",
+                "sim_cardboard_permanence": specs["sim_cardboard_permanence"]["spec"],
+            },
+            plugin_configs={"sim_cardboard_permanence": {"detection_plugin_id": "cardboard_variant"}},
+        )
+
+        result = runner.perceive(build_perception_request(frame, shared_memory={}))
+
+        self.assertEqual(result.status, "ok")
+        self.assertEqual([thing.properties["object_id"] for thing in _identities(result)], [1])
 
     def test_reset_pops_its_history(self) -> None:
         plugin = SimCardboardPermanencePlugin()

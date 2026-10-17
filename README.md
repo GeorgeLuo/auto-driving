@@ -470,12 +470,14 @@ document. For example, save this as `seed.json` to continue cardboard object 7:
 distant boxes, and separates touching silhouettes when their lower edges have
 distinct steps. `sim_cardboard_permanence` runs after it and associates the
 nearest detection/history pairs within a normalized center distance of 0.25,
-using each detection and identity at most once per frame.
+using each detection and identity at most once per frame. Its
+`detection_plugin_id` option names the detection plugin it reads, by default
+`sim_cardboard_obstacle`.
 A match is labeled `known cardboard 007`; a detection
 without a match receives a new identity and is labeled `new cardboard`.
 The two plugins emit an overlapping detection/identity pair for every current
-obstacle. Raw detector IDs identify this frame's regions; the mapper owns
-identities across frames. Remembered
+obstacle. Detection IDs identify this frame's regions; the permanence plugin
+owns identities across frames. Remembered
 objects stay in shared memory through three missed frames by default, and a
 frame with no detection draws no box. Large jumps and expired history start
 new identities. This association uses image geometry and cannot establish

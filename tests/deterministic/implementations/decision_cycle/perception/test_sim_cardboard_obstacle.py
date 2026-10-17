@@ -10,6 +10,7 @@ from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.catalog import step_plugins
+from implementations.decision_cycle.perception.shared.obstructions.boxes import zone
 
 
 _SKY = (215, 214, 211)
@@ -100,7 +101,7 @@ class SimCardboardObstacleTests(unittest.TestCase):
         self.assertEqual(len(found.things), 1)
         thing = found.things[0]
         self.assertEqual(thing.kind, "obstruction_evidence")
-        self.assertEqual(thing.thing_id, "cardboard_obstacle")
+        self.assertEqual(thing.thing_id, "cardboard_obstacle_000")
         bbox = thing.location.bbox_xyxy_norm
         self.assertIsNotNone(bbox)
         self.assertTrue(_contains(bbox, 70 / 159, 50 / 119))
@@ -111,7 +112,15 @@ class SimCardboardObstacleTests(unittest.TestCase):
         self.assertEqual(empty.status, "ok")
         self.assertEqual(empty.things, ())
         self.assertFalse(empty.signals[0].value)
-        self.assertIsNone(empty.signals[0].properties["bbox_xyxy_norm"])
+        self.assertEqual(empty.signals[0].properties, {"obstacle_count": 0})
+
+    def test_a_box_left_of_the_shared_center_band_is_in_a_left_zone(self) -> None:
+        """Regression: a 0.4-0.6 center band put this box in mid_center, so the proposal saw no side."""
+
+        thing = _perceive(_scene((55, 40, 80, 70))).things[0]
+
+        self.assertEqual(thing.location.zone, "mid_left")
+        self.assertEqual(thing.location.zone, zone(thing.location.bbox_xyxy_norm))
 
     def test_darker_cardboard_face_still_counts_and_beige_does_not(self) -> None:
         dark = _perceive(_scene((20, 40, 90, 90), _DARK_FACE))

@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from autonomy.decision_cycle.perception.evidence.values import (
@@ -15,8 +14,11 @@ from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginInputs,
 )
 from implementations.decision_cycle.perception.shared.obstructions.boxes import center_distance
-
-FEATURE_PLUGIN_ID = "sim_cardboard_obstacle"
+from implementations.decision_cycle.perception.shared.serialization.history import (
+    history_bbox,
+    history_int,
+    next_history_id,
+)
 
 
 class SimCardboardPermanencePlugin:
@@ -29,7 +31,7 @@ class SimCardboardPermanencePlugin:
         memory_required=True,
         description="Map each earlier cardboard detection to a distinct nearby known object.",
         assumptions=(
-            "sim_cardboard_obstacle runs earlier in the same selection",
+            "the detection plugin runs earlier in the same selection",
             "a known object's image-space center moves gradually between sightings",
         ),
         emits=(
@@ -40,16 +42,18 @@ class SimCardboardPermanencePlugin:
             "identity is image-space and holds within one reset-bounded run",
             "nearby objects may be confused and large image-space jumps start new identities",
             "a gap longer than max_missed_frames starts a new identity",
-            "no feature plugin means no detection",
+            "without the detection plugin there is nothing to map",
         ),
     )
 
     def __init__(
         self,
         *,
+        detection_plugin_id: str = "sim_cardboard_obstacle",
         max_center_shift: float = 0.25,
         max_missed_frames: int = 3,
     ) -> None:
+        self.detection_plugin_id = str(detection_plugin_id)
         self.max_center_shift = max(0.0, float(max_center_shift))
         self.max_missed_frames = max(0, int(max_missed_frames))
 
@@ -64,20 +68,20 @@ class SimCardboardPermanencePlugin:
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         if inputs.shared_memory is None:
             raise ValueError(f"{self.plugin_id} requires host shared memory")
-        features = _features(inputs.prior_things)
+        detections = _detections(inputs.prior_things, self.detection_plugin_id)
         objects, next_id = _restore_history(inputs.shared_memory.get(self._memory_key))
         objects_read = len(objects)
         matched = _match(
             [item for item in objects if item["missed_frames"] <= self.max_missed_frames],
-            features,
+            detections,
             self.max_center_shift,
         )
 
         things: list[PerceivedThing] = []
         observed_ids: set[int] = set()
         new_objects: list[dict[str, Any]] = []
-        for index, feature in enumerate(features):
-            bbox = feature.location.bbox_xyxy_norm
+        for index, detection in enumerate(detections):
+            bbox = detection.location.bbox_xyxy_norm
             item = matched.get(index)
             if item is not None:
                 item.update(
@@ -97,7 +101,7 @@ class SimCardboardPermanencePlugin:
                 new_objects.append(item)
                 event = "new"
             observed_ids.add(item["object_id"])
-            things.append(_thing(item, event, feature))
+            things.append(_thing(item, event, detection))
 
         kept: list[dict[str, Any]] = []
         forgotten: list[int] = []
@@ -126,12 +130,12 @@ class SimCardboardPermanencePlugin:
         )
 
 
-def _features(things: tuple[PerceivedThing, ...]) -> tuple[PerceivedThing, ...]:
+def _detections(things: tuple[PerceivedThing, ...], plugin_id: str) -> tuple[PerceivedThing, ...]:
     """All current cardboard detections, with their location and confidence."""
 
     return tuple(
         thing for thing in things
-        if thing.source_plugin_id == FEATURE_PLUGIN_ID
+        if thing.source_plugin_id == plugin_id
         and thing.kind == "obstruction_evidence"
         and thing.location.bbox_xyxy_norm is not None
     )
@@ -139,24 +143,24 @@ def _features(things: tuple[PerceivedThing, ...]) -> tuple[PerceivedThing, ...]:
 
 def _match(
     objects: list[dict[str, Any]],
-    features: tuple[PerceivedThing, ...],
+    detections: tuple[PerceivedThing, ...],
     max_center_shift: float,
 ) -> dict[int, dict[str, Any]]:
     """Assign the nearest valid pairs, using each detection and identity once."""
 
     pairs = []
     for object_index, item in enumerate(objects):
-        for feature_index, feature in enumerate(features):
-            distance = center_distance(item["bbox_xyxy_norm"], feature.location.bbox_xyxy_norm)
+        for detection_index, detection in enumerate(detections):
+            distance = center_distance(item["bbox_xyxy_norm"], detection.location.bbox_xyxy_norm)
             if distance <= max_center_shift:
-                pairs.append((distance, object_index, feature_index))
+                pairs.append((distance, object_index, detection_index))
     matches: dict[int, dict[str, Any]] = {}
     used_objects: set[int] = set()
-    for _distance, object_index, feature_index in sorted(pairs):
-        if object_index in used_objects or feature_index in matches:
+    for _distance, object_index, detection_index in sorted(pairs):
+        if object_index in used_objects or detection_index in matches:
             continue
         used_objects.add(object_index)
-        matches[feature_index] = objects[object_index]
+        matches[detection_index] = objects[object_index]
     return matches
 
 
@@ -169,16 +173,13 @@ def _restore_history(history: Any) -> tuple[list[dict[str, Any]], int]:
     for item in recorded if isinstance(recorded, list) else ():
         if not isinstance(item, dict):
             continue
-        object_id = item.get("object_id")
-        bbox = item.get("bbox_xyxy_norm")
-        seen = item.get("seen_frames")
-        missed = item.get("missed_frames")
+        object_id = history_int(item.get("object_id"))
+        bbox = history_bbox(item.get("bbox_xyxy_norm"))
+        seen = history_int(item.get("seen_frames"))
+        missed = history_int(item.get("missed_frames"))
         if (
-            type(object_id) is not int or object_id <= 0 or object_id in ids
-            or not isinstance(bbox, (list, tuple)) or len(bbox) != 4
-            or any(type(value) not in (int, float) or not math.isfinite(value) for value in bbox)
-            or type(seen) is not int or seen < 0
-            or type(missed) is not int or missed < 0
+            object_id is None or object_id <= 0 or object_id in ids or bbox is None
+            or seen is None or seen < 0 or missed is None or missed < 0
         ):
             continue
         ids.add(object_id)
@@ -188,11 +189,7 @@ def _restore_history(history: Any) -> tuple[list[dict[str, Any]], int]:
             "seen_frames": seen,
             "missed_frames": missed,
         })
-    try:
-        next_id = int(history.get("next_object_id", 1))
-    except (TypeError, ValueError, OverflowError):
-        next_id = 1
-    return objects, max(next_id, max(ids, default=0) + 1)
+    return objects, next_history_id(history.get("next_object_id"), ids)
 
 
 def _label(object_id: int, event: str) -> str:
@@ -201,13 +198,13 @@ def _label(object_id: int, event: str) -> str:
     return f"known cardboard {object_id:03d}"
 
 
-def _thing(item: dict[str, Any], event: str, feature: PerceivedThing) -> PerceivedThing:
+def _thing(item: dict[str, Any], event: str, detection: PerceivedThing) -> PerceivedThing:
     return PerceivedThing(
         thing_id=f"cardboard_object_{item['object_id']:03d}",
         kind="obstruction_evidence",
         label=_label(item["object_id"], event),
-        location=feature.location,
-        confidence=feature.confidence,
+        location=detection.location,
+        confidence=detection.confidence,
         properties={
             "object_id": item["object_id"],
             "event": event,

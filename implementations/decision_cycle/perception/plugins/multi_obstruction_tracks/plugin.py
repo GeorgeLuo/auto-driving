@@ -185,21 +185,7 @@ class MultiObstructionTracksPlugin:
         tracker = ObstructionTrackState(
             **{name: getattr(self, name) for name in TRACKING_CONFIG_FIELDS}
         )
-        history = inputs.shared_memory.get(self._memory_key)
-        history = history if isinstance(history, dict) else {}
-        tracks_read = tracker._restore_from_history(history.get("tracks"))
-        previous_gray = history.get("previous_gray")
-        tracker._previous_gray = (
-            np.array(previous_gray.pixels, copy=True)
-            if isinstance(previous_gray, StoredImage)
-            else None
-        )
-        # The restore numbers past every restored track; a recorded id never goes lower.
-        try:
-            next_track_id = int(history.get("next_track_id", tracker._next_track_id))
-        except (TypeError, ValueError):
-            next_track_id = tracker._next_track_id
-        tracker._next_track_id = max(next_track_id, tracker._next_track_id)
+        tracks_read = _restore_history(tracker, inputs.shared_memory.get(self._memory_key))
         active, events, association = tracker._associate(candidates, gray=gray)
 
         things = tuple(
@@ -412,6 +398,19 @@ class MultiObstructionTracksPlugin:
             )
         )
         return selected[: max(self.max_tracks * 4, self.max_tracks)]
+
+
+def _restore_history(tracker: ObstructionTrackState, history: Any) -> int:
+    """Rebuild the tracker from the map; return how many tracks were read."""
+
+    history = history if isinstance(history, dict) else {}
+    previous_gray = history.get("previous_gray")
+    tracker._previous_gray = (
+        np.array(previous_gray.pixels, copy=True)
+        if isinstance(previous_gray, StoredImage)
+        else None
+    )
+    return tracker._restore_from_history(history.get("tracks"), history.get("next_track_id"))
 
 
 def _merge_proposals(

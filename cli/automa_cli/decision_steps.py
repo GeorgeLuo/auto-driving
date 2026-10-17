@@ -35,7 +35,7 @@ from .decision import (
 )
 from .paths import ROOT, display_path
 from .host_publications import fetch_decision_publication
-from .inspection_runs import read_shared_memory_seed
+from .inspection_runs import add_seed_provenance, read_shared_memory_seed
 from .runtime_hosts import RuntimeHostError, bundle_paths, runtime_base_url
 from .step_activations import decision_identity
 from .step_replay import StepReplay, inspect_run_id, read_replay_source, record_inspect_run
@@ -470,7 +470,7 @@ def inspect_decision_step(
     """
 
     try:
-        seed, seed_record = read_shared_memory_seed(shared_memory_file)
+        seed = read_shared_memory_seed(shared_memory_file)
     except (OSError, SharedMemoryValueError) as exc:
         return CommandResult(2, f"Could not read shared memory file: {exc}")
     try:
@@ -484,10 +484,7 @@ def inspect_decision_step(
         overrides = None
         if preset is not None or plugins is not None:
             overrides = {step: selection_activation(step, preset=preset, plugins=plugins)}
-        replay = StepReplay(
-            manifest, steps=_REPLAY_STEPS, overrides=overrides,
-            first_frame=image_source.frames[0], shared_memory=seed,
-        )
+        replay = StepReplay(image_source, manifest, steps=_REPLAY_STEPS, overrides=overrides, seed=seed)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not load plugins for {step} inspect: {type(exc).__name__}: {exc}")
 
@@ -530,8 +527,7 @@ def inspect_decision_step(
         "frames": frames,
         "run_dir": None,
     }
-    if seed_record is not None:
-        report["shared_memory_seed"] = seed_record
+    add_seed_provenance(report, seed)
     if record:
         run_dir = inspect_root(step) / run_id
         try:

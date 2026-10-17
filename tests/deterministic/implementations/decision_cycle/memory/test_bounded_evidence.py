@@ -135,6 +135,10 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-2")
         self.assertEqual(memory[LEDGER_KEY].record_count, 0)
 
+    def test_a_reset_without_a_map_names_the_plugin(self) -> None:
+        with self.assertRaisesRegex(ValueError, "bounded evidence requires a shared-memory map"):
+            BoundedEvidenceLedger(max_records=8).reset(None)
+
     def test_retains_things_and_signals_with_origin(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
         context = DecisionFrameContext("frame_1", 1, 1_000)

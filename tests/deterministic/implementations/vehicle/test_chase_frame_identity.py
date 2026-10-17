@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
-from implementations.vehicle.chase_sim.car import ChaseSimCar
+from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.chase_sim.frame_identity import (
     ChaseCaptureValidationError,
     align_candidate_with_reference,

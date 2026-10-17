@@ -1,14 +1,14 @@
 from __future__ import annotations
 import unittest
 from unittest import mock
-from implementations.vehicle.chase_sim.car import (
+from implementations.vehicle.chase_sim import (
     CHASE_ATOMIC_EVALUATION_QUERY,
     CHASE_PASSIVE_CAMERA_ID,
     ChasePassiveCaptureError,
     ChaseSimCar,
 )
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiCommandResponse, MetricsUiWebSocketError, MetricsUiWsClient
-from implementations.vehicle.chase_sim.session import build_chase_session_fingerprint, compare_chase_session_fingerprints
+from implementations.vehicle.chase_sim import build_chase_session_fingerprint, compare_chase_session_fingerprints
 from tests.deterministic.implementations.vehicle.chase_frame_identity_fixtures import (
     ChaseFrameIdentityFixture,
     _atomic_capture,

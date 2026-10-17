@@ -352,34 +352,6 @@ class FrameLoop:
         with self._lock:
             return self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
 
-    def publish_decision_transaction(self) -> tuple[dict[str, Any], bytes | None]:
-        """Return the current decision and its image from one locked snapshot.
-
-        A cycle can complete between two separate reads, so the image and the
-        decision can come from different cycles. Cycles run back to back, so
-        this happens often. Callers that publish the live view need both from
-        the same completed cycle.
-        """
-
-        read_at_ms = timestamp_ms()
-        with self._lock:
-            publication = self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
-            latest = self.latest_state
-            image = None if latest is None else latest.image
-            decision = publication.get("decision")
-            same_frame = (
-                latest is not None
-                and isinstance(decision, dict)
-                and decision.get("frame_id") == latest.frame_id
-            )
-        if not same_frame or image is None:
-            return publication, None
-        try:
-            return publication, self._frame_jpeg(latest)
-        except Exception:  # noqa: BLE001 - a bad image must not replace the decision
-            logger.exception("Decision transaction image encode failed")
-            return publication, None
-
     def transaction_snapshot(self, kind: str) -> tuple[dict[str, Any], LatestObservationState | None, str]:
         """Snapshot publication, capture and content revision before JPEG work."""
         with self._lock:
@@ -448,7 +420,7 @@ class FrameLoop:
         return self._jpeg(camera, publication)
 
     @staticmethod
-    def _frame_jpeg(frame: LatestCameraFrame | LatestObservationState) -> bytes:
+    def frame_jpeg(frame: LatestCameraFrame | LatestObservationState) -> bytes:
         return frame.jpeg_cache.get(frame.image)
 
     @classmethod
@@ -457,7 +429,7 @@ class FrameLoop:
         if frame is None or (frame.image is None and frame.jpeg_cache.data is None):
             return None, publication
         try:
-            return cls._frame_jpeg(frame), publication
+            return cls.frame_jpeg(frame), publication
         except Exception as exc:
             return None, {
                 **publication,
@@ -487,27 +459,29 @@ class FrameLoop:
         # per-capture cache serializes encoding without a publication lock.
         camera = self._inflight_camera
         if camera is not None and image is camera.image:
-            return self._frame_jpeg(camera)
+            return self.frame_jpeg(camera)
         return encode_jpeg(image)
 
     def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
-        if record and (self.recording_root is None or self.vehicle_id is None):
-            raise RuntimeError("recording requires a runtime directory and vehicle identity")
-        recording = RunRecording(
-            self.recording_root, vehicle_id=self.vehicle_id, encode_image=self._recording_jpeg,
-        ) if record else None
-        with self._lock:
-            self._session_frame_id = None
-            self._memory_update_halted = False
-            self._discard_pending_locked()
-        status = self.host.start(configuration, recording=recording)
-        return status
+        with self._lifecycle_lock:
+            if record and (self.recording_root is None or self.vehicle_id is None):
+                raise RuntimeError("recording requires a runtime directory and vehicle identity")
+            recording = RunRecording(
+                self.recording_root, vehicle_id=self.vehicle_id, encode_image=self._recording_jpeg,
+            ) if record else None
+            with self._lock:
+                self._session_frame_id = None
+                self._memory_update_halted = False
+                self._discard_pending_locked()
+            status = self.host.start(configuration, recording=recording)
+            return status
 
     def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, Any]:
-        with self._lock:
-            self._discard_pending_locked()
-        status = self.host.stop(reason=reason, error=error)
-        return status
+        with self._lifecycle_lock:
+            with self._lock:
+                self._discard_pending_locked()
+            status = self.host.stop(reason=reason, error=error)
+            return status
 
     def shutdown(self) -> None:
         with self._lock:

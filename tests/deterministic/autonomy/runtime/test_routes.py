@@ -111,6 +111,12 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertEqual((status, headers["X-Frame-Index"]), (200, "42"))
         self.assertEqual(_json(routes.handle("GET", "/autonomy/camera/latest"))[1]["perception_state"], "matched")
 
+    def test_transaction_paths_are_handled_and_reject_write_methods(self):
+        _, routes = _routes()
+        for path in ["/autonomy/observation/transaction", "/autonomy/decision/transaction"]:
+            self.assertTrue(routes.handles(path))
+            self.assertEqual(routes.handle("POST", path)[0], 405)
+
     def test_observation_transaction_warms_without_an_image(self) -> None:
         _, routes = _routes()
         status, transaction = _json(routes.handle("GET", "/autonomy/observation/transaction"))
@@ -122,14 +128,14 @@ class RuntimeRoutesTests(unittest.TestCase):
         loop, routes = _routes()
         loop.submit(np.zeros((4, 6, 3), dtype=np.uint8), frame_id="first", frame_index=1)
         loop.wait_for_cycle()
-        encode = FrameLoop._frame_jpeg
+        encode = FrameLoop.frame_jpeg
 
         def advance_before_encoding(frame):
             loop.submit(np.full((4, 6, 3), 255, dtype=np.uint8), frame_id="second", frame_index=2)
             loop.wait_for_cycle()
             return encode(frame)
 
-        with patch.object(FrameLoop, "_frame_jpeg", side_effect=advance_before_encoding):
+        with patch.object(FrameLoop, "frame_jpeg", side_effect=advance_before_encoding):
             status, transaction = _json(routes.handle("GET", "/autonomy/observation/transaction"))
         self.assertEqual(status, 200, transaction)
         self.assertEqual(transaction["schema"], "automa_observation_transaction_v0")
@@ -144,7 +150,7 @@ class RuntimeRoutesTests(unittest.TestCase):
         loop, routes = _routes()
         loop.submit(np.zeros((4, 6, 3), dtype=np.uint8), frame_id="first", frame_index=1)
         loop.wait_for_cycle()
-        with patch.object(FrameLoop, "_frame_jpeg", side_effect=ValueError("bad image")):
+        with patch.object(FrameLoop, "frame_jpeg", side_effect=ValueError("bad image")):
             status, transaction = _json(routes.handle("GET", "/autonomy/observation/transaction"))
         self.assertEqual(status, 503)
         self.assertEqual(transaction["publication"]["health"], "error")

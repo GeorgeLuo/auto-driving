@@ -6,7 +6,7 @@ from unittest import mock
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
 from io import BytesIO
 from PIL import Image
-from implementations.vehicle.chase_sim.car import (
+from implementations.vehicle.chase_sim import (
     CHASE_ATOMIC_EVALUATION_QUERY,
     CHASE_PASSIVE_CAMERA_ID,
 )

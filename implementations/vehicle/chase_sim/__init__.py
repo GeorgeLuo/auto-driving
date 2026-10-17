@@ -1,5 +1,8 @@
 """Chase simulator vehicle implementation."""
 
+from .session import build_chase_session_fingerprint, compare_chase_session_fingerprints
+from .capture import ChaseCameraCapture
+from .car import CHASE_ATOMIC_EVALUATION_QUERY, CHASE_PASSIVE_CAMERA_ID
 from .car import ChaseSimCar
 from .session import ChasePassiveCaptureError
 from .frame_identity import (
@@ -15,6 +18,11 @@ from .frame_identity import (
 )
 
 __all__ = [
+    "CHASE_ATOMIC_EVALUATION_QUERY",
+    "CHASE_PASSIVE_CAMERA_ID",
+    "ChaseCameraCapture",
+    "build_chase_session_fingerprint",
+    "compare_chase_session_fingerprints",
     "ChaseSimCar",
     "ChasePassiveCaptureError",
     "ChaseCaptureValidationError",

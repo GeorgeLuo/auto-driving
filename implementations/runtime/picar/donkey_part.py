@@ -64,19 +64,20 @@ class AutonomyPilotPart(FrameLoop):
     ):
         mode = mode or drive_mode("manual")
         mode_name = execution_mode(mode)
-        operator_changed = mode != self._observed_drive_mode and mode != self._drive_mode
-        self._observed_drive_mode = mode
-        if operator_changed:
-            self._drive_mode = mode
-            with self._lock:
-                self._discard_pending_locked()
-            if mode_name == "autonomy":
-                self.host.start(RunConfiguration())
-            else:
-                self.host.stop()
-        elif execution_mode(self._drive_mode) == "autonomy" and self.host.run_state != "running":
-            # The host ended the run: bounded decisions completed or a cycle failed.
-            self._hand_back()
+        with self._lifecycle_lock:
+            operator_changed = mode != self._observed_drive_mode and mode != self._drive_mode
+            self._observed_drive_mode = mode
+            if operator_changed:
+                self._drive_mode = mode
+                with self._lock:
+                    self._discard_pending_locked()
+                if mode_name == "autonomy":
+                    self.host.start(RunConfiguration())
+                else:
+                    self.host.stop()
+            elif execution_mode(self._drive_mode) == "autonomy" and self.host.run_state != "running":
+                # The host ended the run: bounded decisions completed or a cycle failed.
+                self._hand_back()
         self.submit(
             detach_image(image_array), mode=mode_name,
             user_steering=user_steering, user_throttle=user_throttle,
@@ -86,14 +87,16 @@ class AutonomyPilotPart(FrameLoop):
         return self._held_outputs(mode_name)
 
     def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
-        status = super().start(configuration, record=record)
-        self._show_drive_mode(drive_mode(configuration.mode))
-        return status
+        with self._lifecycle_lock:
+            status = super().start(configuration, record=record)
+            self._show_drive_mode(drive_mode(configuration.mode))
+            return status
 
     def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, Any]:
-        status = super().stop(reason=reason, error=error)
-        self._hand_back()
-        return status
+        with self._lifecycle_lock:
+            status = super().stop(reason=reason, error=error)
+            self._hand_back()
+            return status
 
     def _frame_completed(self) -> None:
         self._publish_host_source_frame()

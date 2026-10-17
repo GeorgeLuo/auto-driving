@@ -5,7 +5,7 @@ import base64
 from pathlib import Path
 from unittest import mock
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorReadRequest
-from implementations.vehicle.chase_sim.car import (
+from implementations.vehicle.chase_sim import (
     CHASE_ATOMIC_EVALUATION_QUERY,
     CHASE_PASSIVE_CAMERA_ID,
     ChaseSimCar,

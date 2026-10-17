@@ -13,7 +13,7 @@ import numpy as np
 from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.frame_loop import encode_jpeg
 from autonomy.runtime.session import RunConfiguration
-from implementations.vehicle.chase_sim.capture import ChaseCameraCapture
+from implementations.vehicle.chase_sim import ChaseCameraCapture
 from cli.automa_cli.bundles import controller_bundle_paths
 from implementations.runtime.chase_sim.service import ChaseRuntimeHost
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (

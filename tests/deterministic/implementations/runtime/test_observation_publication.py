@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import base64
 import json
 from types import SimpleNamespace
 import threading
@@ -14,6 +15,8 @@ import numpy as np
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.session import RunConfiguration
+from autonomy.runtime.routes import RuntimeRoutes
+from autonomy.runtime.frame_loop import DECISION_TRANSACTION_PATH
 from autonomy.runtime.execution import ControlExecution
 from implementations.decision_cycle.catalog import packaged_activation, selection_activation
 from autonomy.runtime.frame_loop import (
@@ -26,6 +29,11 @@ from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget
 
 
 class ObservationPublicationTests(unittest.TestCase):
+    def _decision_image(self, part):
+        status, _, body = RuntimeRoutes(part).handle("GET", DECISION_TRANSACTION_PATH)
+        self.assertEqual(status, 200, body)
+        return base64.b64decode(json.loads(body)["image_base64"], validate=True)
+
     def test_repeated_image_reads_encode_each_processed_frame_once(self) -> None:
         from autonomy.runtime.frame_loop import encode_jpeg
 
@@ -36,7 +44,7 @@ class ObservationPublicationTests(unittest.TestCase):
         with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", wraps=encode_jpeg) as encode:
             first, metadata = part.publish_latest_frame_jpeg()
             repeated, _ = part.publish_latest_frame_jpeg()
-            _, transaction_image = part.publish_decision_transaction()
+            transaction_image = self._decision_image(part)
             self.assertEqual(first, repeated)
             self.assertEqual(first, transaction_image)
             self.assertEqual(encode.call_count, 1)
@@ -61,7 +69,7 @@ class ObservationPublicationTests(unittest.TestCase):
                 part.wait_for_cycle()
                 camera, _ = part.publish_latest_camera_jpeg()
                 observation, _ = part.publish_latest_frame_jpeg()
-                _, decision = part.publish_decision_transaction()
+                decision = self._decision_image(part)
             self.assertEqual((camera, observation, decision), (wire, wire, wire))
             files = list(Path(tmp).glob("*/frames/*.jpg"))
             self.assertEqual(len(files), 1)
@@ -92,7 +100,7 @@ class ObservationPublicationTests(unittest.TestCase):
                 reader.join(1)
                 self.assertFalse(reader.is_alive())
                 observation, _ = part.publish_latest_frame_jpeg()
-                _, decision = part.publish_decision_transaction()
+                decision = self._decision_image(part)
                 self.assertEqual(encoder.call_count, 1)
             self.assertEqual(published, [observation])
             self.assertEqual(decision, observation)

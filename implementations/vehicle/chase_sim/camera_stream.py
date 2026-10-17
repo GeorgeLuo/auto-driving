@@ -8,7 +8,7 @@ from typing import Any, Callable
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 from .capture import ChaseCameraCapture
 from .session import (
-    ChasePassiveCaptureError,
+    ChasePassiveCaptureError, RUN_STABLE_FIELDS, build_chase_session_fingerprint, compare_chase_session_fingerprints,
     compare_passive_receipt_fingerprints,
     normalize_passive_receipt_fingerprint,
 )
@@ -19,7 +19,6 @@ from .metrics_ws import (
     MetricsUiConnection,
 )
 
-from .session import RUN_STABLE_FIELDS, build_chase_session_fingerprint, compare_chase_session_fingerprints
 
 def _record(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}

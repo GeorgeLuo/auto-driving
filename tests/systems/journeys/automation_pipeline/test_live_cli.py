@@ -79,7 +79,11 @@ class LiveCommandsTests(LiveHostTestCase):
             returned.set()
             return result
 
-        with patch.object(loop, "_capture_decision_publication", side_effect=pause_publication), \
+        # This check deliberately holds a completed cycle while a fresh CLI
+        # interpreter starts. Keep that artificial pause inside its display
+        # window; expiry is covered separately by the publication tests.
+        with patch("autonomy.runtime.frame_loop.stale_after_ms", return_value=10_000), \
+                patch.object(loop, "_capture_decision_publication", side_effect=pause_publication), \
                 patch.object(loop, "publish_decision_latest", side_effect=read_publication):
             try:
                 self.assertTrue(publishing.wait(10), "the host never completed another cycle")

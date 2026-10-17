@@ -347,7 +347,7 @@ class VehicleStatusTests(unittest.TestCase):
     ) -> None:
         """frontend_unresponsive during sensor_capture must not become a capability hint."""
 
-        from implementations.vehicle.chase_sim.car import ChasePassiveCaptureError
+        from implementations.vehicle.chase_sim import ChasePassiveCaptureError
 
         candidate = Candidate(
             "chase-sim",

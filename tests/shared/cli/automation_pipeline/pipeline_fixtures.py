@@ -157,7 +157,7 @@ class _PushStream:
         if self.auto_emit:
             self.emit()
     def emit(self):
-        from implementations.vehicle.chase_sim.capture import ChaseCameraCapture
+        from implementations.vehicle.chase_sim import ChaseCameraCapture
         with self._lock:
             if self.closed.is_set() or self.consumer is None:
                 return

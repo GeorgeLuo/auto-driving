@@ -5,6 +5,10 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from autonomy.decision_cycle.steps import decision_steps
+from autonomy.runtime.session import RunConfiguration
+from implementations.runtime.picar import AutonomyPilotPart, create_host
 from unittest.mock import patch
 from cli.automa_cli.automation import (
     CommandResult,
@@ -20,6 +24,56 @@ from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
 
 
 class AutomationLivePipelineTests(unittest.TestCase):
+    def test_picar_stale_decoder_cannot_stop_restart_or_overwrite_its_drive_mode(self):
+        controller = SimpleNamespace(mode="user", angle=0., throttle=0., mode_latch=None)
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()), controller=controller)
+        self.addCleanup(part.shutdown)
+        decoded, fail_old, failed = threading.Event(), threading.Event(), threading.Event()
+        starting, finish_start = threading.Event(), threading.Event()
+        errors = []
+        def old_loader():
+            decoded.set()
+            if not fail_old.wait(2):
+                raise TimeoutError("test did not release old decoder")
+            failed.set()
+            raise ValueError("retired decoder")
+        original_start = part.host.start
+        def blocked_start(*args, **kwargs):
+            starting.set()
+            if not finish_start.wait(2):
+                raise TimeoutError("test did not release start")
+            return original_start(*args, **kwargs)
+        def restart():
+            try:
+                part.start(RunConfiguration(mode="autonomy"))
+            except Exception as exc:
+                errors.append(exc)
+        part.start(RunConfiguration(mode="observe_only"))
+        part.submit(None, frame_id="old", image_loader=old_loader)
+        self.assertTrue(decoded.wait(1))
+        with patch.object(part.host, "start", side_effect=blocked_start):
+            worker = threading.Thread(target=restart, daemon=True)
+            worker.start()
+            try:
+                self.assertTrue(starting.wait(1))
+                began = time.monotonic()
+                part.publish_latest()
+                self.assertLess(time.monotonic()-began, .25, "publication waited for lifecycle transport")
+                fail_old.set()
+                self.assertTrue(failed.wait(1))
+            finally:
+                fail_old.set()
+                finish_start.set()
+                worker.join(2)
+                part.wait_for_cycle()
+        self.assertFalse(worker.is_alive())
+        self.assertEqual(errors, [])
+        self.assertEqual(part.host.run_state, "running")
+        self.assertEqual(part.host.execution.mode, "autonomy")
+        self.assertEqual((controller.mode, controller.mode_latch), ("local", "local"))
+        self.assertIsNone(part.host.last_error)
+
+
     def test_startup_accepts_a_correlated_view_that_advanced_during_export(self) -> None:
         state = {
             "status": "running", "pid": _RunningProcess.pid, "run_id": "current-run",

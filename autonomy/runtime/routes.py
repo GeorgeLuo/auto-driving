@@ -69,6 +69,7 @@ class RuntimeRoutes:
         self.host = loop.host
         self.telemetry = telemetry
         self.on_restart = on_restart
+        self._transactions = {OBSERVATION_TRANSACTION_PATH: "observation", DECISION_TRANSACTION_PATH: "decision"}
         self._routes: dict[tuple[str, str], Callable[[dict[str, list[str]], bytes], Response]] = {
             ("GET", STATUS_PATH): self._status,
             ("GET", RUNTIME_PATH): self._runtime,
@@ -77,18 +78,17 @@ class RuntimeRoutes:
             ("POST", PLUGINS_PATH): self._catalog,
             ("GET", LATEST_JSON_PATH): self._observation,
             ("GET", LATEST_FRAME_PATH): self._observation_frame,
-            ("GET", OBSERVATION_TRANSACTION_PATH): self._observation_transaction,
             ("GET", CAMERA_LATEST_JSON_PATH): self._camera,
             ("GET", CAMERA_LATEST_FRAME_PATH): self._camera_frame,
             ("GET", DECISION_LATEST_PATH): self._decision,
-            ("GET", DECISION_TRANSACTION_PATH): self._decision_transaction,
             ("POST", MEMORY_RESET_PATH): self._memory_reset,
             ("GET", TELEMETRY_LATEST_PATH): self._telemetry_latest,
             ("GET", TELEMETRY_RECORDS_PATH): self._telemetry_records,
         }
 
     def handles(self, path: str) -> bool:
-        return any(route_path == urlsplit(path).path for _, route_path in self._routes)
+        route_path = urlsplit(path).path
+        return route_path in self._transactions or any(p == route_path for _, p in self._routes)
 
     def handle(self, method: str, target: str, body: bytes = b"", *,
                headers: Mapping[str, str] | None = None, origin: str = "") -> Response:
@@ -103,15 +103,15 @@ class RuntimeRoutes:
                 status, payload = error
                 return json_response(payload, status)
         route = self._routes.get((method, path))
-        if route is None:
-            if any(route_path == path for _, route_path in self._routes):
+        transaction = self._transactions.get(path) if method == "GET" else None
+        if route is None and transaction is None:
+            if path in self._transactions or any(route_path == path for _, route_path in self._routes):
                 return json_response({"ok": False, "error": f"{method} not allowed on {path}"}, 405)
             return json_response({"ok": False, "error": f"no runtime route {path}"}, 404)
         try:
             query = parse_qs(parts.query, keep_blank_values=True, strict_parsing=False)
-            if path in {OBSERVATION_TRANSACTION_PATH, DECISION_TRANSACTION_PATH}:
-                kind = "observation" if path == OBSERVATION_TRANSACTION_PATH else "decision"
-                return self._transaction(kind, headers or {})
+            if transaction is not None:
+                return self._transaction(transaction, headers or {})
             return route(query, body or b"")
         except Exception as exc:  # noqa: BLE001 - one bad request must not end the host
             logger.exception("Runtime route %s %s failed", method, path)
@@ -201,9 +201,6 @@ class RuntimeRoutes:
     def _observation_frame(self, query: dict[str, list[str]], body: bytes) -> Response:
         return self._frame(*self.loop.publish_latest_frame_jpeg())
 
-    def _observation_transaction(self, query: dict[str, list[str]], body: bytes) -> Response:
-        return self._transaction("observation", {})
-
     def _camera_frame(self, query: dict[str, list[str]], body: bytes) -> Response:
         return self._frame(*self.loop.publish_latest_camera_jpeg())
 
@@ -230,9 +227,6 @@ class RuntimeRoutes:
         payload = self.loop.publish_decision_latest()
         return json_response(payload, 200 if payload.get("status") == "ready" else 503)
 
-    def _decision_transaction(self, query: dict[str, list[str]], body: bytes) -> Response:
-        return self._transaction("decision", {})
-
     def _transaction(self, kind: str, request_headers: Mapping[str, str]) -> Response:
         publication, capture, revision = self.loop.transaction_snapshot(kind)
         usable = (publication.get("status") == "ready" if kind == "decision"
@@ -249,7 +243,7 @@ class RuntimeRoutes:
         reason = publication.get("reason") or state
         if usable and capture is not None:
             try:
-                jpeg = self.loop._frame_jpeg(capture)
+                jpeg = self.loop.frame_jpeg(capture)
             except Exception as exc:
                 reason = "image_encoding_failed"
                 publication = {**publication, "ok": False, "health": "error", "status": "error",

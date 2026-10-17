@@ -200,7 +200,7 @@ class CaptureCloseoutTests(unittest.TestCase):
             path = f"/autonomy/{kind}/transaction"
             status, headers, body = routes.handle("GET", path)
             self.assertEqual(status, 200, body)
-            with patch.object(FrameLoop, "_frame_jpeg", side_effect=AssertionError("unchanged image encoded")):
+            with patch.object(FrameLoop, "frame_jpeg", side_effect=AssertionError("unchanged image encoded")):
                 status, again, body = routes.handle("GET", path, headers={"If-None-Match": headers["ETag"]})
             self.assertEqual((status, body), (304, b""))
             self.assertEqual(again["ETag"], headers["ETag"])
@@ -224,7 +224,7 @@ class CaptureCloseoutTests(unittest.TestCase):
         loop.submit(np.zeros((4, 4, 3), dtype=np.uint8), frame_id="first")
         loop.wait_for_cycle()
         for kind in ("observation", "decision"):
-            with patch.object(FrameLoop, "_frame_jpeg", side_effect=ValueError("bad image")):
+            with patch.object(FrameLoop, "frame_jpeg", side_effect=ValueError("bad image")):
                 status, payload = _json(routes.handle("GET", f"/autonomy/{kind}/transaction"))
             self.assertEqual(status, 503)
             self.assertEqual(payload["reason"], "image_encoding_failed")

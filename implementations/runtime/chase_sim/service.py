@@ -25,9 +25,8 @@ from autonomy.runtime.frame_loop import FrameLoop
 from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
 from implementations.vehicle.chase_sim import (
-    ChaseSimCar,
+    ChaseCameraCapture, ChaseSimCar,
 )
-from implementations.vehicle.chase_sim.capture import ChaseCameraCapture
 
 from . import create_host
 

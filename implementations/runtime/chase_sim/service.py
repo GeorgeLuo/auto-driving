@@ -107,7 +107,9 @@ class ChaseFrameLoop(FrameLoop):
                         continue
                     self._active_stream = stream
                 with stream:
-                    stream.set_consumer(lambda capture, generation=generation: self._submit_capture(capture, generation=generation))
+                    stream.set_consumer(
+                        lambda capture, generation=generation: self._submit_capture(capture, generation=generation)
+                    )
                     logger.info("Chase camera stream subscribed (generation %s)", generation)
                     while (not stop.is_set() and self._capture_enabled
                            and self.host.run_state == "running" and generation == self._capture_generation):
@@ -120,8 +122,6 @@ class ChaseFrameLoop(FrameLoop):
                 else:
                     logger.info("Capture ended after the run changed: %s: %s", type(exc).__name__, exc)
             finally:
-                if stream is not None:
-                    stream.close()
                 with self._lock:
                     if self._active_stream is stream:
                         self._active_stream = None

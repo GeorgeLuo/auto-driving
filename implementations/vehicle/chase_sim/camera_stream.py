@@ -7,16 +7,19 @@ from typing import Any, Callable
 
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 from .capture import ChaseCameraCapture
-from .session import (
-    ChasePassiveCaptureError, RUN_STABLE_FIELDS, build_chase_session_fingerprint, compare_chase_session_fingerprints,
-    compare_passive_receipt_fingerprints,
-    normalize_passive_receipt_fingerprint,
-)
 from .frame_identity import ChaseCaptureValidationError, validate_chase_sensor_capture
 from .metrics_ws import (
+    MetricsUiConnection,
     MetricsUiWebSocketError,
     MetricsUiWsClient,
-    MetricsUiConnection,
+)
+from .session import (
+    RUN_STABLE_FIELDS,
+    ChasePassiveCaptureError,
+    build_chase_session_fingerprint,
+    compare_chase_session_fingerprints,
+    compare_passive_receipt_fingerprints,
+    normalize_passive_receipt_fingerprint,
 )
 
 

@@ -23,9 +23,8 @@ playing game that stops producing frames fails after the capture timeout.
 
 `captured_at_ms` estimates capture time on the runtime clock, including delivery
 and slot delay in age. Stream time is anchored conservatively to subscription
-start. Atomic capture uses request start when source time is unavailable;
-repeated identities retain their first estimate. Response completion never
-refreshes a capture's age.
+start. One-shot atomic reads use the request start time. Response completion
+never refreshes a capture's age.
 
 Chase requires the advertised camera stream. Missing support, malformed replies,
 transport failures and failed subscriptions end the run; update Metrics UI when
@@ -40,10 +39,12 @@ intentional halt/stop discards are excluded. No stream counter is copied into
 cycle metadata.
 
 Perception and action copying run independently of recording export, each with
-one publisher and a target of 30 Hz. Status/export polling targets 10 Hz. Slow requests retain adaptive backoff (up
-to a 100 ms gap). Both transaction routes support `ETag` / `If-None-Match`:
-unchanged usable pairs return `304` without image bytes. Expiry is checked
-before conditional responses, and action telemetry coverage still refreshes.
-Unavailable/failed encodes return the same image fields as null with HTTP 503;
-view availability recovers without ending automation. CLI and host must both support the current conditional transaction contract. Terminal streams share the view's
-observation read. Recording and publication share one synchronized JPEG cache.
+one publisher and a target of 30 Hz. Status/export polling targets 10 Hz. Slow
+requests retain adaptive backoff (up to a 100 ms gap). Both transaction routes
+support `ETag` / `If-None-Match`: unchanged usable pairs return `304` without
+image bytes. Expiry is checked before conditional responses, and action
+telemetry coverage still refreshes. Unavailable/failed encodes return the same
+image fields as null with HTTP 503; view availability recovers without ending
+automation. CLI and host must both support the current conditional transaction
+contract. Terminal streams share the view's observation read. Recording and
+publication share one synchronized JPEG cache.

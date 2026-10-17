@@ -6,6 +6,7 @@ import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 import numpy as np
 
@@ -21,6 +22,28 @@ from tests.shared.implementations.runtime.wait import wait_until as _wait
 
 
 class ChaseRuntimeHostTests(unittest.TestCase):
+    def test_failed_stream_startup_never_submits_the_subscription_frame(self):
+        from implementations.vehicle.chase_sim.camera_stream import ChaseCameraStream
+        from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
+        from tests.deterministic.implementations.vehicle.test_chase_camera_stream import _Connection
+
+        connection = _Connection()
+        connection.state.return_value = {}
+        car = _FakeCar()
+        car.camera_stream = lambda: ChaseCameraStream(MetricsUiWsClient("ws://fixture.invalid/ws"))
+        with tempfile.TemporaryDirectory() as tmp, patch(
+            "implementations.vehicle.chase_sim.camera_stream.MetricsUiConnection", return_value=connection,
+        ):
+            bundle = controller_bundle_paths(Path(tmp) / "chase-sim-chaser")
+            _write_activations(bundle)
+            with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]), vehicle_id="chase-sim-chaser") as host:
+                host.loop.start(RunConfiguration(mode="observe_only"))
+                _wait(lambda: host.loop.host.run_state == "error", message="startup failure was hidden")
+                self.assertIn("simulator_capability_missing", host.loop.host.last_error)
+                self.assertNotIn("Camera stream is not ready", host.loop.host.last_error)
+                self.assertEqual(host.loop.frames_received, 0)
+                self.assertIsNone(host.loop.host.last_context)
+
     def test_stream_captures_during_a_slow_cycle_and_decides_only_newest_pending_frame(self) -> None:
         release_first_cycle = threading.Event()
 
@@ -151,12 +174,13 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 self.closed = threading.Event()
             def set_consumer(self, consumer):
                 self.consumer = consumer
+                self.consumer(self.first)
             def __enter__(self):
                 index = len(streams)
-                self.consumer(ChaseCameraCapture(
+                self.first = ChaseCameraCapture(
                     f"chase_frame_{index:06d}", index, "fixture", int(time.time() * 1000),
                     "stream", lambda: np.zeros((4, 4, 3), dtype=np.uint8),
-                ))
+                )
                 return self
             def close(self):
                 self.closed.set()

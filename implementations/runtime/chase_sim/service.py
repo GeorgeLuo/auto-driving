@@ -154,8 +154,8 @@ class ChaseFrameLoop(FrameLoop):
                         if generation != self._capture_generation or not self._capture_enabled:
                             continue
                         self._active_stream = stream
-                    stream.set_consumer(lambda capture, generation=generation: self._submit_capture(capture, generation=generation))
                     with stream:
+                        stream.set_consumer(lambda capture, generation=generation: self._submit_capture(capture, generation=generation))
                         while (not stop.is_set() and self._capture_enabled
                                and self.host.run_state == "running" and generation == self._capture_generation):
                             stream.check_progress()
@@ -164,6 +164,8 @@ class ChaseFrameLoop(FrameLoop):
                 if generation == self._capture_generation and self._capture_enabled:
                     logger.exception("Chase capture failed")
                     self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
+                else:
+                    logger.info("Capture ended after the run changed: %s: %s", type(exc).__name__, exc)
             finally:
                 if stream is not None:
                     stream.close()

@@ -7,6 +7,7 @@ import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
 
 from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.activation import (
@@ -108,6 +109,24 @@ def _state(report: dict) -> dict:
 
 
 class CycleHostMemoryTests(unittest.TestCase):
+    def test_failed_start_reports_its_error_instead_of_the_previous_run_error(self):
+        host, _ = _host()
+        host.stop(reason="error", error="earlier failure")
+        original = host.set_mode
+        def mode(value):
+            if value != "manual":
+                raise RuntimeError("new acquisition failure")
+            return original(value)
+        with patch.object(host, "set_mode", side_effect=mode):
+            with self.assertRaisesRegex(RuntimeError, "new acquisition failure"):
+                host.start()
+        self.assertEqual(host.last_error, "RuntimeError: new acquisition failure")
+        self.assertEqual(host.run_state, "error")
+        with patch.object(host, "set_mode", return_value={}):
+            host.start()
+        self.assertIsNone(host.last_error)
+        host.close()
+
     def test_cycle_result_report_is_detached_from_step_owned_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             step = _memory_step(Path(tmp))

@@ -272,15 +272,14 @@ class _ViewFeed:
 
     def read_observation(self) -> tuple[dict[str, Any] | None, str | None]:
         try:
-            if not hasattr(self, "_observation_cache"):
-                self._observation_cache = TransactionCache()
             self._observation = fetch_observation_sample(self.base_url, timeout_s=self.timeout_s,
                                                          cache=self._observation_cache)
             return self._observation[0], None
         except (ConnectionError, OSError, TypeError, ValueError) as exc:
             self._observation = None
             self.error = f"{type(exc).__name__}: {exc}"
-            self.server.perception.invalidate_latest()
+            if self.server is not None:
+                self.server.perception.invalidate_latest()
             return None, self.error
 
     def publish(self, publication: dict[str, Any] | None) -> None:
@@ -296,7 +295,7 @@ class _ViewFeed:
         if publication is None:
             return
         try:
-            pair = getattr(self, "_observation", None)
+            pair = self._observation
             if pair is None or pair[0] is not publication:
                 publication, error = self.read_observation()
                 if error is not None:
@@ -310,7 +309,7 @@ class _ViewFeed:
             frame = publication_to_frame_record(publication)
             capture = (frame.get("frame_id"), frame.get("captured_at_ms"),
                        frame.get("perception_completed_at_ms"), frame.get("generation_id"))
-            if capture != getattr(self, "_last_capture", None):
+            if capture != self._last_capture:
                 self.frame_path.write_bytes(jpeg)
                 self.server.perception.publish_matched(frame_path=self.frame_path, frame_record=frame)
                 self._last_capture = capture

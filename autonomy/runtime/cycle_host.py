@@ -422,6 +422,7 @@ class AutonomyCycleHost:
         configuration = configuration or RunConfiguration()
         with self._session_lock:
             self.stop()
+            self.last_error = None
             self.configuration = configuration
             self.recording = recording
             self.run_decisions = 0
@@ -429,8 +430,9 @@ class AutonomyCycleHost:
             self._refresh_session_view()
             try:
                 self.set_mode(configuration.mode)
-            except Exception:
+            except Exception as exc:
                 self.run_state = "error"
+                self.last_error = f"{type(exc).__name__}: {exc}"
                 self._refresh_session_view()
                 raise
             self._run_generation += 1

@@ -12,7 +12,7 @@ from unittest.mock import patch
 from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli import runtime_monitor
+from cli.automa_cli import runtime_monitor, streaming
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from tests.deterministic.cli.automation.test_runtime_monitor import (
     DECISION, SELECTIONS, _FakeDecisionView, _host, _publication, _session,
@@ -21,6 +21,20 @@ from tests.shared.implementations.runtime.wait import wait_until
 
 
 class LiveViewCopyTests(unittest.TestCase):
+    def test_unavailable_view_and_failed_fetch_return_a_probe_error(self):
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(streaming, "runtime_view_dir", return_value=Path(tmp)),
+            patch.object(streaming.RuntimeViewServer, "start", side_effect=OSError("port taken")),
+            patch.object(streaming, "fetch_observation_sample", side_effect=ConnectionError("offline")),
+        ):
+            feed = streaming._ViewFeed("fixture", base_url="http://host.invalid", timeout_s=0.1)
+            self.assertIsNone(feed.server)
+            publication, error = feed.read_observation()
+            self.assertIsNone(publication)
+            self.assertIn("offline", error)
+            feed.publish(publication)
+
     def test_perception_recovers_and_advances_while_recording_export_is_blocked(self):
         export_entered, export_release = threading.Event(), threading.Event()
         current = {"index": None}

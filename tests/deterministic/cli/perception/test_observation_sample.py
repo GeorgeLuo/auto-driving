@@ -149,6 +149,8 @@ class ObservationSampleTests(unittest.TestCase):
     def test_stream_view_uses_the_transaction_metadata_when_the_host_advances(self):
         with tempfile.TemporaryDirectory() as tmp:
             feed = streaming._ViewFeed.__new__(streaming._ViewFeed)
+            feed._observation_cache = publications.TransactionCache()
+            feed._observation = feed._last_capture = None
             feed.base_url, feed.timeout_s = "http://host.invalid", 1.0
             feed.frame_path = Path(tmp) / "frame.jpg"
             feed.server, feed.decision = Mock(), Mock()
@@ -162,6 +164,8 @@ class ObservationSampleTests(unittest.TestCase):
     def test_stream_terminal_and_view_share_one_read_and_skip_unchanged_publication(self):
         with tempfile.TemporaryDirectory() as tmp:
             feed = streaming._ViewFeed.__new__(streaming._ViewFeed)
+            feed._observation_cache = publications.TransactionCache()
+            feed._observation = feed._last_capture = None
             feed.base_url, feed.timeout_s = "http://host.invalid", 1.0
             feed.frame_path = Path(tmp) / "frame.jpg"
             feed.server, feed.decision = Mock(), Mock()

@@ -463,14 +463,16 @@ document. For example, save this as `seed.json` to continue cardboard object 7:
 ```
 
 ```sh
-./cli/automa vehicles perception inspect path/to/next-frame.png --plugin sim_cardboard_obstacle --plugin sim_cardboard_permanence --shared-memory seed.json --json
+./cli/automa vehicles perception inspect path/to/next-frame.png --preset chase-v1-detect-by-color --shared-memory seed.json --json
 ```
 
-`sim_cardboard_obstacle` detects visible cardboard regions, including smaller
-distant boxes, and separates touching silhouettes when their lower edges have
-distinct steps. `sim_cardboard_permanence` runs after it and associates the
-nearest detection/history pairs within a normalized center distance of 0.25,
-using each detection and identity at most once per frame. Its
+The `chase-v1-detect-by-color` preset selects `sim_cardboard_obstacle` and then
+`sim_cardboard_permanence`. `sim_cardboard_obstacle` detects visible cardboard
+regions, including smaller distant boxes, and separates touching silhouettes
+when their lower edges have distinct steps. `sim_cardboard_permanence` runs
+after it and associates the nearest detection/history pairs within a normalized
+center distance of 0.25, using each detection and identity at most once per
+frame. Its
 `detection_plugin_id` option names the detection plugin it reads, by default
 `sim_cardboard_obstacle`.
 A match is labeled `known cardboard 007`; a detection

@@ -29,6 +29,10 @@ publishes for others, such as ``memory.evidence``, is rewritten from its
 producer's state on every update. A value meant for a consumer is therefore
 set through the producer's state key.
 
+A host may start a run from a shared-memory file, decoding a fresh map per
+run. Resets and restages clear affected plugins' seeded keys as they clear
+history. Set a value a step publishes through its producer's state key.
+
 Steps reset plugins through ``reset_plugin``. A plugin's reset may omit the
 map and may leave fresh state behind, such as ``bounded_evidence``'s new
 epoch. ``MemoryRunner.reset`` returns that fresh state, and
@@ -39,8 +43,10 @@ plugin's ``memory_required`` flag means that plugin needs this map to perceive.
 from __future__ import annotations
 
 import importlib
+import json
 import math
 from collections.abc import Mapping, MutableMapping
+from pathlib import Path
 from typing import Any
 
 SHARED_MEMORY_SCHEMA = "shared_memory_v1"
@@ -55,6 +61,20 @@ class SharedMemoryValueError(ValueError):
     def __init__(self, path: str, detail: str) -> None:
         self.path = path
         super().__init__(f"{path}: {detail}")
+
+
+def read_shared_memory_file(path: str | Path) -> dict[str, Any]:
+    """Read a validated document; hosts decode a fresh map for each run."""
+
+    try:
+        document = json.loads(Path(path).read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise SharedMemoryValueError(str(path), f"not JSON: {exc}") from exc
+    try:
+        shared_memory_from_document(document)
+    except SharedMemoryValueError as exc:
+        raise SharedMemoryValueError(str(path), str(exc)) from exc
+    return document
 
 
 def shared_memory_document(shared_memory: Mapping[str, Any]) -> dict[str, Any]:
@@ -218,6 +238,7 @@ __all__ = [
     "SHARED_MEMORY_SCHEMA",
     "SharedMemory",
     "SharedMemoryValueError",
+    "read_shared_memory_file",
     "shared_memory_document",
     "shared_memory_from_document",
 ]

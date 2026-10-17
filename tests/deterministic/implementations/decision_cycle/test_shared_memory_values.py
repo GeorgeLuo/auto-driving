@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from dataclasses import replace
 from typing import Any
 
 import numpy as np
@@ -31,6 +32,12 @@ from implementations.decision_cycle.perception.plugins.motion_tracks.plugin impo
 from implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin import (
     MultiObstructionTracksPlugin,
 )
+from implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin import (
+    SimCardboardObstaclePlugin,
+)
+from implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin import (
+    SimCardboardPermanencePlugin,
+)
 from implementations.decision_cycle.perception.shared.image.stored import StoredImage
 from tests.deterministic.implementations.decision_cycle.perception.tracks_replay import (
     OBSTRUCTION_LEFT_EDGES,
@@ -54,7 +61,12 @@ def _emitted(batch: PerceptionEvidenceBatch) -> dict[str, Any]:
     }
 
 
-def _inputs(index: int, rgb: np.ndarray, memory: dict[str, Any]) -> PerceptionPluginInputs:
+def _inputs(
+    index: int,
+    rgb: np.ndarray,
+    memory: dict[str, Any],
+    prior_things: tuple[Any, ...] = (),
+) -> PerceptionPluginInputs:
     timestamp_ms = 100 + index * 100
     frame = CameraFrame(
         "front_camera",
@@ -70,6 +82,14 @@ def _inputs(index: int, rgb: np.ndarray, memory: dict[str, Any]) -> PerceptionPl
         _QuietDiagnostics(),
         {"sequence_index": index},
         shared_memory=memory,
+        prior_things=prior_things,
+    )
+
+
+def _feature_things(index: int, rgb: np.ndarray) -> tuple[Any, ...]:
+    batch = SimCardboardObstaclePlugin().perceive(_inputs(index, rgb, {}))
+    return tuple(
+        replace(thing, source_plugin_id="sim_cardboard_obstacle") for thing in batch.things
     )
 
 
@@ -100,6 +120,46 @@ def _observation(observation_id: str, created_at_ms: int, thing_id: str) -> Obse
 
 
 class SharedMemoryValueTests(unittest.TestCase):
+    def test_multiple_cardboard_identities_match_after_a_round_trip(self) -> None:
+        scene = np.empty((120, 160, 3), dtype=np.uint8)
+        scene[:] = (213, 197, 172)
+        scene[25:65, 10:40] = (158, 107, 56)
+        scene[45:75, 100:125] = (158, 107, 56)
+        memory: dict[str, Any] = {}
+        SimCardboardPermanencePlugin().perceive(_inputs(0, scene, memory, _feature_things(0, scene)))
+        restored = _round_trip(memory)
+        shifted = np.roll(scene, 3, axis=1)
+        features = _feature_things(1, shifted)
+
+        original = SimCardboardPermanencePlugin().perceive(_inputs(1, shifted, memory, features))
+        replayed = SimCardboardPermanencePlugin().perceive(_inputs(1, shifted, restored, features))
+
+        self.assertEqual(len(original.things), 2)
+        self.assertEqual(_emitted(original), _emitted(replayed))
+        self.assertEqual(memory, restored)
+
+    def test_cardboard_permanence_matches_after_a_round_trip(self) -> None:
+        scene = np.empty((120, 160, 3), dtype=np.uint8)
+        scene[:] = (213, 197, 172)
+        scene[30:70, 40:100] = (158, 107, 56)
+        memory: dict[str, Any] = {}
+        SimCardboardPermanencePlugin().perceive(
+            _inputs(0, scene, memory, _feature_things(0, scene))
+        )
+        restored = _round_trip(memory)
+        shifted = np.roll(scene, 4, axis=1)
+        shifted_features = _feature_things(1, shifted)
+
+        original = SimCardboardPermanencePlugin().perceive(
+            _inputs(1, shifted, memory, shifted_features)
+        )
+        replayed = SimCardboardPermanencePlugin().perceive(
+            _inputs(1, shifted, restored, shifted_features)
+        )
+
+        self.assertEqual(_emitted(original), _emitted(replayed))
+        self.assertEqual(memory, restored)
+
     def test_stored_image_decodes_to_a_writable_copy(self) -> None:
         image = StoredImage(np.arange(6, dtype=np.uint8).reshape(2, 3))
 

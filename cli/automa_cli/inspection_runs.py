@@ -10,6 +10,7 @@ whatever is checked out or staged now.
 from __future__ import annotations
 
 from dataclasses import replace
+from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.activation import (
@@ -18,9 +19,21 @@ from autonomy.decision_cycle.activation import (
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.plugin_loader import code_source_from_activation, load_runner
 from autonomy.runtime.recording import recorded_selections
+from autonomy.shared_memory import read_shared_memory_file, shared_memory_from_document
 from implementations.decision_cycle.catalog import selection_activation
 
 from .runtime_hosts import release_code_dir
+
+
+def read_shared_memory_seed(
+    path: Path | None,
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """A fresh run map and its original file document as provenance."""
+
+    if path is None:
+        return None, None
+    document = read_shared_memory_file(path)
+    return shared_memory_from_document(document), {"path": str(path), "document": document}
 
 
 def replay_step(runner: Any, activation: StepActivation | None, shared_memory: dict[str, Any]) -> Any:

@@ -259,7 +259,9 @@ class PerceptionRunner(StepRunner[Any]):
         # implementation identity and is not rewritten to repair provenance.
         for definition, plugin in self.applied:
             catalog_id = definition.plugin_id
-            execution = self._execute_plugin(plugin, request, catalog_id)
+            execution = self._execute_plugin(
+                plugin, request, catalog_id, prior_things=tuple(things)
+            )
             # The plugin report keeps timing and error; domain run fields stay
             # on the perception result.
             self._record_plugin(catalog_id, execution.duration_ms, execution.error)
@@ -387,6 +389,7 @@ class PerceptionRunner(StepRunner[Any]):
         plugin: Any,
         request: PerceptionRequest,
         catalog_id: str,
+        prior_things: tuple[PerceivedThing, ...] = (),
     ) -> _PluginExecution:
         started = clock()
         diagnostics = PerceptionDiagnosticSink(
@@ -421,6 +424,7 @@ class PerceptionRunner(StepRunner[Any]):
                 diagnostics=diagnostics,
                 metadata=request.metadata,
                 shared_memory=request.shared_memory,
+                prior_things=prior_things,
             )
             batch = plugin.perceive(inputs)
             if not isinstance(batch, PerceptionEvidenceBatch):

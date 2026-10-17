@@ -16,7 +16,10 @@ from autonomy.decision_cycle.perception.diagnostics.sink import (
     PerceptionDiagnosticSink,
     _safe_name,
 )
-from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch
+from autonomy.decision_cycle.perception.evidence.values import (
+    PerceivedThing,
+    PerceptionEvidenceBatch,
+)
 from autonomy.shared_memory import SharedMemory
 
 
@@ -99,6 +102,8 @@ class PerceptionPluginInputs:
     diagnostics: PerceptionDiagnosticSink
     metadata: Mapping[str, Any] = field(default_factory=dict)
     shared_memory: SharedMemory | None = field(default=None, repr=False, compare=False)
+    # Things already emitted by earlier plugins in this frame, in selection order.
+    prior_things: tuple[PerceivedThing, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "feeds", MappingProxyType(dict(self.feeds)))

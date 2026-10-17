@@ -70,6 +70,7 @@ class StepReplay:
     from the first frame's selection, its restage keeps the runners and the map.
     Constructing the runners raises before any frame runs, including for a
     recorded release that is not available locally.
+    An optional shared-memory map starts the run with host-supplied history.
     """
 
     def __init__(
@@ -79,6 +80,7 @@ class StepReplay:
         steps: tuple[str, ...],
         overrides: dict[str, StepActivation] | None = None,
         first_frame: ReplayFrame | None = None,
+        shared_memory: dict[str, Any] | None = None,
     ) -> None:
         self.overrides = dict(overrides or {})
         first = recorded_selections(first_frame.metadata) if first_frame is not None else {}
@@ -97,7 +99,7 @@ class StepReplay:
             step: recorded_runner(activation) if activation is not None else None
             for step, activation in self.activations.items()
         }
-        self.shared_memory: dict[str, Any] = {}
+        self.shared_memory = shared_memory if shared_memory is not None else {}
 
     def restage(self, frame: ReplayFrame) -> None:
         """Apply this frame's recorded selections, unless the step is overridden."""

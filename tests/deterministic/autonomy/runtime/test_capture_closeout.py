@@ -14,8 +14,6 @@ from autonomy.runtime.frame_loop import FrameLoop, encode_jpeg
 from autonomy.runtime.session import RunConfiguration
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.chase_sim.service import ChaseFrameLoop
-from implementations.vehicle.chase_sim.capture import ChaseCameraCapture
-from implementations.vehicle.chase_sim.session import ChasePassiveCaptureError
 from tests.deterministic.autonomy.runtime.test_routes import _Target, _json, _routes
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import _FakeCar
 
@@ -53,26 +51,65 @@ class CaptureCloseoutTests(unittest.TestCase):
         self.assertEqual(loop.host.run_decisions, 1)
         loop.shutdown()
 
-    def test_atomic_identity_changes_are_rejected_in_every_mode(self):
+    def test_stream_identity_changes_are_rejected_in_every_mode(self):
+        from implementations.vehicle.chase_sim.camera_stream import ChaseCameraStream
+        from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
+        from tests.deterministic.implementations.vehicle.chase_frame_identity_fixtures import (
+            _Connection, _frame, _session_state,
+        )
+        from tests.shared.implementations.runtime.wait import wait_until
+
         for mode in ("manual", "observe_only", "autonomy"):
             for field in ("scenario_id", "simulation_epoch", "control_source"):
                 with self.subTest(mode=mode, field=field):
                     base, _ = _routes()
                     car = _FakeCar()
+                    connection = _Connection()
+                    source = "ws" if mode == "autonomy" else "keyboard"
+                    connection.state.return_value = _session_state(control_source=source)
+                    errors = []
+                    def open_stream():
+                        stream = ChaseCameraStream(MetricsUiWsClient("ws://fixture.invalid/ws"))
+                        check = stream._check_session
+                        def checked(*args):
+                            try:
+                                return check(*args)
+                            except Exception as exc:
+                                errors.append(exc)
+                                raise
+                        stream._check_session = checked
+                        return stream
+                    car.camera_stream = open_stream
                     loop = ChaseFrameLoop(car=car, host=base.host)
-                    before = {"game_id": "chase", "scenario_id": "first", "simulation_epoch": "epoch",
-                              "control_source": "ws" if mode == "autonomy" else "keyboard", "unknown_fields": []}
-                    car.last_passive_capture = {"session_preservation": {"before": before, "after": before}}
-                    loop.start(RunConfiguration(mode=mode))
-                    capture = ChaseCameraCapture("first", 1, "epoch", int(time.time() * 1000), "atomic",
-                                                 lambda: np.zeros((4, 4, 3), dtype=np.uint8))
-                    loop._submit_capture(capture, generation=loop._capture_generation, check_session=True)
-                    loop.wait_for_cycle()
-                    car.last_passive_capture["session_preservation"]["after"] = {**before, field: "changed"}
-                    with self.assertRaises(ChasePassiveCaptureError):
-                        loop._submit_capture(capture, generation=loop._capture_generation, check_session=True)
-                    self.assertEqual(loop.frames_received, 1)
-                    loop.shutdown()
+                    stop = threading.Event()
+                    with patch("implementations.vehicle.chase_sim.camera_stream.MetricsUiConnection", return_value=connection):
+                        worker = threading.Thread(target=loop.serve_captures, args=(stop,), daemon=True)
+                        worker.start()
+                        try:
+                            loop.start(RunConfiguration(mode=mode))
+                            wait_until(lambda: loop.processed_count == 1, message="first stream decision missing")
+                            frame = _frame(43)
+                            if field == "simulation_epoch":
+                                frame["frameIdentity"]["simulationEpoch"] = "changed"
+                            else:
+                                connection.state.return_value = _session_state(
+                                    control_source="changed" if field == "control_source" else source,
+                                    scenario="changed" if field == "scenario_id" else "chaser-depth-obstacles",
+                                )
+                            connection.push(frame)
+                            wait_until(lambda: loop.host.run_state == "error", message="session change was ignored")
+                            self.assertEqual(loop.processed_count, 1)
+                            if field == "simulation_epoch":
+                                self.assertIn("capture_identity_invalid", loop.host.last_error)
+                                self.assertEqual(loop.frames_received, 1)
+                            else:
+                                self.assertIn("simulator_state_changed", loop.host.last_error)
+                                self.assertIn(field, errors[-1].details["session_preservation"]["changed_fields"])
+                        finally:
+                            stop.set()
+                            loop.shutdown()
+                            worker.join(2)
+                            loop.wait_for_cycle()
 
     def test_only_selected_captures_decode_and_every_replacement_is_counted_once(self):
         loop, routes = _routes()

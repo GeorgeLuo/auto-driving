@@ -5,7 +5,7 @@ import threading
 import time
 from typing import Any, Callable
 
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 from .capture import ChaseCameraCapture
 from .session import (
     ChasePassiveCaptureError,
@@ -20,7 +20,6 @@ from .metrics_ws import (
 )
 
 from .session import RUN_STABLE_FIELDS, build_chase_session_fingerprint, compare_chase_session_fingerprints
-
 
 def _record(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
@@ -57,8 +56,6 @@ class ChaseCameraStream:
         self._subscribe_started_ms = 0.0
         self._last_progress_ms = 0.0
         self._last_idle_check_ms = 0.0
-        self.frames_received = 0
-        self.frames_dropped = 0
 
     def __enter__(self) -> ChaseCameraStream:
         try:
@@ -202,14 +199,12 @@ class ChaseCameraStream:
 
         capture = ChaseCameraCapture(
             sensor["frame_id"], sensor["simulator_frame_index"], sensor["simulation_epoch"],
-            captured_at_ms, "stream", load_image, sensor["image"]["validated_bytes"],
+            captured_at_ms, load_image, sensor["image"]["validated_bytes"],
         )
         with self._condition:
-            self.frames_received += 1
             if self._consumer is not None:
                 self._consumer(capture)
             else:
-                self.frames_dropped += int(self._latest is not None)
                 self._latest = capture
             self._condition.notify_all()
 
@@ -287,25 +282,6 @@ class ChaseCameraStream:
         finally:
             with self._condition:
                 self._state_request_id, self._state_reply = None, None
-
-    def read_camera_frame(self, *, timeout_s: float = 0.1) -> SensorFrame | None:
-        with self._condition:
-            self._condition.wait_for(
-                lambda: self._latest is not None or self._error is not None or self._closed.is_set(),
-                timeout=timeout_s,
-            )
-            if self._error is not None:
-                raise self._error
-            if self._closed.is_set():
-                return None
-            sample = self._latest
-            self._latest = None
-        if sample is None:
-            self._check_idle()
-            return None
-        sensor_frame = sample.sensor_frame()
-        from dataclasses import replace
-        return replace(sensor_frame, completed_at_ms=int(time.time() * 1000))
 
     def _check_session(self, state: dict[str, Any], sensor: dict[str, Any]) -> None:
         current = build_chase_session_fingerprint(state=state, debug={

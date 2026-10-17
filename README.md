@@ -788,11 +788,10 @@ as a deliberately idle plugin; a custom action plugin can change the requested
 command but cannot bypass runtime movement authority.
 
 Capture status uses only `frames_received` and `frames_dropped` on both vehicles
-and both Chase transports. Received frames are distinct captures accepted at
+and the Chase stream. Received frames are distinct captures accepted at
 runtime ingress; dropped frames are received captures replaced before processing.
 Counters accumulate for the host process; run summaries show deltas. Intentional
-halt/stop discards and uncaptured simulator frame-index gaps are excluded, so
-atomic capture can legitimately report zero drops.
+halt/stop discards and uncaptured simulator frame-index gaps are excluded.
 Automation `run` and `restart` use `--num-decisions` in place of `--frames`.
 Run configuration and automation status use `num_decisions` (zero means
 unbounded, explicitly requested with `--unbounded` for movement-enabled runs); host session status

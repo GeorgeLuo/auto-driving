@@ -173,15 +173,18 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 self.assertEqual(code, 0, message)
                 self.assertLess(time.monotonic() - started, 2.0, "monitor waited after the worker was free")
                 state = json.loads((root / "state.json").read_text())
-                self.assertEqual(list(dict.fromkeys(seen)), [0, 2])
+                unique = list(dict.fromkeys(seen))
+                self.assertEqual((unique[0], unique[-1]), (0, 2))
+                self.assertEqual(unique, sorted(unique))
+                self.assertTrue(set(unique).issubset({0, 1, 2}))
                 self.assertEqual((state["frames_received"], state["processed_count"]), (3, 3))
                 self.assertEqual(state["num_decisions"], 3)
                 self.assertNotIn("interval_s", state["session"]["configuration"])
                 recording_id = state["session"]["recording"]["run_id"]
                 records = [json.loads(p.read_text()) for p in (root / "runs" / recording_id).glob("perception/*/perception.json")]
                 records.sort(key=lambda record: record["frame_index"])
-                # Live samples are the latest publication at each poll, so frame 1
-                # is absent from `seen`. The recording keeps that completed decision.
+                # The independent copier may observe intermediate frame 1.
+                # The recording always keeps every completed decision.
                 self.assertEqual([record["frame_index"] for record in records], [0, 1, 2])
                 self.assertIn("Frames received: 3", message)
             finally:

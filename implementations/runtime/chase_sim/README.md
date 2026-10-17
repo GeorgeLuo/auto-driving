@@ -27,22 +27,20 @@ start. Atomic capture uses request start when source time is unavailable;
 repeated identities retain their first estimate. Response completion never
 refreshes a capture's age.
 
-Absent stream capability or an explicit unsupported capability command selects
-atomic capture. Transport timeouts, malformed replies, arbitrary errors and
-advertised-stream failures stop the run. Observation status names the selected
-transport and reports only `frames_received` and `frames_dropped`: distinct
-accepted captures and received captures replaced before processing. Counters
-accumulate for the process, not each subscription. Unrequested simulator frames
-and intentional halt/stop discards are excluded; atomic capture may have no
-drops. Counters and capture timing diagnostics stay out of cycle metadata.
+Chase requires the advertised camera stream. Missing support, malformed replies,
+transport failures and failed subscriptions end the run; update Metrics UI when
+it lacks the required protocol. One-shot CLI sensor reads retain atomic capture
+and require a passive preservation receipt for every query. Encoded runtime
+images stay outside the vehicle sensor contract.
 
-A valid atomic receipt avoids repeated state/debug preflights after initial
-discovery; every later receipt is still validated. Atomic runtime capture is in
-memory; file-based sensor capture retains its output contract. Encoded images
-stay in the runtime handoff and cache, outside the vehicle sensor contract.
+Only the shared frame loop owns `frames_received` and `frames_dropped`. They
+count distinct captures accepted at ingress and received captures replaced before
+processing, cumulatively for the process. Unrequested source frames and
+intentional halt/stop discards are excluded. No stream counter is copied into
+cycle metadata.
 
 Perception and action copying run independently of recording export, each with
-one publisher and a target of 30 Hz. Slow requests retain adaptive backoff (up
+one publisher and a target of 30 Hz. Status/export polling targets 10 Hz. Slow requests retain adaptive backoff (up
 to a 100 ms gap). Both transaction routes support `ETag` / `If-None-Match`:
 unchanged usable pairs return `304` without image bytes. Expiry is checked
 before conditional responses, and action telemetry coverage still refreshes.

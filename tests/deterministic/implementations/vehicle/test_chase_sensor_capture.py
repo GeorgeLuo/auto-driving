@@ -73,8 +73,8 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
             },
             timeout_s=mock.ANY,
         )
-        self.assertEqual(get_state.call_count, 2)
-        self.assertEqual(get_debug.call_count, 2)
+        self.assertEqual(get_state.call_count, 1)
+        self.assertEqual(get_debug.call_count, 1)
         self.assertEqual(simulator_frame_index_from_sensor_frame(sensor_frame), 123)
         self.assertEqual(simulator_epoch_from_sensor_frame(sensor_frame), "chase-run:test")
         reading = sensor_frame.readings[FRONT_CAMERA_SENSOR_ID]

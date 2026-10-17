@@ -1,5 +1,7 @@
 from __future__ import annotations
 import json
+import io
+import threading
 import time
 from contextlib import ExitStack, contextmanager
 from dataclasses import replace
@@ -54,6 +56,8 @@ class _SlowMapper:
 class _FakeCar:
     def __init__(self, *, simulator_frame_stride: int = 1, **_kwargs) -> None:
         self.capture_count = 0
+        self.streams = []
+        self.auto_emit = True
         self.simulator_frame_stride = simulator_frame_stride
         self.last_capture_chaser_reference: dict | None = None
         self.last_passive_capture: dict | None = None
@@ -65,7 +69,7 @@ class _FakeCar:
         raise AssertionError("observe-only automation must not send idle control")
 
     def read_sensors(self, request):
-        frame = self.read_camera_frame()
+        frame = self._camera_frame()
         path = request.front_camera_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         reading = frame.readings[FRONT_CAMERA_SENSOR_ID]
@@ -74,19 +78,12 @@ class _FakeCar:
             FRONT_CAMERA_SENSOR_ID: replace(reading, path=str(path), value=None),
         })
 
-    def read_camera_capture(self):
-        from implementations.vehicle.chase_sim.capture import ChaseCameraCapture
-        frame = self.read_camera_frame()
-        reading = frame.readings[FRONT_CAMERA_SENSOR_ID]
-        return ChaseCameraCapture(
-            frame.read_id, frame.metadata["simulator_frame_index"], frame.metadata["simulation_epoch"],
-            reading.captured_at_ms, "atomic", lambda: reading.value,
-        )
+    def camera_stream(self):
+        stream = _PushStream(self)
+        self.streams.append(stream)
+        return stream
 
-    def begin_capture_session(self):
-        pass
-
-    def read_camera_frame(self):
+    def _camera_frame(self):
         now_ms = int(time.time() * 1000)
         # Simulate advancing Chase play_debug frameIndex values.
         simulator_frame_index = 100 + self.simulator_frame_stride * self.capture_count
@@ -141,6 +138,40 @@ class _FakeCar:
                 "frame_id": f"chase_frame_{simulator_frame_index:06d}",
             },
         )
+
+
+class _PushStream:
+    def __init__(self, car):
+        self.car = car
+        self.consumer = None
+        self.auto_emit = car.auto_emit
+        self.closed = threading.Event()
+        self._lock = threading.Lock()
+    def __enter__(self):
+        return self
+    def __exit__(self, *_exc):
+        self.close()
+    def set_consumer(self, consumer):
+        self.consumer = consumer
+    def check_progress(self):
+        if self.auto_emit:
+            self.emit()
+    def emit(self):
+        from implementations.vehicle.chase_sim.capture import ChaseCameraCapture
+        with self._lock:
+            if self.closed.is_set() or self.consumer is None:
+                return
+            frame = self.car._camera_frame()
+            reading = frame.readings[FRONT_CAMERA_SENSOR_ID]
+            output = io.BytesIO()
+            Image.fromarray(reading.value).save(output, "JPEG")
+            self.consumer(ChaseCameraCapture(
+                frame.metadata["frame_id"], frame.metadata["simulator_frame_index"],
+                frame.metadata["simulation_epoch"], reading.captured_at_ms,
+                lambda: reading.value, output.getvalue(),
+            ))
+    def close(self):
+        self.closed.set()
 
 
 class _ExitedProcess:

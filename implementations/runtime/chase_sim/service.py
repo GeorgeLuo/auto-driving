@@ -25,10 +25,8 @@ from autonomy.runtime.frame_loop import FrameLoop
 from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
 from implementations.vehicle.chase_sim import (
-    ChasePassiveCaptureError,
     ChaseSimCar,
 )
-from implementations.vehicle.chase_sim.session import RUN_STABLE_FIELDS, compare_chase_session_fingerprints
 from implementations.vehicle.chase_sim.capture import ChaseCameraCapture
 
 from . import create_host
@@ -47,7 +45,6 @@ class ChaseFrameLoop(FrameLoop):
 
     def __init__(self, *, car: ChaseSimCar, **options: Any) -> None:
         self.car = car
-        self._passive_baseline: dict[str, Any] | None = None
         self._capture_generation = 0
         self._capture_enabled = False
         self._active_stream: Any = None
@@ -66,9 +63,6 @@ class ChaseFrameLoop(FrameLoop):
             stream = self._retire_capture()
             if stream is not None:
                 stream.close()
-            self.car.begin_capture_session()
-            with self._lock:
-                self._passive_baseline = None
             status = super().start(configuration, record=record)
             with self._lock:
                 self._capture_enabled = True
@@ -87,18 +81,7 @@ class ChaseFrameLoop(FrameLoop):
             stream.close()
         super().shutdown()
 
-    def observation_status(self) -> dict[str, Any]:
-        return {**super().observation_status(),
-                "camera_transport": getattr(self.car, "camera_transport", None)}
-
-    def capture(self) -> None:
-        generation = self._capture_generation
-        self._submit_capture(self.car.read_camera_capture(), generation=generation, check_session=True)
-
-    def _submit_capture(self, capture: ChaseCameraCapture, *, generation: int,
-                        check_session: bool = False) -> None:
-        if check_session:
-            self._check_session(generation)
+    def _submit_capture(self, capture: ChaseCameraCapture, *, generation: int) -> None:
         with self._lock:
             if (generation != self._capture_generation or not self._capture_enabled
                     or self.host.run_state != "running"):
@@ -108,28 +91,7 @@ class ChaseFrameLoop(FrameLoop):
                 captured_at_ms=capture.captured_at_ms, jpeg_bytes=capture.jpeg_bytes,
                 image_loader=capture.load_image,
                 metadata={"simulator_frame_index": capture.frame_index,
-                          "simulation_epoch": capture.simulation_epoch,
-                          "camera_transport": capture.transport},
-            )
-
-    def _check_session(self, generation: int) -> None:
-        passive = self.car.last_passive_capture or {}
-        preservation = passive.get("session_preservation") or {}
-        before, after = preservation.get("before"), preservation.get("after")
-        with self._lock:
-            if generation != self._capture_generation:
-                return
-            if self._passive_baseline is None and isinstance(before, dict):
-                self._passive_baseline = before
-            baseline = self._passive_baseline
-        if baseline is None or not isinstance(after, dict):
-            return
-        receipt = compare_chase_session_fingerprints(baseline, after, field_names=RUN_STABLE_FIELDS)
-        if not receipt["preserved"]:
-            raise ChasePassiveCaptureError(
-                code="simulator_state_changed" if receipt["changed_fields"] else "simulator_capability_missing",
-                message="Simulator identity or control authority changed during this run.",
-                details={"session_preservation": receipt, "mutation_attempted": False},
+                          "simulation_epoch": capture.simulation_epoch},
             )
 
     def serve_captures(self, stop: threading.Event) -> None:
@@ -140,26 +102,18 @@ class ChaseFrameLoop(FrameLoop):
             generation = self._capture_generation
             stream = None
             try:
-                open_stream = getattr(self.car, "camera_stream", None)
-                stream = open_stream() if callable(open_stream) else None
-                if stream is None:
+                stream = self.car.camera_stream()
+                with self._lock:
+                    if generation != self._capture_generation or not self._capture_enabled:
+                        continue
+                    self._active_stream = stream
+                with stream:
+                    stream.set_consumer(lambda capture, generation=generation: self._submit_capture(capture, generation=generation))
+                    logger.info("Chase camera stream subscribed (generation %s)", generation)
                     while (not stop.is_set() and self._capture_enabled
                            and self.host.run_state == "running" and generation == self._capture_generation):
-                        if self.wait_until_ready(CAPTURE_POLL_S):
-                            self.capture()
-                        else:
-                            stop.wait(CAPTURE_POLL_S)
-                else:
-                    with self._lock:
-                        if generation != self._capture_generation or not self._capture_enabled:
-                            continue
-                        self._active_stream = stream
-                    with stream:
-                        stream.set_consumer(lambda capture, generation=generation: self._submit_capture(capture, generation=generation))
-                        while (not stop.is_set() and self._capture_enabled
-                               and self.host.run_state == "running" and generation == self._capture_generation):
-                            stream.check_progress()
-                            stop.wait(CAPTURE_POLL_S)
+                        stream.check_progress()
+                        stop.wait(CAPTURE_POLL_S)
             except Exception as exc:
                 if generation == self._capture_generation and self._capture_enabled:
                     logger.exception("Chase capture failed")

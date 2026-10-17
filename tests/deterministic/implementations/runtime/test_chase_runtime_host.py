@@ -11,6 +11,7 @@ from unittest.mock import patch
 import numpy as np
 
 from autonomy.runtime.client import RuntimeClient
+from autonomy.runtime.frame_loop import encode_jpeg
 from autonomy.runtime.session import RunConfiguration
 from implementations.vehicle.chase_sim.capture import ChaseCameraCapture
 from cli.automa_cli.bundles import controller_bundle_paths
@@ -25,7 +26,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
     def test_failed_stream_startup_never_submits_the_subscription_frame(self):
         from implementations.vehicle.chase_sim.camera_stream import ChaseCameraStream
         from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
-        from tests.deterministic.implementations.vehicle.test_chase_camera_stream import _Connection
+        from tests.deterministic.implementations.vehicle.chase_frame_identity_fixtures import _Connection
 
         connection = _Connection()
         connection.state.return_value = {}
@@ -70,8 +71,9 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                     release_first_cycle.set()
                 now = int(time.time() * 1000)
                 self.consumer(ChaseCameraCapture(
-                    f"chase_frame_{self.count:06d}", self.count, "fixture", now, "stream",
+                    f"chase_frame_{self.count:06d}", self.count, "fixture", now,
                     lambda count=self.count: np.full((4, 4, 3), count % 256, dtype=np.uint8),
+                    encode_jpeg(np.zeros((4,4,3),dtype=np.uint8)),
                 ))
 
         stream = Stream()
@@ -167,7 +169,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             loop.wait_for_cycle()
             self.assertEqual(errors, [])
 
-    def test_restart_closes_previous_stream_and_reports_transport(self):
+    def test_restart_closes_previous_stream_and_preserves_process_counters(self):
         streams = []
         class Stream:
             def __init__(self):
@@ -179,7 +181,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 index = len(streams)
                 self.first = ChaseCameraCapture(
                     f"chase_frame_{index:06d}", index, "fixture", int(time.time() * 1000),
-                    "stream", lambda: np.zeros((4, 4, 3), dtype=np.uint8),
+                    lambda: np.zeros((4, 4, 3), dtype=np.uint8), encode_jpeg(np.zeros((4,4,3),dtype=np.uint8)),
                 )
                 return self
             def close(self):
@@ -190,7 +192,6 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 pass
         car = _FakeCar()
         def open_stream():
-            car.camera_transport = {"transport": "stream", "reason": "fixture"}
             stream = Stream()
             streams.append(stream)
             return stream
@@ -207,14 +208,28 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 self.assertTrue(streams[0].closed.is_set())
                 _wait(lambda: host.loop.frames_received == 2, message="second capture was not offered")
                 status = host.loop.observation_status()
-                self.assertEqual(status["camera_transport"]["transport"], "stream")
                 self.assertEqual((status["frames_received"], status["frames_dropped"]), (2, 0))
                 host.loop.stop()
                 self.assertTrue(streams[1].closed.is_set())
                 self.assertEqual(host.loop.host.run_state, "stopped")
                 self.assertEqual(host.loop.observation_status()["frames_received"], 2)
 
-    def test_capability_timeout_ends_run_without_atomic_capture(self):
+    def test_unadvertised_stream_ends_run_without_receiving_a_capture(self):
+        from implementations.vehicle.chase_sim import ChaseSimCar
+        from implementations.vehicle.chase_sim.metrics_ws import MetricsUiCommandResponse
+        car = ChaseSimCar(ws_url="ws://fixture.invalid/ws")
+        with tempfile.TemporaryDirectory() as tmp, patch.object(
+            car.client, "command", return_value=MetricsUiCommandResponse({"payload": {}}, 0.),
+        ):
+            bundle = controller_bundle_paths(Path(tmp) / "chase-sim-chaser")
+            _write_activations(bundle)
+            with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]), vehicle_id="chase-sim-chaser") as host:
+                host.loop.start(RunConfiguration(mode="observe_only"))
+                _wait(lambda: host.loop.host.run_state == "error", message="missing stream accepted")
+                self.assertIn("simulator_capability_missing", host.loop.host.last_error)
+                self.assertEqual(host.loop.frames_received, 0)
+
+    def test_capability_error_ends_the_run(self):
         from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
         car = _FakeCar()
         def timeout():

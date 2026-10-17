@@ -240,34 +240,17 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
                     exc.details["minimum_external_change"],
                 )
 
-    def test_passive_capture_fails_closed_when_session_changes(self) -> None:
-        car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)
-        with mock.patch.object(
-            car.client,
-            "get_state",
-            side_effect=[
-                _session_state(control_source="programmatic"),
-                _session_state(control_source="keyboard"),
-            ],
-        ), mock.patch.object(
-            car.client,
-            "get_play_debug",
-            side_effect=[
-                _session_debug(control_source="programmatic"),
-                _session_debug(control_source="keyboard"),
-            ],
-        ), mock.patch.object(
-            car.client,
-            "play_game_query",
-            return_value=_atomic_capture(),
+    def test_capture_without_a_passive_receipt_requires_an_updated_frontend(self):
+        car = ChaseSimCar(ws_url="ws://example.test/ws")
+        capture = _atomic_capture()
+        capture.pop("passiveObservation")
+        with (
+            mock.patch.object(car.client, "get_state", return_value=_session_state()),
+            mock.patch.object(car.client, "get_play_debug", return_value=_session_debug()),
+            mock.patch.object(car.client, "play_game_query", return_value=capture),
+            self.assertRaisesRegex(ChasePassiveCaptureError, "simulator_capability_missing.*update Metrics UI"),
         ):
-            result = car.inspect_passive_capture()
-
-        self.assertEqual(result["status"], "unavailable")
-        self.assertEqual(result["code"], "simulator_state_changed")
-        self.assertIn(
-            "control_source", result["session_preservation"]["changed_fields"]
-        )
+            car.inspect_passive_capture()
 
     def test_play_game_query_validates_response_envelope(self) -> None:
         client = MetricsUiWsClient("ws://example.test/ws")

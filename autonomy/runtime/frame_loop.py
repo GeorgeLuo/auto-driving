@@ -2,7 +2,7 @@
 
 PiCar ticks and Chase streams submit continuously: one pending slot holds the
 newest sample while one worker runs decisions sequentially. Replacing a waiting
-sample increments frames_dropped. Chase atomic pulls wait for worker capacity.
+sample increments frames_dropped.
 The cycle host owns movement authority, freshness, stopping, and recording;
 this loop owns pending frames, publications, and the applied decision identity.
 """
@@ -236,8 +236,6 @@ class FrameLoop:
         self.presets = dict(presets or {})
         self._lock = threading.RLock()
         self._lifecycle_lock = threading.RLock()
-        self._capture_ready = threading.Event()
-        self._capture_ready.set()
         self.frame_index = 0
         self._capture_sequence = 0
         self.frames_received = 0
@@ -517,18 +515,6 @@ class FrameLoop:
             self._discard_pending_locked()
         self.host.close()
 
-    def wait_until_ready(self, timeout_s: float = 0.1) -> bool:
-        """Wait for pull-capture capacity; push adapters never wait here."""
-        if not self._capture_ready.wait(timeout_s):
-            return False
-        with self._lock:
-            return (
-                not self._shutdown
-                and not self._memory_update_halted
-                and not self._decision_inflight
-                and self._pending_frame is None
-            )
-
     def submit(
         self,
         image: Any,
@@ -574,7 +560,6 @@ class FrameLoop:
             )
             if not self._decision_inflight and not self._memory_update_halted and not self._shutdown:
                 self._decision_inflight = True
-                self._capture_ready.clear()
                 self._inflight_frame_id = camera.frame_id
                 thread = threading.Thread(
                     target=self._decision_worker, name="automa-decision-worker", daemon=True
@@ -998,7 +983,6 @@ class FrameLoop:
                         self._inflight_frame_id = None
                         self._inflight_camera = None
                         self._decision_thread = None
-                        self._capture_ready.set()
                         return
                     self._pending_frame = None
                     camera = pending.camera
@@ -1037,7 +1021,6 @@ class FrameLoop:
                     self._inflight_frame_id = None
                     self._inflight_camera = None
                     self._decision_thread = None
-                    self._capture_ready.set()
             self.last_status = self.status()
 
     def _process_frame(

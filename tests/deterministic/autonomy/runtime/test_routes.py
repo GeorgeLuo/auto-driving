@@ -97,7 +97,6 @@ class RuntimeRoutesTests(unittest.TestCase):
     def test_submitted_frames_publish_observation_camera_and_jpeg(self) -> None:
         loop, routes = _routes()
         self.assertEqual(_json(routes.handle("GET", "/autonomy/observation/latest"))[1]["health"], "warming")
-        self.assertTrue(loop.wait_until_ready(0))
         loop.submit(np.zeros((4, 6, 3), dtype=np.uint8), frame_id="sim_frame_000042", frame_index=42,
                     metadata={"simulator_frame_index": 42})
         loop.wait_for_cycle()
@@ -176,7 +175,6 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertEqual(transaction["image_content_type"], "image/jpeg")
         self.assertTrue(base64.b64decode(transaction["image_base64"]).startswith(b"\xff\xd8"))
         try:
-            self.assertTrue(loop.wait_until_ready(0))
             loop.submit(
                 np.full((4, 6, 3), 255, dtype=np.uint8),
                 frame_id="sim_frame_000043",

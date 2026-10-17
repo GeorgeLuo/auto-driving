@@ -33,7 +33,8 @@ from .decision_live import DecisionViewAdapter
 from .staged_bundle import write_json_atomically
 from .plugin_catalog import PluginCatalogClient
 
-MONITOR_POLL_INTERVAL_S = 1 / 30
+MONITOR_POLL_INTERVAL_S = 0.1
+PERCEPTION_COPY_INTERVAL_S = 1 / 30
 # The decision copy stays off the recording export. A batch can take longer
 # than the decision stays fresh, so the copy cannot wait for that read.
 DECISION_COPY_INTERVAL_S = 1 / 30
@@ -137,7 +138,7 @@ def _copy_latest_perception(
                 copied["error"] = f"{type(exc).__name__}: {exc}"
             finally:
                 copied["ready"].set()
-            stop.wait(_pause_s(started, MONITOR_POLL_INTERVAL_S))
+            stop.wait(_pause_s(started, PERCEPTION_COPY_INTERVAL_S))
     finally:
         copied["ready"].set()
 

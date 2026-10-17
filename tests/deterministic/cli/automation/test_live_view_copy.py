@@ -7,12 +7,12 @@ import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli import runtime_monitor, streaming
+from cli.automa_cli import decision_steps, runtime_monitor, streaming
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from tests.deterministic.cli.automation.test_runtime_monitor import (
     DECISION, SELECTIONS, _FakeDecisionView, _host, _publication, _session,
@@ -34,6 +34,31 @@ class LiveViewCopyTests(unittest.TestCase):
             self.assertIsNone(publication)
             self.assertIn("offline", error)
             feed.publish(publication)
+
+    def test_decision_stream_pass_shares_one_observation_read_with_its_view(self):
+        feed = Mock()
+        publication = {"frame": {"frame_id": "one"}}
+        feed.read_observation.return_value = publication, None
+        def one_pass(**kwargs):
+            kwargs["accept"]()
+            return decision_steps.CommandResult(0, "done")
+        normalized = {
+            "result_age_ms": 0, "max_age_ms": 1000,
+            "decision": {"values": {"activation": {"steps": {"plan": {"plugins": []}}}},
+                         "cycle": {"plan": {}}},
+        }
+        with (
+            patch.object(decision_steps, "_require_valid_activations"),
+            patch.object(decision_steps, "runtime_base_url", return_value="http://host.invalid"),
+            patch.object(decision_steps, "_ViewFeed", return_value=feed),
+            patch.object(decision_steps, "_poll", side_effect=one_pass),
+            patch.object(decision_steps, "fetch_decision_publication", return_value={}),
+            patch.object(decision_steps, "accept_decision_publication", return_value=normalized),
+        ):
+            result = decision_steps.stream_vehicle_step("plan", vehicle_id="fixture")
+        self.assertEqual(result.exit_code, 0)
+        feed.read_observation.assert_called_once_with()
+        feed.publish.assert_called_once_with(publication)
 
     def test_perception_recovers_and_advances_while_recording_export_is_blocked(self):
         export_entered, export_release = threading.Event(), threading.Event()

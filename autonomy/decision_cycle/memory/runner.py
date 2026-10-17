@@ -33,7 +33,7 @@ from autonomy.decision_cycle.memory.interface import (
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, plugin_status
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.runner import StepRunner
+from autonomy.decision_cycle.runner import StepRunner, reset_plugin
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition, PluginManager
 from autonomy.shared_memory import SharedMemory
@@ -91,9 +91,7 @@ class MemoryPluginRuntime:
         if shared_memory is not None:
             self._shared_memory = shared_memory
         try:
-            if self._shared_memory is None:
-                raise ValueError("memory reset requires a shared-memory map")
-            self.implementation.reset(self._shared_memory)
+            reset_plugin(self.implementation, self._shared_memory)
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1

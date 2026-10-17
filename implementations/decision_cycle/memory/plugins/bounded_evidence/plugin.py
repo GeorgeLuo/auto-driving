@@ -25,7 +25,7 @@ from implementations.decision_cycle.memory.shared.evidence_ledger.reduction impo
     reduce_evidence,
 )
 
-LEDGER_KEY = "bounded_evidence.ledger"
+LEDGER_KEY = "memory.bounded_evidence.ledger"
 
 
 class BoundedEvidenceLedger:
@@ -47,14 +47,22 @@ class BoundedEvidenceLedger:
     def ledger(self, shared_memory: SharedMemory | None) -> EvidenceLedger:
         """The stored ledger, or the initial empty ledger before the first update."""
 
-        current = shared_memory.get(LEDGER_KEY) if shared_memory is not None else None
-        return detach_ledger(current if isinstance(current, EvidenceLedger) else self._empty)
+        current = None if shared_memory is None else shared_memory.get(LEDGER_KEY)
+        if current is None:
+            return detach_ledger(self._empty)
+        if not isinstance(current, EvidenceLedger):
+            raise TypeError(f"{LEDGER_KEY} must hold an EvidenceLedger")
+        return detach_ledger(current)
 
     def status(self, shared_memory: SharedMemory | None) -> dict[str, Any]:
         return self.ledger(shared_memory).to_dict()
 
-    def reset(self, shared_memory: SharedMemory) -> None:
-        previous = self.ledger(shared_memory)
+    def reset(self, shared_memory: SharedMemory | None) -> None:
+        if shared_memory is None:
+            raise ValueError("bounded evidence requires a shared-memory map")
+        # A reset replaces any value at the key, including one update rejects.
+        current = shared_memory.get(LEDGER_KEY)
+        previous = current if isinstance(current, EvidenceLedger) else self._empty
         next_epoch = _numbered_epoch(previous.epoch_id) + 1
         epoch = f"epoch-{next_epoch}"
         publish_ledger(

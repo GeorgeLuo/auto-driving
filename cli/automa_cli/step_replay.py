@@ -1,9 +1,9 @@
 """Replay an image source through a prefix of the cycle's steps, offline.
 
-Memory, proposal, plan and action inspect all replay a source this way: the
-source's recorded selections, restaged per frame, unless overridden; then a
-report of the inspected step after every frame, optionally recorded as a run
-that replays as a source again.
+Perception, memory, proposal, plan and action inspect all replay a source this
+way: the source's recorded selections, restaged per frame, unless overridden;
+then a report of the inspected step after every frame, optionally recorded as a
+run that replays as a source again.
 """
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ from autonomy.decision_cycle.steps import builtin_activation
 from implementations.decision_cycle.catalog import selection_activation
 
 from .inspection_runs import (
-    recorded_runner, recorded_selection, recorded_selections, replay_step, replayed_selection,
-    selection_record,
+    SharedMemorySeed, recorded_runner, recorded_selection, recorded_selections, replay_step,
+    replayed_selection, selection_report,
 )
 from .paths import safe_path_part
 from .workbench_frames import FrameOutcome, run_frame
@@ -63,25 +63,34 @@ def default_selection(step: str) -> StepActivation | None:
 class StepReplay:
     """Step runners that replay a source with the selections it recorded.
 
-    Each step uses its override, else the selection the source recorded, else
+    Each step uses its override, else the selection the source's first frame
+    recorded, else the selection the source recorded, else
     ``default_selection``. A frame that recorded a restage replaces that step's
-    selection from then on, unless the step is overridden. Constructing the
-    runners raises before any frame runs.
+    selection from then on, unless the step is overridden; the replaced runner
+    is reset over the map. Starting from the first frame's selection, its
+    restage keeps the runners and the map. Constructing the runners raises
+    before any frame runs, including for a recorded release that is not
+    available locally. A seed starts the run from its decoded map.
     """
 
     def __init__(
         self,
+        image_source: ImageSource,
         manifest: dict[str, Any],
         *,
         steps: tuple[str, ...],
         overrides: dict[str, StepActivation] | None = None,
+        seed: SharedMemorySeed | None = None,
     ) -> None:
         self.overrides = dict(overrides or {})
+        first = recorded_selections(image_source.frames[0].metadata)
         recorded = recorded_selections(manifest)
         self.activations: dict[str, StepActivation | None] = {}
         for step in steps:
             if step in self.overrides:
                 self.activations[step] = self.overrides[step]
+            elif step in first:
+                self.activations[step] = replayed_selection(step, first[step])
             elif step in recorded:
                 self.activations[step] = replayed_selection(step, recorded[step])
             else:
@@ -90,9 +99,11 @@ class StepReplay:
             step: recorded_runner(activation) if activation is not None else None
             for step, activation in self.activations.items()
         }
-        self.shared_memory: dict[str, Any] = {}
+        self.shared_memory = seed.shared_memory if seed is not None else {}
 
-    def run(self, frame: ReplayFrame) -> FrameOutcome:
+    def restage(self, frame: ReplayFrame) -> None:
+        """Apply this frame's recorded selections, unless the step is overridden."""
+
         selections = recorded_selections(frame.metadata)
         for step in self.activations:
             if step not in selections or step in self.overrides:
@@ -100,6 +111,9 @@ class StepReplay:
             activation = replayed_selection(step, selections[step])
             self.runners[step] = replay_step(self.runners[step], activation, self.shared_memory)
             self.activations[step] = activation
+
+    def run(self, frame: ReplayFrame) -> FrameOutcome:
+        self.restage(frame)
         return run_frame(frame, steps=self.runners, shared_memory=self.shared_memory)
 
     def step_payloads(self) -> dict[str, Any]:
@@ -114,8 +128,7 @@ class StepReplay:
         """Each step's current selection, as a report records it for replay."""
 
         return {
-            step: {**selection_record(activation), "plugins": list(activation.plugins)}
-            if activation is not None else None
+            step: selection_report(activation) if activation is not None else None
             for step, activation in self.activations.items()
         }
 

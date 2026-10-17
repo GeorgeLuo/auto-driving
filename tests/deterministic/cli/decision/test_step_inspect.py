@@ -11,10 +11,21 @@ from unittest.mock import patch
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from cli.automa_cli.decision_steps import inspect_decision_step
-from cli.automa_cli.step_replay import StepReplay
+from cli.automa_cli.step_replay import StepReplay, default_selection
+from cli.automa_cli.workbench_source import ImageSource, ReplayFrame
 from implementations.decision_cycle.catalog import SELECTABLE_STEPS
+from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
+from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
+    LedgerBounds,
+    empty_ledger,
+)
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.memory.frame_fixtures import write_frames
+
+
+def _source(metadata: dict | None = None) -> ImageSource:
+    frame = ReplayFrame("automation", "frame-0", 0, 0, 0, None, metadata=metadata or {})
+    return ImageSource(source_path=Path("automation"), source_id="automation", frames=(frame,))
 
 
 class DecisionStepInspectTests(unittest.TestCase):
@@ -102,7 +113,7 @@ class DecisionStepInspectTests(unittest.TestCase):
         Plan runs one plugin, so a recording that left it empty stays absent.
         """
 
-        replay = StepReplay({"steps": dict.fromkeys(SELECTABLE_STEPS)}, steps=SELECTABLE_STEPS)
+        replay = StepReplay(_source(), {"steps": dict.fromkeys(SELECTABLE_STEPS)}, steps=SELECTABLE_STEPS)
         for step in SELECTABLE_STEPS:
             with self.subTest(step=step):
                 if step in CLEARABLE_STEPS:
@@ -111,6 +122,29 @@ class DecisionStepInspectTests(unittest.TestCase):
                 else:
                     self.assertIsNone(replay.activations[step])
                     self.assertIsNone(replay.runners[step])
+
+    def test_the_first_frames_selection_builds_the_runners_so_its_restage_keeps_the_map(self) -> None:
+        """Regression: a source that records selections only per frame built default
+        runners, and frame 0's restage reset them over the map, replacing the ledger."""
+
+        recorded = default_selection("memory").to_payload()
+        recorded["plugin_configs"]["bounded_evidence"]["max_records"] = 8
+        source = _source({"steps": {"memory": recorded}})
+        replay = StepReplay(source, {}, steps=("memory",))
+        self.assertEqual(replay.activations["memory"].to_payload(), recorded)
+        runner = replay.runners["memory"]
+        replay.shared_memory[LEDGER_KEY] = empty_ledger(
+            memory_id="memory-7",
+            epoch_id="epoch-7",
+            bounds=LedgerBounds(max_records=8),
+            created_at_ms=0,
+            plugin_id="bounded_evidence",
+        )
+
+        replay.restage(source.frames[0])
+
+        self.assertIs(replay.runners["memory"], runner)
+        self.assertEqual(replay.shared_memory[LEDGER_KEY].epoch_id, "epoch-7")
 
     def test_cli_has_a_group_per_step_and_no_decision_command(self) -> None:
         for step in DECISION_STEPS:

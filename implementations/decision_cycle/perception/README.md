@@ -31,6 +31,7 @@ stages one.
 |---|---|
 | `lightweight_observer` (default) | `frame`, `floor_plane` |
 | `sim_debug` | `frame`, `sim_color_targets` |
+| `chase-v1-detect-by-color` | `sim_cardboard_obstacle`, `sim_cardboard_permanence` |
 | `visual_observer` | `frame`, `floor_plane`, `motion_tracks` |
 | `multi_obstruction` | `multi_obstruction_tracks`, `floor_continuity`, `classical_regions` |
 | `obstruction_observer` | `frame`, `floor_plane`, `multi_obstruction_tracks`, with config overrides |

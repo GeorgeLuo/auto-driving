@@ -66,7 +66,22 @@ class _OwnedSummaryMemory:
         return self.state
 
 
+class _NoResetMemory:
+    plugin_id = "no_reset"
+
+    def update(self, context, observation) -> None:
+        del context, observation
+
+
 class MemoryInterfaceTests(unittest.TestCase):
+    def test_a_plugin_without_reset_resets_cleanly(self) -> None:
+        plugin = _NoResetMemory()
+        runner = MemoryRunner.from_plugins({plugin.plugin_id: plugin})
+
+        self.assertEqual(runner.reset({}), {})
+        self.assertEqual(runner.reset(), {})
+        self.assertEqual(runner.failure_count, 0)
+
     def test_serializing_a_report_detaches_nested_plugin_state(self) -> None:
         plugin = _OwnedSummaryMemory()
         runner = MemoryRunner.from_plugins({plugin.plugin_id: plugin})

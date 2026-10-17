@@ -7,7 +7,8 @@ One folder per plugin, named for its `plugin_id`. For example, the
 
 - `plugin.py` holds the plugin class, which declares `plugin_id` and
   implements `propose(source, shared_memory)`, the `ProposalPlugin` protocol in
-  `autonomy/decision_cycle/proposal/plugin.py`. Ids match
+  `autonomy/decision_cycle/proposal/plugin.py`. `shared_memory` is the host
+  map, or `None` without one. Ids match
   `[A-Za-z0-9._:-]{1,64}` and are unique within the proposal step:
   registering a second definition under an existing id raises
   `DuplicatePluginIdError`.

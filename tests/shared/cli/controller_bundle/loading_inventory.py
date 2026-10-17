@@ -33,6 +33,8 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("implementations.decision_cycle.perception.plugins.frame.plugin:FrameObservationPlugin", "implementations.decision_cycle.perception.plugins.frame.plugin", "FrameObservationPlugin"),
     ("implementations.decision_cycle.perception.plugins.vlm_prep.plugin:VlmPrepPlugin", "implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "VlmPrepPlugin"),
     ("implementations.decision_cycle.perception.plugins.sim_color_targets.plugin:SimColorTargetsPlugin", "implementations.decision_cycle.perception.plugins.sim_color_targets.plugin", "SimColorTargetsPlugin"),
+    ("implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin:SimCardboardObstaclePlugin", "implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin", "SimCardboardObstaclePlugin"),
+    ("implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin:SimCardboardPermanencePlugin", "implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin", "SimCardboardPermanencePlugin"),
     ("implementations.decision_cycle.perception.plugins.floor_plane.plugin:FloorPlanePlugin", "implementations.decision_cycle.perception.plugins.floor_plane.plugin", "FloorPlanePlugin"),
     ("implementations.decision_cycle.perception.plugins.classical_regions.plugin:ClassicalRegionPlugin", "implementations.decision_cycle.perception.plugins.classical_regions.plugin", "ClassicalRegionPlugin"),
     ("implementations.decision_cycle.perception.plugins.composite_box_fusion.plugin:CompositeBoxFusionPlugin", "implementations.decision_cycle.perception.plugins.composite_box_fusion.plugin", "CompositeBoxFusionPlugin"),
@@ -136,7 +138,12 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("autonomy.decision_cycle.action_identifiers", "require_safe_int", "autonomy.decision_cycle.action_identifiers", "require_safe_int"),
 
     # Formerly exported by autonomy.memory
+    ("autonomy.shared_memory", "read_shared_memory_file", "autonomy.shared_memory", "read_shared_memory_file"),
     ("autonomy.shared_memory", "SharedMemory", "autonomy.shared_memory", "SharedMemory"),
+    ("autonomy.shared_memory", "SHARED_MEMORY_SCHEMA", "autonomy.shared_memory", "SHARED_MEMORY_SCHEMA"),
+    ("autonomy.shared_memory", "SharedMemoryValueError", "autonomy.shared_memory", "SharedMemoryValueError"),
+    ("autonomy.shared_memory", "shared_memory_document", "autonomy.shared_memory", "shared_memory_document"),
+    ("autonomy.shared_memory", "shared_memory_from_document", "autonomy.shared_memory", "shared_memory_from_document"),
     ("autonomy.decision_cycle.memory.runner", "format_exception_safely", "autonomy.decision_cycle.memory.runner", "format_exception_safely"),
 
     # autonomy.serialization

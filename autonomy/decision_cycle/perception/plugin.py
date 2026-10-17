@@ -16,7 +16,10 @@ from autonomy.decision_cycle.perception.diagnostics.sink import (
     PerceptionDiagnosticSink,
     _safe_name,
 )
-from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch
+from autonomy.decision_cycle.perception.evidence.values import (
+    PerceivedThing,
+    PerceptionEvidenceBatch,
+)
 from autonomy.shared_memory import SharedMemory
 
 
@@ -41,9 +44,9 @@ class PerceptionPluginContract:
     History that later frames must see lives in the host map, ``shared_memory``.
     Instances may retain configuration and reusable model resources.
     ``state_mode`` is that temporal horizon. ``memory_required`` means the
-    plugin needs the host map. Plugins that set it implement
-    ``reset(shared_memory)`` and drop only their own keys. They own history
-    shape, bounds, and commit policy.
+    plugin needs the host map to perceive. Reset is optional and may omit the
+    map; ``reset_plugin`` chooses by signature. Plugins that keep history drop
+    only their own keys. They own history shape, bounds, and commit policy.
     """
 
     inputs: tuple[PerceptionPluginInput, ...] = ()
@@ -99,6 +102,8 @@ class PerceptionPluginInputs:
     diagnostics: PerceptionDiagnosticSink
     metadata: Mapping[str, Any] = field(default_factory=dict)
     shared_memory: SharedMemory | None = field(default=None, repr=False, compare=False)
+    # Things already emitted by earlier plugins in this frame, in selection order.
+    prior_things: tuple[PerceivedThing, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "feeds", MappingProxyType(dict(self.feeds)))

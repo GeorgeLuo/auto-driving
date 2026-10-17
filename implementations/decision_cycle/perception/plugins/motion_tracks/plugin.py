@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from copy import copy, deepcopy
+from copy import copy
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -20,8 +20,18 @@ from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginWarmingUp,
 )
 from implementations.decision_cycle.perception.feeds.camera import CameraFrame, FRONT_CAMERA_RGB_INPUT
-
-from implementations.decision_cycle.perception.shared.motion.scene_motion import MotionGroup, analyze_scene_motion_images
+from implementations.decision_cycle.perception.shared.image.stored import StoredImage
+from implementations.decision_cycle.perception.shared.motion.scene_motion import (
+    MotionGroup,
+    analyze_scene_motion_images,
+)
+from implementations.decision_cycle.perception.shared.serialization.canonical import json_safe
+from implementations.decision_cycle.perception.shared.serialization.history import (
+    history_bbox,
+    history_float,
+    history_int,
+    next_history_id,
+)
 
 
 @dataclass
@@ -107,9 +117,7 @@ class MotionTracksPlugin:
         # Only this call owns the mutable algorithm workspace. Configuration
         # stays on the plugin; history is read from and committed to the map.
         step = copy(self)
-        step._initialize_history()
-        for name, value in deepcopy(inputs.shared_memory.get(self._memory_key, {})).items():
-            setattr(step, name, value)
+        step._restore_history(inputs.shared_memory.get(self._memory_key))
         try:
             batch = step._perceive_frame(inputs)
         except PerceptionPluginWarmingUp:
@@ -118,8 +126,31 @@ class MotionTracksPlugin:
         inputs.shared_memory[self._memory_key] = step._history()
         return batch
 
+    def _restore_history(self, history: Any) -> None:
+        """Rebuild the named history fields. Invalid track items are dropped."""
+
+        self._initialize_history()
+        if not isinstance(history, dict):
+            return
+        previous = history.get("previous_rgb")
+        if isinstance(previous, StoredImage):
+            self._previous_rgb = np.array(previous.pixels, copy=True)
+        tracks: dict[int, _SceneTrack] = {}
+        raw_tracks = history.get("tracks")
+        if isinstance(raw_tracks, list):
+            for item in raw_tracks:
+                track = _scene_track_from_item(item)
+                if track is not None:
+                    tracks[track.track_id] = track
+        self._tracks = tracks
+        self._next_track_id = next_history_id(history.get("next_track_id"), tracks)
+
     def _history(self) -> dict[str, Any]:
-        return {name: getattr(self, name) for name in ('_previous_rgb', '_tracks', '_next_track_id')}
+        return {
+            "previous_rgb": None if self._previous_rgb is None else StoredImage(self._previous_rgb),
+            "tracks": [_scene_track_dict(self._tracks[track_id]) for track_id in sorted(self._tracks)],
+            "next_track_id": int(self._next_track_id),
+        }
 
     def _perceive_frame(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         frame = inputs.require("frame", CameraFrame)
@@ -271,6 +302,48 @@ class MotionTracksPlugin:
             min_group_size=self.min_group_size,
             residual_threshold=self.residual_threshold,
         )
+
+
+def _scene_track_dict(track: _SceneTrack) -> dict[str, Any]:
+    return {
+        "track_id": int(track.track_id),
+        "bbox": [float(value) for value in track.bbox],
+        "age_frames": int(track.age_frames),
+        "support_frames": int(track.support_frames),
+        "missed_frames": int(track.missed_frames),
+        "confidence": float(track.confidence),
+        "kind_hint": str(track.kind_hint),
+        "properties": json_safe(track.properties),
+    }
+
+
+def _scene_track_from_item(item: Any) -> _SceneTrack | None:
+    if not isinstance(item, dict):
+        return None
+    track_id = history_int(item.get("track_id"))
+    bbox = history_bbox(item.get("bbox"))
+    age_frames = history_int(item.get("age_frames"))
+    support_frames = history_int(item.get("support_frames"))
+    missed_frames = history_int(item.get("missed_frames"))
+    confidence = history_float(item.get("confidence"))
+    kind_hint = item.get("kind_hint")
+    properties = item.get("properties", {})
+    if (
+        track_id is None or bbox is None or age_frames is None or support_frames is None
+        or missed_frames is None or confidence is None
+        or type(kind_hint) is not str or not isinstance(properties, dict)
+    ):
+        return None
+    return _SceneTrack(
+        track_id=track_id,
+        bbox=bbox,
+        age_frames=age_frames,
+        support_frames=support_frames,
+        missed_frames=missed_frames,
+        confidence=confidence,
+        kind_hint=kind_hint,
+        properties=dict(properties),
+    )
 
 
 def _group_candidate(

@@ -76,7 +76,7 @@ class HighestConfidencePlan:
         self,
         candidates: tuple[ActionProposal, ...],
         source: DecisionDataSource | None,
-        shared_memory: SharedMemory,
+        shared_memory: SharedMemory | None,
         *,
         frame_id: str,
         timestamp_ms: int,

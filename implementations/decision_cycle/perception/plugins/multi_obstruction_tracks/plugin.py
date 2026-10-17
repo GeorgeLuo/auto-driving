@@ -31,6 +31,7 @@ from implementations.decision_cycle.perception.feeds.camera import (
     FRONT_CAMERA_RGB_INPUT,
 )
 from implementations.decision_cycle.perception.shared.image.contrast import normalize_gray
+from implementations.decision_cycle.perception.shared.image.stored import StoredImage
 from implementations.decision_cycle.perception.shared.obstructions.boxes import clamp, zone
 from implementations.decision_cycle.perception.shared.obstructions.tracker import (
     ObstructionTrackState,
@@ -184,11 +185,7 @@ class MultiObstructionTracksPlugin:
         tracker = ObstructionTrackState(
             **{name: getattr(self, name) for name in TRACKING_CONFIG_FIELDS}
         )
-        history = inputs.shared_memory.get(self._memory_key)
-        history = history if isinstance(history, dict) else {}
-        tracks_read = tracker._restore_from_history(history.get("tracks"))
-        tracker._previous_gray = history.get("previous_gray")
-        tracker._next_track_id = history.get("next_track_id", tracker._next_track_id)
+        tracks_read = _restore_history(tracker, inputs.shared_memory.get(self._memory_key))
         active, events, association = tracker._associate(candidates, gray=gray)
 
         things = tuple(
@@ -199,7 +196,7 @@ class MultiObstructionTracksPlugin:
         tracks = tracker._lookback_tracks()
         inputs.shared_memory[self._memory_key] = {
             "tracks": tracks,
-            "previous_gray": gray,
+            "previous_gray": None if gray is None else StoredImage(gray),
             "next_track_id": tracker._next_track_id,
         }
 
@@ -401,6 +398,19 @@ class MultiObstructionTracksPlugin:
             )
         )
         return selected[: max(self.max_tracks * 4, self.max_tracks)]
+
+
+def _restore_history(tracker: ObstructionTrackState, history: Any) -> int:
+    """Rebuild the tracker from the map; return how many tracks were read."""
+
+    history = history if isinstance(history, dict) else {}
+    previous_gray = history.get("previous_gray")
+    tracker._previous_gray = (
+        np.array(previous_gray.pixels, copy=True)
+        if isinstance(previous_gray, StoredImage)
+        else None
+    )
+    return tracker._restore_from_history(history.get("tracks"), history.get("next_track_id"))
 
 
 def _merge_proposals(

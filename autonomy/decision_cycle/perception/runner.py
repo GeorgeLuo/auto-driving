@@ -22,6 +22,7 @@ from autonomy.decision_cycle.runner import (
     StepRunner,
     describe_exception,
     describe_plugin,
+    reset_plugin,
 )
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition, PluginManager
@@ -258,7 +259,9 @@ class PerceptionRunner(StepRunner[Any]):
         # implementation identity and is not rewritten to repair provenance.
         for definition, plugin in self.applied:
             catalog_id = definition.plugin_id
-            execution = self._execute_plugin(plugin, request, catalog_id)
+            execution = self._execute_plugin(
+                plugin, request, catalog_id, prior_things=tuple(things)
+            )
             # The plugin report keeps timing and error; domain run fields stay
             # on the perception result.
             self._record_plugin(catalog_id, execution.duration_ms, execution.error)
@@ -375,14 +378,8 @@ class PerceptionRunner(StepRunner[Any]):
         self._pending_providers = None
 
     def _reset_plugin(self, plugin: Any, shared_memory=None) -> None:
-        reset = getattr(plugin, "reset", None)
-        if not callable(reset):
-            return
         try:
-            if plugin.contract.memory_required:
-                reset(shared_memory)
-            else:
-                reset()
+            reset_plugin(plugin, shared_memory)
         except Exception:
             if FAILURE_POLICY.reset == "propagate":
                 raise
@@ -392,6 +389,7 @@ class PerceptionRunner(StepRunner[Any]):
         plugin: Any,
         request: PerceptionRequest,
         catalog_id: str,
+        prior_things: tuple[PerceivedThing, ...] = (),
     ) -> _PluginExecution:
         started = clock()
         diagnostics = PerceptionDiagnosticSink(
@@ -426,6 +424,7 @@ class PerceptionRunner(StepRunner[Any]):
                 diagnostics=diagnostics,
                 metadata=request.metadata,
                 shared_memory=request.shared_memory,
+                prior_things=prior_things,
             )
             batch = plugin.perceive(inputs)
             if not isinstance(batch, PerceptionEvidenceBatch):

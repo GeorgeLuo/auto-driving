@@ -28,5 +28,5 @@ from autonomy.shared_memory import SharedMemory
 class ProposalPlugin(Protocol):
     plugin_id: str
 
-    def propose(self, source: DecisionDataSource, shared_memory: SharedMemory) -> ActionProposal:
+    def propose(self, source: DecisionDataSource, shared_memory: SharedMemory | None) -> ActionProposal:
         """Return this plugin's candidate for ``source.frame_id``."""

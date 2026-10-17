@@ -13,12 +13,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
 )
 from autonomy.decision_cycle.timing import clock, elapsed_ms
+from autonomy.shared_memory import SharedMemoryValueError
 from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
     SensorFrame,
@@ -28,9 +28,10 @@ from autonomy.vehicle import (
 from implementations.decision_cycle.catalog import selection_activation
 
 from .inspection_runs import (
-    recorded_runner, recorded_selection, recorded_selections, replay_step, replayed_selection,
-    selection_record,
+    SharedMemorySeed, add_seed_provenance, read_shared_memory_seed, selection_report,
 )
+from .step_replay import StepReplay
+from .workbench_frames import run_perception
 from .paths import ROOT, display_path, safe_path_part
 from .perception import live_perception_selection
 from .perception_evaluation import evaluate_perception_frames
@@ -73,6 +74,7 @@ def inspect_perception(
     preset: str | None = None,
     plugins: list[str] | None = None,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
+    shared_memory_file: Path | None = None,
 ) -> CommandResult:
     """Show what a perception selection detects, from images or a live vehicle.
 
@@ -83,6 +85,10 @@ def inspect_perception(
     live read.
     """
 
+    try:
+        seed = read_shared_memory_seed(shared_memory_file)
+    except (OSError, SharedMemoryValueError) as exc:
+        return CommandResult(2, f"Could not read shared memory file: {exc}")
     if max_frames <= 0:
         return _unreadable_source("max_frames must be greater than zero")
     if source is not None:
@@ -105,6 +111,7 @@ def inspect_perception(
             preset=preset,
             plugins=plugins,
             max_frames=max_frames,
+            seed=seed,
         )
     return _inspect_vehicle(
         vehicle_id=vehicle_id,
@@ -115,6 +122,7 @@ def inspect_perception(
         json_output=json_output,
         preset=preset,
         plugins=plugins,
+        seed=seed,
     )
 
 
@@ -128,6 +136,7 @@ def _inspect_vehicle(
     json_output: bool,
     preset: str | None,
     plugins: list[str] | None,
+    seed: SharedMemorySeed | None,
 ) -> CommandResult:
     discovery = discover_active_vehicles(
         timeout_s=timeout_s,
@@ -152,7 +161,7 @@ def _inspect_vehicle(
         access = create_vehicle_access(vehicle, timeout_s=timeout_s)
         activation = live_perception_selection(vehicle, preset=preset, plugins=plugins)
         runner = load_staged_runner(activation)
-        perception_record = _perception_record(activation)
+        perception_record = selection_report(activation)
     except Exception as exc:
         return CommandResult(2, f"Could not prepare perception runtime: {type(exc).__name__}: {exc}")
 
@@ -172,8 +181,7 @@ def _inspect_vehicle(
             if record:
                 results_dir.mkdir(parents=True, exist_ok=True)
 
-            shared_memory: dict[str, Any] = {}
-            runner.reset()
+            shared_memory = seed.shared_memory if seed is not None else {}
             frame_records: list[dict[str, Any]] = []
             for index in range(frame_count):
                 frame_id = f"frame_{index:06d}"
@@ -223,6 +231,7 @@ def _inspect_vehicle(
                 frames=frame_records,
                 run_dir=record_dir,
             )
+            add_seed_provenance(report, seed)
             if record_dir is not None:
                 _write_report(record_dir, report)
     except Exception as exc:  # Plugins are third-party code; name the frame that broke.
@@ -242,6 +251,7 @@ def _inspect_images(
     preset: str | None,
     plugins: list[str] | None,
     max_frames: int,
+    seed: SharedMemorySeed | None,
 ) -> CommandResult:
     source = source.expanduser()
     try:
@@ -262,15 +272,21 @@ def _inspect_images(
     source_name = source.stem if source.is_file() else source.name
 
     try:
+        # An explicit empty plugin list still overrides the recorded selection.
+        overrides = None
         if plugins is not None or preset is not None:
-            activation = selection_activation(
-                "perception", preset=preset, plugins=plugins
-            )
-        else:
-            activation = recorded_selection(
-                "perception", source_manifest
-            ) or selection_activation("perception")
-        runner = recorded_runner(activation)
+            overrides = {
+                "perception": selection_activation(
+                    "perception", preset=preset, plugins=plugins
+                )
+            }
+        replay = StepReplay(
+            image_source,
+            source_manifest,
+            steps=("perception",),
+            overrides=overrides,
+            seed=seed,
+        )
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(
             2,
@@ -289,15 +305,10 @@ def _inspect_images(
             results_dir = working_dir / "results"
             if record:
                 results_dir.mkdir(parents=True, exist_ok=True)
-            shared_memory: dict[str, Any] = {}
-            runner.reset()
             frame_records: list[dict[str, Any]] = []
             for frame in image_source.frames:
-                if plugins is None and preset is None:
-                    selections = recorded_selections(frame.metadata)
-                    if "perception" in selections:
-                        activation = replayed_selection("perception", selections["perception"])
-                        runner = replay_step(runner, activation, shared_memory)
+                replay.restage(frame)
+                runner = replay.runners["perception"]
                 frame_id = frame.frame_id
                 frame_index = frame.frame_index
                 captured_at_ms = frame.timestamp_ms
@@ -327,23 +338,24 @@ def _inspect_images(
                     frame_id=frame_id,
                     frame_index=frame_index,
                     image_path=image_path,
-                    shared_memory=shared_memory,
+                    shared_memory=replay.shared_memory,
                     metadata={"run_id": run_id, "frame_index": frame_index},
                     result_dir=(results_dir / f"frame_{frame.position:06d}")
                     if record
                     else None,
                     absence_reason=frame.absence_reason if frame.absent else None,
                 )
-                item["steps"] = {"perception": activation.to_payload()}
+                item["steps"] = replay.step_payloads()
                 frame_records.append(item)
 
             report = _inspect_report(
                 run_id=run_id,
                 source={"kind": "images", "path": str(source)},
-                perception=_perception_record(activation),
+                perception=replay.selection_records()["perception"],
                 frames=frame_records,
                 run_dir=record_dir,
             )
+            add_seed_provenance(report, seed)
             if record_dir is not None:
                 _write_report(record_dir, report)
     except Exception as exc:  # Plugins are third-party code; name the frame that broke.
@@ -353,12 +365,6 @@ def _inspect_images(
     if json_output:
         return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True))
     return CommandResult(exit_code, _format_inspect_report(report))
-
-
-def _perception_record(activation: Any) -> dict[str, Any]:
-    """The report's ``perception`` entry, the same shape memory inspect records."""
-
-    return {**selection_record(activation), "plugins": list(activation.plugins)}
 
 
 def _create_record_dir(run_id: str) -> tuple[Path | None, CommandResult | None]:
@@ -403,26 +409,6 @@ def _select_vehicle(
     else:
         reason = "simulator preferred for observation-only experiments"
     return selected, reason, None
-
-
-def run_perception(
-    runner: Any,
-    sensor_frame: SensorFrame,
-    *,
-    shared_memory: dict[str, Any],
-    metadata: dict[str, Any],
-    output_dir: Path | None = None,
-):
-    """Run perception on one sensor frame; the step every consumer shares."""
-
-    return runner.perceive(
-        build_perception_request(
-            sensor_frame,
-            shared_memory=shared_memory,
-            output_dir=output_dir,
-            metadata=metadata,
-        )
-    )
 
 
 def perceive_sensor_frame(

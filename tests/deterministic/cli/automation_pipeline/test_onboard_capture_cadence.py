@@ -41,16 +41,16 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
             part.run(image_array=np.full_like(image, 1), mode="user")
             part.run(image_array=np.full_like(image, 2), mode="user")
             status = part.observation_status()
-            self.assertEqual((status["frames_captured"], status["frames_superseded"], status["processed_count"]), (3, 1, 0))
+            self.assertEqual((status["frames_received"], status["frames_dropped"], status["processed_count"]), (3, 1, 0))
             self.assertEqual(part.publish_latest_camera()["frame"]["frame_index"], 2)
             perception.release[0].set()
             part.wait_for_cycle()
             self.assertEqual([c.frame_index for c in perception.contexts], [0, 2])
             self.assertEqual(int(perception.contexts[1].sensor_frame.readings["front_camera"].value[0, 0, 0]), 2)
             status = part.observation_status()
-            self.assertEqual((status["frames_captured"], status["frames_superseded"], status["processed_count"]), (3, 1, 2))
-            self.assertEqual(part.publish_latest()["frames_superseded"], 1)
-            self.assertNotIn("frames_superseded", part.host.last_context.metadata)
+            self.assertEqual((status["frames_received"], status["frames_dropped"], status["processed_count"]), (3, 1, 2))
+            self.assertEqual(part.publish_latest()["frames_dropped"], 1)
+            self.assertNotIn("frames_dropped", part.host.last_context.metadata)
         finally:
             perception.release_all()
             part.wait_for_cycle()
@@ -67,7 +67,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
             held.run(image_array=np.full((2, 2, 3), 2, dtype=np.uint8), mode="user")
             status = held.observation_status()
             self.assertFalse(status["perception_inflight"])
-            self.assertEqual((status["frames_captured"], status["frames_superseded"], status["processed_count"]), (3, 1, 1))
+            self.assertEqual((status["frames_received"], status["frames_dropped"], status["processed_count"]), (3, 0, 1))
         finally:
             held.shutdown()
 
@@ -89,7 +89,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                     part.wait_for_cycle()
                     self.assertEqual(len(perception.contexts), 1)
                     status = part.observation_status()
-                    self.assertEqual((status["frames_captured"], status["frames_superseded"], status["processed_count"]), (3, 1, 1))
+                    self.assertEqual((status["frames_received"], status["frames_dropped"], status["processed_count"]), (3, 1, 1))
                     self.assertIsNone(part._pending_frame)
                     self.assertEqual(part.host.run_state, "completed" if bounded else "stopped")
                 finally:
@@ -173,8 +173,8 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 self.assertEqual(code, 0, message)
                 self.assertLess(time.monotonic() - started, 2.0, "monitor waited after the worker was free")
                 state = json.loads((root / "state.json").read_text())
-                self.assertEqual(seen, [0, 2])
-                self.assertEqual((state["frames_captured"], state["processed_count"]), (3, 3))
+                self.assertEqual(list(dict.fromkeys(seen)), [0, 2])
+                self.assertEqual((state["frames_received"], state["processed_count"]), (3, 3))
                 self.assertEqual(state["num_decisions"], 3)
                 self.assertNotIn("interval_s", state["session"]["configuration"])
                 recording_id = state["session"]["recording"]["run_id"]
@@ -183,7 +183,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 # Live samples are the latest publication at each poll, so frame 1
                 # is absent from `seen`. The recording keeps that completed decision.
                 self.assertEqual([record["frame_index"] for record in records], [0, 1, 2])
-                self.assertIn("Frames captured: 3", message)
+                self.assertIn("Frames received: 3", message)
             finally:
                 perception.release_all()
                 part.wait_for_cycle()

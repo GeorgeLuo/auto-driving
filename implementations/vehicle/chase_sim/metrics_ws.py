@@ -16,16 +16,6 @@ from typing import Any
 from urllib.parse import urlparse
 
 
-PASSIVE_SESSION_FIELDS = (
-    "game_id",
-    "scenario_id",
-    "simulation_epoch",
-    "playback",
-    "control_source",
-    "control_input",
-)
-
-
 class MetricsUiWebSocketError(RuntimeError):
     """Raised when the Metrics UI WebSocket control channel fails."""
 
@@ -63,7 +53,7 @@ class MetricsUiCommandResponse:
         return self.message.get("payload")
 
 
-class _WebSocketConnection:
+class MetricsUiConnection:
     """Small RFC6455 client for local Metrics UI control messages."""
 
     def __init__(self, url: str, *, timeout_s: float = 5.0):
@@ -76,7 +66,7 @@ class _WebSocketConnection:
         self._aborted = False
         self._watchdog: threading.Thread | None = None
 
-    def __enter__(self) -> _WebSocketConnection:
+    def __enter__(self) -> MetricsUiConnection:
         self.connect()
         return self
 
@@ -206,6 +196,9 @@ class _WebSocketConnection:
             if opcode == 0xA:
                 continue
 
+    def set_read_timeout(self, timeout_s: float | None) -> None:
+        self._require_sock().settimeout(timeout_s)
+
     def _require_sock(self) -> socket.socket:
         if not self.sock:
             raise MetricsUiWebSocketError("WebSocket is not connected")
@@ -302,9 +295,9 @@ class MetricsUiWsClient:
             raise MetricsUiWebSocketError(
                 f"Timed out before connecting for {command['type']}"
             )
-        with _WebSocketConnection(self.url, timeout_s=connect_timeout) as ws:
+        with MetricsUiConnection(self.url, timeout_s=connect_timeout) as ws:
             ws.send_json({"type": "register", "role": "agent"})
-            self._wait_for_registration(ws, deadline)
+            self.wait_for_registration(ws, deadline)
             ws.send_json(command)
 
             while True:
@@ -433,7 +426,7 @@ class MetricsUiWsClient:
         prefix = str(command_type or "command").replace("_", "-")
         return f"auto-driving-{prefix}-{self._counter}-{uuid.uuid4().hex[:8]}"
 
-    def _wait_for_registration(self, ws: _WebSocketConnection, deadline: float) -> None:
+    def wait_for_registration(self, ws: MetricsUiConnection, deadline: float) -> None:
         while True:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
@@ -456,168 +449,3 @@ class MetricsUiWsClient:
                     ),
                     details=payload,
                 )
-
-
-def build_chase_session_fingerprint(
-    *,
-    state: dict[str, Any],
-    debug: dict[str, Any],
-) -> dict[str, Any]:
-    """Build the documented read-only Chase session fields used for preservation."""
-
-    sidebar = _play_sidebar_values(state)
-    playback_source = state.get("playback")
-    playback_source = playback_source if isinstance(playback_source, dict) else {}
-    playback = {
-        key: playback_source.get(key)
-        for key in ("isPlaying", "playbackRate", "rate")
-        if key in playback_source
-    }
-    control_input_source = _first_dict(
-        _nested_get(debug, ("actions", "chaserInput")),
-        _nested_get(debug, ("actors", "chaser", "input")),
-    )
-    control_input = _bounded_input(control_input_source)
-    control_source = _first_nonempty(
-        sidebar.get("chaser-control-source"),
-        _nested_get(debug, ("actions", "chaserInput", "source")),
-        _nested_get(debug, ("actions", "chaserAction", "source")),
-        _nested_get(debug, ("actors", "chaser", "action", "source")),
-    )
-    fingerprint = {
-        "game_id": _first_nonempty(debug.get("gameId"), state.get("gameId")),
-        "scenario_id": _first_nonempty(
-            sidebar.get("scenario-select"),
-            debug.get("scenarioId"),
-        ),
-        "simulation_epoch": _first_nonempty(
-            debug.get("simulationEpoch"),
-            _nested_get(debug, ("frameIdentity", "simulationEpoch")),
-        ),
-        "playback": playback or None,
-        "control_source": control_source,
-        "control_input": control_input,
-    }
-    unknown_fields = [
-        field_name
-        for field_name in PASSIVE_SESSION_FIELDS
-        if fingerprint.get(field_name) is None
-    ]
-    return {
-        "schema": "chase_session_fingerprint_v1",
-        **fingerprint,
-        "unknown_fields": unknown_fields,
-    }
-
-
-def compare_chase_session_fingerprints(
-    before: dict[str, Any],
-    after: dict[str, Any],
-    *,
-    field_names: tuple[str, ...] | None = None,
-) -> dict[str, Any]:
-    """Compare session fingerprints.
-
-    When field_names is set (observe-only continuous runs), only those fields
-    are compared so playback/input may advance as observed state.
-    """
-
-    compared_fields = field_names or PASSIVE_SESSION_FIELDS
-    unknown = sorted(
-        {
-            *(
-                str(item)
-                for item in before.get("unknown_fields", [])
-                if isinstance(item, str) and item in compared_fields
-            ),
-            *(
-                str(item)
-                for item in after.get("unknown_fields", [])
-                if isinstance(item, str) and item in compared_fields
-            ),
-        }
-    )
-    changed = [
-        field_name
-        for field_name in compared_fields
-        if before.get(field_name) != after.get(field_name)
-    ]
-    return {
-        "preserved": not unknown and not changed,
-        "compared_fields": list(compared_fields),
-        "unknown_fields": unknown,
-        "changed_fields": changed,
-        "before": before,
-        "after": after,
-    }
-
-
-def _play_sidebar_values(state: dict[str, Any]) -> dict[str, Any]:
-    values: dict[str, Any] = {}
-    sections = state.get("playSidebarSections")
-    if not isinstance(sections, list):
-        return values
-    for section in sections:
-        if not isinstance(section, dict):
-            continue
-        rows = section.get("rows")
-        if not isinstance(rows, list):
-            continue
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            row_id = row.get("id")
-            if isinstance(row_id, str) and "value" in row:
-                values[row_id] = row.get("value")
-    return values
-
-
-def _nested_get(record: dict[str, Any], path: tuple[str, ...]) -> Any:
-    value: Any = record
-    for key in path:
-        if not isinstance(value, dict):
-            return None
-        value = value.get(key)
-    return value
-
-
-def _first_nonempty(*values: Any) -> str | None:
-    for value in values:
-        if isinstance(value, str) and value.strip():
-            return value.strip()
-    return None
-
-
-def _first_dict(*values: Any) -> dict[str, Any] | None:
-    return next((value for value in values if isinstance(value, dict)), None)
-
-
-def _bounded_input(value: dict[str, Any] | None) -> dict[str, Any] | None:
-    if not isinstance(value, dict):
-        return None
-    source = _first_nonempty(value.get("source"))
-    steering = value.get("steering")
-    if (
-        source is None
-        or isinstance(steering, bool)
-        or not isinstance(steering, (int, float))
-        or not math.isfinite(float(steering))
-    ):
-        return None
-    motion = _first_nonempty(value.get("motion"))
-    forward = value.get("forward")
-    reverse = value.get("reverse")
-    if motion is None and (
-        not isinstance(forward, bool) or not isinstance(reverse, bool)
-    ):
-        return None
-    result: dict[str, Any] = {
-        "source": source,
-        "steering": float(steering),
-    }
-    if motion is not None:
-        result["motion"] = motion
-    if isinstance(forward, bool) and isinstance(reverse, bool):
-        result["forward"] = forward
-        result["reverse"] = reverse
-    return result

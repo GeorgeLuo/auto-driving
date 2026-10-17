@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 from cli.automa_cli.automation import (
     CommandResult,
+    _wait_for_automation_startup,
     record_vehicle_automation_terminal_result,
     start_vehicle_automation_background,
     stop_vehicle_automation,
@@ -19,6 +20,29 @@ from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
 
 
 class AutomationLivePipelineTests(unittest.TestCase):
+    def test_startup_accepts_a_correlated_view_that_advanced_during_export(self) -> None:
+        state = {
+            "status": "running", "pid": _RunningProcess.pid, "run_id": "current-run",
+            "frames_received": 3, "processed_count": 2,
+            "last_frame": {"frame_id": "frame_000001"},
+        }
+        view = {
+            "available": True, "url": "http://127.0.0.1:8555/",
+            "has_perception": True, "latest_perception_frame_id": "frame_000002",
+            "perception_frame_buffered": True,
+        }
+        with (
+            patch("cli.automa_cli.automation._read_json", return_value=state),
+            patch("cli.automa_cli.automation.get_perception_view_status", return_value=view) as status,
+        ):
+            result = _wait_for_automation_startup(
+                process=_RunningProcess(), automation_dir=Path("unused"), timeout_s=0.2,
+            )
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["frame_id"], "frame_000002")
+        self.assertEqual(status.call_args.kwargs["expected_run_id"], "current-run")
+        self.assertEqual(status.call_args.kwargs["expected_worker_pid"], _RunningProcess.pid)
+
     def test_background_start_fails_when_child_exits_before_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
@@ -65,7 +89,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                         {
                             "status": "running",
                             "pid": _RunningProcess.pid,
-                            "frames_captured": 1,
+                            "frames_received": 1,
                             "processed_count": 1,
                             "last_capture": {
                                 "frame_id": "frame_000000",

@@ -129,8 +129,8 @@ def _host_runtime_status(
         "state": {
             "status": worker_status,
             "run_id": None,
-            "frames_captured": observation.get("frames_captured", 0),
-            "frames_superseded": observation.get("frames_superseded"),
+            "frames_received": observation.get("frames_captured", observation.get("frames_received", 0)),
+            "frames_dropped": observation.get("frames_dropped"),
             "processed_count": observation.get("processed_count", 0),
             "num_decisions": (autonomy.get("session") or {}).get("configuration", {}).get(
                 "num_decisions", 0
@@ -654,7 +654,7 @@ def _wait_for_automation_startup(
             if isinstance(state.get("published_view"), dict)
             else {}
         )
-        frames_captured = state.get("frames_captured")
+        frames_received = state.get("frames_received")
         processed_count = state.get("processed_count")
         last_frame = (
             state.get("last_frame")
@@ -664,8 +664,8 @@ def _wait_for_automation_startup(
 
         if (
             status == "running"
-            and isinstance(frames_captured, int)
-            and frames_captured > 0
+            and isinstance(frames_received, int)
+            and frames_received > 0
             and isinstance(processed_count, int)
             and processed_count > 0
         ):
@@ -681,14 +681,13 @@ def _wait_for_automation_startup(
                     expected_run_id=expected_run_id,
                     expected_worker_pid=expected_pid,
                 )
-                if (
-                    _view_ready_for_inspection(view)
-                    and view.get("latest_perception_frame_id")
-                    == last_frame.get("frame_id")
-                ):
+                # The independent perception copier can advance while the
+                # status writer exports a recording batch. The view proves a
+                # matched image/result in this run and worker generation.
+                if _view_ready_for_inspection(view):
                     return {
                         "status": "ready",
-                        "frame_id": last_frame.get("frame_id"),
+                        "frame_id": view["latest_perception_frame_id"],
                         "view_url": view.get("url"),
                         "capture_lag": view.get("capture_lag"),
                         "capture_lag_ms": view.get("capture_lag_ms"),
@@ -717,8 +716,8 @@ def _wait_for_automation_startup(
             }
         if (
             status == "running"
-            and isinstance(frames_captured, int)
-            and frames_captured > 0
+            and isinstance(frames_received, int)
+            and frames_received > 0
             and published_view.get("status") == "error"
         ):
             return {
@@ -753,7 +752,7 @@ def _wait_for_automation_startup(
                 "phases": {
                     "capture": {
                         "status": "complete"
-                        if isinstance(frames_captured, int) and frames_captured > 0
+                        if isinstance(frames_received, int) and frames_received > 0
                         else "incomplete",
                     },
                     "perception": {
@@ -1239,8 +1238,8 @@ def _collect_automation_status(
                     "status": state.get("status", "none"),
                     "run_id": state.get("run_id"),
                     "pipeline": state.get("pipeline"),
-                    "frames_captured": state.get("frames_captured", 0),
-                    "frames_superseded": state.get("frames_superseded"),
+                    "frames_received": state.get("frames_received", state.get("frames_captured", 0)),
+                    "frames_dropped": state.get("frames_dropped"),
                     "processed_count": state.get("processed_count", 0),
                     "num_decisions": state.get("num_decisions"),
                     "recording": state.get("recording"),
@@ -1441,8 +1440,8 @@ def _run_label(state: dict[str, Any]) -> str:
     num_decisions = state.get("num_decisions")
     fields = {
         "id": state["run_id"],
-        "captured": state.get("frames_captured") or 0,
-        "superseded": state.get("frames_superseded"),
+        "frames_received": state.get("frames_received", state.get("frames_captured")) or 0,
+        "frames_dropped": state.get("frames_dropped"),
         "decisions": f"{state.get('processed_count') or 0}/{num_decisions or 'unbounded'}",
         "recording": state.get("recording"),
         "control": state.get("control_source"),

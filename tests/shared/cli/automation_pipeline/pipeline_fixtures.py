@@ -57,7 +57,6 @@ class _FakeCar:
         self.simulator_frame_stride = simulator_frame_stride
         self.last_capture_chaser_reference: dict | None = None
         self.last_passive_capture: dict | None = None
-        self.last_simulator_frame_index: int | None = None
 
     def prepare_for_external_control(self):
         raise AssertionError("observe-only automation must not take control")
@@ -75,13 +74,24 @@ class _FakeCar:
             FRONT_CAMERA_SENSOR_ID: replace(reading, path=str(path), value=None),
         })
 
+    def read_camera_capture(self):
+        from implementations.vehicle.chase_sim.capture import ChaseCameraCapture
+        frame = self.read_camera_frame()
+        reading = frame.readings[FRONT_CAMERA_SENSOR_ID]
+        return ChaseCameraCapture(
+            frame.read_id, frame.metadata["simulator_frame_index"], frame.metadata["simulation_epoch"],
+            reading.captured_at_ms, "atomic", lambda: reading.value,
+        )
+
+    def begin_capture_session(self):
+        pass
+
     def read_camera_frame(self):
         now_ms = int(time.time() * 1000)
         # Simulate advancing Chase play_debug frameIndex values.
         simulator_frame_index = 100 + self.simulator_frame_stride * self.capture_count
         image = np.array(Image.new("RGB", (64, 48), (self.capture_count % 256, 40, 60)))
         self.capture_count += 1
-        self.last_simulator_frame_index = simulator_frame_index
         self.last_passive_capture = {
             "status": "available",
             "environment": {

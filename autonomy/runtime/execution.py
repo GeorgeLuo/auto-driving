@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import threading
 import time
+from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Protocol
 
@@ -81,11 +82,12 @@ class ControlExecution:
         self.last_application = ControlApplication(
             None, "manual", False, "not-started", AutonomyControl(reason="not-started")
         )
+        self._status_snapshot: dict[str, Any] = {}
+        self._publish_status()
 
     @property
     def mode(self) -> str:
-        with self._lock:
-            return self._mode
+        return self.status()["mode"]
 
     def ticket(self) -> ExecutionTicket:
         with self._lock:
@@ -101,6 +103,7 @@ class ControlExecution:
             self._generation += 1
             self._deadline = None
             self._mode = "manual"
+            self._publish_status()
             delivered = self._owned
             if self._owned:
                 try:
@@ -156,6 +159,7 @@ class ControlExecution:
                     self._write_idle(reason)
                 if ticket.generation == self._generation:
                     self.last_application = application
+                self._publish_status()
                 return application
             control = result.control
             if result.action is None or result.action.status != "ok":
@@ -174,6 +178,7 @@ class ControlExecution:
                 result.context.frame_id, self._mode, True, control.reason, control,
                 int(time.time() * 1000), receipt,
             )
+            self._publish_status()
             return self.last_application
 
     def cycle_failed(self, ticket: ExecutionTicket) -> None:
@@ -185,16 +190,19 @@ class ControlExecution:
         self._deadline = None
         control = AutonomyControl(reason=reason)
         self._output = control
+        self._publish_status()
         receipt = self.target.write(control)
         self.last_application = ControlApplication(
             None, self._mode, True, reason, control, int(time.time() * 1000), receipt
         )
+        self._publish_status()
 
     def _fail(self, exc: Exception, *, frame_id: str | None = None) -> None:
         self._generation += 1
         self._mode = "manual"
         self._deadline = None
         self._output = AutonomyControl(reason="delivery-error")
+        self._publish_status()
         error = f"{type(exc).__name__}: {exc}"
         try:
             if self._owned:
@@ -207,6 +215,7 @@ class ControlExecution:
             frame_id, self._mode, False, "delivery-error",
             AutonomyControl(reason="delivery-error"), error=error,
         )
+        self._publish_status()
 
     def _watch(self) -> None:
         while not self._wake.wait(0.05):
@@ -242,13 +251,21 @@ class ControlExecution:
                 self._closed = True
                 self._generation += 1
                 self._wake.set()
+                self._publish_status()
+
+    def _publish_status(self) -> None:
+        self._status_snapshot = {
+            "mode": self._mode, "generation": self._generation,
+            "closed": self._closed, "max_control_age_s": CONTROL_MAX_AGE_S,
+            "application": self.last_application.to_dict(),
+        }
 
     def status(self) -> dict[str, Any]:
-        with self._lock:
-            return {
-                "mode": self._mode,
-                "generation": self._generation,
-                "closed": self._closed,
-                "max_control_age_s": CONTROL_MAX_AGE_S,
-                "application": self.last_application.to_dict(),
-            }
+        # Transport writes/acquisition can hold the authority lock. Inspection
+        # uses the last complete snapshot and never waits on those round trips.
+        if self._lock.acquire(blocking=False):
+            try:
+                self._publish_status()
+            finally:
+                self._lock.release()
+        return deepcopy(self._status_snapshot)

@@ -11,7 +11,7 @@ import numpy as np
 
 from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import RunConfiguration
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
+from implementations.vehicle.chase_sim.capture import ChaseCameraCapture
 from cli.automa_cli.bundles import controller_bundle_paths
 from implementations.runtime.chase_sim.service import ChaseRuntimeHost
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
@@ -37,22 +37,19 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             def __exit__(self, *_exc):
                 self.close()
 
-            def read_camera_frame(self):
+            def set_consumer(self, consumer):
+                self.consumer = consumer
+
+            def check_progress(self):
                 time.sleep(0.005)
                 self.count += 1
                 if self.count == 5:
                     release_first_cycle.set()
                 now = int(time.time() * 1000)
-                return SensorFrame(
-                    read_id=f"stream-{self.count}", started_at_ms=now, completed_at_ms=now,
-                    readings={FRONT_CAMERA_SENSOR_ID: SensorReading(
-                        sensor_id=FRONT_CAMERA_SENSOR_ID, sensor_kind="camera", captured_at_ms=now,
-                        value=np.full((4, 4, 3), self.count % 256, dtype=np.uint8),
-                    )},
-                    metadata={"simulator_frame_index": self.count, "simulation_epoch": "fixture",
-                              "camera_transport": "stream", "frames_received": self.count,
-                              "capture_duration_ms": 2, "source_timestamp_us": 100},
-                )
+                self.consumer(ChaseCameraCapture(
+                    f"chase_frame_{self.count:06d}", self.count, "fixture", now, "stream",
+                    lambda count=self.count: np.full((4, 4, 3), count % 256, dtype=np.uint8),
+                ))
 
         stream = Stream()
         car = _FakeCar()
@@ -134,9 +131,8 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             errors = []
             def restart():
                 try:
-                    with loop._lock:
-                        start_locked.set()
-                        loop.start(RunConfiguration(mode="observe_only"))
+                    start_locked.set()
+                    loop.start(RunConfiguration(mode="observe_only"))
                 except Exception as exc:
                     errors.append(exc)
             worker = threading.Thread(target=restart, daemon=True)
@@ -151,19 +147,23 @@ class ChaseRuntimeHostTests(unittest.TestCase):
     def test_restart_closes_previous_stream_and_reports_transport(self):
         streams = []
         class Stream:
-            frames_received = 3
-            frames_replaced = 1
             def __init__(self):
                 self.closed = threading.Event()
+            def set_consumer(self, consumer):
+                self.consumer = consumer
             def __enter__(self):
+                index = len(streams)
+                self.consumer(ChaseCameraCapture(
+                    f"chase_frame_{index:06d}", index, "fixture", int(time.time() * 1000),
+                    "stream", lambda: np.zeros((4, 4, 3), dtype=np.uint8),
+                ))
                 return self
             def close(self):
                 self.closed.set()
             def __exit__(self, *_exc):
                 self.close()
-            def read_camera_frame(self):
-                self.closed.wait(0.01)
-                return None
+            def check_progress(self):
+                pass
         car = _FakeCar()
         def open_stream():
             car.camera_transport = {"transport": "stream", "reason": "fixture"}
@@ -181,13 +181,14 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 host.loop.start(RunConfiguration(mode="observe_only"))
                 _wait(lambda: len(streams) == 2, message="restart stream did not open")
                 self.assertTrue(streams[0].closed.is_set())
+                _wait(lambda: host.loop.frames_received == 2, message="second capture was not offered")
                 status = host.loop.observation_status()
                 self.assertEqual(status["camera_transport"]["transport"], "stream")
-                self.assertEqual((status["frames_received"], status["frames_replaced"]), (3, 1))
+                self.assertEqual((status["frames_received"], status["frames_dropped"]), (2, 0))
                 host.loop.stop()
                 self.assertTrue(streams[1].closed.is_set())
                 self.assertEqual(host.loop.host.run_state, "stopped")
-                self.assertEqual(host.loop.observation_status()["frames_received"], 3)
+                self.assertEqual(host.loop.observation_status()["frames_received"], 2)
 
     def test_capability_timeout_ends_run_without_atomic_capture(self):
         from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError

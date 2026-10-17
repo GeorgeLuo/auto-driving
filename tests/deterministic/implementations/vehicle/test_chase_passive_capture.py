@@ -7,13 +7,8 @@ from implementations.vehicle.chase_sim.car import (
     ChasePassiveCaptureError,
     ChaseSimCar,
 )
-from implementations.vehicle.chase_sim.metrics_ws import (
-    MetricsUiCommandResponse,
-    MetricsUiWebSocketError,
-    MetricsUiWsClient,
-    build_chase_session_fingerprint,
-    compare_chase_session_fingerprints,
-)
+from implementations.vehicle.chase_sim.metrics_ws import MetricsUiCommandResponse, MetricsUiWebSocketError, MetricsUiWsClient
+from implementations.vehicle.chase_sim.session import build_chase_session_fingerprint, compare_chase_session_fingerprints
 from tests.deterministic.implementations.vehicle.chase_frame_identity_fixtures import (
     ChaseFrameIdentityFixture,
     _atomic_capture,

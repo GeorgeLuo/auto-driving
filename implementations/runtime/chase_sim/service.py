@@ -24,15 +24,12 @@ from autonomy.runtime.assembly import staged_runtime
 from autonomy.runtime.frame_loop import FrameLoop
 from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 from implementations.vehicle.chase_sim import (
     ChasePassiveCaptureError,
     ChaseSimCar,
-    format_chase_frame_id,
-    simulator_epoch_from_sensor_frame,
-    simulator_frame_index_from_sensor_frame,
 )
-from implementations.vehicle.chase_sim.metrics_ws import compare_chase_session_fingerprints
+from implementations.vehicle.chase_sim.session import RUN_STABLE_FIELDS, compare_chase_session_fingerprints
+from implementations.vehicle.chase_sim.capture import ChaseCameraCapture
 
 from . import create_host
 
@@ -41,167 +38,138 @@ logger = logging.getLogger(__name__)
 # The supervisor starts a fresh host from the current release on this code.
 RESTART_EXIT_CODE = 75
 HOST_RECORD_SCHEMA = "automa_runtime_host_v0"
-# An observe-only run lets playback and input evolve; simulator identity and
-# control authority must hold until the run stops.
-PASSIVE_RUN_STABLE_FIELDS = ("game_id", "scenario_id", "simulation_epoch", "control_source")
 CAPTURE_POLL_S = 0.01
 RECORD_CHECK_S = 1.0
 
 
 class ChaseFrameLoop(FrameLoop):
-    """Capture simulator frames into the shared loop while a session runs."""
+    """Receive encoded captures into the shared latest-only decision slot."""
 
     def __init__(self, *, car: ChaseSimCar, **options: Any) -> None:
         self.car = car
         self._passive_baseline: dict[str, Any] | None = None
         self._capture_generation = 0
+        self._capture_enabled = False
         self._active_stream: Any = None
-        self._stream_counters = {"frames_received": 0, "frames_replaced": 0}
         super().__init__(runtime="chase_sim", camera_source="chase_sim_front_camera", frame_prefix="chase", **options)
 
-    def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
+    def _retire_capture(self) -> Any:
         with self._lock:
-            old_stream = self._active_stream
-            self._active_stream = None
+            self._capture_enabled = False
             self._capture_generation += 1
-            self._passive_baseline = None
-            self._stream_counters = {"frames_received": 0, "frames_replaced": 0}
-            begin = getattr(self.car, "begin_capture_session", None)
-            if callable(begin):
-                begin()
-            status = super().start(configuration, record=record)
-        if old_stream is not None:
-            old_stream.close()
-        return status
-
-    def _detach_stream(self) -> Any:
-        with self._lock:
-            stream = self._active_stream
-            if stream is not None:
-                self._stream_counters = self._counters(stream)
-                self._active_stream = None
+            self._discard_pending_locked()
+            stream, self._active_stream = self._active_stream, None
             return stream
 
-    @staticmethod
-    def _counters(stream: Any) -> dict[str, int]:
-        return {name: getattr(stream, name, 0) for name in ("frames_received", "frames_replaced")}
+    def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
+        with self._lifecycle_lock:
+            stream = self._retire_capture()
+            if stream is not None:
+                stream.close()
+            self.car.begin_capture_session()
+            with self._lock:
+                self._passive_baseline = None
+            status = super().start(configuration, record=record)
+            with self._lock:
+                self._capture_enabled = True
+            return status
 
     def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, Any]:
-        with self._lock:
-            status = super().stop(reason=reason, error=error)
-            stream = self._detach_stream()
-        if stream is not None:
-            stream.close()
-        return status
+        with self._lifecycle_lock:
+            stream = self._retire_capture()
+            if stream is not None:
+                stream.close()
+            return super().stop(reason=reason, error=error)
 
     def shutdown(self) -> None:
-        stream = self._detach_stream()
+        stream = self._retire_capture()
         if stream is not None:
             stream.close()
         super().shutdown()
 
     def observation_status(self) -> dict[str, Any]:
-        with self._lock:
-            return {**super().observation_status(),
-                    "camera_transport": getattr(self.car, "camera_transport", None),
-                    **(self._counters(self._active_stream) if self._active_stream is not None
-                       else self._stream_counters)}
+        return {**super().observation_status(),
+                "camera_transport": getattr(self.car, "camera_transport", None)}
 
     def capture(self) -> None:
-        """Read one simulator frame and submit it with its simulator identity."""
-
         generation = self._capture_generation
-        sensor_frame = self.car.read_camera_frame()
-        self._submit_sensor_frame(sensor_frame, check_passive=True, generation=generation)
+        self._submit_capture(self.car.read_camera_capture(), generation=generation, check_session=True)
 
-    def _submit_sensor_frame(self, sensor_frame: Any, *, check_passive: bool,
-                             generation: int | None = None) -> None:
-        reading = sensor_frame.readings.get(FRONT_CAMERA_SENSOR_ID)
-        index = simulator_frame_index_from_sensor_frame(sensor_frame)
-        epoch = simulator_epoch_from_sensor_frame(sensor_frame)
-        if index is None or epoch is None:
-            raise ValueError("Chase capture is missing the simulator frameIndex or simulationEpoch")
-        if reading is None or reading.value is None:
-            raise ValueError("Chase capture returned no front camera image")
-        array = reading.value
+    def _submit_capture(self, capture: ChaseCameraCapture, *, generation: int,
+                        check_session: bool = False) -> None:
+        if check_session:
+            self._check_session(generation)
         with self._lock:
-            if generation is not None and generation != self._capture_generation:
+            if (generation != self._capture_generation or not self._capture_enabled
+                    or self.host.run_state != "running"):
                 return
-            if check_passive and self.host.configuration.mode == "observe_only":
-                self._check_passive_session()
             self.submit(
-                array, frame_id=format_chase_frame_id(index), frame_index=index,
-                captured_at_ms=reading.captured_at_ms, jpeg_bytes=reading.jpeg_bytes,
-                metadata={"simulator_frame_index": index, "simulation_epoch": epoch,
-                          "camera_transport": sensor_frame.metadata.get("camera_transport", "atomic")},
+                None, frame_id=capture.frame_id, frame_index=capture.frame_index,
+                captured_at_ms=capture.captured_at_ms, jpeg_bytes=capture.jpeg_bytes,
+                image_loader=capture.load_image,
+                metadata={"simulator_frame_index": capture.frame_index,
+                          "simulation_epoch": capture.simulation_epoch,
+                          "camera_transport": capture.transport},
             )
 
-    def submit(self, image: Any, **frame: Any) -> Any:
-        # The simulator is captured only for a session, so a capture that lands
-        # after the session ended is dropped instead of deciding past its bound.
-        with self._lock:
-            if self.host.run_state != "running":
-                return None
-            return super().submit(image, **frame)
-
-    def _check_passive_session(self) -> None:
+    def _check_session(self, generation: int) -> None:
         passive = self.car.last_passive_capture or {}
         preservation = passive.get("session_preservation") or {}
         before, after = preservation.get("before"), preservation.get("after")
-        if self._passive_baseline is None and isinstance(before, dict):
-            self._passive_baseline = before
-        if self._passive_baseline is None or not isinstance(after, dict):
+        with self._lock:
+            if generation != self._capture_generation:
+                return
+            if self._passive_baseline is None and isinstance(before, dict):
+                self._passive_baseline = before
+            baseline = self._passive_baseline
+        if baseline is None or not isinstance(after, dict):
             return
-        receipt = compare_chase_session_fingerprints(
-            self._passive_baseline, after, field_names=PASSIVE_RUN_STABLE_FIELDS,
-        )
-        if not receipt.get("preserved"):
+        receipt = compare_chase_session_fingerprints(baseline, after, field_names=RUN_STABLE_FIELDS)
+        if not receipt["preserved"]:
             raise ChasePassiveCaptureError(
-                code="simulator_state_changed" if receipt.get("changed_fields") else "simulator_capability_missing",
-                message=(
-                    "the simulator identity or control authority changed during an observe-only run "
-                    f"(changed: {', '.join(receipt.get('changed_fields') or []) or 'unknown'})"
-                ),
+                code="simulator_state_changed" if receipt["changed_fields"] else "simulator_capability_missing",
+                message="Simulator identity or control authority changed during this run.",
                 details={"session_preservation": receipt, "mutation_attempted": False},
             )
 
     def serve_captures(self, stop: threading.Event) -> None:
-        """Receive camera frames during decisions; old frontends use atomic pulls."""
-
         while not stop.is_set():
-            if self.host.run_state != "running":
+            if not self._capture_enabled or self.host.run_state != "running":
                 stop.wait(CAPTURE_POLL_S)
                 continue
+            generation = self._capture_generation
+            stream = None
             try:
-                generation = self._capture_generation
                 open_stream = getattr(self.car, "camera_stream", None)
                 stream = open_stream() if callable(open_stream) else None
                 if stream is None:
-                    while (not stop.is_set() and self.host.run_state == "running"
-                           and generation == self._capture_generation):
-                        if self.due():
+                    while (not stop.is_set() and self._capture_enabled
+                           and self.host.run_state == "running" and generation == self._capture_generation):
+                        if self.wait_until_ready(CAPTURE_POLL_S):
                             self.capture()
                         else:
                             stop.wait(CAPTURE_POLL_S)
                 else:
                     with self._lock:
-                        if generation != self._capture_generation or self.host.run_state != "running":
+                        if generation != self._capture_generation or not self._capture_enabled:
                             continue
                         self._active_stream = stream
+                    stream.set_consumer(lambda capture, generation=generation: self._submit_capture(capture, generation=generation))
                     with stream:
-                        while (not stop.is_set() and self.host.run_state == "running"
-                               and generation == self._capture_generation):
-                            frame = stream.read_camera_frame()
-                            if frame is not None:
-                                self._submit_sensor_frame(frame, check_passive=False, generation=generation)
-            except Exception as exc:  # noqa: BLE001 - reported on the session
-                logger.exception("Chase capture failed")
-                if generation == self._capture_generation and self.host.run_state == "running":
+                        while (not stop.is_set() and self._capture_enabled
+                               and self.host.run_state == "running" and generation == self._capture_generation):
+                            stream.check_progress()
+                            stop.wait(CAPTURE_POLL_S)
+            except Exception as exc:
+                if generation == self._capture_generation and self._capture_enabled:
+                    logger.exception("Chase capture failed")
                     self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
             finally:
+                if stream is not None:
+                    stream.close()
                 with self._lock:
-                    if generation == self._capture_generation:
-                        self._detach_stream()
+                    if self._active_stream is stream:
+                        self._active_stream = None
 
 
 class _RouteHandler(BaseHTTPRequestHandler):

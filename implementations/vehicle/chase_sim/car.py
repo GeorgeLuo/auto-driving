@@ -7,6 +7,8 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from .capture import ChaseCameraCapture
+from .camera_stream import ChaseCameraStream
 from .defaults import DEFAULT_CHASE_UI_WS_URL, get_default_chase_ui_ws_url
 from .frame_identity import (
     ChaseCaptureValidationError,
@@ -17,8 +19,6 @@ from .frame_identity import (
 from .metrics_ws import (
     MetricsUiWebSocketError,
     MetricsUiWsClient,
-    build_chase_session_fingerprint,
-    compare_chase_session_fingerprints,
 )
 from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
@@ -50,159 +50,16 @@ FRONTEND_DELIVERY_PROTOCOL_CODES = frozenset(
         "frontend_disconnected",
     }
 )
-CHASE_PASSIVE_PRESERVED_FIELDS = (
-    "gameId",
-    "scenarioId",
-    "simulationEpoch",
-    "playback",
-    "controlSource",
-    "controlInput",
-    "actorId",
-    "cameraId",
+from .session import (
+    CHASE_PASSIVE_PRESERVED_FIELDS, PASSIVE_RECEIPT_FIELD_NAMES, ChasePassiveCaptureError,
+    normalize_passive_receipt_fingerprint, compare_passive_receipt_fingerprints,
+    passive_receipt_environment, build_chase_session_fingerprint,
+    compare_chase_session_fingerprints,
 )
-
-_PASSIVE_RECEIPT_FIELD_NAMES = {
-    "gameId": "game_id",
-    "scenarioId": "scenario_id",
-    "simulationEpoch": "simulation_epoch",
-    "playback": "playback",
-    "controlSource": "control_source",
-    "controlInput": "control_input",
-    "actorId": "actor_id",
-    "cameraId": "camera_id",
-}
-
-
-class ChasePassiveCaptureError(RuntimeError):
-    """Structured failure at the passive simulator-observation boundary."""
-
-    def __init__(
-        self,
-        *,
-        code: str,
-        message: str,
-        details: dict[str, Any] | None = None,
-    ):
-        self.code = code
-        self.detail = message
-        self.details = details or {}
-        super().__init__(f"{code}: {message}")
-
-    def to_dict(self) -> dict[str, Any]:
-        layer = {
-            "simulator_unreachable": "simulator_server",
-            "frontend_disconnected": "simulator_frontend",
-            "wrong_game": "chase_game",
-            "front_view_unavailable": "vehicle",
-            "simulator_capability_missing": "passive_capture",
-            "simulator_state_changed": "passive_capture",
-        }.get(self.code, "passive_capture")
-        return {
-            "schema": "automa_cli_error_v1",
-            "error": self.code,
-            "layer": layer,
-            "message": self.detail,
-            "details": self.details,
-            "recovery": None,
-            "exit_code": 1,
-        }
 
 
 def _timestamp_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _normalize_passive_receipt_fingerprint(value: Any) -> dict[str, Any]:
-    source = value if isinstance(value, dict) else {}
-    normalized = {
-        normalized_name: source.get(protocol_name)
-        for protocol_name, normalized_name in _PASSIVE_RECEIPT_FIELD_NAMES.items()
-    }
-    unknown_fields: list[str] = []
-    for protocol_name, normalized_name in _PASSIVE_RECEIPT_FIELD_NAMES.items():
-        field_value = normalized[normalized_name]
-        if protocol_name == "controlInput":
-            valid = protocol_name in source and (
-                field_value is None
-                or (
-                    isinstance(field_value, dict)
-                    and isinstance(field_value.get("source"), str)
-                    and bool(field_value["source"].strip())
-                    and isinstance(field_value.get("forward"), bool)
-                    and isinstance(field_value.get("reverse"), bool)
-                    and isinstance(field_value.get("steering"), (int, float))
-                    and not isinstance(field_value.get("steering"), bool)
-                    and math.isfinite(float(field_value["steering"]))
-                )
-            )
-        elif protocol_name == "playback":
-            valid = (
-                isinstance(field_value, dict)
-                and isinstance(field_value.get("frameIndex"), int)
-                and not isinstance(field_value.get("frameIndex"), bool)
-                and field_value["frameIndex"] >= 0
-                and field_value.get("phase")
-                in {"running", "paused-before-actions"}
-                and isinstance(field_value.get("pendingAction"), bool)
-            )
-        else:
-            valid = isinstance(field_value, str) and bool(field_value.strip())
-        if not valid:
-            unknown_fields.append(normalized_name)
-    return {
-        "schema": "chase_session_fingerprint_v1",
-        **normalized,
-        "unknown_fields": unknown_fields,
-    }
-
-
-def _compare_passive_receipt_fingerprints(
-    before: dict[str, Any],
-    after: dict[str, Any],
-) -> dict[str, Any]:
-    field_names = tuple(_PASSIVE_RECEIPT_FIELD_NAMES.values())
-    unknown_fields = sorted(
-        {
-            *(
-                str(item)
-                for item in before.get("unknown_fields", [])
-                if isinstance(item, str)
-            ),
-            *(
-                str(item)
-                for item in after.get("unknown_fields", [])
-                if isinstance(item, str)
-            ),
-        }
-    )
-    changed_fields = [
-        field_name
-        for field_name in field_names
-        if before.get(field_name) != after.get(field_name)
-    ]
-    return {
-        "preserved": not unknown_fields and not changed_fields,
-        "unknown_fields": unknown_fields,
-        "changed_fields": changed_fields,
-        "before": before,
-        "after": after,
-    }
-
-
-def _passive_receipt_environment(
-    fingerprint: dict[str, Any],
-) -> dict[str, Any]:
-    return {
-        key: fingerprint.get(key)
-        for key in (
-            "game_id",
-            "scenario_id",
-            "simulation_epoch",
-            "playback",
-            "control_source",
-            "control_input",
-        )
-    }
 
 
 def _reject_unsupported_sensors(request: SensorReadRequest) -> None:
@@ -274,7 +131,7 @@ class ChaseSimCar(CarInterface):
             "path": "evaluator.reference",
         }
         self._last_passive_capture: dict[str, Any] | None = None
-        self._last_simulator_frame_index: int | None = None
+        self._capture_time: tuple[tuple[str, int], int] | None = None
         self._capture_session_lock = threading.Lock()
         self._capture_session = 0
         self._passive_receipt_supported = False
@@ -499,10 +356,6 @@ class ChaseSimCar(CarInterface):
         return self._last_capture_chaser_reference
 
     @property
-    def last_simulator_frame_index(self) -> int | None:
-        return self._last_simulator_frame_index
-
-    @property
     def last_evaluator_reference(self) -> dict[str, Any]:
         """Frame-scoped evaluator-reference status without evaluator payload."""
 
@@ -695,7 +548,6 @@ class ChaseSimCar(CarInterface):
                 else None
             )
             self._last_evaluator_reference = evaluator_status
-            self._last_simulator_frame_index = int(sensor["simulator_frame_index"])
             self._last_passive_capture = {
                 key: value for key, value in result.items() if key != "image"
             }
@@ -742,9 +594,9 @@ class ChaseSimCar(CarInterface):
             if supported
             else passive_observation.get("after")
         )
-        before = _normalize_passive_receipt_fingerprint(before_source)
-        after = _normalize_passive_receipt_fingerprint(after_source)
-        preservation = _compare_passive_receipt_fingerprints(before, after)
+        before = normalize_passive_receipt_fingerprint(before_source)
+        after = normalize_passive_receipt_fingerprint(after_source)
+        preservation = compare_passive_receipt_fingerprints(before, after)
 
         declared_fields = passive_observation.get("preservedFields")
         declared_field_set = {
@@ -753,7 +605,7 @@ class ChaseSimCar(CarInterface):
             if isinstance(item, str)
         } if isinstance(declared_fields, list) else set()
         missing_declared_fields = [
-            _PASSIVE_RECEIPT_FIELD_NAMES[field_name]
+            PASSIVE_RECEIPT_FIELD_NAMES[field_name]
             for field_name in CHASE_PASSIVE_PRESERVED_FIELDS
             if field_name not in declared_field_set
         ]
@@ -862,7 +714,7 @@ class ChaseSimCar(CarInterface):
                     {
                         *preservation["changed_fields"],
                         *(
-                            _PASSIVE_RECEIPT_FIELD_NAMES.get(str(item), str(item))
+                            PASSIVE_RECEIPT_FIELD_NAMES.get(str(item), str(item))
                             for item in reason_changed_fields
                         ),
                     }
@@ -891,10 +743,10 @@ class ChaseSimCar(CarInterface):
             reason = None
 
         environment = (
-            _passive_receipt_environment(before)
+            passive_receipt_environment(before)
             if not before["unknown_fields"]
             else {
-                key: fallback_environment.get(key, _passive_receipt_environment(before).get(key))
+                key: fallback_environment.get(key, passive_receipt_environment(before).get(key))
                 for key in (
                     "game_id",
                     "scenario_id",
@@ -957,11 +809,6 @@ class ChaseSimCar(CarInterface):
             else None
         )
         self._last_evaluator_reference = evaluator_status
-        self._last_simulator_frame_index = (
-            int(sensor["simulator_frame_index"])
-            if isinstance(sensor, dict)
-            else None
-        )
         self._last_passive_capture = {
             key: value
             for key, value in result.items()
@@ -1077,33 +924,31 @@ class ChaseSimCar(CarInterface):
                 },
             )
 
-    def read_camera_frame(self) -> SensorFrame:
-        """Read and validate a camera array once, without a temporary image file."""
+    def _capture_timestamp(self, sensor: dict[str, Any], started_ms: int, capture_session: int) -> int:
+        key = (sensor["simulation_epoch"], sensor["simulator_frame_index"])
+        with self._capture_session_lock:
+            self._require_capture_session(capture_session)
+            if self._capture_time is None or self._capture_time[0] != key:
+                self._capture_time = key, started_ms
+            return self._capture_time[1]
+
+    def read_camera_capture(self) -> ChaseCameraCapture:
+        """Capture once; retain original wire bytes only in the runtime handoff."""
         started_ms = _timestamp_ms()
+        with self._capture_session_lock:
+            capture_session = self._capture_session
         passive = self.inspect_passive_capture(include_image=True, include_image_array=True)
         self._require_available_capture(passive)
         sensor = passive["sensor"]
-        completed_ms = _timestamp_ms()
-        return SensorFrame(
-            read_id=sensor["frame_id"],
-            readings={FRONT_CAMERA_SENSOR_ID: SensorReading(
-                sensor_id=FRONT_CAMERA_SENSOR_ID,
-                sensor_kind="camera",
-                captured_at_ms=completed_ms,
-                value=sensor["image"]["image_array"],
-                metadata={"capture_id": sensor["capture_id"]},
-                jpeg_bytes=(sensor["image"].get("validated_bytes")
-                            if sensor["image"]["content_type"] == "image/jpeg" else None),
-            )},
-            started_at_ms=started_ms,
-            completed_at_ms=completed_ms,
-            metadata={
-                "simulator_frame_index": sensor["simulator_frame_index"],
-                "simulation_epoch": sensor["simulation_epoch"],
-                "camera_transport": "atomic",
-                "capture_duration_ms": completed_ms - started_ms,
-            },
+        return ChaseCameraCapture(
+            sensor["frame_id"], sensor["simulator_frame_index"], sensor["simulation_epoch"],
+            self._capture_timestamp(sensor, started_ms, capture_session), "atomic",
+            lambda: sensor["image"]["image_array"],
+            sensor["image"].get("validated_bytes") if sensor["image"]["content_type"] == "image/jpeg" else None,
         )
+
+    def read_camera_frame(self) -> SensorFrame:
+        return self.read_camera_capture().sensor_frame()
 
     def _require_capture_session(self, capture_session: int) -> None:
         if capture_session != self._capture_session:
@@ -1119,14 +964,27 @@ class ChaseSimCar(CarInterface):
             self._passive_receipt_supported = False
             self._last_passive_capture = None
             self.camera_transport = None
+            self._capture_time = None
 
     def camera_stream(self) -> Any:
         """Use an advertised stream; only absent capability selects atomic."""
         with self._capture_session_lock:
             capture_session = self._capture_session
-        usage = self.client.command(
-            {"type": "get_play_game_usage"}, response_type="play_game_usage",
-        ).payload
+        try:
+            usage = self.client.command(
+                {"type": "get_play_game_usage"}, response_type="play_game_usage",
+            ).payload
+        except MetricsUiWebSocketError as exc:
+            unsupported = exc.code in {
+                "unknown_command", "unsupported_command", "command_not_supported",
+                "unknown_message_type", "unsupported_message_type",
+            }
+            message = str(exc).lower()
+            unsupported = unsupported or (exc.code is None and "get_play_game_usage" in message
+                and message.startswith(("unknown command", "unknown message type", "unsupported command")))
+            if not unsupported:
+                raise
+            usage = {}
         if not isinstance(usage, dict):
             raise MetricsUiWebSocketError("Camera capability response must contain an object")
         protocol = usage.get("protocol")
@@ -1141,12 +999,13 @@ class ChaseSimCar(CarInterface):
         logger.info("Chase camera transport: %s", self.camera_transport)
         if not supported:
             return None
-        from .camera_stream import ChaseCameraStream
-
         return ChaseCameraStream(self.client)
 
     def _capture_front_camera(self, path: Path, endpoint: str) -> dict[str, Any]:
         """Capture one atomic image/identity/evaluator-reference response."""
+        started_ms = _timestamp_ms()
+        with self._capture_session_lock:
+            capture_session = self._capture_session
         passive = self.inspect_passive_capture(
             timeout_s=self.timeout_s,
             include_image=True,
@@ -1203,7 +1062,7 @@ class ChaseSimCar(CarInterface):
             "content_type": content_type,
             "width": width,
             "height": height,
-            "captured_at_ms": int(time.time() * 1000),
+            "captured_at_ms": self._capture_timestamp(sensor, started_ms, capture_session),
             "capture_id": sensor["capture_id"],
             "simulator_frame_index": frame_index,
             "simulation_epoch": simulation_epoch,
@@ -1230,7 +1089,6 @@ class ChaseSimCar(CarInterface):
             "path": "evaluator.reference",
         }
         self._last_passive_capture = None
-        self._last_simulator_frame_index = None
 
         if request.sensor_requested(FRONT_CAMERA_SENSOR_ID):
             capture = self._capture_front_camera(
@@ -1246,9 +1104,9 @@ class ChaseSimCar(CarInterface):
             )
 
         sensor_frame_metadata: dict[str, Any] = {"vehicle": self.capabilities.to_dict()}
-        if self._last_simulator_frame_index is not None:
-            sensor_frame_metadata["simulator_frame_index"] = self._last_simulator_frame_index
-            sensor_frame_metadata["frame_id"] = format_chase_frame_id(self._last_simulator_frame_index)
+        if request.sensor_requested(FRONT_CAMERA_SENSOR_ID):
+            sensor_frame_metadata["simulator_frame_index"] = capture["simulator_frame_index"]
+            sensor_frame_metadata["frame_id"] = capture["frame_id"]
         if self._last_passive_capture:
             sensor = self._last_passive_capture.get("sensor")
             if isinstance(sensor, dict):

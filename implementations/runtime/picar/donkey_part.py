@@ -85,11 +85,15 @@ class AutonomyPilotPart(FrameLoop):
         self.last_status = self.status()
         return self._held_outputs(mode_name)
 
-    def _session_started(self, configuration: RunConfiguration) -> None:
+    def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
+        status = super().start(configuration, record=record)
         self._show_drive_mode(drive_mode(configuration.mode))
+        return status
 
-    def _session_stopped(self) -> None:
+    def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, Any]:
+        status = super().stop(reason=reason, error=error)
         self._hand_back()
+        return status
 
     def _frame_completed(self) -> None:
         self._publish_host_source_frame()

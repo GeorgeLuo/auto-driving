@@ -1,6 +1,7 @@
 """Chase simulator vehicle implementation."""
 
-from .car import ChasePassiveCaptureError, ChaseSimCar
+from .car import ChaseSimCar
+from .session import ChasePassiveCaptureError
 from .frame_identity import (
     ChaseCaptureValidationError,
     align_candidate_with_reference,

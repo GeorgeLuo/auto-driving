@@ -57,7 +57,7 @@ class _Connection:
     def _require_sock(self):
         return self
 
-    def settimeout(self, _timeout):
+    def set_read_timeout(self, _timeout):
         pass
 
     def send_json(self, message, *, deadline=None):
@@ -99,7 +99,7 @@ class ChaseCameraStreamTests(unittest.TestCase):
         self.client = MetricsUiWsClient("ws://example.test/ws")
         self.connection = _Connection()
         self.patch = mock.patch(
-            "implementations.vehicle.chase_sim.camera_stream._WebSocketConnection",
+            "implementations.vehicle.chase_sim.camera_stream.MetricsUiConnection",
             return_value=self.connection,
         )
         self.factory = self.patch.start()
@@ -125,8 +125,29 @@ class ChaseCameraStreamTests(unittest.TestCase):
             wait_until(lambda: stream.frames_received == 9, message="stream did not drain the wire")
             frame = stream.read_camera_frame()
             self.assertEqual(frame.metadata["simulator_frame_index"], 50)
-            self.assertEqual(stream.frames_replaced, 8)
+            self.assertEqual(stream.frames_dropped, 8)
             self.assertIsNone(stream.read_camera_frame(timeout_s=0.01))
+
+    def test_raw_capture_consumer_defers_pixel_decode_and_state_reads_until_selection(self):
+        from PIL.JpegImagePlugin import JpegImageFile
+
+        frames = [_frame(index) for index in range(43, 51)]
+        captures = []
+        stream = ChaseCameraStream(self.client)
+        stream.set_consumer(captures.append)
+        with mock.patch.object(JpegImageFile, "load", autospec=True, side_effect=JpegImageFile.load) as decode:
+            with stream:
+                for frame in frames:
+                    self.connection.push(frame)
+                wait_until(lambda: len(captures) == 9, message="raw captures were not delivered")
+                self.assertIsNone(stream._latest, "runtime consumer acquired a second pending slot")
+                self.assertEqual(decode.call_count, 0)
+                self.assertEqual(self.state.call_count, 1, "only startup needs a state read before selection")
+                selected = captures[-1].sensor_frame()
+                self.assertEqual(selected.read_id, "chase_frame_000050")
+                self.assertEqual(selected.readings["front_camera"].value.shape, (3, 2, 3))
+                self.assertGreater(decode.call_count, 0)
+                self.assertEqual(self.state.call_count, 2)
 
     def test_waiting_in_the_slot_does_not_refresh_capture_time(self):
         with mock.patch("implementations.vehicle.chase_sim.camera_stream.time.time", return_value=1000.0) as now:
@@ -173,7 +194,7 @@ class ChaseCameraStreamTests(unittest.TestCase):
         for key, value in mutations:
             with self.subTest(key=key):
                 self.connection = _Connection()
-                with mock.patch("implementations.vehicle.chase_sim.camera_stream._WebSocketConnection",
+                with mock.patch("implementations.vehicle.chase_sim.camera_stream.MetricsUiConnection",
                                 return_value=self.connection):
                     with ChaseCameraStream(self.client) as stream:
                         self.assertIsNotNone(stream.read_camera_frame())
@@ -290,6 +311,28 @@ class ChaseCameraStreamTests(unittest.TestCase):
 
 
 class ChaseCameraMemoryTests(unittest.TestCase):
+    def test_explicit_unsupported_capability_command_uses_atomic_capture(self):
+        for error in (
+            MetricsUiWebSocketError("unsupported", code="unsupported_command"),
+            MetricsUiWebSocketError("Unknown command get_play_game_usage"),
+        ):
+            car = ChaseSimCar(ws_url="ws://example.test/ws")
+            with self.subTest(error=error), mock.patch.object(car.client, "command", side_effect=error):
+                self.assertIsNone(car.camera_stream())
+            self.assertEqual(car.camera_transport["transport"], "atomic")
+
+    def test_atomic_capture_time_includes_delivery_delay_and_repeats_do_not_refresh_it(self):
+        car = ChaseSimCar(ws_url="ws://example.test/ws")
+        capture = _with_passive_receipt(_atomic_capture())
+        with mock.patch.object(car.client, "get_state", return_value=_session_state()), \
+                mock.patch.object(car.client, "get_play_debug", return_value=_session_debug()), \
+                mock.patch.object(car.client, "play_game_query", return_value=capture), \
+                mock.patch("implementations.vehicle.chase_sim.car._timestamp_ms", side_effect=[1000, 2000]):
+            first = car.read_camera_capture()
+            second = car.read_camera_capture()
+        self.assertEqual(first.captured_at_ms, 1000)
+        self.assertEqual(second.captured_at_ms, 1000)
+
     def test_atomic_camera_decodes_once_and_retains_serializable_receipts(self):
         car = ChaseSimCar(ws_url="ws://example.test/ws")
         capture = _with_passive_receipt(_atomic_capture())

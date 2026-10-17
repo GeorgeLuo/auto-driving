@@ -121,6 +121,7 @@ def validate_chase_sensor_capture(
     expected_actor_id: str = "chaser",
     include_validated_bytes: bool = False,
     include_image_array: bool = False,
+    validate_pixels: bool = True,
 ) -> dict[str, Any]:
     """Validate required sensor/image identity independently from evaluator data."""
 
@@ -206,6 +207,7 @@ def validate_chase_sensor_capture(
             height=height,
             include_validated_bytes=include_validated_bytes,
             include_image_array=include_image_array,
+            validate_pixels=validate_pixels,
         )
         encoding = "data_url"
     elif isinstance(svg, str) and svg.strip():
@@ -569,11 +571,13 @@ def _validate_image_envelope(
     height: int,
     include_validated_bytes: bool,
     include_image_array: bool = False,
+    validate_pixels: bool = True,
 ) -> dict[str, Any]:
     decoded = _decode_data_url_payload(data_url)
     try:
         with Image.open(BytesIO(decoded)) as raster:
-            raster.load()
+            if validate_pixels or include_image_array:
+                raster.load()
             decoded_size = raster.size
             decoded_format = str(raster.format or "").upper()
             if include_image_array:

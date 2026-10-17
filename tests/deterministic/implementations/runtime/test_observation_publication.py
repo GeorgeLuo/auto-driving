@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+import json
+from types import SimpleNamespace
 import threading
 import tempfile
 import unittest
@@ -167,9 +170,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(part.observation_status()["presets"], applied)
 
     def test_publication_includes_the_memory_report_when_step_present(self) -> None:
-        from autonomy.decision_cycle.context import DecisionFrameContext
         from autonomy.decision_cycle.cycle import DecisionSteps
-        from autonomy.decision_cycle.observation.values import Observation
         from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
         from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
@@ -470,13 +471,37 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertIn('+            (r"/(?:autonomy/.*|api/plugins)", AutonomyRoutesAPI),', patch)
         self.assertNotIn("/autonomy/mode", patch)
         dispatcher = patch.split("+class AutonomyRoutesAPI", 1)[1].split(" class WsTest", 1)[0]
-        compile(
+        code = compile(
             "class AutonomyRoutesAPI(RequestHandler):\n" + "\n".join(
                 line[1:] for line in dispatcher.splitlines() if line.startswith("+")
             ),
             "AutonomyRoutesAPI",
             "exec",
         )
+
+        class Handler:
+            def set_status(self, status):
+                self.status = status
+            def set_header(self, key, value):
+                pass
+            def write(self, body):
+                if self.status == 304:
+                    raise AssertionError("304 must not write even an empty chunk")
+                self.body = body
+
+        namespace = {"RequestHandler": Handler, "asyncio": asyncio, "json": json}
+        exec(code, namespace)
+        for status, body in ((200, b"payload"), (304, b"")):
+            route = mock.Mock()
+            route.handle.return_value = status, {"ETag": "test"}, body
+            handler = namespace["AutonomyRoutesAPI"]()
+            handler.application = SimpleNamespace(autonomy_routes=route)
+            handler.request = SimpleNamespace(method="GET", uri="/autonomy/observation/transaction",
+                body=b"", headers={"If-None-Match": "test"}, protocol="http", host="car.test")
+            asyncio.run(handler._dispatch())
+            self.assertEqual(handler.status, status)
+            self.assertEqual(route.handle.call_args.kwargs["headers"], {"If-None-Match": "test"})
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -3,24 +3,23 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any
+from typing import Any, Callable
 
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from .car import (
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame
+from .capture import ChaseCameraCapture
+from .session import (
     ChasePassiveCaptureError,
-    _compare_passive_receipt_fingerprints,
-    _normalize_passive_receipt_fingerprint,
+    compare_passive_receipt_fingerprints,
+    normalize_passive_receipt_fingerprint,
 )
 from .frame_identity import ChaseCaptureValidationError, validate_chase_sensor_capture
 from .metrics_ws import (
     MetricsUiWebSocketError,
     MetricsUiWsClient,
-    _WebSocketConnection,
-    build_chase_session_fingerprint,
-    compare_chase_session_fingerprints,
+    MetricsUiConnection,
 )
 
-STABLE_SESSION_FIELDS = ("game_id", "scenario_id", "simulation_epoch", "control_source")
+from .session import RUN_STABLE_FIELDS, build_chase_session_fingerprint, compare_chase_session_fingerprints
 
 
 def _record(value: Any) -> dict[str, Any]:
@@ -37,15 +36,18 @@ class ChaseCameraStream:
 
     def __init__(self, client: MetricsUiWsClient) -> None:
         self.client = client
-        self._ws = _WebSocketConnection(client.url, timeout_s=client.timeout_s)
+        self._ws = MetricsUiConnection(client.url, timeout_s=client.timeout_s)
         self._condition = threading.Condition()
         self._closed = threading.Event()
-        self._latest: tuple[dict[str, Any], int] | None = None
+        self._ready = threading.Event()
+        self._latest: ChaseCameraCapture | None = None
+        self._consumer: Callable[[ChaseCameraCapture], None] | None = None
         self._error: Exception | None = None
         self._reader: threading.Thread | None = None
         self._subscription_id: str | None = None
         self._baseline: dict[str, Any] = {}
         self._session_baseline: dict[str, Any] = {}
+        self._state_lock = threading.Lock()
         self._state_request_number = 0
         self._state_request_id: str | None = None
         self._state_reply: dict[str, Any] | None = None
@@ -56,7 +58,7 @@ class ChaseCameraStream:
         self._last_progress_ms = 0.0
         self._last_idle_check_ms = 0.0
         self.frames_received = 0
-        self.frames_replaced = 0
+        self.frames_dropped = 0
 
     def __enter__(self) -> ChaseCameraStream:
         try:
@@ -65,7 +67,7 @@ class ChaseCameraStream:
             self._ws.connect()
             deadline = time.monotonic() + self.client.timeout_s
             self._ws.send_json({"type": "register", "role": "agent"})
-            self.client._wait_for_registration(self._ws, deadline)
+            self.client.wait_for_registration(self._ws, deadline)
             self._subscribe_started_ms = time.monotonic() * 1000
             self._ws.send_json({
                 "type": "play_camera_stream_subscribe",
@@ -90,7 +92,7 @@ class ChaseCameraStream:
                 break
             # A paused simulator may produce no new frames. Closing the socket
             # interrupts this blocking reader; consumer waits remain bounded.
-            self._ws._require_sock().settimeout(None)
+            self._ws.set_read_timeout(None)
             self._reader = threading.Thread(target=self._receive, name="chase-camera-stream", daemon=True)
             self._reader.start()
             self._session_baseline = build_chase_session_fingerprint(
@@ -105,6 +107,7 @@ class ChaseCameraStream:
                     message="Camera stream requires sidebar rows scenario-select and chaser-control-source.",
                     details={"unknown_fields": missing, "mutation_attempted": False},
                 )
+            self._ready.set()
             return self
         except Exception:
             self.close()
@@ -126,9 +129,9 @@ class ChaseCameraStream:
     def _validate_subscription(self, payload: dict[str, Any]) -> None:
         subscription_id = payload.get("subscriptionId")
         preservation = _record(payload.get("preservation"))
-        before = _normalize_passive_receipt_fingerprint(preservation.get("before"))
-        after = _normalize_passive_receipt_fingerprint(preservation.get("after"))
-        receipt = _compare_passive_receipt_fingerprints(before, after)
+        before = normalize_passive_receipt_fingerprint(preservation.get("before"))
+        after = normalize_passive_receipt_fingerprint(preservation.get("after"))
+        receipt = compare_passive_receipt_fingerprints(before, after)
         if (not isinstance(subscription_id, str) or not subscription_id
                 or _record(payload.get("cameraStream")).get("supported") is not True
                 or _record(payload.get("playback")).get("advanced") is not False
@@ -180,11 +183,49 @@ class ChaseCameraStream:
             raise self._invalid("sourceTimestampUs", "stream source clock jumped ahead")
         captured_at_ms = int(time.time() * 1000 - max(0.0, age_ms))
         self._last_progress_ms = time.monotonic() * 1000
+        identity = frame["frameIdentity"]
+        envelope = {
+            "contractVersion": 1,
+            "captureId": f"{self._subscription_id}:{identity['frameIndex']}",
+            "actorId": frame["actorId"], "frameIdentity": identity,
+            "playback": frame["playback"], "sensor": frame.get("sensor"),
+        }
+        sensor = validate_chase_sensor_capture(envelope, include_validated_bytes=True, validate_pixels=False)
+        if sensor["image"]["content_type"] != "image/jpeg":
+            raise self._invalid("sensor.image.contentType", "camera stream must contain JPEG images")
+
+        def load_image():
+            if not self._ready.wait(self.client.timeout_s) or self._closed.is_set():
+                raise MetricsUiWebSocketError("Camera stream is not ready")
+            self._check_session(self._request_state(), sensor)
+            return validate_chase_sensor_capture(envelope, include_image_array=True)["image"]["image_array"]
+
+        capture = ChaseCameraCapture(
+            sensor["frame_id"], sensor["simulator_frame_index"], sensor["simulation_epoch"],
+            captured_at_ms, "stream", load_image, sensor["image"]["validated_bytes"],
+        )
         with self._condition:
             self.frames_received += 1
-            self.frames_replaced += int(self._latest is not None)
-            self._latest = frame, captured_at_ms
+            if self._consumer is not None:
+                self._consumer(capture)
+            else:
+                self.frames_dropped += int(self._latest is not None)
+                self._latest = capture
             self._condition.notify_all()
+
+    def set_consumer(self, consumer: Callable[[ChaseCameraCapture], None]) -> None:
+        """Offer raw captures directly to the runtime's sole waiting slot."""
+        with self._condition:
+            self._consumer = consumer
+            if self._latest is not None:
+                capture, self._latest = self._latest, None
+                consumer(capture)
+
+    def check_progress(self) -> None:
+        with self._condition:
+            if self._error is not None:
+                raise self._error
+        self._check_idle()
 
     def _receive(self) -> None:
         try:
@@ -213,6 +254,10 @@ class ChaseCameraStream:
                     self._condition.notify_all()
 
     def _request_state(self) -> dict[str, Any]:
+        with self._state_lock:
+            return self._request_state_locked()
+
+    def _request_state_locked(self) -> dict[str, Any]:
         deadline = time.monotonic() + self.client.timeout_s
         with self._condition:
             if self._closed.is_set():
@@ -258,34 +303,9 @@ class ChaseCameraStream:
         if sample is None:
             self._check_idle()
             return None
-        frame, captured_at_ms = sample
-        identity = frame["frameIdentity"]
-        # The stream's per-frame wire format shares the atomic sensor envelope.
-        sensor = validate_chase_sensor_capture({
-            "contractVersion": 1,
-            "captureId": f"{self._subscription_id}:{identity['frameIndex']}",
-            "actorId": frame["actorId"], "frameIdentity": identity,
-            "playback": frame["playback"], "sensor": frame.get("sensor"),
-        }, include_image_array=True, include_validated_bytes=True)
-        if sensor["image"]["content_type"] != "image/jpeg":
-            raise self._invalid("sensor.image.contentType", "camera stream must contain JPEG images")
-        self._check_session(self._request_state(), sensor)
-        return SensorFrame(
-            read_id=sensor["frame_id"],
-            readings={FRONT_CAMERA_SENSOR_ID: SensorReading(
-                sensor_id=FRONT_CAMERA_SENSOR_ID, sensor_kind="camera",
-                captured_at_ms=captured_at_ms, value=sensor["image"]["image_array"],
-                jpeg_bytes=sensor["image"]["validated_bytes"],
-            )},
-            started_at_ms=captured_at_ms, completed_at_ms=int(time.time() * 1000),
-            metadata={
-                "simulator_frame_index": sensor["simulator_frame_index"],
-                "simulation_epoch": sensor["simulation_epoch"], "camera_transport": "stream",
-                "source_timestamp_us": frame["sourceTimestampUs"],
-                "published_at_us": frame["publishedAtUs"],
-                "frames_received": self.frames_received, "frames_replaced": self.frames_replaced,
-            },
-        )
+        sensor_frame = sample.sensor_frame()
+        from dataclasses import replace
+        return replace(sensor_frame, completed_at_ms=int(time.time() * 1000))
 
     def _check_session(self, state: dict[str, Any], sensor: dict[str, Any]) -> None:
         current = build_chase_session_fingerprint(state=state, debug={
@@ -293,7 +313,7 @@ class ChaseCameraStream:
             "simulationEpoch": sensor["simulation_epoch"],
         })
         receipt = compare_chase_session_fingerprints(
-            self._session_baseline, current, field_names=STABLE_SESSION_FIELDS,
+            self._session_baseline, current, field_names=RUN_STABLE_FIELDS,
         )
         if not receipt["preserved"]:
             raise ChasePassiveCaptureError(
@@ -323,6 +343,7 @@ class ChaseCameraStream:
 
     def close(self) -> None:
         self._closed.set()
+        self._ready.set()
         with self._condition:
             self._latest = None
             request_pending = self._state_request_id is not None

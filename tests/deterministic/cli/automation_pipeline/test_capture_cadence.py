@@ -54,13 +54,13 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
                         state = json.loads(state_path.read_text())
                     except FileNotFoundError:
                         state = {}
-                    if state.get("frames_captured") == 1:
+                    if state.get("frames_received") == 1:
                         break
                     self.assertLess(time.monotonic(), deadline, "capture was not published")
                     time.sleep(0.01)
                 time.sleep(0.05)
                 held = json.loads(state_path.read_text())
-                self.assertEqual(held["frames_captured"], 1)
+                self.assertEqual(held["frames_received"], 1)
                 self.assertEqual(perception.contexts[0].metadata["capture_sequence"], 0)
                 perception.release[0].set()
                 self.assertTrue(completed.wait(timeout=2.0), "completion waited after the worker finished")
@@ -72,14 +72,14 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             contexts = perception.contexts
             self.assertEqual([c.metadata["capture_sequence"] for c in contexts], [0, 1])
             self.assertEqual([c.frame_index for c in contexts], [100, 101])
-            self.assertEqual((state["frames_captured"], state["processed_count"]), (2, 2))
+            self.assertEqual((state["frames_received"], state["processed_count"]), (2, 2))
             self.assertEqual(state["num_decisions"], state["processed_count"])
             self.assertEqual(state["session"]["processed_decisions"], 2)
             records = [json.loads(p.read_text()) for p in Path(state["run_dir"]).glob("perception/*/perception.json")]
             records.sort(key=lambda r: r["context"]["metadata"]["capture_sequence"])
             self.assertEqual([r["context"]["metadata"]["simulator_frame_index"] for r in records], [100, 101])
             self.assertEqual(records[-1]["context"]["metadata"]["simulation_epoch"], "chase-run:test")
-            self.assertIn("Frames captured: 2", result.message)
+            self.assertIn("Frames received: 2", result.message)
             self.assertIn("Decisions completed: 2", result.message)
             self.assertIn("Decisions recorded: 2", result.message)
 
@@ -108,7 +108,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
                         state = json.loads(state_path.read_text())
                     except FileNotFoundError:
                         state = {}
-                    if state.get("frames_captured") == 1:
+                    if state.get("frames_received") == 1:
                         break
                     self.assertLess(time.monotonic(), deadline, "capture was not published")
                     time.sleep(0.01)
@@ -119,4 +119,4 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
                 thread.join(timeout=5.0)
             result, state, _output = results[0]
             self.assertEqual(result.exit_code, 0, result.message)
-            self.assertEqual((state["status"], state["frames_captured"], state["processed_count"]), ("completed", 1, 1))
+            self.assertEqual((state["status"], state["frames_received"], state["processed_count"]), ("completed", 1, 1))

@@ -109,6 +109,9 @@ class RuntimeRoutes:
             return json_response({"ok": False, "error": f"no runtime route {path}"}, 404)
         try:
             query = parse_qs(parts.query, keep_blank_values=True, strict_parsing=False)
+            if path in {OBSERVATION_TRANSACTION_PATH, DECISION_TRANSACTION_PATH}:
+                kind = "observation" if path == OBSERVATION_TRANSACTION_PATH else "decision"
+                return self._transaction(kind, headers or {})
             return route(query, body or b"")
         except Exception as exc:  # noqa: BLE001 - one bad request must not end the host
             logger.exception("Runtime route %s %s failed", method, path)
@@ -199,16 +202,7 @@ class RuntimeRoutes:
         return self._frame(*self.loop.publish_latest_frame_jpeg())
 
     def _observation_transaction(self, query: dict[str, list[str]], body: bytes) -> Response:
-        jpeg, publication = self.loop.publish_latest_frame_jpeg()
-        frame = publication.get("frame") or {}
-        payload = {
-            "schema": OBSERVATION_TRANSACTION_SCHEMA,
-            "publication": publication,
-            "image_frame_id": frame.get("frame_id") if jpeg is not None else None,
-            "image_content_type": "image/jpeg" if jpeg is not None else None,
-            "image_base64": base64.b64encode(jpeg).decode("ascii") if jpeg is not None else None,
-        }
-        return json_response(payload, 503 if frame.get("has_image") and jpeg is None else 200)
+        return self._transaction("observation", {})
 
     def _camera_frame(self, query: dict[str, list[str]], body: bytes) -> Response:
         return self._frame(*self.loop.publish_latest_camera_jpeg())
@@ -237,15 +231,39 @@ class RuntimeRoutes:
         return json_response(payload, 200 if payload.get("status") == "ready" else 503)
 
     def _decision_transaction(self, query: dict[str, list[str]], body: bytes) -> Response:
-        publication, jpeg = self.loop.publish_decision_transaction()
-        payload: dict[str, Any] = {
-            "schema": DECISION_TRANSACTION_SCHEMA,
+        return self._transaction("decision", {})
+
+    def _transaction(self, kind: str, request_headers: Mapping[str, str]) -> Response:
+        publication, capture, revision = self.loop.transaction_snapshot(kind)
+        usable = (publication.get("status") == "ready" if kind == "decision"
+                  else publication.get("health") in {"healthy", "stale"})
+        state = publication.get("status") if kind == "decision" else publication.get("health")
+        etag = f'W/"{revision}:{state}"'
+        headers = {"Cache-Control": "no-cache", "ETag": etag,
+                   "X-Read-At-Ms": str(publication["read_at_ms"])}
+        matched = next((value for key, value in request_headers.items()
+                        if key.lower() == "if-none-match"), None)
+        if usable and capture is not None and matched == etag and capture.jpeg_cache.data is not None:
+            return 304, headers, b""
+        jpeg = None
+        reason = publication.get("reason") or state
+        if usable and capture is not None:
+            try:
+                jpeg = self.loop._frame_jpeg(capture)
+            except Exception as exc:
+                reason = "image_encoding_failed"
+                publication = {**publication, "ok": False, "health": "error", "status": "error",
+                               "reason": reason, "error": f"{type(exc).__name__}: {exc}"}
+        payload = {
+            "schema": DECISION_TRANSACTION_SCHEMA if kind == "decision" else OBSERVATION_TRANSACTION_SCHEMA,
             "publication": publication,
+            "image_frame_id": capture.frame_id if jpeg is not None else None,
+            "image_content_type": "image/jpeg" if jpeg is not None else None,
+            "image_base64": base64.b64encode(jpeg).decode("ascii") if jpeg is not None else None,
+            "reason": None if jpeg is not None else reason,
         }
-        if jpeg is not None:
-            payload["image_base64"] = base64.b64encode(jpeg).decode("ascii")
-            payload["image_content_type"] = "image/jpeg"
-        return json_response(payload, 200 if publication.get("status") == "ready" else 503)
+        status, response_headers, body = json_response(payload, 200 if jpeg is not None else 503)
+        return status, {**response_headers, **headers}, body
 
     def _memory_reset(self, query: dict[str, list[str]], body: bytes) -> Response:
         payload = {"schema": MEMORY_RESET_SCHEMA, **self.loop.reset_memory()}

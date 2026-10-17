@@ -76,7 +76,7 @@ def _session(status: str, processed: int) -> dict:
 def _host(camera: int, *, last_error: str | None = None) -> dict:
     return {
         "autonomy": {
-            "components": {"observation": {"frames_captured": camera}},
+            "components": {"observation": {"frames_received": camera}},
             "steps": {"memory": {"plugin_ids": ["recent"], "last_error": None}, "proposal": None},
             "cycle_count": camera,
             "error_count": 0 if last_error is None else 1,
@@ -137,7 +137,7 @@ class RuntimeMonitorTests(unittest.TestCase):
     def test_a_run_prints_and_records_the_host_session(self) -> None:
         hosts = [_host(10), _host(11), _host(13)]
         for host, count in zip(hosts, (4, 5, 6)):
-            host["autonomy"]["components"]["observation"]["frames_superseded"] = count
+            host["autonomy"]["components"]["observation"]["frames_dropped"] = count
         with tempfile.TemporaryDirectory() as tmp:
             automation_dir = Path(tmp) / "automation"
             client, code, message, lines, state = self._monitor(
@@ -150,7 +150,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(client.started_with.mode, "autonomy")
         self.assertEqual(client.started_with.num_decisions, 2)
         self.assertEqual(state["num_decisions"], 2)
-        self.assertEqual(state["frames_superseded"], 2)
+        self.assertEqual(state["frames_dropped"], 2)
         self.assertEqual(
             [line for line in lines if not line.startswith("Runtime view: ")],
             [
@@ -172,8 +172,8 @@ class RuntimeMonitorTests(unittest.TestCase):
             message.splitlines()[:6],
             [
                 f"Automation completed: {VEHICLE_ID}",
-                "Frames captured: 3",
-                "Frames superseded before decision: 2",
+                "Frames received: 3",
+                "Frames dropped before decision: 2",
                 "Decisions completed: 2",
                 "Control source: runtime_host",
                 "Action policy: autonomy",
@@ -201,8 +201,8 @@ class RuntimeMonitorTests(unittest.TestCase):
 
     def test_a_missing_capture_counter_is_unavailable_rather_than_zero(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "does not report"):
-            runtime_monitor._frames_captured({"components": {"observation": {}}})
-        self.assertEqual(runtime_monitor._frames_captured(_host(0)["autonomy"]), 0)
+            runtime_monitor._frames_received({"components": {"observation": {}}})
+        self.assertEqual(runtime_monitor._frames_received(_host(0)["autonomy"]), 0)
 
     def test_a_host_cycle_error_fails_the_run_with_the_host_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -237,7 +237,7 @@ class ControlRecordTests(unittest.TestCase):
 
 class MonitorPacingTests(unittest.TestCase):
     def test_older_host_has_no_superseded_count(self):
-        self.assertIsNone(runtime_monitor._frames_superseded(_host(2)))
+        self.assertIsNone(runtime_monitor._frames_dropped(_host(2)))
 
     def test_adaptive_pause_keeps_a_gap_on_fast_and_slow_hosts(self):
         for elapsed_ms, expected_ms in [(5, 1000 / 30 - 5), (20, 20), (30, 30),

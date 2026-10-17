@@ -12,6 +12,7 @@ import json
 import math
 import urllib.error
 import urllib.request
+from dataclasses import dataclass
 from copy import deepcopy
 from typing import Any
 from urllib.parse import urlencode
@@ -100,16 +101,56 @@ class HostTelemetryError(ValueError):
         self.details = details or {}
 
 
-def _get_json(base_url: str, path: str, *, timeout_s: float, missing_ok: bool = False) -> dict[str, Any]:
+@dataclass
+class TransactionCache:
+    etag: str | None = None
+    payload: dict[str, Any] | None = None
+    image: tuple[bytes, str] | None = None
+    missing_route: bool = False
+
+
+def _same_publication(left: dict[str, Any], right: dict[str, Any]) -> bool:
+    volatile = {
+        "http_status", "read_at_ms", "result_age_ms", "perception_inflight",
+        "frames_received", "frames_dropped",
+        # Older hosts update these even when their completed frame is unchanged.
+        "frames_captured", "frames_superseded", "frames_replaced",
+    }
+    return {k: v for k, v in left.items() if k not in volatile} == {k: v for k, v in right.items() if k not in volatile}
+
+
+def _cached_transaction(cache: TransactionCache, read_at_ms: int | None = None) -> dict[str, Any]:
+    payload = deepcopy(cache.payload)
+    if payload is None:
+        raise ConnectionError("Host returned 304 without a cached transaction")
+    publication = payload.get("publication") or {}
+    if read_at_ms is not None:
+        publication["read_at_ms"] = read_at_ms
+        frame = publication.get("frame") or {}
+        decision = publication.get("decision") or {}
+        completed = decision.get("published_at_ms", frame.get("completed_at_ms"))
+        if type(completed) is int:
+            publication["result_age_ms"] = max(0, read_at_ms - completed)
+    return payload
+
+
+def _get_json(base_url: str, path: str, *, timeout_s: float, missing_ok: bool = False,
+              cache: TransactionCache | None = None) -> dict[str, Any]:
     """GET one JSON object from a runtime host; an HTTP error's JSON body is the answer."""
 
     url = f"{base_url.rstrip('/')}{path}"
+    request = urllib.request.Request(url, headers={"If-None-Match": cache.etag}) if cache and cache.etag else url
     try:
-        with urllib.request.urlopen(url, timeout=max(0.1, float(timeout_s))) as response:
+        with urllib.request.urlopen(request, timeout=max(0.1, float(timeout_s))) as response:
+            response_headers = getattr(response, "headers", {})
             body = response.read()
             status_code = getattr(response, "status", 200)
     except urllib.error.HTTPError as exc:
         with exc:
+            response_headers = exc.headers or {}
+            if exc.code == 304 and cache is not None:
+                read_at = response_headers.get("X-Read-At-Ms")
+                return _cached_transaction(cache, int(read_at) if read_at is not None else None)
             if missing_ok and exc.code == 404:
                 return {"http_status": 404}
             body = exc.read() if exc.fp is not None else b""
@@ -130,6 +171,10 @@ def _get_json(base_url: str, path: str, *, timeout_s: float, missing_ok: bool = 
     if not isinstance(payload, dict):
         raise ConnectionError(f"GET {url} returned a non-object JSON payload")
     payload.setdefault("http_status", status_code)
+    if cache is not None:
+        cache.etag = response_headers.get("ETag") if status_code == 200 else None
+        cache.payload = deepcopy(payload)
+        cache.image = None
     return payload
 
 
@@ -146,7 +191,7 @@ def fetch_observation_publication(base_url: str, *, timeout_s: float = 3.0) -> d
 
 
 def fetch_observation_sample(
-    base_url: str, *, timeout_s: float = 3.0,
+    base_url: str, *, timeout_s: float = 3.0, cache: TransactionCache | None = None,
 ) -> tuple[dict[str, Any], bytes | None]:
     """Read observation metadata and its image from the same host snapshot.
 
@@ -154,15 +199,30 @@ def fetch_observation_sample(
     transport errors and invalid transactions never select the legacy path.
     """
 
-    payload = _get_json(base_url, OBSERVATION_TRANSACTION_PATH, timeout_s=timeout_s, missing_ok=True)
+    preview = None
+    if cache is not None and cache.payload is not None and not cache.etag:
+        preview = fetch_observation_publication(base_url, timeout_s=timeout_s)
+        if cache.image is not None and _same_publication(preview, cache.payload.get("publication") or {}):
+            return preview, cache.image[0]
+    payload = ({"http_status": 404} if cache is not None and cache.missing_route else
+               _get_json(base_url, OBSERVATION_TRANSACTION_PATH, timeout_s=timeout_s,
+                         missing_ok=True, cache=cache))
     if payload.get("http_status") == 404:
-        publication = fetch_observation_publication(base_url, timeout_s=timeout_s)
+        if cache is not None:
+            cache.missing_route = True
+        publication = preview if preview is not None else fetch_observation_publication(base_url, timeout_s=timeout_s)
         frame = publication.get("frame") or {}
         if not frame.get("has_image") or not frame.get("frame_id"):
             return publication, None
         jpeg, headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
         matched = frame.get("frame_id") == frame_id_from_headers(headers)
+        if cache is not None and matched:
+            cache.payload, cache.image = {"publication": deepcopy(publication)}, (jpeg, "image/jpeg")
         return publication, jpeg if matched else None
+    if payload.get("http_status") == 503:
+        publication = payload.get("publication")
+        if isinstance(publication, dict):
+            return publication, None
     if payload.get("http_status", 200) >= 400:
         raise ConnectionError(f"Observation transaction returned HTTP {payload['http_status']}")
     publication = payload.get("publication")
@@ -179,12 +239,16 @@ def fetch_observation_sample(
         or payload.get("image_frame_id") != frame["frame_id"]
     ):
         raise ValueError("Observation transaction image does not match its frame")
+    if cache is not None and cache.image is not None:
+        return publication, cache.image[0]
     try:
         jpeg = base64.b64decode(encoded, validate=True)
     except (ValueError, binascii.Error) as exc:
         raise ValueError("Invalid observation transaction image encoding") from exc
     if not jpeg:
         raise ValueError("Empty observation transaction image")
+    if cache is not None:
+        cache.image = jpeg, "image/jpeg"
     return publication, jpeg
 
 
@@ -194,10 +258,17 @@ def fetch_decision_publication(base_url: str, *, timeout_s: float = 3.0) -> dict
     return _get_json(base_url, DECISION_LATEST_PATH, timeout_s=timeout_s)
 
 
-def fetch_decision_transaction(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:
+def fetch_decision_transaction(base_url: str, *, timeout_s: float = 3.0,
+                               cache: TransactionCache | None = None) -> dict[str, Any]:
     """GET the current decision and its image from one host snapshot."""
 
-    return _get_json(base_url, DECISION_TRANSACTION_PATH, timeout_s=timeout_s)
+    if cache is not None and cache.payload is not None and not cache.etag:
+        preview = fetch_decision_publication(base_url, timeout_s=timeout_s)
+        if _same_publication(preview, cache.payload.get("publication") or {}):
+            payload = _cached_transaction(cache)
+            payload["publication"] = preview
+            return payload
+    return _get_json(base_url, DECISION_TRANSACTION_PATH, timeout_s=timeout_s, cache=cache)
 
 
 class _RejectTelemetryRedirect(urllib.request.HTTPRedirectHandler):

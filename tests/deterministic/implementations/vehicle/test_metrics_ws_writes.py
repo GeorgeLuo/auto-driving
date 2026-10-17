@@ -5,12 +5,12 @@ import time
 import unittest
 from unittest import mock
 
-from implementations.vehicle.chase_sim.metrics_ws import _WebSocketConnection, MetricsUiWebSocketError
+from implementations.vehicle.chase_sim.metrics_ws import MetricsUiConnection, MetricsUiWebSocketError
 
 
 class WebSocketWriteTests(unittest.TestCase):
     def connection(self):
-        connection = _WebSocketConnection('ws://example.invalid', timeout_s=0.1)
+        connection = MetricsUiConnection('ws://example.invalid', timeout_s=0.1)
         connection.sock = mock.Mock()
         self.addCleanup(connection.abort)
         return connection

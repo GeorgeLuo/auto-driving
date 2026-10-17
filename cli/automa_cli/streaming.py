@@ -358,7 +358,7 @@ def _probe_perception(
         health=health,
         presets=publication.get("presets"),
         mode=publication.get("mode"),
-        frames_received=publication.get("frames_received", publication.get("frames_captured")),
+        frames_received=publication.get("frames_received"),
         frames_dropped=publication.get("frames_dropped"),
         processed_count=publication.get("processed_count"),
     )

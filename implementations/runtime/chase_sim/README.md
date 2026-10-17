@@ -47,6 +47,5 @@ to a 100 ms gap). Both transaction routes support `ETag` / `If-None-Match`:
 unchanged usable pairs return `304` without image bytes. Expiry is checked
 before conditional responses, and action telemetry coverage still refreshes.
 Unavailable/failed encodes return the same image fields as null with HTTP 503;
-view availability recovers without ending automation. Older hosts use metadata
-checks to avoid fetching unchanged images. Terminal streams share the view's
+view availability recovers without ending automation. CLI and host must both support the current conditional transaction contract. Terminal streams share the view's
 observation read. Recording and publication share one synchronized JPEG cache.

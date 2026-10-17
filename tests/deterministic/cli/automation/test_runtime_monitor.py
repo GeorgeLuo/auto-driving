@@ -76,7 +76,7 @@ def _session(status: str, processed: int) -> dict:
 def _host(camera: int, *, last_error: str | None = None) -> dict:
     return {
         "autonomy": {
-            "components": {"observation": {"frames_received": camera}},
+            "components": {"observation": {"frames_received": camera, "frames_dropped": 0}},
             "steps": {"memory": {"plugin_ids": ["recent"], "last_error": None}, "proposal": None},
             "cycle_count": camera,
             "error_count": 0 if last_error is None else 1,
@@ -236,8 +236,15 @@ class ControlRecordTests(unittest.TestCase):
 
 
 class MonitorPacingTests(unittest.TestCase):
-    def test_older_host_has_no_superseded_count(self):
-        self.assertIsNone(runtime_monitor._frames_dropped(_host(2)))
+    def test_missing_or_invalid_counters_require_a_host_update(self):
+        for read, counter in ((runtime_monitor._frames_received, "frames_received"),
+                              (runtime_monitor._frames_dropped, "frames_dropped")):
+            for host in ({}, {"components": []}, {"components": {"observation": []}},
+                         *({"components": {"observation": {counter: value}}}
+                           for value in (None, True, -1, 1.5, "2"))):
+                with self.subTest(counter=counter, host=host), self.assertRaisesRegex(RuntimeError, "update"):
+                    read(host)
+        self.assertEqual(runtime_monitor._frames_dropped(_host(2)["autonomy"]), 0)
 
     def test_adaptive_pause_keeps_a_gap_on_fast_and_slow_hosts(self):
         for elapsed_ms, expected_ms in [(5, 1000 / 30 - 5), (20, 20), (30, 30),

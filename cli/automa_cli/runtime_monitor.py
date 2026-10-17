@@ -55,17 +55,19 @@ def _frames_received(host: dict[str, Any]) -> int:
 
     components = host.get("components") if isinstance(host.get("components"), dict) else {}
     observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
-    count = observation.get("frames_captured", observation.get("frames_received"))
+    count = observation.get("frames_received")
     if type(count) is not int or count < 0:
         raise RuntimeError("The runtime host does not report a received-frame counter; update core and autonomy.")
     return count
 
 
-def _frames_dropped(host: dict[str, Any]) -> int | None:
-    components = host.get("components") or {}
-    observation = components.get("observation") or {}
+def _frames_dropped(host: dict[str, Any]) -> int:
+    components = host.get("components") if isinstance(host.get("components"), dict) else {}
+    observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
     count = observation.get("frames_dropped")
-    return count if type(count) is int and count >= 0 else None
+    if type(count) is not int or count < 0:
+        raise RuntimeError("The runtime host does not report a dropped-frame counter; update core and autonomy.")
+    return count
 
 
 def _host_status(client: RuntimeClient) -> dict[str, Any]:
@@ -237,8 +239,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
             host = _host_status(client)
             dropped = _frames_dropped(host)
             state.update(
-                frames_dropped=(max(0, dropped - dropped_base)
-                                   if dropped is not None and dropped_base is not None else None),
+                frames_dropped=max(0, dropped - dropped_base),
                 session=session, execution=session["execution"],
                 processed_count=session["processed_decisions"],
                 frames_received=max(0, _frames_received(host) - capture_base),

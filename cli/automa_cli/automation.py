@@ -129,7 +129,7 @@ def _host_runtime_status(
         "state": {
             "status": worker_status,
             "run_id": None,
-            "frames_received": observation.get("frames_captured", observation.get("frames_received", 0)),
+            "frames_received": observation.get("frames_received", 0),
             "frames_dropped": observation.get("frames_dropped"),
             "processed_count": observation.get("processed_count", 0),
             "num_decisions": (autonomy.get("session") or {}).get("configuration", {}).get(
@@ -1238,7 +1238,7 @@ def _collect_automation_status(
                     "status": state.get("status", "none"),
                     "run_id": state.get("run_id"),
                     "pipeline": state.get("pipeline"),
-                    "frames_received": state.get("frames_received", state.get("frames_captured", 0)),
+                    "frames_received": state.get("frames_received", 0),
                     "frames_dropped": state.get("frames_dropped"),
                     "processed_count": state.get("processed_count", 0),
                     "num_decisions": state.get("num_decisions"),
@@ -1440,7 +1440,7 @@ def _run_label(state: dict[str, Any]) -> str:
     num_decisions = state.get("num_decisions")
     fields = {
         "id": state["run_id"],
-        "frames_received": state.get("frames_received", state.get("frames_captured")) or 0,
+        "frames_received": state.get("frames_received") or 0,
         "frames_dropped": state.get("frames_dropped"),
         "decisions": f"{state.get('processed_count') or 0}/{num_decisions or 'unbounded'}",
         "recording": state.get("recording"),

@@ -106,17 +106,11 @@ class TransactionCache:
     etag: str | None = None
     payload: dict[str, Any] | None = None
     image: tuple[bytes, str] | None = None
-    missing_route: bool = False
 
-
-def _same_publication(left: dict[str, Any], right: dict[str, Any]) -> bool:
-    volatile = {
-        "http_status", "read_at_ms", "result_age_ms", "perception_inflight",
-        "frames_received", "frames_dropped",
-        # Older hosts update these even when their completed frame is unchanged.
-        "frames_captured", "frames_superseded", "frames_replaced",
-    }
-    return {k: v for k, v in left.items() if k not in volatile} == {k: v for k, v in right.items() if k not in volatile}
+    def clear(self) -> None:
+        self.etag = None
+        self.payload = None
+        self.image = None
 
 
 def _cached_transaction(cache: TransactionCache, read_at_ms: int | None = None) -> dict[str, Any]:
@@ -134,48 +128,53 @@ def _cached_transaction(cache: TransactionCache, read_at_ms: int | None = None) 
     return payload
 
 
-def _get_json(base_url: str, path: str, *, timeout_s: float, missing_ok: bool = False,
+def _get_json(base_url: str, path: str, *, timeout_s: float,
               cache: TransactionCache | None = None) -> dict[str, Any]:
-    """GET one JSON object from a runtime host; an HTTP error's JSON body is the answer."""
-
+    """Read JSON; transactions require the current conditional-image contract."""
+    transaction = path in {OBSERVATION_TRANSACTION_PATH, DECISION_TRANSACTION_PATH}
     url = f"{base_url.rstrip('/')}{path}"
     request = urllib.request.Request(url, headers={"If-None-Match": cache.etag}) if cache and cache.etag else url
     try:
-        with urllib.request.urlopen(request, timeout=max(0.1, float(timeout_s))) as response:
-            response_headers = getattr(response, "headers", {})
-            body = response.read()
+        try:
+            response = urllib.request.urlopen(request, timeout=max(0.1, float(timeout_s)))
+        except urllib.error.HTTPError as exc:
+            response = exc
+        with response:
             status_code = getattr(response, "status", 200)
-    except urllib.error.HTTPError as exc:
-        with exc:
-            response_headers = exc.headers or {}
-            if exc.code == 304 and cache is not None:
+            response_headers = getattr(response, "headers", {}) or {}
+            if transaction and status_code == 304:
+                if cache is None or cache.payload is None:
+                    raise ConnectionError("Host returned 304 without a cached transaction")
                 read_at = response_headers.get("X-Read-At-Ms")
                 return _cached_transaction(cache, int(read_at) if read_at is not None else None)
-            if missing_ok and exc.code == 404:
-                return {"http_status": 404}
-            body = exc.read() if exc.fp is not None else b""
-        status_code = int(exc.code)
-        if not body:
-            raise ConnectionError(
-                f"GET {url} failed with HTTP {status_code} and empty body"
-            ) from exc
-    except urllib.error.URLError as exc:
-        raise ConnectionError(f"GET {url} failed: {exc.reason}") from exc
-    except TimeoutError as exc:
-        raise ConnectionError(f"GET {url} timed out after {timeout_s}s") from exc
-
-    try:
-        payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConnectionError(f"GET {url} returned non-JSON body") from exc
-    if not isinstance(payload, dict):
-        raise ConnectionError(f"GET {url} returned a non-object JSON payload")
-    payload.setdefault("http_status", status_code)
-    if cache is not None:
-        cache.etag = response_headers.get("ETag") if status_code == 200 else None
-        cache.payload = deepcopy(payload)
-        cache.image = None
-    return payload
+            if transaction and status_code == 404:
+                raise ConnectionError(f"Incompatible host: GET {url} is missing; update core and autonomy.")
+            if transaction and status_code not in {200, 503}:
+                raise ConnectionError(f"GET {url} failed with HTTP {status_code}")
+            etag = response_headers.get("ETag")
+            if transaction and status_code == 200 and not etag:
+                raise ConnectionError(f"Incompatible host: GET {url} returned no ETag; update core and autonomy.")
+            body = response.read()
+        try:
+            payload = json.loads(body.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            raise ConnectionError(f"GET {url} returned non-JSON body") from exc
+        if not isinstance(payload, dict):
+            raise ConnectionError(f"GET {url} returned a non-object JSON payload")
+        payload.setdefault("http_status", status_code)
+        if cache is not None:
+            cache.clear()
+            if status_code == 200:
+                cache.etag, cache.payload = etag, deepcopy(payload)
+        return payload
+    except Exception as exc:
+        if cache is not None:
+            cache.clear()
+        if isinstance(exc, urllib.error.URLError):
+            raise ConnectionError(f"GET {url} failed: {exc.reason}") from exc
+        if isinstance(exc, TimeoutError):
+            raise ConnectionError(f"GET {url} timed out after {timeout_s}s") from exc
+        raise
 
 
 def fetch_autonomy_status(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:
@@ -193,32 +192,8 @@ def fetch_observation_publication(base_url: str, *, timeout_s: float = 3.0) -> d
 def fetch_observation_sample(
     base_url: str, *, timeout_s: float = 3.0, cache: TransactionCache | None = None,
 ) -> tuple[dict[str, Any], bytes | None]:
-    """Read observation metadata and its image from the same host snapshot.
-
-    Older hosts retain their split reads. A raced legacy pair is skipped;
-    transport errors and invalid transactions never select the legacy path.
-    """
-
-    preview = None
-    if cache is not None and cache.payload is not None and not cache.etag:
-        preview = fetch_observation_publication(base_url, timeout_s=timeout_s)
-        if cache.image is not None and _same_publication(preview, cache.payload.get("publication") or {}):
-            return preview, cache.image[0]
-    payload = ({"http_status": 404} if cache is not None and cache.missing_route else
-               _get_json(base_url, OBSERVATION_TRANSACTION_PATH, timeout_s=timeout_s,
-                         missing_ok=True, cache=cache))
-    if payload.get("http_status") == 404:
-        if cache is not None:
-            cache.missing_route = True
-        publication = preview if preview is not None else fetch_observation_publication(base_url, timeout_s=timeout_s)
-        frame = publication.get("frame") or {}
-        if not frame.get("has_image") or not frame.get("frame_id"):
-            return publication, None
-        jpeg, headers = fetch_observation_frame(base_url, timeout_s=timeout_s)
-        matched = frame.get("frame_id") == frame_id_from_headers(headers)
-        if cache is not None and matched:
-            cache.payload, cache.image = {"publication": deepcopy(publication)}, (jpeg, "image/jpeg")
-        return publication, jpeg if matched else None
+    """Read observation metadata and its image from one host snapshot."""
+    payload = _get_json(base_url, OBSERVATION_TRANSACTION_PATH, timeout_s=timeout_s, cache=cache)
     if payload.get("http_status") == 503:
         publication = payload.get("publication")
         if isinstance(publication, dict):
@@ -262,12 +237,6 @@ def fetch_decision_transaction(base_url: str, *, timeout_s: float = 3.0,
                                cache: TransactionCache | None = None) -> dict[str, Any]:
     """GET the current decision and its image from one host snapshot."""
 
-    if cache is not None and cache.payload is not None and not cache.etag:
-        preview = fetch_decision_publication(base_url, timeout_s=timeout_s)
-        if _same_publication(preview, cache.payload.get("publication") or {}):
-            payload = _cached_transaction(cache)
-            payload["publication"] = preview
-            return payload
     return _get_json(base_url, DECISION_TRANSACTION_PATH, timeout_s=timeout_s, cache=cache)
 
 
@@ -1687,47 +1656,6 @@ def normalize_decision_publication(
         "max_age_ms": ceiling,
         "advertised_result_age_ms": result_age_ms,
     }
-
-
-def fetch_observation_frame(
-    base_url: str,
-    *,
-    timeout_s: float = 3.0,
-) -> tuple[bytes, dict[str, str]]:
-    url = f"{base_url.rstrip('/')}{LATEST_FRAME_PATH}"
-    try:
-        with urllib.request.urlopen(url, timeout=max(0.1, float(timeout_s))) as response:
-            body = response.read()
-            headers = {str(key).lower(): str(value) for key, value in response.headers.items()}
-            status_code = getattr(response, "status", 200)
-    except urllib.error.HTTPError as exc:
-        detail = ""
-        try:
-            with exc:
-                detail = exc.read().decode("utf-8", errors="replace")
-        except Exception:
-            detail = ""
-        raise ConnectionError(
-            f"GET {url} failed with HTTP {exc.code}"
-            + (f": {detail[:240]}" if detail else "")
-        ) from exc
-    except urllib.error.URLError as exc:
-        raise ConnectionError(f"GET {url} failed: {exc.reason}") from exc
-    except TimeoutError as exc:
-        raise ConnectionError(f"GET {url} timed out after {timeout_s}s") from exc
-
-    if status_code >= 400 or not body:
-        raise ConnectionError(f"GET {url} returned HTTP {status_code} with no image body")
-    return body, headers
-
-
-def frame_id_from_headers(headers: dict[str, str]) -> str | None:
-    """Return X-Frame-Id (case-insensitive) from an observation frame response."""
-
-    raw = headers.get("x-frame-id") or headers.get("X-Frame-Id")
-    if isinstance(raw, str) and raw.strip():
-        return raw.strip()
-    return None
 
 
 def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:

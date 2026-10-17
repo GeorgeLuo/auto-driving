@@ -293,7 +293,7 @@ def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
         return 0, "\n".join(
             [
                 f"Automation completed: {vehicle_id}",
-                f"Frames received: {state.get('frames_received', state.get('frames_captured', 0))}",
+                f"Frames received: {state.get('frames_received', 0)}",
                 f"Frames dropped before decision: {dropped}",
                 f"Decisions completed: {state['processed_count']}",
                 f"Control source: {state['control_source']}",

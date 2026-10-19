@@ -129,6 +129,20 @@ one seen again measures how far off it was. It knows no degrees, camera or
 map, only widths per second and its own errors, so it should transfer to
 another car and camera unchanged.
 
+Memory's `approach_model` also changes no command. While the car drives
+straight, the lower edge of a box ahead steps down the image one row at a
+time, slowly near the horizon and quickly near the car; it times each
+one-row step, on 120 rows and the camera's capture clock, and keeps each row's
+median. It also times each straight run that ended with `avoid_obstacle`
+backing up, and keeps their median as `run_ms`, how long the car usually
+drives before it must stop. Perception's `closeness` adds the learned row
+times from a box's lower edge down to `stop_row`'s row: that is the box's
+reach. It emits `closeness_ahead` and `closeness_right`, `near` when the
+nearest box in that band would be reached within one usual run and `far`
+otherwise, or no value until the rows between are learned. A row nobody has
+timed borrows its learned neighbours. Both numbers are the car's own, so
+nothing is tuned for this arena.
+
 Perception's `sim_wall` plugin finds wall pixels by saturation, which lighting
 does not change: the walls are less saturated than the wood floor and more than
 the gray sky. It splits the image into 16 vertical strips and emits one box per

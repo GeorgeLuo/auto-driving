@@ -83,7 +83,7 @@ class MemoryCommandTests(unittest.TestCase):
                 "vehicles", "info", "memory", "--id", "chase-sim-chaser", "--json",
                 runtime_root=runtime_root,
             )
-            expected = ["bounded_evidence", "missing", "stop_row", "turn_model"]
+            expected = ["approach_model", "bounded_evidence", "missing", "stop_row", "turn_model"]
             self.assertEqual(json.loads(info.stdout)["activation"]["available_plugins"], expected)
 
     def test_info_names_the_staged_preset_and_plugins_as_perception_info_does(self) -> None:

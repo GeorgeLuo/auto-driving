@@ -27,7 +27,7 @@ equals, else `custom`. `automa vehicles update memory --preset NAME` stages one.
 | Preset | Plugins |
 |---|---|
 | `recency_ledger` (default) | `bounded_evidence` |
-| `chase-v1-detect-by-color` | `stop_row`, `turn_model` |
+| `chase-v1-detect-by-color` | `stop_row`, `turn_model`, `approach_model` |
 
 The Chase v1 preset's `stop_row` learns how near an obstacle ahead may come
 before proposal's `avoid_obstacle` starts reversing. Its hypothesis is an
@@ -52,6 +52,19 @@ Landmarks out of view keep a bearing carried by that speed, and one seen again
 records the error of its carried bearing. Nothing is tuned in advance and no
 command changes. It lives at `memory.turn_model.state`; `status` reports each
 speed with its quartiles, the stalls, the position errors and the landmarks.
+
+Its `approach_model` learns how fast things ahead come closer while the car
+drives straight, in image rows and milliseconds on the camera's capture clock.
+Each new camera frame closes an interval; when every command over it drove
+straight, each lower edge in the band ahead from `sim_wall` or
+`sim_cardboard_permanence` that stepped down exactly one of `row_bins` rows
+records how long it spent on the row it left. Each row's time is the median of
+its last `max_samples`. A straight run that ends when `avoid_obstacle` starts
+backing up is how long the car could drive before it had to stop, less any
+static time; `run_ms` is their median, and runs that end any other way do not
+count. Nothing is tuned in advance and no command changes. It lives at
+`memory.approach_model.state`; `status` reports each row's time and samples,
+`run_ms` and the runs. Perception's `closeness` reads it.
 
 ## Finding the default business logic
 

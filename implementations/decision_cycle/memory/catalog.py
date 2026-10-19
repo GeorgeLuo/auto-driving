@@ -56,4 +56,18 @@ MEMORY_PLUGINS: tuple[dict[str, Any], ...] = (
             "reacquire_within": 0.15, "max_landmarks": 16,
         },
     },
+    {
+        "spec": "implementations.decision_cycle.memory.plugins.approach_model.plugin:ApproachModel",
+        "description": (
+            "Learn how many milliseconds a lower edge ahead spends on each image "
+            "row while the car drives straight, and how long it drives straight "
+            "before it has to stop. Changes no command."
+        ),
+        "default_config": {
+            "edge_plugin_ids": ["sim_wall", "sim_cardboard_permanence"], "sensor_id": "front_camera",
+            "maneuver_key": "proposal.avoid_obstacle.maneuver", "stop_phase": "backing_up",
+            "min_x": 0.3, "max_x": 0.7, "row_bins": 120, "edge_margin": 0.01, "max_samples": 64,
+            "max_interval_ms": 250,
+        },
+    },
 )

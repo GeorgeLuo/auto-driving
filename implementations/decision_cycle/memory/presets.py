@@ -24,10 +24,11 @@ MEMORY_PRESETS: dict[str, dict[str, Any]] = {
     "chase-v1-detect-by-color": {
         "description": (
             "Chase v1: learn how near an obstacle ahead may come before "
-            "avoidance starts, from collisions and from each stop, and how "
-            "the car's own turn moves the landmarks it sees."
+            "avoidance starts, from collisions and from each stop, how "
+            "the car's own turn moves the landmarks it sees, and how fast "
+            "things ahead approach while it drives straight."
         ),
-        "plugins": ["stop_row", "turn_model"],
+        "plugins": ["stop_row", "turn_model", "approach_model"],
     },
 }
 

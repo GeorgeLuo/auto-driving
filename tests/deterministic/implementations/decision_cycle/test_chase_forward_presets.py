@@ -2,7 +2,8 @@
 
 The collision also starts memory's stop row, so the next obstacle ahead starts
 the maneuver before contact. Memory's turn model places the box it sees, but
-learns no speed from frames this far apart.
+learns no speed from frames this far apart, and its approach model learns no
+row times, so perception's closeness stays unknown.
 """
 
 import unittest
@@ -57,9 +58,9 @@ class ChaseForwardPresetTests(unittest.TestCase):
             ))
             counts.append(len(result.perception.things))
             self.assertEqual(result.plan.selector_id, "select_proposal")
-            signal = next(item for item in result.observation.signals if item["signal_id"] == "view_static")
+            signals = {item["signal_id"]: item for item in result.observation.signals}
             selected.append((
-                signal["value"], result.plan.selected_candidate().plugin_id,
+                signals["view_static"]["value"], result.plan.selected_candidate().plugin_id,
                 result.control.steering, result.control.throttle,
             ))
         self.assertEqual(counts[0], 0)
@@ -83,3 +84,5 @@ class ChaseForwardPresetTests(unittest.TestCase):
         model = shared_memory["memory.turn_model.state"]
         self.assertEqual([(item["bearing"], item["in_view"]) for item in model["landmarks"].values()], [(0.0, True)])
         self.assertEqual(model["samples"], {"turn_start": [], "turning": [], "turn_end": [], "straight": []})
+        self.assertEqual(shared_memory["memory.approach_model.state"]["samples"], {})
+        self.assertEqual(signals["closeness_ahead"]["properties"]["reason"], "not_learned")

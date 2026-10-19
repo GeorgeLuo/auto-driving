@@ -29,6 +29,7 @@ class ClearanceTests(unittest.TestCase):
         for signal in signals.values():
             self.assertIs(signal.value, True)
             self.assertEqual(signal.properties["blocking_count"], 0)
+            self.assertIsNone(signal.properties["nearest_bottom_y"])
 
     def test_a_near_box_blocks_each_band_it_overlaps(self):
         cases = {
@@ -54,11 +55,17 @@ class ClearanceTests(unittest.TestCase):
     def test_blocking_count_and_band_bounds_are_reported(self):
         signals = _signals(_box((0.4, 0.3, 0.5, 0.8), index=0), _box((0.6, 0.3, 0.8, 0.9), index=1))
         self.assertEqual(signals["clearance_ahead"].properties, {
-            "min_x": 0.3, "max_x": 0.7, "bottom_y": 0.55, "blocking_count": 2,
+            "min_x": 0.3, "max_x": 0.7, "bottom_y": 0.55, "blocking_count": 2, "nearest_bottom_y": 0.9,
         })
         self.assertEqual(signals["clearance_right"].properties, {
-            "min_x": 0.65, "max_x": 1.0, "bottom_y": 0.6, "blocking_count": 1,
+            "min_x": 0.65, "max_x": 1.0, "bottom_y": 0.6, "blocking_count": 1, "nearest_bottom_y": 0.9,
         })
+
+    def test_nearest_bottom_counts_far_boxes_that_do_not_block(self):
+        signals = _signals(_box((0.4, 0.2, 0.5, 0.45), index=0), _box((0.0, 0.2, 0.2, 0.9), index=1))
+        self.assertIs(signals["clearance_ahead"].value, True)
+        self.assertEqual(signals["clearance_ahead"].properties["nearest_bottom_y"], 0.45)
+        self.assertIsNone(signals["clearance_right"].properties["nearest_bottom_y"])
 
     def test_other_plugins_kinds_and_unlocated_things_are_ignored(self):
         ignored = (

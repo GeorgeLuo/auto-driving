@@ -27,6 +27,18 @@ equals, else `custom`. `automa vehicles update memory --preset NAME` stages one.
 | Preset | Plugins |
 |---|---|
 | `recency_ledger` (default) | `bounded_evidence` |
+| `chase-v1-detect-by-color` | `stop_row` |
+
+The Chase v1 preset's `stop_row` learns how near an obstacle ahead may come
+before proposal's `avoid_obstacle` starts reversing. Its hypothesis is an
+image row for perception's `clearance_ahead` `nearest_bottom_y`: the first
+collision while driving forward starts it, each stop at it (the maneuver's
+`stop_phase`, up to `settle_ms`) then either keeps that lower edge above
+`blind_row` (stopped short) or not (too close), and the row is bisected between
+the deepest that stopped short and the shallowest that came too close. Later
+collisions are counted but do not move the row. It lives in shared memory at `memory.stop_row.hypothesis`;
+`status` reports the row, its bounds and the outcome counts, and `reset`
+forgets it.
 
 ## Finding the default business logic
 

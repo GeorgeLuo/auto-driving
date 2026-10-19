@@ -7,6 +7,7 @@ from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
 from implementations.decision_cycle.proposal.plugins.avoid_obstacle.plugin import AvoidObstacle
 
 KEY = "proposal.avoid_obstacle.maneuver"
+STOP_ROW_KEY = "memory.stop_row.hypothesis"
 COLLISION = {"view_static": True, "obstacle_in_sight": True}
 
 
@@ -17,10 +18,11 @@ def _backing_up(static_cycles):
 TURNING = {KEY: {"phase": "turning"}}
 
 
-def _source(signals=None, frame_id="frame_1"):
+def _source(signals=None, frame_id="frame_1", ahead_row=None):
     observation = None if signals is None else Observation(
         observation_id="observation_1", created_at_ms=10, sensor_frame={},
-        signals=tuple({"signal_id": signal_id, "value": value, "confidence": None, "properties": {}}
+        signals=tuple({"signal_id": signal_id, "value": value, "confidence": None,
+                       "properties": {"nearest_bottom_y": ahead_row} if signal_id == "clearance_ahead" else {}}
                       for signal_id, value in signals.items()),
     )
     return build_decision_data_source(
@@ -29,8 +31,8 @@ def _source(signals=None, frame_id="frame_1"):
     )
 
 
-def _step(memory, signals, plugin=None):
-    return (plugin or AvoidObstacle()).propose(_source(signals), memory)
+def _step(memory, signals, plugin=None, ahead_row=None):
+    return (plugin or AvoidObstacle()).propose(_source(signals, ahead_row=ahead_row), memory)
 
 
 class AvoidObstacleTests(unittest.TestCase):
@@ -86,6 +88,31 @@ class AvoidObstacleTests(unittest.TestCase):
         cardboard_only = AvoidObstacle(obstacle_signal_ids=["obstacle_in_sight"])
         self.assertEqual(_step({}, {"view_static": True, "wall_in_sight": True}, cardboard_only).reason,
                          "no_collision")
+
+    def test_reaching_the_learned_stop_row_backs_up_before_a_collision(self):
+        memory = {STOP_ROW_KEY: {"stop_row": 0.8}}
+        result = _step(memory, {"view_static": False, "clearance_ahead": False}, ahead_row=0.8)
+        self.assertEqual(result.reason, "avoid_back_up_until_right_clear")
+        self.assertEqual(result.command.throttle, -0.60)
+        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 0})
+        self.assertEqual([(ref.kind, ref.id, ref.note) for ref in result.source_refs[:2]], [
+            ("memory_record", KEY, "backing_up"), ("memory_record", STOP_ROW_KEY, "stop_row 0.8"),
+        ])
+        self.assertEqual(_step(memory, {"view_static": False}, ahead_row=0.9).source_refs[1].kind, "observation")
+
+    def test_rows_short_of_the_stop_row_or_without_one_do_not_start_the_maneuver(self):
+        for stored, ahead_row in (
+            ({"stop_row": 0.8}, 0.79), ({"stop_row": 0.8}, None), ({"stop_row": None}, 0.9),
+            ({"stop_row": True}, 0.9), (None, 0.9), ("0.8", 0.9),
+        ):
+            with self.subTest(stored=stored, ahead_row=ahead_row):
+                memory = {} if stored is None else {STOP_ROW_KEY: stored}
+                result = _step(memory, {"clearance_ahead": False}, ahead_row=ahead_row)
+                self.assertEqual(result.reason, "no_collision")
+                self.assertNotIn(KEY, memory)
+        memory = {"elsewhere": {"stop_row": 0.5}}
+        result = _step(memory, {"clearance_ahead": False}, AvoidObstacle(stop_row_key="elsewhere"), ahead_row=0.6)
+        self.assertEqual(result.reason, "avoid_back_up_until_right_clear")
 
     def test_right_clearance_turns_right_until_ahead_is_clear(self):
         memory = _backing_up(3)
@@ -148,7 +175,7 @@ class AvoidObstacleTests(unittest.TestCase):
             {"turn_steering": 0}, {"turn_steering": -1.0}, {"turn_steering": 1.5},
             {"obstacle_signal_ids": []}, {"obstacle_signal_ids": "wall_in_sight"},
             {"obstacle_signal_ids": [None]}, {"max_static_cycles": 0}, {"max_static_cycles": True},
-            {"max_static_cycles": 2.5},
+            {"max_static_cycles": 2.5}, {"stop_row_key": ""}, {"stop_row_key": None},
         ):
             with self.subTest(config=config), self.assertRaises(ValueError):
                 AvoidObstacle(**config)

@@ -1,4 +1,8 @@
-"""The three matching Chase v1 presets drive into an obstacle, back up until the right is clear, then turn right."""
+"""The matching Chase v1 presets drive into an obstacle, back up until the right is clear, then turn right.
+
+The collision also starts memory's stop row, so the next obstacle ahead starts
+the maneuver before contact.
+"""
 
 import unittest
 
@@ -16,19 +20,22 @@ NEAR = (50, 40, 110, 90)
 BACKED_AWAY = (45, 45, 115, 70)  # lower edge above the right band's threshold
 TURNING = (30, 45, 95, 72)  # moved left but still in the centre
 PASSED = (10, 45, 45, 72)  # left of the centre
+APPROACHING = (50, 45, 110, 80)  # ahead, short of the learned stop row
+AT_STOP_ROW = (50, 45, 110, 100)  # ahead, past the learned stop row
 
 
 class ChaseForwardPresetTests(unittest.TestCase):
-    def test_three_presets_back_up_until_the_right_is_clear_then_turn_right(self):
+    def test_presets_back_up_until_the_right_is_clear_then_turn_right(self):
         activations = {
             step: preset_activation(step, "chase-v1-detect-by-color")
-            for step in ("perception", "proposal", "plan")
+            for step in ("perception", "memory", "proposal", "plan")
         }
         cycle = DecisionCycle(decision_steps(activations))
         shared_memory = {}
         counts = []
         selected = []
-        for index, box in enumerate((None, NEAR, NEAR, NEAR, NEAR, BACKED_AWAY, TURNING, PASSED)):
+        frames = (None, NEAR, NEAR, NEAR, NEAR, BACKED_AWAY, TURNING, PASSED, APPROACHING, AT_STOP_ROW)
+        for index, box in enumerate(frames):
             at_ms = 100 + index * 500
             rgb = np.full((120, 160, 3), (213, 197, 172), dtype=np.uint8)
             rgb[:45] = (215, 214, 211)
@@ -65,5 +72,10 @@ class ChaseForwardPresetTests(unittest.TestCase):
             (False, "avoid_obstacle", 1.0, 0.60),  # right clear: turn right
             (False, "avoid_obstacle", 1.0, 0.60),  # still in the centre
             (False, "drive_forward", 0.0, 0.60),   # ahead clear
+            (False, "drive_forward", 0.0, 0.60),   # short of the stop row
+            (False, "avoid_obstacle", 0.0, -0.60),  # stop row reached: back up before contact
         ])
-        self.assertNotIn("proposal.avoid_obstacle.maneuver", shared_memory)
+        hypothesis = shared_memory["memory.stop_row.hypothesis"]
+        self.assertEqual(hypothesis["stop_row"], 0.79)
+        self.assertEqual(hypothesis["counts"]["collision"], 1)
+        self.assertEqual(hypothesis["trial"]["stop_row"], 0.79)

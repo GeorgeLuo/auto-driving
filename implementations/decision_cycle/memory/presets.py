@@ -21,6 +21,13 @@ MEMORY_PRESETS: dict[str, dict[str, Any]] = {
         ),
         "plugins": ["bounded_evidence"],
     },
+    "chase-v1-detect-by-color": {
+        "description": (
+            "Chase v1: learn how near an obstacle ahead may come before "
+            "avoidance starts, from collisions and from each stop."
+        ),
+        "plugins": ["stop_row"],
+    },
 }
 
 

@@ -4,6 +4,8 @@ A box blocks a band when its x-range overlaps the band and its lower edge is at
 or below that band's ``*_bottom_y``: low in the image means near the car. The
 ahead band counts farther boxes than the right band, so after backing away from
 an obstacle the right can clear while the obstacle still blocks the way ahead.
+Each signal also reports ``nearest_bottom_y``, the lowest lower edge of any box
+overlapping its band, near or not, so later steps can watch an obstacle approach.
 """
 
 from __future__ import annotations
@@ -95,11 +97,15 @@ def _band_signal(
     max_x: float,
     bottom_y: float,
 ) -> PerceptionSignal:
-    blocking = sum(1 for box in boxes if box[0] < max_x and box[2] > min_x and box[3] >= bottom_y)
+    bottoms = [box[3] for box in boxes if box[0] < max_x and box[2] > min_x]
+    blocking = sum(1 for bottom in bottoms if bottom >= bottom_y)
     return PerceptionSignal(
         signal_id=signal_id,
         value=blocking == 0,
-        properties={"min_x": min_x, "max_x": max_x, "bottom_y": bottom_y, "blocking_count": blocking},
+        properties={
+            "min_x": min_x, "max_x": max_x, "bottom_y": bottom_y, "blocking_count": blocking,
+            "nearest_bottom_y": max(bottoms, default=None),
+        },
     )
 
 

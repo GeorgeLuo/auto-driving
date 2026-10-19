@@ -83,7 +83,7 @@ view unavailable or stale, never current.
 
 ## Chase v1 Forward Baseline
 
-Perception, proposal and plan each provide `chase-v1-detect-by-color`. Together
+Perception, memory, proposal and plan each provide `chase-v1-detect-by-color`. Together
 they detect and retain visible simulator cardboard boxes, find the walls,
 report sustained visual stagnation and image-space clearance, and drive
 straight forward into whatever is ahead. A collision (a static view with
@@ -96,6 +96,25 @@ nothing in sight still reverses with `drive_backwards`. The straight commands
 are steering `0.0` with normalized throttle `0.60` or `-0.60`; the turn is
 steering `1.0` with throttle `0.60`.
 
+Memory's `stop_row` learns to start that recovery before contact. The first
+collision sets a hypothesis: start reversing once the lowest lower edge of a
+box ahead (`clearance_ahead`'s `nearest_bottom_y`) reaches image row `0.79`,
+halfway between `min_stop_row` `0.6` and `blind_row` `0.98`. Each stop at the
+hypothesis tests it. The car keeps rolling briefly after it starts reversing,
+so the lower edge keeps descending; if it reaches `blind_row` (the base has
+left the image, which happens just before contact) the row was too close, and
+if it stays above until the car starts turning, or for `settle_ms` (one second)
+of reversing, the car stopped short. Rows seen while turning do not count: the
+turn sweeps other boxes into the ahead band. A head-on approach crosses the
+stop row long before the view is static, so a later collision was not head-on;
+it is counted but does not move the row. The next row is the
+midpoint between the deepest row that stopped short and the shallowest that
+came too close, until they are within `resolution` (`0.02`); then the car keeps
+the deepest row that stopped short. A row that fails after passing, or passes
+after failing, discards the older bound, so the hypothesis can move back when
+conditions change. The hypothesis lives in shared memory, so restarting the
+host or resetting memory forgets it.
+
 Perception's `sim_wall` plugin finds wall pixels by saturation, which lighting
 does not change: the walls are less saturated than the wood floor and more than
 the gray sky. It splits the image into 16 vertical strips and emits one box per
@@ -106,7 +125,9 @@ Perception's `clearance` plugin emits `clearance_ahead` and `clearance_right`:
 each is true when no `sim_cardboard_obstacle` or `sim_wall` box overlaps that
 horizontal band of the image with its lower edge at or below the band's
 `*_bottom_y`. The ahead band also counts farther boxes, so the turn continues
-until the obstacle has left the centre. It has no depth or vehicle width, so a
+until the obstacle has left the centre. Each signal also reports
+`nearest_bottom_y`, the lowest lower edge of any box overlapping the band,
+which is the row `stop_row` learns. It has no depth or vehicle width, so a
 future version could remember how much clearance a turn actually needed.
 
 Perception's `view_stagnation` plugin emits `view_static` and publishes its
@@ -116,11 +137,12 @@ change threshold. Missing/repeated input clears the cue, and the plan drives
 forward. See the
 [plugin contract](../../implementations/decision_cycle/perception/plugins/view_stagnation/README.md).
 
-With the running simulator exposed at `http://localhost:5050`, stage the three
+With the running simulator exposed at `http://localhost:5050`, stage the four
 steps and start a bounded movement run:
 
 ```sh
 ./cli/automa vehicles update perception --id chase-sim-chaser --preset chase-v1-detect-by-color
+./cli/automa vehicles update memory --id chase-sim-chaser --preset chase-v1-detect-by-color
 ./cli/automa vehicles update proposal --id chase-sim-chaser --preset chase-v1-detect-by-color
 ./cli/automa vehicles update plan --id chase-sim-chaser --preset chase-v1-detect-by-color
 ./cli/automa vehicles automation run --id chase-sim-chaser --num-decisions 60 --record
@@ -134,10 +156,12 @@ environment, for example `ws://localhost:5054/ws/control`, before staging and
 running. `vehicles status --chase-url` only inspects that endpoint; it does not
 persist a different runtime endpoint.
 
-This baseline deliberately does not stop or steer for obstacles. Driving into
-a box stalls the view, the plan reverses until the view changes, and the car
-drives forward into the box again. The plan does not fall back to a different
-proposal when its current target is absent.
+The car always hits its first obstacle; only later obstacles can be avoided
+before contact. Clearance and the stop row are image rows, not distances: they
+know nothing of the car's speed or width, and the stop row does not cover
+contact during the turn. Once the bisection
+converges the hypothesis does not explore deeper rows again unless a stop comes
+too close.
 
 ## Upload to an Existing Catalog
 

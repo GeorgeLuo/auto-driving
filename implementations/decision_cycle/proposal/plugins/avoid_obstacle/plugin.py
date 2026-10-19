@@ -6,6 +6,10 @@ more than ``max_static_cycles`` while backing up, the car cannot reverse any
 farther, so it turns right anyway; a turn that stalls backs up again. The
 maneuver lives in shared memory so a fresh instance continues it. Outside the
 maneuver the candidate is inactive.
+
+The maneuver also starts before a collision once the lowest lower edge of a box
+ahead (``clearance_ahead``'s ``nearest_bottom_y``) reaches the stop row that
+memory's ``stop_row`` plugin has learned, published at ``stop_row_key``.
 """
 
 from __future__ import annotations
@@ -36,6 +40,7 @@ class AvoidObstacle:
         turn_steering: float = 1.0,
         obstacle_signal_ids: tuple[str, ...] | list[str] = ("obstacle_in_sight", "wall_in_sight"),
         max_static_cycles: int = 8,
+        stop_row_key: str = "memory.stop_row.hypothesis",
     ) -> None:
         self.throttle = float(throttle)
         self.reverse_throttle = float(reverse_throttle)
@@ -54,8 +59,11 @@ class AvoidObstacle:
             raise ValueError("obstacle_signal_ids must be a non-empty list of signal ids")
         if isinstance(max_static_cycles, bool) or not isinstance(max_static_cycles, int) or max_static_cycles < 1:
             raise ValueError("max_static_cycles must be a positive integer")
+        if not isinstance(stop_row_key, str) or not stop_row_key:
+            raise ValueError("stop_row_key must be a non-empty string")
         self.obstacle_signal_ids = tuple(obstacle_signal_ids)
         self.max_static_cycles = max_static_cycles
+        self.stop_row_key = stop_row_key
 
     @property
     def _maneuver_key(self) -> str:
@@ -68,10 +76,10 @@ class AvoidObstacle:
     def propose(self, source: DecisionDataSource, shared_memory: SharedMemory | None) -> ActionProposal:
         if shared_memory is None:
             return self._inactive(source, "no_shared_memory")
-        maneuver = self._next_maneuver(
-            shared_memory.get(self._maneuver_key),
-            _signals(source, PHASE_SIGNAL_IDS + self.obstacle_signal_ids),
-        )
+        previous = shared_memory.get(self._maneuver_key)
+        signals = _signals(source, PHASE_SIGNAL_IDS + self.obstacle_signal_ids)
+        stop_row = _stop_row(shared_memory.get(self.stop_row_key))
+        maneuver = self._next_maneuver(previous, signals, stop_row, _ahead_row(source))
         if maneuver is None:
             shared_memory.pop(self._maneuver_key, None)
             return self._inactive(source, "no_collision")
@@ -84,6 +92,11 @@ class AvoidObstacle:
             reason = "avoid_turn_right"
             command = ProposedVehicleCommand(steering=self.turn_steering, throttle=self.throttle, gear="forward")
         refs = [SourceRef(kind="memory_record", id=self._maneuver_key, frame_id=source.frame_id, note=phase)]
+        if previous is None and not self._collided(signals):
+            refs.append(SourceRef(
+                kind="memory_record", id=self.stop_row_key, frame_id=source.frame_id,
+                note=f"stop_row {stop_row}",
+            ))
         if source.observation.status == "ready":
             observation_id = source.observation.value.observation_id
             refs.append(SourceRef(
@@ -103,7 +116,9 @@ class AvoidObstacle:
             available=True,
         )
 
-    def _next_maneuver(self, maneuver: Any, signals: dict[str, Any]) -> dict[str, Any] | None:
+    def _next_maneuver(
+        self, maneuver: Any, signals: dict[str, Any], stop_row: float | None, ahead_row: float | None,
+    ) -> dict[str, Any] | None:
         """One transition per cycle; a missing or unknown signal keeps the maneuver."""
 
         phase = maneuver.get("phase") if isinstance(maneuver, dict) else None
@@ -123,9 +138,16 @@ class AvoidObstacle:
             if static is True:
                 return {"phase": BACKING_UP, "static_cycles": 1}
             return None if signals.get("clearance_ahead") is True else maneuver
-        if static is True and any(signals.get(signal_id) is True for signal_id in self.obstacle_signal_ids):
+        if self._collided(signals):
             return {"phase": BACKING_UP, "static_cycles": 1}
+        if stop_row is not None and ahead_row is not None and ahead_row >= stop_row:
+            return {"phase": BACKING_UP, "static_cycles": 0}
         return None
+
+    def _collided(self, signals: dict[str, Any]) -> bool:
+        return signals.get("view_static") is True and any(
+            signals.get(signal_id) is True for signal_id in self.obstacle_signal_ids
+        )
 
     def _inactive(self, source: DecisionDataSource, reason: str) -> ActionProposal:
         return ActionProposal(
@@ -140,6 +162,29 @@ class AvoidObstacle:
             source_refs=(),
             available=False,
         )
+
+
+def _stop_row(hypothesis: Any) -> float | None:
+    """The learned stop row, or None before the first collision."""
+
+    row = hypothesis.get("stop_row") if isinstance(hypothesis, dict) else None
+    return float(row) if _is_row(row) else None
+
+
+def _ahead_row(source: DecisionDataSource) -> float | None:
+    """The lowest lower edge of any box ahead, or None."""
+
+    if source.observation.status != "ready":
+        return None
+    for signal in source.observation.value.signals:
+        if signal.get("signal_id") == "clearance_ahead":
+            row = (signal.get("properties") or {}).get("nearest_bottom_y")
+            return float(row) if _is_row(row) else None
+    return None
+
+
+def _is_row(value: Any) -> bool:
+    return not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
 
 
 def _signals(source: DecisionDataSource, signal_ids: tuple[str, ...]) -> dict[str, Any]:

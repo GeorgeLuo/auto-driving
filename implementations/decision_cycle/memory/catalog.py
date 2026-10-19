@@ -28,4 +28,17 @@ MEMORY_PLUGINS: tuple[dict[str, Any], ...] = (
         ),
         "default_config": _BOUNDED_EVIDENCE_CONFIG,
     },
+    {
+        "spec": "implementations.decision_cycle.memory.plugins.stop_row.plugin:StopRowHypothesis",
+        "description": (
+            "Learn the image row at which to start avoiding an obstacle ahead: "
+            "a collision starts the hypothesis, and each stop that stays short "
+            "of the image bottom or comes too close bisects it."
+        ),
+        "default_config": {
+            "min_stop_row": 0.6, "blind_row": 0.98, "resolution": 0.02, "settle_ms": 1000,
+            "obstacle_signal_ids": ["obstacle_in_sight", "wall_in_sight"],
+            "maneuver_key": "proposal.avoid_obstacle.maneuver", "stop_phase": "backing_up",
+        },
+    },
 )

@@ -43,7 +43,9 @@ throttle `0.60`) until `clearance_ahead` is true. If the view stays static for
 more than 8 cycles while reversing, the car is blocked behind and turns right
 anyway; a turn that stalls reverses again. Its phase and static-cycle count
 live in shared memory at `proposal.avoid_obstacle.maneuver`; outside the
-maneuver its candidate is inactive.
+maneuver its candidate is inactive. Once memory's `stop_row` has learned a stop
+row (at `memory.stop_row.hypothesis`), the same maneuver also starts before a
+collision, when `clearance_ahead`'s `nearest_bottom_y` reaches that row.
 
 ## Finding the default business logic
 

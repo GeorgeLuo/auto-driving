@@ -17,6 +17,18 @@ PROPOSAL_PLUGINS: tuple[dict[str, Any], ...] = (
         "default_config": {"throttle": -0.60},
     },
     {
+        "spec": "implementations.decision_cycle.proposal.plugins.avoid_obstacle.plugin:AvoidObstacle",
+        "description": (
+            "After a collision with cardboard or a wall, propose reversing until "
+            "the right is clear, then turning right until ahead is clear; "
+            "otherwise propose nothing."
+        ),
+        "default_config": {
+            "throttle": 0.60, "reverse_throttle": -0.60, "turn_steering": 1.0,
+            "obstacle_signal_ids": ["obstacle_in_sight", "wall_in_sight"], "max_static_cycles": 8,
+        },
+    },
+    {
         "spec": (
             "implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin:"
             "AvoidRecentObstruction"

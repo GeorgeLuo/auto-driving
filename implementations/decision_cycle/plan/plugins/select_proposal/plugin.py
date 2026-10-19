@@ -2,7 +2,8 @@
 
 With ``view_static_proposal_plugin_id`` set, the current observation's
 ``view_static`` signal switches the target: while it is ``True`` the plan
-selects that plugin instead.
+selects that plugin instead. With ``override_proposal_plugin_id`` set, that
+plugin's candidate wins whenever it is active this frame.
 """
 
 from __future__ import annotations
@@ -22,10 +23,14 @@ class SelectProposal:
         *,
         proposal_plugin_id: str = "drive_forward",
         view_static_proposal_plugin_id: str | None = None,
+        override_proposal_plugin_id: str | None = None,
     ) -> None:
         self.proposal_plugin_id = require_ascii_id(proposal_plugin_id, field_name="proposal_plugin_id")
         self.view_static_proposal_plugin_id = None if view_static_proposal_plugin_id is None else (
             require_ascii_id(view_static_proposal_plugin_id, field_name="view_static_proposal_plugin_id")
+        )
+        self.override_proposal_plugin_id = None if override_proposal_plugin_id is None else (
+            require_ascii_id(override_proposal_plugin_id, field_name="override_proposal_plugin_id")
         )
 
     def plan(
@@ -37,12 +42,14 @@ class SelectProposal:
         frame_id: str,
         timestamp_ms: int,
     ) -> ActionPlan:
-        target = self.proposal_plugin_id
-        if self.view_static_proposal_plugin_id is not None and _view_static(source):
-            target = self.view_static_proposal_plugin_id
-        selected = next((candidate for candidate in candidates
-                         if candidate.plugin_id == target
-                         and candidate.is_active(frame_id)), None)
+        selected = None
+        if self.override_proposal_plugin_id is not None:
+            selected = _active(candidates, self.override_proposal_plugin_id, frame_id)
+        if selected is None:
+            target = self.proposal_plugin_id
+            if self.view_static_proposal_plugin_id is not None and _view_static(source):
+                target = self.view_static_proposal_plugin_id
+            selected = _active(candidates, target, frame_id)
         if selected is None:
             return ActionPlan(
                 frame_id=frame_id, timestamp_ms=timestamp_ms, status="idle",
@@ -62,6 +69,14 @@ class SelectProposal:
             reason=selected.reason,
             confidence=selected.confidence,
         )
+
+
+def _active(
+    candidates: tuple[ActionProposal, ...], plugin_id: str, frame_id: str,
+) -> ActionProposal | None:
+    return next((candidate for candidate in candidates
+                 if candidate.plugin_id == plugin_id
+                 and candidate.is_active(frame_id)), None)
 
 
 def _view_static(source: DecisionDataSource | None) -> bool:

@@ -119,3 +119,35 @@ class SelectProposalTests(unittest.TestCase):
             (forward, backwards), _source(True), None, frame_id="frame_1", timestamp_ms=10,
         )
         self.assertEqual(result.selected_proposal_id, forward.proposal_id)
+
+    def test_active_override_wins_over_both_targets(self):
+        forward, backwards = _both()
+        override = _replace(forward, plugin_id="avoid_obstacle", proposal_id="")
+        plan = SelectProposal(
+            view_static_proposal_plugin_id="drive_backwards", override_proposal_plugin_id="avoid_obstacle",
+        )
+        for source in (_source(False), _source(True)):
+            with self.subTest(source=source):
+                result = plan.plan(
+                    (forward, backwards, override), source, None, frame_id="frame_1", timestamp_ms=10,
+                )
+                self.assertEqual(result.selected_proposal_id, override.proposal_id)
+                self.assertEqual(result.contributions[0].plugin_id, "avoid_obstacle")
+
+    def test_inactive_or_missing_override_falls_through(self):
+        forward, backwards = _both()
+        inactive = _replace(forward, plugin_id="avoid_obstacle", proposal_id="", lifecycle="inactive",
+                            freshness="none", available=False, command=None, source_refs=(), confidence=0.0)
+        plan = SelectProposal(
+            view_static_proposal_plugin_id="drive_backwards", override_proposal_plugin_id="avoid_obstacle",
+        )
+        for candidates in ((forward, backwards, inactive), (forward, backwards)):
+            with self.subTest(candidates=len(candidates)):
+                moving = plan.plan(candidates, _source(False), None, frame_id="frame_1", timestamp_ms=10)
+                static = plan.plan(candidates, _source(True), None, frame_id="frame_1", timestamp_ms=10)
+                self.assertEqual(moving.selected_proposal_id, forward.proposal_id)
+                self.assertEqual(static.selected_proposal_id, backwards.proposal_id)
+
+    def test_invalid_override_id_is_rejected(self):
+        with self.assertRaises(ValueError):
+            SelectProposal(override_proposal_plugin_id="not ascii é")

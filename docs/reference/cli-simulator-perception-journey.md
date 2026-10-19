@@ -84,10 +84,30 @@ view unavailable or stale, never current.
 ## Chase v1 Forward Baseline
 
 Perception, proposal and plan each provide `chase-v1-detect-by-color`. Together
-they detect and retain visible simulator cardboard boxes, report sustained
-visual stagnation, propose straight forward and straight reverse motion, and
-select forward unless the current view is static, then reverse. The commands
-are steering `0.0` with normalized throttle `0.60` or `-0.60`.
+they detect and retain visible simulator cardboard boxes, find the walls,
+report sustained visual stagnation and image-space clearance, and drive
+straight forward into whatever is ahead. A collision (a static view with
+cardboard or a wall in sight) starts the `avoid_obstacle` recovery: reverse
+until no near box reaches the right of the image, then turn right until no near
+box is ahead, then drive forward again. If the car cannot reverse (the view
+stays static for more than 8 cycles), it turns right anyway, and a stalled turn
+reverses again, so a corner becomes a multi-point turn. A static view with
+nothing in sight still reverses with `drive_backwards`. The straight commands
+are steering `0.0` with normalized throttle `0.60` or `-0.60`; the turn is
+steering `1.0` with throttle `0.60`.
+
+Perception's `sim_wall` plugin finds wall pixels by saturation, which lighting
+does not change: the walls are less saturated than the wood floor and more than
+the gray sky. It splits the image into 16 vertical strips and emits one box per
+strip over that strip's longest run of wall rows, so each box's lower edge is
+where the wall meets the floor.
+
+Perception's `clearance` plugin emits `clearance_ahead` and `clearance_right`:
+each is true when no `sim_cardboard_obstacle` or `sim_wall` box overlaps that
+horizontal band of the image with its lower edge at or below the band's
+`*_bottom_y`. The ahead band also counts farther boxes, so the turn continues
+until the obstacle has left the centre. It has no depth or vehicle width, so a
+future version could remember how much clearance a turn actually needed.
 
 Perception's `view_stagnation` plugin emits `view_static` and publishes its
 timestamped result at `shared_memory["perception.view_stagnation"]`. The default

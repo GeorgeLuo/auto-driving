@@ -28,7 +28,7 @@ equals, else `custom`. `automa vehicles update plan --preset NAME` stages one.
 | Preset | Plugins |
 |---|---|
 | `most_confident` (default) | `highest_confidence` |
-| `chase-v1-detect-by-color` | `select_proposal`, configured for `drive_forward`, or `drive_backwards` while the view is static |
+| `chase-v1-detect-by-color` | `select_proposal`, configured for `avoid_obstacle` while active, else `drive_forward`, or `drive_backwards` while the view is static |
 
 The Chase v1 plan selects only an active current-frame candidate from
 `drive_forward`. While the current observation's `view_static` signal is

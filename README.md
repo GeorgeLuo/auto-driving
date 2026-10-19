@@ -156,6 +156,10 @@ replace an available revision without editing the packaged catalog files.
 Enabled uses green and red dots, with an amber **Unknown** dot when selection
 data is unavailable. A polling failure marks the last rows as a stale snapshot
 until a successful refresh. Messages above the table appear only for errors.
+Above the table, the page lays out the six steps left to right in run order,
+each listing its applied plugins top to bottom in the order they run. It
+refreshes with the table, dims with it on a polling failure, and shows
+**Unknown** for a step without selection data.
 
 Uploaded plugins stay in the host's catalog until that host restarts; `plugins
 upload` and `plugins status` print the host run beside the catalog version. A

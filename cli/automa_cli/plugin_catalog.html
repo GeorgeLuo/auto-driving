@@ -31,13 +31,13 @@
     text-decoration: none;
   }
   a.nav:hover { background: rgba(255, 255, 255, 0.05); color: #ededed; }
-  .heading { display: flex; align-items: center; justify-content: space-between; }
+  .table-tools { display: flex; justify-content: flex-end; margin-top: 20px; }
   h1 { margin: 0; font-size: 13px; font-weight: 500; }
   .revision-toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; cursor: pointer; }
   .revision-toggle:hover { color: #ededed; }
   #status { margin: 0; color: var(--red); font-size: 12px; }
   .table-scroll { overflow-x: auto; }
-  table { width: 100%; min-width: 790px; margin-top: 14px; text-align: left; border-collapse: collapse; table-layout: fixed; }
+  table { width: 100%; min-width: 790px; margin-top: 8px; text-align: left; border-collapse: collapse; table-layout: fixed; }
   table.show-revisions { min-width: 1120px; }
   table:not(.show-revisions) .revision { display: none; }
   col.step { width: 100px; }
@@ -55,11 +55,23 @@
   .status-dot.error { background: var(--red); }
   td:nth-child(1), td:nth-child(4) { white-space: nowrap; }
   td:nth-child(-n + 2) { color: var(--muted); font-family: inherit; }
+  .pipeline { display: flex; align-items: flex-start; gap: 8px; margin-top: 14px; overflow-x: auto; padding-bottom: 4px; }
+  .pipeline.stale .stack-step { opacity: 0.6; }
+  .stack-step { flex: 1 1 0; min-width: 140px; border: 1px solid var(--line); border-radius: 6px; padding: 8px; }
+  .stack-step h2 { margin: 0 0 8px; color: var(--muted); font-size: 11px; font-weight: 500; }
+  .flow { align-self: center; color: var(--muted); font-size: 12px; }
+  .stack-step ol { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .stack-step li { padding: 6px 8px; border-radius: 4px; font-size: 12px; overflow-wrap: anywhere; }
+  .stack-step li.plugin { background: rgba(255, 255, 255, 0.05); font-family: var(--mono); }
+  .stack-step li.note { color: var(--muted); }
+  .stack-step li.note.unknown { color: var(--amber); }
 </style>
 <main>
   <a class="nav" href="/">Automa</a>
-  <div class="heading"><h1>Plugins</h1><label class="revision-toggle"><input type="checkbox" id="revisions" aria-controls="catalog">Show revisions</label></div>
+  <h1>Plugins</h1>
   <p id="status" role="alert" hidden></p>
+  <div class="pipeline" id="stack" aria-label="Applied plugins by step"></div>
+  <div class="table-tools"><label class="revision-toggle"><input type="checkbox" id="revisions" aria-controls="catalog">Show revisions</label></div>
   <div class="table-scroll"><table id="catalog">
     <colgroup><col class="step"><col class="plugin"><col class="enabled"><col class="origin"><col class="revision"><col class="revision"><col class="revision"><col></colgroup>
     <thead><tr><th>Step</th><th>Plugin</th><th>Enabled</th><th>Origin</th><th class="revision">Available revision</th><th class="revision">Requested revision</th><th class="revision">Applied revision</th><th>Source</th></tr></thead>
@@ -69,6 +81,46 @@
   document.getElementById('revisions').onchange = function () {
     document.getElementById('catalog').classList.toggle('show-revisions', this.checked);
   };
+  // The server fills in the steps' run order; the catalog's JSON keys arrive sorted.
+  const STEPS = __PLUGIN_STEPS__;
+  const stacks = {};
+  const pipeline = document.getElementById('stack');
+  STEPS.forEach((step, index) => {
+    if (index) {
+      const flow = document.createElement('span');
+      flow.className = 'flow';
+      flow.ariaHidden = 'true';
+      flow.textContent = '→';
+      pipeline.appendChild(flow);
+    }
+    const section = document.createElement('section');
+    section.className = 'stack-step';
+    const heading = document.createElement('h2');
+    heading.textContent = step;
+    stacks[step] = document.createElement('ol');
+    stacks[step].ariaLabel = step + ' plugins';
+    section.appendChild(heading);
+    section.appendChild(stacks[step]);
+    pipeline.appendChild(section);
+  });
+  function stackItem(text, className, title) {
+    const item = document.createElement('li');
+    item.className = className;
+    item.textContent = text;
+    if (title) item.title = title;
+    return item;
+  }
+  // Each step lists its applied plugins top to bottom in the order they run.
+  function renderStacks(applied) {
+    for (const step of STEPS) {
+      const plugins = applied(step);
+      stacks[step].replaceChildren(...(
+        plugins === null ? [stackItem('Unknown', 'note unknown')]
+          : !plugins.length ? [stackItem('No plugins', 'note')]
+          : plugins.map(plugin => stackItem(plugin.id, 'plugin',
+            plugin.metadata?.revision ? 'uploaded revision ' + plugin.metadata.revision : 'packaged'))));
+    }
+  }
   function enabledDot(state) {
     const dot = document.createElement('span');
     dot.className = 'status-dot' + (state === 'Enabled' ? ' live' : state === 'Disabled' ? ' error' : '');
@@ -86,6 +138,10 @@
       const status = document.getElementById('status');
       status.textContent = arming?.error ? 'Plugin selection failed · ' + arming.error : '';
       status.hidden = !arming?.error;
+      function applied(step) {
+        const plugins = arming?.applied?.[step];
+        return Array.isArray(plugins) ? plugins : null;
+      }
       function selectedRevision(name, plugin) {
         const selected = arming?.[name]?.[plugin.step]?.find(item => item.id === plugin.id);
         return selected ? selected.metadata?.revision || 'packaged' : '—';
@@ -93,9 +149,9 @@
       const rows = catalog.plugins.map(plugin => {
         const row = document.createElement('tr');
         const metadata = plugin.metadata || {};
-        const applied = arming?.applied?.[plugin.step];
-        const enabled = Array.isArray(applied)
-          ? (applied.some(item => item.id === plugin.id) ? 'Enabled' : 'Disabled')
+        const plugins = applied(plugin.step);
+        const enabled = plugins
+          ? (plugins.some(item => item.id === plugin.id) ? 'Enabled' : 'Disabled')
           : 'Unknown';
         row.dataset.step = plugin.step;
         row.dataset.pluginId = plugin.id;
@@ -115,10 +171,13 @@
         return row;
       });
       document.getElementById('plugins').replaceChildren(...rows);
+      renderStacks(applied);
       document.getElementById('catalog').classList.remove('stale');
+      document.getElementById('stack').classList.remove('stale');
     } catch (error) {
       const table = document.getElementById('catalog');
       table.classList.add('stale');
+      document.getElementById('stack').classList.add('stale');
       for (const cell of table.querySelectorAll('td.enabled')) cell.replaceChildren(enabledDot('Unknown'));
       const status = document.getElementById('status');
       status.hidden = false;

@@ -33,6 +33,7 @@ from .loopback_http import (
     validate_loopback_host,
 )
 from .plugin_catalog import serve_plugin_catalog
+from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
@@ -194,7 +195,8 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             serve_plugin_catalog(self, self.server.publisher.plugin_catalog, include_body=include_body)
             return
         if route == "/plugins":
-            self._send(200, Path(__file__).with_name("plugin_catalog.html").read_bytes(),
+            html = Path(__file__).with_name("plugin_catalog.html").read_text(encoding="utf-8")
+            self._send(200, html.replace("__PLUGIN_STEPS__", json.dumps(list(STEPS))).encode("utf-8"),
                        "text/html; charset=utf-8", include_body=include_body)
             return
         if route == "/favicon.ico":

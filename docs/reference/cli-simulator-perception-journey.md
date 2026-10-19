@@ -107,6 +107,9 @@ Open **Plugins** in the runtime viewer to see the available
 revision. Upload does not change the selected or running plugins. Source that
 does not compile is refused with its file and line. The file is not imported,
 constructed, or checked for dependencies during upload; arming loads it.
+Add `--config '<JSON object>'`, for example `--config '{"throttle": -0.6}'`,
+to store constructor settings with the revision; arming constructs the plugin
+with them, and `plugins status --json` reports them.
 
 Use `--url <viewer-or-workbench-url>` instead of `--id` to address a catalog
 directly. The same command and `/api/plugins` endpoint apply to Chase, PiCar,

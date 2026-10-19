@@ -26,10 +26,10 @@ from tests.shared.cli.workbench_fixtures import (
 )
 
 
-def upload(base: str, file: Path, plugin_id: str, *, step: str = "perception", check=True):
+def upload(base: str, file: Path, plugin_id: str, *options: str, step: str = "perception", check=True):
     result = invoke_automa(
         "vehicles", "plugins", "upload", "--url", base, "--file", str(file),
-        "--step", step, "--plugin-id", plugin_id, "--entrypoint", "prototype:Prototype", "--json",
+        "--step", step, "--plugin-id", plugin_id, "--entrypoint", "prototype:Prototype", *options, "--json",
         check=check,
     )
     return result, json.loads(result.stdout)
@@ -244,6 +244,26 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(get_json(base, "/api/plugins"), before)
             rejected = PluginCatalogClient(base)({"plugin_id": "prototype"})
             self.assertEqual(rejected["error"], "missing field: step")
+
+    def test_upload_stores_its_config_with_the_revision(self):
+        with image_source(1) as root:
+            base = serve_workbench(self, ImageReplayRunner(root))
+            file = root / "prototype.py"
+            file.write_text("class Prototype:\n    pass\n")
+            before = get_json(base, "/api/plugins")
+            for config in ("[1]", "{not json", "null"):
+                with self.subTest(config=config):
+                    result, receipt = upload(base, file, "prototype", "--config", config, check=False)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertFalse(receipt["ok"])
+                    self.assertIn("--config", receipt["error"])
+                    self.assertIn("--config", receipt["outcome"]["recovery"])
+                    self.assertEqual(get_json(base, "/api/plugins"), before)
+            _, receipt = upload(base, file, "prototype", "--config", '{"floor_cutoff_y": 0.9}')
+            self.assertEqual(receipt["plugin"]["config"], {"floor_cutoff_y": 0.9})
+            listed = next(item for item in get_json(base, "/api/plugins")["plugins"] if item["id"] == "prototype")
+            self.assertEqual(listed["config"], {"floor_cutoff_y": 0.9})
+            self.assertEqual(listed["metadata"]["revision"], receipt["plugin"]["metadata"]["revision"])
 
     def test_cli_vehicle_address_and_viewer_proxy_share_the_host_catalog(self):
         with tempfile.TemporaryDirectory() as directory:

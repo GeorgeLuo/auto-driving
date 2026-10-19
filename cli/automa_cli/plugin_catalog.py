@@ -98,15 +98,27 @@ def catalog_url(vehicle_id: str) -> str:
 
 
 def upload_plugin(*, url: str | None, vehicle_id: str | None, file: Path, step: str,
-                  plugin_id: str, entrypoint: str, arm: bool = False,
+                  plugin_id: str, entrypoint: str, config: str | None = None, arm: bool = False,
                   json_output: bool = False) -> CommandResult:
-    recovery = f"Check the local plugin file: {file}"
+    recovery = "Pass --config as a JSON object of the plugin's constructor settings."
     endpoint = url
     try:
+        # The host stores the config with this revision; arming constructs the plugin with it.
+        settings = None
+        if config is not None:
+            try:
+                settings = json.loads(config)
+            except ValueError as exc:
+                raise ValueError(f"--config is not valid JSON: {exc}") from exc
+            if not isinstance(settings, dict):
+                raise ValueError("--config must be a JSON object")
+        recovery = f"Check the local plugin file: {file}"
         payload = {
             "step": step, "plugin_id": plugin_id, "entrypoint": entrypoint,
             "filename": file.name, "source_base64": base64.b64encode(file.read_bytes()).decode(),
         }
+        if settings is not None:
+            payload["config"] = settings
         recovery = _catalog_recovery(url, vehicle_id)
         endpoint = url or catalog_url(vehicle_id)
         client = PluginCatalogClient(endpoint)

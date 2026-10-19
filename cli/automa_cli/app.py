@@ -99,6 +99,7 @@ def build_parser() -> argparse.ArgumentParser:
     upload.add_argument("--step", choices=STEPS, required=True, help="Cycle step whose catalog receives the file.")
     upload.add_argument("--plugin-id", required=True, help="Plugin ID within the step; repeat an ID to make a new revision available.")
     upload.add_argument("--entrypoint", required=True, help="Registered module:Class name, for example prototype:Prototype; resolved when armed.")
+    upload.add_argument("--config", metavar="JSON", help="JSON object of constructor settings stored with this revision, for example '{\"throttle\": -0.6}'; arming constructs the plugin with it. Default: {}.")
     upload.add_argument("--arm", action="store_true", help="After registration, add/update this ID in the runtime host's requested selection; other plugins stay selected.")
     upload.add_argument("--json", dest="json_output", action="store_true", help="Print the registration receipt as JSON.")
     upload.set_defaults(handler=_handle_plugin_upload)
@@ -1400,7 +1401,8 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "  ./cli/automa vehicles plugins upload --id chase-sim-chaser --file ./prototype.py --step perception --plugin-id prototype --entrypoint prototype:Prototype",
         "  ./cli/automa vehicles plugins status --id chase-sim-chaser --step perception", "",
         "Upload refuses source that does not compile; imports and dependencies load when armed.",
-        "Re-uploading an ID leaves the running revision unchanged. Restart restoration is not guaranteed.", "",
+        "Re-uploading an ID leaves the running revision unchanged. Restart restoration is not guaranteed.",
+        "Use upload --config '<JSON object>' to store constructor settings with the revision; arming uses them.", "",
         "Use upload --arm for one-command registration and arming; it calls the same operation as arm.",
         "Arming supports every step. New IDs append; existing IDs update in place.",
         f"On a one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) the armed ID replaces the plugin.",
@@ -1428,7 +1430,8 @@ def _handle_plugin_status(args: argparse.Namespace) -> int:
 def _handle_plugin_upload(args: argparse.Namespace) -> int:
     result = upload_plugin(
         url=args.url, vehicle_id=args.vehicle_id, file=args.file, step=args.step,
-        plugin_id=args.plugin_id, entrypoint=args.entrypoint, arm=args.arm, json_output=args.json_output,
+        plugin_id=args.plugin_id, entrypoint=args.entrypoint, config=args.config, arm=args.arm,
+        json_output=args.json_output,
     )
     print(result.message)
     return result.exit_code

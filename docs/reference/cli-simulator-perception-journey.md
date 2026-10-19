@@ -85,14 +85,15 @@ view unavailable or stale, never current.
 
 Perception, proposal and plan each provide `chase-v1-detect-by-color`. Together
 they detect and retain visible simulator cardboard boxes, report sustained
-visual stagnation, propose straight forward motion, and select only that forward
-proposal. The command is steering `0.0`, normalized throttle `0.60`.
+visual stagnation, propose straight forward and straight reverse motion, and
+select forward unless the current view is static, then reverse. The commands
+are steering `0.0` with normalized throttle `0.60` or `-0.60`.
 
 Perception's `view_stagnation` plugin emits `view_static` and publishes its
 timestamped result at `shared_memory["perception.view_stagnation"]`. The default
 requires at least three fresh captures spanning one second below the visual
-change threshold. Missing/repeated input clears the cue; it does not change
-the forward-only proposal. See the
+change threshold. Missing/repeated input clears the cue, and the plan drives
+forward. See the
 [plugin contract](../../implementations/decision_cycle/perception/plugins/view_stagnation/README.md).
 
 With the running simulator exposed at `http://localhost:5050`, stage the three
@@ -113,8 +114,10 @@ environment, for example `ws://localhost:5054/ws/control`, before staging and
 running. `vehicles status --chase-url` only inspects that endpoint; it does not
 persist a different runtime endpoint.
 
-This baseline deliberately does not stop or steer for obstacles. The plan
-does not fall back to a different proposal when `drive_forward` is absent.
+This baseline deliberately does not stop or steer for obstacles. Driving into
+a box stalls the view, the plan reverses until the view changes, and the car
+drives forward into the box again. The plan does not fall back to a different
+proposal when its current target is absent.
 
 ## Upload to an Existing Catalog
 

@@ -15,9 +15,15 @@ DEFAULT_PLAN_PRESET = "most_confident"
 
 PLAN_PRESETS: dict[str, dict[str, Any]] = {
     "chase-v1-detect-by-color": {
-        "description": "Chase v1 baseline: select only the drive_forward proposal.",
+        "description": (
+            "Chase v1 baseline: select drive_forward, or drive_backwards while the "
+            "current view is static."
+        ),
         "plugins": ["select_proposal"],
-        "plugin_configs": {"select_proposal": {"proposal_plugin_id": "drive_forward"}},
+        "plugin_configs": {"select_proposal": {
+            "proposal_plugin_id": "drive_forward",
+            "view_static_proposal_plugin_id": "drive_backwards",
+        }},
     },
     "most_confident": {
         "description": "Select the most confident active candidate; otherwise plan idle.",

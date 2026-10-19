@@ -27,14 +27,15 @@ equals, else `custom`. `automa vehicles update proposal --preset NAME` stages on
 | Preset | Plugins |
 |---|---|
 | `obstruction_avoidance` (default) | `avoid_recent_obstruction` |
-| `chase-v1-detect-by-color` | `drive_forward` |
+| `chase-v1-detect-by-color` | `drive_forward`, `drive_backwards` |
 
 The matching Chase v1 perception, proposal and plan presets share the name
 `chase-v1-detect-by-color`. Proposal's `drive_forward` always requests steering
 `0.0` and throttle `0.60` (configurable), regardless of detections or retained
-memory. It is the indiscriminate movement baseline for later stopping and
-avoidance comparisons. Its confidence describes the fixed command choice,
-not whether the path is clear.
+memory. `drive_backwards` likewise always requests steering `0.0` and throttle
+`-0.60`. Both run every cycle; the plan picks one. They are the indiscriminate
+movement baselines for later stopping and avoidance comparisons. Their
+confidence describes the fixed command choice, not whether the path is clear.
 
 ## Finding the default business logic
 

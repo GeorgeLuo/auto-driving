@@ -12,6 +12,11 @@ PROPOSAL_PLUGINS: tuple[dict[str, Any], ...] = (
         "default_config": {"throttle": 0.60},
     },
     {
+        "spec": "implementations.decision_cycle.proposal.plugins.drive_backwards.plugin:DriveBackwards",
+        "description": "Propose constant reverse throttle and zero steering, regardless of obstacles.",
+        "default_config": {"throttle": -0.60},
+    },
+    {
         "spec": (
             "implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin:"
             "AvoidRecentObstruction"

@@ -8,7 +8,10 @@ from typing import Any
 PLAN_PLUGINS: tuple[dict[str, Any], ...] = (
     {
         "spec": "implementations.decision_cycle.plan.plugins.select_proposal.plugin:SelectProposal",
-        "description": "Select only a named proposal plugin's active candidate; otherwise idle.",
+        "description": (
+            "Select only a named proposal plugin's active candidate, or an alternate one "
+            "while the current view is static; otherwise idle."
+        ),
         "default_config": {"proposal_plugin_id": "drive_forward"},
     },
     {

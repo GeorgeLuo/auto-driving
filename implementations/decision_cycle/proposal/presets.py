@@ -15,8 +15,11 @@ DEFAULT_PROPOSAL_PRESET = "obstruction_avoidance"
 
 PROPOSAL_PRESETS: dict[str, dict[str, Any]] = {
     "chase-v1-detect-by-color": {
-        "description": "Chase v1 baseline: drive forward at constant throttle, ignoring obstacles.",
-        "plugins": ["drive_forward"],
+        "description": (
+            "Chase v1 baseline: propose constant forward and constant reverse "
+            "throttle, ignoring obstacles; the plan chooses one."
+        ),
+        "plugins": ["drive_forward", "drive_backwards"],
     },
     "obstruction_avoidance": {
         "description": (

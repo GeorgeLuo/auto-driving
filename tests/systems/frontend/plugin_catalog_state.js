@@ -43,6 +43,8 @@ const ctx = {
 };
 vm.createContext(ctx);
 const html = fs.readFileSync('cli/automa_cli/plugin_catalog.html', 'utf8');
+// The page loads the shared feed script before its own.
+vm.runInContext(fs.readFileSync('cli/automa_cli/plugin_feed.js', 'utf8'), ctx);
 vm.runInContext(html.match(/<script>([\s\S]*)<\/script>/)[1], ctx);
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); };
 async function poll() { assert.strictEqual(timers.length, 1); timers.shift()(); await settle(); }

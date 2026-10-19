@@ -10,6 +10,7 @@ from playwright.sync_api import sync_playwright, expect
 from autonomy.decision_cycle.activation import STEPS, step_activation_path, write_step_activation
 from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS
 from implementations.decision_cycle.catalog import packaged_activation
+from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import arm_step, frame, plugin_host, upload, write_plugin
 
@@ -80,6 +81,43 @@ class LiveCatalogViewTests(unittest.TestCase):
                             expect(page.locator("#status")).to_be_hidden()
                         finally:
                             page.close()
+            finally:
+                browser.close()
+
+    def test_stack_page_shows_each_steps_applied_plugins_in_run_order_without_reload(self):
+        with sync_playwright() as runtime:
+            browser = runtime.chromium.launch()
+            try:
+                activations = {step: packaged_activation(step) for step in STEPS}
+                with image_source(1) as root, plugin_host(root, "chase", activations) as (host, base):
+                    page = browser.new_page()
+                    try:
+                        page.goto(base)
+                        page.get_by_role("link", name="Plugin stack", exact=True).click()
+                        expect(page.get_by_role("heading", name="Plugin stack")).to_be_visible()
+                        expect(page.locator(".step h2")).to_have_text(list(STEPS))
+
+                        def stack(step):
+                            return page.get_by_role("list", name=f"{step} plugins").locator("li")
+
+                        for step in STEPS:
+                            expect(stack(step)).to_have_text(list(activations[step].plugins))
+                        for step in ("proposal", "plan"):
+                            file = root / f"{step}.py"
+                            write_plugin(file, step, f"prototype-{step}", 1)
+                            upload(base, file, step, f"prototype-{step}")
+                        packaged = list(activations["proposal"].plugins)
+                        arm_step(base, "proposal", *packaged, "prototype-proposal")
+                        arm_step(base, "plan", "prototype-plan")
+                        host.run(frame(root, 1))
+                        expect(stack("proposal")).to_have_text([*packaged, "prototype-proposal"])
+                        expect(stack("plan")).to_have_text(["prototype-plan"])
+                        invoke_automa("vehicles", "plugins", "disarm", "--url", base, "--step", "proposal", "--all")
+                        host.run(frame(root, 2))
+                        expect(stack("proposal")).to_have_text(["No plugins"])
+                        expect(page.locator("#status")).to_be_hidden()
+                    finally:
+                        page.close()
             finally:
                 browser.close()
 

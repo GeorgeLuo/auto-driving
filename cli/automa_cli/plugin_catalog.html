@@ -65,6 +65,7 @@
     <thead><tr><th>Step</th><th>Plugin</th><th>Enabled</th><th>Origin</th><th class="revision">Available revision</th><th class="revision">Requested revision</th><th class="revision">Applied revision</th><th>Source</th></tr></thead>
     <tbody id="plugins"></tbody></table></div>
 </main>
+<script src="/plugin_feed.js"></script>
 <script>
   document.getElementById('revisions').onchange = function () {
     document.getElementById('catalog').classList.toggle('show-revisions', this.checked);
@@ -77,57 +78,45 @@
     dot.title = state;
     return dot;
   }
-  async function refresh() {
-    try {
-      const response = await fetch('/api/plugins', { cache: 'no-store' });
-      const catalog = await response.json();
-      if (!response.ok || !catalog.ok) throw new Error(catalog.error || `HTTP ${response.status}`);
-      const arming = catalog.arming;
-      const status = document.getElementById('status');
-      status.textContent = arming?.error ? 'Plugin selection failed · ' + arming.error : '';
-      status.hidden = !arming?.error;
-      function selectedRevision(name, plugin) {
-        const selected = arming?.[name]?.[plugin.step]?.find(item => item.id === plugin.id);
-        return selected ? selected.metadata?.revision || 'packaged' : '—';
-      }
-      const rows = catalog.plugins.map(plugin => {
-        const row = document.createElement('tr');
-        const metadata = plugin.metadata || {};
-        const applied = arming?.applied?.[plugin.step];
-        const enabled = Array.isArray(applied)
-          ? (applied.some(item => item.id === plugin.id) ? 'Enabled' : 'Disabled')
-          : 'Unknown';
-        row.dataset.step = plugin.step;
-        row.dataset.pluginId = plugin.id;
-        [plugin.step, plugin.id, enabled, metadata.revision ? 'uploaded' : 'packaged',
-          metadata.revision || 'packaged', selectedRevision('requested', plugin),
-          selectedRevision('applied', plugin), metadata.filename || plugin.entrypoint].forEach((value, index) => {
-          const cell = document.createElement('td');
-          if (index === 2) {
-            cell.className = 'enabled';
-            cell.appendChild(enabledDot(value));
-          } else {
-            if (index >= 4 && index <= 6) cell.className = 'revision';
-            cell.textContent = value;
-          }
-          row.appendChild(cell);
-        });
-        return row;
-      });
-      document.getElementById('plugins').replaceChildren(...rows);
-      document.getElementById('catalog').classList.remove('stale');
-    } catch (error) {
-      const table = document.getElementById('catalog');
-      table.classList.add('stale');
-      for (const cell of table.querySelectorAll('td.enabled')) cell.replaceChildren(enabledDot('Unknown'));
-      const status = document.getElementById('status');
-      status.hidden = false;
-      status.textContent = 'Catalog unavailable · ' + error.message +
-        (document.getElementById('plugins').children.length ? ' · Showing stale snapshot' : '') +
-        ' · Retrying automatically';
+  function render(catalog) {
+    const arming = catalog.arming;
+    function selectedRevision(name, plugin) {
+      const selected = arming?.[name]?.[plugin.step]?.find(item => item.id === plugin.id);
+      return selected ? selected.metadata?.revision || 'packaged' : '—';
     }
-    setTimeout(refresh, 500);
+    const rows = catalog.plugins.map(plugin => {
+      const row = document.createElement('tr');
+      const metadata = plugin.metadata || {};
+      const applied = appliedPlugins(catalog, plugin.step);
+      const enabled = applied
+        ? (applied.some(item => item.id === plugin.id) ? 'Enabled' : 'Disabled')
+        : 'Unknown';
+      row.dataset.step = plugin.step;
+      row.dataset.pluginId = plugin.id;
+      [plugin.step, plugin.id, enabled, metadata.revision ? 'uploaded' : 'packaged',
+        metadata.revision || 'packaged', selectedRevision('requested', plugin),
+        selectedRevision('applied', plugin), metadata.filename || plugin.entrypoint].forEach((value, index) => {
+        const cell = document.createElement('td');
+        if (index === 2) {
+          cell.className = 'enabled';
+          cell.appendChild(enabledDot(value));
+        } else {
+          if (index >= 4 && index <= 6) cell.className = 'revision';
+          cell.textContent = value;
+        }
+        row.appendChild(cell);
+      });
+      return row;
+    });
+    document.getElementById('plugins').replaceChildren(...rows);
   }
-  refresh();
+  function markStale() {
+    const table = document.getElementById('catalog');
+    for (const cell of table.querySelectorAll('td.enabled')) cell.replaceChildren(enabledDot('Unknown'));
+    return document.getElementById('plugins').children.length > 0;
+  }
+  followPluginCatalog({
+    view: document.getElementById('catalog'), status: document.getElementById('status'), render, markStale,
+  });
 </script>
 </html>

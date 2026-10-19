@@ -157,6 +157,11 @@ Enabled uses green and red dots, with an amber **Unknown** dot when selection
 data is unavailable. A polling failure marks the last rows as a stale snapshot
 until a successful refresh. Messages above the table appear only for errors.
 
+The **Plugin stack** page, also linked from Automa, lays the six steps out left
+to right in run order and lists each step's applied plugins top to bottom in the
+order they run. It reads the same feed as the Plugins table, so it refreshes on
+the same cadence, reports the same errors, and dims a stale snapshot.
+
 Uploaded plugins stay in the host's catalog until that host restarts; `plugins
 upload` and `plugins status` print the host run beside the catalog version. A
 restart onto a new release clears them: `update autonomy --restart` on a PiCar,

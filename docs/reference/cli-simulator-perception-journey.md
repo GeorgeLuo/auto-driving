@@ -166,6 +166,12 @@ next cycle. A Chase worker exiting ends that catalog and its uploaded selections
 The replay workbench continues to use its existing selection controls and
 supports upload only through this command group.
 
+`vehicles stream` and the decision view check each published plan by running the
+staged plan plugin. For an armed uploaded plan, the CLI reads its source from
+the host's catalog by its `<sha256>.py` name and runs it only when the bytes
+match that name. A host without this source read reports the plan source as
+unavailable.
+
 Uploads currently support self-contained plugin files using installed imports.
 Uploading Python modules that import other uploaded files needs a later loader
 extension; upload does not resolve or validate those dependencies.

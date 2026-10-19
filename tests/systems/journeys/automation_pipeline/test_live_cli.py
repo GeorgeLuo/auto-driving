@@ -6,19 +6,54 @@ other live commands run in this process in
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import threading
 import unittest
+import uuid
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
+from cli.automa_cli.host_publications import fetch_decision_publication
+from cli.automa_cli.paths import ROOT
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import VEHICLE_ID
+from tests.shared.cli.invoke import invoke_automa
 from tests.shared.integration.live_host import LiveHostTestCase, wait_until as _wait
-from tests.support.cli_runner import start_automa
+from tests.support.cli_runner import run_automa, start_automa
 
 
 class LiveCommandsTests(LiveHostTestCase):
+    def test_stream_plan_checks_an_uploaded_plan_the_executable_never_loaded(self) -> None:
+        # The stream runs the staged plan itself to check each published plan.
+        # An uploaded plan's source is only in the host's catalog until the
+        # executable reads it from there.
+        source = (ROOT / "implementations" / "decision_cycle" / "plan" / "plugins"
+                  / "highest_confidence" / "plugin.py").read_bytes() + f"# {uuid.uuid4().hex}\n".encode()
+        name = f"{hashlib.sha256(source).hexdigest()}.py"
+        file = self.runtime_root.parent / "highest_confidence.py"
+        file.write_bytes(source)
+        invoke_automa(
+            "vehicles", "plugins", "upload", "--id", VEHICLE_ID, "--file", str(file), "--step", "plan",
+            "--plugin-id", "highest_confidence", "--entrypoint", "highest_confidence:HighestConfidencePlan",
+            "--arm", runtime_root=self.runtime_root,
+        )
+        self.observe()
+
+        def published() -> bool:
+            try:
+                return name in json.dumps(fetch_decision_publication(self.host.base_url))
+            except (OSError, ValueError):
+                return False
+
+        _wait(published, message="the host never published a cycle from the uploaded plan")
+        result = run_automa("vehicles", "stream", "plan", "--id", VEHICLE_ID, "--once", "--json",
+                            runtime_root=self.runtime_root, check=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        frame = json.loads(result.stdout)
+        self.assertEqual(frame["plugins"], ["highest_confidence"])
+        self.assertEqual(frame["record"]["selector_id"], "highest_confidence")
+
     def test_a_running_step_stream_hosts_the_decision_view(self) -> None:
         # How each proposal arose is on the decision page: the host's latest
         # decision beside its frame and the evidence its proposals read.

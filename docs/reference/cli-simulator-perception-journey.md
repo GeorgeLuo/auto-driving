@@ -145,6 +145,9 @@ Open **Plugins** in the runtime viewer to see the available
 revision. Upload does not change the selected or running plugins. Source that
 does not compile is refused with its file and line. The file is not imported,
 constructed, or checked for dependencies during upload; arming loads it.
+Add `--config '<JSON object>'`, for example `--config '{"throttle": -0.6}'`,
+to store constructor settings with the revision; arming constructs the plugin
+with them, and `plugins status --json` reports them.
 
 Use `--url <viewer-or-workbench-url>` instead of `--id` to address a catalog
 directly. The same command and `/api/plugins` endpoint apply to Chase, PiCar,
@@ -203,6 +206,12 @@ host can accept a request while its catalog exists; it stays requested until the
 next cycle. A Chase worker exiting ends that catalog and its uploaded selections.
 The replay workbench continues to use its existing selection controls and
 supports upload only through this command group.
+
+`vehicles stream` and the decision view check each published plan by running the
+staged plan plugin. For an armed uploaded plan, the CLI reads its source from
+the host's catalog by its `<sha256>.py` name and runs it only when the bytes
+match that name. A host without this source read reports the plan source as
+unavailable.
 
 Uploads currently support self-contained plugin files using installed imports.
 Uploading Python modules that import other uploaded files needs a later loader

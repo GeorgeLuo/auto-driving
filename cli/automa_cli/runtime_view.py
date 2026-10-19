@@ -41,10 +41,6 @@ VIEW_HOST = "127.0.0.1"
 RUNTIME_VIEW_HTML_PATH = Path(__file__).with_name("runtime_view.html")
 MEMORY_VIEW_HTML_PATH = Path(__file__).with_name("memory_view.html")
 DECISION_VIEW_HTML_PATH = Path(__file__).with_name("live_decision_view.html")
-PLUGIN_CATALOG_HTML_PATH = Path(__file__).with_name("plugin_catalog.html")
-PLUGIN_STACK_HTML_PATH = Path(__file__).with_name("plugin_stack.html")
-# The /api/plugins feed the plugin catalog and plugin stack pages share.
-PLUGIN_FEED_JS_PATH = Path(__file__).with_name("plugin_feed.js")
 
 
 class RuntimeViewServer:
@@ -199,18 +195,9 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             serve_plugin_catalog(self, self.server.publisher.plugin_catalog, include_body=include_body)
             return
         if route == "/plugins":
-            self._send(200, PLUGIN_CATALOG_HTML_PATH.read_bytes(),
-                       "text/html; charset=utf-8", include_body=include_body)
-            return
-        if route == "/plugin-stack":
-            # JSON keys arrive sorted, so the page takes the run order of steps from here.
-            html = PLUGIN_STACK_HTML_PATH.read_text(encoding="utf-8")
+            html = Path(__file__).with_name("plugin_catalog.html").read_text(encoding="utf-8")
             self._send(200, html.replace("__PLUGIN_STEPS__", json.dumps(list(STEPS))).encode("utf-8"),
                        "text/html; charset=utf-8", include_body=include_body)
-            return
-        if route == "/plugin_feed.js":
-            self._send(200, PLUGIN_FEED_JS_PATH.read_bytes(),
-                       "text/javascript; charset=utf-8", include_body=include_body)
             return
         if route == "/favicon.ico":
             self._send(204, b"", "image/x-icon", include_body=False)

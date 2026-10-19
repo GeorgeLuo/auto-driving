@@ -19,7 +19,7 @@ function element() {
     querySelectorAll() { return nodes.get('plugins').children.flatMap(row => row.children.filter(cell => cell.className === 'enabled')); }
   };
 }
-const nodes = new Map(['status', 'plugins', 'catalog', 'revisions'].map(id => [id, element()]));
+const nodes = new Map(['status', 'plugins', 'catalog', 'revisions', 'stack'].map(id => [id, element()]));
 const steps = ['perception', 'observation', 'memory', 'proposal', 'plan', 'action'];
 const definitions = steps.map(step => ({ step, id: `${step}-plugin`, entrypoint: 'packaged:Plugin', metadata: {} }));
 let payload = { ok: true, catalog_version: 1, plugins: definitions,
@@ -43,9 +43,8 @@ const ctx = {
 };
 vm.createContext(ctx);
 const html = fs.readFileSync('cli/automa_cli/plugin_catalog.html', 'utf8');
-// The page loads the shared feed script before its own.
-vm.runInContext(fs.readFileSync('cli/automa_cli/plugin_feed.js', 'utf8'), ctx);
-vm.runInContext(html.match(/<script>([\s\S]*)<\/script>/)[1], ctx);
+// The server fills in the steps' run order.
+vm.runInContext(html.match(/<script>([\s\S]*)<\/script>/)[1].replace('__PLUGIN_STEPS__', JSON.stringify(steps)), ctx);
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); };
 async function poll() { assert.strictEqual(timers.length, 1); timers.shift()(); await settle(); }
 function cells(plugin) {

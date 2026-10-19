@@ -157,6 +157,11 @@ PERCEPTION_PLUGINS: tuple[dict[str, Any], ...] = (
         "default_config": {},
     },
     {
+        "spec": "implementations.decision_cycle.perception.plugins.view_stagnation.plugin:ViewStagnationPlugin",
+        "description": "Sustained low visual change across fresh camera frames, published to shared memory.",
+        "default_config": {},
+    },
+    {
         "spec": "implementations.decision_cycle.perception.plugins.sim_color_targets.plugin:SimColorTargetsPlugin",
         "description": "",
         "default_config": {},

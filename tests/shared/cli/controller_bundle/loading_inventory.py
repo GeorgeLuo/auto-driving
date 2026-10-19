@@ -18,6 +18,9 @@ from __future__ import annotations
 
 # (legacy spec, canonical module, canonical attribute)
 LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
+    ("implementations.decision_cycle.perception.plugins.view_stagnation.plugin:ViewStagnationPlugin", "implementations.decision_cycle.perception.plugins.view_stagnation.plugin", "ViewStagnationPlugin"),
+    ("implementations.decision_cycle.proposal.plugins.drive_forward.plugin:DriveForward", "implementations.decision_cycle.proposal.plugins.drive_forward.plugin", "DriveForward"),
+    ("implementations.decision_cycle.plan.plugins.select_proposal.plugin:SelectProposal", "implementations.decision_cycle.plan.plugins.select_proposal.plugin", "SelectProposal"),
     ("autonomy.decision_cycle.perception.runner:PerceptionRunner", "autonomy.decision_cycle.perception.runner", "PerceptionRunner"),
     ("autonomy.decision_cycle.memory.runner:MemoryRunner", "autonomy.decision_cycle.memory.runner", "MemoryRunner"),
     ("autonomy.decision_cycle.proposal.runner:ProposalRunner", "autonomy.decision_cycle.proposal.runner", "ProposalRunner"),

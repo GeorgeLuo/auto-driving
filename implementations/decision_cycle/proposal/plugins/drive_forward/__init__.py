@@ -1,0 +1,1 @@
+"""Constant forward proposal baseline."""

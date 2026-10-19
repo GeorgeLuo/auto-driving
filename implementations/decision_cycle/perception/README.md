@@ -31,10 +31,13 @@ stages one.
 |---|---|
 | `lightweight_observer` (default) | `frame`, `floor_plane` |
 | `sim_debug` | `frame`, `sim_color_targets` |
-| `chase-v1-detect-by-color` | `sim_cardboard_obstacle`, `sim_cardboard_permanence` |
+| `chase-v1-detect-by-color` | `sim_cardboard_obstacle`, `sim_cardboard_permanence`, `view_stagnation` |
 | `visual_observer` | `frame`, `floor_plane`, `motion_tracks` |
 | `multi_obstruction` | `multi_obstruction_tracks`, `floor_continuity`, `classical_regions` |
 | `obstruction_observer` | `frame`, `floor_plane`, `multi_obstruction_tracks`, with config overrides |
+
+[`view_stagnation`](plugins/view_stagnation/README.md) publishes `view_static`
+and a timestamped result at `shared_memory["perception.view_stagnation"]`.
 
 ## Finding the default business logic
 

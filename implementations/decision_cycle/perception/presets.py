@@ -32,9 +32,9 @@ PERCEPTION_PRESETS: dict[str, dict[str, Any]] = {
     "chase-v1-detect-by-color": {
         "description": (
             "Chase simulator cardboard: color-based obstacle boxes, then "
-            "identities kept across frames in shared memory."
+            "identities kept across frames and visual stagnation in shared memory."
         ),
-        "plugins": ["sim_cardboard_obstacle", "sim_cardboard_permanence"],
+        "plugins": ["sim_cardboard_obstacle", "sim_cardboard_permanence", "view_stagnation"],
     },
     "visual_observer": {
         "description": (

@@ -28,6 +28,12 @@ equals, else `custom`. `automa vehicles update plan --preset NAME` stages one.
 | Preset | Plugins |
 |---|---|
 | `most_confident` (default) | `highest_confidence` |
+| `chase-v1-detect-by-color` | `select_proposal`, configured for `drive_forward` |
+
+The Chase v1 plan selects only an active current-frame candidate from
+`drive_forward`. Other candidates do not compete by confidence. If the named
+candidate is missing or inactive, the plan is idle. Perception, proposal and
+plan each expose this same v1 preset name for staging a matching set.
 
 ## Finding the default business logic
 

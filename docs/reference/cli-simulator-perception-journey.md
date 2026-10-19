@@ -81,6 +81,41 @@ restart, keep `--observe-only` explicit:
 Stopping the worker keeps its local deployment staged and makes its previous
 view unavailable or stale, never current.
 
+## Chase v1 Forward Baseline
+
+Perception, proposal and plan each provide `chase-v1-detect-by-color`. Together
+they detect and retain visible simulator cardboard boxes, report sustained
+visual stagnation, propose straight forward motion, and select only that forward
+proposal. The command is steering `0.0`, normalized throttle `0.60`.
+
+Perception's `view_stagnation` plugin emits `view_static` and publishes its
+timestamped result at `shared_memory["perception.view_stagnation"]`. The default
+requires at least three fresh captures spanning one second below the visual
+change threshold. Missing/repeated input clears the cue; it does not change
+the forward-only proposal. See the
+[plugin contract](../../implementations/decision_cycle/perception/plugins/view_stagnation/README.md).
+
+With the running simulator exposed at `http://localhost:5050`, stage the three
+steps and start a bounded movement run:
+
+```sh
+./cli/automa vehicles update perception --id chase-sim-chaser --preset chase-v1-detect-by-color
+./cli/automa vehicles update proposal --id chase-sim-chaser --preset chase-v1-detect-by-color
+./cli/automa vehicles update plan --id chase-sim-chaser --preset chase-v1-detect-by-color
+./cli/automa vehicles automation run --id chase-sim-chaser --num-decisions 60 --record
+```
+
+If the game's pause-before-actions debug setting is active, enable **Playback**
+under **Game → Simulation** to let frames advance during the movement run.
+
+For a simulator on another port, set `CHASE_UI_WS_URL` in the command
+environment, for example `ws://localhost:5054/ws/control`, before staging and
+running. `vehicles status --chase-url` only inspects that endpoint; it does not
+persist a different runtime endpoint.
+
+This baseline deliberately does not stop or steer for obstacles. The plan
+does not fall back to a different proposal when `drive_forward` is absent.
+
 ## Upload to an Existing Catalog
 
 With a Chase worker and its viewer open, upload a local plugin file separately

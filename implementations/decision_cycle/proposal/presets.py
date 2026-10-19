@@ -14,6 +14,10 @@ from typing import Any
 DEFAULT_PROPOSAL_PRESET = "obstruction_avoidance"
 
 PROPOSAL_PRESETS: dict[str, dict[str, Any]] = {
+    "chase-v1-detect-by-color": {
+        "description": "Chase v1 baseline: drive forward at constant throttle, ignoring obstacles.",
+        "plugins": ["drive_forward"],
+    },
     "obstruction_avoidance": {
         "description": (
             "Propose steering away from lateral obstruction evidence retained "

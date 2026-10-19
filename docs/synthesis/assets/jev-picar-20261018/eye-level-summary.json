@@ -1,0 +1,45 @@
+{
+  "plugin": "jev_discrete_obstacles",
+  "frames": 13,
+  "status_counts": {
+    "ok": 13
+  },
+  "boxes_per_frame": {
+    "01.jpg": 4,
+    "02.jpg": 2,
+    "03.jpg": 2,
+    "04.jpg": 2,
+    "05.jpg": 3,
+    "06.jpg": 3,
+    "07.jpg": 3,
+    "08.jpg": 2,
+    "09.jpg": 3,
+    "10.jpg": 3,
+    "11.jpg": 2,
+    "12.jpg": 3,
+    "13.jpg": 2
+  },
+  "latency_ms": {
+    "median": 104.78,
+    "p95": 145.6575999999999,
+    "max": 195.64
+  },
+  "rendering": "All valid Box answers in slots 1..Jev count are drawn without confidence filtering, deduplication or geometric adjustment. Remaining speculative Box slots are preserved in provider response artifacts and are not detections. Each returned slot has its own color and confidence label.",
+  "semantics": "Eye-level camera is the requested prompt framing, not a measured pose. No class names, image-specific hints, annotations or manual rectangles are supplied. Numbered slots are ordered within each image, not cross-frame identities.",
+  "source_sha256": {
+    "01.jpg": "cbcc352218cf8d94913ca223ba9daa2d2f980672cf08ab446273b6c588062c25",
+    "02.jpg": "903fb4b6e6770cfbe82a7a06a8788ebc6087c62bcb9da9a3d6d8f43307afe505",
+    "03.jpg": "7937f935e2e488226f0fb6b9dc6e5647562fc223787076922d378f430ab5fd58",
+    "04.jpg": "01ffb07008262bf6de1d0c933c78adc9bdfda486f694866d39a4ccf19f746f91",
+    "05.jpg": "5f20dcdfef3e990e10e18bfe186af04b6c42b58e7ec42ce9b4399f5917bd5454",
+    "06.jpg": "8f85ada312631c8fdbf3949e57485f355c3aca5a04ac0bf976c3411b84045545",
+    "07.jpg": "cc8f6ce64632103d21d944f173a6e508db2cda57a1e009ed8737004cc16d06bc",
+    "08.jpg": "38fa3d88d10e7ee2f8ddcdebb9cbf47197d8f6a87a3def48393050854551ff72",
+    "09.jpg": "2116c8758ad554bfd08f5f64e5093cf1a53fa6d116416f23774b8271b419651f",
+    "10.jpg": "63cef064818e9edc3b18a03ee1de6d5c3dc4a6254cc21848efa403d59c96756a",
+    "11.jpg": "ed2a4eb83eafca96416ca3cd8cbd856862434803f53284ae2633fafb8189815f",
+    "12.jpg": "c98d191f13aaf70d2212802f05887ce7a796531bc1118d0307dbc1579011a573",
+    "13.jpg": "dc03d4d35e61d802526f5a66ddb8107b020ffa4e37795e2b26c876e4247783f6"
+  },
+  "recording": "runtime/perception-inspections/inspect-picar-stills-20261017-20261018-211840-538781-fa10ed99"
+}

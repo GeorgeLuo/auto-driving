@@ -34,6 +34,8 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("implementations.decision_cycle.perception.plugins.vlm_prep.plugin:VlmPrepPlugin", "implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "VlmPrepPlugin"),
     ("implementations.decision_cycle.perception.plugins.sim_color_targets.plugin:SimColorTargetsPlugin", "implementations.decision_cycle.perception.plugins.sim_color_targets.plugin", "SimColorTargetsPlugin"),
     ("implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin:SimCardboardObstaclePlugin", "implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin", "SimCardboardObstaclePlugin"),
+    ("implementations.decision_cycle.perception.plugins.jev_cardboard_box.plugin:JevCardboardBoxPlugin", "implementations.decision_cycle.perception.plugins.jev_cardboard_box.plugin", "JevCardboardBoxPlugin"),
+    ("implementations.decision_cycle.perception.plugins.jev_discrete_obstacles.plugin:JevDiscreteObstaclesPlugin", "implementations.decision_cycle.perception.plugins.jev_discrete_obstacles.plugin", "JevDiscreteObstaclesPlugin"),
     ("implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin:SimCardboardPermanencePlugin", "implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin", "SimCardboardPermanencePlugin"),
     ("implementations.decision_cycle.perception.plugins.floor_plane.plugin:FloorPlanePlugin", "implementations.decision_cycle.perception.plugins.floor_plane.plugin", "FloorPlanePlugin"),
     ("implementations.decision_cycle.perception.plugins.classical_regions.plugin:ClassicalRegionPlugin", "implementations.decision_cycle.perception.plugins.classical_regions.plugin", "ClassicalRegionPlugin"),

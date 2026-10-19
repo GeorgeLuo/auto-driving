@@ -167,6 +167,16 @@ PERCEPTION_PLUGINS: tuple[dict[str, Any], ...] = (
         "default_config": {},
     },
     {
+        "spec": "implementations.decision_cycle.perception.plugins.jev_cardboard_box.plugin:JevCardboardBoxPlugin",
+        "description": "Jev vision presence and bounding box for a cardboard shipping box.",
+        "default_config": {},
+    },
+    {
+        "spec": "implementations.decision_cycle.perception.plugins.jev_discrete_obstacles.plugin:JevDiscreteObstaclesPlugin",
+        "description": "Jev eye-level vision boxes for discrete movement-impeding obstacles.",
+        "default_config": {},
+    },
+    {
         "spec": "implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin:SimCardboardPermanencePlugin",
         "description": "Map each earlier cardboard detection to a distinct nearby known object.",
         "default_config": {},

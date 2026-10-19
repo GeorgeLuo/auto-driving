@@ -1,0 +1,47 @@
+{
+  "model": "jev-1.14.0",
+  "state": {
+    "camera_context": "This is an eye-level camera looking ahead from a mobile observer.",
+    "task": "Find discrete physical obstacles in the visible scene that would impede the observer's movement through the space. Each obstacle must be a distinct solid physical object. Exclude the floor, walls, ceiling, shadows, reflections and flat pictures. Include partially visible obstacles. Treat one object as one obstacle, not separate faces or parts.",
+    "ordering": "Order obstacles from left to right by the horizontal center of their visible extent. Break a tie by putting the object with the lower bottom edge first."
+  },
+  "questions": {
+    "obstacle_count": {
+      "type": "choice",
+      "instructions": "How many distinct movement-impeding obstacles satisfying `task` are visible in `photo`? Apply `camera_context`. Count separate objects, including partially visible ones.",
+      "criteria": {
+        "0": "Exactly 0 distinct obstacles.",
+        "1": "Exactly 1 distinct obstacles.",
+        "2": "Exactly 2 distinct obstacles.",
+        "3": "Exactly 3 distinct obstacles.",
+        "4": "Exactly 4 distinct obstacles.",
+        "5": "Exactly 5 distinct obstacles.",
+        "6": "6 or more distinct obstacles."
+      }
+    },
+    "obstacle_1": {
+      "type": "box",
+      "instructions": "Draw a tight bounding box around the visible extent of obstacle number 1 in `photo`, using `ordering` to identify it. Apply `camera_context` and the obstacle definition in `task`. Bound one distinct obstacle, not a group of objects or the whole scene. Include all visible parts of that one object."
+    },
+    "obstacle_2": {
+      "type": "box",
+      "instructions": "Draw a tight bounding box around the visible extent of obstacle number 2 in `photo`, using `ordering` to identify it. Apply `camera_context` and the obstacle definition in `task`. Bound one distinct obstacle, not a group of objects or the whole scene. Include all visible parts of that one object."
+    },
+    "obstacle_3": {
+      "type": "box",
+      "instructions": "Draw a tight bounding box around the visible extent of obstacle number 3 in `photo`, using `ordering` to identify it. Apply `camera_context` and the obstacle definition in `task`. Bound one distinct obstacle, not a group of objects or the whole scene. Include all visible parts of that one object."
+    },
+    "obstacle_4": {
+      "type": "box",
+      "instructions": "Draw a tight bounding box around the visible extent of obstacle number 4 in `photo`, using `ordering` to identify it. Apply `camera_context` and the obstacle definition in `task`. Bound one distinct obstacle, not a group of objects or the whole scene. Include all visible parts of that one object."
+    },
+    "obstacle_5": {
+      "type": "box",
+      "instructions": "Draw a tight bounding box around the visible extent of obstacle number 5 in `photo`, using `ordering` to identify it. Apply `camera_context` and the obstacle definition in `task`. Bound one distinct obstacle, not a group of objects or the whole scene. Include all visible parts of that one object."
+    },
+    "obstacle_6": {
+      "type": "box",
+      "instructions": "Draw a tight bounding box around the visible extent of obstacle number 6 in `photo`, using `ordering` to identify it. Apply `camera_context` and the obstacle definition in `task`. Bound one distinct obstacle, not a group of objects or the whole scene. Include all visible parts of that one object."
+    }
+  }
+}

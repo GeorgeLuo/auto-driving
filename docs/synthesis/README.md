@@ -25,6 +25,7 @@ code that still produces them.
 | [Locality and length generalization in visual reasoning](locality-and-length-generalization.md) | candidate | Perception | Coarse global context, selective local inspection, and bounded sequential state |
 | [Quantitative change analysis — v0 pseudocode](quantitative-change-analysis-pseudocode.md) | candidate | Engineering workflow research | Live `python3 -m qca analyze` / `diff` measurements of the current tree |
 | [PiRacer physical perception strategies](piracer-physical-perception-strategies.md) | rejected | Physical perception | Floor-continuity did not improve two material behavioral measures on labeled physical frames |
+| [Jev PiCar obstacle detection](picar-jev-obstacle-detection.md) | candidate | Physical perception | Plausible archived-still baseline; parked until a plausible movement preset exists in simulation |
 
 ## Note Shape
 

@@ -41,4 +41,19 @@ MEMORY_PLUGINS: tuple[dict[str, Any], ...] = (
             "maneuver_key": "proposal.avoid_obstacle.maneuver", "stop_phase": "backing_up",
         },
     },
+    {
+        "spec": "implementations.decision_cycle.memory.plugins.turn_model.plugin:TurnModel",
+        "description": (
+            "Learn how fast the car's own turn command moves tracked landmarks "
+            "across the view, in image widths per second, and carry their "
+            "bearings after they leave it. Changes no command."
+        ),
+        "default_config": {
+            "landmark_plugin_id": "sim_cardboard_permanence", "sensor_id": "front_camera",
+            "maneuver_key": "proposal.avoid_obstacle.maneuver", "turn_phase": "turning",
+            "max_samples": 64, "max_interval_ms": 250, "edge_margin": 0.01, "max_size_change": 1.5,
+            "stall_fraction": 0.25, "stall_intervals": 2, "forget_straight_ms": 2000,
+            "reacquire_within": 0.15, "max_landmarks": 16,
+        },
+    },
 )

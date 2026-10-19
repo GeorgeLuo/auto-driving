@@ -115,6 +115,20 @@ after failing, discards the older bound, so the hypothesis can move back when
 conditions change. The hypothesis lives in shared memory, so restarting the
 host or resetting memory forgets it.
 
+Memory's `turn_model` changes no command. It learns, from ordinary driving,
+how the car's own turn moves the boxes `sim_cardboard_permanence` tracks: each
+landmark's bearing is its box centre's offset from the middle of the image, in
+image widths, and each new camera frame contributes the median shift of the
+landmarks seen at both ends, filed by the maneuver over that interval
+(`turn_start`, `turning`, `turn_end` or `straight`). A box touching the image
+edge, or one that changes size by more than 1.5×, does not count, because the
+detector splits a box leaving the image and identities follow the pieces. Two
+slow turning intervals in a row are counted as a stall instead of learned.
+Landmarks that leave the view keep a bearing carried by the learned speed, so
+one seen again measures how far off it was. It knows no degrees, camera or
+map, only widths per second and its own errors, so it should transfer to
+another car and camera unchanged.
+
 Perception's `sim_wall` plugin finds wall pixels by saturation, which lighting
 does not change: the walls are less saturated than the wood floor and more than
 the gray sky. It splits the image into 16 vertical strips and emits one box per

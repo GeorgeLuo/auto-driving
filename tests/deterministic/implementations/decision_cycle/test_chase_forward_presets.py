@@ -1,7 +1,8 @@
 """The matching Chase v1 presets drive into an obstacle, back up until the right is clear, then turn right.
 
 The collision also starts memory's stop row, so the next obstacle ahead starts
-the maneuver before contact.
+the maneuver before contact. Memory's turn model places the box it sees, but
+learns no speed from frames this far apart.
 """
 
 import unittest
@@ -79,3 +80,6 @@ class ChaseForwardPresetTests(unittest.TestCase):
         self.assertEqual(hypothesis["stop_row"], 0.79)
         self.assertEqual(hypothesis["counts"]["collision"], 1)
         self.assertEqual(hypothesis["trial"]["stop_row"], 0.79)
+        model = shared_memory["memory.turn_model.state"]
+        self.assertEqual([(item["bearing"], item["in_view"]) for item in model["landmarks"].values()], [(0.0, True)])
+        self.assertEqual(model["samples"], {"turn_start": [], "turning": [], "turn_end": [], "straight": []})

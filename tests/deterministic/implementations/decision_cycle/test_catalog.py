@@ -35,7 +35,7 @@ class DeclaredIdTests(unittest.TestCase):
         with self._clashing_actions():
             with self.assertRaisesRegex(DuplicatePluginIdError, "duplicate action plugin id 'selected'"):
                 catalog.step_plugins("action")
-            self.assertEqual(sorted(catalog.step_plugins("memory")), ["bounded_evidence", "stop_row"])
+            self.assertEqual(sorted(catalog.step_plugins("memory")), ["bounded_evidence", "stop_row", "turn_model"])
 
     def test_cli_reports_the_clash_and_exits_2(self) -> None:
         stderr = io.StringIO()

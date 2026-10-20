@@ -124,8 +124,10 @@ def write_plugin(file: Path, step: str, plugin_id: str, revision: int) -> None:
         )
     elif step == "memory":
         source = (
+            "from autonomy.decision_cycle.memory.plugin import MemoryPluginContract\n"
             "class Prototype:\n"
             f"    plugin_id = {plugin_id!r}\n"
+            "    contract = MemoryPluginContract(description='Test memory plugin.')\n"
             "    def update(self, context, observation):\n"
             "        memory = context.shared_memory\n"
             "        prior = memory.get('prototype.memory', {})\n"

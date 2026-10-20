@@ -19,7 +19,7 @@ from tests.shared.cli.workbench_fixtures import (
 
 
 def _empty_memory_report() -> dict:
-    return {"schema": MEMORY_REPORT_SCHEMA, "plugins": [], "evidence_publisher": None}
+    return {"schema": MEMORY_REPORT_SCHEMA, "plugins": [], "evidence_publisher": None, "beliefs": {}}
 
 
 def _plugin_ids(perception: dict | None) -> list[str]:

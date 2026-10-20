@@ -2,6 +2,7 @@
  {
   "frame_id": "present_0",
   "report": {
+   "beliefs": {},
    "evidence_publisher": "bounded_evidence",
    "plugins": [
     {
@@ -95,6 +96,7 @@
  {
   "frame_id": "present_1",
   "report": {
+   "beliefs": {},
    "evidence_publisher": "bounded_evidence",
    "plugins": [
     {
@@ -215,6 +217,7 @@
  {
   "frame_id": "dropout_0",
   "report": {
+   "beliefs": {},
    "evidence_publisher": "bounded_evidence",
    "plugins": [
     {
@@ -335,6 +338,7 @@
  {
   "frame_id": "dropout_1",
   "report": {
+   "beliefs": {},
    "evidence_publisher": "bounded_evidence",
    "plugins": [
     {
@@ -455,6 +459,7 @@
  {
   "frame_id": "expiry_0",
   "report": {
+   "beliefs": {},
    "evidence_publisher": "bounded_evidence",
    "plugins": [
     {
@@ -516,6 +521,7 @@
  {
   "frame_id": "reset",
   "report": {
+   "beliefs": {},
    "evidence_publisher": "bounded_evidence",
    "plugins": [
     {

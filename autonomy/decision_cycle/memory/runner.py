@@ -3,9 +3,9 @@
 ``MemoryRunner`` is a ``StepRunner`` whose ``load_plugin`` wraps each
 selected plugin in a ``MemoryPluginRuntime``; it runs them in selection order.
 Its return value is the ``MemoryReport`` dict from ``interface``: each
-plugin's own state summary for diagnostics, and the evidence publisher, the
-plugin whose value ``EVIDENCE_KEY`` holds. Decisions read plugin-published
-keys in the host map, not the report.
+plugin's own state summary for diagnostics, the evidence publisher, the
+plugin whose value ``EVIDENCE_KEY`` holds, and the published beliefs.
+Decisions read plugin-published keys in the host map, not the report.
 
 ``MemoryPluginRuntime`` times and reports one applied plugin; the runner
 copies each plugin's duration and error into its plugin records. It sits here, in
@@ -30,10 +30,11 @@ from autonomy.decision_cycle.memory.interface import (
     MemoryReport,
     composition_declaration,
 )
-from autonomy.decision_cycle.memory.plugin import MemoryPlugin, plugin_status
-from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.beliefs import Belief
+from autonomy.decision_cycle.memory.plugin import MemoryPlugin, MemoryPluginContract, plugin_status
+from autonomy.decision_cycle.memory.publication import BELIEF_KEY_PREFIX, EVIDENCE_KEY, belief_key
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.runner import StepRunner, reset_plugin
+from autonomy.decision_cycle.runner import StepRunner, describe_plugin, reset_plugin
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition, PluginManager
 from autonomy.shared_memory import SharedMemory
@@ -59,6 +60,8 @@ class MemoryPluginRuntime:
         self.plugin_id = definition.plugin_id
         self.source_path = source_path
         self.implementation = plugin
+        # The keys of the beliefs this plugin's contract declares, removed at reset.
+        self.belief_keys = frozenset(belief_key(belief_id) for belief_id in plugin.contract.belief_ids)
         self.last_duration_ms: float | None = None
         self.last_error: str | None = None
         self.update_count = 0
@@ -91,6 +94,9 @@ class MemoryPluginRuntime:
         if shared_memory is not None:
             self._shared_memory = shared_memory
         try:
+            if self._shared_memory is not None:
+                for key in self.belief_keys:
+                    self._shared_memory.pop(key, None)
             reset_plugin(self.implementation, self._shared_memory)
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - step isolation boundary
@@ -130,8 +136,8 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
     in a ``MemoryPluginRuntime`` that times and reports it.
 
     Plugins run in selection order on the same host map. Each plugin writes its
-    own keys; where two plugins publish to the same key, the later one wins.
-    The framework does not merge retention policies.
+    own keys; where two plugins publish evidence or the same belief key, the
+    later one wins. The framework does not merge retention policies.
 
     ``evidence_publisher`` names the applied plugin whose value
     ``EVIDENCE_KEY`` holds. The runner compares the key's value before and
@@ -176,6 +182,8 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
         return MemoryPluginRuntime(definition, plugin, source_path=source_path)
 
     def validate_plugin(self, plugin: Any, definition: PluginDefinition) -> None:
+        if not isinstance(getattr(plugin, "contract", None), MemoryPluginContract):
+            raise TypeError(f"plugin {definition.plugin_id!r} must expose MemoryPluginContract as contract")
         if not isinstance(plugin, MemoryPlugin):
             raise TypeError(f"memory plugin {definition.entrypoint} does not satisfy MemoryPlugin")
 
@@ -293,6 +301,10 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
         return {
             **super()._describe_schema(),
             "plugin_id": self.plugin_id,
+            "plugins": [
+                {**describe_plugin(definition), "contract": plugin.implementation.contract.to_dict()}
+                for definition, plugin in self.applied
+            ],
             "inputs": [
                 {
                     "name": "observation",
@@ -345,6 +357,7 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 for plugin in self.plugins.values()
             ),
             evidence_publisher=self.evidence_publisher,
+            beliefs={key: belief.summary() for key, belief in _published_beliefs(self._shared_memory).items()},
         ).to_dict()
 
     def status(self) -> dict[str, Any]:
@@ -353,10 +366,26 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 **super().status(),
                 "plugins": [plugin.status() for plugin in self.plugins.values()],
                 "evidence_publisher": self.evidence_publisher,
+                "beliefs": {
+                    belief_id: belief.to_dict()
+                    for belief_id, belief in _published_beliefs(self._shared_memory).items()
+                },
                 # Live memory readers, including the CLI, read update_count.
                 "update_count": self.update_count,
                 "reset_count": self.reset_count,
             }
+
+
+def _published_beliefs(shared_memory: SharedMemory | None) -> dict[str, Belief]:
+    """Each ``Belief`` under ``BELIEF_KEY_PREFIX``, by key suffix."""
+
+    if shared_memory is None:
+        return {}
+    return {
+        key.removeprefix(BELIEF_KEY_PREFIX): value
+        for key, value in shared_memory.items()
+        if key.startswith(BELIEF_KEY_PREFIX) and isinstance(value, Belief)
+    }
 
 
 def _evidence(shared_memory: SharedMemory | None) -> object:

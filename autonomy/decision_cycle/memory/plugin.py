@@ -9,6 +9,12 @@ the plugin's fresh state to the map. The runner calls it through
 ``reset_plugin``. ``status`` is an optional JSON summary of that state for
 diagnostics. Framework code owns selection, timing, and failure isolation.
 
+Every plugin exposes a ``MemoryPluginContract``: what it does and assumes, the
+beliefs it publishes, and its limits. A ``Belief`` (``beliefs``) is a learned
+value and the checks of it; the plugin decides what counts as support and keeps
+it at ``belief_key`` (``publication``). The runner removes declared beliefs
+before the plugin resets; plugin state lives only in shared memory.
+
 A memory plugin reads the host map and the ``observation``; it does not read
 the feed. The context it receives has no ``sensor_frame``. Anything memory needs
 from the feed reaches it through the observation or the map, written by a
@@ -21,18 +27,50 @@ null for missing keys. Inspect and workbench frame rows default a missing
 ``record_count`` to 0, preserve an explicit null, and omit ``bounds``.
 
 How several plugins share one map, including the one ``EVIDENCE_KEY`` and
-last-write-wins, is ``composition_declaration`` in ``interface``. What a
-failure does is ``FAILURE_POLICY`` there: an update failure stops the cycle,
-and a reset failure is recorded. ``MemoryRunner`` reads those values.
+last-write-wins per evidence or belief key, is ``composition_declaration`` in
+``interface``. What a failure does is ``FAILURE_POLICY`` there: an update
+failure stops the cycle, and a reset failure is recorded. ``MemoryRunner``
+reads those values.
 """
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.evidence import require_identifier
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.shared_memory import SharedMemory
+
+
+@dataclass(frozen=True)
+class MemoryPluginContract:
+    """What one memory plugin does and assumes, the beliefs it publishes, and its limits.
+
+    ``belief_ids`` names each ``Belief`` the plugin publishes; the last write
+    to each key wins. A plugin that does not check what it learns
+    declares ``belief_ids=()`` and publishes no beliefs, so readers get None,
+    never a score. A published belief's confidence is None until its first check.
+    """
+
+    description: str = ""
+    assumptions: tuple[str, ...] = ()
+    belief_ids: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if isinstance(self.belief_ids, str):
+            raise TypeError("belief_ids must be a tuple of belief ids, not one string")
+        object.__setattr__(self, "belief_ids", tuple(self.belief_ids))
+        for belief_id in self.belief_ids:
+            require_identifier(belief_id, field_name="belief_ids")
+        if len(set(self.belief_ids)) != len(self.belief_ids):
+            raise ValueError("belief ids must be unique")
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        return {key: list(value) if isinstance(value, tuple) else value for key, value in data.items()}
 
 
 @runtime_checkable
@@ -45,6 +83,7 @@ class MemoryPlugin(Protocol):
     """
 
     plugin_id: str
+    contract: MemoryPluginContract
 
     def update(
         self,

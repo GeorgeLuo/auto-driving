@@ -3,7 +3,7 @@
 ``MemoryBackend`` is the runner boundary, as ``PerceptionBackend`` is for
 perception. ``FAILURE_POLICY`` and ``composition_declaration`` are the values
 ``MemoryRunner`` and ``describe_schema`` read. The evidence slot stays one
-value, last write wins.
+value per key, last write wins for evidence and beliefs.
 
 ``MemoryReport`` is the diagnostics record for one run, with one
 ``MemoryPluginReport`` per applied plugin in selection order, and
@@ -20,7 +20,7 @@ from dataclasses import asdict, dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.publication import BELIEF_KEY_PREFIX, EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.runner import FailurePolicy
 from autonomy.shared_memory import SharedMemory
@@ -44,6 +44,8 @@ def composition_declaration() -> dict[str, str]:
         "order": "selection_order",
         "evidence_key": EVIDENCE_KEY,
         "evidence": "one_value_last_write_wins",
+        "belief_key_prefix": BELIEF_KEY_PREFIX,
+        "beliefs": "one_value_per_key_last_write_wins",
     }
 
 
@@ -116,23 +118,31 @@ class MemoryReport:
     find a plugin by its ``plugin_id``. ``evidence_publisher`` is the id of the
     applied plugin whose value ``EVIDENCE_KEY`` holds, or None when the key is
     absent or holds no applied plugin's value. The runner sets it (see
-    ``MemoryRunner``).
+    ``MemoryRunner``). ``beliefs`` maps each published belief key suffix to its
+    summary, or is None when the report's source does not know them, as for
+    a decision publication.
     """
 
     schema: str
     plugins: tuple[MemoryPluginReport, ...] = ()
     evidence_publisher: str | None = None
+    beliefs: dict[str, dict[str, Any]] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": self.schema,
             "plugins": [plugin.to_dict() for plugin in self.plugins],
             "evidence_publisher": self.evidence_publisher,
+            "beliefs": (
+                None if self.beliefs is None
+                else {belief_id: dict(belief) for belief_id, belief in self.beliefs.items()}
+            ),
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "MemoryReport":
         publisher = data.get("evidence_publisher")
+        beliefs = data.get("beliefs")
         return cls(
             schema=str(data.get("schema") or MEMORY_REPORT_SCHEMA),
             plugins=tuple(
@@ -141,4 +151,8 @@ class MemoryReport:
                 if isinstance(item, dict)
             ),
             evidence_publisher=publisher if isinstance(publisher, str) and publisher else None,
+            beliefs=(
+                {belief_id: dict(value) for belief_id, value in beliefs.items()}
+                if isinstance(beliefs, dict) else None
+            ),
         )

@@ -40,6 +40,11 @@ map and may leave fresh state behind, such as ``bounded_evidence``'s new
 epoch. ``MemoryRunner.reset`` returns that fresh state, and
 ``CycleHost.reset_memory`` keeps it after clearing the map. A perception
 plugin's ``memory_required`` flag means that plugin needs this map to perceive.
+
+A memory plugin's belief at ``memory.beliefs.<belief_id>`` is both that
+plugin's state and its publication. The last write to each belief key wins.
+The runner removes a plugin's declared beliefs before its reset runs, so a
+fresh belief written by reset survives. Plugin state lives only in shared memory.
 """
 
 from __future__ import annotations

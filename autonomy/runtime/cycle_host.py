@@ -38,9 +38,7 @@ from autonomy.decision_cycle.cycle import (
 from autonomy.decision_cycle.steps import (
     STEP_RUNNERS, decision_steps, load_decision_steps, snapshot_step_activations,
 )
-from autonomy.decision_cycle.action.publication import (
-    CONTROL_APPLICATIONS_KEY, MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY,
-)
+from autonomy.decision_cycle.action.publication import write_host_inputs
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlExecution, ControlTarget
@@ -372,11 +370,11 @@ class AutonomyCycleHost:
                 context = replace(context, shared_memory=self.shared_memory)
             else:
                 self.shared_memory = context.shared_memory
-            context.shared_memory[MODE_KEY] = mode
-            context.shared_memory[USER_STEERING_KEY] = user_steering
-            context.shared_memory[USER_THROTTLE_KEY] = user_throttle
-            if ticket is not None:
-                context.shared_memory[CONTROL_APPLICATIONS_KEY] = ticket.control_applications
+            write_host_inputs(
+                context.shared_memory, mode=mode, user_steering=user_steering,
+                user_throttle=user_throttle,
+                control_applications=ticket.control_applications if ticket is not None else None,
+            )
             try:
                 self.sync_selection()
                 self._adopt_selection()
@@ -391,7 +389,6 @@ class AutonomyCycleHost:
                         if self.recording is not None:
                             self.recording.append(
                                 result, ticket.control_applications if ticket is not None else None,
-                                mode=mode, user_steering=user_steering, user_throttle=user_throttle,
                             )
                         self.run_decisions += 1
                         if (

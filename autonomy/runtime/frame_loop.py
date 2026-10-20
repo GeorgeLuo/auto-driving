@@ -197,8 +197,8 @@ class LatestCameraFrame:
 class _PendingFrame:
     camera: LatestCameraFrame
     mode_name: str
-    user_steering: float
-    user_throttle: float
+    user_steering: float | None
+    user_throttle: float | None
 
 
 class FrameLoop:
@@ -494,8 +494,8 @@ class FrameLoop:
         image: Any,
         *,
         mode: str | None = None,
-        user_steering: float = 0.0,
-        user_throttle: float = 0.0,
+        user_steering: float | None = None,
+        user_throttle: float | None = None,
         captured_at_ms: int | None = None,
         frame_id: str | None = None,
         frame_index: int | None = None,
@@ -530,7 +530,9 @@ class FrameLoop:
             if self._pending_frame is not None:
                 self.frames_dropped += 1
             self._pending_frame = _PendingFrame(
-                camera, mode, float(user_steering or 0.0), float(user_throttle or 0.0)
+                camera, mode,
+                None if user_steering is None else float(user_steering),
+                None if user_throttle is None else float(user_throttle),
             )
             if not self._decision_inflight and not self._memory_update_halted and not self._shutdown:
                 self._decision_inflight = True
@@ -999,8 +1001,8 @@ class FrameLoop:
         *,
         camera: LatestCameraFrame,
         mode_name: str,
-        user_steering: float,
-        user_throttle: float,
+        user_steering: float | None,
+        user_throttle: float | None,
     ) -> bool:
         frame_id, frame_index = camera.frame_id, camera.frame_index
         captured_at_ms = camera.captured_at_ms
@@ -1036,8 +1038,8 @@ class FrameLoop:
                         },
                     ),
                     mode=mode_name,
-                    user_steering=float(user_steering or 0.0),
-                    user_throttle=float(user_throttle or 0.0),
+                    user_steering=user_steering,
+                    user_throttle=user_throttle,
                 )
                 control = cycle_result.control
                 cycle_dict = cycle_result.to_dict()

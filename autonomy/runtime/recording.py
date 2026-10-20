@@ -29,7 +29,9 @@ from autonomy.decision_cycle.activation import (
     step_activation_from_payload,
 )
 from autonomy.decision_cycle.context import recorded_context
-from autonomy.decision_cycle.action.publication import read_mode
+from autonomy.decision_cycle.action.publication import (
+    read_mode, read_user_steering, read_user_throttle,
+)
 from autonomy.decision_cycle.cycle import DecisionCycleResult
 from autonomy.plugins import uploaded_source
 from autonomy.runtime.execution import ControlApplication
@@ -162,7 +164,7 @@ def append_recording_frame(
     frame_index: int | None = None,
     context: dict[str, Any] | None = None,
     control_application_change: dict[str, Any] | None = None,
-    mode: str | None = None, user_steering: float | None = None,
+    action_policy: str | None = None, user_steering: float | None = None,
     user_throttle: float | None = None,
 ) -> None:
     """Append one recorded frame to the run directory's manifest.
@@ -205,7 +207,8 @@ def append_recording_frame(
         "timestamp_ms": timestamp_ms,
         "image_path": relative_image,
         "steps": copy.deepcopy(steps),
-        "mode": mode, "user_steering": user_steering, "user_throttle": user_throttle,
+        "action_policy": action_policy, "user_steering": user_steering,
+        "user_throttle": user_throttle,
     }
     if frame_index is not None:
         entry["frame_index"] = frame_index
@@ -294,7 +297,7 @@ def write_recorded_frame(
         frame_index=frame["frame_index"], timestamp_ms=frame["captured_at_ms"],
         image_path=image_path, steps=frame["step_activations"], context=frame["context"],
         control_application_change=frame.get(CONTROL_APPLICATION_CHANGE_FIELD),
-        mode=frame.get("mode"), user_steering=frame.get("user_steering"),
+        action_policy=frame.get("action_policy"), user_steering=frame.get("user_steering"),
         user_throttle=frame.get("user_throttle"),
     )
 
@@ -339,6 +342,8 @@ def cycle_frame(result: DecisionCycleResult, *, vehicle_id: str, run_id: str) ->
         "observation": result.observation.to_dict() if result.observation else None,
         "memory": result.memory, "control": result.control_record(),
         "decision_cycle": result.to_dict(), "action_policy": read_mode(context.shared_memory),
+        "user_steering": read_user_steering(context.shared_memory),
+        "user_throttle": read_user_throttle(context.shared_memory),
     }
 
 
@@ -362,8 +367,6 @@ class RunRecording:
     def append(
         self, result: DecisionCycleResult,
         control_applications: tuple[ControlApplication, ...] | None = None,
-        *, mode: str | None = None, user_steering: float | None = None,
-        user_throttle: float | None = None,
     ) -> None:
         """Record a cycle and the applications the host published before it.
 
@@ -379,8 +382,6 @@ class RunRecording:
         else:
             raise ValueError("recording requires a camera image or an image encoder")
         frame = cycle_frame(result, vehicle_id=self.vehicle_id, run_id=self.run_id)
-        frame.update(mode=mode, user_steering=user_steering, user_throttle=user_throttle)
-        frame["action_policy"] = mode
         with self._lock:
             applications = control_applications or ()
             previous = self._previous_applications

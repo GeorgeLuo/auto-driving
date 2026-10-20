@@ -661,7 +661,7 @@ def _strict_decode_authority(payload: object, *, field: str) -> AuthorityResult:
             cycle_status=str(payload["cycle_status"]),
             cycle_reason=str(payload.get("cycle_reason") or ""),
             authorized_output=dict(authorized_output),
-            drive_mode_gate=str(payload.get("drive_mode_gate") or "unknown"),
+            drive_mode_gate=payload.get("drive_mode_gate"),
             proposed_applied=payload["proposed_applied"],
             schema=str(payload.get("schema") or AUTHORITY_RESULT_SCHEMA),
         )

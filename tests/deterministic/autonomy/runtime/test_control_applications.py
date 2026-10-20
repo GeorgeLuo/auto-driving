@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY, MODE_KEY
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
@@ -61,7 +61,8 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                     expected.append(result.context.shared_memory[CONTROL_APPLICATIONS_KEY])
             manifest = json.loads((recording.root / RECORDING_MANIFEST_NAME).read_text())
             entries = manifest["frames"]
-            self.assertEqual([entry["mode"] for entry in entries], ["autonomy"] * 4)
+            self.assertEqual([entry["action_policy"] for entry in entries], ["autonomy"] * 4)
+            self.assertTrue(all("mode" not in entry for entry in entries))
             self.assertEqual([entry["user_steering"] for entry in entries], [0, 0.1, 0.2, 0.3])
             self.assertTrue(all(entry["user_throttle"] == 0.4 for entry in entries))
             self.assertTrue(all(set(entry["context"]) == {"timestamp_ms"} for entry in entries))
@@ -183,16 +184,15 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                     with self.assertRaisesRegex(SourceValidationError, "frame 0 has invalid control applications"):
                         load_image_source(root)
 
-    def test_replay_removes_the_key_when_the_source_recorded_none(self):
+    def test_replay_removes_the_keys_when_the_source_recorded_none(self):
         application = ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100)
         with image_source(1) as root:
             write_manifest(root, {"frames": [{"image_path": "frame_00.png"}]})
             source = load_image_source(root)
         self.assertIsNone(source.frames[0].control_applications)
-        shared_memory = {CONTROL_APPLICATIONS_KEY: (application,)}
+        shared_memory = {CONTROL_APPLICATIONS_KEY: (application,), MODE_KEY: "local"}
         seen = []
         steps = {step: None for step in ("perception", "observation", "memory", "proposal", "plan", "action")}
         steps["memory"] = lambda context, observation: seen.append(dict(context.shared_memory))
         run_frame(source.frames[0], steps=steps, shared_memory=shared_memory)
-        self.assertNotIn(CONTROL_APPLICATIONS_KEY, seen[0])
-        self.assertIsNone(seen[0]["action.mode"])
+        self.assertEqual(seen, [{}])

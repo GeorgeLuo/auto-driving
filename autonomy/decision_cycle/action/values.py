@@ -72,7 +72,7 @@ class AuthorityResult:
     cycle_status: str
     authorized_output: dict[str, Any]
     cycle_reason: str = ""
-    drive_mode_gate: str = "unknown"
+    drive_mode_gate: str | None = None
     proposed_applied: bool = False
     schema: str = AUTHORITY_RESULT_SCHEMA
 
@@ -143,7 +143,7 @@ def build_authority(
     cycle_status: str,
     cycle_reason: str = "",
     proposed: ProposedVehicleCommand | None = None,
-    drive_mode_gate: str = "unknown",
+    drive_mode_gate: str | None = None,
 ) -> AuthorityResult:
     # Detach proposed command so authority does not alias plan candidate storage.
     detached_proposed: ProposedVehicleCommand | None = None

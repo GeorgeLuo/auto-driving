@@ -11,9 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.action.publication import (
-    CONTROL_APPLICATIONS_KEY, MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY,
-)
+from autonomy.decision_cycle.action.publication import write_host_inputs
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.observation.perception_summary import observation_from_perception
@@ -130,13 +128,10 @@ def run_frame(
     perception_step = steps["perception"]
 
     sensor_frame = sensor_frame_for_replay_frame(frame)
-    if frame.control_applications is None:
-        shared_memory.pop(CONTROL_APPLICATIONS_KEY, None)
-    else:
-        shared_memory[CONTROL_APPLICATIONS_KEY] = frame.control_applications
-    shared_memory[MODE_KEY] = frame.mode
-    shared_memory[USER_STEERING_KEY] = frame.user_steering
-    shared_memory[USER_THROTTLE_KEY] = frame.user_throttle
+    write_host_inputs(
+        shared_memory, mode=frame.action_policy, user_steering=frame.user_steering,
+        user_throttle=frame.user_throttle, control_applications=frame.control_applications,
+    )
     recorded_context = frame.metadata.get("context", {})
     context = DecisionFrameContext.from_record(
         recorded_context,

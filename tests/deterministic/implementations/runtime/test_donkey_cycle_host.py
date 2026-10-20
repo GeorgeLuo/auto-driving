@@ -112,6 +112,8 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(control["steering"], 0.7)
         self.assertIsNotNone(cycle)
         self.assertEqual(part.host.shared_memory["action.mode"], "manual")
+        self.assertEqual(part.host.shared_memory["action.user_steering"], 0.2)
+        self.assertEqual(part.host.shared_memory["action.user_throttle"], 0.1)
         self.assertIsNotNone(part.latest_state)
         self.assertEqual(part.latest_state.status, "ok")
         self.assertEqual(part.latest_state.mode, "manual")
@@ -127,6 +129,8 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
         self.assertEqual(steering, 0.7)
         self.assertEqual(throttle, 0.4)
+        self.assertNotIn("action.user_steering", part.host.shared_memory)
+        self.assertNotIn("action.user_throttle", part.host.shared_memory)
         self.assertEqual(control["steering"], 0.7)
 
     def test_detaches_image_from_vehicle_memory(self) -> None:

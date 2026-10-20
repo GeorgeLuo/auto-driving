@@ -9,7 +9,9 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
+from autonomy.decision_cycle.action.publication import (
+    CONTROL_APPLICATIONS_KEY, MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY,
+)
 from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.activation import (
     STEP_ACTIVATION_SCHEMA,
@@ -131,8 +133,13 @@ class CycleHostMemoryTests(unittest.TestCase):
             self.assertNotIn("control_applications", result.context.to_dict())
         without_execution, _ = _host()
         self.addCleanup(without_execution.close)
-        result = without_execution.run(DecisionFrameContext("frame-none", 0, int(time.time() * 1000)))
-        self.assertNotIn(CONTROL_APPLICATIONS_KEY, result.context.shared_memory)
+        without_execution.run(
+            DecisionFrameContext("frame-known", 0, int(time.time() * 1000)),
+            mode="local", user_steering=0.25, user_throttle=0.5,
+        )
+        result = without_execution.run(DecisionFrameContext("frame-none", 1, int(time.time() * 1000)))
+        for key in (CONTROL_APPLICATIONS_KEY, MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY):
+            self.assertNotIn(key, result.context.shared_memory)
 
     def test_mode_and_applications_are_captured_in_the_same_ticket(self):
         host, _ = _host()
@@ -388,6 +395,8 @@ class CycleHostStepTests(unittest.TestCase):
         self.assertEqual(failed.action.status, "error")
         self.assertEqual(failed.action.reason, "step_internal_error")
         self.assertEqual(failed.control.reason, "hold-idle")
+        self.assertEqual(failed.action.authority.gate_id, "hold")
+        self.assertIsNone(failed.action.authority.drive_mode_gate)
         self.assertFalse(failed.action.authority.proposed_applied)
         self.assertIn("transient action failure", host.status()["steps"]["action"]["last_error"])
 

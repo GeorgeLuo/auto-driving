@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from typing import ClassVar
 
-from autonomy.decision_cycle.action.hold import HoldAction, idle_control
+from autonomy.decision_cycle.action.hold import HoldAction
 from autonomy.decision_cycle.action.plugin import ActionPlugin
 from autonomy.decision_cycle.action.publication import read_mode
 from autonomy.decision_cycle.action.result import ActionResult
@@ -42,7 +42,6 @@ class ActionRunner(StepRunner[ActionPlugin]):
         proposal: ProposalResult | None,
         plan: ActionPlan | None,
     ) -> ActionResult:
-        mode = read_mode(context.shared_memory) or "unknown"
         if proposal is not None and proposal.status != "ok":
             error_reason: str | None = proposal.reason
         elif plan is None:
@@ -54,9 +53,7 @@ class ActionRunner(StepRunner[ActionPlugin]):
             return self._decide(
                 plugin,
                 context=context,
-                frame_id=context.frame_id,
                 plan=plan if error_reason is None else None,
-                mode=mode,
                 error_reason=error_reason,
             )
 
@@ -65,9 +62,7 @@ class ActionRunner(StepRunner[ActionPlugin]):
         plugin: ActionPlugin,
         *,
         context: DecisionFrameContext,
-        frame_id: str,
         plan: ActionPlan | None,
-        mode: str,
         error_reason: str | None,
     ) -> ActionResult:
         try:
@@ -79,21 +74,17 @@ class ActionRunner(StepRunner[ActionPlugin]):
                 raise TypeError("action plugin must return an ActionDecision")
             proposed = _planned_command(plan)
             result = action_result(
-                frame_id=frame_id,
+                frame_id=context.frame_id,
                 plugin_id=plugin.plugin_id,
                 decision=decision,
                 error_reason=error_reason,
                 proposed=proposed,
-                mode=mode,
+                mode=read_mode(context.shared_memory),
             )
         except Exception as exc:  # noqa: BLE001 - the cycle still gets a held control
             self.failure_count += 1
             self.last_error = describe_exception(exc)
-            return error_action_result(
-                frame_id=frame_id,
-                reason="step_internal_error",
-                mode=mode,
-            )
+            return error_action_result(context, reason="step_internal_error")
         self.last_error = None
         return result
 
@@ -112,7 +103,7 @@ def action_result(
     decision: ActionDecision,
     error_reason: str | None = None,
     proposed: ProposedVehicleCommand | None = None,
-    mode: str = "unknown",
+    mode: str | None = None,
 ) -> ActionResult:
     status = "ok" if error_reason is None else "error"
     reason = "" if error_reason is None else error_reason
@@ -134,19 +125,14 @@ def action_result(
     )
 
 
-def error_action_result(
-    *,
-    frame_id: str,
-    reason: str,
-    mode: str = "unknown",
-) -> ActionResult:
+def error_action_result(context: DecisionFrameContext, *, reason: str) -> ActionResult:
     """The fail-closed record when no action plugin could decide: hold."""
 
     hold = HoldAction()
     return action_result(
-        frame_id=frame_id,
+        frame_id=context.frame_id,
         plugin_id=hold.plugin_id,
-        decision=ActionDecision(control=idle_control(), applied=False),
+        decision=hold.decide(context, None, error_reason=reason),
         error_reason=reason,
-        mode=mode,
+        mode=read_mode(context.shared_memory),
     )

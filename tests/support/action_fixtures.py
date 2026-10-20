@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Callable
 
+from autonomy.decision_cycle.action.publication import write_host_inputs
 from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.action.runner import ActionRunner
 from autonomy.decision_cycle.action.values import ActionDecision
@@ -146,7 +147,7 @@ class DecisionChain:
         frame_id: str,
         frame_index: int,
         timestamp_ms: int,
-        drive_mode_gate: str = "unknown",
+        drive_mode_gate: str | None = None,
         **proposal_inputs: Any,
     ) -> DecisionRecords:
         proposal = self.proposal.run(
@@ -155,11 +156,13 @@ class DecisionChain:
             timestamp_ms=timestamp_ms,
             **proposal_inputs,
         )
+        shared_memory: dict[str, Any] = {}
+        write_host_inputs(shared_memory, mode=drive_mode_gate)
         context = DecisionFrameContext(
             frame_id=frame_id,
             frame_index=frame_index,
             timestamp_ms=timestamp_ms,
-            shared_memory={"action.mode": drive_mode_gate},
+            shared_memory=shared_memory,
         )
         plan = self.plan(context, proposal)
         return DecisionRecords(proposal, plan, self.action(context, proposal, plan))

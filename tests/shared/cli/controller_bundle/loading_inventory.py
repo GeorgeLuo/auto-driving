@@ -103,7 +103,6 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("autonomy.decision_cycle.proposal.values", "MAX_SOURCE_REF_NOTE", "autonomy.decision_cycle.proposal.values", "MAX_SOURCE_REF_NOTE"),
     ("autonomy.decision_cycle.proposal.values", "PROPOSED_VEHICLE_COMMAND_SCHEMA", "autonomy.decision_cycle.proposal.values", "PROPOSED_VEHICLE_COMMAND_SCHEMA"),
     ("autonomy.decision_cycle.proposal.values", "synthetic_error_proposal", "autonomy.decision_cycle.proposal.values", "synthetic_error_proposal"),
-    ("autonomy.decision_cycle.proposal.inputs", "CAPABILITY_REQUIRED_KEYS", "autonomy.decision_cycle.proposal.inputs", "CAPABILITY_REQUIRED_KEYS"),
     ("autonomy.decision_cycle.proposal.inputs", "COMPONENT_STATUSES", "autonomy.decision_cycle.proposal.inputs", "COMPONENT_STATUSES"),
     ("autonomy.decision_cycle.proposal.inputs", "ComponentStatus", "autonomy.decision_cycle.proposal.inputs", "ComponentStatus"),
     ("autonomy.decision_cycle.proposal.inputs", "FORBIDDEN_CHANNEL_ORIGINS", "autonomy.decision_cycle.proposal.inputs", "FORBIDDEN_CHANNEL_ORIGINS"),

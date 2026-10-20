@@ -26,7 +26,6 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(plan.to_dict()["metadata"], {})
 
     def test_plugin_cannot_admit_oversize_via_metadata_mutation(self) -> None:
-        from autonomy.decision_cycle.context import DecisionFrameContext
         from autonomy.serialization import FrozenJsonObject
 
         def corrupt(context) -> ActionProposal:
@@ -88,8 +87,6 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(control.steering, 0.0)
 
     def test_corrupted_lifecycle_matrix_is_engine_error(self) -> None:
-        from autonomy.decision_cycle.context import DecisionFrameContext
-
         def corrupt_matrix(context) -> ActionProposal:
             proposal = ActionProposal(
                 plugin_id="avoid_recent_obstruction",
@@ -119,8 +116,6 @@ class RunnerBoundaryTests(unittest.TestCase):
 
 
     def test_runner_rejects_non_bool_available_after_construction(self) -> None:
-        from autonomy.decision_cycle.context import DecisionFrameContext
-
         def bad_available(context) -> ActionProposal:
             proposal = _active_proposal(frame_id=context.frame_id)
             object.__setattr__(proposal, "available", "false")  # type: ignore[arg-type]
@@ -140,8 +135,6 @@ class RunnerBoundaryTests(unittest.TestCase):
 
 
     def test_authority_proposed_is_detached_from_selected_command(self) -> None:
-        from autonomy.decision_cycle.context import DecisionFrameContext
-
         def active(context) -> ActionProposal:
             return _active_proposal(frame_id=context.frame_id, steering=0.35)
 

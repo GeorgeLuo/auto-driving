@@ -60,8 +60,6 @@ class ActionProposalMatrixTests(unittest.TestCase):
 class RunnerBoundaryTests(unittest.TestCase):
 
     def test_prior_frame_proposal_not_selected(self) -> None:
-        from autonomy.decision_cycle.context import DecisionFrameContext
-
         stale = _active_proposal(frame_id="frame_001", confidence=0.99)
 
         def bad_plugin(context) -> ActionProposal:
@@ -257,8 +255,6 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(result.plan.status, "selected")
 
     def test_plugin_none_wrong_id_and_exception(self) -> None:
-        from autonomy.decision_cycle.context import DecisionFrameContext
-
         def return_none(context) -> ActionProposal:
             return None  # type: ignore[return-value]
 

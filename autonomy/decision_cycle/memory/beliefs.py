@@ -20,6 +20,7 @@ from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
 from autonomy.decision_cycle.memory.evidence import require_identifier, require_non_negative_int
+from autonomy.serialization import canonical_json_utf8
 
 Outcome = Literal["support", "contradict"]
 
@@ -81,7 +82,7 @@ class Trial:
 
 @dataclass(frozen=True)
 class Belief:
-    """A learned value, the predictions still open, and the recent checks of it."""
+    """A learned value of JSON data, its open predictions, and recent checks."""
 
     belief_id: str
     value: Any
@@ -92,6 +93,7 @@ class Belief:
     properties: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
+        canonical_json_utf8(self.value)
         require_identifier(self.belief_id, field_name="belief_id")
         require_identifier(self.source_plugin_id, field_name="source_plugin_id")
         object.__setattr__(

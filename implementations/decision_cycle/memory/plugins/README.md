@@ -17,7 +17,8 @@ One folder per plugin, named for its `plugin_id`. For example, the
   assumptions, the `belief_ids` it publishes, and its limitations. A plugin
   that does not check what it learns declares `belief_ids=()` and publishes
   no beliefs; readers then get `None`, never a score. The last write to each
-  belief key wins.
+  belief key wins. Belief values must be JSON data; constructing a non-JSON
+  value raises in the plugin update and stops the cycle.
 - Register a plugin with one entry in `../catalog.py`: its `spec`
   (`module.path:Class`), a description, and its default config.
 - Name ordered plugin selections and configuration recipes in `../presets.py`,
@@ -36,6 +37,8 @@ One folder per plugin, named for its `plugin_id`. For example, the
   0, preserve an explicit null, and omit `bounds`. The reset check reads
   `health` and `record_count` from every applied plugin. A reset emptied the
   memory when each plugin reports `empty` health or no records.
+- An optional `status(shared_memory)` returns JSON data. Invalid status data
+  appears as a visible `status_error` for that plugin.
 - The report keeps every applied plugin's status, keyed by `plugin_id`, and
   names `evidence_publisher`: the plugin whose value `EVIDENCE_KEY` holds.
   Inspect, the live probes, the PiCar pages, and the workbench each list

@@ -2,9 +2,14 @@ from __future__ import annotations
 
 import json
 import unittest
+from dataclasses import replace
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
+from autonomy.decision_cycle.steps import decision_steps
+from autonomy.decision_cycle.proposal.runner import ProposalRunner
+from autonomy.runtime.report import report_from_host_result
+from implementations.runtime.picar.control import DonkeyControlTarget
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.decision_cycle.memory.beliefs import Belief, Check
 from autonomy.decision_cycle.memory.interface import MemoryReport
@@ -39,6 +44,36 @@ def _context(shared, timestamp_ms=10):
 
 
 class BeliefRunnerTests(unittest.TestCase):
+    def test_non_json_status_publishes_a_visible_error_on_its_plugin(self):
+        class BadStatus(_Learner):
+            def status(self, shared_memory):
+                return {"bad": {1, 2}}
+
+        host = AutonomyCycleHost(
+            steps=replace(
+                decision_steps(), proposal=ProposalRunner.from_plugins({}),
+                memory=MemoryRunner.from_plugins({"learner": BadStatus()}),
+            ),
+            target=DonkeyControlTarget(),
+        )
+        self.addCleanup(host.close)
+        result = host.run(_context({}))
+        report = report_from_host_result(result, vehicle_id="test", run_id="run", generation_id="gen").to_dict()
+        state = report["cycle"]["memory"]["plugins"][0]["state"]
+        self.assertIn("status_error", state)
+        self.assertIn("JSON", state["status_error"])
+
+    def test_non_json_belief_fails_in_the_plugin_update_and_stops_the_cycle(self):
+        class BadBelief(_Learner):
+            def update(self, context):
+                Belief(self.belief_id, {1, 2}, self.plugin_id, context.timestamp_ms)
+
+        runner = MemoryRunner.from_plugins({"learner": BadBelief()})
+        with self.assertRaisesRegex(ValueError, "JSON"):
+            runner.update(_context({}))
+        self.assertEqual(runner.failure_count, 1)
+        self.assertIn("JSON", runner.last_error)
+
     def test_contract_is_required_even_when_update_exists(self):
         class MissingContract:
             plugin_id = "missing"

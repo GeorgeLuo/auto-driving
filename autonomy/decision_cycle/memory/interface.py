@@ -84,9 +84,9 @@ LEDGER_HEALTH_VALUES: frozenset[str] = frozenset(
 class MemoryPluginReport:
     """One applied plugin in the memory report.
 
-    ``state`` is that plugin's own status summary. The framework passes
-    through whatever ``status`` returned, including None when the plugin
-    offers none. ``to_dict`` serializes that summary with ``asdict``.
+    ``state`` is that plugin's own status summary of JSON data, including
+    None when the plugin offers none. Invalid status data becomes a visible
+    ``status_error`` on the plugin. ``to_dict`` serializes that summary with ``asdict``.
     """
 
     plugin_id: str

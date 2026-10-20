@@ -1,7 +1,7 @@
 """The action step's decision and the authority record every action produces.
 
-An action plugin receives the cycle's plan (or the error that prevented one)
-and the drive mode, and returns an ``ActionDecision``: the control to apply and
+An action plugin receives the cycle context and plan (or the error that
+prevented one), and returns an ``ActionDecision``: the control to apply and
 whether it applies the plan's command. ``AuthorityResult`` records the plan's
 command, the control the action authorized, and whether that control is the
 plan's command. ``gate_id`` is the deciding action plugin's ID.

@@ -33,6 +33,7 @@ def _keys(value):
         for item in value:
             yield from _keys(item)
 
+
 class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
     def test_read_sensors_uses_one_atomic_query_and_keeps_reference_outside_the_sensor_frame(
         self,

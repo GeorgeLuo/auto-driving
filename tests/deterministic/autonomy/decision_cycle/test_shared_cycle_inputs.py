@@ -27,18 +27,21 @@ class SharedCycleInputsTests(unittest.TestCase):
 
         class Observe:
             plugin_id = "observe"
+
             def observe(self, context, perception):
                 return observation
 
         class Remember:
             plugin_id = "remember"
             contract = MemoryPluginContract()
+
             def update(self, context):
                 seen.append(read_observation(context.shared_memory))
                 context.shared_memory[EVIDENCE_KEY] = ()
 
         class Propose:
             plugin_id = "propose"
+
             def propose(self, context):
                 seen.append(read_observation(context.shared_memory))
                 seen.append(context.shared_memory[EVIDENCE_KEY])
@@ -71,6 +74,7 @@ class SharedCycleInputsTests(unittest.TestCase):
         class Observe:
             plugin_id = "observe"
             value = observation
+
             def observe(self, context, perception):
                 return self.value
 

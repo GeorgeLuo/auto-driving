@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
@@ -36,6 +37,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
             startup = decision_identity(bundle)["generation_id"]
             applied = []
             servers = []
+            calls = ExitStack()
 
             def record_server(**kwargs):
                 servers.append(RuntimeViewServer(**kwargs))
@@ -44,18 +46,19 @@ class AutomationProposalSelectionTests(unittest.TestCase):
             def wrap_proposal(step_name, step):
                 if step_name != "proposal":
                     return
-                run = step.run
+                run = step.__call__
 
-                def run_with_cli_restage(context):
+                def run_with_cli_restage(runner, context):
                     result = run(context)
-                    applied.append(step.plugin_ids)
+                    applied.append(runner.plugin_ids)
                     if len(applied) == 1 and restaged is not None:
                         stage_activation(bundle, restaged, vehicle_id=VEHICLE_ID)
                     return result
 
-                step.run = run_with_cli_restage
+                calls.enter_context(patch.object(type(step), "__call__", run_with_cli_restage))
 
             with (
+                calls,
                 patch("cli.automa_cli.runtime_monitor.RuntimeViewServer", side_effect=record_server),
                 # Exercise the view projection without opening a socket.
                 patch.object(RuntimeViewServer, "start", lambda server: server),

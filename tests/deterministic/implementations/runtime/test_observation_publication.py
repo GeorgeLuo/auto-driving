@@ -183,7 +183,6 @@ class ObservationPublicationTests(unittest.TestCase):
         from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
         def remember(context):
-            pass
             record = RetainedEvidence(
                         record_id="thing:boundary",
                         kind="floor_boundary",

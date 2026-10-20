@@ -109,7 +109,6 @@ class DecisionRecords:
     def reason(self) -> str:
         return self.action.reason
 
-
     @property
     def authority(self):
         return self.action.authority

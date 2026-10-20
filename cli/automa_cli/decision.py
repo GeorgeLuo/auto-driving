@@ -61,7 +61,7 @@ from .host_publications import (
 )
 
 ERROR_SCHEMA = "vehicle_decision_error_v0"
-# A decision frame's cycle holds the proposal, plan, and action step records.
+# Typed decision records within the five-record cycle.
 PROPOSAL_RECORD_EXACT_KEYS = frozenset(
     {"schema", "frame_id", "status", "reason", "candidates"}
 )
@@ -386,8 +386,6 @@ def _strict_decode_command(payload: object, *, field: str) -> ProposedVehicleCom
     return command
 
 
-
-
 def _strict_decode_proposal(payload: object, *, field: str) -> ActionProposal:
     if not isinstance(payload, dict):
         raise DecisionSurfaceError(
@@ -610,12 +608,8 @@ def _strict_decode_authority(payload: object, *, field: str) -> AuthorityResult:
     return authority
 
 
-
-
-
-
 def _require_exact_cycle_export(cycle: dict[str, Any]) -> DecisionRecords:
-    """Strict reconstruction + full canonical export equality for the cycle.
+    """Strict reconstruction and canonical equality for the cycle's decision records.
 
     One owning boundary: reconstruct the typed proposal, plan, and action
     records (candidates, plan, authority) and require lossless

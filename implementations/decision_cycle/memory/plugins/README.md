@@ -9,9 +9,11 @@ One folder per plugin, named for its `plugin_id`. For example, the
   unique within the memory step: registering a second definition under an
   existing id raises `DuplicatePluginIdError`. Ids are scoped to a step, so a
   perception plugin may share a memory plugin's id.
-- Memory plugins do not read the camera feed. The runner hands them the frame
-  context without `sensor_frame`; evidence from the feed comes through the
-  observation, from a perception plugin.
+- Implement `update(context)`. The runner hands it the frame context without
+  `sensor_frame`. Read the current observation with
+  `read_observation(context.shared_memory)` from
+  `autonomy/decision_cycle/observation/publication.py`; evidence from the feed
+  reaches memory through perception and the observation.
 - The plugin class exposes `contract`, a `MemoryPluginContract`
   (`autonomy/decision_cycle/memory/plugin.py`): what it does, its
   assumptions, the `belief_ids` it publishes, and its limitations. A plugin
@@ -53,6 +55,7 @@ One folder per plugin, named for its `plugin_id`. For example, the
   `autonomy/decision_cycle/memory/interface.py`: `composition_declaration`
   (selection order, one `EVIDENCE_KEY`, last write wins, one value per belief key)
   and `FAILURE_POLICY` (an update failure stops the cycle, a reset failure is
-  recorded, a missing observation is still passed in). `MemoryRunner` reads those values.
+  recorded, plugins are still called when `read_observation` returns `None`).
+  `MemoryRunner` reads those values.
 - Reuse goes through `../shared/`. A plugin does not import another plugin's
   modules.

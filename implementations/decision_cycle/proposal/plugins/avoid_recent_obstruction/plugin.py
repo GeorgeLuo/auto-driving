@@ -320,7 +320,6 @@ def propose(
             # Active freshness class present but no lateral cue in that class.
             return _inactive(context, "no_lateral_obstruction_evidence")
 
-        assumptions = list(BASE_ASSUMPTIONS)
         magnitude = float(steer_magnitude)
 
         steering = magnitude if side == "left" else -magnitude
@@ -339,7 +338,7 @@ def propose(
             confidence=primary.confidence,
             reason=f"steer_away_{side}_obstruction",
             command=command,
-            assumptions=tuple(assumptions),
+            assumptions=BASE_ASSUMPTIONS,
             source_refs=(_source_ref(primary),),
             available=True,
         )

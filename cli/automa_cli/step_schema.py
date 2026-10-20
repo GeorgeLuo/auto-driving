@@ -187,8 +187,6 @@ def _sections(schema: dict[str, Any]) -> list[str]:
                     f"  contract: {contract.get('state_mode', 'unknown')} "
                     f"feeds={', '.join(feeds) or 'none'}"
                 )
-            if plugin.get("evidence_key"):
-                lines.append(f"  evidence_key: {plugin['evidence_key']}")
 
     output = schema.get("output") if isinstance(schema.get("output"), dict) else {}
     lines.extend(["", "Output:", f"- schema: {output.get('schema', 'unknown')}"])

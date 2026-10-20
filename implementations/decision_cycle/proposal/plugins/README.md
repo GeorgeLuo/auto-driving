@@ -28,6 +28,8 @@ One folder per plugin, named for its `plugin_id`. For example, the
   `action_proposal_matrix_violated` and no candidates. Plan does not plan and
   action fails closed.
 - Read the cycle from `context` and retained evidence from the host map.
+  Read the current observation with `read_observation(context.shared_memory)`
+  from `autonomy/decision_cycle/observation/publication.py`.
   `avoid_recent_obstruction` keeps `evidence_key` as its own config and
   defaults to `EVIDENCE_KEY` from
   `autonomy/decision_cycle/memory/publication.py`. Other plugins choose the

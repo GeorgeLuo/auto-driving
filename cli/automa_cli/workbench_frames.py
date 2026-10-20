@@ -174,7 +174,7 @@ def run_frame(
         current: DecisionFrameContext,
         perception: PerceptionText | None,
     ) -> Observation:
-        observation = observation_from_perception(
+        return observation_from_perception(
             observation_id=f"{frame.source_id}:{frame.frame_id}",
             sensor_frame=current.sensor_frame,
             perception=perception,
@@ -186,7 +186,6 @@ def run_frame(
             },
             created_at_ms=frame.timestamp_ms,
         )
-        return observation
 
     result = DecisionCycle(
         DecisionSteps(

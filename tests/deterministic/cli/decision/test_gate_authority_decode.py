@@ -46,10 +46,12 @@ def _applied_cycle() -> dict:
         frame_index=1,
         timestamp_ms=1000,
         mode="local",
-        observation=Observation(
-            observation_id="obs-1", created_at_ms=1000, sensor_frame={}, summary=("t",)
-        ),
-        shared_memory={EVIDENCE_KEY: _left_obstruction()},
+        shared_memory={
+            "observation.current": Observation(
+                observation_id="obs-1", created_at_ms=1000, sensor_frame={}, summary=("t",)
+            ),
+            EVIDENCE_KEY: _left_obstruction(),
+        },
     )
     assert records.authority.proposed_applied
     return records.to_dict()

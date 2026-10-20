@@ -205,8 +205,8 @@ class ModeActionTests(unittest.TestCase):
         self.assertEqual(action.authority.drive_mode_gate, "user")
 
     def test_donkey_pilot_part_forwards_live_command_in_local_mode(self) -> None:
-        def remember(context, observation):  # noqa: ANN001 - test step
-            del observation
+        def remember(context):  # noqa: ANN001 - test step
+            pass
             context.shared_memory[EVIDENCE_KEY] = _records(
                 "left", frame_id=context.frame_id, updated_at_ms=context.timestamp_ms
             )

@@ -26,16 +26,15 @@ class MemoryFailureIsolationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             step = _runner(tmp)
 
-            def huge_fail(context, observation):
-                del context, observation
+            def huge_fail(context):
+                del context
                 raise RuntimeError("x" * 300_000)
 
             step.plugins["recording_test"].implementation.update = huge_fail  # type: ignore[method-assign]
             with self.assertRaises(RuntimeError):
-                step.update(
-                    DecisionFrameContext("frame_8", 8, 800, shared_memory={}),
-                    Observation("obs_8", 790, {}),
-                )
+                context = DecisionFrameContext("frame_8", 8, 800, shared_memory={})
+                context.shared_memory["observation.current"] = Observation("obs_8", 790, {})
+                step.update(context)
             # last_error/status must be bounded (Chase worker publishes this).
             status = step.status()
             self.assertIsNotNone(status["last_error"])
@@ -50,18 +49,19 @@ class MemoryFailureIsolationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             step = _runner(tmp)
             shared: dict = {}
-            step.update(
-                DecisionFrameContext("frame_a", 1, 100, shared_memory=shared),
-                Observation("obs_a", 90, {}),
-            )
+            context = DecisionFrameContext("frame_a", 1, 100, shared_memory=shared)
+            context.shared_memory["observation.current"] = Observation("obs_a", 90, {})
+            step.update(context)
             before = dict(shared)
             step.plugins["recording_test"].implementation.fail_on_update = True
             with self.assertRaises(RuntimeError):
-                step.update(
-                    DecisionFrameContext("frame_b", 2, 200, shared_memory=shared),
-                    Observation("obs_b", 190, {}),
-                )
-            self.assertEqual(shared, before)
+                context = DecisionFrameContext("frame_b", 2, 200, shared_memory=shared)
+                context.shared_memory["observation.current"] = Observation("obs_b", 190, {})
+                step.update(context)
+            self.assertEqual(
+                {key: value for key, value in shared.items() if key != "observation.current"},
+                {key: value for key, value in before.items() if key != "observation.current"},
+            )
             self.assertEqual(step.report()["plugins"][0]["state"]["records"][0]["record_id"], "rec-obs_a")
 
     def test_reset_failure_is_recorded_with_a_bounded_diagnostic(self) -> None:

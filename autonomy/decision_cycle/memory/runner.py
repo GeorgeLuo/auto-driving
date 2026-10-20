@@ -33,7 +33,6 @@ from autonomy.decision_cycle.memory.interface import (
 from autonomy.decision_cycle.memory.beliefs import Belief
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, MemoryPluginContract, plugin_status
 from autonomy.decision_cycle.memory.publication import BELIEF_KEY_PREFIX, EVIDENCE_KEY, belief_key
-from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.runner import StepRunner, describe_plugin, reset_plugin
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition, PluginManager
@@ -70,15 +69,15 @@ class MemoryPluginRuntime:
         # The map the plugin last worked in, for status reads between cycles.
         self._shared_memory: SharedMemory | None = None
 
-    def __call__(self, context: DecisionFrameContext, observation: Observation | None) -> None:
-        self.update(context, observation)
+    def __call__(self, context: DecisionFrameContext) -> None:
+        self.update(context)
 
-    def update(self, context: DecisionFrameContext, observation: Observation | None) -> None:
+    def update(self, context: DecisionFrameContext) -> None:
         started = clock()
         if context.shared_memory is not None:
             self._shared_memory = context.shared_memory
         try:
-            self.implementation.update(context, observation)
+            self.implementation.update(context)
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1
@@ -201,12 +200,12 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
             self._published_evidence = _ABSENT
 
     def __call__(
-        self, context: DecisionFrameContext, observation: Observation | None,
+        self, context: DecisionFrameContext,
     ) -> dict[str, Any]:
-        return self.update(context, observation)
+        return self.update(context)
 
     def update(
-        self, context: DecisionFrameContext, observation: Observation | None,
+        self, context: DecisionFrameContext,
     ) -> dict[str, Any]:
         """Run each selected plugin in order and return the memory report.
 
@@ -226,15 +225,12 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 for plugin in self.plugins.values():
                     before = _evidence(self._shared_memory)
                     try:
-                        # A missing observation still reaches the plugin when
-                        # the declared policy is ``invoke``.
-                        if observation is not None or FAILURE_POLICY.missing_input == "invoke":
-                            try:
-                                plugin.update(memory_context, observation)
-                            finally:
-                                self._record_plugin(
-                                    plugin.plugin_id, plugin.last_duration_ms, plugin.last_error
-                                )
+                        try:
+                            plugin.update(memory_context)
+                        finally:
+                            self._record_plugin(
+                                plugin.plugin_id, plugin.last_duration_ms, plugin.last_error
+                            )
                     finally:
                         self._note_evidence(plugin.plugin_id, before)
             except Exception as exc:
@@ -309,9 +305,9 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 {
                     "name": "observation",
                     "required": False,
-                    "source": "the cycle's observation, written by perception",
+                    "source": "observation.current in the host map",
                     "missing_behavior": (
-                        "the plugin is still called with observation None"
+                        "the plugin is still called with an unknown observation"
                         if FAILURE_POLICY.missing_input == "invoke"
                         else "the plugin is not called when observation is None"
                     ),

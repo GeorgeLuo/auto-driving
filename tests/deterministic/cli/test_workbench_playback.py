@@ -70,10 +70,10 @@ class WorkbenchTests(unittest.TestCase):
             step = MemoryRunner.from_activation(selection_activation("memory"))
 
             class RecordingStep:
-                def __call__(self, context, observation):
+                def __call__(self, context):
                     step_reads.append(context.shared_memory["test.perception"])
                     context.shared_memory["test.step"] = context.frame_id
-                    report = step(context, observation)
+                    report = step(context)
                     reports.append(report)
                     published.append(context.shared_memory[LEDGER_KEY])
                     return report

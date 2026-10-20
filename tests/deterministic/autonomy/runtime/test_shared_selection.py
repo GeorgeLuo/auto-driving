@@ -119,7 +119,7 @@ class SharedSelectionTests(unittest.TestCase):
             staged.write_text(
                 "class LazyOnly:\n"
                 "    plugin_id = 'lazy_only'\n"
-                "    def propose(self, context, observation):\n"
+                "    def propose(self, context):\n"
                 "        return None\n",
                 encoding="utf-8",
             )
@@ -183,9 +183,9 @@ class SharedSelectionTests(unittest.TestCase):
                 original = runner.run
                 written = False
 
-                def run_and_restage(**kwargs):
+                def run_and_restage(context):
                     nonlocal written
-                    result = original(**kwargs)
+                    result = original(context)
                     if not written:
                         write_step_activation(path, packaged_activation("proposal", []))
                         written = True

@@ -6,9 +6,9 @@ One folder per plugin, named for its `plugin_id`. For example, the
 ## Rules
 
 - `plugin.py` holds the plugin class, which declares `plugin_id` and
-  implements `propose(source, shared_memory)`, the `ProposalPlugin` protocol in
-  `autonomy/decision_cycle/proposal/plugin.py`. `shared_memory` is the host
-  map, or `None` without one. Ids match
+  implements `propose(context)`, the `ProposalPlugin` protocol in
+  `autonomy/decision_cycle/proposal/plugin.py`. `context.shared_memory` is the
+  host map, or `None` without one. Ids match
   `[A-Za-z0-9._:-]{1,64}` and are unique within the proposal step:
   registering a second definition under an existing id raises
   `DuplicatePluginIdError`.
@@ -27,24 +27,21 @@ One folder per plugin, named for its `plugin_id`. For example, the
   matrix or size bounds fails the whole step with
   `action_proposal_matrix_violated` and no candidates. Plan does not plan and
   action fails closed.
-- Read the cycle through the `DecisionDataSource` passed in, and retained
-  evidence from the host map. A plugin may declare its key as `evidence_key`.
-  The step records an audit copy of the first declared key in selection order
-  in every plugin's source; it does not merge keys or create a separate audit
-  for each plugin. Every plugin still reads its own key directly from the
-  shared host map. `avoid_recent_obstruction` defaults to `EVIDENCE_KEY` from
-  `autonomy/decision_cycle/memory/publication.py`; the runner supplies no
-  default evidence key for other plugins.
+- Read the cycle from `context` and retained evidence from the host map.
+  `avoid_recent_obstruction` keeps `evidence_key` as its own config and
+  defaults to `EVIDENCE_KEY` from
+  `autonomy/decision_cycle/memory/publication.py`. Other plugins choose the
+  keys they read.
 - A plugin may implement `reset()` or `reset(shared_memory)` to begin a new
   epoch. The runner calls it on an explicit reset and when the plugin leaves
   the selection, passing the host map if the method takes an argument. The
   map may be absent in offline use. Reset errors propagate.
 - How several plugins share one cycle, and what a failure does, is declared in
   `autonomy/decision_cycle/proposal/interface.py`: `composition_declaration`
-  (selection order, a detached source copy per plugin, every candidate kept)
+  (selection order, every plugin reads the same host map, every candidate kept)
   and `FAILURE_POLICY` (a plugin error becomes that plugin's error candidate
-  and the others still propose, a reset error propagates, a missing
-  observation is still passed in). The runner's `describe_schema()` reports
+  and the others still propose, a reset error propagates, an absent
+  observation is unknown). The runner's `describe_schema()` reports
   these declarations alongside the candidate admission boundary.
 - `ProposalRunner.plugin_report()` reports each applied plugin's last
   invocation duration and error, including isolated synthetic error

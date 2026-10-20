@@ -25,11 +25,6 @@ from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
     ProposedVehicleCommand,
 )
-from autonomy.decision_cycle.proposal.inputs import (
-    DECISION_DATA_SOURCE_SCHEMA,
-    ComponentEnvelope,
-    DecisionDataSource,
-)
 from autonomy.decision_cycle.action.hold import (
     HoldAction,
     idle_output,
@@ -47,11 +42,9 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, activation_genera
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA, ProposalResult
-from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
 )
-from autonomy.decision_cycle.memory.evidence import RetainedEvidence
 from autonomy.serialization import canonical_json_utf8
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.report import (
@@ -74,7 +67,7 @@ ERROR_SCHEMA = "vehicle_decision_error_v0"
 # A decision frame's cycle holds the proposal, plan, and action step records.
 CYCLE_EXACT_KEYS = frozenset({"proposal", "plan", "action"})
 PROPOSAL_RECORD_EXACT_KEYS = frozenset(
-    {"schema", "frame_id", "status", "reason", "source", "candidates"}
+    {"schema", "frame_id", "status", "reason", "candidates"}
 )
 ACTION_RECORD_EXACT_KEYS = frozenset({"schema", "frame_id", "status", "reason", "authority"})
 AUTHORITY_EXACT_KEYS = frozenset(
@@ -108,19 +101,6 @@ PLAN_EXACT_KEYS = frozenset(
         "metadata",
     }
 )
-SOURCE_EXACT_KEYS = frozenset(
-    {
-        "schema",
-        "source_id",
-        "frame_id",
-        "frame_index",
-        "timestamp_ms",
-        "observation",
-        "evidence",
-        "metadata",
-    }
-)
-ENVELOPE_EXACT_KEYS = frozenset({"status", "value", "reason", "updated_at_ms"})
 PROPOSAL_EXACT_KEYS = frozenset(
     {
         "schema",
@@ -427,29 +407,6 @@ def _strict_decode_command(payload: object, *, field: str) -> ProposedVehicleCom
     return command
 
 
-def _strict_decode_envelope(payload: object, *, field: str) -> ComponentEnvelope:
-    if not isinstance(payload, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"{field} must be a ComponentEnvelope object.",
-            details={"field": field},
-        )
-    _require_exact_keys(payload, ENVELOPE_EXACT_KEYS, field=field)
-    try:
-        envelope = ComponentEnvelope(
-            status=payload["status"],
-            value=payload.get("value"),
-            reason=payload.get("reason") or "",
-            updated_at_ms=payload.get("updated_at_ms") or 0,
-        )
-    except (TypeError, ValueError) as exc:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"{field} failed ComponentEnvelope construction: {exc}",
-            details={"field": field},
-        ) from exc
-    _require_canonical_export_equal(payload, envelope.to_dict(), field=field)
-    return envelope
 
 
 def _strict_decode_proposal(payload: object, *, field: str) -> ActionProposal:
@@ -674,129 +631,15 @@ def _strict_decode_authority(payload: object, *, field: str) -> AuthorityResult:
     return authority
 
 
-def _strict_decode_source_envelope(
-    payload: object,
-    *,
-    component: str,
-    field: str,
-) -> ComponentEnvelope:
-    """Decode one source envelope, hydrating observation/memory typed values."""
-
-    if not isinstance(payload, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"{field} must be a ComponentEnvelope object.",
-            details={"field": field},
-        )
-    _require_exact_keys(payload, ENVELOPE_EXACT_KEYS, field=field)
-    status = payload.get("status")
-    value = payload.get("value")
-    reason = payload.get("reason") or ""
-    updated_at_ms = payload.get("updated_at_ms") or 0
-    if status == "ready":
-        if component == "observation":
-            if not isinstance(value, dict):
-                raise DecisionSurfaceError(
-                    "latest_frame_invalid",
-                    f"{field}.value must be an Observation export object when ready.",
-                    details={"field": field},
-                )
-            try:
-                typed = Observation.from_dict(value)
-            except (TypeError, ValueError) as exc:
-                raise DecisionSurfaceError(
-                    "latest_frame_invalid",
-                    f"{field}.value failed Observation construction: {exc}",
-                    details={"field": field},
-                ) from exc
-            _require_canonical_export_equal(
-                value, typed.to_dict(), field=f"{field}.value"
-            )
-            value = typed
-        elif component == "evidence":
-            if not isinstance(value, list):
-                raise DecisionSurfaceError(
-                    "latest_frame_invalid",
-                    f"{field}.value must be a list of RetainedEvidence exports when ready.",
-                    details={"field": field},
-                )
-            try:
-                typed = tuple(RetainedEvidence.from_dict(item) for item in value)
-            except (AttributeError, TypeError, ValueError) as exc:
-                raise DecisionSurfaceError(
-                    "latest_frame_invalid",
-                    f"{field}.value failed RetainedEvidence construction: {exc}",
-                    details={"field": field},
-                ) from exc
-            _require_canonical_export_equal(
-                value, [record.to_dict() for record in typed], field=f"{field}.value"
-            )
-            value = typed
-    try:
-        envelope = ComponentEnvelope(
-            status=status,
-            value=value,
-            reason=reason,
-            updated_at_ms=updated_at_ms,
-        )
-    except (TypeError, ValueError) as exc:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"{field} failed ComponentEnvelope construction: {exc}",
-            details={"field": field},
-        ) from exc
-    # Compare against the original export shape (dict values, not typed objects).
-    _require_canonical_export_equal(payload, envelope.to_dict(), field=field)
-    return envelope
 
 
-def _strict_decode_source(payload: object, *, field: str) -> DecisionDataSource:
-    if not isinstance(payload, dict):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"{field} must be a DecisionDataSource object.",
-            details={"field": field},
-        )
-    if payload.get("schema") != DECISION_DATA_SOURCE_SCHEMA:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"{field}.schema must be {DECISION_DATA_SOURCE_SCHEMA!r}.",
-            details={"field": field},
-        )
-    _require_exact_keys(payload, SOURCE_EXACT_KEYS, field=field)
-    envelopes: dict[str, ComponentEnvelope] = {}
-    for env_key in ("observation", "evidence"):
-        envelopes[env_key] = _strict_decode_source_envelope(
-            payload.get(env_key),
-            component=env_key,
-            field=f"{field}.{env_key}",
-        )
-    try:
-        source = DecisionDataSource(
-            frame_id=str(payload["frame_id"]),
-            frame_index=payload["frame_index"],
-            timestamp_ms=payload["timestamp_ms"],
-            observation=envelopes["observation"],
-            evidence=envelopes["evidence"],
-            metadata=dict(payload.get("metadata") or {}),
-            schema=str(payload.get("schema") or DECISION_DATA_SOURCE_SCHEMA),
-            source_id=str(payload.get("source_id") or ""),
-        )
-    except (TypeError, ValueError) as exc:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"{field} failed DecisionDataSource construction: {exc}",
-            details={"field": field},
-        ) from exc
-    _require_canonical_export_equal(payload, source.to_dict(), field=field)
-    return source
 
 
 def _require_exact_cycle_export(cycle: dict[str, Any]) -> DecisionRecords:
     """Strict reconstruction + full canonical export equality for the cycle.
 
     One owning boundary: reconstruct the typed proposal, plan, and action
-    records (source, candidates, plan, authority) and require lossless
+    records (candidates, plan, authority) and require lossless
     ``to_dict()`` equality. Adjacent nested authority/command/mode tampering
     is rejected as a class. Returns the records for alignment checks.
     """
@@ -838,12 +681,6 @@ def _require_exact_cycle_export(cycle: dict[str, Any]) -> DecisionRecords:
     )
     plan_payload = cycle.get("plan")
     plan = None if plan_payload is None else _strict_decode_plan(plan_payload, field="cycle.plan")
-    source_payload = proposal_payload.get("source")
-    source = (
-        None
-        if source_payload is None
-        else _strict_decode_source(source_payload, field="cycle.proposal.source")
-    )
     raw_candidates = proposal_payload.get("candidates")
     if not isinstance(raw_candidates, list):
         raise DecisionSurfaceError(
@@ -862,7 +699,6 @@ def _require_exact_cycle_export(cycle: dict[str, Any]) -> DecisionRecords:
                 frame_id=str(proposal_payload["frame_id"]),
                 status=str(proposal_payload["status"]),
                 reason=str(proposal_payload["reason"]),
-                source=source,
                 candidates=tuple(candidates),
                 schema=str(proposal_payload["schema"]),
             ),
@@ -891,10 +727,9 @@ def _require_aggregate_cycle_alignment(
 ) -> None:
     """Enforce cross-object cycle alignment the nested constructors do not own.
 
-    - proposal / plan / action / authority / source share one frame_id
+    - proposal / plan / action / authority share one frame_id
     - the plan is over exactly the proposal step's candidates
-    - plan/source timestamps agree when both present
-    - report timing agrees with the cycle source when source construction succeeds
+    - plan timing agrees with the cycle timestamp
     - authority.proposed is the plan command (or null for idle/error)
     """
 
@@ -933,47 +768,18 @@ def _require_aggregate_cycle_alignment(
         )
 
     plan = cycle.plan
-    source = cycle.source
     if plan is not None and plan.frame_id != frame_id:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             "plan.frame_id must equal cycle.frame_id.",
             details={"field": "cycle.plan.frame_id"},
         )
-    if source is not None and source.frame_id != frame_id:
+    if plan is not None and plan.timestamp_ms != frame.get("timestamp_ms"):
         raise DecisionSurfaceError(
             "latest_frame_invalid",
-            "source.frame_id must equal cycle.frame_id.",
-            details={"field": "cycle.proposal.source.frame_id"},
+            "plan.timestamp_ms must equal the cycle timestamp_ms.",
+            details={"field": "cycle.plan.timestamp_ms"},
         )
-    if plan is not None and source is not None:
-        if plan.timestamp_ms != source.timestamp_ms:
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                "plan.timestamp_ms must equal source.timestamp_ms.",
-                details={"field": "cycle.plan.timestamp_ms"},
-            )
-
-    # A failed source construction has no nested timing identity. The report
-    # still names the host frame that failed; never replace it with zeroes.
-    if source is None:
-        if cycle.proposal.status != "error" or plan is not None or cycle.proposal.candidates:
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                "A missing source requires a failed proposal with no candidates or plan.",
-                details={"field": "cycle.proposal.source"},
-            )
-    else:
-        for field, expected in (
-            ("frame_index", source.frame_index),
-            ("timestamp_ms", source.timestamp_ms),
-        ):
-            if frame.get(field) != expected:
-                raise DecisionSurfaceError(
-                    "latest_frame_invalid",
-                    f"Report {field} must match cycle source {field}.",
-                    details={"field": field, "expected": expected, "got": frame.get(field)},
-                )
 
     # authority.proposed must be the plan command (detached equal value).
     proposed = cycle.authority.proposed

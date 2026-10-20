@@ -13,10 +13,6 @@ from tests.support.action_fixtures import decision_chain, packaged_decision_chai
 class RunnerBoundaryTests(unittest.TestCase):
     def test_plan_and_source_empty_metadata_is_object(self) -> None:
         from autonomy.decision_cycle.plan.values import ActionPlan
-        from autonomy.decision_cycle.proposal.inputs import (
-            build_decision_data_source,
-            ready_envelope,
-        )
 
         plan = ActionPlan(
             frame_id="frame_001",
@@ -28,24 +24,15 @@ class RunnerBoundaryTests(unittest.TestCase):
             contributions=(),
         )
         self.assertEqual(plan.to_dict()["metadata"], {})
-        source = build_decision_data_source(
-            frame_id="frame_001", frame_index=0, timestamp_ms=1
-        )
-        self.assertEqual(source.to_dict()["metadata"], {})
-        # Nested empty object in ready envelope value.
-
-        env = ready_envelope({"empty": {}, "arr": []}, updated_at_ms=1)
-        self.assertEqual(env.to_dict()["value"], {"empty": {}, "arr": []})
-
 
     def test_plugin_cannot_admit_oversize_via_metadata_mutation(self) -> None:
-        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
+        from autonomy.decision_cycle.context import DecisionFrameContext
         from autonomy.serialization import FrozenJsonObject
 
-        def corrupt(source: DecisionDataSource, shared_memory) -> ActionProposal:
+        def corrupt(context) -> ActionProposal:
             proposal = ActionProposal(
                 plugin_id="avoid_recent_obstruction",
-                frame_id=source.frame_id,
+                frame_id=context.frame_id,
                 lifecycle="inactive",
                 freshness="none",
                 confidence=0.0,
@@ -101,12 +88,12 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(control.steering, 0.0)
 
     def test_corrupted_lifecycle_matrix_is_engine_error(self) -> None:
-        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
+        from autonomy.decision_cycle.context import DecisionFrameContext
 
-        def corrupt_matrix(source: DecisionDataSource, shared_memory) -> ActionProposal:
+        def corrupt_matrix(context) -> ActionProposal:
             proposal = ActionProposal(
                 plugin_id="avoid_recent_obstruction",
-                frame_id=source.frame_id,
+                frame_id=context.frame_id,
                 lifecycle="inactive",
                 freshness="none",
                 confidence=0.0,
@@ -132,10 +119,10 @@ class RunnerBoundaryTests(unittest.TestCase):
 
 
     def test_runner_rejects_non_bool_available_after_construction(self) -> None:
-        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
+        from autonomy.decision_cycle.context import DecisionFrameContext
 
-        def bad_available(source: DecisionDataSource, shared_memory) -> ActionProposal:
-            proposal = _active_proposal(frame_id=source.frame_id)
+        def bad_available(context) -> ActionProposal:
+            proposal = _active_proposal(frame_id=context.frame_id)
             object.__setattr__(proposal, "available", "false")  # type: ignore[arg-type]
             return proposal
 
@@ -153,10 +140,10 @@ class RunnerBoundaryTests(unittest.TestCase):
 
 
     def test_authority_proposed_is_detached_from_selected_command(self) -> None:
-        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
+        from autonomy.decision_cycle.context import DecisionFrameContext
 
-        def active(source: DecisionDataSource, shared_memory) -> ActionProposal:
-            return _active_proposal(frame_id=source.frame_id, steering=0.35)
+        def active(context) -> ActionProposal:
+            return _active_proposal(frame_id=context.frame_id, steering=0.35)
 
         engine = decision_chain(
             plugins={"avoid_recent_obstruction": active},

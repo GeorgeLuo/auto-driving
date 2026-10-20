@@ -104,16 +104,18 @@ class DecisionStageFlowTests(unittest.TestCase):
             record("observe", received_context, received_perception)
             return observation
 
-        def remember(received_context, received_observation):
-            record("remember", received_context, received_observation)
+        def remember(received_context):
+            seen = received_context.shared_memory.get("observation.current")
+            record("remember", received_context, seen)
             received_context.shared_memory["test_memory.records"] = records
             return memory
 
-        def propose(received_context, received_observation):
-            record("propose", received_context, received_observation)
+        def propose(received_context):
+            seen = received_context.shared_memory.get("observation.current")
+            record("propose", received_context, seen)
             # Proposals read what memory published in the host map.
             self.assertIs(received_context.shared_memory["test_memory.records"], records)
-            return proposal_step(received_context, received_observation)
+            return proposal_step(received_context)
 
         def plan(received_context, received_proposal):
             record("plan", received_context, received_proposal)

@@ -15,7 +15,7 @@ class _FeedProbe:
     def __init__(self) -> None:
         self.seen: list[DecisionFrameContext] = []
 
-    def update(self, context, observation) -> None:
+    def update(self, context) -> None:
         self.seen.append(context)
 
     def reset(self, shared_memory) -> None:
@@ -47,7 +47,7 @@ class MemoryFeedIsolationTests(unittest.TestCase):
             "frame_0", 0, 100, sensor_frame=_sensor_frame(), shared_memory=shared_memory
         )
 
-        MemoryRunner.from_plugins({"feed_probe": probe}).update(context, None)
+        MemoryRunner.from_plugins({"feed_probe": probe}).update(context)
 
         (seen,) = probe.seen
         self.assertIsNone(seen.sensor_frame)
@@ -58,7 +58,7 @@ class MemoryFeedIsolationTests(unittest.TestCase):
         sensors = _sensor_frame()
         context = DecisionFrameContext("frame_0", 0, 100, sensor_frame=sensors, shared_memory={})
 
-        MemoryRunner.from_plugins({"feed_probe": _FeedProbe()}).update(context, None)
+        MemoryRunner.from_plugins({"feed_probe": _FeedProbe()}).update(context)
 
         self.assertIs(context.sensor_frame, sensors)
 

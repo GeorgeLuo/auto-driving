@@ -61,7 +61,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self.assertEqual(projected["reason"], "")
         self.assertEqual(
             projected["record"],
-            payload["provenance"]["evidence"]["value"][0],
+            payload["provenance"]["evidence"][0],
         )
 
     def test_unmatched_retained_evidence_preserves_origin_without_overlay(
@@ -115,7 +115,5 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
                 self.assertIsNone(projected["record"])
                 self.assertEqual(
                     projected["origin"],
-                    payload["provenance"]["evidence"]["value"][0][
-                        "origin"
-                    ],
+                    payload["provenance"]["evidence"][0]["origin"],
                 )

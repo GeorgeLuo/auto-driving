@@ -182,8 +182,8 @@ class ObservationPublicationTests(unittest.TestCase):
         from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
         from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
-        def remember(context, observation):
-            del observation
+        def remember(context):
+            pass
             record = RetainedEvidence(
                         record_id="thing:boundary",
                         kind="floor_boundary",
@@ -378,14 +378,8 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(sorted(published["cycle"]), ["action", "plan", "proposal"])
         self.assertEqual(published["cycle"]["action"]["frame_id"], published["frame_id"])
         self.assertEqual(published["cycle"]["plan"]["frame_id"], published["frame_id"])
-        self.assertEqual(
-            published["cycle"]["proposal"]["source"]["frame_index"],
-            published["frame_index"],
-        )
-        self.assertNotIn(
-            "runtime_identity",
-            published["cycle"]["proposal"]["source"]["metadata"],
-        )
+        self.assertEqual(published["cycle"]["proposal"]["frame_id"], published["frame_id"])
+        self.assertNotIn("source", published["cycle"]["proposal"])
         # The dedicated route owns decision publication. Existing observation
         # consumers retain their established payload shape.
         self.assertNotIn("decision", part.publish_latest(now_ms=completed_at_ms))

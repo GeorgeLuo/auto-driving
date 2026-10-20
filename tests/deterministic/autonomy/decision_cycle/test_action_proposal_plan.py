@@ -31,8 +31,8 @@ class ActionProposalMatrixTests(unittest.TestCase):
     def test_runner_accepts_unrelated_proposal_without_avoidance_config(self) -> None:
         engine = decision_chain(
             plugins={
-                "cruise": lambda source, shared_memory: _active_proposal(
-                    plugin_id="cruise", frame_id=source.frame_id
+                "cruise": lambda context: _active_proposal(
+                    plugin_id="cruise", frame_id=context.frame_id
                 )
             },
         )
@@ -60,11 +60,11 @@ class ActionProposalMatrixTests(unittest.TestCase):
 class RunnerBoundaryTests(unittest.TestCase):
 
     def test_prior_frame_proposal_not_selected(self) -> None:
-        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
+        from autonomy.decision_cycle.context import DecisionFrameContext
 
         stale = _active_proposal(frame_id="frame_001", confidence=0.99)
 
-        def bad_plugin(source: DecisionDataSource, shared_memory) -> ActionProposal:
+        def bad_plugin(context) -> ActionProposal:
             return stale  # wrong frame
 
         engine = decision_chain(
@@ -243,8 +243,8 @@ class RunnerBoundaryTests(unittest.TestCase):
         engine = decision_chain(
             plugins={
                 plugin_id: (
-                    lambda source, shared_memory, plugin_id=plugin_id: _active_proposal(
-                        plugin_id=plugin_id, frame_id=source.frame_id
+                    lambda context, plugin_id=plugin_id: _active_proposal(
+                        plugin_id=plugin_id, frame_id=context.frame_id
                     )
                 )
                 for plugin_id in ids
@@ -257,15 +257,15 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(result.plan.status, "selected")
 
     def test_plugin_none_wrong_id_and_exception(self) -> None:
-        from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
+        from autonomy.decision_cycle.context import DecisionFrameContext
 
-        def return_none(source: DecisionDataSource, shared_memory) -> ActionProposal:
+        def return_none(context) -> ActionProposal:
             return None  # type: ignore[return-value]
 
-        def wrong_id(source: DecisionDataSource, shared_memory) -> ActionProposal:
-            return _active_proposal(plugin_id="other", frame_id=source.frame_id)
+        def wrong_id(context) -> ActionProposal:
+            return _active_proposal(plugin_id="other", frame_id=context.frame_id)
 
-        def boom(source: DecisionDataSource, shared_memory) -> ActionProposal:
+        def boom(context) -> ActionProposal:
             raise RuntimeError("plugin crashed")
 
         for plugin_fn, reason in (

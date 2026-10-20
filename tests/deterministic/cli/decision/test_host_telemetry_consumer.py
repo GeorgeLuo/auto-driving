@@ -30,6 +30,7 @@ from tests.shared.cli.decision.decision_surfaces_fixtures import (
     left_obstruction_frame,
     packaged_decision_steps,
     packaged_identity,
+    published_cycle,
     vehicle_report_for_records,
 )
 
@@ -104,6 +105,7 @@ def _decision(*, source_frame: dict | None = None) -> dict:
         timestamp_ms=frame["captured_at_ms"],
         **frame_inputs(recorded),
     )
+    observation, memory = published_cycle(recorded)
     report = vehicle_report_for_records(
         records,
         vehicle_id="piracer",
@@ -113,6 +115,8 @@ def _decision(*, source_frame: dict | None = None) -> dict:
         frame_index=frame["frame_index"],
         timestamp_ms=frame["captured_at_ms"],
         published_at_ms=9_500,
+        observation=observation,
+        memory=memory,
         values={
             "source_id": "donkeycar:piracer",
             "activation": {

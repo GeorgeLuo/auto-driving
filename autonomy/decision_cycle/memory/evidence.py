@@ -148,9 +148,3 @@ def require_non_negative_int(value: Any, *, field_name: str) -> int:
     if normalized < 0:
         raise ValueError(f"{field_name} must be >= 0")
     return normalized
-
-
-def detach_evidence(records: Any) -> tuple[RetainedEvidence, ...]:
-    """Return detached copies so readers cannot mutate a producer's records."""
-
-    return tuple(RetainedEvidence.from_dict(record.to_dict()) for record in records)

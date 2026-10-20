@@ -10,6 +10,11 @@ from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
 from autonomy.decision_cycle.activation import DECISION_STEPS
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.evidence import RetainedEvidence
+from autonomy.decision_cycle.memory.interface import (
+    MEMORY_REPORT_SCHEMA,
+    MemoryPluginReport,
+    MemoryReport,
+)
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.runtime.control import AutonomyControl
@@ -40,11 +45,28 @@ def frame_inputs(frame: dict) -> dict:
     """The observation and shared memory a decision cycle reads for ``frame``."""
 
     return {
-        "observation": Observation.from_dict(frame["observation"]),
         "shared_memory": {
+            "observation.current": Observation.from_dict(frame["observation"]),
             EVIDENCE_KEY: tuple(RetainedEvidence.from_dict(record) for record in frame["evidence"]),
         },
     }
+
+
+def published_cycle(frame: dict) -> tuple[Observation, dict]:
+    """The observation and memory report a host publication carries for ``frame``."""
+
+    records = list(frame["evidence"])
+    memory = MemoryReport(
+        schema=MEMORY_REPORT_SCHEMA,
+        plugins=(
+            MemoryPluginReport(
+                plugin_id="bounded_evidence",
+                state={"records": records, "record_count": len(records)},
+            ),
+        ),
+        evidence_publisher="bounded_evidence",
+    )
+    return Observation.from_dict(frame["observation"]), memory.to_dict()
 
 
 def packaged_decision_steps(action: str = "hold") -> dict:
@@ -73,6 +95,8 @@ def host_result_for_records(
     frame_index: int,
     timestamp_ms: int,
     mode: str = "observe_only",
+    observation: Observation | None = None,
+    memory: dict | None = None,
 ) -> SimpleNamespace:
     """A host cycle result whose application the shared report can publish."""
 
@@ -87,6 +111,8 @@ def host_result_for_records(
         proposal=records.proposal,
         plan=records.plan,
         action=records.action,
+        observation=observation,
+        memory=memory,
         application=ControlApplication(
             frame_id=frame_id,
             mode=mode,
@@ -109,6 +135,8 @@ def vehicle_report_for_records(
     published_at_ms: int | None = None,
     mode: str = "observe_only",
     values: dict | None = None,
+    observation: Observation | None = None,
+    memory: dict | None = None,
 ) -> dict:
     """The ``vehicle_report_v0`` both viewers accept for these decision records."""
 
@@ -122,6 +150,8 @@ def vehicle_report_for_records(
             frame_index=frame_index,
             timestamp_ms=timestamp_ms,
             mode=mode,
+            observation=observation,
+            memory=memory,
         ),
         vehicle_id=vehicle_id,
         run_id=run_id,
@@ -206,6 +236,7 @@ class DecisionSurfaceFixture:
     ) -> dict:
         records = self._sample_cycle(action)
         identity = packaged_identity(action)
+        observation, memory = published_cycle(left_obstruction_frame())
         report = vehicle_report_for_records(
             records,
             vehicle_id="piracer",
@@ -215,6 +246,8 @@ class DecisionSurfaceFixture:
             frame_index=1,
             timestamp_ms=1_000,
             published_at_ms=published_at_ms,
+            observation=observation,
+            memory=memory,
             values={
                 "source_id": "donkeycar:piracer",
                 "activation": identity,

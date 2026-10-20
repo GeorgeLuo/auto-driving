@@ -95,16 +95,8 @@ def _evidence_projection(
     carries its raw origin but never carries renderable geometry.
     """
 
-    observation_value = (
-        observation.get("value")
-        if isinstance(observation, dict) and observation.get("status") == "ready"
-        else None
-    )
-    records = (
-        evidence_input.get("value")
-        if isinstance(evidence_input, dict) and evidence_input.get("status") == "ready"
-        else None
-    )
+    observation_value = observation
+    records = evidence_input
     raw_records = records if isinstance(records, list) else []
     observation_id = (
         observation_value.get("observation_id")
@@ -449,13 +441,17 @@ class DecisionView:
             {"generation": generation, "id": transaction.transaction_id}
         )
         cycle = transaction.report["cycle"]
-        proposal = cycle.get("proposal") if isinstance(cycle, dict) else None
-        source = proposal.get("source") if isinstance(proposal, dict) else None
         action = cycle.get("action") if isinstance(cycle, dict) else None
         authority = action.get("authority") if isinstance(action, dict) else None
-        observation = source.get("observation") if isinstance(source, dict) else None
-        # The audit copy of the retained evidence the proposals read.
-        evidence_input = source.get("evidence") if isinstance(source, dict) else None
+        observation = transaction.frame_record.get("observation")
+        memory = transaction.frame_record.get("memory")
+        evidence_input = None
+        if isinstance(memory, dict):
+            publisher = memory.get("evidence_publisher")
+            for plugin in memory.get("plugins") or []:
+                if plugin.get("plugin_id") == publisher:
+                    evidence_input = (plugin.get("state") or {}).get("records")
+                    break
         evidence = _evidence_projection(
             transaction_id=transaction.transaction_id,
             frame_id=transaction.frame_record["frame_id"],

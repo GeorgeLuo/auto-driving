@@ -1,8 +1,7 @@
 """Proposal step runner.
 
-``ProposalRunner`` builds the detached ``DecisionDataSource`` for the cycle,
-calls each selected proposal plugin's ``propose`` with its own copy of the
-source and the shared host map, and admits one candidate per plugin. A plugin
+``ProposalRunner`` calls each selected proposal plugin's ``propose`` with the
+cycle context and admits one candidate per plugin. A plugin
 that raises, returns a different type, or returns another identity is replaced
 by a synthetic error candidate under its selected ID. A candidate that fails
 lifecycle or size validation ends the step with status ``error`` and no
@@ -14,7 +13,6 @@ Plugin failures and missing inputs follow ``FAILURE_POLICY`` in ``interface``;
 
 from __future__ import annotations
 
-from copy import deepcopy
 from typing import Any, ClassVar
 
 from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
@@ -26,12 +24,6 @@ from autonomy.decision_cycle.action_identifiers import (
     require_safe_int,
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.proposal.inputs import (
-    DecisionDataSource,
-    build_decision_data_source,
-    omit_forbidden_channel_keys,
-)
 from autonomy.decision_cycle.proposal.interface import (
     FAILURE_POLICY,
     PROPOSAL_SCHEMA,
@@ -51,7 +43,6 @@ from autonomy.decision_cycle.runner import (
 )
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition
-from autonomy.shared_memory import SharedMemory
 
 
 def _admit_candidate(
@@ -107,9 +98,6 @@ def _admit_candidate(
     return validated
 
 
-def _declared_evidence_key(plugin: ProposalPlugin) -> str | None:
-    key = getattr(plugin, "evidence_key", None)
-    return key if isinstance(key, str) and key else None
 
 
 class ProposalRunner(StepRunner[ProposalPlugin]):
@@ -125,15 +113,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         if not callable(getattr(plugin, "propose", None)):
             raise TypeError(f"proposal plugin {definition.entrypoint} must implement propose()")
 
-    @property
-    def evidence_key(self) -> str | None:
-        """The first host-map evidence key a selected plugin declares, for the audit copy."""
-
-        for _definition, plugin in self.applied:
-            key = _declared_evidence_key(plugin)
-            if key is not None:
-                return key
-        return None
 
     def _describe_schema(self) -> dict[str, Any]:
         """The step's contract: configuration, inputs, plugins, output, composition, failure."""
@@ -143,39 +122,13 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             "plugin_id": self.plugin_id,
             "inputs": [
                 {
-                    "name": "observation",
-                    "required": False,
-                    "source": "the cycle's observation, in the source",
-                    "missing_behavior": (
-                        "the source marks it unavailable, or error with the "
-                        "observation step's reason; the plugin is still called"
-                        if FAILURE_POLICY.missing_input == "invoke"
-                        else "the plugin is not called"
-                    ),
-                },
-                {
                     "name": "shared_memory",
                     "required": False,
                     "source": "the host map on the frame context, shared by every plugin",
-                    "missing_behavior": "plugins get an empty map, as in offline replay",
-                },
-                {
-                    "name": "evidence",
-                    "required": False,
-                    "source": (
-                        "an audit copy, in the source, of the host-map value at the "
-                        "evidence_key the first selected plugin declares"
-                    ),
-                    "missing_behavior": "the source marks it unavailable",
+                    "missing_behavior": "absent keys are unknown",
                 },
             ],
-            "plugins": [
-                {
-                    **describe_plugin(definition),
-                    "evidence_key": _declared_evidence_key(plugin),
-                }
-                for definition, plugin in self.applied
-            ],
+            "plugins": [describe_plugin(definition) for definition, _ in self.applied],
             "output": {
                 "schema": PROPOSAL_RESULT_SCHEMA,
                 "records": [
@@ -188,10 +141,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
                             "another plugin or frame identity"
                         ),
                     },
-                    {
-                        "record": "source",
-                        "meaning": "the detached decision data source the plugins read",
-                    },
                 ],
                 "invalid_candidate_behavior": (
                     "a lifecycle or size violation fails the step with "
@@ -203,38 +152,14 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             "composition": composition_declaration(),
         }
 
-    def __call__(
-        self,
-        context: DecisionFrameContext,
-        observation: Observation | dict[str, Any] | None,
-    ) -> ProposalResult:
-        """Propose for the cycle.
 
-        ``context.metadata`` may carry ``observation_error``.
-        """
+    def __call__(self, context: DecisionFrameContext) -> ProposalResult:
+        return self.run(context)
 
-        metadata = context.metadata if isinstance(context.metadata, dict) else {}
-        observation_error = metadata.get("observation_error")
-
-        return self.run(
-            frame_id=context.frame_id,
-            frame_index=context.frame_index,
-            timestamp_ms=context.timestamp_ms,
-            observation=observation,
-            observation_error=observation_error if type(observation_error) is str else None,
-            shared_memory=context.shared_memory,
-        )
-
-    def run(
-        self,
-        *,
-        frame_id: str,
-        frame_index: int,
-        timestamp_ms: int,
-        observation: Observation | dict[str, Any] | None = None,
-        observation_error: str | None = None,
-        shared_memory: SharedMemory | None = None,
-    ) -> ProposalResult:
+    def run(self, context: DecisionFrameContext) -> ProposalResult:
+        frame_id = context.frame_id
+        frame_index = context.frame_index
+        timestamp_ms = context.timestamp_ms
         # Entry precondition: invalid identity never yields a record.
         try:
             frame_id = require_ascii_id(frame_id, field_name="frame_id")
@@ -243,63 +168,33 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         except ValueError as exc:
             raise ActionInputError(str(exc)) from exc
 
-        def fail(reason: str, *, source: DecisionDataSource | None) -> ProposalResult:
+        def fail(reason: str) -> ProposalResult:
             self.failure_count += 1
             self.last_error = reason
-            return ProposalResult(frame_id=frame_id, status="error", reason=reason, source=source)
+            return ProposalResult(frame_id=frame_id, status="error", reason=reason)
 
         with self._runtime_lock:
             self.run_count += 1
             self._clear_plugin_records()
-            if isinstance(observation, Observation):
-                observation = Observation.from_dict(
-                    omit_forbidden_channel_keys(observation.to_dict())
-                )
-            elif isinstance(observation, dict):
-                observation = omit_forbidden_channel_keys(observation)
-            elif observation is not None:
-                return fail("decision_data_source_invalid", source=None)
-            if observation_error is not None and type(observation_error) is not str:
-                return fail("decision_data_source_invalid", source=None)
-
-            evidence_key = self.evidence_key
-            try:
-                source = build_decision_data_source(
-                    frame_id=frame_id,
-                    frame_index=frame_index,
-                    timestamp_ms=timestamp_ms,
-                    observation=observation,
-                    observation_error=observation_error,
-                    # Absent + no error: no observation step for this cycle.
-                    observation_configured=False,
-                    evidence=(
-                        shared_memory.get(evidence_key)
-                        if shared_memory is not None and evidence_key is not None
-                        else None
-                    ),
-                )
-            except Exception:
-                return fail("decision_data_source_invalid", source=None)
-
             applied = self.applied
             candidates: list[ActionProposal] = []
             try:
                 for definition, plugin in applied:
                     try:
                         candidates.append(
-                            self._execute_plugin(definition, plugin, source, shared_memory)
+                            self._execute_plugin(definition, plugin, context)
                         )
                     except ActionProposalMatrixError:
-                        return fail("action_proposal_matrix_violated", source=source)
+                        return fail("action_proposal_matrix_violated")
                     except Exception:
-                        return fail("synthetic_error_proposal_failed", source=source)
+                        return fail("synthetic_error_proposal_failed")
                 if len(candidates) != len(applied):
-                    return fail("action_plan_invariant_violated", source=source)
+                    return fail("action_plan_invariant_violated")
                 result = ProposalResult(
-                    frame_id=frame_id, status="ok", candidates=tuple(candidates), source=source
+                    frame_id=frame_id, status="ok", candidates=tuple(candidates)
                 )
             except Exception:
-                return fail("step_internal_error", source=source)
+                return fail("step_internal_error")
             self.last_error = None
             return result
 
@@ -307,16 +202,14 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         self,
         definition: PluginDefinition,
         plugin: ProposalPlugin,
-        source: DecisionDataSource,
-        shared_memory: SharedMemory | None,
+        context: DecisionFrameContext,
     ) -> ActionProposal:
         started = clock()
         error: str | None = None
         raised: BaseException | None = None
         returned: object = None
         try:
-            # Each plugin gets its own detached source and the shared host map.
-            returned = plugin.propose(deepcopy(source), shared_memory)
+            returned = plugin.propose(context)
         except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
             raised = exc
             error = describe_exception(exc)
@@ -324,7 +217,7 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             candidate = _admit_candidate(
                 returned=returned,
                 invoked_plugin_id=definition.plugin_id,
-                frame_id=source.frame_id,
+                frame_id=context.frame_id,
                 raised=raised,
             )
             if candidate.lifecycle == "error" and error is None:

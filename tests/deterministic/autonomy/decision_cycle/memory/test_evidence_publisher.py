@@ -22,8 +22,8 @@ class _EvidenceMemory(_RecordingMemory):
 
     publish = True
 
-    def update(self, context, observation):
-        super().update(context, observation)
+    def update(self, context):
+        super().update(context)
         if self.publish:
             context.shared_memory[EVIDENCE_KEY] = self.state(context.shared_memory)["records"]
 
@@ -35,23 +35,23 @@ class _EvidenceMemory(_RecordingMemory):
 class _PassThroughMemory(_RecordingMemory):
     """Stores back the object already at ``EVIDENCE_KEY``."""
 
-    def update(self, context, observation):
-        super().update(context, observation)
+    def update(self, context):
+        super().update(context)
         if EVIDENCE_KEY in context.shared_memory:
             context.shared_memory[EVIDENCE_KEY] = context.shared_memory[EVIDENCE_KEY]
 
 
 class _RemovingMemory(_RecordingMemory):
-    def update(self, context, observation):
-        super().update(context, observation)
+    def update(self, context):
+        super().update(context)
         context.shared_memory.pop(EVIDENCE_KEY, None)
 
 
 class _FailingEvidenceMemory(_EvidenceMemory):
     """Publishes, then raises."""
 
-    def update(self, context, observation):
-        super().update(context, observation)
+    def update(self, context):
+        super().update(context)
         raise RuntimeError("after publishing")
 
 
@@ -77,7 +77,9 @@ def _runner(*plugins: _RecordingMemory) -> MemoryRunner:
 
 
 def _update(runner: MemoryRunner, shared_memory: dict, frame_id: str = "f1") -> dict:
-    return runner.update(_context(frame_id, shared_memory), _observation(frame_id))
+    context = _context(frame_id, shared_memory)
+    context.shared_memory["observation.current"] = _observation(frame_id)
+    return runner.update(context)
 
 
 class EvidencePublisherTests(unittest.TestCase):

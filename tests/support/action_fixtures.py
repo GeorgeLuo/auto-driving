@@ -63,14 +63,14 @@ class CallableProposal:
         for name, value in attributes.items():
             setattr(self, name, value)
 
-    def propose(self, source, shared_memory):
-        return self._function(source, shared_memory)
+    def propose(self, context):
+        return self._function(context)
 
 
 def proposal_runner(
     plugins: dict[str, Callable[..., Any]], **attributes: Any
 ) -> ProposalRunner:
-    """A proposal runner over ``plugin_id -> propose(source, shared_memory)`` functions."""
+    """A proposal runner over ``plugin_id -> propose(context)`` functions."""
 
     return ProposalRunner.from_plugins(
         {
@@ -110,9 +110,6 @@ class DecisionRecords:
     def reason(self) -> str:
         return self.action.reason
 
-    @property
-    def source(self):
-        return self.proposal.source
 
     @property
     def authority(self):
@@ -150,20 +147,17 @@ class DecisionChain:
         drive_mode_gate: str | None = None,
         **proposal_inputs: Any,
     ) -> DecisionRecords:
-        proposal = self.proposal.run(
-            frame_id=frame_id,
-            frame_index=frame_index,
-            timestamp_ms=timestamp_ms,
-            **proposal_inputs,
-        )
-        shared_memory: dict[str, Any] = {}
+        shared_memory = proposal_inputs.pop("shared_memory", None)
+        if shared_memory is None:
+            shared_memory = {}
+        observation = proposal_inputs.pop("observation", None)
+        shared_memory["observation.current"] = observation
         write_host_inputs(shared_memory, mode=drive_mode_gate)
         context = DecisionFrameContext(
-            frame_id=frame_id,
-            frame_index=frame_index,
-            timestamp_ms=timestamp_ms,
+            frame_id=frame_id, frame_index=frame_index, timestamp_ms=timestamp_ms,
             shared_memory=shared_memory,
         )
+        proposal = self.proposal(context)
         plan = self.plan(context, proposal)
         return DecisionRecords(proposal, plan, self.action(context, proposal, plan))
 

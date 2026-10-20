@@ -6,12 +6,6 @@ import base64
 import time
 from typing import Any
 
-from autonomy.decision_cycle.memory.interface import (
-    MEMORY_REPORT_SCHEMA,
-    RECORD_COUNT,
-    MemoryPluginReport,
-    MemoryReport,
-)
 from .decision import (
     DecisionSurfaceError,
     accept_decision_publication,
@@ -42,27 +36,10 @@ def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:
 
 
 def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
-    cycle = normalized["decision"]["cycle"]
-    # The mode the host ran this cycle under; it applies control only in autonomy.
     mode = normalized["decision"]["application"]["mode"]
-    proposal = cycle.get("proposal") if isinstance(cycle, dict) else None
-    source = proposal.get("source") if isinstance(proposal, dict) else None
-    observation = source.get("observation") if isinstance(source, dict) else None
-    observation_value = (
-        observation.get("value")
-        if isinstance(observation, dict) and observation.get("status") == "ready"
-        else None
-    )
+    values = normalized["decision"]["values"]
+    observation_value = values.get("observation")
     observation_value = observation_value if isinstance(observation_value, dict) else None
-    # The audit copy of the retained evidence the proposals read, from the
-    # published cycle source.
-    evidence = source.get("evidence") if isinstance(source, dict) else None
-    evidence_value = (
-        evidence.get("value")
-        if isinstance(evidence, dict) and evidence.get("status") == "ready"
-        else None
-    )
-    evidence_value = evidence_value if isinstance(evidence_value, list) else None
     sensor_frame = (
         observation_value.get("sensor_frame")
         if isinstance(observation_value, dict)
@@ -109,26 +86,7 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         ),
         "perception": perception,
         "observation": observation_value,
-        # The publication carries the evidence the decision read, not the memory
-        # step's report; present it as one labeled entry for the memory panel.
-        # That entry holds the evidence value, so it is named the publisher.
-        "memory": (
-            MemoryReport(
-                schema=MEMORY_REPORT_SCHEMA,
-                plugins=(
-                    MemoryPluginReport(
-                        plugin_id="decision_evidence",
-                        state={
-                            "records": evidence_value,
-                            RECORD_COUNT: len(evidence_value),
-                        },
-                    ),
-                ),
-                evidence_publisher="decision_evidence",
-            ).to_dict()
-            if evidence_value is not None
-            else None
-        ),
+        "memory": values.get("memory"),
         "action_policy": mode,
         "control_source": "runtime_host",
         "control_application": "shared_execution" if mode == "autonomy" else "not_applied",

@@ -1292,15 +1292,10 @@ def normalize_host_telemetry_records(
 
 
 def _decision_source_frame(decision: dict[str, Any]) -> dict[str, Any]:
-    cycle = decision.get("cycle") if isinstance(decision.get("cycle"), dict) else {}
-    proposal = cycle.get("proposal") if isinstance(cycle.get("proposal"), dict) else {}
-    source = proposal.get("source") if isinstance(proposal.get("source"), dict) else {}
     values = decision.get("values") if isinstance(decision.get("values"), dict) else {}
     candidates = (
         values.get("source_frame"),
         decision.get("source_frame"),
-        source.get("source_frame"),
-        source,
         decision.get("frame"),
     )
     required = {"frame_id", "frame_index", "captured_at_ms", "completed_at_ms"}

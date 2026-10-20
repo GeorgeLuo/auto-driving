@@ -179,7 +179,7 @@ class BlockingSecondMapper(FixtureMapper):
 
 
 class ErrorMemory:
-    def __call__(self, context, observation) -> None:
+    def __call__(self, context) -> None:
         raise RuntimeError("injected memory failure")
 
     def reset(self, shared_memory=None) -> None:

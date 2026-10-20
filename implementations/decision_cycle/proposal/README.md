@@ -42,12 +42,11 @@ without usable evidence it proposes no command.
 
 As in perception and memory, `autonomy/decision_cycle/proposal/` owns the
 plugin protocol (`plugin.py`), composition and failure policy (`interface.py`),
-and step execution (`runner.py`). Proposal's `inputs.py` is the detached input
-view, while `values.py` and `result.py` define candidate commands and their
-aggregate cycle result. Those types belong to the proposal contract, rather
-than to a concrete avoidance strategy.
+and step execution (`runner.py`). `values.py` and `result.py` define candidate
+commands and their aggregate cycle result. Those types belong to the proposal
+contract, rather than to a concrete avoidance strategy.
 
-Proposal plugins read the detached cycle inputs and the host map, not a camera
+Proposal plugins read the cycle context and the host map, not a camera
 feed. `avoid_recent_obstruction` reads the obstruction evidence that the
 `bounded_evidence` memory plugin retains. Proposal needs no `feeds/` directory.
 Library code shared by multiple proposal plugins belongs in `shared/`, as in

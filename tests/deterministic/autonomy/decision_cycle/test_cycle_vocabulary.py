@@ -17,7 +17,6 @@ from autonomy.decision_cycle.activation import STEPS, step_activation_path
 from autonomy.decision_cycle.cycle import DecisionCycleResult, DecisionSteps
 from autonomy.decision_cycle.steps import STEP_RUNNERS
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.proposal.inputs import DECISION_DATA_SOURCE_SCHEMA, DecisionDataSource
 from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA
 from autonomy.decision_cycle.memory.interface import MEMORY_REPORT_SCHEMA
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
@@ -78,13 +77,9 @@ class CycleVocabularyTests(unittest.TestCase):
         self.assertEqual(OBSERVATION_SCHEMA, "decision_observation_v1")
         self.assertEqual(MEMORY_REPORT_SCHEMA, "memory_report_v1")
         self.assertEqual(ACTION_PROPOSAL_SCHEMA, "action_proposal_v0")
-        self.assertEqual(DECISION_DATA_SOURCE_SCHEMA, "decision_data_source_v2")
         self.assertEqual(DEFAULT_PERCEPTION_PRESET, "lightweight_observer")
         self.assertEqual(FrameObservationPlugin.plugin_id, "frame")
 
-        self.assertIn("evidence", DecisionDataSource.__dataclass_fields__)
-        self.assertIn("observation", DecisionDataSource.__dataclass_fields__)
-        self.assertNotIn("shared_memory", DecisionDataSource.__dataclass_fields__)
         self.assertIn("shared_memory", DecisionFrameContext.__dataclass_fields__)
 
         result = DecisionCycleResult(

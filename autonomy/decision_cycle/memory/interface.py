@@ -21,7 +21,6 @@ from typing import Any, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.publication import BELIEF_KEY_PREFIX, EVIDENCE_KEY
-from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.runner import FailurePolicy
 from autonomy.shared_memory import SharedMemory
 
@@ -64,7 +63,6 @@ class MemoryBackend(Protocol):
     def update(
         self,
         context: DecisionFrameContext,
-        observation: Observation | None,
     ) -> dict[str, Any]:
         """Run one cycle. Return the memory report."""
 

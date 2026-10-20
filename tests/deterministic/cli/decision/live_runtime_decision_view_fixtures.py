@@ -10,6 +10,7 @@ from cli.automa_cli.decision_records import DecisionRunners
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
+    published_cycle,
     frame_inputs,
     left_obstruction_frame,
     packaged_decision_steps,
@@ -77,6 +78,7 @@ class LiveRuntimeDecisionViewFixture:
             timestamp_ms=raw["timestamp_ms"],
             **frame_inputs(raw),
         )
+        observation, memory = published_cycle(raw)
         return vehicle_report_for_records(
             records,
             vehicle_id="chase-sim-chaser",
@@ -87,6 +89,8 @@ class LiveRuntimeDecisionViewFixture:
             timestamp_ms=raw["timestamp_ms"],
             published_at_ms=int(time.time() * 1000),
             values={"source_id": SOURCE_ID},
+            observation=observation,
+            memory=memory,
         )
 
     def _accepted_frame_with_evidence(self, mutate=None) -> dict:

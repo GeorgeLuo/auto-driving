@@ -7,11 +7,9 @@ plugin lives in `plugins/highest_confidence/`.
 
 - The plan step runs exactly one plugin. Arming a plugin replaces the current one.
 - `plugin.py` holds the plugin class, which declares `plugin_id` and
-  implements `plan(candidates, source, shared_memory, *, frame_id,
-  timestamp_ms)`, the `PlanPlugin` protocol in
-  `autonomy/decision_cycle/plan/plugin.py`. `source` is a detached copy of
-  the proposal step's `DecisionDataSource`, or `None` without a proposal
-  step; `shared_memory` is the host map, or `None` without one.
+  implements `plan(context, candidates)`, the `PlanPlugin` protocol in
+  `autonomy/decision_cycle/plan/plugin.py`. Frame identity, the timestamp, and
+  the host map come from `context`.
   `ActionProposal.is_active(frame_id)` says which candidates a plan may act
   on. Ids match
   `[A-Za-z0-9._:-]{1,64}` and are unique within the plan step:
@@ -35,8 +33,8 @@ plugin lives in `plugins/highest_confidence/`.
 
 - How the plugin plans, and what a failure does, is declared in
   `autonomy/decision_cycle/plan/interface.py`: `composition_declaration`
-  (one plugin; candidates, the proposal source, shared memory, `frame_id`,
-  and `timestamp_ms` in; one `ActionPlan` out) and `FAILURE_POLICY` (a plugin error or a plan that fails the check
+  (one plugin; the cycle context and the proposal candidates in; one
+  `ActionPlan` out) and `FAILURE_POLICY` (a plugin error or a plan that fails the check
   returns no plan and the action holds, a reset error propagates, a failed
   proposal skips the plugin). An absent proposal step still calls the plugin
   with no candidates. The runner's `describe_schema()` reports these

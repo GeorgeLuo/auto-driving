@@ -137,7 +137,9 @@ def run_frame(
         recorded_context,
         frame_id=frame.frame_id,
         frame_index=frame.frame_index,
-        timestamp_ms=frame.timestamp_ms,
+        # Capture time remains on the sensor frame; learner timeouts use the
+        # original cycle clock, which can be later than capture.
+        timestamp_ms=recorded_context.get("timestamp_ms", frame.timestamp_ms),
         sensor_frame=sensor_frame,
         mode=recorded_context.get("mode", "workbench_replay"),
         shared_memory=shared_memory,

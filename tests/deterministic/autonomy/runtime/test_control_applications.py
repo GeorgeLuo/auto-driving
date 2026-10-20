@@ -55,7 +55,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                             captured_at_ms=2000 + index, path=str(camera),
                         )}, started_at_ms=2000 + index, completed_at_ms=2000 + index,
                     )
-                    result = host.run(DecisionFrameContext(f"f{index}", index, 2000 + index, sensor_frame=sensors))
+                    result = host.run(DecisionFrameContext(f"f{index}", index, 2100 + index, sensor_frame=sensors))
                     expected.append(result.context.shared_memory[CONTROL_APPLICATIONS_KEY])
             manifest = json.loads((recording.root / RECORDING_MANIFEST_NAME).read_text())
             entries = manifest["frames"]
@@ -77,13 +77,22 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             for directory in (recording.root, exported):
                 source = load_image_source(directory)
                 seen = []
+                cycle_times = []
+                capture_times = []
                 steps = {step: None for step in ("perception", "observation", "memory", "proposal", "plan", "action")}
-                steps["memory"] = lambda context, observation: seen.append(
-                    context.shared_memory[CONTROL_APPLICATIONS_KEY])
+
+                def remember(context, observation):
+                    seen.append(context.shared_memory[CONTROL_APPLICATIONS_KEY])
+                    cycle_times.append(context.timestamp_ms)
+                    capture_times.append(context.sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].captured_at_ms)
+
+                steps["memory"] = remember
                 # The source reconstructs windows independently of replay order.
                 for index in (3, 1, 0, 2):
                     run_frame(source.frames[index], steps=steps, shared_memory={})
                 self.assertEqual(seen, [expected[index] for index in (3, 1, 0, 2)])
+                self.assertEqual(cycle_times, [2103, 2101, 2100, 2102])
+                self.assertEqual(capture_times, [2003, 2001, 2000, 2002])
 
     def test_source_bounds_the_reconstructed_window_in_record_order(self):
         application = ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100)

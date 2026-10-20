@@ -121,9 +121,6 @@ class RetainedEvidence:
             if isinstance(location_data, dict)
             else None
         )
-        properties = data.get("properties") or {}
-        if not isinstance(properties, dict):
-            raise TypeError("retained evidence properties must be a dict")
         return cls(
             record_id=str(data.get("record_id") or ""),
             kind=str(data.get("kind") or ""),
@@ -131,7 +128,7 @@ class RetainedEvidence:
             confidence=data.get("confidence"),
             origin=MemoryOrigin.from_dict(origin_data),
             location=location,
-            properties=properties,
+            properties=data.get("properties") or {},
         )
 
 

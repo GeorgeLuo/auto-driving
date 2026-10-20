@@ -87,7 +87,6 @@ class MemoryPluginReport:
     ``state`` is that plugin's own status summary. The framework passes
     through whatever ``status`` returned, including None when the plugin
     offers none. ``to_dict`` serializes that summary with ``asdict``.
-    Serialization is not a boundary around the plugin.
     """
 
     plugin_id: str

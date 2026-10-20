@@ -145,8 +145,6 @@ def build_authority(
     proposed: ProposedVehicleCommand | None = None,
     drive_mode_gate: str | None = None,
 ) -> AuthorityResult:
-    if proposed is not None and not isinstance(proposed, ProposedVehicleCommand):
-        raise TypeError("proposed must be ProposedVehicleCommand or None")
     return AuthorityResult(
         frame_id=frame_id,
         gate_id=gate_id,

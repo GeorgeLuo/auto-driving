@@ -16,7 +16,6 @@ reducer uses mutable working data for one update and is then discarded.
 
 from __future__ import annotations
 
-from copy import deepcopy
 from dataclasses import replace
 from typing import Any
 
@@ -248,7 +247,7 @@ class BoundedEvidenceReducer:
                 )
                 try:
                     properties = ensure_strict_json_value(
-                        deepcopy(dict(candidate.get("properties") or {}))
+                        dict(candidate.get("properties") or {})
                     )
                 except (TypeError, ValueError):
                     self._report_drop(record_id, "invalid_properties", "not_admitted")

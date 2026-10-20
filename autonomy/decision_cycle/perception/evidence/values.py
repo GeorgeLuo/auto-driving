@@ -69,16 +69,13 @@ class PerceivedThing:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PerceivedThing":
         location = data.get("location") if isinstance(data.get("location"), dict) else {}
-        properties = data.get("properties") or {}
-        if not isinstance(properties, dict):
-            raise TypeError("perception thing properties must be a dict")
         return cls(
             thing_id=str(data.get("thing_id") or "unknown"),
             kind=str(data.get("kind") or "unknown"),
             label=str(data.get("label") or "unknown"),
             location=ViewLocation.from_dict(location),
             confidence=data.get("confidence"),
-            properties=properties,
+            properties=data.get("properties") or {},
             source_plugin_id=(
                 str(data["source_plugin_id"])
                 if data.get("source_plugin_id") is not None
@@ -112,14 +109,11 @@ class PerceptionSignal:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PerceptionSignal":
-        properties = data.get("properties") or {}
-        if not isinstance(properties, dict):
-            raise TypeError("perception signal properties must be a dict")
         return cls(
             signal_id=str(data.get("signal_id") or "unknown"),
             value=data.get("value"),
             confidence=data.get("confidence"),
-            properties=properties,
+            properties=data.get("properties") or {},
             source_plugin_id=(
                 str(data["source_plugin_id"])
                 if data.get("source_plugin_id") is not None

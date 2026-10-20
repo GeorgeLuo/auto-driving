@@ -17,6 +17,8 @@ from autonomy.decision_cycle.perception.interface import (
     PerceptionText,
 )
 from implementations.decision_cycle.catalog import packaged_activation, preset_activation
+# Capture threads keep the host type while staged runners swap implementations.
+from implementations.vehicle.chase_sim import ChaseCameraCapture
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.bundles import controller_bundle_paths
 
@@ -157,7 +159,6 @@ class _PushStream:
         if self.auto_emit:
             self.emit()
     def emit(self):
-        from implementations.vehicle.chase_sim import ChaseCameraCapture
         with self._lock:
             if self.closed.is_set() or self.consumer is None:
                 return

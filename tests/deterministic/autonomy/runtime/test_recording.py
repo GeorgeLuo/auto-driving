@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import hashlib
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -33,34 +32,6 @@ def _generation(steps: dict) -> str:
 
 
 class RecordedSourceTests(unittest.TestCase):
-    def test_recorded_control_history_reaches_memory_during_replay(self):
-        from cli.automa_cli.workbench_frames import run_frame
-        from cli.automa_cli.workbench_source import load_image_source
-        history = [{"delivered_at_ms": 1, "steering": -0.5, "throttle": 0.3,
-                    "reason": "turn", "frame_id": "previous"}]
-        steps = {step: None for step in STEPS}
-        frame = {
-            "vehicle_id": "picar", "run_id": "run-1", "generation_id": _generation(steps),
-            "frame_id": "frame-1", "frame_index": 0, "captured_at_ms": 2,
-            "step_activations": steps, "context": {"mode": "autonomy", "control_history": history},
-            "perception": None,
-        }
-        seen = []
-        with tempfile.TemporaryDirectory() as tmp:
-            run = Path(tmp)
-            from PIL import Image
-            import io
-            data = io.BytesIO()
-            Image.new("RGB", (2, 2)).save(data, format="PNG")
-            write_recorded_frame(run, frame, data.getvalue(), ".png", {})
-            manifest = json.loads((run / RECORDING_MANIFEST_NAME).read_text())
-            self.assertEqual(manifest["frames"][0]["context"]["control_history"], history)
-            source = load_image_source(run)
-            runners = {step: None for step in STEPS}
-            runners["memory"] = lambda context, observation: seen.append(context.control_history)
-            run_frame(source.frames[0], steps=runners, shared_memory={})
-        self.assertEqual(seen, [tuple(history)])
-
     def test_a_frame_must_carry_each_uploaded_source_it_ran(self) -> None:
         steps = _steps(f"{NAME}:Prototype")
 

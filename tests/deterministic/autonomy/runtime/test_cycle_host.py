@@ -110,7 +110,7 @@ def _state(report: dict) -> dict:
 
 
 class CycleHostMemoryTests(unittest.TestCase):
-    def test_memory_receives_prior_deliveries(self):
+    def test_memory_receives_prior_applications(self):
         from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
 
         seen = []
@@ -123,11 +123,42 @@ class CycleHostMemoryTests(unittest.TestCase):
             host.execution = ControlExecution(Mock(write=Mock(return_value={})))
             self.addCleanup(host.close)
             host.set_mode("autonomy")
-            expected = host.execution.recent_deliveries()
+            expected = host.execution.recent_applications()
             with patch.object(_RecordingMemory, "update", update):
                 result = host.run(DecisionFrameContext("frame-history", 0, int(time.time() * 1000)))
-            self.assertEqual(seen[0].control_history, expected)
-            self.assertEqual(result.context.to_dict()["control_history"], list(expected))
+            self.assertEqual(seen[0].control_applications, expected)
+            self.assertEqual(result.context.to_dict()["control_applications"], [item.to_dict() for item in expected])
+
+    def test_mode_and_applications_are_captured_in_the_same_ticket(self):
+        host, _ = _host()
+        host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+        self.addCleanup(host.close)
+        host.set_mode("autonomy")
+        original = host.execution.ticket
+        def ticket_then_change_mode():
+            ticket = original()
+            host.set_mode("manual")
+            return ticket
+        with patch.object(host.execution, "ticket", side_effect=ticket_then_change_mode):
+            result = host.run(DecisionFrameContext("f", 0, int(time.time() * 1000)))
+        self.assertEqual(result.context.mode, "autonomy")
+        self.assertEqual(result.context.control_applications[-1].mode, "autonomy")
+        self.assertEqual(host.execution.recent_applications()[-1].mode, "manual")
+        self.assertFalse(result.application.applied)
+
+    def test_new_runs_and_memory_resets_clear_prior_applications(self):
+        host, _ = _host()
+        host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+        self.addCleanup(host.close)
+        host.start()
+        old = host.execution.recent_applications()[0]
+        host.start()
+        current = host.execution.recent_applications()
+        self.assertEqual(len(current), 1)
+        self.assertIsNot(current[0], old)
+        self.assertEqual(current[0].reason, "awaiting-fresh-decision")
+        host.reset_memory()
+        self.assertEqual(host.execution.recent_applications(), ())
 
     def test_failed_start_reports_its_error_instead_of_the_previous_run_error(self):
         host, _ = _host()

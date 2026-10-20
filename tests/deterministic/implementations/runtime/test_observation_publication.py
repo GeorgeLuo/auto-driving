@@ -29,6 +29,25 @@ from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget
 
 
 class ObservationPublicationTests(unittest.TestCase):
+    def test_live_publication_keeps_the_exact_typed_application_inputs(self):
+        part = self._hold_part()
+        self.addCleanup(part.shutdown)
+        part.start(RunConfiguration(mode="autonomy"))
+        part.submit(np.zeros((8, 12, 3), dtype=np.uint8))
+        part.wait_for_cycle()
+        context = part.host.last_context
+        self.assertTrue(context.control_applications)
+        published = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
+        self.assertEqual(published["context"]["control_applications"],
+                         [item.to_dict() for item in context.control_applications])
+        self.assertEqual(published["context"]["mode"], context.mode)
+        published["context"]["control_applications"][0]["mode"] = "manual"
+        again = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
+        self.assertEqual(again["context"]["control_applications"][0]["mode"],
+                         context.control_applications[0].mode)
+        # The drivetrain's diagnostic output avoids copying this window at 20 Hz.
+        self.assertNotIn("control_applications", part.completed_outputs("autonomy")[-1]["context"])
+
     def _decision_image(self, part):
         status, _, body = RuntimeRoutes(part).handle("GET", DECISION_TRANSACTION_PATH)
         self.assertEqual(status, 200, body)

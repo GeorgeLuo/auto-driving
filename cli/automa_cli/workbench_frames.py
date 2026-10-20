@@ -128,15 +128,14 @@ def run_frame(
 
     sensor_frame = sensor_frame_for_replay_frame(frame)
     recorded_context = frame.metadata.get("context", {})
-    context = DecisionFrameContext(
+    context = DecisionFrameContext.from_record(
+        recorded_context,
         frame_id=frame.frame_id,
         frame_index=frame.frame_index,
         timestamp_ms=frame.timestamp_ms,
         sensor_frame=sensor_frame,
         mode=recorded_context.get("mode", "workbench_replay"),
-        user_steering=recorded_context.get("user_steering", 0.0),
-        user_throttle=recorded_context.get("user_throttle", 0.0),
-        control_history=tuple(recorded_context.get("control_history", ())),
+        control_applications=frame.control_applications,
         shared_memory=shared_memory,
         metadata={
             "source": WORKBENCH_SEQUENCE_ID,

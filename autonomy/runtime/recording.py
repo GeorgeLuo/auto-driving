@@ -2,6 +2,10 @@
 
 The host commits a cycle and its exact image before counting the decision or
 ending the run. Live latest-only publications are independent of this history.
+Applications are delta-encoded once in each manifest entry's context. A reset
+flag clears the replay window at memory resets or when no old window overlaps;
+record order, not wall-clock order, preserves equal or backwards timestamps.
+Frame JSON omits that stream; export reattaches the manifest delta.
 Each recorded step names the controller release the host imported, which is
 the code replay must run; a host outside a release records none. A plugin
 uploaded to the host's catalog is outside every release, so the recording keeps
@@ -23,6 +27,7 @@ from autonomy.decision_cycle.activation import (
     DECISION_STEPS, STEPS, StepActivation, activation_generation_id, require_step,
     step_activation_from_payload,
 )
+from autonomy.decision_cycle.context import CONTROL_APPLICATION_RESET_KEY, recorded_context
 from autonomy.decision_cycle.cycle import DecisionCycleResult
 from autonomy.plugins import uploaded_source
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
@@ -169,10 +174,7 @@ def append_recording_frame(
     if frame_index is not None:
         entry["frame_index"] = frame_index
     if context is not None:
-        entry["context"] = {
-            key: copy.deepcopy(context[key])
-            for key in ("mode", "user_steering", "user_throttle", "control_history") if key in context
-        }
+        entry["context"] = recorded_context(context)
     manifest_path = root / RECORDING_MANIFEST_NAME
     payload: dict[str, Any] = {
         "schema": RECORDING_MANIFEST_SCHEMA,
@@ -240,7 +242,19 @@ def write_recorded_frame(
     image_path.parent.mkdir(parents=True, exist_ok=True)
     perception_path.parent.mkdir(parents=True, exist_ok=True)
     image_path.write_bytes(image)
-    write_json_atomically(perception_path, frame)
+    # Applications live once in the manifest's delta stream. The frame and its
+    # nested cycle retain other context inputs; read() reattaches the delta for
+    # transport to another host, whose writer uses this same representation.
+    application_keys = {"control_applications", CONTROL_APPLICATION_RESET_KEY}
+    stored = {**frame, "context": {
+        key: value for key, value in frame["context"].items() if key not in application_keys
+    }}
+    if isinstance(frame.get("decision_cycle"), dict):
+        stored["decision_cycle"] = {**frame["decision_cycle"], "context": {
+            key: value for key, value in frame["decision_cycle"].get("context", {}).items()
+            if key not in application_keys
+        }}
+    write_json_atomically(perception_path, stored)
     perception_path.with_suffix(".txt").write_text(
         (frame.get("perception") or {}).get("text", "") + "\n", encoding="utf-8",
     )
@@ -270,7 +284,10 @@ def ran_on_release(
     return stamped
 
 
-def cycle_frame(result: DecisionCycleResult, *, vehicle_id: str, run_id: str) -> dict[str, Any]:
+def cycle_frame(
+    result: DecisionCycleResult, *, vehicle_id: str, run_id: str,
+    include_control_applications: bool = True,
+) -> dict[str, Any]:
     """The same completed frame, selections and application on either host."""
     context = result.context
     steps = ran_on_release(
@@ -287,11 +304,13 @@ def cycle_frame(result: DecisionCycleResult, *, vehicle_id: str, run_id: str) ->
         "perception_duration_ms": result.duration_ms,
         "cycle_duration_ms": result.duration_ms,
         "generation_id": generation, "step_activations": steps,
-        "context": context.to_dict(), "sensor_frame": context.sensor_frame.to_dict(),
+        "context": context.to_dict(include_control_applications=include_control_applications),
+        "sensor_frame": context.sensor_frame.to_dict(),
         "perception": result.perception.to_dict() if result.perception else None,
         "observation": result.observation.to_dict() if result.observation else None,
         "memory": result.memory, "control": result.control_record(),
-        "decision_cycle": result.to_dict(), "action_policy": context.mode,
+        "decision_cycle": result.to_dict(include_control_applications=include_control_applications),
+        "action_policy": context.mode,
     }
 
 
@@ -308,6 +327,7 @@ class RunRecording:
         self.encode_image = encode_image
         self.count = 0
         self._lock = threading.RLock()
+        self._previous_applications = ()
         if (self.root / RECORDING_MANIFEST_NAME).exists():
             raise ValueError("recording run already exists")
 
@@ -321,8 +341,21 @@ class RunRecording:
             image, extension = self.encode_image(reading.value), ".jpg"
         else:
             raise ValueError("recording requires a camera image or an image encoder")
-        frame = cycle_frame(result, vehicle_id=self.vehicle_id, run_id=self.run_id)
+        frame = cycle_frame(
+            result, vehicle_id=self.vehicle_id, run_id=self.run_id,
+            include_control_applications=False,
+        )
         with self._lock:
+            applications = context.control_applications
+            previous = self._previous_applications
+            # Use record identity and order, never wall-clock time: equal-ms
+            # writes and backwards clock steps must still be recorded once.
+            cursor = next((index + 1 for index in range(len(applications) - 1, -1, -1)
+                           if previous and applications[index] is previous[-1]), None)
+            reset = cursor is None
+            delta = applications if reset else applications[cursor:]
+            frame["context"]["control_applications"] = [item.to_dict() for item in delta]
+            frame["context"][CONTROL_APPLICATION_RESET_KEY] = reset
             if (self.root / "perception" / context.frame_id / "perception.json").exists():
                 raise ValueError("recorded frame_id must be unique within the run")
             sources = {
@@ -331,6 +364,7 @@ class RunRecording:
                 if not (self.root / UPLOADED_SOURCES_DIR / name).is_file()
             }
             write_recorded_frame(self.root, frame, image, extension, sources)
+            self._previous_applications = applications
             self.count += 1
 
     def status(self) -> dict[str, Any]:
@@ -353,6 +387,11 @@ class RunRecording:
                 frame_id = entry["frame_id"]
                 image_path = self.root / entry["image_path"]
                 frame = json.loads((self.root / "perception" / frame_id / "perception.json").read_text())
+                frame["context"].update({
+                    key: entry["context"][key]
+                    for key in ("control_applications", CONTROL_APPLICATION_RESET_KEY)
+                    if key in entry.get("context", {})
+                })
                 names |= uploaded_sources(frame["step_activations"])
                 frames.append({
                     "frame": frame,

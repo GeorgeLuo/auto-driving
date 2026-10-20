@@ -357,13 +357,12 @@ class AutonomyCycleHost:
     def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
         with self._session_lock:
             run_generation = self._run_generation
-        ticket = self.execution.ticket() if self.execution is not None else None
-        if ticket is not None:
-            context = replace(
-                context, mode=ticket.mode,
-                control_history=self.execution.recent_deliveries(),
-            )
         with self._lock:
+            ticket = self.execution.ticket() if self.execution is not None else None
+            if ticket is not None:
+                context = replace(
+                    context, mode=ticket.mode, control_applications=ticket.control_applications,
+                )
             self._cycle_in_progress = {"frame_id": context.frame_id, "started_at_ms": timestamp_ms()}
             if context.shared_memory is None:
                 context = replace(context, shared_memory=self.shared_memory)
@@ -425,6 +424,8 @@ class AutonomyCycleHost:
         configuration = configuration or RunConfiguration()
         with self._session_lock:
             self.stop()
+            if self.execution is not None:
+                self.execution.clear_applications()
             self.last_error = None
             self.configuration = configuration
             self.recording = recording
@@ -582,6 +583,8 @@ class AutonomyCycleHost:
         """
 
         with self._lock:
+            if self.execution is not None:
+                self.execution.clear_applications()
             memory = self.cycle.steps.memory
             if memory is None:
                 self.shared_memory.clear()

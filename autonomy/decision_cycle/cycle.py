@@ -105,13 +105,13 @@ class DecisionCycleResult:
             "application": self.application.to_dict() if self.application is not None else None,
         }
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self, *, include_control_applications: bool = True) -> dict[str, Any]:
         return {
             "schema": self.schema,
             "started_at_ms": self.started_at_ms,
             "completed_at_ms": self.completed_at_ms,
             "duration_ms": self.duration_ms,
-            "context": self.context.to_dict(),
+            "context": self.context.to_dict(include_control_applications=include_control_applications),
             "perception": _record(self.perception),
             "observation": _record(self.observation),
             "memory": _to_plain_data(self.memory),

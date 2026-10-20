@@ -41,7 +41,7 @@ class BoundedEvidenceLedger:
     contract = MemoryPluginContract(
         description="Retain attributed observation evidence within recency and size bounds.",
         assumptions=("Observations use the runtime clock.",),
-        emits=(),
+        belief_ids=(),
         limitations=("Retained observations do not establish checked beliefs.",),
     )
 

@@ -42,10 +42,11 @@ its reduction live in [shared/evidence_ledger/](shared/evidence_ledger/).
 
 As in perception and proposal, `autonomy/decision_cycle/memory/` owns the
 required plugin contract and protocol (`plugin.py`), composition and failure
-policy (`interface.py`), and step execution (`runner.py`). Memory's `evidence.py` defines the retained
-evidence records, `publication.py` the key later steps read them at, and
-`errors.py` the update failure that stops the cycle. Those types belong to the
-memory contract, rather than to a concrete retention strategy.
+policy (`interface.py`), and step execution (`runner.py`). Memory's
+`evidence.py` defines the retained evidence records, `beliefs.py` the checked
+beliefs, `publication.py` the keys later steps read them at, and `errors.py`
+the update failure that stops the cycle. Those types belong to the memory
+contract, rather than to a concrete retention strategy.
 
 Memory plugins read the shared map and the observation, not the camera feed:
 the framework hands them a frame context without `sensor_frame`. Memory needs
@@ -57,28 +58,38 @@ memory plugins belongs in `shared/`, as in perception and proposal.
 
 ## Beliefs
 
-Learning derives hypotheses from observations. A `Belief` keeps a learned value,
+A memory plugin learns from observations. A `Belief` keeps a learned value,
 its source plugin, open `Trial` predictions, and recent `Check` outcomes. Plugins
 choose the check methods and support criteria, and pass a positive `max_checks`
-to bound the recent window. Samples and quartiles describe precision; checks
-describe whether predictions held up.
+and `max_trials` to bound the recent checks and open trials. Samples and
+precision belong in the value or `properties`; checks describe whether
+predictions held up.
 
 | Perception framework | Memory framework |
 |---|---|
 | `plugin.py`: required `PerceptionPluginContract` | `plugin.py`: required `MemoryPluginContract` |
-| `evidence/values.py`: what is observed | `beliefs/values.py`: what is learned and checked |
+| `evidence/values.py`: what is observed | `beliefs.py`: what is learned and checked |
 | `feeds/`: sensor inputs | Frame context and observation: memory inputs |
 
-Every plugin declares its description, assumptions, emitted belief ids, and
-limitations. `publish_belief` merges values at `memory.beliefs` by id;
-`read_belief` returns a typed, detached value. Retained `memory.evidence` still
-uses last-write-wins. An undeclared belief write stops the cycle. Reset and
-removing a plugin drop its declared beliefs, even if its optional reset fails.
+Every plugin declares its description, assumptions, the `belief_ids` it
+publishes, and its limitations. A plugin keeps each declared belief at
+`belief_key(belief_id)`, `memory.beliefs.<belief_id>`, as the `Belief` record
+itself: that key is both its state and its publication. One plugin owns each
+belief id, and a selection in which two plugins declare the same id is
+rejected. `read_belief` returns a copy of the `Belief`, or `None` when no
+plugin has published it. Retained `memory.evidence` still uses last-write-wins.
 
-Confidence is `(support + 1) / (support + contradict + 2)` over the retained
-checks, or `None` before any checks. A belief is corroborated when at least two
-different methods each have more supports than contradictions. Revising a
-value retires its open trials; the learner chooses whether to keep its checks.
-Reports and recordings include beliefs and confidence; consumers do not yet
-use confidence to choose behavior. The framework leaves checks and retention
-policy to each learner.
+A plugin that does not check what it learns declares `belief_ids=()` and
+publishes no beliefs, so readers get `None`, never a score. An update that
+writes a belief key its contract does not declare, or anything but its own
+`Belief` with the key's id, is undone and stops the cycle. Reset and removing a
+plugin delete its declared keys, even if its optional reset fails.
+
+Confidence is `None` before the first check, then
+`(support + 1) / (support + contradict + 2)` over the retained checks, so it
+never reaches 0 or 1. A belief is corroborated when at least two different
+methods each have more supports than contradictions. Revising a value retires
+its open trials; the plugin chooses whether to keep its checks. Reports and
+recordings include beliefs and confidence; consumers do not yet use confidence
+to choose behavior. The framework leaves checks and retention policy to each
+plugin.

@@ -12,6 +12,13 @@ One folder per plugin, named for its `plugin_id`. For example, the
 - Memory plugins do not read the camera feed. The runner hands them the frame
   context without `sensor_frame`; evidence from the feed comes through the
   observation, from a perception plugin.
+- The plugin class exposes `contract`, a `MemoryPluginContract`
+  (`autonomy/decision_cycle/memory/plugin.py`): what it does, its
+  assumptions, the `belief_ids` it publishes, and its limitations. A plugin
+  that does not check what it learns declares `belief_ids=()` and publishes
+  no beliefs; readers then get `None`, never a score. One plugin owns each
+  belief id: the runner rejects a selection in which two plugins declare the
+  same one.
 - Register a plugin with one entry in `../catalog.py`: its `spec`
   (`module.path:Class`), a description, and its default config.
 - Name ordered plugin selections and configuration recipes in `../presets.py`,
@@ -20,7 +27,8 @@ One folder per plugin, named for its `plugin_id`. For example, the
 - Keep cross-frame state in `context.shared_memory`, under keys the plugin
   owns. Publish what later steps read at the keys named in
   `autonomy/decision_cycle/memory/publication.py`: `EVIDENCE_KEY` for
-  retained evidence records.
+  retained evidence records, and `belief_key(belief_id)` for each `Belief`
+  the contract declares.
 - A retained-evidence ledger's status summary uses the names in
   `autonomy/decision_cycle/memory/interface.py`: `LEDGER_SUMMARY_KEYS`
   (`epoch_id`, `health`, `bounds`, `record_count`). `health` is `empty` or
@@ -41,8 +49,8 @@ One folder per plugin, named for its `plugin_id`. For example, the
   to this plugin; see `autonomy/decision_cycle/memory/runner.py`.
 - How several plugins share that map, and what a failure does, is declared in
   `autonomy/decision_cycle/memory/interface.py`: `composition_declaration`
-  (selection order, one `EVIDENCE_KEY`, last write wins) and `FAILURE_POLICY`
-  (an update failure stops the cycle, a reset failure is recorded, a missing
-  observation is still passed in). `MemoryRunner` reads those values.
+  (selection order, one `EVIDENCE_KEY`, last write wins, one owner per belief)
+  and `FAILURE_POLICY` (an update failure stops the cycle, a reset failure is
+  recorded, a missing observation is still passed in). `MemoryRunner` reads those values.
 - Reuse goes through `../shared/`. A plugin does not import another plugin's
   modules.

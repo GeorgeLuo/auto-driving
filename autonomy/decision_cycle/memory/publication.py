@@ -8,35 +8,30 @@ The key holds one value, the last one written. With several plugins that
 publish evidence, later steps see only the last plugin's records; the others
 keep theirs in their own ledgers, which appear in the memory report. The
 report's ``evidence_publisher`` names the plugin whose records the key holds.
-Beliefs occupy a separate map, merged by belief id. Publishing or dropping one
-belief preserves every other id; two writers of the same id use selection order.
+
+A plugin publishes each ``Belief`` its contract declares at
+``belief_key(belief_id)``, one key per belief, and keeps it there as its own
+state: it reads the belief back on its next update and writes a new one when a
+check or revision changes it. One plugin owns each belief id. ``read_belief``
+returns a detached copy, or None when no plugin has published that belief,
+never a score.
 """
 from __future__ import annotations
 
-from collections.abc import Iterable
-
-from autonomy.decision_cycle.memory.beliefs.values import Belief
+from autonomy.decision_cycle.memory.beliefs import Belief
 from autonomy.shared_memory import SharedMemory
 
 EVIDENCE_KEY = "memory.evidence"
 
-BELIEFS_KEY = "memory.beliefs"
+BELIEF_KEY_PREFIX = "memory.beliefs."
 
 
-def publish_belief(shared_memory: SharedMemory, belief: Belief) -> None:
-    """Publish a detached belief, preserving other belief ids."""
-    shared_memory[BELIEFS_KEY] = {**shared_memory.get(BELIEFS_KEY, {}), belief.belief_id: belief.to_dict()}
+def belief_key(belief_id: str) -> str:
+    return f"{BELIEF_KEY_PREFIX}{belief_id}"
 
 
 def read_belief(shared_memory: SharedMemory | None, belief_id: str) -> Belief | None:
-    data = None if shared_memory is None else shared_memory.get(BELIEFS_KEY, {}).get(belief_id)
-    return Belief.from_dict(data) if data is not None else None
+    """A detached copy of the published ``Belief``, or None when the key holds none."""
 
-
-def drop_beliefs(shared_memory: SharedMemory | None, belief_ids: Iterable[str]) -> None:
-    if shared_memory is None or BELIEFS_KEY not in shared_memory:
-        return
-    removed = set(belief_ids)
-    current = shared_memory[BELIEFS_KEY]
-    if removed.intersection(current):
-        shared_memory[BELIEFS_KEY] = {key: value for key, value in current.items() if key not in removed}
+    value = None if shared_memory is None else shared_memory.get(belief_key(belief_id))
+    return Belief.from_dict(value.to_dict()) if isinstance(value, Belief) else None

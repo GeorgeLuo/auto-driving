@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
-
 import unittest
 
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -20,6 +18,7 @@ from autonomy.decision_cycle.memory.interface import (
     MemoryPluginReport,
     MemoryReport,
 )
+from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.shared_memory import SharedMemory
 
@@ -155,7 +154,7 @@ class MemoryInterfaceTests(unittest.TestCase):
         self.assertIsNone(parsed.state)
         self.assertEqual(
             MemoryReport.from_dict({}).to_dict(),
-            {"schema": MEMORY_REPORT_SCHEMA, "plugins": [], "evidence_publisher": None, "beliefs": {}},
+            {"schema": MEMORY_REPORT_SCHEMA, "plugins": [], "evidence_publisher": None, "beliefs": None},
         )
         self.assertIsNone(MemoryReport.from_dict({"evidence_publisher": 3}).evidence_publisher)
 
@@ -168,6 +167,7 @@ class MemoryInterfaceTests(unittest.TestCase):
             MemoryReport(
                 schema=MEMORY_REPORT_SCHEMA,
                 plugins=(MemoryPluginReport(plugin_id="summary_memory", state=state),),
+                beliefs={},
             ).to_dict(),
         )
 

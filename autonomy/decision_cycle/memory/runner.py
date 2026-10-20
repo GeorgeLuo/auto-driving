@@ -3,9 +3,9 @@
 ``MemoryRunner`` is a ``StepRunner`` whose ``load_plugin`` wraps each
 selected plugin in a ``MemoryPluginRuntime``; it runs them in selection order.
 Its return value is the ``MemoryReport`` dict from ``interface``: each
-plugin's own state summary for diagnostics, and the evidence publisher, the
-plugin whose value ``EVIDENCE_KEY`` holds. Decisions read plugin-published
-keys in the host map, not the report.
+plugin's own state summary for diagnostics, the evidence publisher, the
+plugin whose value ``EVIDENCE_KEY`` holds, and the published beliefs.
+Decisions read plugin-published keys in the host map, not the report.
 
 ``MemoryPluginRuntime`` times and reports one applied plugin; the runner
 copies each plugin's duration and error into its plugin records. It sits here, in
@@ -16,7 +16,6 @@ Update and reset failures follow ``FAILURE_POLICY`` in ``interface``.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, ClassVar
@@ -31,19 +30,19 @@ from autonomy.decision_cycle.memory.interface import (
     MemoryReport,
     composition_declaration,
 )
+from autonomy.decision_cycle.memory.beliefs import Belief
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, MemoryPluginContract, plugin_status
-from autonomy.decision_cycle.memory.beliefs.values import Belief
-from autonomy.decision_cycle.memory.publication import BELIEFS_KEY, EVIDENCE_KEY, drop_beliefs
+from autonomy.decision_cycle.memory.publication import BELIEF_KEY_PREFIX, EVIDENCE_KEY, belief_key
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.runner import StepRunner, reset_plugin
+from autonomy.decision_cycle.runner import StepRunner, describe_plugin, reset_plugin
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition, PluginManager
-from autonomy.shared_memory import SharedMemory
+from autonomy.shared_memory import SharedMemory, shared_memory_document
 
 # Cap for status and worker-facing diagnostic strings.
 DEFAULT_MAX_DIAGNOSTIC_CHARS = 1_024
 
-# Stands for an absent ``EVIDENCE_KEY``, so a stored None still counts as a value.
+# Stands for an absent key, so a stored None still counts as a value.
 _ABSENT = object()
 
 
@@ -61,6 +60,8 @@ class MemoryPluginRuntime:
         self.plugin_id = definition.plugin_id
         self.source_path = source_path
         self.implementation = plugin
+        # The keys this plugin's contract lets it write under BELIEF_KEY_PREFIX.
+        self.belief_keys = frozenset(belief_key(belief_id) for belief_id in plugin.contract.belief_ids)
         self.last_duration_ms: float | None = None
         self.last_error: str | None = None
         self.update_count = 0
@@ -77,18 +78,9 @@ class MemoryPluginRuntime:
         if context.shared_memory is not None:
             self._shared_memory = context.shared_memory
         try:
-            before = deepcopy(_beliefs(self._shared_memory))
+            before = _beliefs(self._shared_memory)
             self.implementation.update(context, observation)
-            after = _beliefs(self._shared_memory)
-            for belief_id in before.keys() | after.keys():
-                if belief_id in before and belief_id in after and before[belief_id] == after[belief_id]:
-                    continue
-                if belief_id not in self.implementation.contract.emits:
-                    raise ValueError(f"memory plugin {self.plugin_id!r} wrote undeclared belief {belief_id!r}")
-                if belief_id in after:
-                    belief = Belief.from_dict(after[belief_id])
-                    if belief.belief_id != belief_id or belief.source_plugin_id != self.plugin_id:
-                        raise ValueError(f"belief {belief_id!r} must identify its publishing plugin {self.plugin_id!r}")
+            self._check_beliefs(before)
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1
@@ -107,7 +99,9 @@ class MemoryPluginRuntime:
             try:
                 reset_plugin(self.implementation, self._shared_memory)
             finally:
-                drop_beliefs(self._shared_memory, self.implementation.contract.emits)
+                if self._shared_memory is not None:
+                    for key in self.belief_keys:
+                        self._shared_memory.pop(key, None)
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1
@@ -116,6 +110,32 @@ class MemoryPluginRuntime:
                 raise
         self.last_duration_ms = elapsed_ms(started)
         self.reset_count += 1
+
+    def _check_beliefs(self, before: dict[str, Any]) -> None:
+        """Fail the update if it wrote a belief key that is not this plugin's to write.
+
+        Each belief key whose value changed must be declared in the contract
+        and hold this plugin's ``Belief`` with the key's id, in a form shared
+        memory can store. Otherwise every changed belief key is restored. As
+        for the evidence publisher, a value counts as changed when the key
+        holds a different object; a change made inside a stored value is not seen.
+        """
+
+        after = _beliefs(self._shared_memory)
+        changed = [
+            key for key in sorted(before.keys() | after.keys())
+            if before.get(key, _ABSENT) is not after.get(key, _ABSENT)
+        ]
+        for key in changed:
+            try:
+                _check_belief(key, after.get(key, _ABSENT), self.belief_keys, self.plugin_id)
+            except ValueError as exc:
+                for restored in changed:
+                    if restored in before:
+                        self._shared_memory[restored] = before[restored]
+                    else:
+                        self._shared_memory.pop(restored, None)
+                raise ValueError(f"memory plugin {self.plugin_id!r} wrote {key!r}: {exc}") from exc
 
     def plugin_status(self) -> dict[str, Any] | None:
         """The plugin's own summary of its state, or None when it offers none."""
@@ -146,8 +166,10 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
     in a ``MemoryPluginRuntime`` that times and reports it.
 
     Plugins run in selection order on the same host map. Each plugin writes its
-    own keys. Evidence is last-write-wins; beliefs merge by id, with later
-    writes winning for the same id. The framework does not merge retention policies.
+    own keys; where two plugins publish evidence, the later one wins. Each
+    belief has one key and one owner, the plugin whose contract declares it;
+    ``validate_selection`` rejects two owners. The framework does not merge
+    retention policies.
 
     ``evidence_publisher`` names the applied plugin whose value
     ``EVIDENCE_KEY`` holds. The runner compares the key's value before and
@@ -194,8 +216,21 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
     def validate_plugin(self, plugin: Any, definition: PluginDefinition) -> None:
         if not isinstance(getattr(plugin, "contract", None), MemoryPluginContract):
             raise TypeError(f"plugin {definition.plugin_id!r} must expose MemoryPluginContract as contract")
-        if not isinstance(plugin, MemoryPlugin) or not callable(getattr(plugin, "update", None)):
+        if not isinstance(plugin, MemoryPlugin):
             raise TypeError(f"memory plugin {definition.entrypoint} does not satisfy MemoryPlugin")
+
+    def validate_selection(self, plugins: tuple[MemoryPluginRuntime, ...]) -> None:
+        """Reject a selection in which two plugins declare the same belief."""
+
+        super().validate_selection(plugins)
+        owners: dict[str, str] = {}
+        for plugin in plugins:
+            for belief_id in plugin.implementation.contract.belief_ids:
+                if belief_id in owners:
+                    raise ValueError(
+                        f"belief {belief_id!r} is declared by both {owners[belief_id]!r} and {plugin.plugin_id!r}"
+                    )
+                owners[belief_id] = plugin.plugin_id
 
     def _reset_plugin(
         self, plugin: MemoryPluginRuntime, shared_memory: SharedMemory | None
@@ -311,6 +346,10 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
         return {
             **super()._describe_schema(),
             "plugin_id": self.plugin_id,
+            "plugins": [
+                {**describe_plugin(definition), "contract": plugin.implementation.contract.to_dict()}
+                for definition, plugin in self.applied
+            ],
             "inputs": [
                 {
                     "name": "observation",
@@ -363,7 +402,7 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 for plugin in self.plugins.values()
             ),
             evidence_publisher=self.evidence_publisher,
-            beliefs={key: Belief.from_dict(value) for key, value in _beliefs(self._shared_memory).items()},
+            beliefs=_published_beliefs(self._shared_memory),
         ).to_dict()
 
     def status(self) -> dict[str, Any]:
@@ -373,8 +412,8 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 "plugins": [plugin.status() for plugin in self.plugins.values()],
                 "evidence_publisher": self.evidence_publisher,
                 "beliefs": {
-                    key: Belief.from_dict(value).to_dict()
-                    for key, value in _beliefs(self._shared_memory).items()
+                    belief_id: belief.to_dict()
+                    for belief_id, belief in _published_beliefs(self._shared_memory).items()
                 },
                 # Live memory readers, including the CLI, read update_count.
                 "update_count": self.update_count,
@@ -383,7 +422,31 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
 
 
 def _beliefs(shared_memory: SharedMemory | None) -> dict[str, Any]:
-    return {} if shared_memory is None else shared_memory.get(BELIEFS_KEY, {})
+    """Every key under ``BELIEF_KEY_PREFIX`` and the value it holds now."""
+
+    if shared_memory is None:
+        return {}
+    return {key: value for key, value in shared_memory.items() if key.startswith(BELIEF_KEY_PREFIX)}
+
+
+def _published_beliefs(shared_memory: SharedMemory | None) -> dict[str, Belief]:
+    """Each ``Belief`` under ``BELIEF_KEY_PREFIX``, by belief id."""
+
+    return {
+        value.belief_id: value
+        for value in _beliefs(shared_memory).values()
+        if isinstance(value, Belief)
+    }
+
+
+def _check_belief(key: str, value: object, declared: frozenset[str], plugin_id: str) -> None:
+    if key not in declared:
+        raise ValueError("the plugin's contract does not declare it")
+    if value is _ABSENT:
+        return
+    if not isinstance(value, Belief) or belief_key(value.belief_id) != key or value.source_plugin_id != plugin_id:
+        raise ValueError("it must hold this plugin's Belief with the key's belief id")
+    shared_memory_document({key: value})
 
 
 def _evidence(shared_memory: SharedMemory | None) -> object:

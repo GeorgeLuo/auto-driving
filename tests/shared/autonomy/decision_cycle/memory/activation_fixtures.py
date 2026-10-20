@@ -1,9 +1,8 @@
 from __future__ import annotations
-
-from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 import json
 from pathlib import Path
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
+from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 from autonomy.decision_cycle.activation import STEP_ACTIVATION_SCHEMA
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 

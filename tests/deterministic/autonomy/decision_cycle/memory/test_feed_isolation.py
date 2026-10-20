@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
-
 import unittest
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 

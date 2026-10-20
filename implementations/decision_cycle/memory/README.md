@@ -74,20 +74,21 @@ predictions held up.
 Every plugin declares its description, assumptions, the `belief_ids` it
 publishes, and its limitations. A plugin keeps each declared belief at
 `belief_key(belief_id)`, `memory.beliefs.<belief_id>`, as the `Belief` record
-itself: that key is both its state and its publication. One plugin owns each
-belief id, and a selection in which two plugins declare the same id is
-rejected. `read_belief` returns the stored `Belief`, or `None` when no
+itself: that key is both its state and its publication. The last write to each
+belief key wins. `read_belief` returns the stored `Belief`, or `None` when no
 plugin has published it. Retained `memory.evidence` still uses last-write-wins.
 
 A plugin that does not check what it learns declares `belief_ids=()` and
 publishes no beliefs, so readers get `None`, never a score. Reset and
-removing a plugin delete its declared keys, even if its optional reset fails.
+removing a plugin delete its declared keys before invoking its optional reset;
+fresh state written by reset survives.
 
 Confidence is `None` before the first check, then
 `(support + 1) / (support + contradict + 2)` over the retained checks, so it
 never reaches 0 or 1. A belief is corroborated when at least two different
-methods each have more supports than contradictions. Revising a value retires
-its open trials; the plugin chooses whether to keep its checks. Reports and
-recordings include beliefs and confidence; consumers do not yet use confidence
+methods each have more supports than contradictions. Revising a value keeps
+its open trials; withdrawal drops trials without scoring them. The plugin
+chooses whether to keep its checks. Reports and recordings include belief
+summaries and confidence; consumers do not yet use confidence
 to choose behavior. The framework leaves checks and retention policy to each
 plugin.

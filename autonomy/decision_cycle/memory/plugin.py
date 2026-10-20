@@ -12,7 +12,8 @@ diagnostics. Framework code owns selection, timing, and failure isolation.
 Every plugin exposes a ``MemoryPluginContract``: what it does and assumes, the
 beliefs it publishes, and its limits. A ``Belief`` (``beliefs``) is a learned
 value and the checks of it; the plugin decides what counts as support and keeps
-it at ``belief_key`` (``publication``). Reset removes the declared keys.
+it at ``belief_key`` (``publication``). The runner removes declared beliefs
+before the plugin resets; plugin state lives only in shared memory.
 
 A memory plugin reads the host map and the ``observation``; it does not read
 the feed. The context it receives has no ``sensor_frame``. Anything memory needs
@@ -26,7 +27,7 @@ null for missing keys. Inspect and workbench frame rows default a missing
 ``record_count`` to 0, preserve an explicit null, and omit ``bounds``.
 
 How several plugins share one map, including the one ``EVIDENCE_KEY`` and
-last-write-wins and one owner per belief, is ``composition_declaration`` in
+last-write-wins per evidence or belief key, is ``composition_declaration`` in
 ``interface``. What a failure does is ``FAILURE_POLICY`` there: an update
 failure stops the cycle, and a reset failure is recorded. ``MemoryRunner``
 reads those values.
@@ -47,8 +48,8 @@ from autonomy.shared_memory import SharedMemory
 class MemoryPluginContract:
     """What one memory plugin does and assumes, the beliefs it publishes, and its limits.
 
-    ``belief_ids`` names each ``Belief`` the plugin publishes; no other selected
-    plugin may declare the same id. A plugin that does not check what it learns
+    ``belief_ids`` names each ``Belief`` the plugin publishes; the last write
+    to each key wins. A plugin that does not check what it learns
     declares ``belief_ids=()`` and publishes no beliefs, so readers get None,
     never a score. A published belief's confidence is None until its first check.
     """

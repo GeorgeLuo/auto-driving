@@ -59,8 +59,6 @@ class BeliefTests(unittest.TestCase):
             resolved.resolved("stop-1", "support", None, 4, 8)
         with self.assertRaisesRegex(ValueError, "before it starts"):
             opened.resolved("stop-2", "support", None, 1, 8)
-        with self.assertRaisesRegex(ValueError, "unique"):
-            opened.opened(trial, 4)
 
     def test_open_trials_are_bounded_and_time_does_not_move_backwards(self):
         belief = Belief("test.row", 12, "test", 10)
@@ -75,12 +73,12 @@ class BeliefTests(unittest.TestCase):
             with self.subTest(bound=bound), self.assertRaises(ValueError):
                 belief.opened(Trial("t9", "stop", 1, 1), bound)
 
-    def test_revision_can_retire_old_checks_and_retires_open_predictions(self):
+    def test_revision_can_retire_old_checks_and_keeps_open_predictions(self):
         belief = hypothesis().checked(Check(1, "stop", "support"), 5)
         belief = belief.opened(Trial("t", "stop", 2, 12), 4)
         retained = belief.revised(13, 3, keep_checks=True)
         self.assertEqual(retained.checks, belief.checks)
-        self.assertEqual(retained.trials, ())
+        self.assertEqual(retained.trials, belief.trials)
         discarded = belief.revised(14, 4, keep_checks=False)
         self.assertIsNone(discarded.confidence)
         self.assertEqual((discarded.value, discarded.updated_at_ms), (14, 4))
@@ -132,3 +130,40 @@ class BeliefTests(unittest.TestCase):
         for shared_memory, belief_id in ((shared, "absent"), (shared, "test.raw"), (None, "test.row")):
             with self.subTest(belief_id=belief_id):
                 self.assertIsNone(read_belief(shared_memory, belief_id))
+
+    def test_revision_properties_and_default_check_retention(self):
+        belief = hypothesis(properties={"samples": 2}).checked(Check(10, "stop", "support"), 5)
+        revised = belief.revised(14, 3)
+        self.assertEqual(revised.properties, {"samples": 2})
+        self.assertEqual(revised.checks, belief.checks)
+        self.assertEqual(revised.updated_at_ms, 10)
+        self.assertEqual(belief.revised(14, 11, properties={}).properties, {})
+
+    def test_opening_replaces_same_id_and_preserves_other_trials(self):
+        first = Trial("first", "stop", 10, 12)
+        second = Trial("second", "arrival", 12, 15)
+        belief = hypothesis().opened(first, 2).opened(second, 2)
+        updated = Trial("first", "stop", 8, 14)
+        replaced = belief.opened(updated, 2)
+        self.assertEqual(replaced.trials, (second, updated))
+        self.assertEqual(replaced.updated_at_ms, 12)
+        self.assertEqual(replaced.opened(Trial("third", "stop", 15, 16), 2).trials[0], updated)
+
+    def test_withdrawal_drops_predictions_without_scoring(self):
+        belief = hypothesis().opened(Trial("first", "stop", 10, 12), 3)
+        belief = belief.opened(Trial("second", "arrival", 12, 15), 3)
+        belief = belief.checked(Check(13, "stop", "support"), 5)
+        withdrawn = belief.withdrawn(("first", "missing"))
+        self.assertEqual(withdrawn.trials, (belief.trials[1],))
+        self.assertEqual(withdrawn.checks, belief.checks)
+        self.assertEqual(withdrawn.updated_at_ms, 13)
+        self.assertEqual(belief.withdrawn(()), belief)
+        self.assertEqual(belief.withdrawn().trials, ())
+        self.assertEqual(belief.withdrawn().confidence, belief.confidence)
+
+    def test_summary_omits_retained_records_and_properties(self):
+        belief = hypothesis(properties={"samples": 2}).opened(Trial("t", "stop", 10, 12), 3)
+        self.assertEqual(belief.summary(), {
+            "value": belief.value, "source_plugin_id": "test", "updated_at_ms": 10,
+            "confidence": None, "by_method": {}, "corroborated": False, "open_trials": 1,
+        })

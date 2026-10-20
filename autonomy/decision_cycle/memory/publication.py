@@ -12,7 +12,7 @@ report's ``evidence_publisher`` names the plugin whose records the key holds.
 A plugin publishes each ``Belief`` its contract declares at
 ``belief_key(belief_id)``, one key per belief, and keeps it there as its own
 state: it reads the belief back on its next update and writes a new one when a
-check or revision changes it. One plugin owns each belief id. ``read_belief``
+check or revision changes it. The last write to each belief key wins. ``read_belief``
 returns the stored ``Belief``, or None when no plugin has published that
 belief, never a score.
 """

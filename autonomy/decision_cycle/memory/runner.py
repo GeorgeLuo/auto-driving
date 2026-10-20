@@ -94,12 +94,10 @@ class MemoryPluginRuntime:
         if shared_memory is not None:
             self._shared_memory = shared_memory
         try:
-            try:
-                reset_plugin(self.implementation, self._shared_memory)
-            finally:
-                if self._shared_memory is not None:
-                    for key in self.belief_keys:
-                        self._shared_memory.pop(key, None)
+            if self._shared_memory is not None:
+                for key in self.belief_keys:
+                    self._shared_memory.pop(key, None)
+            reset_plugin(self.implementation, self._shared_memory)
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1
@@ -138,10 +136,8 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
     in a ``MemoryPluginRuntime`` that times and reports it.
 
     Plugins run in selection order on the same host map. Each plugin writes its
-    own keys; where two plugins publish evidence, the later one wins. Each
-    belief has one key and one owner, the plugin whose contract declares it;
-    ``validate_selection`` rejects two owners. The framework does not merge
-    retention policies.
+    own keys; where two plugins publish evidence or the same belief key, the
+    later one wins. The framework does not merge retention policies.
 
     ``evidence_publisher`` names the applied plugin whose value
     ``EVIDENCE_KEY`` holds. The runner compares the key's value before and
@@ -190,19 +186,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
             raise TypeError(f"plugin {definition.plugin_id!r} must expose MemoryPluginContract as contract")
         if not isinstance(plugin, MemoryPlugin):
             raise TypeError(f"memory plugin {definition.entrypoint} does not satisfy MemoryPlugin")
-
-    def validate_selection(self, plugins: tuple[MemoryPluginRuntime, ...]) -> None:
-        """Reject a selection in which two plugins declare the same belief."""
-
-        super().validate_selection(plugins)
-        owners: dict[str, str] = {}
-        for plugin in plugins:
-            for belief_id in plugin.implementation.contract.belief_ids:
-                if belief_id in owners:
-                    raise ValueError(
-                        f"belief {belief_id!r} is declared by both {owners[belief_id]!r} and {plugin.plugin_id!r}"
-                    )
-                owners[belief_id] = plugin.plugin_id
 
     def _reset_plugin(
         self, plugin: MemoryPluginRuntime, shared_memory: SharedMemory | None
@@ -374,7 +357,7 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 for plugin in self.plugins.values()
             ),
             evidence_publisher=self.evidence_publisher,
-            beliefs=_published_beliefs(self._shared_memory),
+            beliefs={key: belief.summary() for key, belief in _published_beliefs(self._shared_memory).items()},
         ).to_dict()
 
     def status(self) -> dict[str, Any]:
@@ -394,12 +377,12 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
 
 
 def _published_beliefs(shared_memory: SharedMemory | None) -> dict[str, Belief]:
-    """Each ``Belief`` under ``BELIEF_KEY_PREFIX``, by belief id."""
+    """Each ``Belief`` under ``BELIEF_KEY_PREFIX``, by key suffix."""
 
     if shared_memory is None:
         return {}
     return {
-        value.belief_id: value
+        key.removeprefix(BELIEF_KEY_PREFIX): value
         for key, value in shared_memory.items()
         if key.startswith(BELIEF_KEY_PREFIX) and isinstance(value, Belief)
     }

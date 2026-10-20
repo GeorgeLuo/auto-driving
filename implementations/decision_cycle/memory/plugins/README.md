@@ -16,9 +16,8 @@ One folder per plugin, named for its `plugin_id`. For example, the
   (`autonomy/decision_cycle/memory/plugin.py`): what it does, its
   assumptions, the `belief_ids` it publishes, and its limitations. A plugin
   that does not check what it learns declares `belief_ids=()` and publishes
-  no beliefs; readers then get `None`, never a score. One plugin owns each
-  belief id: the runner rejects a selection in which two plugins declare the
-  same one.
+  no beliefs; readers then get `None`, never a score. The last write to each
+  belief key wins.
 - Register a plugin with one entry in `../catalog.py`: its `spec`
   (`module.path:Class`), a description, and its default config.
 - Name ordered plugin selections and configuration recipes in `../presets.py`,
@@ -49,7 +48,7 @@ One folder per plugin, named for its `plugin_id`. For example, the
   to this plugin; see `autonomy/decision_cycle/memory/runner.py`.
 - How several plugins share that map, and what a failure does, is declared in
   `autonomy/decision_cycle/memory/interface.py`: `composition_declaration`
-  (selection order, one `EVIDENCE_KEY`, last write wins, one owner per belief)
+  (selection order, one `EVIDENCE_KEY`, last write wins, one value per belief key)
   and `FAILURE_POLICY` (an update failure stops the cycle, a reset failure is
   recorded, a missing observation is still passed in). `MemoryRunner` reads those values.
 - Reuse goes through `../shared/`. A plugin does not import another plugin's

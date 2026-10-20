@@ -4,6 +4,8 @@ import json
 import unittest
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.cycle import DecisionSteps
+from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.decision_cycle.memory.beliefs import Belief, Check
 from autonomy.decision_cycle.memory.interface import MemoryReport
 from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
@@ -72,11 +74,20 @@ class BeliefRunnerTests(unittest.TestCase):
         self.assertEqual(runner.status()["beliefs"], {})
         self.assertIsNone(read_belief(shared, "counter.count"))
 
-    def test_two_plugins_cannot_declare_the_same_belief(self):
-        second = _Learner()
-        second.plugin_id = "second"
-        with self.assertRaisesRegex(ValueError, "'learner.row' is declared by both 'learner' and 'second'"):
-            MemoryRunner.from_plugins({"learner": _Learner(), "second": second})
+    def test_two_plugins_can_declare_the_same_belief_and_last_write_wins(self):
+        class Second(_Learner):
+            plugin_id = "second"
+
+            def update(self, context, observation):
+                context.shared_memory[belief_key(self.belief_id)] = Belief(
+                    self.belief_id, 99, self.plugin_id, context.timestamp_ms
+                )
+
+        shared = {}
+        runner = MemoryRunner.from_plugins({"learner": _Learner(), "second": Second()})
+        report = runner.update(_context(shared), None)
+        self.assertEqual(report["beliefs"]["learner.row"]["value"], 99)
+        self.assertEqual(read_belief(shared, "learner.row").source_plugin_id, "second")
 
     def test_selected_plugins_publish_their_own_beliefs(self):
         second = _Learner("second.row")
@@ -94,13 +105,21 @@ class BeliefRunnerTests(unittest.TestCase):
         second = runner.update(_context(shared, 20), None)
         self.assertAlmostEqual(first["beliefs"]["learner.row"]["confidence"], 2 / 3)
         self.assertAlmostEqual(second["beliefs"]["learner.row"]["confidence"], 3 / 4)
-        self.assertEqual(MemoryReport.from_dict(json.loads(json.dumps(first))).to_dict(), first)
+        decoded = MemoryReport.from_dict(json.loads(json.dumps(first)))
+        self.assertEqual(decoded.to_dict(), first)
+        self.assertEqual(set(first["beliefs"]["learner.row"]), {
+            "value", "source_plugin_id", "updated_at_ms", "confidence", "by_method",
+            "corroborated", "open_trials",
+        })
+        self.assertIn("checks", runner.status()["beliefs"]["learner.row"])
+        self.assertIsNot(MemoryReport.from_dict(first).beliefs["learner.row"], first["beliefs"]["learner.row"])
+        self.assertIsNot(decoded.to_dict()["beliefs"]["learner.row"], decoded.beliefs["learner.row"])
         self.assertAlmostEqual(runner.status()["beliefs"]["learner.row"]["confidence"], 3 / 4)
 
     def test_schema_names_the_belief_keys_and_each_plugins_contract(self):
         schema = MemoryRunner.from_plugins({"learner": _Learner()}).describe_schema()
         self.assertEqual(schema["composition"]["belief_key_prefix"], BELIEF_KEY_PREFIX)
-        self.assertEqual(schema["composition"]["beliefs"], "one_declared_owner_per_belief")
+        self.assertEqual(schema["composition"]["beliefs"], "one_value_per_key_last_write_wins")
         self.assertEqual([plugin["contract"] for plugin in schema["plugins"]], [_Learner.contract.to_dict()])
 
     def test_reset_and_deselection_remove_only_declared_beliefs_even_on_reset_failure(self):
@@ -117,3 +136,31 @@ class BeliefRunnerTests(unittest.TestCase):
                 runner.plugin_manager.select(())
                 runner.apply_selection(shared)
                 self.assertEqual(shared, {belief_key("other.row"): other})
+
+    def test_report_keys_follow_publication_keys_not_embedded_ids(self):
+        belief = Belief("same", 12, "learner", 0)
+        shared = {belief_key("a"): belief, belief_key("b"): belief}
+        runner = MemoryRunner.from_plugins({})
+        report = runner.update(_context(shared), None)
+        self.assertEqual(set(report["beliefs"]), {"a", "b"})
+        self.assertEqual(set(runner.status()["beliefs"]), {"a", "b"})
+
+    def test_reset_prior_survives_runner_and_host_reset(self):
+        class Prior(_Learner):
+            def reset(self, shared_memory):
+                assert belief_key(self.belief_id) not in shared_memory
+                epoch = shared_memory.get("memory.learner.epoch", 0) + 1
+                shared_memory["memory.learner.epoch"] = epoch
+                shared_memory[belief_key(self.belief_id)] = Belief(self.belief_id, epoch, self.plugin_id, 0)
+
+        runner = MemoryRunner.from_plugins({"learner": Prior()})
+        shared = {"memory.learner.epoch": 3}
+        runner.update(_context(shared), None)
+        fresh = runner.reset(shared)
+        self.assertEqual(fresh[belief_key("learner.row")].value, 4)
+        host = AutonomyCycleHost(steps=DecisionSteps(memory=runner))
+        self.addCleanup(host.close)
+        host.shared_memory.update(shared)
+        host.reset_memory()
+        self.assertEqual(host.shared_memory[belief_key("learner.row")].value, 5)
+        self.assertEqual(host.shared_memory["memory.learner.epoch"], 5)

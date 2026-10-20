@@ -124,15 +124,26 @@ class Belief:
         return sum(counts["support"] > counts["contradict"]
                    for counts in self.by_method.values()) >= 2
 
-    def revised(self, value: Any, at_ms: int, keep_checks: bool) -> Belief:
-        """Revise the value, retiring the open predictions of the old one."""
+    def revised(
+        self, value: Any, at_ms: int, *, properties: dict[str, Any] | None = None,
+        keep_checks: bool = True,
+    ) -> Belief:
+        """Revise the value and optional properties, keeping open predictions."""
         return replace(self, value=value, updated_at_ms=max(self.updated_at_ms, at_ms),
-                       checks=self.checks if keep_checks else (), trials=())
+                       properties=self.properties if properties is None else properties,
+                       checks=self.checks if keep_checks else ())
 
     def opened(self, trial: Trial, max_trials: int) -> Belief:
-        """Open a prediction, dropping the oldest beyond ``max_trials``."""
-        return replace(self, trials=(*self.trials, trial)[-_bound(max_trials, "max_trials"):],
+        """Open or replace a prediction, dropping the oldest beyond ``max_trials``."""
+        trials = tuple(item for item in self.trials if item.trial_id != trial.trial_id)
+        return replace(self, trials=(*trials, trial)[-_bound(max_trials, "max_trials"):],
                        updated_at_ms=max(self.updated_at_ms, trial.started_at_ms))
+
+    def withdrawn(self, trial_ids: tuple[str, ...] | None = None) -> Belief:
+        """Drop selected predictions, or all of them, without scoring checks."""
+        return replace(self, trials=tuple(
+            trial for trial in self.trials if trial_ids is not None and trial.trial_id not in trial_ids
+        ))
 
     def checked(self, check: Check, max_checks: int) -> Belief:
         """Record a check, dropping the oldest beyond ``max_checks``."""
@@ -150,6 +161,15 @@ class Belief:
             raise ValueError("a trial cannot resolve before it starts")
         checked = self.checked(Check(at_ms, trial.method, outcome, trial.predicted, observed), max_checks)
         return replace(checked, trials=tuple(item for item in self.trials if item.trial_id != trial_id))
+
+    def summary(self) -> dict[str, Any]:
+        """The learned value and confidence for a per-frame report."""
+        return {
+            "value": self.value, "source_plugin_id": self.source_plugin_id,
+            "updated_at_ms": self.updated_at_ms, "confidence": self.confidence,
+            "by_method": self.by_method, "corroborated": self.corroborated,
+            "open_trials": len(self.trials),
+        }
 
     def to_dict(self) -> dict[str, Any]:
         return {

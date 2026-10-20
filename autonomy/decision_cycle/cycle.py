@@ -8,7 +8,7 @@ runs the plugins selected for the step:
 - ``perception(context)`` returns current evidence.
 - ``observation(context, perception)`` returns the current-frame record.
 - ``memory(context)`` lets memory plugins update the host map and returns
-  their report. The cycle writes the observation at ``observation.current``
+  their report. The cycle writes the observation at ``OBSERVATION_KEY``
   before memory runs, and removes it when there is none.
 - ``proposal(context)`` returns the candidates.
 - ``plan(context, proposal)`` returns the plan over those candidates.
@@ -27,7 +27,7 @@ from typing import Any, Callable
 from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
-from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
+from autonomy.decision_cycle.observation.publication import write_observation
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.decision_cycle.plan.values import ActionPlan
@@ -154,10 +154,7 @@ class DecisionCycle:
             Observation,
         )
         if context.shared_memory is not None:
-            if observation is None:
-                context.shared_memory.pop(OBSERVATION_KEY, None)
-            else:
-                context.shared_memory[OBSERVATION_KEY] = observation
+            write_observation(context.shared_memory, observation)
         try:
             # Memory plugins write the host map; the step returns a report.
             memory = _timed(durations, "memory", steps.memory, context)

@@ -11,7 +11,9 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY, MODE_KEY
+from autonomy.decision_cycle.action.publication import (
+    CONTROL_APPLICATIONS_KEY, MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY,
+)
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
@@ -90,9 +92,9 @@ class ControlApplicationRecordingTests(unittest.TestCase):
 
                 def remember(context):
                     seen.append(context.shared_memory[CONTROL_APPLICATIONS_KEY])
-                    self.assertEqual(context.shared_memory["action.mode"], "autonomy")
-                    self.assertEqual(context.shared_memory["action.user_steering"], context.frame_index / 10)
-                    self.assertEqual(context.shared_memory["action.user_throttle"], 0.4)
+                    self.assertEqual(context.shared_memory[MODE_KEY], "autonomy")
+                    self.assertEqual(context.shared_memory[USER_STEERING_KEY], context.frame_index / 10)
+                    self.assertEqual(context.shared_memory[USER_THROTTLE_KEY], 0.4)
                     cycle_times.append(context.timestamp_ms)
                     capture_times.append(context.sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].captured_at_ms)
 

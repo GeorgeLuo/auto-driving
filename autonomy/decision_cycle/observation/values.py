@@ -67,7 +67,7 @@ class Observation:
         return cls(
             observation_id=observation_id,
             created_at_ms=int(data.get("created_at_ms") or 0),
-            sensor_frame=dict(sensor_frame),
+            sensor_frame=sensor_frame,
             perception_schema=(
                 str(data["perception_schema"])
                 if data.get("perception_schema") is not None
@@ -82,7 +82,7 @@ class Observation:
             things=tuple(item for item in things if isinstance(item, dict)),
             signals=tuple(item for item in signals if isinstance(item, dict)),
             artifacts={str(key): str(value) for key, value in artifacts.items()},
-            metadata=dict(metadata),
+            metadata=metadata,
             schema=str(data.get("schema") or OBSERVATION_SCHEMA),
         )
 

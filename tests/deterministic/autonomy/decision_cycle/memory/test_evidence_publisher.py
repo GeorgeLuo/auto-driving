@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
@@ -78,7 +79,7 @@ def _runner(*plugins: _RecordingMemory) -> MemoryRunner:
 
 def _update(runner: MemoryRunner, shared_memory: dict, frame_id: str = "f1") -> dict:
     context = _context(frame_id, shared_memory)
-    context.shared_memory["observation.current"] = _observation(frame_id)
+    context.shared_memory[OBSERVATION_KEY] = _observation(frame_id)
     return runner.update(context)
 
 

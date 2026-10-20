@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.interface import (
     MEMORY_REPORT_SCHEMA,
@@ -73,7 +74,7 @@ def two_plugin_runner(*, frames: int = 1) -> tuple[MemoryRunner, dict[str, Any]]
     for index in range(frames):
         frame_id = f"frame-{index}"
         timestamp_ms = 1_000 + index * 100
-        shared["observation.current"] = Observation(
+        shared[OBSERVATION_KEY] = Observation(
             observation_id=frame_id,
             created_at_ms=timestamp_ms,
             sensor_frame={},

@@ -3,6 +3,7 @@ from __future__ import annotations
 import unittest
 from typing import Any
 
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.memory.runner import MemoryRunner
@@ -100,7 +101,7 @@ class TrackedEvidenceReachesMemoryTests(unittest.TestCase):
                 things=tuple(thing.to_dict() for thing in batch.things),
                 signals=tuple(signal.to_dict() for signal in batch.signals),
             )
-            shared_memory["observation.current"] = observation
+            shared_memory[OBSERVATION_KEY] = observation
             runner.update(
                 DecisionFrameContext(
                     f"frame_{index}", index, 100 + index * 100, shared_memory=shared_memory

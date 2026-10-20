@@ -4,6 +4,7 @@ import json
 import unittest
 from unittest.mock import patch
 
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.cycle import (
     DECISION_CYCLE_RESULT_SCHEMA,
@@ -105,13 +106,13 @@ class DecisionStageFlowTests(unittest.TestCase):
             return observation
 
         def remember(received_context):
-            seen = received_context.shared_memory.get("observation.current")
+            seen = received_context.shared_memory.get(OBSERVATION_KEY)
             record("remember", received_context, seen)
             received_context.shared_memory["test_memory.records"] = records
             return memory
 
         def propose(received_context):
-            seen = received_context.shared_memory.get("observation.current")
+            seen = received_context.shared_memory.get(OBSERVATION_KEY)
             record("propose", received_context, seen)
             # Proposals read what memory published in the host map.
             self.assertIs(received_context.shared_memory["test_memory.records"], records)

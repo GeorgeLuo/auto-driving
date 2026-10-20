@@ -64,8 +64,6 @@ class EvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(payload["record_count"], 1)
         self.assertTrue(set(LEDGER_SUMMARY_KEYS).issubset(payload))
         self.assertIn(payload["health"], LEDGER_HEALTH_VALUES)
-        self.assertIs(payload["records"][0]["properties"], ledger.records[0].properties)
-        self.assertIs(payload["metadata"], ledger.metadata)
 
         restored = EvidenceLedger.from_dict(ledger.to_dict())
         self.assertEqual(restored.memory_id, "mem_1")

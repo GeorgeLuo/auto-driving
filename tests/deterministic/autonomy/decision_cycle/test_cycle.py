@@ -4,6 +4,7 @@ import unittest
 
 from dataclasses import replace
 
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
@@ -100,12 +101,12 @@ class DecisionCycleTests(unittest.TestCase):
             return observation_step(context, received)
 
         def remember(context):
-            calls.append(("memory", context.shared_memory.get("observation.current")))
+            calls.append(("memory", context.shared_memory.get(OBSERVATION_KEY)))
             return None
 
         def propose(context):
             shared = context.shared_memory or {}
-            calls.append(("proposal", shared.get("observation.current")))
+            calls.append(("proposal", shared.get(OBSERVATION_KEY)))
             return None
 
         def plan(context, proposal):

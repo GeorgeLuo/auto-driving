@@ -6,6 +6,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
+from autonomy.decision_cycle.action.publication import MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
@@ -111,9 +112,9 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(control["reason"], "pushy-test-action")
         self.assertEqual(control["steering"], 0.7)
         self.assertIsNotNone(cycle)
-        self.assertEqual(part.host.shared_memory["action.mode"], "manual")
-        self.assertEqual(part.host.shared_memory["action.user_steering"], 0.2)
-        self.assertEqual(part.host.shared_memory["action.user_throttle"], 0.1)
+        self.assertEqual(part.host.shared_memory[MODE_KEY], "manual")
+        self.assertEqual(part.host.shared_memory[USER_STEERING_KEY], 0.2)
+        self.assertEqual(part.host.shared_memory[USER_THROTTLE_KEY], 0.1)
         self.assertIsNotNone(part.latest_state)
         self.assertEqual(part.latest_state.status, "ok")
         self.assertEqual(part.latest_state.mode, "manual")
@@ -129,8 +130,8 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
         self.assertEqual(steering, 0.7)
         self.assertEqual(throttle, 0.4)
-        self.assertNotIn("action.user_steering", part.host.shared_memory)
-        self.assertNotIn("action.user_throttle", part.host.shared_memory)
+        self.assertNotIn(USER_STEERING_KEY, part.host.shared_memory)
+        self.assertNotIn(USER_THROTTLE_KEY, part.host.shared_memory)
         self.assertEqual(control["steering"], 0.7)
 
     def test_detaches_image_from_vehicle_memory(self) -> None:

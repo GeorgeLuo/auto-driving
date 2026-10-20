@@ -6,6 +6,8 @@ from pathlib import Path
 from unittest.mock import patch
 from types import SimpleNamespace
 
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
+from autonomy.decision_cycle.action.publication import MODE_KEY
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
 from autonomy.decision_cycle.activation import DECISION_STEPS
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -46,7 +48,7 @@ def frame_inputs(frame: dict) -> dict:
 
     return {
         "shared_memory": {
-            "observation.current": Observation.from_dict(frame["observation"]),
+            OBSERVATION_KEY: Observation.from_dict(frame["observation"]),
             EVIDENCE_KEY: tuple(RetainedEvidence.from_dict(record) for record in frame["evidence"]),
         },
     }
@@ -106,7 +108,7 @@ def host_result_for_records(
             frame_id=frame_id,
             frame_index=frame_index,
             timestamp_ms=timestamp_ms,
-            shared_memory={"action.mode": mode},
+            shared_memory={MODE_KEY: mode},
         ),
         proposal=records.proposal,
         plan=records.plan,

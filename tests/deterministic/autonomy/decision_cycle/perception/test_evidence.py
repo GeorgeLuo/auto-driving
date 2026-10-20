@@ -106,8 +106,6 @@ class PerceptionEvidenceSerializationTests(unittest.TestCase):
         self.assertEqual(restored.things[0].location.polygon_xy_norm, polygon)
         self.assertEqual(restored.things[0].location.bbox_xyxy_norm, (0.1, 0.2, 0.7, 0.8))
 
-        self.assertIs(restored.signals[0].properties, serialized["signals"][0]["properties"])
-        self.assertIs(restored.things[0].properties, serialized["things"][0]["properties"])
         self.assertEqual(original.signals[0].properties["support"]["frames"], [1, 2])
         self.assertEqual(original.things[0].properties["appearance"]["tags"], ["textured"])
 

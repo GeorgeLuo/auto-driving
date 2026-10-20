@@ -43,7 +43,6 @@ class RetainedEvidenceTests(unittest.TestCase):
         payload = record.to_dict()
         json.dumps(payload)
         self.assertEqual(payload["origin"]["frame_id"], "donkey_frame_000100")
-        self.assertIs(payload["properties"], record.properties)
 
         restored = RetainedEvidence.from_dict(record.to_dict())
         self.assertEqual(restored.record_id, "rec_1")

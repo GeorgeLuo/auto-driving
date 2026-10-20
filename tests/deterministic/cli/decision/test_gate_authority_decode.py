@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import unittest
 
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
@@ -49,7 +50,7 @@ def _applied_cycle() -> dict:
         timestamp_ms=1000,
         shared_memory={
             MODE_KEY: "local",
-            "observation.current": Observation(
+            OBSERVATION_KEY: Observation(
                 observation_id="obs-1", created_at_ms=1000, sensor_frame={}, summary=("t",)
             ),
             EVIDENCE_KEY: _left_obstruction(),

@@ -24,7 +24,7 @@ from autonomy.decision_cycle.activation import (
     activation_generation_id,
     activation_presets,
 )
-from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.context import DecisionFrameContext, recorded_context
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost
@@ -709,10 +709,7 @@ class FrameLoop:
             "presets": dict(latest.presets),
             "generation_id": generation_id,
             "step_activations": deepcopy(selections),
-            "context": {
-                key: context[key] for key in ("mode", "user_steering", "user_throttle")
-                if key in context
-            },
+            "context": recorded_context(context),
             "frame": {
                 "frame_id": latest.frame_id,
                 "frame_index": latest.frame_index,

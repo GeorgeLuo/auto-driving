@@ -119,7 +119,6 @@ SOURCE_EXACT_KEYS = frozenset(
         "observation",
         "evidence",
         "capabilities",
-        "prior_host_applied_command",
         "metadata",
     }
 )
@@ -773,12 +772,7 @@ def _strict_decode_source(payload: object, *, field: str) -> DecisionDataSource:
             details={"field": field},
         )
     envelopes: dict[str, ComponentEnvelope] = {}
-    for env_key in (
-        "observation",
-        "evidence",
-        "capabilities",
-        "prior_host_applied_command",
-    ):
+    for env_key in ("observation", "evidence", "capabilities"):
         envelopes[env_key] = _strict_decode_source_envelope(
             payload.get(env_key),
             component=env_key,
@@ -792,7 +786,6 @@ def _strict_decode_source(payload: object, *, field: str) -> DecisionDataSource:
             observation=envelopes["observation"],
             evidence=envelopes["evidence"],
             capabilities=envelopes["capabilities"],
-            prior_host_applied_command=envelopes["prior_host_applied_command"],
             metadata=dict(payload.get("metadata") or {}),
             schema=str(payload.get("schema") or DECISION_DATA_SOURCE_SCHEMA),
             source_id=str(payload.get("source_id") or ""),

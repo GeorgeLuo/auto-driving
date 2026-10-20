@@ -76,14 +76,9 @@ class DecisionDataSourceTests(unittest.TestCase):
         with self.assertRaises(Exception):
             source.frame_id = "hijacked"  # type: ignore[misc]
 
-    def test_prior_host_applied_default_unavailable(self) -> None:
+    def test_observation_default_unconfigured(self) -> None:
         source = build_decision_data_source(
             frame_id="f1", frame_index=0, timestamp_ms=1
-        )
-        self.assertEqual(source.prior_host_applied_command.status, "unavailable")
-        self.assertEqual(
-            source.prior_host_applied_command.reason,
-            "host_did_not_report_applied_command",
         )
         # Default observe step is unconfigured for this unit.
         self.assertEqual(source.observation.status, "unavailable")
@@ -266,41 +261,6 @@ class DecisionDataSourceTests(unittest.TestCase):
                     updated_at_ms=1,
                 ),
             )
-        # Prior host applied must be host-reported applied=true.
-        with self.assertRaises(ValueError):
-            build_decision_data_source(
-                frame_id="f",
-                frame_index=0,
-                timestamp_ms=1,
-                prior_host_applied_command=ready_envelope(
-                    {
-                        "steering": 0.0,
-                        "throttle": 0.0,
-                        "confidence": 1.0,
-                        "reason": "idle",
-                        "applied": False,
-                        "source": "engine",
-                    },
-                    updated_at_ms=1,
-                ),
-            )
-        with self.assertRaises(ValueError):
-            build_decision_data_source(
-                frame_id="f",
-                frame_index=0,
-                timestamp_ms=1,
-                prior_host_applied_command=ready_envelope(
-                    {
-                        "steering": "0.1",
-                        "throttle": False,
-                        "confidence": "1.0",
-                        "reason": "user",
-                        "applied": True,
-                        "source": "host",
-                    },
-                    updated_at_ms=1,
-                ),
-            )
         # Non-mapping ready capabilities rejected at source, not plugin.
         with self.assertRaises((TypeError, ValueError)):
             build_decision_data_source(
@@ -309,68 +269,11 @@ class DecisionDataSourceTests(unittest.TestCase):
                 timestamp_ms=1,
                 capabilities=ready_envelope("not-a-dict", updated_at_ms=1),
             )
-        # Valid ready prior host payload accepted with exact float serialization.
-        source = build_decision_data_source(
-            frame_id="f",
-            frame_index=0,
-            timestamp_ms=1,
-            prior_host_applied_command=ready_envelope(
-                {
-                    "steering": 0.1,
-                    "throttle": 0.0,
-                    "confidence": 1.0,
-                    "reason": "user",
-                    "applied": True,
-                    "source": "host",
-                },
-                updated_at_ms=1,
-            ),
-        )
-        self.assertEqual(source.prior_host_applied_command.status, "ready")
-        prior = source.to_dict()["prior_host_applied_command"]["value"]
-        self.assertIs(type(prior["steering"]), float)
-        self.assertIs(type(prior["throttle"]), float)
-        self.assertIs(type(prior["confidence"]), float)
+        # Valid capabilities serialize as exact floats.
+        source = build_decision_data_source(frame_id="f", frame_index=0, timestamp_ms=1)
         caps = source.to_dict()["capabilities"]["value"]
         self.assertIs(type(caps["max_abs_steering"]), float)
         self.assertIs(type(caps["max_abs_throttle"]), float)
-
-    def test_prior_host_command_confidence_may_be_null(self) -> None:
-        source = build_decision_data_source(
-            frame_id="f",
-            frame_index=0,
-            timestamp_ms=1,
-            prior_host_applied_command=ready_envelope(
-                {
-                    "steering": 0.1,
-                    "throttle": 0.0,
-                    "confidence": None,
-                    "reason": "user",
-                    "applied": True,
-                    "source": "host",
-                },
-                updated_at_ms=1,
-            ),
-        )
-        prior = source.to_dict()["prior_host_applied_command"]["value"]
-        self.assertIsNone(prior["confidence"])
-        with self.assertRaises(ValueError):
-            build_decision_data_source(
-                frame_id="f",
-                frame_index=0,
-                timestamp_ms=1,
-                prior_host_applied_command=ready_envelope(
-                    {
-                        "steering": 0.1,
-                        "throttle": 0.0,
-                        "confidence": 1.5,
-                        "reason": "user",
-                        "applied": True,
-                        "source": "host",
-                    },
-                    updated_at_ms=1,
-                ),
-            )
 
     def test_ready_observation_accepts_detached_dict(self) -> None:
         from autonomy.decision_cycle.observation.values import Observation
@@ -409,9 +312,6 @@ class DecisionDataSourceTests(unittest.TestCase):
                     "allows_reverse": True,
                     "coordinate_frame": "image",
                 }
-            ),
-            prior_host_applied_command=unavailable_envelope(
-                "host_did_not_report_applied_command"
             ),
         )
         self.assertEqual(source.observation.status, "ready")

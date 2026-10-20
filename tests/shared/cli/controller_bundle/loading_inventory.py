@@ -120,7 +120,6 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("autonomy.decision_cycle.proposal.inputs", "FORBIDDEN_CHANNEL_ORIGINS", "autonomy.decision_cycle.proposal.inputs", "FORBIDDEN_CHANNEL_ORIGINS"),
     ("autonomy.decision_cycle.proposal.inputs", "MAX_ENVELOPE_REASON", "autonomy.decision_cycle.proposal.inputs", "MAX_ENVELOPE_REASON"),
     ("autonomy.decision_cycle.proposal.inputs", "MAX_SOURCE_METADATA_BYTES", "autonomy.decision_cycle.proposal.inputs", "MAX_SOURCE_METADATA_BYTES"),
-    ("autonomy.decision_cycle.proposal.inputs", "PRIOR_HOST_ALLOWED_KEYS", "autonomy.decision_cycle.proposal.inputs", "PRIOR_HOST_ALLOWED_KEYS"),
     ("autonomy.decision_cycle.proposal.inputs", "default_capabilities", "autonomy.decision_cycle.proposal.inputs", "default_capabilities"),
     ("autonomy.decision_cycle.proposal.inputs", "error_envelope", "autonomy.decision_cycle.proposal.inputs", "error_envelope"),
     ("autonomy.decision_cycle.proposal.inputs", "observation_envelope_from_value", "autonomy.decision_cycle.proposal.inputs", "observation_envelope_from_value"),

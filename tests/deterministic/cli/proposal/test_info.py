@@ -98,7 +98,6 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
                 "shared_memory",
                 "evidence",
                 "capabilities",
-                "prior_host_applied_command",
             ],
         )
         self.assertEqual(

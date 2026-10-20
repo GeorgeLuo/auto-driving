@@ -13,13 +13,12 @@ PROPOSAL_PLUGINS: tuple[dict[str, Any], ...] = (
         ),
         "description": (
             "Steer away from lateral obstruction evidence retained in shared memory; "
-            "clamp steering to max_abs_steering from plugin config, otherwise propose nothing."
+            "otherwise propose nothing."
         ),
         "default_config": {
             "accepted_kinds": ["floor_boundary", "obstacle", "obstruction_evidence"],
             "retained_max_age_ms": 1000,
             "steer_magnitude": 1.0,
-            "max_abs_steering": 1.0,
         },
     },
 )

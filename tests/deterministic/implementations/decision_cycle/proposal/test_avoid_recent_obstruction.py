@@ -304,19 +304,19 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertNotEqual(future.reason, "future_dated_provenance")
 
 
-    def test_steering_clamp_comes_from_plugin_config(self) -> None:
+    def test_steering_comes_from_plugin_config(self) -> None:
         source = build_decision_data_source(frame_id="frame_001", frame_index=0, timestamp_ms=1000)
         for zone, expected in (("left", 0.25), ("right", -0.25)):
             with self.subTest(zone=zone):
-                plugin = AvoidRecentObstruction(steer_magnitude=0.8, max_abs_steering=0.25)
+                plugin = AvoidRecentObstruction(steer_magnitude=0.25)
                 proposal = plugin.propose(source, {EVIDENCE_KEY: (_record(zone=zone),)})
                 self.assertAlmostEqual(proposal.command.steering, expected)
         self.assertNotIn("capabilities", source.to_dict())
 
-    def test_invalid_steering_limit_is_rejected_in_config(self) -> None:
-        for limit in (0, -0.1, 1.1, float("nan"), float("inf"), True, "high", None):
-            with self.subTest(limit=limit), self.assertRaises(ValueError):
-                AvoidRecentObstruction(max_abs_steering=limit)
+    def test_invalid_steer_magnitude_is_rejected_in_config(self) -> None:
+        for magnitude in (0, -0.1, 1.1, float("nan"), float("inf"), "high", None):
+            with self.subTest(magnitude=magnitude), self.assertRaises(ValueError):
+                AvoidRecentObstruction(steer_magnitude=magnitude)
 
     def test_missing_zone_bbox_only_is_active(self) -> None:
         """Omitted zone becomes ViewLocation 'unknown'; bbox mid_x still steers."""

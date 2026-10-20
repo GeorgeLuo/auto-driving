@@ -35,3 +35,21 @@ inspection. It is observations, not a required gate.
 
 Report what changed, the focused validation result, known limitations, and the
 next concrete action only when one is still required.
+
+## Meta
+
+Before commit, verify changes do not introduce new vocabulary for like concepts
+in the codebase. Verify overlapping vocabulary for different concepts is not
+introduced. Verify code for readability, that branches of code from the same
+abstraction points have similar patterns, customization only appears when
+appropriate. Err on the side of readability over coverage of edge-case behavior
+and flag where refactors can be applied to branching lanes from common abstraction.
+
+Think deeply around if the change touches the right place. Generally the "hardness"
+of code is autonomy enforces things that all automation shares in terms of things
+that proceed in time, exist in the substrate of the environment and affect the
+environment. Steps should be treated as equally important and from this, form
+of the code should agree with function between the steps (filesystem layout, patterns).
+The implementations shared code should capture abstractions that are general to
+step behavior, plugins themselves are where specific environment dependent values
+are set. 

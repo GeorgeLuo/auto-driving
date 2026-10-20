@@ -84,7 +84,6 @@ AUTHORITY_EXACT_KEYS = frozenset(
         "proposed",
         "authorized_output",
         "proposed_applied",
-        "host_application",
         "proposed_equals_authorized",
         "cycle_status",
         "cycle_reason",
@@ -119,7 +118,6 @@ SOURCE_EXACT_KEYS = frozenset(
         "observation",
         "evidence",
         "capabilities",
-        "prior_host_applied_command",
         "metadata",
     }
 )
@@ -411,13 +409,13 @@ def _strict_decode_command(payload: object, *, field: str) -> ProposedVehicleCom
             f"{field} must be a ProposedVehicleCommand object.",
             details={"field": field},
         )
-    _require_exact_keys(payload, COMMAND_EXACT_KEYS, field=field)
     if payload.get("schema") != PROPOSED_VEHICLE_COMMAND_SCHEMA:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             f"{field}.schema must be {PROPOSED_VEHICLE_COMMAND_SCHEMA!r}.",
             details={"field": field},
         )
+    _require_exact_keys(payload, COMMAND_EXACT_KEYS, field=field)
     try:
         command = ProposedVehicleCommand.from_dict(payload)
     except (TypeError, ValueError) as exc:
@@ -462,13 +460,13 @@ def _strict_decode_proposal(payload: object, *, field: str) -> ActionProposal:
             f"{field} must be an ActionProposal object.",
             details={"field": field},
         )
-    _require_exact_keys(payload, PROPOSAL_EXACT_KEYS, field=field)
     if payload.get("schema") != ACTION_PROPOSAL_SCHEMA:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             f"{field}.schema must be {ACTION_PROPOSAL_SCHEMA!r}.",
             details={"field": field},
         )
+    _require_exact_keys(payload, PROPOSAL_EXACT_KEYS, field=field)
     command = payload.get("command")
     if command is not None:
         _strict_decode_command(command, field=f"{field}.command")
@@ -509,13 +507,13 @@ def _strict_decode_plan(payload: object, *, field: str) -> ActionPlan:
             f"{field} must be an ActionPlan object.",
             details={"field": field},
         )
-    _require_exact_keys(payload, PLAN_EXACT_KEYS, field=field)
     if payload.get("schema") != ACTION_PLAN_SCHEMA:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             f"{field}.schema must be {ACTION_PLAN_SCHEMA!r}.",
             details={"field": field},
         )
+    _require_exact_keys(payload, PLAN_EXACT_KEYS, field=field)
     candidates_raw = payload.get("candidates")
     if not isinstance(candidates_raw, list):
         raise DecisionSurfaceError(
@@ -590,13 +588,13 @@ def _strict_decode_authority(payload: object, *, field: str) -> AuthorityResult:
             f"{field} must be an AuthorityResult object.",
             details={"field": field},
         )
-    _require_exact_keys(payload, AUTHORITY_EXACT_KEYS, field=field)
     if payload.get("schema") != AUTHORITY_RESULT_SCHEMA:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             f"{field}.schema must be {AUTHORITY_RESULT_SCHEMA!r}.",
             details={"field": field},
         )
+    _require_exact_keys(payload, AUTHORITY_EXACT_KEYS, field=field)
     if "applied_control" in payload:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
@@ -655,10 +653,6 @@ def _strict_decode_authority(payload: object, *, field: str) -> AuthorityResult:
         proposed = _strict_decode_command(
             proposed_payload, field=f"{field}.proposed"
         )
-    host = _strict_decode_envelope(
-        payload.get("host_application"),
-        field=f"{field}.host_application",
-    )
     try:
         authority = AuthorityResult(
             frame_id=str(payload["frame_id"]),
@@ -667,7 +661,6 @@ def _strict_decode_authority(payload: object, *, field: str) -> AuthorityResult:
             cycle_status=str(payload["cycle_status"]),
             cycle_reason=str(payload.get("cycle_reason") or ""),
             authorized_output=dict(authorized_output),
-            host_application=host,
             drive_mode_gate=str(payload.get("drive_mode_gate") or "unknown"),
             proposed_applied=payload["proposed_applied"],
             schema=str(payload.get("schema") or AUTHORITY_RESULT_SCHEMA),
@@ -765,20 +758,15 @@ def _strict_decode_source(payload: object, *, field: str) -> DecisionDataSource:
             f"{field} must be a DecisionDataSource object.",
             details={"field": field},
         )
-    _require_exact_keys(payload, SOURCE_EXACT_KEYS, field=field)
     if payload.get("schema") != DECISION_DATA_SOURCE_SCHEMA:
         raise DecisionSurfaceError(
             "latest_frame_invalid",
             f"{field}.schema must be {DECISION_DATA_SOURCE_SCHEMA!r}.",
             details={"field": field},
         )
+    _require_exact_keys(payload, SOURCE_EXACT_KEYS, field=field)
     envelopes: dict[str, ComponentEnvelope] = {}
-    for env_key in (
-        "observation",
-        "evidence",
-        "capabilities",
-        "prior_host_applied_command",
-    ):
+    for env_key in ("observation", "evidence", "capabilities"):
         envelopes[env_key] = _strict_decode_source_envelope(
             payload.get(env_key),
             component=env_key,
@@ -792,7 +780,6 @@ def _strict_decode_source(payload: object, *, field: str) -> DecisionDataSource:
             observation=envelopes["observation"],
             evidence=envelopes["evidence"],
             capabilities=envelopes["capabilities"],
-            prior_host_applied_command=envelopes["prior_host_applied_command"],
             metadata=dict(payload.get("metadata") or {}),
             schema=str(payload.get("schema") or DECISION_DATA_SOURCE_SCHEMA),
             source_id=str(payload.get("source_id") or ""),

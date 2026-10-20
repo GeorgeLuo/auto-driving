@@ -23,7 +23,7 @@ from autonomy.decision_cycle.activation import (
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.plan.values import ActionPlan
-from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope, DecisionDataSource
+from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.decision_cycle.steps import builtin_activation
@@ -136,7 +136,6 @@ class DecisionRunners:
         frame_index: int,
         timestamp_ms: int,
         mode: str = "unknown",
-        host_application: ComponentEnvelope | None = None,
         **proposal_inputs: Any,
     ) -> DecisionRecords:
         proposal = self.proposal.run(
@@ -150,7 +149,6 @@ class DecisionRunners:
             frame_index=frame_index,
             timestamp_ms=timestamp_ms,
             mode=mode,
-            metadata={} if host_application is None else {"host_application": host_application},
         )
         plan = self.plan(context, proposal)
         return DecisionRecords(proposal, plan, self.action(context, proposal, plan))

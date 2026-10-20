@@ -25,7 +25,11 @@ def drive_mode(mode: str) -> str:
 
 
 class DonkeyControlTarget:
-    """In-process delivery; the drivetrain pulls ControlExecution.output()."""
+    """Acknowledge the mailbox update, not delivery to the drivetrain.
+
+    DriveMode pulls ControlExecution.output() on its next 20 Hz tick, up to
+    about 50 ms later. HostTelemetryStore observes that actual output tick.
+    """
 
     def acquire(self) -> None:
         # The onboard host is the drivetrain; no external input is acquired.

@@ -1,22 +1,29 @@
 """Vehicle-independent authority and delivery of decision output.
 
-A target only acquires its transport, writes normalized control, and releases
-it. All mode, freshness, invalidation, and stop policy lives here. A successful
-write acknowledges delivery to the target's command boundary, not measured
-motion. The receipt identifies that boundary on both physical and simulated
-vehicles.
+A target acquires its transport, accepts normalized control, and releases it.
+All mode, freshness, invalidation, and stop policy lives here. Applications
+record successful target writes, with their execution mode, on the runtime
+wall clock. Push-target receipts identify their transport boundary. On Donkey,
+``delivered_at_ms`` marks the in-process output mailbox update, not the next
+20 Hz DriveMode tick. ``HostTelemetryStore`` logs what reached the drivetrain,
+including manual driving. Application times can step backwards on clock sync;
+consumers must treat non-autonomous spans and clock discontinuities as unknown.
 """
 from __future__ import annotations
 
+import json
+import math
 import threading
 import time
+from collections import deque
 from copy import deepcopy
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol
 
 from autonomy.runtime.control import AutonomyControl
 
 CONTROL_MAX_AGE_S = 2.0
+CONTROL_APPLICATION_LIMIT = 32
 MODES = frozenset({"manual", "observe_only", "autonomy"})
 
 
@@ -42,6 +49,7 @@ class ControlTarget(Protocol):
 class ExecutionTicket:
     generation: int
     mode: str
+    control_applications: tuple[ControlApplication, ...] = field(default=(), repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -57,6 +65,47 @@ class ControlApplication:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ControlApplication:
+        """Decode a recorded application without silently coercing bad input."""
+        if not isinstance(data, dict) or not isinstance(data.get("control"), dict):
+            raise ValueError("control application must contain a control object")
+        require_mode(data.get("mode"))
+        if type(data.get("applied")) is not bool:
+            raise ValueError("control application applied must be a boolean")
+        if not isinstance(data.get("reason"), str) or not data["reason"]:
+            raise ValueError("control application reason must be a non-empty string")
+        frame_id = data.get("frame_id")
+        if frame_id is not None and (not isinstance(frame_id, str) or not frame_id):
+            raise ValueError("control application frame_id must be a string or null")
+        at_ms = data.get("delivered_at_ms")
+        if at_ms is not None and (type(at_ms) is not int or at_ms < 0):
+            raise ValueError("delivered_at_ms must be a nonnegative integer or null")
+        if data["applied"] and at_ms is None:
+            raise ValueError("an applied control requires delivered_at_ms")
+        control = data["control"]
+        for key in ("steering", "throttle"):
+            value = control.get(key)
+            if type(value) not in (int, float) or not math.isfinite(value) or not -1 <= value <= 1:
+                raise ValueError(f"control {key} must be a finite number between -1 and 1")
+        confidence = control.get("confidence")
+        if confidence is not None and (
+            type(confidence) not in (int, float) or not math.isfinite(confidence) or not 0 <= confidence <= 1
+        ):
+            raise ValueError("control confidence must be between 0 and 1 or null")
+        if not isinstance(control.get("reason", "idle"), str) or not isinstance(control.get("metadata", {}), dict):
+            raise ValueError("control reason and metadata must be a string and object")
+        if data.get("receipt") is not None and not isinstance(data["receipt"], dict):
+            raise ValueError("control application receipt must be an object or null")
+        if data.get("error") is not None and not isinstance(data["error"], str):
+            raise ValueError("control application error must be a string or null")
+        json.dumps(data, allow_nan=False)
+        return cls(
+            frame_id=frame_id, mode=data["mode"], applied=data["applied"], reason=data["reason"],
+            control=AutonomyControl(**deepcopy(control)), delivered_at_ms=at_ms,
+            receipt=deepcopy(data.get("receipt")), error=data.get("error"),
+        )
 
 
 class ControlExecution:
@@ -76,6 +125,7 @@ class ControlExecution:
         self._deadline: float | None = None
         self._owned = False
         self._output = AutonomyControl(reason="not-started")
+        self._applications: deque[ControlApplication] = deque(maxlen=CONTROL_APPLICATION_LIMIT)
         self._closed = False
         self._wake = threading.Event()
         self._watchdog: threading.Thread | None = None
@@ -91,7 +141,7 @@ class ControlExecution:
 
     def ticket(self) -> ExecutionTicket:
         with self._lock:
-            return ExecutionTicket(self._generation, self._mode)
+            return ExecutionTicket(self._generation, self._mode, tuple(self._applications))
 
     def set_mode(self, mode: str) -> dict[str, Any]:
         require_mode(mode)
@@ -107,7 +157,7 @@ class ControlExecution:
             delivered = self._owned
             if self._owned:
                 try:
-                    self._write_idle("mode-changed")
+                    self._write_idle("mode-changed", mode=mode)
                     self.target.release()
                     self._owned = False
                 except Exception as exc:
@@ -120,7 +170,7 @@ class ControlExecution:
                 delivered = True
                 try:
                     self.target.acquire()
-                    self._write_idle("awaiting-fresh-decision")
+                    self._write_idle("awaiting-fresh-decision", mode=mode)
                 except Exception as exc:
                     self._fail(exc)
                     raise
@@ -131,10 +181,7 @@ class ControlExecution:
                     self._watchdog.start()
             self._mode = mode
             self._entered_at_ms = int(time.time() * 1000)
-            if delivered:
-                # Keep the idle write's receipt: it is what the target received.
-                self.last_application = replace(self.last_application, mode=mode)
-            else:
+            if not delivered:
                 self.last_application = ControlApplication(
                     None, mode, False, mode, AutonomyControl(reason=mode)
                 )
@@ -166,6 +213,7 @@ class ControlExecution:
                 control = AutonomyControl(reason="decision-unavailable")
             try:
                 receipt = self.target.write(control)
+                delivered_at_ms = int(time.time() * 1000)
                 self._output = control
             except Exception as exc:
                 self._fail(exc, frame_id=result.context.frame_id)
@@ -176,8 +224,9 @@ class ControlExecution:
             self._deadline = time.monotonic() + max(0.0, remaining_s)
             self.last_application = ControlApplication(
                 result.context.frame_id, self._mode, True, control.reason, control,
-                int(time.time() * 1000), receipt,
+                delivered_at_ms, receipt,
             )
+            self._applications.append(self.last_application)
             self._publish_status()
             return self.last_application
 
@@ -186,15 +235,16 @@ class ControlExecution:
             if ticket.generation == self._generation and self._owned:
                 self._write_idle("cycle-error")
 
-    def _write_idle(self, reason: str) -> None:
+    def _write_idle(self, reason: str, *, mode: str | None = None) -> None:
         self._deadline = None
         control = AutonomyControl(reason=reason)
         self._output = control
         self._publish_status()
         receipt = self.target.write(control)
         self.last_application = ControlApplication(
-            None, self._mode, True, reason, control, int(time.time() * 1000), receipt
+            None, mode or self._mode, True, reason, control, int(time.time() * 1000), receipt
         )
+        self._applications.append(self.last_application)
         self._publish_status()
 
     def _fail(self, exc: Exception, *, frame_id: str | None = None) -> None:
@@ -230,7 +280,7 @@ class ControlExecution:
         """Select the host's final output without provider-specific mode policy.
 
         Push transports receive writes immediately. Pull transports (Donkey's
-        drivetrain loop) read the same delivered command here. Manual input
+        drivetrain loop) read the output mailbox here on their next tick. Manual input
         belongs to the operator while automation has no authority.
         """
         with self._lock:

@@ -7,8 +7,9 @@ import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
 from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.activation import (
     STEP_ACTIVATION_SCHEMA,
@@ -24,6 +25,7 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost, sync_live_selection
+from autonomy.runtime.execution import ControlExecution
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from tests.support.action_fixtures import action_runner, plan_runner, proposal_runner
@@ -109,6 +111,64 @@ def _state(report: dict) -> dict:
 
 
 class CycleHostMemoryTests(unittest.TestCase):
+    def test_memory_receives_prior_applications(self):
+        from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
+
+        seen = []
+        original = _RecordingMemory.update
+        def update(plugin, context, observation):
+            seen.append(context)
+            return original(plugin, context, observation)
+        with tempfile.TemporaryDirectory() as tmp:
+            host, _ = _host(memory=_memory_step(Path(tmp)))
+            host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+            self.addCleanup(host.close)
+            host.set_mode("autonomy")
+            expected = host.execution.ticket().control_applications
+            with patch.object(_RecordingMemory, "update", update):
+                result = host.run(DecisionFrameContext("frame-history", 0, int(time.time() * 1000)))
+            self.assertEqual(seen[0].shared_memory[CONTROL_APPLICATIONS_KEY], expected)
+            self.assertNotIn("control_applications", result.context.to_dict())
+        without_execution, _ = _host()
+        self.addCleanup(without_execution.close)
+        result = without_execution.run(DecisionFrameContext("frame-none", 0, int(time.time() * 1000)))
+        self.assertNotIn(CONTROL_APPLICATIONS_KEY, result.context.shared_memory)
+
+    def test_mode_and_applications_are_captured_in_the_same_ticket(self):
+        host, _ = _host()
+        host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+        self.addCleanup(host.close)
+        host.set_mode("autonomy")
+        original = host.execution.ticket
+        def ticket_then_change_mode():
+            ticket = original()
+            host.set_mode("manual")
+            return ticket
+        with patch.object(host.execution, "ticket", side_effect=ticket_then_change_mode):
+            result = host.run(DecisionFrameContext("f", 0, int(time.time() * 1000)))
+        self.assertEqual(result.context.mode, "autonomy")
+        self.assertEqual(result.context.shared_memory[CONTROL_APPLICATIONS_KEY][-1].mode, "autonomy")
+        self.assertEqual(host.execution.ticket().control_applications[-1].mode, "manual")
+        self.assertFalse(result.application.applied)
+
+    def test_new_runs_and_memory_resets_preserve_prior_applications(self):
+        host, _ = _host()
+        host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+        self.addCleanup(host.close)
+        host.start()
+        old = host.execution.ticket().control_applications[0]
+        host.start()
+        current = host.execution.ticket().control_applications
+        self.assertIs(current[0], old)
+        self.assertEqual([item.reason for item in current], [
+            "awaiting-fresh-decision", "mode-changed", "awaiting-fresh-decision",
+        ])
+        host.reset_memory()
+        self.assertEqual(host.execution.ticket().control_applications, current)
+        self.assertNotIn(CONTROL_APPLICATIONS_KEY, host.shared_memory)
+        result = host.run(DecisionFrameContext("after-reset", 0, int(time.time() * 1000)))
+        self.assertEqual(result.context.shared_memory[CONTROL_APPLICATIONS_KEY], current)
+
     def test_failed_start_reports_its_error_instead_of_the_previous_run_error(self):
         host, _ = _host()
         host.stop(reason="error", error="earlier failure")

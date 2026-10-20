@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.observation.perception_summary import observation_from_perception
@@ -127,15 +128,20 @@ def run_frame(
     perception_step = steps["perception"]
 
     sensor_frame = sensor_frame_for_replay_frame(frame)
+    if frame.control_applications is None:
+        shared_memory.pop(CONTROL_APPLICATIONS_KEY, None)
+    else:
+        shared_memory[CONTROL_APPLICATIONS_KEY] = frame.control_applications
     recorded_context = frame.metadata.get("context", {})
-    context = DecisionFrameContext(
+    context = DecisionFrameContext.from_record(
+        recorded_context,
         frame_id=frame.frame_id,
         frame_index=frame.frame_index,
-        timestamp_ms=frame.timestamp_ms,
+        # Capture time remains on the sensor frame; learner timeouts use the
+        # original cycle clock, which can be later than capture.
+        timestamp_ms=recorded_context.get("timestamp_ms", frame.timestamp_ms),
         sensor_frame=sensor_frame,
         mode=recorded_context.get("mode", "workbench_replay"),
-        user_steering=recorded_context.get("user_steering", 0.0),
-        user_throttle=recorded_context.get("user_throttle", 0.0),
         shared_memory=shared_memory,
         metadata={
             "source": WORKBENCH_SEQUENCE_ID,

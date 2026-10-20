@@ -177,12 +177,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
                     "source": "the host's capabilities envelope in context.metadata",
                     "missing_behavior": "the source holds the default capabilities",
                 },
-                {
-                    "name": "prior_host_applied_command",
-                    "required": False,
-                    "source": "the host's last applied command in context.metadata",
-                    "missing_behavior": "the source marks it unavailable",
-                },
             ],
             "plugins": [
                 {
@@ -226,7 +220,7 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         """Propose for the cycle.
 
         ``context.metadata`` may carry ``observation_error`` and the host-reported
-        ``prior_host_applied_command`` and ``capabilities`` envelopes.
+        ``capabilities`` envelope.
         """
 
         metadata = context.metadata if isinstance(context.metadata, dict) else {}
@@ -243,7 +237,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             observation=observation,
             observation_error=observation_error if type(observation_error) is str else None,
             shared_memory=context.shared_memory,
-            prior_host_applied_command=envelope("prior_host_applied_command"),
             capabilities=envelope("capabilities"),
         )
 
@@ -256,7 +249,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         observation: Observation | dict[str, Any] | None = None,
         observation_error: str | None = None,
         shared_memory: SharedMemory | None = None,
-        prior_host_applied_command: ComponentEnvelope | None = None,
         capabilities: ComponentEnvelope | None = None,
     ) -> ProposalResult:
         # Entry precondition: invalid identity never yields a record.
@@ -303,7 +295,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
                     ),
                     capabilities=capabilities
                     or ready_envelope(default_capabilities(), updated_at_ms=timestamp_ms),
-                    prior_host_applied_command=prior_host_applied_command,
                 )
             except Exception:
                 return fail("decision_data_source_invalid", source=None)

@@ -20,7 +20,10 @@ from typing import Any
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.plugins import add_uploaded_source_root
-from autonomy.runtime.recording import UPLOADED_SOURCES_DIR
+from autonomy.runtime.execution import ControlApplication
+from autonomy.runtime.recording import (
+    CONTROL_APPLICATION_CHANGE_FIELD, UPLOADED_SOURCES_DIR, control_application_windows,
+)
 from .inspection_runs import recorded_selection, recorded_selections
 
 
@@ -58,6 +61,10 @@ class ReplayFrame:
     absence_reason: str | None = None
     content_type: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    # The window the recording host published, or None when it recorded none.
+    control_applications: tuple[ControlApplication, ...] | None = field(
+        default=None, repr=False, compare=False,
+    )
 
     @property
     def absent(self) -> bool:
@@ -224,6 +231,13 @@ def normalize_image_directory(
             ]
     except (TypeError, ValueError) as exc:
         raise SourceValidationError(f"invalid recorded selections: {exc}") from exc
+    try:
+        windows = control_application_windows([
+            entry.get(CONTROL_APPLICATION_CHANGE_FIELD) if isinstance(entry, dict) else None
+            for entry in entries
+        ])
+    except ValueError as exc:
+        raise SourceValidationError(str(exc)) from exc
     frames = tuple(
         _build_frame(
             source_id=source_id,
@@ -233,6 +247,7 @@ def normalize_image_directory(
             recorded_root=recorded_root,
             recorded_source=recorded_source,
             max_image_bytes=max_image_bytes,
+            control_applications=windows[position],
         )
         for position, entry in enumerate(entries)
     )
@@ -443,6 +458,7 @@ def _build_frame(
     recorded_root: Path | None,
     recorded_source: tuple[Path, Path] | None,
     max_image_bytes: int,
+    control_applications: tuple[ControlApplication, ...] | None = None,
 ) -> ReplayFrame:
     if isinstance(entry, str):
         entry = {"image_path": entry}
@@ -518,6 +534,7 @@ def _build_frame(
         absence_reason=absence_reason,
         content_type=content_type_for_path(image_path) if image_path else None,
         metadata=metadata,
+        control_applications=control_applications,
     )
 
 

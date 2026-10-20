@@ -146,7 +146,6 @@ class DecisionChain:
         frame_id: str,
         frame_index: int,
         timestamp_ms: int,
-        host_application: Any = None,
         drive_mode_gate: str = "unknown",
         **proposal_inputs: Any,
     ) -> DecisionRecords:
@@ -161,7 +160,6 @@ class DecisionChain:
             frame_index=frame_index,
             timestamp_ms=timestamp_ms,
             mode=drive_mode_gate,
-            metadata={} if host_application is None else {"host_application": host_application},
         )
         plan = self.plan(context, proposal)
         return DecisionRecords(proposal, plan, self.action(context, proposal, plan))

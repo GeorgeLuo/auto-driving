@@ -10,6 +10,15 @@ from autonomy.shared_memory import SharedMemory
 from autonomy.vehicle import SensorFrame
 
 
+# Input fields shared by live publication, recording, and replay.
+RECORDED_CONTEXT_FIELDS = ("timestamp_ms", "mode", "user_steering", "user_throttle")
+
+
+def recorded_context(data: dict[str, Any]) -> dict[str, Any]:
+    """The cycle inputs shared by live publication and recording."""
+    return {key: data[key] for key in RECORDED_CONTEXT_FIELDS if key in data}
+
+
 @dataclass(frozen=True)
 class DecisionFrameContext:
     """Inputs for one cycle tick.
@@ -39,6 +48,11 @@ class DecisionFrameContext:
             "user_throttle": self.user_throttle,
             "metadata": deepcopy(self.metadata),
         }
+
+    @classmethod
+    def from_record(cls, data: dict[str, Any], **inputs: Any) -> DecisionFrameContext:
+        """Restore cycle inputs using the same fields live publication records."""
+        return cls(**{**recorded_context(data), **inputs})
 
 
 __all__ = ["DecisionFrameContext"]

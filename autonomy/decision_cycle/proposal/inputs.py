@@ -28,7 +28,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_safe_int,
 )
 
-DECISION_DATA_SOURCE_SCHEMA = "decision_data_source_v1"
+DECISION_DATA_SOURCE_SCHEMA = "decision_data_source_v2"
 ComponentStatus = Literal["ready", "unavailable", "error"]
 COMPONENT_STATUSES = frozenset({"ready", "unavailable", "error"})
 MAX_ENVELOPE_REASON = 240
@@ -49,16 +49,6 @@ CAPABILITY_REQUIRED_KEYS = (
     "max_abs_throttle",
     "allows_reverse",
     "coordinate_frame",
-)
-PRIOR_HOST_ALLOWED_KEYS = frozenset(
-    {
-        "steering",
-        "throttle",
-        "confidence",
-        "reason",
-        "applied",
-        "source",
-    }
 )
 
 
@@ -156,14 +146,6 @@ def _require_exact_json_number(value: object, *, field_name: str) -> float:
     )
 
 
-def _optional_unit_confidence(value: object, *, field_name: str) -> float | None:
-    """A prior host command may omit its score. A supplied score stays in ``[0, 1]``."""
-
-    if value is None:
-        return None
-    return _require_exact_unit_float(value, field_name=field_name)
-
-
 def _require_exact_unit_float(value: object, *, field_name: str) -> float:
     number = _require_exact_json_number(value, field_name=field_name)
     if not (0.0 <= number <= 1.0):
@@ -202,43 +184,6 @@ def _canonical_capabilities_payload(value: object, *, path: str) -> object:
     return deep_freeze(canonical)
 
 
-def _canonical_prior_host_payload(value: object, *, path: str) -> object:
-    payload = _plain_mapping(value)
-    unknown = sorted(set(payload) - PRIOR_HOST_ALLOWED_KEYS)
-    if unknown:
-        raise ValueError(
-            f"{path} prior_host_applied_command has unsupported keys: "
-            f"{', '.join(unknown)}"
-        )
-    missing = [key for key in sorted(PRIOR_HOST_ALLOWED_KEYS) if key not in payload]
-    if missing:
-        raise ValueError(
-            f"{path} prior_host_applied_command missing required keys: "
-            f"{', '.join(missing)}"
-        )
-    if type(payload["reason"]) is not str:
-        raise ValueError(f"{path}.reason must be a string")
-    if payload["applied"] is not True:
-        raise ValueError(f"{path}.applied must be true for host-reported commands")
-    if payload["source"] != "host":
-        raise ValueError(f"{path}.source must be 'host'")
-    canonical = {
-        "steering": _require_exact_json_number(
-            payload["steering"], field_name=f"{path}.steering"
-        ),
-        "throttle": _require_exact_json_number(
-            payload["throttle"], field_name=f"{path}.throttle"
-        ),
-        "confidence": _optional_unit_confidence(
-            payload["confidence"], field_name=f"{path}.confidence"
-        ),
-        "reason": payload["reason"],
-        "applied": True,
-        "source": "host",
-    }
-    return deep_freeze(canonical)
-
-
 def _canonical_observation_payload(value: object, *, path: str) -> Observation:
     if isinstance(value, Observation):
         plain = value.to_dict()
@@ -267,8 +212,6 @@ def _canonicalize_ready_component(name: str, envelope: "ComponentEnvelope") -> o
         return value
     if name == "capabilities":
         return _canonical_capabilities_payload(value, path=path)
-    if name == "prior_host_applied_command":
-        return _canonical_prior_host_payload(value, path=path)
     raise ValueError(f"unknown decision component {name!r}")
 
 
@@ -435,7 +378,6 @@ class DecisionDataSource:
     observation: ComponentEnvelope
     evidence: ComponentEnvelope
     capabilities: ComponentEnvelope
-    prior_host_applied_command: ComponentEnvelope
     metadata: dict[str, Any] = field(default_factory=dict)
     schema: str = DECISION_DATA_SOURCE_SCHEMA
     source_id: str = ""
@@ -459,12 +401,7 @@ class DecisionDataSource:
             raise ValueError(
                 f"schema must be {DECISION_DATA_SOURCE_SCHEMA!r}; got {self.schema!r}"
             )
-        for name in (
-            "observation",
-            "evidence",
-            "capabilities",
-            "prior_host_applied_command",
-        ):
+        for name in ("observation", "evidence", "capabilities"):
             envelope = getattr(self, name)
             if not isinstance(envelope, ComponentEnvelope):
                 raise TypeError(f"{name} must be ComponentEnvelope")
@@ -503,17 +440,6 @@ class DecisionDataSource:
                     raise ValueError(
                         f"capabilities.value.{field_name} must serialize as float"
                     )
-        prior = plain["prior_host_applied_command"]
-        if prior["status"] == "ready":
-            for field_name in ("steering", "throttle", "confidence"):
-                serialized = prior["value"][field_name]
-                if field_name == "confidence" and serialized is None:
-                    continue
-                if type(serialized) is not float:
-                    raise ValueError(
-                        f"prior_host_applied_command.value.{field_name} "
-                        "must serialize as float"
-                    )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -525,7 +451,6 @@ class DecisionDataSource:
             "observation": self.observation.to_dict(),
             "evidence": self.evidence.to_dict(),
             "capabilities": self.capabilities.to_dict(),
-            "prior_host_applied_command": self.prior_host_applied_command.to_dict(),
             "metadata": frozen_mapping_to_dict(self.metadata),
         }
 
@@ -540,7 +465,6 @@ def build_decision_data_source(
     observation_error: str | None = None,
     evidence: tuple[RetainedEvidence, ...] | list[RetainedEvidence] | None = None,
     capabilities: ComponentEnvelope | None = None,
-    prior_host_applied_command: ComponentEnvelope | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> DecisionDataSource:
     """Build a frozen DecisionDataSource for one cycle.
@@ -564,10 +488,6 @@ def build_decision_data_source(
         evidence=evidence_envelope(evidence, updated_at_ms=timestamp_ms),
         capabilities=capabilities
         or ready_envelope(default_capabilities(), updated_at_ms=timestamp_ms),
-        prior_host_applied_command=prior_host_applied_command
-        or unavailable_envelope(
-            "host_did_not_report_applied_command", updated_at_ms=timestamp_ms
-        ),
         metadata={} if metadata is None else metadata,
     )
 

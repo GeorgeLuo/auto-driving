@@ -9,17 +9,16 @@ plan's command. ``gate_id`` is the deciding action plugin's ID.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
 from autonomy.decision_cycle.plan.values import ActionPlan
-from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope, unavailable_envelope
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
 from autonomy.runtime.control import AutonomyControl
 
-AUTHORITY_RESULT_SCHEMA = "authority_result_v0"
+AUTHORITY_RESULT_SCHEMA = "authority_result_v1"
 COMMAND_EPS = 1e-9
 
 
@@ -73,9 +72,6 @@ class AuthorityResult:
     cycle_status: str
     authorized_output: dict[str, Any]
     cycle_reason: str = ""
-    host_application: ComponentEnvelope = field(
-        default_factory=lambda: unavailable_envelope("host_did_not_report_application")
-    )
     drive_mode_gate: str = "unknown"
     proposed_applied: bool = False
     schema: str = AUTHORITY_RESULT_SCHEMA
@@ -103,8 +99,6 @@ class AuthorityResult:
             self.proposed, ProposedVehicleCommand
         ):
             raise TypeError("proposed must be ProposedVehicleCommand or None")
-        if not isinstance(self.host_application, ComponentEnvelope):
-            raise TypeError("host_application must be ComponentEnvelope")
         output = self.authorized_output
         if not isinstance(output, dict) or set(output) != {
             "steering",
@@ -133,7 +127,6 @@ class AuthorityResult:
             "proposed": self.proposed.to_dict() if self.proposed is not None else None,
             "authorized_output": dict(self.authorized_output),
             "proposed_applied": self.proposed_applied,
-            "host_application": self.host_application.to_dict(),
             "proposed_equals_authorized": self.proposed_equals_authorized,
             "cycle_status": self.cycle_status,
             "cycle_reason": self.cycle_reason,
@@ -150,7 +143,6 @@ def build_authority(
     cycle_status: str,
     cycle_reason: str = "",
     proposed: ProposedVehicleCommand | None = None,
-    host_application: ComponentEnvelope | None = None,
     drive_mode_gate: str = "unknown",
 ) -> AuthorityResult:
     # Detach proposed command so authority does not alias plan candidate storage.
@@ -166,8 +158,6 @@ def build_authority(
         cycle_status=cycle_status,
         cycle_reason=cycle_reason,
         authorized_output=control_output(decision.control),
-        host_application=host_application
-        or unavailable_envelope("host_did_not_report_application"),
         drive_mode_gate=drive_mode_gate,
         proposed_applied=decision.applied,
     )

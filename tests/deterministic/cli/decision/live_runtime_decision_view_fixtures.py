@@ -6,7 +6,6 @@ from copy import deepcopy
 from pathlib import Path
 from urllib.request import HTTPRedirectHandler, urlopen
 from PIL import Image
-from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
 from cli.automa_cli.decision_records import DecisionRunners
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
@@ -69,7 +68,6 @@ class LiveRuntimeDecisionViewFixture:
         *,
         run_id: str = "run-live",
         raw: dict | None = None,
-        host_application: ComponentEnvelope | None = None,
     ) -> dict:
         if raw is None:
             raw = left_obstruction_frame()
@@ -78,7 +76,6 @@ class LiveRuntimeDecisionViewFixture:
             frame_index=raw["frame_index"],
             timestamp_ms=raw["timestamp_ms"],
             **frame_inputs(raw),
-            host_application=host_application,
         )
         return vehicle_report_for_records(
             records,

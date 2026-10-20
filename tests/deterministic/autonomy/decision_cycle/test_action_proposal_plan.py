@@ -215,17 +215,16 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(err.to_dict()["metadata"], {})
 
 
-    def test_host_application_bad_type_is_not_recorded(self) -> None:
+    def test_authority_records_decision_without_host_application(self) -> None:
         engine = packaged_decision_chain()
         result = engine.run(
             frame_id="frame_001",
             frame_index=0,
             timestamp_ms=1,
-            host_application="bad",  # type: ignore[arg-type]
         )
         control = result.control
         self.assertEqual(result.status, "ok")
-        self.assertEqual(result.authority.host_application.status, "unavailable")
+        self.assertNotIn("host_application", result.authority.to_dict())
         self.assertEqual(
             result.authority.authorized_output["reason"], "no-selected-command"
         )

@@ -7,7 +7,13 @@ anything other plugins read. ``update`` runs once per cycle. ``reset`` is
 optional and may omit the map; when present it starts a new epoch and writes
 the plugin's fresh state to the map. The runner calls it through
 ``reset_plugin``. ``status`` is an optional JSON summary of that state for
-diagnostics. Framework code owns selection, timing, and failure isolation.
+diagnostics. Framework code owns selection, timing, and failure isolation. Every plugin
+exposes a ``MemoryPluginContract`` with description, assumptions, emitted belief
+ids, and limitations. ``beliefs/values.py`` defines checked hypotheses, open
+trials, and their outcomes; plugins decide what counts as support. Undeclared
+belief writes stop the cycle under the update failure policy. Reset drops the
+plugin's declared beliefs. Published beliefs merge by id, while retained
+evidence remains last-write-wins.
 
 A memory plugin reads the host map and the ``observation``; it does not read
 the feed. The context it receives has no ``sensor_frame``. Anything memory needs
@@ -28,11 +34,32 @@ and a reset failure is recorded. ``MemoryRunner`` reads those values.
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.shared_memory import SharedMemory
+
+
+@dataclass(frozen=True)
+class MemoryPluginContract:
+    """The meaning, assumptions, belief ids, and limits of one learner."""
+
+    description: str = ""
+    assumptions: tuple[str, ...] = ()
+    emits: tuple[str, ...] = ()
+    limitations: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if any(not isinstance(item, str) or not item.strip() for item in self.emits):
+            raise ValueError("emits must contain non-empty belief ids")
+        if len(set(self.emits)) != len(self.emits):
+            raise ValueError("emitted belief ids must be unique")
+
+    def to_dict(self) -> dict[str, Any]:
+        data = asdict(self)
+        return {key: list(value) if isinstance(value, tuple) else value for key, value in data.items()}
 
 
 @runtime_checkable
@@ -45,6 +72,7 @@ class MemoryPlugin(Protocol):
     """
 
     plugin_id: str
+    contract: MemoryPluginContract
 
     def update(
         self,

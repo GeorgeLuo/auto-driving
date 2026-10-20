@@ -13,6 +13,7 @@ from dataclasses import replace
 from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.shared_memory import SharedMemory
@@ -37,6 +38,12 @@ class BoundedEvidenceLedger:
     """
 
     plugin_id = "bounded_evidence"
+    contract = MemoryPluginContract(
+        description="Retain attributed observation evidence within recency and size bounds.",
+        assumptions=("Observations use the runtime clock.",),
+        emits=(),
+        limitations=("Retained observations do not establish checked beliefs.",),
+    )
 
     def __init__(self, **config: Any) -> None:
         self.config = config

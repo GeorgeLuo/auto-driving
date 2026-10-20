@@ -16,11 +16,12 @@ plugin to publish them.
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from typing import Any, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
+from autonomy.decision_cycle.memory.beliefs.values import Belief
+from autonomy.decision_cycle.memory.publication import BELIEFS_KEY, EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.runner import FailurePolicy
 from autonomy.shared_memory import SharedMemory
@@ -44,6 +45,8 @@ def composition_declaration() -> dict[str, str]:
         "order": "selection_order",
         "evidence_key": EVIDENCE_KEY,
         "evidence": "one_value_last_write_wins",
+        "beliefs_key": BELIEFS_KEY,
+        "beliefs": "merge_by_belief_id_last_write_wins",
     }
 
 
@@ -116,18 +119,21 @@ class MemoryReport:
     find a plugin by its ``plugin_id``. ``evidence_publisher`` is the id of the
     applied plugin whose value ``EVIDENCE_KEY`` holds, or None when the key is
     absent or holds no applied plugin's value. The runner sets it (see
-    ``MemoryRunner``).
+    ``MemoryRunner``). ``beliefs`` carries published hypotheses and their
+    derived confidence, detached when serialized.
     """
 
     schema: str
     plugins: tuple[MemoryPluginReport, ...] = ()
     evidence_publisher: str | None = None
+    beliefs: dict[str, Belief] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": self.schema,
             "plugins": [plugin.to_dict() for plugin in self.plugins],
             "evidence_publisher": self.evidence_publisher,
+            "beliefs": {key: belief.to_dict() for key, belief in self.beliefs.items()},
         }
 
     @classmethod
@@ -141,4 +147,5 @@ class MemoryReport:
                 if isinstance(item, dict)
             ),
             evidence_publisher=publisher if isinstance(publisher, str) and publisher else None,
+            beliefs={key: Belief.from_dict(value) for key, value in (data.get("beliefs") or {}).items()},
         )

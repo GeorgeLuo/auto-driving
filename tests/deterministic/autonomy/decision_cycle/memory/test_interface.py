@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
+
 import unittest
 
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -24,6 +26,7 @@ from autonomy.shared_memory import SharedMemory
 
 class _SummaryMemory:
     plugin_id = "summary_memory"
+    contract = MemoryPluginContract(description="Test memory plugin.")
 
     def update(self, context, observation) -> None:
         return None
@@ -43,6 +46,7 @@ class _SummaryMemory:
 
 class _OwnedSummaryMemory:
     plugin_id = "owned_summary"
+    contract = MemoryPluginContract(description="Test memory plugin.")
 
     def __init__(self) -> None:
         self.state = {
@@ -68,6 +72,7 @@ class _OwnedSummaryMemory:
 
 class _NoResetMemory:
     plugin_id = "no_reset"
+    contract = MemoryPluginContract(description="Test memory plugin.")
 
     def update(self, context, observation) -> None:
         del context, observation
@@ -150,7 +155,7 @@ class MemoryInterfaceTests(unittest.TestCase):
         self.assertIsNone(parsed.state)
         self.assertEqual(
             MemoryReport.from_dict({}).to_dict(),
-            {"schema": MEMORY_REPORT_SCHEMA, "plugins": [], "evidence_publisher": None},
+            {"schema": MEMORY_REPORT_SCHEMA, "plugins": [], "evidence_publisher": None, "beliefs": {}},
         )
         self.assertIsNone(MemoryReport.from_dict({"evidence_publisher": 3}).evidence_publisher)
 

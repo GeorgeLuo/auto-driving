@@ -1,15 +1,13 @@
-"""Shared upload, arming, disarming, source reads and status behind local and onboard transports."""
+"""Shared upload, arming, disarming and status behind local and onboard transports."""
 
 from __future__ import annotations
 
 import base64
-import re
 from typing import Any, Callable, Mapping
 
-from autonomy.plugins import LocalPluginCatalog, PluginDefinition, uploaded_source
+from autonomy.plugins import LocalPluginCatalog, PluginDefinition
 
 PLUGIN_CATALOG_PATH = "/api/plugins"
-UPLOADED_SOURCE_NAME = re.compile(r"[0-9a-f]{64}\.py")
 
 
 def _field(payload: Mapping[str, Any], name: str) -> Any:
@@ -60,14 +58,6 @@ class PluginCatalogAPI:
                     if self.disarm is None:
                         raise ValueError("disarming requires a vehicle runtime host; this catalog supports upload only")
                     return self.disarm(_field(payload, "selections"), all_plugins=payload.get("all", False))
-                if payload.get("operation") == "source":
-                    # A reader checking this host's cycles needs the uploaded code
-                    # they ran; the <sha256>.py name lets it verify what it gets.
-                    name = _field(payload, "name")
-                    if not isinstance(name, str) or not UPLOADED_SOURCE_NAME.fullmatch(name):
-                        raise ValueError("source name must be an uploaded <sha256>.py")
-                    return {"ok": True, "status": "source", "name": name,
-                            "source_base64": base64.b64encode(uploaded_source(name).read_bytes()).decode()}
                 definition = self.catalog.upload(
                     step=_field(payload, "step"), plugin_id=_field(payload, "plugin_id"),
                     entrypoint=_field(payload, "entrypoint"),

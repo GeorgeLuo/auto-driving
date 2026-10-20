@@ -9,7 +9,7 @@ aggregates, and generation agree with the step activations it names.
 from __future__ import annotations
 
 import json
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any
@@ -50,7 +50,6 @@ from autonomy.runtime.report import (
 )
 
 from .decision_records import DecisionRecords, activations_from_payloads
-from .host_sources import UploadedSourceError, provide_plan_sources
 from .step_activations import (
     bundle_activation_problems,
     format_activation_problems,
@@ -268,13 +267,8 @@ def accept_decision_publication(
     vehicle_id: str,
     now_ms: int,
     max_age_ms: int | None = None,
-    load_source: Callable[[str], bytes] | None = None,
 ) -> dict[str, Any]:
-    """Normalize and accept a host's decision publication without fabricating local state.
-
-    ``load_source`` reads an uploaded plan source this process lacks from the
-    publishing host, so the staged plan check can run it.
-    """
+    """Normalize and accept a host's decision publication without fabricating local state."""
 
     try:
         normalized = normalize_decision_publication(
@@ -299,18 +293,6 @@ def accept_decision_publication(
         ) from exc
 
     decision = normalized["decision"]
-    if load_source is not None:
-        activation = decision["values"]["activation"]
-        steps = activation.get("steps") if isinstance(activation, dict) else None
-        try:
-            provide_plan_sources(steps.get("plan") if isinstance(steps, dict) else None, load_source)
-        except UploadedSourceError as exc:
-            raise DecisionSurfaceError(
-                "decision_publication_unavailable",
-                str(exc),
-                vehicle_id=vehicle_id,
-                details={"reason": "source_unavailable", "source": exc.name},
-            ) from exc
     try:
         _require_report_cycle_alignment(decision, decision["values"]["activation"])
     except DecisionSurfaceError as exc:

@@ -35,7 +35,6 @@ from .decision import (
 )
 from .paths import ROOT, display_path
 from .host_publications import fetch_decision_publication
-from .host_sources import host_source_loader
 from .inspection_runs import add_seed_provenance, read_shared_memory_seed
 from .runtime_hosts import RuntimeHostError, bundle_paths, runtime_base_url
 from .step_activations import decision_identity
@@ -201,7 +200,6 @@ def stream_vehicle_step(
             ) from exc
         normalized = accept_decision_publication(
             publication, vehicle_id=vehicle_id, now_ms=int(time.time() * 1000),
-            load_source=host_source_loader(base_url, timeout_s=timeout_s),
         )
         report = normalized["decision"]
         activation = report["values"]["activation"]

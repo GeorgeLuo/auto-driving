@@ -22,7 +22,6 @@ from .host_publications import (
     normalize_host_telemetry_records,
     decision_publication_identity,
 )
-from .host_sources import host_source_loader
 from .runtime_view import RuntimeViewServer
 
 
@@ -126,7 +125,6 @@ def _accepted_pair(
                 publication,
                 vehicle_id=vehicle_id,
                 now_ms=int(time.time() * 1000),
-                load_source=host_source_loader(base_url, timeout_s=timeout_s),
             )
         except DecisionSurfaceError as exc:
             # The host and the CLI may have a few milliseconds of clock skew.

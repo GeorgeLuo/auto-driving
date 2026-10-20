@@ -45,6 +45,7 @@ abstraction points have similar patterns, customization only appears when
 appropriate. Err on the side of readability over coverage of edge-case behavior
 and flag where refactors can be applied to branching lanes from common abstraction.
 
+
 Think deeply around if the change touches the right place. Generally the "hardness"
 of code is autonomy enforces things that all automation shares in terms of things
 that proceed in time, exist in the substrate of the environment and affect the
@@ -52,7 +53,15 @@ environment. Steps should be treated as peers and from this, form of the code
 should agree with function between the steps (filesystem layout, patterns).
 The implementations shared code should capture abstractions that are general to
 step behavior, plugins themselves are where specific environment dependent values
-are set. Summarily, the hierarchy is autonomy/runtime codebase informs at a harness level
+are set. 
+
+### Change Prioritization
+
+Backwards compatibility of deployed hosts, previous run data,
+implementations should not be a priority. Changes to API should inform changes
+to logically downstream code (see later)
+
+Summarily, the hierarchy is autonomy/runtime codebase informs at a harness level
 how the state machine operates, autonomy/decision_cycle step files inform general
 i/o and abstractions that are best utilized for that step, and implementations
 is a mix of general framing for intermediate conceptualizations useful during

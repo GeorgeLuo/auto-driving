@@ -6,7 +6,6 @@ from typing import ClassVar
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.plugin import ObservationPlugin
-from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.decision_cycle.runner import StepRunner, describe_exception
@@ -36,10 +35,5 @@ class ObservationRunner(StepRunner[ObservationPlugin]):
                 self.failure_count += 1
                 self.last_error = describe_exception(exc)
                 raise
-            if context.shared_memory is not None:
-                if observation is None:
-                    context.shared_memory.pop(OBSERVATION_KEY, None)
-                else:
-                    context.shared_memory[OBSERVATION_KEY] = observation
             self.last_error = None
             return observation

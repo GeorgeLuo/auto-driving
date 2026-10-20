@@ -57,7 +57,7 @@ class PlanRunner(StepRunner[PlanPlugin]):
                     "name": "shared_memory",
                     "required": False,
                     "source": "the host map on the frame context",
-                    "missing_behavior": "the plugin gets an empty map, as in offline replay",
+                    "missing_behavior": "absent keys are unknown",
                 },
             ],
             "output": {

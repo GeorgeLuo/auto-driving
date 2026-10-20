@@ -1,6 +1,5 @@
 """Later steps read the current observation and evidence from the same map."""
 import unittest
-from dataclasses import replace
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
@@ -62,20 +61,34 @@ class SharedCycleInputsTests(unittest.TestCase):
         self.assertNotIn("source", result.proposal.to_dict())
         self.assertEqual(result.plan.timestamp_ms, 100)
 
-    def test_missing_observation_removes_previous_frame_and_unknown_values_read_none(self):
+    def test_the_cycle_writes_the_observation_for_every_slot(self):
+        observation = Observation("obs", 100, {})
+
         class Observe:
             plugin_id = "observe"
-            value = Observation("obs", 100, {})
+            value = observation
             def observe(self, context, perception):
                 return self.value
 
         plugin = Observe()
         runner = ObservationRunner.from_plugins({"observe": plugin})
         shared = {}
-        context = DecisionFrameContext("first", 0, 100, shared_memory=shared)
-        self.assertIs(runner(context, None), read_observation(shared))
-        plugin.value = None
-        self.assertIsNone(runner(replace(context, frame_id="next"), None))
+        runner(DecisionFrameContext("runner", 0, 100, shared_memory=shared), None)
         self.assertNotIn(OBSERVATION_KEY, shared)
+        for slot in (runner, lambda context, perception: plugin.value):
+            with self.subTest(slot=slot):
+                plugin.value = observation
+                DecisionCycle(DecisionSteps(observation=slot)).run(
+                    DecisionFrameContext("first", 0, 100, shared_memory=shared))
+                self.assertIs(read_observation(shared), observation)
+                plugin.value = None
+                DecisionCycle(DecisionSteps(observation=slot)).run(
+                    DecisionFrameContext("next", 1, 200, shared_memory=shared))
+                self.assertNotIn(OBSERVATION_KEY, shared)
+        shared[OBSERVATION_KEY] = observation
+        DecisionCycle(DecisionSteps()).run(DecisionFrameContext("none", 2, 300, shared_memory=shared))
+        self.assertNotIn(OBSERVATION_KEY, shared)
+
+    def test_unknown_observations_read_none(self):
         for memory in (None, {}, {OBSERVATION_KEY: None}, {OBSERVATION_KEY: "invalid"}):
             self.assertIsNone(read_observation(memory))

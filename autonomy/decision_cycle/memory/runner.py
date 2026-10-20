@@ -307,9 +307,8 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                     "required": False,
                     "source": "observation.current in the host map",
                     "missing_behavior": (
-                        "the plugin is still called with an unknown observation"
-                        if FAILURE_POLICY.missing_input == "invoke"
-                        else "the plugin is not called when observation is None"
+                        "the key is absent, read_observation returns None, and "
+                        "plugins are still called"
                     ),
                 },
                 {

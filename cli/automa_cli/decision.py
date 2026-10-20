@@ -39,8 +39,6 @@ from autonomy.decision_cycle.action.result import (
     ActionResult,
 )
 from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
-from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA, ProposalResult
 from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
@@ -823,7 +821,7 @@ def _require_runner_plan_alignment(
     cycle: DecisionRecords,
     steps: Mapping[str, Any],
 ) -> None:
-    """Enforce the staged action plugin, candidate membership, and plan output."""
+    """Enforce the staged action plugin and the plan's candidate membership."""
 
     action_plugins = (steps.get("action") or {}).get("plugins") or []
     expected_gate = action_plugins[0] if len(action_plugins) == 1 else None
@@ -865,33 +863,6 @@ def _require_runner_plan_alignment(
                 "got_plugins": list(actual_plugins),
             },
         )
-    try:
-        plan_step = PlanRunner.from_activation(
-            activations_from_payloads(dict(steps))["plan"]
-        )
-        expected = plan_step(
-            DecisionFrameContext(
-                frame_id=plan.frame_id, frame_index=0, timestamp_ms=plan.timestamp_ms
-            ),
-            cycle.proposal,
-        )
-    except (TypeError, ValueError, ImportError, AttributeError) as exc:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"cycle.plan failed staged plan validation: {exc}",
-            details={"field": "cycle.plan"},
-        ) from exc
-    if expected is None:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"cycle.plan failed staged plan validation: {plan_step.last_error}",
-            details={"field": "cycle.plan"},
-        )
-    _require_canonical_export_equal(
-        plan.to_dict(),
-        expected.to_dict(),
-        field="cycle.plan.selector_result",
-    )
 
 
 def decision_view_frame(normalized: dict[str, Any]) -> dict[str, Any]:

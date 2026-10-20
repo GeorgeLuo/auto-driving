@@ -46,7 +46,6 @@ from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationErro
 
 # Each decision step replays every step before it, from perception on.
 _REPLAY_STEPS = ("perception", "observation", "memory", *DECISION_STEPS)
-_RETAINED_SHOWN = 12
 
 
 def inspect_root(step: str) -> Path:
@@ -397,10 +396,6 @@ def _command(command: Any) -> dict[str, Any] | None:
     if not isinstance(command, dict):
         return None
     return {"steering": command.get("steering"), "throttle": command.get("throttle")}
-
-
-
-
 
 
 # ---------------------------------------------------------------------------

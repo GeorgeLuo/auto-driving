@@ -11,6 +11,7 @@ from autonomy.decision_cycle.action.runner import ActionRunner
 from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.plan.runner import PlanRunner
@@ -151,7 +152,8 @@ class DecisionChain:
         if shared_memory is None:
             shared_memory = {}
         observation = proposal_inputs.pop("observation", None)
-        shared_memory["observation.current"] = observation
+        if observation is not None:
+            shared_memory[OBSERVATION_KEY] = observation
         write_host_inputs(shared_memory, mode=drive_mode_gate)
         context = DecisionFrameContext(
             frame_id=frame_id, frame_index=frame_index, timestamp_ms=timestamp_ms,

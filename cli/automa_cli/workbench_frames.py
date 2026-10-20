@@ -16,7 +16,6 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.observation.perception_summary import observation_from_perception
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.decision_cycle.steps import decision_steps
@@ -187,7 +186,6 @@ def run_frame(
             },
             created_at_ms=frame.timestamp_ms,
         )
-        shared_memory[OBSERVATION_KEY] = observation
         return observation
 
     result = DecisionCycle(

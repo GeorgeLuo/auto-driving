@@ -1,4 +1,9 @@
-"""The current observation published for later steps."""
+"""The current observation published for later steps.
+
+After the observation step the cycle writes its result at ``OBSERVATION_KEY``,
+and removes the key when the step returns None or the slot is empty. Later steps
+read it with ``read_observation``.
+"""
 from __future__ import annotations
 
 from autonomy.decision_cycle.observation.values import Observation

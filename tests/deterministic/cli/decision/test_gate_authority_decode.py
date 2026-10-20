@@ -65,6 +65,15 @@ class ActionAuthorityDecodeTests(unittest.TestCase):
         self.assertTrue(cycle.authority.proposed_applied)
         self.assertEqual(cycle.authority.gate_id, "mode")
 
+    def test_the_plan_is_accepted_as_the_staged_plugin_chose_it(self) -> None:
+        # The plan plugin read shared memory that acceptance cannot see, so it
+        # is not run again here.
+        payload = _applied_cycle()
+        payload["plan"]["metadata"] = {"observation_id": "obs-1"}
+        cycle = _require_exact_cycle_export(payload)
+        _require_runner_plan_alignment(cycle, packaged_decision_steps("mode"))
+        self.assertEqual(cycle.plan.metadata, {"observation_id": "obs-1"})
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

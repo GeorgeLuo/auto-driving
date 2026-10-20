@@ -8,7 +8,8 @@ runs the plugins selected for the step:
 - ``perception(context)`` returns current evidence.
 - ``observation(context, perception)`` returns the current-frame record.
 - ``memory(context)`` lets memory plugins update the host map and returns
-  their report. They read the observation at ``observation.current``.
+  their report. The cycle writes the observation at ``observation.current``
+  before memory runs, and removes it when there is none.
 - ``proposal(context)`` returns the candidates.
 - ``plan(context, proposal)`` returns the plan over those candidates.
 - ``action(context, proposal, plan)`` returns the authorized control.

@@ -23,6 +23,16 @@ from tests.deterministic.implementations.vehicle.chase_frame_identity_fixtures i
 )
 
 
+def _keys(value):
+    """Every mapping key in a JSON-like value, at any depth."""
+    if isinstance(value, dict):
+        for key, item in value.items():
+            yield key
+            yield from _keys(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _keys(item)
+
 class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
     def test_read_sensors_uses_one_atomic_query_and_keeps_reference_outside_the_sensor_frame(
         self,
@@ -94,11 +104,9 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
         self.assertNotIn("chaser_reference", sensor_frame.metadata)
         self.assertNotIn("visibleWallCount", str(sensor_frame.to_dict()))
         self.assertNotIn("actor-control-reference", str(sensor_frame.to_dict()))
+        self.assertEqual(car.last_evaluator_reference["status"], "available")
         self.assertEqual(
-            sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].metadata["evaluator_reference"][
-                "status"
-            ],
-            "available",
+            [key for key in _keys(sensor_frame.to_dict()) if "evaluator" in key], []
         )
 
     def test_malformed_evaluator_reference_does_not_block_sensor_capture(self) -> None:
@@ -161,10 +169,11 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
         self.assertIsNone(car.last_capture_chaser_reference)
         self.assertEqual(car.last_evaluator_reference["status"], "unavailable")
         self.assertEqual(
-            sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].metadata["evaluator_reference"],
+            car.last_evaluator_reference,
             {
                 "status": "unavailable",
                 "reason": "reference_missing",
                 "path": "evaluator.reference",
             },
         )
+        self.assertNotIn("evaluator_reference", sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].metadata)

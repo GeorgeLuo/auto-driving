@@ -830,20 +830,6 @@ class FrameLoop:
         proposal = records.proposal
         if proposal is None or records.application is None:
             return None, "incomplete_result"
-        source = getattr(proposal, "source", None)
-        if source is not None:
-            try:
-                source_export = source.to_dict()
-            except Exception:
-                return None, "incomplete_result"
-            if not isinstance(source_export, dict):
-                return None, "incomplete_result"
-            if (
-                source_export.get("frame_id") != frame_id
-                or source_export.get("frame_index") != frame_index
-                or source_export.get("timestamp_ms") != timestamp_ms_value
-            ):
-                return None, "mismatched_frame"
         try:
             report = report_from_host_result(
                 records,

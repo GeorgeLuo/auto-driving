@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
 from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.activation import (
     STEP_ACTIVATION_SCHEMA,
@@ -123,11 +124,15 @@ class CycleHostMemoryTests(unittest.TestCase):
             host.execution = ControlExecution(Mock(write=Mock(return_value={})))
             self.addCleanup(host.close)
             host.set_mode("autonomy")
-            expected = host.execution.recent_applications()
+            expected = host.execution.ticket().control_applications
             with patch.object(_RecordingMemory, "update", update):
                 result = host.run(DecisionFrameContext("frame-history", 0, int(time.time() * 1000)))
-            self.assertEqual(seen[0].control_applications, expected)
-            self.assertEqual(result.context.to_dict()["control_applications"], [item.to_dict() for item in expected])
+            self.assertEqual(seen[0].shared_memory[CONTROL_APPLICATIONS_KEY], expected)
+            self.assertNotIn("control_applications", result.context.to_dict())
+        without_execution, _ = _host()
+        self.addCleanup(without_execution.close)
+        result = without_execution.run(DecisionFrameContext("frame-none", 0, int(time.time() * 1000)))
+        self.assertNotIn(CONTROL_APPLICATIONS_KEY, result.context.shared_memory)
 
     def test_mode_and_applications_are_captured_in_the_same_ticket(self):
         host, _ = _host()
@@ -142,8 +147,8 @@ class CycleHostMemoryTests(unittest.TestCase):
         with patch.object(host.execution, "ticket", side_effect=ticket_then_change_mode):
             result = host.run(DecisionFrameContext("f", 0, int(time.time() * 1000)))
         self.assertEqual(result.context.mode, "autonomy")
-        self.assertEqual(result.context.control_applications[-1].mode, "autonomy")
-        self.assertEqual(host.execution.recent_applications()[-1].mode, "manual")
+        self.assertEqual(result.context.shared_memory[CONTROL_APPLICATIONS_KEY][-1].mode, "autonomy")
+        self.assertEqual(host.execution.ticket().control_applications[-1].mode, "manual")
         self.assertFalse(result.application.applied)
 
     def test_new_runs_and_memory_resets_clear_prior_applications(self):
@@ -151,14 +156,17 @@ class CycleHostMemoryTests(unittest.TestCase):
         host.execution = ControlExecution(Mock(write=Mock(return_value={})))
         self.addCleanup(host.close)
         host.start()
-        old = host.execution.recent_applications()[0]
+        old = host.execution.ticket().control_applications[0]
         host.start()
-        current = host.execution.recent_applications()
+        current = host.execution.ticket().control_applications
         self.assertEqual(len(current), 1)
         self.assertIsNot(current[0], old)
         self.assertEqual(current[0].reason, "awaiting-fresh-decision")
         host.reset_memory()
-        self.assertEqual(host.execution.recent_applications(), ())
+        self.assertEqual(host.execution.ticket().control_applications, ())
+        self.assertNotIn(CONTROL_APPLICATIONS_KEY, host.shared_memory)
+        result = host.run(DecisionFrameContext("after-reset", 0, int(time.time() * 1000)))
+        self.assertEqual(result.context.shared_memory[CONTROL_APPLICATIONS_KEY], ())
 
     def test_failed_start_reports_its_error_instead_of_the_previous_run_error(self):
         host, _ = _host()

@@ -1110,15 +1110,7 @@ class FrameLoop:
                     jpeg_cache=camera.jpeg_cache,
                 )
                 self._last_control = control_dict
-                # The 20 Hz drive output needs cycle diagnostics, not another
-                # copy of the application window. Live publications above keep
-                # the full context that plugins saw.
-                self._last_cycle = None if cycle_dict is None else {
-                    **cycle_dict, "context": {
-                        key: value for key, value in cycle_dict["context"].items()
-                        if key != "control_applications"
-                    },
-                }
+                self._last_cycle = cycle_dict
                 self.latest_state = latest
                 self._publication_revision += 1
                 self.frame_index = frame_index + 1

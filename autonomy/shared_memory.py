@@ -27,7 +27,9 @@ free of implementation imports.
 A plugin's own state lives at ``<step>.<plugin_id>.<name>``. A key a step
 publishes for others, such as ``memory.evidence``, is rewritten from its
 producer's state on every update. A value meant for a consumer is therefore
-set through the producer's state key.
+set through the producer's state key. A host publishes what it alone knows the
+same way, under the step it belongs to, rewriting it before every cycle:
+``action.control_applications`` holds the controls the host applied.
 
 A host may start a run from a shared-memory file, decoding a fresh map per
 run. Resets and restages clear affected plugins' seeded keys as they clear

@@ -246,11 +246,6 @@ class ControlExecution:
         self._applications.append(self.last_application)
         self._publish_status()
 
-    def recent_applications(self) -> tuple[ControlApplication, ...]:
-        """The bounded application window, oldest first; records are frozen."""
-        with self._lock:
-            return tuple(self._applications)
-
     def clear_applications(self) -> None:
         """Start a new learning window at a run or memory-reset boundary."""
         with self._lock:

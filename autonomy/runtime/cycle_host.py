@@ -38,6 +38,7 @@ from autonomy.decision_cycle.cycle import (
 from autonomy.decision_cycle.steps import (
     STEP_RUNNERS, decision_steps, load_decision_steps, snapshot_step_activations,
 )
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlExecution, ControlTarget
@@ -360,14 +361,14 @@ class AutonomyCycleHost:
         with self._lock:
             ticket = self.execution.ticket() if self.execution is not None else None
             if ticket is not None:
-                context = replace(
-                    context, mode=ticket.mode, control_applications=ticket.control_applications,
-                )
+                context = replace(context, mode=ticket.mode)
             self._cycle_in_progress = {"frame_id": context.frame_id, "started_at_ms": timestamp_ms()}
             if context.shared_memory is None:
                 context = replace(context, shared_memory=self.shared_memory)
             else:
                 self.shared_memory = context.shared_memory
+            if ticket is not None:
+                context.shared_memory[CONTROL_APPLICATIONS_KEY] = ticket.control_applications
             try:
                 self.sync_selection()
                 self._adopt_selection()
@@ -380,7 +381,9 @@ class AutonomyCycleHost:
                         self.last_error = None
                     if self.run_state == "running" and run_generation == self._run_generation:
                         if self.recording is not None:
-                            self.recording.append(result)
+                            self.recording.append(
+                                result, ticket.control_applications if ticket is not None else None,
+                            )
                         self.run_decisions += 1
                         if (
                             self.configuration.num_decisions

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
-from dataclasses import FrozenInstanceError, replace
+from dataclasses import FrozenInstanceError
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -53,14 +53,14 @@ class ControlExecutionTests(unittest.TestCase):
             )
             application = execution.apply(result, execution.ticket())
             execution.set_mode("manual")
-        history = execution.recent_applications()
+        history = execution.ticket().control_applications
         self.assertEqual([item.reason for item in history],
                          ["awaiting-fresh-decision", "turn", "mode-changed"])
         self.assertIs(history[1], application)
         self.assertEqual((history[0].mode, history[1].mode, history[2].mode),
                          ("autonomy", "autonomy", "manual"))
         self.assertEqual((history[2].control.steering, history[2].control.throttle), (0.0, 0.0))
-        self.assertIs(history[0], execution.recent_applications()[0])
+        self.assertIs(history[0], execution.ticket().control_applications[0])
         with self.assertRaises(FrozenInstanceError):
             history[0].reason = "tampered"
 
@@ -78,7 +78,7 @@ class ControlExecutionTests(unittest.TestCase):
                 self.assertEqual(ticket.mode, mode)
                 self.assertEqual(ticket.control_applications[-1].mode, mode)
                 self.assertEqual(ticket.control_applications[-1].control.throttle, 0.0)
-                self.assertIs(ticket.control_applications[-1], execution.recent_applications()[-1])
+                self.assertIs(ticket.control_applications[-1], execution.ticket().control_applications[-1])
 
     def test_applications_round_trip_as_json_and_shared_memory_records(self):
         from autonomy.shared_memory import shared_memory_document, shared_memory_from_document
@@ -89,32 +89,27 @@ class ControlExecutionTests(unittest.TestCase):
         self.assertEqual(ControlApplication.from_dict(json.loads(json.dumps(application.to_dict()))), application)
         decoded = shared_memory_from_document(shared_memory_document({"applications": (application,)}))
         self.assertEqual(decoded["applications"], [application])
-        context = DecisionFrameContext("f", 0, 100, control_applications=(application,))
-        self.assertEqual(context, replace(context, control_applications=()))
-        self.assertNotIn("control_applications", repr(context))
-        self.assertEqual(DecisionFrameContext.from_record(context.to_dict(), frame_id="f", frame_index=0,
-                                                        timestamp_ms=100).control_applications, (application,))
 
     def test_watchdog_stop_is_recorded(self) -> None:
         execution = ControlExecution(_RecordingTarget())
         execution._deadline = 0.0
         with patch.object(execution._wake, "wait", side_effect=[False, True]):
             execution._watch()
-        self.assertEqual(execution.recent_applications()[0].reason, "decision-expired")
-        self.assertEqual(execution.recent_applications()[0].control.throttle, 0.0)
+        self.assertEqual(execution.ticket().control_applications[0].reason, "decision-expired")
+        self.assertEqual(execution.ticket().control_applications[0].control.throttle, 0.0)
 
     def test_applications_are_bounded_and_failed_writes_are_absent(self) -> None:
         execution = ControlExecution(_RecordingTarget())
         self.addCleanup(execution.close)
         for index in range(CONTROL_APPLICATION_LIMIT + 5):
             execution._write_idle(str(index))
-        history = execution.recent_applications()
+        history = execution.ticket().control_applications
         self.assertEqual(len(history), CONTROL_APPLICATION_LIMIT)
         self.assertEqual(history[0].reason, "5")
         failing = ControlExecution(_UnreachableTarget())
         with self.assertRaises(ConnectionError):
             failing.set_mode("autonomy")
-        self.assertEqual(failing.recent_applications(), ())
+        self.assertEqual(failing.ticket().control_applications, ())
 
     def test_mode_changes_keep_the_idle_write_receipt(self) -> None:
         target = _RecordingTarget()

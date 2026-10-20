@@ -19,11 +19,12 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.context import CONTROL_APPLICATION_RESET_KEY, DecisionFrameContext
-from autonomy.runtime.execution import CONTROL_APPLICATION_LIMIT, ControlApplication
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.plugins import add_uploaded_source_root
-from autonomy.runtime.recording import UPLOADED_SOURCES_DIR
+from autonomy.runtime.execution import CONTROL_APPLICATION_LIMIT, ControlApplication
+from autonomy.runtime.recording import (
+    CONTROL_APPLICATION_RESET_FIELD, CONTROL_APPLICATIONS_FIELD, UPLOADED_SOURCES_DIR,
+)
 from .inspection_runs import recorded_selection, recorded_selections
 
 
@@ -61,8 +62,10 @@ class ReplayFrame:
     absence_reason: str | None = None
     content_type: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
-
-    control_applications: tuple[ControlApplication, ...] = field(default=(), repr=False, compare=False)
+    # The window the recording host published, or None when it recorded none.
+    control_applications: tuple[ControlApplication, ...] | None = field(
+        default=None, repr=False, compare=False,
+    )
 
     @property
     def absent(self) -> bool:
@@ -243,14 +246,16 @@ def normalize_image_directory(
     )
     _validate_frame_sequence(frames)
     # Rebuild windows while loading so seeking or replaying a single frame sees
-    # the same inputs as a sequential run. Keep the manifest metadata as deltas.
+    # the same inputs as a sequential run.
     applications: deque[ControlApplication] = deque(maxlen=CONTROL_APPLICATION_LIMIT)
     restored = []
     for frame in frames:
-        if frame.metadata.get("context", {}).get(CONTROL_APPLICATION_RESET_KEY, False):
-            applications.clear()
-        applications.extend(frame.control_applications)
-        restored.append(replace(frame, control_applications=tuple(applications)))
+        if frame.control_applications is not None:
+            if frame.metadata[CONTROL_APPLICATION_RESET_FIELD]:
+                applications.clear()
+            applications.extend(frame.control_applications)
+            frame = replace(frame, control_applications=tuple(applications))
+        restored.append(frame)
     return ImageSource(
         source_path=source_path,
         source_id=source_id,
@@ -504,16 +509,20 @@ def _build_frame(
     metadata = {"manifest_position": position, **image_metadata}
     if "annotation" in entry:
         metadata["annotation"] = copy.deepcopy(entry["annotation"])
-    control_applications = ()
     if "context" in entry:
-        try:
-            context = DecisionFrameContext.from_record(
-                entry["context"], frame_id=frame_id, frame_index=frame_index, timestamp_ms=timestamp_ms,
-            )
-        except (KeyError, TypeError, ValueError, OverflowError) as exc:
-            raise SourceValidationError(f"frame {position} has invalid recorded context: {exc}") from exc
-        control_applications = context.control_applications
+        if not isinstance(entry["context"], dict):
+            raise SourceValidationError(f"frame {position} context must be an object")
         metadata["context"] = copy.deepcopy(entry["context"])
+    control_applications = None
+    if CONTROL_APPLICATIONS_FIELD in entry:
+        recorded, reset = entry[CONTROL_APPLICATIONS_FIELD], entry.get(CONTROL_APPLICATION_RESET_FIELD)
+        try:
+            if not isinstance(recorded, list) or type(reset) is not bool:
+                raise ValueError("expected a list and a boolean reset flag")
+            control_applications = tuple(ControlApplication.from_dict(item) for item in recorded)
+        except (TypeError, ValueError) as exc:
+            raise SourceValidationError(f"frame {position} has invalid control applications: {exc}") from exc
+        metadata[CONTROL_APPLICATION_RESET_FIELD] = reset
     # A recording manifest keeps the report identity and staged step selections.
     for key in ("vehicle_id", "run_id", "generation_id"):
         value = entry.get(key)

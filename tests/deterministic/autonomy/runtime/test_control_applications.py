@@ -1,4 +1,4 @@
-"""The application stream is stored once and reconstructs the plugin inputs."""
+"""The host publishes its applications in shared memory; recordings store them once and replay restores them."""
 from __future__ import annotations
 
 import base64
@@ -11,12 +11,16 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from autonomy.decision_cycle.context import CONTROL_APPLICATION_RESET_KEY, DecisionFrameContext
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
+from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import CONTROL_APPLICATION_LIMIT, ControlApplication
-from autonomy.runtime.recording import RECORDING_MANIFEST_NAME, RunRecording, write_recorded_frame
+from autonomy.runtime.recording import (
+    CONTROL_APPLICATION_RESET_FIELD, CONTROL_APPLICATIONS_FIELD, RECORDING_MANIFEST_NAME, RunRecording,
+    write_recorded_frame,
+)
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.workbench_frames import run_frame
 from cli.automa_cli.workbench_source import SourceValidationError, load_image_source
@@ -52,12 +56,14 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                         )}, started_at_ms=2000 + index, completed_at_ms=2000 + index,
                     )
                     result = host.run(DecisionFrameContext(f"f{index}", index, 2000 + index, sensor_frame=sensors))
-                    expected.append(result.context.control_applications)
+                    expected.append(result.context.shared_memory[CONTROL_APPLICATIONS_KEY])
             manifest = json.loads((recording.root / RECORDING_MANIFEST_NAME).read_text())
-            contexts = [entry["context"] for entry in manifest["frames"]]
-            self.assertEqual([len(item["control_applications"]) for item in contexts], [1, 3, 0, 1])
-            self.assertEqual(contexts[1]["control_applications"][-1], contexts[1]["control_applications"][-2])
-            self.assertEqual([item[CONTROL_APPLICATION_RESET_KEY] for item in contexts], [True, False, True, True])
+            entries = manifest["frames"]
+            self.assertEqual([len(entry[CONTROL_APPLICATIONS_FIELD]) for entry in entries], [1, 3, 0, 1])
+            self.assertEqual(entries[1][CONTROL_APPLICATIONS_FIELD][-1], entries[1][CONTROL_APPLICATIONS_FIELD][-2])
+            self.assertEqual([entry[CONTROL_APPLICATION_RESET_FIELD] for entry in entries],
+                             [True, False, True, True])
+            self.assertTrue(all(CONTROL_APPLICATIONS_FIELD not in entry["context"] for entry in entries))
             self.assertEqual([item.delivered_at_ms for item in expected[1]], [2000, 2000, 1000, 1000])
             exported = root / "export"
             batch = recording.read(run_id=recording.run_id, after=0)
@@ -72,7 +78,8 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                 source = load_image_source(directory)
                 seen = []
                 steps = {step: None for step in ("perception", "observation", "memory", "proposal", "plan", "action")}
-                steps["memory"] = lambda context, observation: seen.append(context.control_applications)
+                steps["memory"] = lambda context, observation: seen.append(
+                    context.shared_memory[CONTROL_APPLICATIONS_KEY])
                 # The source reconstructs windows independently of replay order.
                 for index in (3, 1, 0, 2):
                     run_frame(source.frames[index], steps=steps, shared_memory={})
@@ -82,7 +89,8 @@ class ControlApplicationRecordingTests(unittest.TestCase):
         application = ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100)
         with image_source(1) as root:
             frames = [{"frame_id": f"f{index}", "timestamp_ms": index, "image_path": "frame_00.png",
-                       "context": {"control_applications": [replace(application, delivered_at_ms=100 - index).to_dict()]}}
+                       CONTROL_APPLICATIONS_FIELD: [replace(application, delivered_at_ms=100 - index).to_dict()],
+                       CONTROL_APPLICATION_RESET_FIELD: index == 0}
                       for index in range(CONTROL_APPLICATION_LIMIT + 3)]
             write_manifest(root, {"frames": frames})
             source = load_image_source(root)
@@ -101,13 +109,30 @@ class ControlApplicationRecordingTests(unittest.TestCase):
         with image_source(1) as root:
             for application in invalid:
                 with self.subTest(application=application):
-                    write_manifest(root, {"frames": [{"image_path": "frame_00.png", "context": {
-                        "control_applications": [application],
-                    }}]})
-                    with self.assertRaisesRegex(SourceValidationError, "invalid recorded context"):
+                    write_manifest(root, {"frames": [{
+                        "image_path": "frame_00.png", CONTROL_APPLICATIONS_FIELD: [application],
+                        CONTROL_APPLICATION_RESET_FIELD: True,
+                    }]})
+                    with self.assertRaisesRegex(SourceValidationError, "invalid control applications"):
                         load_image_source(root)
-            for context in ({"control_applications": {}}, {"control_applications": None},
-                            {CONTROL_APPLICATION_RESET_KEY: "true"}):
-                write_manifest(root, {"frames": [{"image_path": "frame_00.png", "context": context}]})
-                with self.assertRaises(SourceValidationError):
-                    load_image_source(root)
+            for fields in ({CONTROL_APPLICATIONS_FIELD: {}, CONTROL_APPLICATION_RESET_FIELD: True},
+                           {CONTROL_APPLICATIONS_FIELD: None, CONTROL_APPLICATION_RESET_FIELD: True},
+                           {CONTROL_APPLICATIONS_FIELD: [], CONTROL_APPLICATION_RESET_FIELD: "true"},
+                           {CONTROL_APPLICATIONS_FIELD: []}):
+                with self.subTest(fields=fields):
+                    write_manifest(root, {"frames": [{"image_path": "frame_00.png", **fields}]})
+                    with self.assertRaisesRegex(SourceValidationError, "invalid control applications"):
+                        load_image_source(root)
+
+    def test_replay_removes_the_key_when_the_source_recorded_none(self):
+        application = ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100)
+        with image_source(1) as root:
+            write_manifest(root, {"frames": [{"image_path": "frame_00.png"}]})
+            source = load_image_source(root)
+        self.assertIsNone(source.frames[0].control_applications)
+        shared_memory = {CONTROL_APPLICATIONS_KEY: (application,)}
+        seen = []
+        steps = {step: None for step in ("perception", "observation", "memory", "proposal", "plan", "action")}
+        steps["memory"] = lambda context, observation: seen.append(dict(context.shared_memory))
+        run_frame(source.frames[0], steps=steps, shared_memory=shared_memory)
+        self.assertEqual(seen, [{}])

@@ -82,7 +82,7 @@ def host_result_for_records(
             frame_id=frame_id,
             frame_index=frame_index,
             timestamp_ms=timestamp_ms,
-            mode=mode,
+            shared_memory={"action.mode": mode},
         ),
         proposal=records.proposal,
         plan=records.plan,

@@ -1,6 +1,8 @@
 """What the host publishes from the action step for later cycles.
 
-Before each cycle, a host with control execution writes its recent
+Before each cycle the host writes the drive mode and user controls under
+``MODE_KEY``, ``USER_STEERING_KEY`` and ``USER_THROTTLE_KEY``. Missing values
+mean unknown. A host with control execution also writes its recent
 ``ControlApplication`` records at ``CONTROL_APPLICATIONS_KEY``: a tuple or list,
 oldest first, of at most ``CONTROL_APPLICATION_LIMIT`` target writes, each with
 the mode it ran in. ``()`` means no writes are retained. History survives run
@@ -17,6 +19,17 @@ from __future__ import annotations
 
 from autonomy.runtime.execution import ControlApplication
 from autonomy.shared_memory import SharedMemory
+
+MODE_KEY = "action.mode"
+USER_STEERING_KEY = "action.user_steering"
+USER_THROTTLE_KEY = "action.user_throttle"
+
+
+def read_mode(shared_memory: SharedMemory | None) -> str | None:
+    """The host's drive mode, or None when it is unknown."""
+    value = None if shared_memory is None else shared_memory.get(MODE_KEY)
+    return value if isinstance(value, str) else None
+
 
 CONTROL_APPLICATIONS_KEY = "action.control_applications"
 

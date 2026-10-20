@@ -79,7 +79,7 @@ def _run(
     action: str,
     *,
     zone: str | None,
-    mode: str,
+    mode: str | None,
     frame_id: str = "frame-1",
     observation: Observation | None = None,
     **activation_overrides,
@@ -92,8 +92,8 @@ def _run(
             frame_id=frame_id,
             frame_index=1,
             timestamp_ms=1000,
-            mode=mode,
-            shared_memory={EVIDENCE_KEY: _records(zone)},
+
+            shared_memory={EVIDENCE_KEY: _records(zone), **({"action.mode": mode} if mode is not None else {})},
         )
     )
 
@@ -181,6 +181,13 @@ class ModeActionTests(unittest.TestCase):
         self.assertEqual(action.control.throttle, 0.0)
         self.assertEqual(action.control.reason, "no_selected_command")
         self.assertFalse(action.authority.proposed_applied)
+
+    def test_missing_mode_holds_with_a_selected_command(self) -> None:
+        action = _run("mode", zone="left", mode=None).action
+        self.assertEqual(action.control.throttle, 0.0)
+        self.assertEqual(action.control.reason, "autonomy-mode-required")
+        self.assertFalse(action.authority.proposed_applied)
+        self.assertEqual(action.authority.drive_mode_gate, "unknown")
 
     def test_manual_mode_is_idle_even_with_obstruction(self) -> None:
         action = _run("mode", zone="left", mode="user").action

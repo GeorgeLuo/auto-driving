@@ -25,7 +25,7 @@ class FixedAction:
         self.control = control
         self.plugin_id = plugin_id
 
-    def decide(self, plan, *, mode, error_reason=None) -> ActionDecision:
+    def decide(self, context, plan, *, error_reason=None) -> ActionDecision:
         return ActionDecision(self.control)
 
 
@@ -159,7 +159,7 @@ class DecisionChain:
             frame_id=frame_id,
             frame_index=frame_index,
             timestamp_ms=timestamp_ms,
-            mode=drive_mode_gate,
+            shared_memory={"action.mode": drive_mode_gate},
         )
         plan = self.plan(context, proposal)
         return DecisionRecords(proposal, plan, self.action(context, proposal, plan))

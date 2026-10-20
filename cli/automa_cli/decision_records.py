@@ -20,6 +20,7 @@ from autonomy.decision_cycle.activation import (
     StepActivation,
     step_activation_from_payload,
 )
+from autonomy.decision_cycle.action.publication import MODE_KEY
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.plan.values import ActionPlan
@@ -138,6 +139,11 @@ class DecisionRunners:
         mode: str = "unknown",
         **proposal_inputs: Any,
     ) -> DecisionRecords:
+        shared_memory = proposal_inputs.get("shared_memory")
+        if shared_memory is None:
+            shared_memory = {}
+        shared_memory[MODE_KEY] = mode
+        proposal_inputs["shared_memory"] = shared_memory
         proposal = self.proposal.run(
             frame_id=frame_id,
             frame_index=frame_index,
@@ -148,7 +154,7 @@ class DecisionRunners:
             frame_id=frame_id,
             frame_index=frame_index,
             timestamp_ms=timestamp_ms,
-            mode=mode,
+            shared_memory=shared_memory,
         )
         plan = self.plan(context, proposal)
         return DecisionRecords(proposal, plan, self.action(context, proposal, plan))

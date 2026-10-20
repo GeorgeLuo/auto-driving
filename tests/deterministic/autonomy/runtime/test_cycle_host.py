@@ -39,7 +39,7 @@ class _PushyAction:
 
     plugin_id = "pushy"
 
-    def decide(self, plan, *, mode, error_reason=None) -> ActionDecision:
+    def decide(self, context, plan, *, error_reason=None) -> ActionDecision:
         return ActionDecision(
             AutonomyControl(steering=0.7, throttle=0.4, confidence=1.0, reason="pushy-test-action")
         )
@@ -51,7 +51,7 @@ class _FailOnceAction:
     def __init__(self) -> None:
         self.calls = 0
 
-    def decide(self, plan, *, mode, error_reason=None) -> ActionDecision:
+    def decide(self, context, plan, *, error_reason=None) -> ActionDecision:
         self.calls += 1
         if self.calls == 1:
             raise RuntimeError("transient action failure")
@@ -145,8 +145,12 @@ class CycleHostMemoryTests(unittest.TestCase):
             host.set_mode("manual")
             return ticket
         with patch.object(host.execution, "ticket", side_effect=ticket_then_change_mode):
-            result = host.run(DecisionFrameContext("f", 0, int(time.time() * 1000)))
-        self.assertEqual(result.context.mode, "autonomy")
+            result = host.run(DecisionFrameContext("f", 0, int(time.time() * 1000)),
+                              mode="observe_only", user_steering=0.25, user_throttle=0.5)
+        self.assertEqual(result.context.shared_memory["action.mode"], "autonomy")
+        self.assertEqual(result.context.shared_memory["action.user_steering"], 0.25)
+        self.assertEqual(result.context.shared_memory["action.user_throttle"], 0.5)
+        self.assertNotIn("mode", result.context.to_dict())
         self.assertEqual(result.context.shared_memory[CONTROL_APPLICATIONS_KEY][-1].mode, "autonomy")
         self.assertEqual(host.execution.ticket().control_applications[-1].mode, "manual")
         self.assertFalse(result.application.applied)
@@ -370,7 +374,7 @@ class CycleHostStepTests(unittest.TestCase):
         self.assertEqual(host.steps.proposal.plugin_ids, ("avoid_recent_obstruction",))
         self.assertIsNone(host.steps.plan)
         self.assertEqual(host.steps.action.plugin_ids, ("mode",))
-        result = host.run(DecisionFrameContext("frame_1", 1, 1, mode="autonomy"))
+        result = host.run(DecisionFrameContext("frame_1", 1, 1), mode="autonomy")
         self.assertEqual(result.proposal.status, "ok")
         self.assertEqual(result.action.authority.gate_id, "mode")
         self.assertEqual(result.control.reason, "mode-action-error")

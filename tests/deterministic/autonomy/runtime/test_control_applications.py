@@ -56,10 +56,15 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                             captured_at_ms=2000 + index, path=str(camera),
                         )}, started_at_ms=2000 + index, completed_at_ms=2000 + index,
                     )
-                    result = host.run(DecisionFrameContext(f"f{index}", index, 2100 + index, sensor_frame=sensors))
+                    result = host.run(DecisionFrameContext(f"f{index}", index, 2100 + index, sensor_frame=sensors),
+                                      mode="local", user_steering=index / 10, user_throttle=0.4)
                     expected.append(result.context.shared_memory[CONTROL_APPLICATIONS_KEY])
             manifest = json.loads((recording.root / RECORDING_MANIFEST_NAME).read_text())
             entries = manifest["frames"]
+            self.assertEqual([entry["mode"] for entry in entries], ["autonomy"] * 4)
+            self.assertEqual([entry["user_steering"] for entry in entries], [0, 0.1, 0.2, 0.3])
+            self.assertTrue(all(entry["user_throttle"] == 0.4 for entry in entries))
+            self.assertTrue(all(set(entry["context"]) == {"timestamp_ms"} for entry in entries))
             changes = [entry[CONTROL_APPLICATION_CHANGE_FIELD] for entry in entries]
             self.assertEqual([len(change["added"]) for change in changes], [1, 3, 1, 1])
             self.assertEqual(changes[1]["added"][-1], changes[1]["added"][-2])
@@ -84,6 +89,9 @@ class ControlApplicationRecordingTests(unittest.TestCase):
 
                 def remember(context, observation):
                     seen.append(context.shared_memory[CONTROL_APPLICATIONS_KEY])
+                    self.assertEqual(context.shared_memory["action.mode"], "autonomy")
+                    self.assertEqual(context.shared_memory["action.user_steering"], context.frame_index / 10)
+                    self.assertEqual(context.shared_memory["action.user_throttle"], 0.4)
                     cycle_times.append(context.timestamp_ms)
                     capture_times.append(context.sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].captured_at_ms)
 
@@ -186,4 +194,5 @@ class ControlApplicationRecordingTests(unittest.TestCase):
         steps = {step: None for step in ("perception", "observation", "memory", "proposal", "plan", "action")}
         steps["memory"] = lambda context, observation: seen.append(dict(context.shared_memory))
         run_frame(source.frames[0], steps=steps, shared_memory=shared_memory)
-        self.assertEqual(seen, [{}])
+        self.assertNotIn(CONTROL_APPLICATIONS_KEY, seen[0])
+        self.assertIsNone(seen[0]["action.mode"])

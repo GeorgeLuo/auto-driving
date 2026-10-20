@@ -23,11 +23,11 @@ def _context() -> DecisionFrameContext:
         "frame_001",
         0,
         1,
-        shared_memory={},
+        shared_memory={"action.mode": "autonomy"},
         sensor_frame=SensorFrame(
             read_id="frame_001", readings={}, started_at_ms=1, completed_at_ms=1
         ),
-        mode="autonomy",
+
     )
 
 

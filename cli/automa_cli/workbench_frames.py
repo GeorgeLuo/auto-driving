@@ -11,7 +11,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
+from autonomy.decision_cycle.action.publication import (
+    CONTROL_APPLICATIONS_KEY, MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY,
+)
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.observation.perception_summary import observation_from_perception
@@ -132,6 +134,9 @@ def run_frame(
         shared_memory.pop(CONTROL_APPLICATIONS_KEY, None)
     else:
         shared_memory[CONTROL_APPLICATIONS_KEY] = frame.control_applications
+    shared_memory[MODE_KEY] = frame.mode
+    shared_memory[USER_STEERING_KEY] = frame.user_steering
+    shared_memory[USER_THROTTLE_KEY] = frame.user_throttle
     recorded_context = frame.metadata.get("context", {})
     context = DecisionFrameContext.from_record(
         recorded_context,
@@ -141,7 +146,6 @@ def run_frame(
         # original cycle clock, which can be later than capture.
         timestamp_ms=recorded_context.get("timestamp_ms", frame.timestamp_ms),
         sensor_frame=sensor_frame,
-        mode=recorded_context.get("mode", "workbench_replay"),
         shared_memory=shared_memory,
         metadata={
             "source": WORKBENCH_SEQUENCE_ID,

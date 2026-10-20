@@ -58,6 +58,9 @@ class ReplayFrame:
     position: int
     timestamp_ms: int
     image_path: Path | None
+    mode: str | None = None
+    user_steering: float | None = None
+    user_throttle: float | None = None
     absence_reason: str | None = None
     content_type: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -535,6 +538,8 @@ def _build_frame(
         content_type=content_type_for_path(image_path) if image_path else None,
         metadata=metadata,
         control_applications=control_applications,
+        mode=entry.get("mode"), user_steering=entry.get("user_steering"),
+        user_throttle=entry.get("user_throttle"),
     )
 
 

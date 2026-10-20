@@ -1028,16 +1028,16 @@ class FrameLoop:
                         frame_index=frame_index,
                         timestamp_ms=captured_at_ms,
                         sensor_frame=sensor_frame,
-                        mode=mode_name,
-                        user_steering=float(user_steering or 0.0),
-                        user_throttle=float(user_throttle or 0.0),
                         metadata={
                             **camera.metadata,
                             "runtime": self.runtime,
                             "control_application": "shared_execution",
                             "capture_sequence": camera.sequence,
                         },
-                    )
+                    ),
+                    mode=mode_name,
+                    user_steering=float(user_steering or 0.0),
+                    user_throttle=float(user_throttle or 0.0),
                 )
                 control = cycle_result.control
                 cycle_dict = cycle_result.to_dict()

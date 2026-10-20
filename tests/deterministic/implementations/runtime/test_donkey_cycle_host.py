@@ -39,7 +39,7 @@ class _ExplodingHost:
     def register_status_provider(self, name, provider) -> None:
         pass
 
-    def run(self, context: DecisionFrameContext):
+    def run(self, context: DecisionFrameContext, **inputs):
         del context
         raise RuntimeError("cycle failed")
 
@@ -111,7 +111,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(control["reason"], "pushy-test-action")
         self.assertEqual(control["steering"], 0.7)
         self.assertIsNotNone(cycle)
-        self.assertEqual(cycle["context"]["mode"], "manual")
+        self.assertEqual(part.host.shared_memory["action.mode"], "manual")
         self.assertIsNotNone(part.latest_state)
         self.assertEqual(part.latest_state.status, "ok")
         self.assertEqual(part.latest_state.mode, "manual")

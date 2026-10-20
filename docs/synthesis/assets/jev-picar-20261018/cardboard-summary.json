@@ -1,0 +1,238 @@
+{
+  "model": "jev-1.14.0",
+  "host": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "git_head": "9616a72da024fef00e5aef6f748cc0d22c77c9c4",
+  "latency_definition": "Per-plugin duration from the standard CLI, including image preparation, HTTPS, inference and response validation. Includes first-call TLS. Excludes process startup, camera capture/upload from Pi, and downstream control. Sequential calls; no response cache or retry. p95 computed by numpy linear percentile across all observations.",
+  "label_method": "Assistant visual estimates of the visible cardboard silhouette including flaps, axis-aligned and clipped to frame. Diagnostic labels, not independently human reviewed or blinded to outputs; approximate pixel edges. Never supplied to either detector.",
+  "generalization_limit": "Only 13 real stills and 12 simulator stills of one box/room. Repeated passes measure repeatability and latency, not independent accuracy evidence. No physical-Pi live latency, video tracking, depth or obstacle-avoidance driving measured.",
+  "results": {
+    "picar/jev_cardboard_box": {
+      "repeats": 5,
+      "unique_frames": 13,
+      "observations": 65,
+      "positive_unique_frames": 12,
+      "detected_positive_unique_frames": 12,
+      "localized_positive_unique_frames_iou_0_5": 12,
+      "missed_unique_frames": [],
+      "false_positive_observations": 0,
+      "negative_observations": 5,
+      "positive_observations": 60,
+      "localized_positive_observations_iou_0_5": 60,
+      "failed_observations": 0,
+      "latency_ms": {
+        "p50": 90.294,
+        "p95": 149.304,
+        "max": 162.123
+      },
+      "mean_ms": 96.6,
+      "mean_positive_iou": 0.8825,
+      "min_positive_iou": 0.6481,
+      "mean_detected_positive_iou": 0.8825,
+      "mean_input_tokens": 1169.9,
+      "warm_latency_ms": {
+        "p50": 89.524,
+        "p95": 106.2,
+        "max": 112.556
+      },
+      "first_call_ms": [
+        162.123,
+        152.235,
+        139.376,
+        151.786,
+        155.998
+      ]
+    },
+    "picar384/jev_cardboard_box": {
+      "repeats": 3,
+      "unique_frames": 13,
+      "observations": 39,
+      "positive_unique_frames": 12,
+      "detected_positive_unique_frames": 12,
+      "localized_positive_unique_frames_iou_0_5": 12,
+      "missed_unique_frames": [],
+      "false_positive_observations": 0,
+      "negative_observations": 3,
+      "positive_observations": 36,
+      "localized_positive_observations_iou_0_5": 36,
+      "failed_observations": 0,
+      "latency_ms": {
+        "p50": 91.889,
+        "p95": 160.32,
+        "max": 197.89
+      },
+      "mean_ms": 100.324,
+      "mean_positive_iou": 0.8222,
+      "min_positive_iou": 0.5395,
+      "mean_detected_positive_iou": 0.8222,
+      "mean_input_tokens": 649.8,
+      "warm_latency_ms": {
+        "p50": 91.052,
+        "p95": 108.632,
+        "max": 115.274
+      },
+      "first_call_ms": [
+        157.138,
+        188.962,
+        197.89
+      ]
+    },
+    "picar/sim_cardboard_obstacle": {
+      "repeats": 5,
+      "unique_frames": 13,
+      "observations": 65,
+      "positive_unique_frames": 12,
+      "detected_positive_unique_frames": 0,
+      "localized_positive_unique_frames_iou_0_5": 0,
+      "missed_unique_frames": [
+        "01.jpg",
+        "02.jpg",
+        "03.jpg",
+        "04.jpg",
+        "05.jpg",
+        "06.jpg",
+        "07.jpg",
+        "08.jpg",
+        "09.jpg",
+        "10.jpg",
+        "11.jpg",
+        "12.jpg"
+      ],
+      "false_positive_observations": 0,
+      "negative_observations": 5,
+      "positive_observations": 60,
+      "localized_positive_observations_iou_0_5": 0,
+      "failed_observations": 0,
+      "latency_ms": {
+        "p50": 19.317,
+        "p95": 29.206,
+        "max": 33.587
+      },
+      "mean_ms": 20.894,
+      "mean_positive_iou": 0.0,
+      "min_positive_iou": 0.0,
+      "mean_detected_positive_iou": null,
+      "mean_input_tokens": 0.0,
+      "warm_latency_ms": {
+        "p50": 19.282,
+        "p95": 29.276,
+        "max": 33.587
+      },
+      "first_call_ms": [
+        21.81,
+        21.858,
+        21.824,
+        24.855,
+        22.248
+      ]
+    },
+    "sim/sim_cardboard_obstacle": {
+      "repeats": 5,
+      "unique_frames": 12,
+      "observations": 60,
+      "positive_unique_frames": 11,
+      "detected_positive_unique_frames": 11,
+      "localized_positive_unique_frames_iou_0_5": 11,
+      "missed_unique_frames": [],
+      "false_positive_observations": 0,
+      "negative_observations": 5,
+      "positive_observations": 55,
+      "localized_positive_observations_iou_0_5": 55,
+      "failed_observations": 0,
+      "latency_ms": {
+        "p50": 26.62,
+        "p95": 31.777,
+        "max": 35.441
+      },
+      "mean_ms": 26.784,
+      "mean_positive_iou": 0.9828,
+      "min_positive_iou": 0.9565,
+      "mean_detected_positive_iou": 0.9828,
+      "mean_input_tokens": 0.0,
+      "warm_latency_ms": {
+        "p50": 26.499,
+        "p95": 31.748,
+        "max": 35.441
+      },
+      "first_call_ms": [
+        25.927,
+        28.553,
+        28.79,
+        33.132,
+        28.883
+      ]
+    },
+    "sim/jev_cardboard_box": {
+      "repeats": 5,
+      "unique_frames": 12,
+      "observations": 60,
+      "positive_unique_frames": 11,
+      "detected_positive_unique_frames": 9,
+      "localized_positive_unique_frames_iou_0_5": 9,
+      "missed_unique_frames": [
+        "03.png",
+        "04.png"
+      ],
+      "false_positive_observations": 0,
+      "negative_observations": 5,
+      "positive_observations": 55,
+      "localized_positive_observations_iou_0_5": 45,
+      "failed_observations": 0,
+      "latency_ms": {
+        "p50": 91.427,
+        "p95": 143.958,
+        "max": 165.924
+      },
+      "mean_ms": 97.447,
+      "mean_positive_iou": 0.765,
+      "min_positive_iou": 0.0,
+      "mean_detected_positive_iou": 0.9351,
+      "mean_input_tokens": 1169.9,
+      "warm_latency_ms": {
+        "p50": 90.676,
+        "p95": 109.683,
+        "max": 124.795
+      },
+      "first_call_ms": [
+        165.924,
+        135.663,
+        161.838,
+        156.99,
+        143.272
+      ]
+    }
+  },
+  "billed_input_tokens": 171578,
+  "estimated_cost_usd_at_0_042_per_million": 0.007206,
+  "source_sha256": {
+    "picar": {
+      "01.jpg": "cbcc352218cf8d94913ca223ba9daa2d2f980672cf08ab446273b6c588062c25",
+      "02.jpg": "903fb4b6e6770cfbe82a7a06a8788ebc6087c62bcb9da9a3d6d8f43307afe505",
+      "03.jpg": "7937f935e2e488226f0fb6b9dc6e5647562fc223787076922d378f430ab5fd58",
+      "04.jpg": "01ffb07008262bf6de1d0c933c78adc9bdfda486f694866d39a4ccf19f746f91",
+      "05.jpg": "5f20dcdfef3e990e10e18bfe186af04b6c42b58e7ec42ce9b4399f5917bd5454",
+      "06.jpg": "8f85ada312631c8fdbf3949e57485f355c3aca5a04ac0bf976c3411b84045545",
+      "07.jpg": "cc8f6ce64632103d21d944f173a6e508db2cda57a1e009ed8737004cc16d06bc",
+      "08.jpg": "38fa3d88d10e7ee2f8ddcdebb9cbf47197d8f6a87a3def48393050854551ff72",
+      "09.jpg": "2116c8758ad554bfd08f5f64e5093cf1a53fa6d116416f23774b8271b419651f",
+      "10.jpg": "63cef064818e9edc3b18a03ee1de6d5c3dc4a6254cc21848efa403d59c96756a",
+      "11.jpg": "ed2a4eb83eafca96416ca3cd8cbd856862434803f53284ae2633fafb8189815f",
+      "12.jpg": "c98d191f13aaf70d2212802f05887ce7a796531bc1118d0307dbc1579011a573",
+      "13.jpg": "dc03d4d35e61d802526f5a66ddb8107b020ffa4e37795e2b26c876e4247783f6"
+    },
+    "sim": {
+      "01.png": "7b70801ec6c067663bc9ab14623a6670c9220e640548f1f338ae41923e0ddc2a",
+      "02.png": "8aa1dbe45857b64c77b460e1fa9678dc2756480a29bcec21e476f7ccbe0b5d60",
+      "03.png": "a2e3bab02ba2c2f8c3d2629339946d12bf192c3ca824f4b41ef768109809e280",
+      "04.png": "79df031e9567ade1fe27f503fd0bbe18c5e4c3088c386916164fd0aa0cb8d740",
+      "05.png": "3979b2cb6df056eadff598faee0eca14999a1ecb018a936403ab2da1d825a316",
+      "06.png": "88b6166b3a4862460a637c552688d51e7ed3eca1be16e2a98a00ef76612567aa",
+      "07.png": "106b0af3446ea03745faadfeca6a4784a1f76eb0faa070000401a05a69b480d9",
+      "08.png": "bf1743aa19386b4a785ced1c54daec546e8888d3a7d8930c6a98b92d32303687",
+      "09.png": "30cbf79e892e74ab49a2b013ccc66579ddc32f083a5006cbf186a35f43a86f15",
+      "10.png": "755c4e070eba4cb7ad52129f1bd731228729b0050eaea80a245180724f005880",
+      "11.png": "c3af46dc4775eee93958a5bc19b6ac70d4e57d6a879b2ecf5e557f67c0d4bd63",
+      "12.png": "a3ac8c85e443d8d459661104a1f07c000b203962b99ca5a28c73d12b7ad82535"
+    }
+  },
+  "plugin_sha256": "94e15f338d4289cbdcc6ae65bd55b398c8fd1212f07960c8ba909c9961ca1eb3"
+}

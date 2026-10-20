@@ -5,13 +5,11 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from typing import Any, Callable
 
-from autonomy.decision_cycle.action.publication import write_host_inputs
 from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.action.runner import ActionRunner
 from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
-from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.plan.runner import PlanRunner
@@ -145,16 +143,10 @@ class DecisionChain:
         frame_id: str,
         frame_index: int,
         timestamp_ms: int,
-        drive_mode_gate: str | None = None,
-        **proposal_inputs: Any,
+        shared_memory: dict[str, Any] | None = None,
     ) -> DecisionRecords:
-        shared_memory = proposal_inputs.pop("shared_memory", None)
         if shared_memory is None:
             shared_memory = {}
-        observation = proposal_inputs.pop("observation", None)
-        if observation is not None:
-            shared_memory[OBSERVATION_KEY] = observation
-        write_host_inputs(shared_memory, mode=drive_mode_gate)
         context = DecisionFrameContext(
             frame_id=frame_id, frame_index=frame_index, timestamp_ms=timestamp_ms,
             shared_memory=shared_memory,

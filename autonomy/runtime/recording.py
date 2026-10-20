@@ -164,7 +164,7 @@ def append_recording_frame(
     frame_index: int | None = None,
     context: dict[str, Any] | None = None,
     control_application_change: dict[str, Any] | None = None,
-    action_policy: str | None = None, user_steering: float | None = None,
+    mode: str | None = None, user_steering: float | None = None,
     user_throttle: float | None = None,
 ) -> None:
     """Append one recorded frame to the run directory's manifest.
@@ -207,11 +207,12 @@ def append_recording_frame(
         "timestamp_ms": timestamp_ms,
         "image_path": relative_image,
         "steps": copy.deepcopy(steps),
-        "action_policy": action_policy, "user_steering": user_steering,
-        "user_throttle": user_throttle,
     }
     if frame_index is not None:
         entry["frame_index"] = frame_index
+    for key, value in (("mode", mode), ("user_steering", user_steering), ("user_throttle", user_throttle)):
+        if value is not None:
+            entry[key] = value
     if context is not None:
         entry["context"] = recorded_context(context)
     if control_application_change is not None:
@@ -297,7 +298,7 @@ def write_recorded_frame(
         frame_index=frame["frame_index"], timestamp_ms=frame["captured_at_ms"],
         image_path=image_path, steps=frame["step_activations"], context=frame["context"],
         control_application_change=frame.get(CONTROL_APPLICATION_CHANGE_FIELD),
-        action_policy=frame.get("action_policy"), user_steering=frame.get("user_steering"),
+        mode=frame.get("action_policy"), user_steering=frame.get("user_steering"),
         user_throttle=frame.get("user_throttle"),
     )
 

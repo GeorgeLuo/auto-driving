@@ -8,10 +8,12 @@ from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEviden
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from cli.automa_cli.decision import (
+    DecisionSurfaceError,
     _require_exact_cycle_export,
     _require_runner_plan_alignment,
 )
 from cli.automa_cli.decision_records import DecisionRunners
+from autonomy.decision_cycle.action.publication import MODE_KEY
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from tests.shared.cli.decision.decision_surfaces_fixtures import packaged_decision_steps
 
@@ -45,8 +47,8 @@ def _applied_cycle() -> dict:
         frame_id="frame-1",
         frame_index=1,
         timestamp_ms=1000,
-        mode="local",
         shared_memory={
+            MODE_KEY: "local",
             "observation.current": Observation(
                 observation_id="obs-1", created_at_ms=1000, sensor_frame={}, summary=("t",)
             ),
@@ -58,6 +60,12 @@ def _applied_cycle() -> dict:
 
 
 class ActionAuthorityDecodeTests(unittest.TestCase):
+    def test_authority_rejects_a_non_string_drive_mode_gate(self) -> None:
+        payload = _applied_cycle()
+        payload["action"]["authority"]["drive_mode_gate"] = 7
+        with self.assertRaisesRegex(DecisionSurfaceError, "drive_mode_gate"):
+            _require_exact_cycle_export(payload)
+
     def test_mode_action_applied_cycle_is_accepted(self) -> None:
         cycle = _require_exact_cycle_export(_applied_cycle())
         _require_runner_plan_alignment(cycle, packaged_decision_steps("mode"))

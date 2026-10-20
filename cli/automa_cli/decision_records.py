@@ -20,7 +20,6 @@ from autonomy.decision_cycle.activation import (
     StepActivation,
     step_activation_from_payload,
 )
-from autonomy.decision_cycle.action.publication import write_host_inputs
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.plan.values import ActionPlan
@@ -132,12 +131,10 @@ class DecisionRunners:
         frame_id: str,
         frame_index: int,
         timestamp_ms: int,
-        mode: str | None = None,
         shared_memory: dict[str, Any] | None = None,
     ) -> DecisionRecords:
         if shared_memory is None:
             shared_memory = {}
-        write_host_inputs(shared_memory, mode=mode)
         context = DecisionFrameContext(
             frame_id=frame_id,
             frame_index=frame_index,

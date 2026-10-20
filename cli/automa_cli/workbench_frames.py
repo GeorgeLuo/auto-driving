@@ -129,7 +129,7 @@ def run_frame(
 
     sensor_frame = sensor_frame_for_replay_frame(frame)
     write_host_inputs(
-        shared_memory, mode=frame.action_policy, user_steering=frame.user_steering,
+        shared_memory, mode=frame.mode, user_steering=frame.user_steering,
         user_throttle=frame.user_throttle, control_applications=frame.control_applications,
     )
     recorded_context = frame.metadata.get("context", {})

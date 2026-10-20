@@ -61,8 +61,8 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                     expected.append(result.context.shared_memory[CONTROL_APPLICATIONS_KEY])
             manifest = json.loads((recording.root / RECORDING_MANIFEST_NAME).read_text())
             entries = manifest["frames"]
-            self.assertEqual([entry["action_policy"] for entry in entries], ["autonomy"] * 4)
-            self.assertTrue(all("mode" not in entry for entry in entries))
+            self.assertEqual([entry["mode"] for entry in entries], ["autonomy"] * 4)
+            self.assertTrue(all("action_policy" not in entry for entry in entries))
             self.assertEqual([entry["user_steering"] for entry in entries], [0, 0.1, 0.2, 0.3])
             self.assertTrue(all(entry["user_throttle"] == 0.4 for entry in entries))
             self.assertTrue(all(set(entry["context"]) == {"timestamp_ms"} for entry in entries))
@@ -125,6 +125,9 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                 result = host.run(DecisionFrameContext(f"f{index}", index, index, sensor_frame=sensors))
                 recording.append(result, window)
             entries = json.loads((recording.root / RECORDING_MANIFEST_NAME).read_text())["frames"]
+            self.assertTrue(all(
+                key not in entry for entry in entries for key in ("mode", "user_steering", "user_throttle")
+            ))
             changes = [entry.get(CONTROL_APPLICATION_CHANGE_FIELD) for entry in entries]
             self.assertEqual([change["kept"] if change else None for change in changes], [0, 2, 3, 0, None, 0, 0])
             self.assertEqual([len(change["added"]) if change else None for change in changes], [3, 1, 0, 1, None, 0, 1])

@@ -62,7 +62,7 @@ class ReplayFrame:
     content_type: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     # The inputs the recording host wrote, or None where it recorded none.
-    action_policy: str | None = None
+    mode: str | None = None
     user_steering: float | None = None
     user_throttle: float | None = None
     # The window the recording host published, or None when it recorded none.
@@ -539,7 +539,7 @@ def _build_frame(
         content_type=content_type_for_path(image_path) if image_path else None,
         metadata=metadata,
         control_applications=control_applications,
-        action_policy=entry.get("action_policy"), user_steering=entry.get("user_steering"),
+        mode=entry.get("mode"), user_steering=entry.get("user_steering"),
         user_throttle=entry.get("user_throttle"),
     )
 

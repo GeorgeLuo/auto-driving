@@ -530,9 +530,7 @@ class FrameLoop:
             if self._pending_frame is not None:
                 self.frames_dropped += 1
             self._pending_frame = _PendingFrame(
-                camera, mode,
-                None if user_steering is None else float(user_steering),
-                None if user_throttle is None else float(user_throttle),
+                camera, mode, user_steering, user_throttle,
             )
             if not self._decision_inflight and not self._memory_update_halted and not self._shutdown:
                 self._decision_inflight = True

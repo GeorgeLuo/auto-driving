@@ -99,6 +99,8 @@ class AuthorityResult:
             self.proposed, ProposedVehicleCommand
         ):
             raise TypeError("proposed must be ProposedVehicleCommand or None")
+        if self.drive_mode_gate is not None and not isinstance(self.drive_mode_gate, str):
+            raise TypeError("drive_mode_gate must be a string or None")
         output = self.authorized_output
         if not isinstance(output, dict) or set(output) != {
             "steering",

@@ -6,7 +6,7 @@ import unittest
 from dataclasses import replace
 
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
-from autonomy.decision_cycle.action.publication import write_host_inputs
+from autonomy.decision_cycle.action.publication import MODE_KEY
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionCycleResult
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
@@ -99,9 +99,7 @@ def _run(
 
 
 def _shared_memory(zone: str | None, mode: str | None) -> dict:
-    shared_memory = {EVIDENCE_KEY: _records(zone)}
-    write_host_inputs(shared_memory, mode=mode)
-    return shared_memory
+    return {EVIDENCE_KEY: _records(zone), MODE_KEY: mode}
 
 
 class PackagedCatalogTests(unittest.TestCase):

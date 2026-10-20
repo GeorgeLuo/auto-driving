@@ -29,14 +29,16 @@ CONTROL_APPLICATIONS_KEY = "action.control_applications"
 
 
 def write_host_inputs(
-    shared_memory: SharedMemory, *, mode: str | None = None,
-    user_steering: float | None = None, user_throttle: float | None = None,
-    control_applications: tuple[ControlApplication, ...] | None = None,
+    shared_memory: SharedMemory, *, mode: str | None,
+    user_steering: float | None, user_throttle: float | None,
+    control_applications: tuple[ControlApplication, ...] | None,
 ) -> None:
     """Write the host's inputs for the next cycle; None removes the key."""
     for key, value in (
-        (MODE_KEY, mode), (USER_STEERING_KEY, user_steering),
-        (USER_THROTTLE_KEY, user_throttle), (CONTROL_APPLICATIONS_KEY, control_applications),
+        (MODE_KEY, mode),
+        (USER_STEERING_KEY, None if user_steering is None else float(user_steering)),
+        (USER_THROTTLE_KEY, None if user_throttle is None else float(user_throttle)),
+        (CONTROL_APPLICATIONS_KEY, control_applications),
     ):
         if value is None:
             shared_memory.pop(key, None)

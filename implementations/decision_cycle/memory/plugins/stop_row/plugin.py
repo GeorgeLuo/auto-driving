@@ -10,27 +10,28 @@ row is bisected between the deepest row that stopped short and the shallowest
 that came too close. A row that fails after passing, or passes after failing,
 discards the older evidence.
 
-The car is maneuvering while ``maneuver_key`` holds a value; the stop is its
-``stop_phase``. A test measures only that phase and ends when the maneuver
-moves on (a turn sweeps other boxes into the ahead band) or after
-``settle_ms``. A test with no maneuver stored after its first cycle tested
-nothing and is dropped. Memory runs before proposal, so a static view with an
-obstacle in sight while no maneuver is stored is a collision while driving
-forward. A head-on approach crosses the stop row and starts a test well before
-the view is static, so a later collision was not head-on: it is counted but
-does not move the stop row.
+Applied forward and straight reverse controls identify approaches and stops.
+A turn ends a stop without admitting rows swept into view by steering. Unknown
+motion drops a pending test. Accepted controls describe the target, not measured
+wheel motion; collision and overshoot still come from the observation.
 """
 
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.beliefs import Belief, Trial
+from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
+from autonomy.decision_cycle.memory.publication import belief_key, read_belief
 from autonomy.decision_cycle.memory.interface import LEDGER_HEALTH_EMPTY, LEDGER_HEALTH_HEALTHY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.shared_memory import SharedMemory
+from implementations.decision_cycle.memory.shared.motion.control_applications import motion_at, motions_over
 
+BELIEF_ID = "stop_row.row"
 STATE_KEY = "memory.stop_row.hypothesis"
 COLLISION = "collision"
 STOPPED_SHORT = "stopped_short"
@@ -40,6 +41,12 @@ OUTCOMES = (COLLISION, STOPPED_SHORT, TOO_CLOSE)
 
 class StopRowHypothesis:
     plugin_id = "stop_row"
+    contract = MemoryPluginContract(
+        description="Bisect the stop row using observed overshoot after applied reverse controls.",
+        assumptions=("positive throttle drives forward", "straight reverse brakes a forward approach"),
+        belief_ids=(BELIEF_ID,),
+        limitations=("accepted controls are not measured wheel motion", "unknown motion retires a test"),
+    )
 
     def __init__(
         self,
@@ -49,8 +56,6 @@ class StopRowHypothesis:
         resolution: float = 0.02,
         settle_ms: int = 1000,
         obstacle_signal_ids: tuple[str, ...] | list[str] = ("obstacle_in_sight", "wall_in_sight"),
-        maneuver_key: str = "proposal.avoid_obstacle.maneuver",
-        stop_phase: str = "backing_up",
     ) -> None:
         for name, value in (("min_stop_row", min_stop_row), ("blind_row", blind_row), ("resolution", resolution)):
             if (
@@ -70,60 +75,95 @@ class StopRowHypothesis:
             or not all(isinstance(signal_id, str) and signal_id for signal_id in obstacle_signal_ids)
         ):
             raise ValueError("obstacle_signal_ids must be a non-empty list of signal ids")
-        for name, value in (("maneuver_key", maneuver_key), ("stop_phase", stop_phase)):
-            if not isinstance(value, str) or not value:
-                raise ValueError(f"{name} must be a non-empty string")
         self.min_stop_row = float(min_stop_row)
         self.blind_row = float(blind_row)
         self.resolution = float(resolution)
         self.settle_ms = settle_ms
         self.obstacle_signal_ids = tuple(obstacle_signal_ids)
-        self.maneuver_key = maneuver_key
-        self.stop_phase = stop_phase
 
     def update(self, context: DecisionFrameContext, observation: Observation | None) -> None:
         shared_memory = context.shared_memory
         if shared_memory is None:
             raise ValueError("stop_row requires a shared-memory map")
+        belief = read_belief(shared_memory, BELIEF_ID)
         state = self._state(shared_memory.get(STATE_KEY))
+        state["stop_row"] = None if belief is None else belief.value
+        prediction = None if belief is None or not belief.trials else belief.trials[0]
+        state["trial"] = None if prediction is None else {
+            "stop_row": prediction.predicted, "started_at_ms": prediction.started_at_ms, **prediction.properties,
+        }
         signals = _signals(observation)
         row = _ahead_row(signals)
         now = context.timestamp_ms
-        maneuver = shared_memory.get(self.maneuver_key)
-        maneuvering = maneuver is not None
+        motion = motion_at(shared_memory, now)
+        previous = state["updated_at_ms"]
+        span = None if previous is None else motions_over(shared_memory, previous, now)
+        if previous is not None and (span is None or now < previous):
+            state["trial"] = None
+            motion = None
+            if belief is not None:
+                belief = replace(belief, trials=())
+        forward = motion == "forward"
         trial = state["trial"]
         if trial is not None:
-            stopping = isinstance(maneuver, dict) and maneuver.get("phase") == self.stop_phase
+            stopping = motion == "reverse"
+            if stopping:
+                trial["reversed"] = True
             if stopping and row is not None:
                 trial["peak_row"] = max(trial["peak_row"], row)
-            if not maneuvering:
+            if forward or motion is None or motion == "idle" or not trial.get("reversed"):
                 state["trial"] = None
             elif trial["peak_row"] >= self.blind_row:
                 self._conclude(state, TOO_CLOSE, trial["stop_row"], trial["peak_row"], now)
             elif not stopping or now - trial["started_at_ms"] >= self.settle_ms:
                 self._conclude(state, STOPPED_SHORT, trial["stop_row"], trial["peak_row"], now)
-        elif not maneuvering and _value(signals, "view_static") is True and any(
+        elif forward and _value(signals, "view_static") is True and any(
             _value(signals, signal_id) is True for signal_id in self.obstacle_signal_ids
         ):
             state["counts"][COLLISION] += 1
             state["last_outcome"] = _outcome(COLLISION, state["stop_row"], row, now)
             if state["stop_row"] is None:
                 state["stop_row"] = self._next_stop_row(state)
-        elif not maneuvering and state["stop_row"] is not None and row is not None and row >= state["stop_row"]:
+        elif forward and state["stop_row"] is not None and row is not None and row >= state["stop_row"]:
             state["trial"] = {"stop_row": state["stop_row"], "started_at_ms": now, "peak_row": row}
+        if state["stop_row"] is not None:
+            if belief is None:
+                belief = Belief(BELIEF_ID, state["stop_row"], self.plugin_id, now)
+            outcome = state["last_outcome"]
+            if outcome is not None and outcome["at_ms"] == now and outcome["kind"] != COLLISION:
+                if belief.trials:
+                    belief = belief.resolved(belief.trials[0].trial_id,
+                        "support" if outcome["kind"] == STOPPED_SHORT else "contradict",
+                        outcome, now, 64)
+                belief = belief.revised(state["stop_row"], now, keep_checks=not state.pop("invalidated", False))
+            trial = state["trial"]
+            if trial is None:
+                belief = replace(belief, trials=())
+            elif not belief.trials:
+                belief = belief.opened(Trial(f"stop_{now}", "stop", now, trial["stop_row"],
+                    {"peak_row": trial["peak_row"], "reversed": trial.get("reversed", False)}), 1)
+            else:
+                belief = replace(belief, trials=(replace(belief.trials[0], properties={
+                    "peak_row": trial["peak_row"], "reversed": trial.get("reversed", False),
+                }),))
+            shared_memory[belief_key(BELIEF_ID)] = belief
         state["updated_at_ms"] = now
+        state.pop("stop_row")
+        state.pop("trial")
         shared_memory[STATE_KEY] = state
 
     def status(self, shared_memory: SharedMemory | None) -> dict[str, Any]:
         stored = None if shared_memory is None else shared_memory.get(STATE_KEY)
         state = self._state(stored)
+        belief = read_belief(shared_memory, BELIEF_ID)
+        state["stop_row"] = None if belief is None else belief.value
         return {
             "health": LEDGER_HEALTH_EMPTY if stored is None else LEDGER_HEALTH_HEALTHY,
             "record_count": sum(state["counts"].values()),
             "stop_row": state["stop_row"],
             "safe_row": state["safe_row"],
             "unsafe_row": state["unsafe_row"],
-            "testing": state["trial"] is not None,
+            "testing": belief is not None and bool(belief.trials),
             "counts": dict(state["counts"]),
             "last_outcome": state["last_outcome"],
         }
@@ -131,6 +171,7 @@ class StopRowHypothesis:
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
         if shared_memory is not None:
             shared_memory.pop(STATE_KEY, None)
+            shared_memory.pop(belief_key(BELIEF_ID), None)
 
     def _state(self, stored: Any) -> dict[str, Any]:
         """A copy of the stored hypothesis, or a fresh one with no stop row yet."""
@@ -157,10 +198,12 @@ class StopRowHypothesis:
             state["safe_row"] = max(state["safe_row"], stop_row)
             if state["unsafe_row"] <= state["safe_row"]:
                 state["unsafe_row"] = self.blind_row
+                state["invalidated"] = True
         else:  # TOO_CLOSE
             state["unsafe_row"] = max(self.min_stop_row, stop_row)
             if state["safe_row"] >= state["unsafe_row"]:
                 state["safe_row"] = self.min_stop_row
+                state["invalidated"] = True
         state["counts"][kind] += 1
         state["last_outcome"] = _outcome(kind, stop_row, peak_row, now)
         state["trial"] = None

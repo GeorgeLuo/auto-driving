@@ -9,7 +9,7 @@ maneuver the candidate is inactive.
 
 The maneuver also starts before a collision once the lowest lower edge of a box
 ahead (``clearance_ahead``'s ``nearest_bottom_y``) reaches the stop row that
-memory's ``stop_row`` plugin has learned, published at ``stop_row_key``.
+memory's ``stop_row`` plugin has learned, published at ``stop_row_belief_id``.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from autonomy.decision_cycle.memory.publication import belief_key, read_belief
 from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 from autonomy.decision_cycle.proposal.values import (
     COMMAND_EPS, ActionProposal, ProposedVehicleCommand, SourceRef,
@@ -40,7 +41,7 @@ class AvoidObstacle:
         turn_steering: float = 1.0,
         obstacle_signal_ids: tuple[str, ...] | list[str] = ("obstacle_in_sight", "wall_in_sight"),
         max_static_cycles: int = 8,
-        stop_row_key: str = "memory.stop_row.hypothesis",
+        stop_row_belief_id: str = "stop_row.row",
     ) -> None:
         self.throttle = float(throttle)
         self.reverse_throttle = float(reverse_throttle)
@@ -59,11 +60,11 @@ class AvoidObstacle:
             raise ValueError("obstacle_signal_ids must be a non-empty list of signal ids")
         if isinstance(max_static_cycles, bool) or not isinstance(max_static_cycles, int) or max_static_cycles < 1:
             raise ValueError("max_static_cycles must be a positive integer")
-        if not isinstance(stop_row_key, str) or not stop_row_key:
-            raise ValueError("stop_row_key must be a non-empty string")
+        if not isinstance(stop_row_belief_id, str) or not stop_row_belief_id:
+            raise ValueError("stop_row_belief_id must be a non-empty string")
         self.obstacle_signal_ids = tuple(obstacle_signal_ids)
         self.max_static_cycles = max_static_cycles
-        self.stop_row_key = stop_row_key
+        self.stop_row_belief_id = stop_row_belief_id
 
     @property
     def _maneuver_key(self) -> str:
@@ -78,7 +79,8 @@ class AvoidObstacle:
             return self._inactive(source, "no_shared_memory")
         previous = shared_memory.get(self._maneuver_key)
         signals = _signals(source, PHASE_SIGNAL_IDS + self.obstacle_signal_ids)
-        stop_row = _stop_row(shared_memory.get(self.stop_row_key))
+        belief = read_belief(shared_memory, self.stop_row_belief_id)
+        stop_row = None if belief is None else _stop_row(belief.value)
         maneuver = self._next_maneuver(previous, signals, stop_row, _ahead_row(source))
         if maneuver is None:
             shared_memory.pop(self._maneuver_key, None)
@@ -94,7 +96,7 @@ class AvoidObstacle:
         refs = [SourceRef(kind="memory_record", id=self._maneuver_key, frame_id=source.frame_id, note=phase)]
         if previous is None and not self._collided(signals):
             refs.append(SourceRef(
-                kind="memory_record", id=self.stop_row_key, frame_id=source.frame_id,
+                kind="memory_record", id=belief_key(self.stop_row_belief_id), frame_id=source.frame_id,
                 note=f"stop_row {stop_row}",
             ))
         if source.observation.status == "ready":
@@ -164,10 +166,9 @@ class AvoidObstacle:
         )
 
 
-def _stop_row(hypothesis: Any) -> float | None:
+def _stop_row(row: Any) -> float | None:
     """The learned stop row, or None before the first collision."""
 
-    row = hypothesis.get("stop_row") if isinstance(hypothesis, dict) else None
     return float(row) if _is_row(row) else None
 
 

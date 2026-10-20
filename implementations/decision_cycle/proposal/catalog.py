@@ -26,7 +26,7 @@ PROPOSAL_PLUGINS: tuple[dict[str, Any], ...] = (
         "default_config": {
             "throttle": 0.60, "reverse_throttle": -0.60, "turn_steering": 1.0,
             "obstacle_signal_ids": ["obstacle_in_sight", "wall_in_sight"], "max_static_cycles": 8,
-            "stop_row_key": "memory.stop_row.hypothesis",
+            "stop_row_belief_id": "stop_row.row",
         },
     },
     {

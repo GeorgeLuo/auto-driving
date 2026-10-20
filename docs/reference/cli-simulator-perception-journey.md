@@ -115,12 +115,20 @@ after failing, discards the older bound, so the hypothesis can move back when
 conditions change. The hypothesis lives in shared memory, so restarting the
 host or resetting memory forgets it.
 
+The learners use `action.control_applications` in shared memory. Missing control
+coverage or manual motion does not teach a command model. Learned values are
+published as beliefs with explicit predictions and checks: stop overshoot,
+landmark reappearance, approach arrival and run duration. Their sample counts
+and quartiles describe precision; confidence remains unknown until a check.
+The avoidance commands and closeness thresholds do not depend on confidence.
+
 Memory's `turn_model` changes no command. It learns, from ordinary driving,
 how the car's own turn moves the boxes `sim_cardboard_permanence` tracks: each
 landmark's bearing is its box centre's offset from the middle of the image, in
 image widths, and each new camera frame contributes the median shift of the
-landmarks seen at both ends, filed by the maneuver over that interval
-(`turn_start`, `turning`, `turn_end` or `straight`). A box touching the image
+landmarks seen at both ends, filed by the applied controls over that capture interval
+(`forward_right.turn_start`, `forward_right.turning`,
+`forward_right.turn_end` or `forward`, with separate left/reverse kinds). A box touching the image
 edge, or one that changes size by more than 1.5×, does not count, because the
 detector splits a box leaving the image and identities follow the pieces. Two
 slow turning intervals in a row are counted as a stall instead of learned.
@@ -133,8 +141,7 @@ Memory's `approach_model` also changes no command. While the car drives
 straight, the lower edge of a box ahead steps down the image one row at a
 time, slowly near the horizon and quickly near the car; it times each
 one-row step, on 120 rows and the camera's capture clock, and keeps each row's
-median. It also times each straight run that ended with `avoid_obstacle`
-backing up, and keeps their median as `run_ms`, how long the car usually
+median. It also times each straight run that ended with applied straight reverse, and keeps their median as `run_ms`, how long the car usually
 drives before it must stop. Perception's `closeness` adds the learned row
 times from a box's lower edge down to `stop_row`'s row: that is the box's
 reach. It emits `closeness_ahead` and `closeness_right`, `near` when the

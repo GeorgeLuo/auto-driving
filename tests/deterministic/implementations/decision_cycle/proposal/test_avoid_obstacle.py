@@ -2,12 +2,15 @@
 
 import unittest
 
+from autonomy.decision_cycle.memory.beliefs import Belief
+from autonomy.decision_cycle.memory.publication import belief_key
+
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
 from implementations.decision_cycle.proposal.plugins.avoid_obstacle.plugin import AvoidObstacle
 
 KEY = "proposal.avoid_obstacle.maneuver"
-STOP_ROW_KEY = "memory.stop_row.hypothesis"
+STOP_ROW_KEY = belief_key("stop_row.row")
 COLLISION = {"view_static": True, "obstacle_in_sight": True}
 
 
@@ -90,7 +93,7 @@ class AvoidObstacleTests(unittest.TestCase):
                          "no_collision")
 
     def test_reaching_the_learned_stop_row_backs_up_before_a_collision(self):
-        memory = {STOP_ROW_KEY: {"stop_row": 0.8}}
+        memory = {STOP_ROW_KEY: Belief("stop_row.row", .8, "stop_row", 1)}
         result = _step(memory, {"view_static": False, "clearance_ahead": False}, ahead_row=0.8)
         self.assertEqual(result.reason, "avoid_back_up_until_right_clear")
         self.assertEqual(result.command.throttle, -0.60)
@@ -106,12 +109,12 @@ class AvoidObstacleTests(unittest.TestCase):
             ({"stop_row": True}, 0.9), (None, 0.9), ("0.8", 0.9),
         ):
             with self.subTest(stored=stored, ahead_row=ahead_row):
-                memory = {} if stored is None else {STOP_ROW_KEY: stored}
+                memory = {} if stored is None else {STOP_ROW_KEY: Belief("stop_row.row", stored["stop_row"], "stop_row", 1) if isinstance(stored, dict) else stored}
                 result = _step(memory, {"clearance_ahead": False}, ahead_row=ahead_row)
                 self.assertEqual(result.reason, "no_collision")
                 self.assertNotIn(KEY, memory)
-        memory = {"elsewhere": {"stop_row": 0.5}}
-        result = _step(memory, {"clearance_ahead": False}, AvoidObstacle(stop_row_key="elsewhere"), ahead_row=0.6)
+        memory = {belief_key("elsewhere"): Belief("elsewhere", .5, "stop_row", 1)}
+        result = _step(memory, {"clearance_ahead": False}, AvoidObstacle(stop_row_belief_id="elsewhere"), ahead_row=0.6)
         self.assertEqual(result.reason, "avoid_back_up_until_right_clear")
 
     def test_right_clearance_turns_right_until_ahead_is_clear(self):
@@ -175,7 +178,7 @@ class AvoidObstacleTests(unittest.TestCase):
             {"turn_steering": 0}, {"turn_steering": -1.0}, {"turn_steering": 1.5},
             {"obstacle_signal_ids": []}, {"obstacle_signal_ids": "wall_in_sight"},
             {"obstacle_signal_ids": [None]}, {"max_static_cycles": 0}, {"max_static_cycles": True},
-            {"max_static_cycles": 2.5}, {"stop_row_key": ""}, {"stop_row_key": None},
+            {"max_static_cycles": 2.5}, {"stop_row_belief_id": ""}, {"stop_row_belief_id": None},
         ):
             with self.subTest(config=config), self.assertRaises(ValueError):
                 AvoidObstacle(**config)

@@ -21,6 +21,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from autonomy.decision_cycle.memory.publication import read_belief
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -60,8 +61,9 @@ class ClosenessPlugin:
         self,
         *,
         detection_plugin_ids: tuple[str, ...] | list[str] = ("sim_cardboard_obstacle", "sim_wall"),
-        model_key: str = "memory.approach_model.state",
-        stop_row_key: str = "memory.stop_row.hypothesis",
+        model_belief_id: str = "approach_model.ms_per_row",
+        run_belief_id: str = "approach_model.run_ms",
+        stop_row_belief_id: str = "stop_row.row",
         ahead_min_x: float = 0.3,
         ahead_max_x: float = 0.7,
         right_min_x: float = 0.65,
@@ -72,7 +74,10 @@ class ClosenessPlugin:
             or not all(isinstance(plugin_id, str) and plugin_id for plugin_id in detection_plugin_ids)
         ):
             raise ValueError("detection_plugin_ids must be a non-empty list of plugin ids")
-        for name, value in (("model_key", model_key), ("stop_row_key", stop_row_key)):
+        for name, value in (
+            ("model_belief_id", model_belief_id), ("run_belief_id", run_belief_id),
+            ("stop_row_belief_id", stop_row_belief_id),
+        ):
             if not isinstance(value, str) or not value:
                 raise ValueError(f"{name} must be a non-empty string")
         for name, value in (("ahead_min_x", ahead_min_x), ("ahead_max_x", ahead_max_x), ("right_min_x", right_min_x)):
@@ -83,8 +88,9 @@ class ClosenessPlugin:
         if not right_min_x < 1:
             raise ValueError("right_min_x must be below 1")
         self.detection_plugin_ids = tuple(detection_plugin_ids)
-        self.model_key = model_key
-        self.stop_row_key = stop_row_key
+        self.model_belief_id = model_belief_id
+        self.run_belief_id = run_belief_id
+        self.stop_row_belief_id = stop_row_belief_id
         self.ahead_min_x = float(ahead_min_x)
         self.ahead_max_x = float(ahead_max_x)
         self.right_min_x = float(right_min_x)
@@ -93,13 +99,14 @@ class ClosenessPlugin:
         memory = inputs.shared_memory
         if memory is None:
             raise ValueError(f"{self.plugin_id} requires host shared memory")
-        model = memory.get(self.model_key)
-        model = model if isinstance(model, dict) else {}
-        hypothesis = memory.get(self.stop_row_key)
-        stop_row = hypothesis.get("stop_row") if isinstance(hypothesis, dict) else None
+        model = read_belief(memory, self.model_belief_id)
+        run = read_belief(memory, self.run_belief_id)
+        stop = read_belief(memory, self.stop_row_belief_id)
         learned = _Learned(
-            model.get("ms_per_row"), model.get("row_bins"), model.get("run_ms"),
-            stop_row if _is_number(stop_row) else None,
+            None if model is None else model.value,
+            None if model is None else model.properties.get("row_bins"),
+            None if run is None else run.value,
+            stop.value if stop is not None and _is_number(stop.value) else None,
         )
         boxes = tuple(
             tuple(float(value) for value in thing.location.bbox_xyxy_norm)

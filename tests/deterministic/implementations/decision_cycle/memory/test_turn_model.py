@@ -2,19 +2,23 @@
 
 import unittest
 
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
+from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.execution import ControlApplication
+
+
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.publication import read_belief
 from autonomy.decision_cycle.observation.values import Observation
 from implementations.decision_cycle.memory.plugins.turn_model.plugin import STATE_KEY, TurnModel
 
-MANEUVER_KEY = "proposal.avoid_obstacle.maneuver"
 
 
 class _Car:
     """Feeds one camera frame per decision to a ``TurnModel``.
 
     A box is ``(object_id, centre_x)`` or ``(object_id, centre_x, width)`` in
-    0..1 image coordinates. ``phase`` is the maneuver the proposal stored last
-    cycle, so it is the command that held since the previous frame.
+    0..1 image coordinates. ``phase`` selects an actual control application between captures.
     """
 
     def __init__(self, plugin=None, memory=None):
@@ -22,12 +26,18 @@ class _Car:
         self.memory = {} if memory is None else memory
         self.now = 1000
 
-    def step(self, *boxes, phase=None, after=50, captured=True, plugin_id="sim_cardboard_permanence"):
+    def step(self, *boxes, phase=None, after=50, captured=True, plugin_id="sim_cardboard_permanence",
+             steering=None, throttle=None):
         self.now += after
-        if phase is None:
-            self.memory.pop(MANEUVER_KEY, None)
-        else:
-            self.memory[MANEUVER_KEY] = {"phase": phase}
+        phase_value = phase
+        command = AutonomyControl(steering=1 if phase_value == "turning" else 0,
+            throttle=-.6 if phase_value == "backing_up" else .6)
+        command = AutonomyControl(steering=command.steering if steering is None else steering,
+                                  throttle=command.throttle if throttle is None else throttle)
+        applications = self.memory.get(CONTROL_APPLICATIONS_KEY, ())
+        at = self.now - after + 1 if after > 0 else self.now
+        self.memory[CONTROL_APPLICATIONS_KEY] = (*applications, ControlApplication(
+            None, "autonomy", True, "test", command, at))[-32:]
         things = []
         for box in boxes:
             object_id, centre, width = (*box, 0.2) if len(box) == 2 else box
@@ -49,7 +59,11 @@ class _Car:
 
 
 def _speeds(status):
-    return {name: (summary["widths_per_s"], summary["samples"]) for name, summary in status["speeds"].items()}
+    # The original four scenarios, now qualified by their applied direction.
+    names = {"turn_start": "forward_right.turn_start", "turning": "forward_right.turning",
+             "turn_end": "forward_right.turn_end", "straight": "forward"}
+    return {name: (status["speeds"][kind]["widths_per_s"], status["speeds"][kind]["samples"])
+            for name, kind in names.items()}
 
 
 def _bearings(status):
@@ -81,7 +95,7 @@ class TurnModelTests(unittest.TestCase):
             "turn_start": (1.0, 1), "turning": (2.0, 2), "turn_end": (1.0, 1), "straight": (0.0, 2),
         })
         self.assertEqual(status["record_count"], 6)
-        self.assertEqual(status["speeds"]["turning"]["p25"], 2.0)
+        self.assertEqual(status["speeds"]["forward_right.turning"]["p25"], 2.0)
 
     def test_an_interval_is_named_by_every_command_that_held_over_it(self):
         car = _Car()
@@ -211,7 +225,7 @@ class TurnModelTests(unittest.TestCase):
         car.plugin = TurnModel()
         self.assertEqual(_speeds(car.step((1, 0.5)))["straight"], (0.0, 2))
         TurnModel().reset(memory)
-        self.assertEqual(memory, {"unrelated": 1})
+        self.assertEqual({k: v for k, v in memory.items() if k != CONTROL_APPLICATIONS_KEY}, {"unrelated": 1})
         status = TurnModel().status(memory)
         self.assertEqual((status["health"], status["record_count"], status["landmarks"]), ("empty", 0, []))
         TurnModel().reset(None)
@@ -219,7 +233,7 @@ class TurnModelTests(unittest.TestCase):
     def test_a_malformed_stored_model_keeps_only_its_valid_parts(self):
         landmark = {"bearing": 0.1, "width": 0.2, "in_view": True, "seen_at_ms": 1, "carried_ms": 0, "straight_ms": 0}
         memory = {STATE_KEY: {
-            "samples": {"turning": [2.0, "fast", float("nan")], "straight": "none"},
+            "samples": {"forward_right.turning": [2.0, "fast", float("nan")], "forward": "none"},
             "landmarks": {"x": landmark, "5": landmark, "6": {**landmark, "width": 0}},
             "position_errors": [[0.1, 50], "bad"], "stall_count": True,
         }}
@@ -229,13 +243,54 @@ class TurnModelTests(unittest.TestCase):
         self.assertEqual(status["positions"]["median_abs_error"], 0.1)
         self.assertEqual(status["stalls"]["count"], 0)
 
+    def test_left_right_and_reverse_commands_learn_separate_speeds(self):
+        car = _Car()
+        car.step((1, .5))
+        car.step((1, .55), steering=-1)
+        status = car.step((1, .6), steering=-1)
+        self.assertEqual(status["speeds"]["forward_left.turning"]["widths_per_s"], 1)
+        self.assertEqual(status["speeds"]["forward_right.turning"]["samples"], 0)
+        car.step((1, .55), steering=-1, throttle=-.6)
+        status = car.step((1, .45), steering=-1, throttle=-.6)
+        self.assertEqual(status["speeds"]["reverse_left.turning"]["widths_per_s"], -2)
+        self.assertEqual(status["speeds"]["forward_left.turning"]["widths_per_s"], 1)
+        car.step((1, .5), steering=1)
+        status = car.step((1, .6), steering=1)
+        self.assertEqual(status["speeds"]["forward_right.turning"]["widths_per_s"], 2)
+
+    def test_reappearance_checks_a_prediction_even_when_samples_refine_the_value(self):
+        for centre, outcome in ((.8, "support"), (.82, "contradict")):
+            with self.subTest(outcome=outcome):
+                car = _Car()
+                car.step((1, .2), (2, .4))
+                car.step((1, .2), (2, .4))
+                car.step((1, .3), (2, .5), phase="turning")
+                car.step((1, .4), (2, .6), phase="turning")
+                car.step((1, .5), phase="turning")
+                belief = read_belief(car.memory, "turn_model.view_speed.forward_right.turning")
+                self.assertEqual((belief.properties["samples"], len(belief.trials)), (2, 1))
+                self.assertIsNone(belief.confidence)
+                car.step((1, .6), (2, centre), phase="turning")
+                belief = read_belief(car.memory, belief.belief_id)
+                self.assertEqual([check.outcome for check in belief.checks], [outcome])
+                self.assertEqual(belief.trials, ())
+                self.assertEqual(belief.confidence, 2 / 3 if outcome == "support" else 1 / 3)
+
+    def test_a_clock_step_restarts_landmark_tracking(self):
+        car = _Car()
+        car.step((1, .5), (2, .3))
+        car.step((1, .6), phase="turning")
+        status = car.step((1, .7), after=-100)
+        self.assertEqual(_bearings(status), {1: (.2, True)})
+        self.assertEqual(status["record_count"], 1)
+
     def test_without_shared_memory_the_update_fails(self):
         with self.assertRaises(ValueError):
             TurnModel().update(DecisionFrameContext(frame_id="f", frame_index=0, timestamp_ms=1), None)
 
     def test_invalid_configuration_is_rejected(self):
         for config in (
-            {"landmark_plugin_id": ""}, {"sensor_id": None}, {"maneuver_key": 3}, {"turn_phase": ""},
+            {"landmark_plugin_id": ""}, {"sensor_id": None},
             {"max_samples": 0}, {"max_interval_ms": 1.5}, {"stall_intervals": True}, {"forget_straight_ms": -1},
             {"max_landmarks": 0}, {"edge_margin": 0.5}, {"stall_fraction": 1.0}, {"stall_fraction": float("nan")},
             {"reacquire_within": -0.1}, {"max_size_change": 0.9}, {"max_size_change": True},

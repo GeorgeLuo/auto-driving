@@ -1,13 +1,18 @@
 """Closeness calls the nearest box in each band near when the car would reach the stop row within one usual run."""
 
 import unittest
+from dataclasses import replace
+
+from autonomy.decision_cycle.memory.beliefs import Belief
+from autonomy.decision_cycle.memory.publication import belief_key
 
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, ViewLocation
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginInputs
 from implementations.decision_cycle.perception.plugins.closeness.plugin import ClosenessPlugin
 
-MODEL_KEY = "memory.approach_model.state"
-STOP_ROW_KEY = "memory.stop_row.hypothesis"
+MODEL_KEY = belief_key("approach_model.ms_per_row")
+RUN_KEY = belief_key("approach_model.run_ms")
+STOP_ROW_KEY = belief_key("stop_row.row")
 
 
 def _box(bbox, *, plugin_id="sim_cardboard_obstacle", kind="obstruction_evidence", index=0):
@@ -22,9 +27,10 @@ def _memory(ms_per_row=None, *, run_ms=250, stop_row=0.6, row_bins=10):
     """Ten rows: row 4 (0.4-0.5) takes 300 ms and row 5 (0.5-0.6) takes 100 ms unless given."""
 
     return {
-        MODEL_KEY: {"row_bins": row_bins, "run_ms": run_ms,
-                    "ms_per_row": {"4": 300, "5": 100} if ms_per_row is None else ms_per_row},
-        STOP_ROW_KEY: {"stop_row": stop_row},
+        MODEL_KEY: Belief("approach_model.ms_per_row", {"4": 300, "5": 100} if ms_per_row is None else ms_per_row,
+                          "approach_model", 1, properties={"row_bins": row_bins}),
+        RUN_KEY: Belief("approach_model.run_ms", run_ms, "approach_model", 1),
+        STOP_ROW_KEY: Belief("stop_row.row", stop_row, "stop_row", 1),
     }
 
 
@@ -100,8 +106,10 @@ class ClosenessTests(unittest.TestCase):
         self.assertEqual(_ahead(0.5, _memory({"x": 50, "5": -1, "6": True})), (None, 0, "not_learned"))
 
     def test_memory_keys_are_configurable_and_required(self):
-        plugin = ClosenessPlugin(model_key="model", stop_row_key="stop")
-        memory = {"model": _memory()[MODEL_KEY], "stop": {"stop_row": 0.6}}
+        plugin = ClosenessPlugin(model_belief_id="model", stop_row_belief_id="stop")
+        memory = {belief_key("model"): replace(_memory()[MODEL_KEY], belief_id="model"),
+                  RUN_KEY: _memory()[RUN_KEY],
+                  belief_key("stop"): Belief("stop", .6, "stop_row", 1)}
         self.assertEqual(_signals(_box((0.4, 0.2, 0.6, 0.5)), memory=memory, plugin=plugin)["closeness_ahead"].value,
                          "near")
         with self.assertRaises(ValueError):
@@ -112,7 +120,7 @@ class ClosenessTests(unittest.TestCase):
     def test_invalid_configuration_is_rejected(self):
         for config in (
             {"detection_plugin_ids": []}, {"detection_plugin_ids": "sim_wall"}, {"detection_plugin_ids": [""]},
-            {"model_key": ""}, {"stop_row_key": None}, {"ahead_min_x": -0.1}, {"ahead_max_x": 1.5},
+            {"model_belief_id": ""}, {"stop_row_belief_id": None}, {"ahead_min_x": -0.1}, {"ahead_max_x": 1.5},
             {"ahead_min_x": 0.7, "ahead_max_x": 0.3}, {"right_min_x": 1.0}, {"right_min_x": float("nan")},
             {"ahead_min_x": True},
         ):

@@ -9,10 +9,8 @@ image height, which should be no finer than the detectors' own rows; row
 ``k`` holds lower edges from ``k / row_bins`` up to the next row.
 
 Each new camera frame (``sensor_id``'s capture time) closes one interval. It
-is straight driving if every command since the previous frame, and the one
-read with it, drove straight ahead: memory runs before proposal, so no
-maneuver stored at ``maneuver_key`` after a cycle whose view was not static
-means the default forward command held. An edge is a box from one of
+is straight driving only when applied controls cover the whole interval and
+all drive straight forward, with no static view. An edge is a box from one of
 ``edge_plugin_ids`` that overlaps the band ``min_x``..``max_x`` ahead, kept by
 its ``object_id`` property or else by its left edge. A lower edge within
 ``edge_margin`` of the image bottom is clipped and is not an edge. When an
@@ -24,8 +22,8 @@ a different thing behind the same box and restarts it, and any other interval
 stops every clock. Each row keeps its last ``max_samples`` samples and its
 learned time is their median.
 
-A run is straight driving from its first interval until a maneuver starts. A
-run that ends with the maneuver's ``stop_phase`` is how long the car drove
+A run is straight driving from its first interval until the command changes. A
+run that ends with applied straight reverse for one of ``stop_reasons`` is how long the car drove
 before it had to stop; when the view was already static, the static time is
 taken off. The last ``max_samples`` runs are kept and ``run_ms`` is their
 median. Runs ended any other way are not counted, so a later proposal that
@@ -35,28 +33,41 @@ turns away earlier does not shorten what the car learned it can drive.
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.beliefs import Belief, Trial
+from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
+from autonomy.decision_cycle.memory.publication import belief_key, read_belief
 from autonomy.decision_cycle.memory.interface import LEDGER_HEALTH_EMPTY, LEDGER_HEALTH_HEALTHY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.shared_memory import SharedMemory
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
+from implementations.decision_cycle.memory.shared.motion.control_applications import application_at, motion_at, motions_over
 
+ROWS_BELIEF_ID = "approach_model.ms_per_row"
+RUN_BELIEF_ID = "approach_model.run_ms"
 STATE_KEY = "memory.approach_model.state"
 _EPS = 1e-9
 
 
 class ApproachModel:
     plugin_id = "approach_model"
+    contract = MemoryPluginContract(
+        description="Time forward approaches and check predicted arrival and run duration.",
+        assumptions=("a box's lower edge meets the floor", "positive throttle drives forward",
+                     "stop_reasons identify necessary stops", "forward throttle magnitudes are comparable"),
+        belief_ids=(ROWS_BELIEF_ID, RUN_BELIEF_ID),
+        limitations=("requires a covered forward-control interval", "arrival checks require every intervening row"),
+    )
 
     def __init__(
         self,
         *,
         edge_plugin_ids: tuple[str, ...] | list[str] = ("sim_wall", "sim_cardboard_permanence"),
         sensor_id: str = FRONT_CAMERA_SENSOR_ID,
-        maneuver_key: str = "proposal.avoid_obstacle.maneuver",
-        stop_phase: str = "backing_up",
+        stop_reasons: tuple[str, ...] | list[str] = ("avoid_back_up_until_right_clear",),
         min_x: float = 0.3,
         max_x: float = 0.7,
         row_bins: int = 120,
@@ -70,7 +81,10 @@ class ApproachModel:
             or not all(isinstance(plugin_id, str) and plugin_id for plugin_id in edge_plugin_ids)
         ):
             raise ValueError("edge_plugin_ids must be a non-empty list of plugin ids")
-        for name, value in (("sensor_id", sensor_id), ("maneuver_key", maneuver_key), ("stop_phase", stop_phase)):
+        if (not isinstance(stop_reasons, (tuple, list)) or not stop_reasons
+                or not all(isinstance(reason, str) and reason for reason in stop_reasons)):
+            raise ValueError("stop_reasons must be a non-empty list of applied control reasons")
+        for name, value in (("sensor_id", sensor_id),):
             if not isinstance(value, str) or not value:
                 raise ValueError(f"{name} must be a non-empty string")
         for name, value in (
@@ -87,8 +101,7 @@ class ApproachModel:
             raise ValueError("min_x must be below max_x")
         self.edge_plugin_ids = tuple(edge_plugin_ids)
         self.sensor_id = sensor_id
-        self.maneuver_key = maneuver_key
-        self.stop_phase = stop_phase
+        self.stop_reasons = tuple(stop_reasons)
         self.min_x = float(min_x)
         self.max_x = float(max_x)
         self.row_bins = row_bins
@@ -101,19 +114,34 @@ class ApproachModel:
         if shared_memory is None:
             raise ValueError("approach_model requires a shared-memory map")
         state = _restore(shared_memory.get(STATE_KEY), self.row_bins)
-        maneuver = shared_memory.get(self.maneuver_key)
-        straight = maneuver is None and not state["static"]
+        motion = motion_at(shared_memory, context.timestamp_ms)
+        previous_update = state["updated_at_ms"]
+        if previous_update is not None and motions_over(shared_memory, previous_update, context.timestamp_ms) is None:
+            motion = None
+        straight = motion == "forward" and not state["static"]
+        application = application_at(shared_memory, context.timestamp_ms)
+        stopped = (motion == "reverse" and application is not None
+                   and application.control.reason in self.stop_reasons)
+        ended_run = False
         if not straight:
-            stopped = isinstance(maneuver, dict) and maneuver.get("phase") == self.stop_phase
             if stopped and state["straight"] and state["run_started_at_ms"] is not None:
-                self._end_run(state)
+                ended_run = self._end_run(state) is not None
             state["run_started_at_ms"] = None
         state["bent"] = state["bent"] or not straight
         captured_at = _captured_at(observation, self.sensor_id)
         previous_at = state["captured_at_ms"]
+        covered = straight
+        if captured_at is not None and previous_at is not None and captured_at < previous_at:
+            state["edges"] = {}
+            state["run_started_at_ms"] = None
+            state["captured_at_ms"] = None
+            previous_at = None
+            state["bent"] = True
         if captured_at is not None and (previous_at is None or captured_at > previous_at):
             elapsed = None if previous_at is None else captured_at - previous_at
-            if elapsed is not None and elapsed <= self.max_interval_ms and not state["bent"]:
+            motions = None if previous_at is None else motions_over(shared_memory, previous_at, captured_at)
+            covered = elapsed is not None and elapsed <= self.max_interval_ms and not state["bent"] and motions == ("forward",)
+            if covered:
                 if state["run_started_at_ms"] is None:
                     state["run_started_at_ms"] = previous_at
                 self._step(state, self._edges(observation), captured_at)
@@ -128,7 +156,11 @@ class ApproachModel:
         state["unchanged_ms"] = unchanged_ms
         if captured_at is not None:
             state["frame_at_ms"] = captured_at
+        self._beliefs(shared_memory, state, captured_at, covered, ended_run,
+                      context.timestamp_ms)
         state["updated_at_ms"] = context.timestamp_ms
+        state.pop("ms_per_row")
+        state.pop("run_ms")
         shared_memory[STATE_KEY] = state
 
     def status(self, shared_memory: SharedMemory | None) -> dict[str, Any]:
@@ -151,6 +183,66 @@ class ApproachModel:
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
         if shared_memory is not None:
             shared_memory.pop(STATE_KEY, None)
+            for belief_id in self.contract.belief_ids:
+                shared_memory.pop(belief_key(belief_id), None)
+
+    def _beliefs(self, memory, state, captured_at, straight, ended_run, now):
+        """Keep precision separate from checks of predictions made before this frame."""
+        row_belief = read_belief(memory, ROWS_BELIEF_ID)
+        run_belief = read_belief(memory, RUN_BELIEF_ID)
+        edges = state["edges"]
+        if row_belief is not None:
+            same_rows = row_belief.properties.get("row_bins") == self.row_bins
+            if not same_rows and not state["samples"]:
+                memory.pop(belief_key(ROWS_BELIEF_ID), None)
+            if not same_rows or not straight:
+                row_belief = replace(row_belief, trials=(), checks=row_belief.checks if same_rows else ())
+            elif captured_at is not None and row_belief.trials:
+                trial = row_belief.trials[0]
+                edge = edges.get(trial.properties["edge"])
+                if edge is None:
+                    row_belief = replace(row_belief, trials=())
+                elif edge["row"] >= trial.properties["target"]:
+                    elapsed = captured_at - trial.started_at_ms
+                    low, high = trial.predicted
+                    row_belief = row_belief.resolved(trial.trial_id,
+                        "support" if low <= elapsed <= high else "contradict", elapsed, captured_at, self.max_samples)
+        if state["samples"]:
+            precision = {key: _precision(values) for key, values in state["samples"].items()}
+            properties = {"row_bins": self.row_bins, "rows": precision}
+            if row_belief is None:
+                row_belief = Belief(ROWS_BELIEF_ID, state["ms_per_row"], self.plugin_id, now)
+            row_belief = replace(row_belief, value=state["ms_per_row"], properties=properties,
+                                 updated_at_ms=max(now, row_belief.updated_at_ms))
+            stop = read_belief(memory, "stop_row.row")
+            if straight and captured_at is not None and not row_belief.trials and stop is not None and edges:
+                edge_id, edge = max(edges.items(), key=lambda pair: pair[1]["row"])
+                target = math.ceil(stop.value * self.row_bins - _EPS)
+                rows = [precision.get(str(index)) for index in range(edge["row"], target)]
+                if rows and all(row is not None for row in rows):
+                    prediction = [sum(row[name] for row in rows) for name in ("p25", "p75")]
+                    row_belief = row_belief.opened(Trial(f"arrival_{captured_at}", "arrival", captured_at,
+                        prediction, {"edge": edge_id, "target": target}), 1)
+            memory[belief_key(ROWS_BELIEF_ID)] = row_belief
+        if run_belief is not None:
+            if ended_run and run_belief.trials:
+                trial = run_belief.trials[0]
+                duration = state["runs"][-1]
+                low, high = trial.predicted
+                run_belief = run_belief.resolved(trial.trial_id,
+                    "support" if low <= duration <= high else "contradict", duration, now, self.max_samples)
+            elif not straight:
+                run_belief = replace(run_belief, trials=())
+        if state["runs"]:
+            if run_belief is None:
+                run_belief = Belief(RUN_BELIEF_ID, state["run_ms"], self.plugin_id, now)
+            run_belief = replace(run_belief, value=state["run_ms"], properties=_precision(state["runs"]),
+                                 updated_at_ms=max(now, run_belief.updated_at_ms))
+            start = state["run_started_at_ms"]
+            if straight and start is not None and not run_belief.trials:
+                run_belief = run_belief.opened(Trial(f"run_{start}", "run_duration", start,
+                    [run_belief.properties["p25"], run_belief.properties["p75"]]), 1)
+            memory[belief_key(RUN_BELIEF_ID)] = run_belief
 
     def _edges(self, observation: Observation | None) -> dict[str, int]:
         """Rows of this frame's unclipped lower edges ahead, by identity."""
@@ -189,7 +281,7 @@ class ApproachModel:
                 edges[key] = {"row": row, "since_ms": None}
         state["edges"] = edges
 
-    def _end_run(self, state: dict[str, Any]) -> None:
+    def _end_run(self, state: dict[str, Any]) -> int | None:
         end = state["frame_at_ms"]
         if end is None:
             return
@@ -200,6 +292,7 @@ class ApproachModel:
             state["runs"].append(run)
             del state["runs"][:-self.max_samples]
             state["run_ms"] = _median(state["runs"])
+            return run
 
 
 def _view(observation: Observation | None) -> tuple[bool, int]:
@@ -261,6 +354,16 @@ def _restore(stored: Any, row_bins: int) -> dict[str, Any]:
         "run_ms": _median(runs),
         "updated_at_ms": _int_or(stored.get("updated_at_ms"), None),
     }
+
+
+def _precision(values):
+    ordered = sorted(values)
+    def quantile(fraction):
+        position = fraction * (len(ordered) - 1)
+        low = math.floor(position)
+        high = min(low + 1, len(ordered) - 1)
+        return round(ordered[low] + (ordered[high] - ordered[low]) * (position - low), 2)
+    return {"p25": quantile(.25), "p75": quantile(.75), "samples": len(values)}
 
 
 def _median(values: list[float]) -> float | None:

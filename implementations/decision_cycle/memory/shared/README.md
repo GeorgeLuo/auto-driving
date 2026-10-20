@@ -7,6 +7,7 @@ when more than one memory plugin imports it.
 
 | Topic | Holds |
 |---|---|
+| `motion/` | Read applied controls across a capture interval; missing coverage, manual motion and clock discontinuities remain unknown. |
 | `evidence_ledger/` | The bounded evidence ledger value (`ledger.py`) and the reduction of an observation into it (`reduction.py`). Each memory plugin keeps a ledger at its own key and publishes its records. |
 
 ## Rules

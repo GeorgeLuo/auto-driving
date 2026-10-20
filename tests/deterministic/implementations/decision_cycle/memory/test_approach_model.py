@@ -2,11 +2,17 @@
 
 import unittest
 
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
+from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.execution import ControlApplication
+
+
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.beliefs import Belief
+from autonomy.decision_cycle.memory.publication import belief_key, read_belief
 from autonomy.decision_cycle.observation.values import Observation
 from implementations.decision_cycle.memory.plugins.approach_model.plugin import STATE_KEY, ApproachModel
 
-MANEUVER_KEY = "proposal.avoid_obstacle.maneuver"
 BINS = 120
 
 
@@ -14,8 +20,8 @@ class _Car:
     """Feeds one camera frame per decision to an ``ApproachModel``.
 
     An edge is ``(object_id, row)``: a box ahead whose lower edge is on
-    ``row`` of 120. ``maneuver`` is what the proposal stored last cycle, and
-    ``static`` is this frame's ``view_static``.
+    ``row`` of 120. ``maneuver`` selects the applied command; ``static`` is this frame's
+    ``view_static``.
     """
 
     def __init__(self, plugin=None, memory=None):
@@ -24,12 +30,16 @@ class _Car:
         self.now = 1000
 
     def step(self, *edges, maneuver=None, static=False, unchanged_ms=0, after=50, x=(0.4, 0.6),
-             plugin_id="sim_cardboard_permanence"):
+             plugin_id="sim_cardboard_permanence", stop_reason="avoid_back_up_until_right_clear"):
         self.now += after
-        if maneuver is None:
-            self.memory.pop(MANEUVER_KEY, None)
-        else:
-            self.memory[MANEUVER_KEY] = maneuver
+        phase_value = (maneuver or {}).get("phase")
+        command = AutonomyControl(steering=1 if phase_value == "turning" else 0,
+            throttle=-.6 if phase_value == "backing_up" else .6,
+            reason=stop_reason if phase_value == "backing_up" else "drive")
+        applications = self.memory.get(CONTROL_APPLICATIONS_KEY, ())
+        at = self.now - after + 1 if after > 0 else self.now
+        self.memory[CONTROL_APPLICATIONS_KEY] = (*applications, ControlApplication(
+            None, "autonomy", True, "test", command, at))[-32:]
         things = tuple({
             "source_plugin_id": plugin_id,
             "properties": {} if object_id is None else {"object_id": object_id},
@@ -143,6 +153,7 @@ class ApproachModelTests(unittest.TestCase):
         for name, ending in {
             "turn while near": [dict(maneuver={"phase": "turning", "cause": "near"})],
             "drive backwards": [dict(static=True, unchanged_ms=40), dict()],
+            "reverse for another reason": [dict(maneuver={"phase": "backing_up"}, stop_reason="drive_backwards")],
         }.items():
             with self.subTest(name=name):
                 car = _Car()
@@ -161,10 +172,58 @@ class ApproachModelTests(unittest.TestCase):
         coarse = ApproachModel(row_bins=60)
         status = coarse.status(car.memory)
         self.assertEqual((status["rows"], status["row_bins"], status["runs"]), ([], 60, 1))
+        coarse.update(DecisionFrameContext("coarse", 10, car.now + 100, shared_memory=car.memory), None)
+        self.assertIsNone(read_belief(car.memory, "approach_model.ms_per_row"))
         coarse.reset(car.memory)
         self.assertNotIn(STATE_KEY, car.memory)
         self.assertEqual(ApproachModel().status(car.memory)["health"], "empty")
         ApproachModel().reset(None)
+
+    def test_a_prediction_of_run_duration_is_checked_after_the_sample_window_fills(self):
+        car = _Car(ApproachModel(max_samples=1))
+        for _ in range(4):
+            car.step()
+        car.step(maneuver={"phase": "backing_up"})
+        self.assertIsNone(read_belief(car.memory, "approach_model.run_ms").confidence)
+        for _ in range(5):
+            car.step()
+        trial = read_belief(car.memory, "approach_model.run_ms").trials[0]
+        car.step(maneuver={"phase": "backing_up"})
+        belief = read_belief(car.memory, "approach_model.run_ms")
+        self.assertEqual(len(belief.checks), 1)
+        self.assertEqual(belief.checks[0].predicted, trial.predicted)
+        self.assertEqual(belief.trials, ())
+
+    def test_arrival_checks_use_the_original_row_prediction_as_samples_change(self):
+        car = _Car()
+        for row in (60, 61, 62):
+            car.step((1, row))
+        car.memory[belief_key("stop_row.row")] = Belief("stop_row.row", 62 / BINS, "stop_row", car.now)
+        car.step((1, 60))
+        car.step((1, 61))
+        belief = read_belief(car.memory, "approach_model.ms_per_row")
+        self.assertEqual(belief.trials[0].predicted, [50, 50])
+        car.step((1, 62))
+        belief = read_belief(car.memory, belief.belief_id)
+        self.assertEqual([check.outcome for check in belief.checks], ["support"])
+        self.assertEqual(belief.confidence, 2 / 3)
+        self.assertEqual(belief.trials, ())
+
+    def test_a_manual_span_or_capture_gap_retires_an_arrival_prediction(self):
+        for gap in (50, 300):
+            with self.subTest(gap=gap):
+                car = _Car()
+                for row in (60, 61, 62):
+                    car.step((1, row))
+                car.memory[belief_key("stop_row.row")] = Belief("stop_row.row", 62 / BINS, "stop_row", car.now)
+                car.step((1, 60))
+                car.step((1, 61))
+                if gap == 50:
+                    car.memory[CONTROL_APPLICATIONS_KEY] = (*car.memory[CONTROL_APPLICATIONS_KEY],
+                        ControlApplication(None, "manual", False, "manual", AutonomyControl(), car.now + 1))
+                car.step((1, 62), after=gap)
+                belief = read_belief(car.memory, "approach_model.ms_per_row")
+                self.assertEqual((belief.trials, belief.checks), ((), ()))
 
     def test_shared_memory_is_required(self):
         with self.assertRaises(ValueError):
@@ -175,7 +234,7 @@ class ApproachModelTests(unittest.TestCase):
     def test_invalid_configuration_is_rejected(self):
         for config in (
             {"edge_plugin_ids": []}, {"edge_plugin_ids": "sim_wall"}, {"edge_plugin_ids": [None]},
-            {"sensor_id": ""}, {"maneuver_key": None}, {"stop_phase": ""}, {"row_bins": 0},
+            {"sensor_id": ""}, {"stop_reasons": []}, {"stop_reasons": "stop"}, {"row_bins": 0},
             {"row_bins": True}, {"max_samples": 2.5}, {"max_interval_ms": -1}, {"min_x": -0.1},
             {"max_x": 1.2}, {"min_x": 0.6, "max_x": 0.4}, {"edge_margin": 0.6}, {"edge_margin": float("inf")},
         ):

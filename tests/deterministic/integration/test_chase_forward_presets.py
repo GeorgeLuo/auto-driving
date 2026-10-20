@@ -7,12 +7,25 @@ row times, so perception's closeness stays unknown.
 """
 
 import unittest
+import tempfile
+from pathlib import Path
+
+from PIL import Image
+
+from autonomy.runtime.recording import RunRecording
+from cli.automa_cli.workbench_frames import run_frame
+from cli.automa_cli.workbench_source import load_image_source
+
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
+from autonomy.decision_cycle.memory.publication import read_belief
+from autonomy.runtime.execution import ControlApplication
+
 
 import numpy as np
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle
-from autonomy.decision_cycle.steps import decision_steps
+from autonomy.decision_cycle.steps import decision_steps, snapshot_step_activations
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.catalog import preset_activation
 
@@ -34,6 +47,10 @@ class ChaseForwardPresetTests(unittest.TestCase):
         }
         cycle = DecisionCycle(decision_steps(activations))
         shared_memory = {}
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        recording = RunRecording(root, vehicle_id="chase", run_id="integration")
         counts = []
         selected = []
         frames = (None, NEAR, NEAR, NEAR, NEAR, BACKED_AWAY, TURNING, PASSED, APPROACHING, AT_STOP_ROW)
@@ -44,18 +61,24 @@ class ChaseForwardPresetTests(unittest.TestCase):
             if box is not None:
                 x1, y1, x2, y2 = box
                 rgb[y1:y2, x1:x2] = (158, 107, 56)
+            image_path = root / f"frame_{index}.png"
+            Image.fromarray(rgb).save(image_path)
             reading = SensorReading(
                 sensor_id=FRONT_CAMERA_SENSOR_ID, sensor_kind="camera",
-                captured_at_ms=at_ms, value=rgb, metadata={"color_space": "RGB"},
+                captured_at_ms=at_ms, value=rgb, path=str(image_path), metadata={"color_space": "RGB"},
             )
             frame = SensorFrame(
                 read_id=f"read_{index}", readings={reading.sensor_id: reading},
                 started_at_ms=at_ms, completed_at_ms=at_ms,
             )
             result = cycle.run(DecisionFrameContext(
-                frame_id=f"frame_{index}", frame_index=index, timestamp_ms=at_ms,
+                frame_id=f"frame_{index}", frame_index=index, timestamp_ms=at_ms + 37,
                 sensor_frame=frame, shared_memory=shared_memory,
+                metadata={"step_activations": snapshot_step_activations(cycle.steps)},
             ))
+            recording.append(result, shared_memory.get(CONTROL_APPLICATIONS_KEY, ()))
+            shared_memory[CONTROL_APPLICATIONS_KEY] = (*shared_memory.get(CONTROL_APPLICATIONS_KEY, ()),
+                ControlApplication(result.context.frame_id, "autonomy", True, "test", result.control, at_ms + 38))
             counts.append(len(result.perception.things))
             self.assertEqual(result.plan.selector_id, "select_proposal")
             signals = {item["signal_id"]: item for item in result.observation.signals}
@@ -78,11 +101,24 @@ class ChaseForwardPresetTests(unittest.TestCase):
             (False, "avoid_obstacle", 0.0, -0.60),  # stop row reached: back up before contact
         ])
         hypothesis = shared_memory["memory.stop_row.hypothesis"]
-        self.assertEqual(hypothesis["stop_row"], 0.79)
+        self.assertEqual(read_belief(shared_memory, "stop_row.row").value, 0.79)
         self.assertEqual(hypothesis["counts"]["collision"], 1)
-        self.assertEqual(hypothesis["trial"]["stop_row"], 0.79)
+        self.assertEqual(read_belief(shared_memory, "stop_row.row").trials[0].predicted, 0.79)
         model = shared_memory["memory.turn_model.state"]
         self.assertEqual([(item["bearing"], item["in_view"]) for item in model["landmarks"].values()], [(0.0, True)])
-        self.assertEqual(model["samples"], {"turn_start": [], "turning": [], "turn_end": [], "straight": []})
+        self.assertTrue(all(not samples for samples in model["samples"].values()))
         self.assertEqual(shared_memory["memory.approach_model.state"]["samples"], {})
         self.assertEqual(signals["closeness_ahead"]["properties"]["reason"], "not_learned")
+
+        replay_steps = decision_steps(activations)
+        replay_memory = {}
+        replay_commands = []
+        for frame in load_image_source(recording.root).frames:
+            outcome = run_frame(frame, steps={
+                step: getattr(replay_steps, step)
+                for step in ("perception", "observation", "memory", "proposal", "plan", "action")
+            }, shared_memory=replay_memory)
+            replay_commands.append((outcome.result.control.steering, outcome.result.control.throttle))
+        self.assertEqual(replay_commands, [(item[2], item[3]) for item in selected])
+        self.assertEqual(read_belief(replay_memory, "stop_row.row"), read_belief(shared_memory, "stop_row.row"))
+        self.assertEqual(replay_memory["memory.stop_row.hypothesis"], hypothesis)

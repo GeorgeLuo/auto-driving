@@ -32,18 +32,19 @@ equals, else `custom`. `automa vehicles update memory --preset NAME` stages one.
 The Chase v1 preset's `stop_row` learns how near an obstacle ahead may come
 before proposal's `avoid_obstacle` starts reversing. Its hypothesis is an
 image row for perception's `clearance_ahead` `nearest_bottom_y`: the first
-collision while driving forward starts it, each stop at it (the maneuver's
-`stop_phase`, up to `settle_ms`) then either keeps that lower edge above
+collision while driving forward starts it, each stop at it (applied straight reverse, up to `settle_ms`) then either keeps that lower edge above
 `blind_row` (stopped short) or not (too close), and the row is bisected between
 the deepest that stopped short and the shallowest that came too close. Later
-collisions are counted but do not move the row. It lives in shared memory at `memory.stop_row.hypothesis`;
+collisions are counted but do not move the row. Its value lives at `memory.beliefs.stop_row.row`;
+`memory.stop_row.hypothesis` keeps the bracket and stop observations;
 `status` reports the row, its bounds and the outcome counts, and `reset`
 forgets it.
 
 Its `turn_model` learns how the car's own turn moves what it sees, in image
 widths per second, from the landmarks `sim_cardboard_permanence` tracks. Each
-new camera frame closes an interval named by the `avoid_obstacle` maneuver
-before and over it (`turn_start`, `turning`, `turn_end` or `straight`), whose
+new camera frame closes an interval named by the applied controls
+before and over it (`forward_right.turn_start`, `forward_right.turning`,
+`forward_right.turn_end` or `forward`), whose
 sample is the median shift of the landmarks seen at both ends; each kind's
 speed is the median of its last `max_samples`. Boxes at the image edge, or
 that change size by more than `max_size_change`, do not count. Slow turning is
@@ -59,12 +60,37 @@ Each new camera frame closes an interval; when every command over it drove
 straight, each lower edge in the band ahead from `sim_wall` or
 `sim_cardboard_permanence` that stepped down exactly one of `row_bins` rows
 records how long it spent on the row it left. Each row's time is the median of
-its last `max_samples`. A straight run that ends when `avoid_obstacle` starts
-backing up is how long the car could drive before it had to stop, less any
+its last `max_samples`. A straight run that ends with an applied straight reverse command for a configured
+`stop_reasons` value is how long the car could drive before it had to stop, less any
 static time; `run_ms` is their median, and runs that end any other way do not
 count. Nothing is tuned in advance and no command changes. It lives at
 `memory.approach_model.state`; `status` reports each row's time and samples,
-`run_ms` and the runs. Perception's `closeness` reads it.
+`run_ms` and the runs. Perception's `closeness` reads its published beliefs.
+
+All three learners read the host's `action.control_applications`, not proposal
+state. An interval needs a command at its start and autonomous control
+throughout. Missing coverage, manual/observe-only spans and backwards clocks
+retire pending predictions without checks. On Donkey, application time marks
+the output mailbox write; wheel motion may follow on the next 20 Hz tick.
+
+The learned values are `stop_row.row`, `turn_model.view_speed.<interval>`,
+`approach_model.ms_per_row` and `approach_model.run_ms`, under the
+`memory.beliefs.` prefix. Forward-right, forward-left, reverse-left and reverse-right turning use the
+same `<motion>.turn_start`, `<motion>.turning` and `<motion>.turn_end` pattern,
+with separate stall baselines. Straight `forward`, `reverse` and `idle` also
+have separate speeds. Each kind assumes comparable command magnitudes.
+
+Stop outcomes check the stop-row belief, clearing checks when an older bracket
+is invalidated. A landmark reappearance checks the speed belief's predicted
+bearing range when one interval kind covered the unseen span. Mixed-kind
+spans still carry positions but retire that prediction. Approach arrival
+checks need all rows from the edge to the stop row; each completed straight
+run checks its predicted duration. The applied control reason distinguishes an
+avoidance stop from an unrelated reverse command; proposal private state is
+not needed. Speed and timing ranges use retained sample
+quartiles. Samples refine estimates while explicit older predictions remain
+open; confidence counts only resolved checks. `closeness` and `avoid_obstacle`
+read these beliefs, and keep their existing thresholds and commands.
 
 ## Finding the default business logic
 

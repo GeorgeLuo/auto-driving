@@ -151,7 +151,7 @@ class CycleHostMemoryTests(unittest.TestCase):
         self.assertEqual(host.execution.ticket().control_applications[-1].mode, "manual")
         self.assertFalse(result.application.applied)
 
-    def test_new_runs_and_memory_resets_clear_prior_applications(self):
+    def test_new_runs_and_memory_resets_preserve_prior_applications(self):
         host, _ = _host()
         host.execution = ControlExecution(Mock(write=Mock(return_value={})))
         self.addCleanup(host.close)
@@ -159,14 +159,15 @@ class CycleHostMemoryTests(unittest.TestCase):
         old = host.execution.ticket().control_applications[0]
         host.start()
         current = host.execution.ticket().control_applications
-        self.assertEqual(len(current), 1)
-        self.assertIsNot(current[0], old)
-        self.assertEqual(current[0].reason, "awaiting-fresh-decision")
+        self.assertIs(current[0], old)
+        self.assertEqual([item.reason for item in current], [
+            "awaiting-fresh-decision", "mode-changed", "awaiting-fresh-decision",
+        ])
         host.reset_memory()
-        self.assertEqual(host.execution.ticket().control_applications, ())
+        self.assertEqual(host.execution.ticket().control_applications, current)
         self.assertNotIn(CONTROL_APPLICATIONS_KEY, host.shared_memory)
         result = host.run(DecisionFrameContext("after-reset", 0, int(time.time() * 1000)))
-        self.assertEqual(result.context.shared_memory[CONTROL_APPLICATIONS_KEY], ())
+        self.assertEqual(result.context.shared_memory[CONTROL_APPLICATIONS_KEY], current)
 
     def test_failed_start_reports_its_error_instead_of_the_previous_run_error(self):
         host, _ = _host()

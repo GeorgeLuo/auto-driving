@@ -427,8 +427,6 @@ class AutonomyCycleHost:
         configuration = configuration or RunConfiguration()
         with self._session_lock:
             self.stop()
-            if self.execution is not None:
-                self.execution.clear_applications()
             self.last_error = None
             self.configuration = configuration
             self.recording = recording
@@ -586,8 +584,6 @@ class AutonomyCycleHost:
         """
 
         with self._lock:
-            if self.execution is not None:
-                self.execution.clear_applications()
             memory = self.cycle.steps.memory
             if memory is None:
                 self.shared_memory.clear()

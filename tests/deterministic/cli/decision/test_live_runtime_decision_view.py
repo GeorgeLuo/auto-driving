@@ -3,8 +3,6 @@ import json
 import unittest
 from copy import deepcopy
 from urllib.request import urlopen
-from autonomy.decision_cycle.proposal.inputs import ComponentEnvelope
-from tests.shared.cli.decision.decision_surfaces_fixtures import left_obstruction_frame
 from tests.deterministic.cli.decision.live_runtime_decision_view_fixtures import LiveRuntimeDecisionViewFixture
 
 
@@ -23,7 +21,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self.assertEqual(payload["current_image"]["frame_id"], stream_frame["frame_id"])
         self.assertFalse(payload["authority"]["proposed_applied"])
         self.assertIn("authorized_output", payload["authority"])
-        self.assertIn("host_application", payload["authority"])
+        self.assertNotIn("host_application", payload["authority"])
 
         with urlopen(
             f"{self.server.url.rstrip('/')}{payload['current_image']['url']}",
@@ -47,57 +45,6 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             payload["freshness"]["captured_at_ms"],
             payload["freshness"]["published_at_ms"],
         )
-
-    def test_api_keeps_host_observations_separate_and_attributable(self) -> None:
-        raw = left_obstruction_frame()
-        frame_id = raw["frame_id"]
-        cases = (
-            ("absent", None, "unavailable", None),
-            (
-                "malformed-frame",
-                ComponentEnvelope(
-                    status="ready", value={"frame_id": 7, "steering": 0.4}
-                ),
-                "ready",
-                0.4,
-            ),
-            (
-                "wrong-frame",
-                ComponentEnvelope(
-                    status="ready",
-                    value={"frame_id": "older-frame", "steering": -0.6},
-                ),
-                "ready",
-                -0.6,
-            ),
-            (
-                "nonzero",
-                ComponentEnvelope(
-                    status="ready",
-                    value={"frame_id": frame_id, "steering": 0.5, "throttle": 0.2},
-                ),
-                "ready",
-                0.5,
-            ),
-        )
-        for index, (name, host_application, expected_status, steering) in enumerate(
-            cases
-        ):
-            with self.subTest(name=name):
-                stream_frame = self._accepted_frame(
-                    raw=raw,
-                    host_application=host_application,
-                )
-                self._publish_exact_transaction(
-                    stream_frame=stream_frame,
-                    image_name=f"host-{index}.png",
-                )
-                host = self._latest_payload()["authority"]["host_application"]
-                self.assertEqual(host["status"], expected_status)
-                if steering is None:
-                    self.assertIsNone(host["value"])
-                else:
-                    self.assertEqual(host["value"]["steering"], steering)
 
     def test_exact_retained_evidence_is_machine_visible_and_renderable(self) -> None:
         stream_frame = self._accepted_frame_with_evidence()

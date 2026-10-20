@@ -2,10 +2,11 @@
 
 The host commits a cycle and its exact image before counting the decision or
 ending the run. Live latest-only publications are independent of this history.
-Each manifest entry carries the control applications the host published since
-the previous entry. A reset flag clears the replay window at memory resets or
-when no old window overlaps; record order, not wall-clock order, preserves equal
-or backwards timestamps. Frame JSON omits them; export reattaches them.
+Each manifest entry carries a control application change: the number of records
+kept from the end of the previous window, followed by added records. Record
+order, not wall-clock order, preserves equal or backwards timestamps. Replay
+restores the recorded window independently of the runtime limit. Frame JSON
+omits the change; export reattaches it.
 Each recorded step names the controller release the host imported, which is
 the code replay must run; a host outside a release records none. A plugin
 uploaded to the host's catalog is outside every release, so the recording keeps
@@ -37,10 +38,33 @@ RECORDING_MANIFEST_SCHEMA = "automa_recording_manifest_v0"
 RECORDING_MANIFEST_NAME = "manifest.json"
 # Uploaded plugin sources a recording carries, as ``<sha256>.py``.
 UPLOADED_SOURCES_DIR = "plugins"
-# Manifest entry fields for the applications published since the previous entry.
-CONTROL_APPLICATIONS_FIELD = "control_applications"
-CONTROL_APPLICATION_RESET_FIELD = "control_applications_reset"
-CONTROL_APPLICATION_FIELDS = (CONTROL_APPLICATIONS_FIELD, CONTROL_APPLICATION_RESET_FIELD)
+# Manifest entry change from the previous published application window.
+CONTROL_APPLICATION_CHANGE_FIELD = "control_application_change"
+
+
+def control_application_windows(changes: list[Any]) -> list[tuple[ControlApplication, ...] | None]:
+    """Decode manifest changes in order; missing windows break retained history."""
+    windows: list[tuple[ControlApplication, ...] | None] = []
+    previous: tuple[ControlApplication, ...] = ()
+    for position, change in enumerate(changes):
+        if change is None:
+            windows.append(None)
+            previous = ()
+            continue
+        try:
+            if not isinstance(change, dict) or set(change) != {"kept", "added"}:
+                raise ValueError("expected an object with kept and added")
+            kept, added = change["kept"], change["added"]
+            if type(kept) is not int or not 0 <= kept <= len(previous):
+                raise ValueError("kept must be a nonnegative integer within the previous window")
+            if not isinstance(added, list):
+                raise ValueError("added must be a list")
+            retained = previous[-kept:] if kept else ()
+            previous = retained + tuple(ControlApplication.from_dict(item) for item in added)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"frame {position} has invalid control applications: {exc}") from exc
+        windows.append(previous)
+    return windows
 
 
 def _installed_release() -> dict[str, Any] | None:
@@ -136,16 +160,15 @@ def append_recording_frame(
     steps: dict[str, Any],
     frame_index: int | None = None,
     context: dict[str, Any] | None = None,
-    control_applications: list[dict[str, Any]] | None = None,
-    control_applications_reset: bool = False,
+    control_application_change: dict[str, Any] | None = None,
 ) -> None:
     """Append one recorded frame to the run directory's manifest.
 
     Chase and PiCar both call this. The image path is stored relative to the
     run directory, which is the directory replay loads. The frame keeps the
     report identity, original capture time, applied step selections, and inputs.
-    ``control_applications`` are those applied since the previous frame, or
-    ``None`` when the host recorded none.
+    ``control_application_change`` describes the retained suffix and added
+    applications, or is ``None`` when the host recorded no window.
     """
 
     vehicle_id = _recording_text(vehicle_id, "vehicle_id")
@@ -184,9 +207,8 @@ def append_recording_frame(
         entry["frame_index"] = frame_index
     if context is not None:
         entry["context"] = recorded_context(context)
-    if control_applications is not None:
-        entry[CONTROL_APPLICATIONS_FIELD] = copy.deepcopy(control_applications)
-        entry[CONTROL_APPLICATION_RESET_FIELD] = control_applications_reset
+    if control_application_change is not None:
+        entry[CONTROL_APPLICATION_CHANGE_FIELD] = copy.deepcopy(control_application_change)
     manifest_path = root / RECORDING_MANIFEST_NAME
     payload: dict[str, Any] = {
         "schema": RECORDING_MANIFEST_SCHEMA,
@@ -257,7 +279,7 @@ def write_recorded_frame(
     # Applications live once in the manifest; read() reattaches them for
     # transport to another host, whose writer uses this same representation.
     write_json_atomically(
-        perception_path, {key: value for key, value in frame.items() if key not in CONTROL_APPLICATION_FIELDS},
+        perception_path, {key: value for key, value in frame.items() if key != CONTROL_APPLICATION_CHANGE_FIELD},
     )
     perception_path.with_suffix(".txt").write_text(
         (frame.get("perception") or {}).get("text", "") + "\n", encoding="utf-8",
@@ -267,8 +289,7 @@ def write_recorded_frame(
         generation_id=frame["generation_id"], frame_id=frame_id,
         frame_index=frame["frame_index"], timestamp_ms=frame["captured_at_ms"],
         image_path=image_path, steps=frame["step_activations"], context=frame["context"],
-        control_applications=frame.get(CONTROL_APPLICATIONS_FIELD),
-        control_applications_reset=frame.get(CONTROL_APPLICATION_RESET_FIELD, False),
+        control_application_change=frame.get(CONTROL_APPLICATION_CHANGE_FIELD),
     )
 
 
@@ -358,10 +379,10 @@ class RunRecording:
                 # writes and backwards clock steps must still be recorded once.
                 cursor = next((index + 1 for index in range(len(applications) - 1, -1, -1)
                                if previous and applications[index] is previous[-1]), None)
-                reset = cursor is None
-                delta = applications if reset else applications[cursor:]
-                frame[CONTROL_APPLICATIONS_FIELD] = [item.to_dict() for item in delta]
-                frame[CONTROL_APPLICATION_RESET_FIELD] = reset
+                kept = cursor or 0
+                frame[CONTROL_APPLICATION_CHANGE_FIELD] = {
+                    "kept": kept, "added": [item.to_dict() for item in applications[kept:]],
+                }
             if (self.root / "perception" / context.frame_id / "perception.json").exists():
                 raise ValueError("recorded frame_id must be unique within the run")
             sources = {
@@ -393,7 +414,8 @@ class RunRecording:
                 frame_id = entry["frame_id"]
                 image_path = self.root / entry["image_path"]
                 frame = json.loads((self.root / "perception" / frame_id / "perception.json").read_text())
-                frame.update({key: entry[key] for key in CONTROL_APPLICATION_FIELDS if key in entry})
+                if CONTROL_APPLICATION_CHANGE_FIELD in entry:
+                    frame[CONTROL_APPLICATION_CHANGE_FIELD] = entry[CONTROL_APPLICATION_CHANGE_FIELD]
                 names |= uploaded_sources(frame["step_activations"])
                 frames.append({
                     "frame": frame,

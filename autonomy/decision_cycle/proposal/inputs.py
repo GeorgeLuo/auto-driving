@@ -28,7 +28,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_safe_int,
 )
 
-DECISION_DATA_SOURCE_SCHEMA = "decision_data_source_v1"
+DECISION_DATA_SOURCE_SCHEMA = "decision_data_source_v2"
 ComponentStatus = Literal["ready", "unavailable", "error"]
 COMPONENT_STATUSES = frozenset({"ready", "unavailable", "error"})
 MAX_ENVELOPE_REASON = 240

@@ -18,7 +18,8 @@ from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import CONTROL_APPLICATION_LIMIT, ControlApplication
 from autonomy.runtime.recording import (
-    CONTROL_APPLICATION_RESET_FIELD, CONTROL_APPLICATIONS_FIELD, RECORDING_MANIFEST_NAME, RunRecording,
+    CONTROL_APPLICATION_CHANGE_FIELD, RECORDING_MANIFEST_NAME, RunRecording,
+    control_application_windows,
     write_recorded_frame,
 )
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
@@ -29,7 +30,7 @@ from tests.shared.cli.workbench_fixtures import image_source, write_manifest
 
 
 class ControlApplicationRecordingTests(unittest.TestCase):
-    def test_recording_and_export_store_deltas_once_and_replay_reset_windows(self):
+    def test_recording_and_export_store_changes_once_and_replay_windows(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             camera = root / "camera.png"
@@ -59,18 +60,18 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                     expected.append(result.context.shared_memory[CONTROL_APPLICATIONS_KEY])
             manifest = json.loads((recording.root / RECORDING_MANIFEST_NAME).read_text())
             entries = manifest["frames"]
-            self.assertEqual([len(entry[CONTROL_APPLICATIONS_FIELD]) for entry in entries], [1, 3, 0, 1])
-            self.assertEqual(entries[1][CONTROL_APPLICATIONS_FIELD][-1], entries[1][CONTROL_APPLICATIONS_FIELD][-2])
-            self.assertEqual([entry[CONTROL_APPLICATION_RESET_FIELD] for entry in entries],
-                             [True, False, True, True])
-            self.assertTrue(all(CONTROL_APPLICATIONS_FIELD not in entry["context"] for entry in entries))
+            changes = [entry[CONTROL_APPLICATION_CHANGE_FIELD] for entry in entries]
+            self.assertEqual([len(change["added"]) for change in changes], [1, 3, 1, 1])
+            self.assertEqual(changes[1]["added"][-1], changes[1]["added"][-2])
+            self.assertEqual([change["kept"] for change in changes], [0, 1, 4, 5])
+            self.assertTrue(all(CONTROL_APPLICATION_CHANGE_FIELD not in entry["context"] for entry in entries))
             self.assertEqual([item.delivered_at_ms for item in expected[1]], [2000, 2000, 1000, 1000])
             exported = root / "export"
             batch = recording.read(run_id=recording.run_id, after=0)
             for item in batch["frames"]:
                 frame = item["frame"]
                 saved = recording.root / "perception" / frame["frame_id"] / "perception.json"
-                self.assertNotIn('"control_applications"', saved.read_text())
+                self.assertNotIn(CONTROL_APPLICATION_CHANGE_FIELD, saved.read_text())
                 write_recorded_frame(exported, frame, base64.b64decode(item["image_base64"]),
                                      item["image_extension"], {})
             self.assertEqual(json.loads((exported / RECORDING_MANIFEST_NAME).read_text()), manifest)
@@ -94,18 +95,59 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                 self.assertEqual(cycle_times, [2103, 2101, 2100, 2102])
                 self.assertEqual(capture_times, [2003, 2001, 2000, 2002])
 
-    def test_source_bounds_the_reconstructed_window_in_record_order(self):
+    def test_recording_encodes_partial_overlap_no_overlap_and_unchanged_windows(self):
+        records = tuple(ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100)
+                        for _ in range(5))
+        windows = [records[:3], records[1:4], records[1:4], records[4:], None, (), records[:1]]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            camera = root / "camera.png"
+            Image.new("RGB", (2, 2)).save(camera)
+            host = AutonomyCycleHost(steps=DecisionSteps())
+            self.addCleanup(host.close)
+            recording = RunRecording(root, vehicle_id="picar", run_id="windows")
+            for index, window in enumerate(windows):
+                sensors = SensorFrame(
+                    read_id=f"f{index}", readings={FRONT_CAMERA_SENSOR_ID: SensorReading(
+                        sensor_id=FRONT_CAMERA_SENSOR_ID, sensor_kind="camera",
+                        captured_at_ms=index, path=str(camera),
+                    )}, started_at_ms=index, completed_at_ms=index,
+                )
+                result = host.run(DecisionFrameContext(f"f{index}", index, index, sensor_frame=sensors))
+                recording.append(result, window)
+            entries = json.loads((recording.root / RECORDING_MANIFEST_NAME).read_text())["frames"]
+            changes = [entry.get(CONTROL_APPLICATION_CHANGE_FIELD) for entry in entries]
+            self.assertEqual([change["kept"] if change else None for change in changes], [0, 2, 3, 0, None, 0, 0])
+            self.assertEqual([len(change["added"]) if change else None for change in changes], [3, 1, 0, 1, None, 0, 1])
+            self.assertEqual(control_application_windows(changes), windows)
+            source = load_image_source(recording.root)
+            self.assertEqual([frame.control_applications for frame in source.frames], windows)
+
+    def test_source_uses_kept_in_record_order_without_a_runtime_limit(self):
         application = ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100)
+        count = CONTROL_APPLICATION_LIMIT + 3
         with image_source(1) as root:
             frames = [{"frame_id": f"f{index}", "timestamp_ms": index, "image_path": "frame_00.png",
-                       CONTROL_APPLICATIONS_FIELD: [replace(application, delivered_at_ms=100 - index).to_dict()],
-                       CONTROL_APPLICATION_RESET_FIELD: index == 0}
-                      for index in range(CONTROL_APPLICATION_LIMIT + 3)]
+                       CONTROL_APPLICATION_CHANGE_FIELD: {
+                           "kept": index,
+                           "added": [replace(application, delivered_at_ms=100 - index).to_dict()],
+                       }} for index in range(count)]
+            frames.append({"frame_id": "last", "timestamp_ms": count, "image_path": "frame_00.png",
+                           CONTROL_APPLICATION_CHANGE_FIELD: {"kept": 2, "added": []}})
             write_manifest(root, {"frames": frames})
             source = load_image_source(root)
-        self.assertEqual(len(source.frames[-1].control_applications), CONTROL_APPLICATION_LIMIT)
-        self.assertEqual(source.frames[-1].control_applications[0].delivered_at_ms, 97)
-        self.assertEqual(source.frames[-1].control_applications[-1].delivered_at_ms, 66)
+        self.assertEqual(len(source.frames[-2].control_applications), count)
+        self.assertEqual(source.frames[-1].control_applications, source.frames[-2].control_applications[-2:])
+        self.assertEqual(source.frames[-1].control_applications[-1].delivered_at_ms, 100 - count + 1)
+
+    def test_missing_windows_break_history_and_zero_kept_discards_it(self):
+        application = ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100)
+        initial = {"kept": 0, "added": [application.to_dict()]}
+        self.assertEqual(control_application_windows([
+            initial, {"kept": 0, "added": []}, initial, None, initial,
+        ]), [(application,), (), (application,), None, (application,)])
+        with self.assertRaisesRegex(ValueError, "frame 2"):
+            control_application_windows([initial, None, {"kept": 1, "added": []}])
 
     def test_malformed_applications_are_rejected_when_the_source_loads(self):
         valid = ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100).to_dict()
@@ -119,18 +161,18 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             for application in invalid:
                 with self.subTest(application=application):
                     write_manifest(root, {"frames": [{
-                        "image_path": "frame_00.png", CONTROL_APPLICATIONS_FIELD: [application],
-                        CONTROL_APPLICATION_RESET_FIELD: True,
+                        "image_path": "frame_00.png",
+                        CONTROL_APPLICATION_CHANGE_FIELD: {"kept": 0, "added": [application]},
                     }]})
                     with self.assertRaisesRegex(SourceValidationError, "invalid control applications"):
                         load_image_source(root)
-            for fields in ({CONTROL_APPLICATIONS_FIELD: {}, CONTROL_APPLICATION_RESET_FIELD: True},
-                           {CONTROL_APPLICATIONS_FIELD: None, CONTROL_APPLICATION_RESET_FIELD: True},
-                           {CONTROL_APPLICATIONS_FIELD: [], CONTROL_APPLICATION_RESET_FIELD: "true"},
-                           {CONTROL_APPLICATIONS_FIELD: []}):
-                with self.subTest(fields=fields):
-                    write_manifest(root, {"frames": [{"image_path": "frame_00.png", **fields}]})
-                    with self.assertRaisesRegex(SourceValidationError, "invalid control applications"):
+            for change in ({}, [], {"kept": 0}, {"kept": 0, "added": {}},
+                           {"kept": True, "added": []}, {"kept": -1, "added": []},
+                           {"kept": 1, "added": []}, {"kept": 0.5, "added": []}):
+                with self.subTest(change=change):
+                    write_manifest(root, {"frames": [{"image_path": "frame_00.png",
+                                                      CONTROL_APPLICATION_CHANGE_FIELD: change}]})
+                    with self.assertRaisesRegex(SourceValidationError, "frame 0 has invalid control applications"):
                         load_image_source(root)
 
     def test_replay_removes_the_key_when_the_source_recorded_none(self):

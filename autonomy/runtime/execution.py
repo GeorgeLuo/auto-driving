@@ -238,18 +238,14 @@ class ControlExecution:
     def _write_idle(self, reason: str, *, mode: str | None = None) -> None:
         self._deadline = None
         control = AutonomyControl(reason=reason)
-        receipt = self.target.write(control)
         self._output = control
+        self._publish_status()
+        receipt = self.target.write(control)
         self.last_application = ControlApplication(
             None, mode or self._mode, True, reason, control, int(time.time() * 1000), receipt
         )
         self._applications.append(self.last_application)
         self._publish_status()
-
-    def clear_applications(self) -> None:
-        """Start a new learning window at a run or memory-reset boundary."""
-        with self._lock:
-            self._applications.clear()
 
     def _fail(self, exc: Exception, *, frame_id: str | None = None) -> None:
         self._generation += 1

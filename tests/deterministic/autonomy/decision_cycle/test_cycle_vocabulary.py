@@ -78,7 +78,7 @@ class CycleVocabularyTests(unittest.TestCase):
         self.assertEqual(OBSERVATION_SCHEMA, "decision_observation_v1")
         self.assertEqual(MEMORY_REPORT_SCHEMA, "memory_report_v1")
         self.assertEqual(ACTION_PROPOSAL_SCHEMA, "action_proposal_v0")
-        self.assertEqual(DECISION_DATA_SOURCE_SCHEMA, "decision_data_source_v1")
+        self.assertEqual(DECISION_DATA_SOURCE_SCHEMA, "decision_data_source_v2")
         self.assertEqual(DEFAULT_PERCEPTION_PRESET, "lightweight_observer")
         self.assertEqual(FrameObservationPlugin.plugin_id, "frame")
 

@@ -14,16 +14,15 @@ import json
 import mimetypes
 import os
 import re
-from collections import deque
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.plugins import add_uploaded_source_root
-from autonomy.runtime.execution import CONTROL_APPLICATION_LIMIT, ControlApplication
+from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.recording import (
-    CONTROL_APPLICATION_RESET_FIELD, CONTROL_APPLICATIONS_FIELD, UPLOADED_SOURCES_DIR,
+    CONTROL_APPLICATION_CHANGE_FIELD, UPLOADED_SOURCES_DIR, control_application_windows,
 )
 from .inspection_runs import recorded_selection, recorded_selections
 
@@ -232,6 +231,13 @@ def normalize_image_directory(
             ]
     except (TypeError, ValueError) as exc:
         raise SourceValidationError(f"invalid recorded selections: {exc}") from exc
+    try:
+        windows = control_application_windows([
+            entry.get(CONTROL_APPLICATION_CHANGE_FIELD) if isinstance(entry, dict) else None
+            for entry in entries
+        ])
+    except ValueError as exc:
+        raise SourceValidationError(str(exc)) from exc
     frames = tuple(
         _build_frame(
             source_id=source_id,
@@ -241,25 +247,15 @@ def normalize_image_directory(
             recorded_root=recorded_root,
             recorded_source=recorded_source,
             max_image_bytes=max_image_bytes,
+            control_applications=windows[position],
         )
         for position, entry in enumerate(entries)
     )
     _validate_frame_sequence(frames)
-    # Rebuild windows while loading so seeking or replaying a single frame sees
-    # the same inputs as a sequential run.
-    applications: deque[ControlApplication] = deque(maxlen=CONTROL_APPLICATION_LIMIT)
-    restored = []
-    for frame in frames:
-        if frame.control_applications is not None:
-            if frame.metadata[CONTROL_APPLICATION_RESET_FIELD]:
-                applications.clear()
-            applications.extend(frame.control_applications)
-            frame = replace(frame, control_applications=tuple(applications))
-        restored.append(frame)
     return ImageSource(
         source_path=source_path,
         source_id=source_id,
-        frames=tuple(restored),
+        frames=frames,
         manifest_path=manifest_path,
     )
 
@@ -462,6 +458,7 @@ def _build_frame(
     recorded_root: Path | None,
     recorded_source: tuple[Path, Path] | None,
     max_image_bytes: int,
+    control_applications: tuple[ControlApplication, ...] | None = None,
 ) -> ReplayFrame:
     if isinstance(entry, str):
         entry = {"image_path": entry}
@@ -513,16 +510,6 @@ def _build_frame(
         if not isinstance(entry["context"], dict):
             raise SourceValidationError(f"frame {position} context must be an object")
         metadata["context"] = copy.deepcopy(entry["context"])
-    control_applications = None
-    if CONTROL_APPLICATIONS_FIELD in entry:
-        recorded, reset = entry[CONTROL_APPLICATIONS_FIELD], entry.get(CONTROL_APPLICATION_RESET_FIELD)
-        try:
-            if not isinstance(recorded, list) or type(reset) is not bool:
-                raise ValueError("expected a list and a boolean reset flag")
-            control_applications = tuple(ControlApplication.from_dict(item) for item in recorded)
-        except (TypeError, ValueError) as exc:
-            raise SourceValidationError(f"frame {position} has invalid control applications: {exc}") from exc
-        metadata[CONTROL_APPLICATION_RESET_FIELD] = reset
     # A recording manifest keeps the report identity and staged step selections.
     for key in ("vehicle_id", "run_id", "generation_id"):
         value = entry.get(key)

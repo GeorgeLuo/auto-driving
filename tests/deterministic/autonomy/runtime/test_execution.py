@@ -90,6 +90,28 @@ class ControlExecutionTests(unittest.TestCase):
         decoded = shared_memory_from_document(shared_memory_document({"applications": (application,)}))
         self.assertEqual(decoded["applications"], [application])
 
+    def test_failed_idle_write_leaves_idle_output_without_recording_a_write(self):
+        class FailsSecondWrite(_RecordingTarget):
+            def write(self, control):
+                if len(self.writes) == 1:
+                    raise ConnectionError("idle failed")
+                return super().write(control)
+
+        execution = ControlExecution(FailsSecondWrite())
+        self.addCleanup(execution.close)
+        with patch("autonomy.runtime.execution.time.time", return_value=1.0):
+            execution.set_mode("autonomy")
+            # Seed a held output so failure cannot pass by leaving the initial idle.
+            execution._output = AutonomyControl(throttle=0.3, reason="drive")
+            history = execution.ticket().control_applications
+            result = SimpleNamespace(context=DecisionFrameContext("stale", 0, 1000),
+                                     control=execution.output())
+            with patch("autonomy.runtime.execution.time.time", return_value=10.0):
+                with self.assertRaisesRegex(ConnectionError, "idle failed"):
+                    execution.apply(result, execution.ticket())
+            self.assertEqual(execution.output(), AutonomyControl(reason="stale-decision"))
+            self.assertEqual(execution.ticket().control_applications, history)
+
     def test_watchdog_stop_is_recorded(self) -> None:
         execution = ControlExecution(_RecordingTarget())
         execution._deadline = 0.0

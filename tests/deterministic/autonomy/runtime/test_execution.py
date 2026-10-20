@@ -1,9 +1,14 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.runtime.control import AutonomyControl
 
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from autonomy.runtime.execution import ControlExecution
+from autonomy.runtime.execution import CONTROL_HISTORY_LIMIT, ControlExecution
 from autonomy.runtime.session import RunConfiguration
 
 
@@ -34,6 +39,50 @@ class _UnreachableTarget:
 
 
 class ControlExecutionTests(unittest.TestCase):
+    def test_history_records_applied_commands_and_mode_change_stops(self) -> None:
+        execution = ControlExecution(_RecordingTarget())
+        self.addCleanup(execution.close)
+        with patch("autonomy.runtime.execution.time.time", return_value=1.0):
+            execution.set_mode("autonomy")
+            result = SimpleNamespace(
+                context=DecisionFrameContext("frame-1", 0, 1000),
+                action=SimpleNamespace(status="ok"),
+                control=AutonomyControl(steering=-0.5, throttle=0.3, reason="turn"),
+            )
+            application = execution.apply(result, execution.ticket())
+            execution.set_mode("manual")
+        history = execution.recent_deliveries()
+        self.assertEqual([item["reason"] for item in history],
+                         ["awaiting-fresh-decision", "turn", "mode-changed"])
+        self.assertEqual(history[1], {
+            "delivered_at_ms": application.delivered_at_ms, "steering": -0.5,
+            "throttle": 0.3, "reason": "turn", "frame_id": "frame-1",
+        })
+        self.assertEqual((history[2]["steering"], history[2]["throttle"]), (0.0, 0.0))
+        history[0]["reason"] = "tampered"
+        self.assertEqual(execution.recent_deliveries()[0]["reason"], "awaiting-fresh-decision")
+
+    def test_watchdog_stop_is_recorded(self) -> None:
+        execution = ControlExecution(_RecordingTarget())
+        execution._deadline = 0.0
+        with patch.object(execution._wake, "wait", side_effect=[False, True]):
+            execution._watch()
+        self.assertEqual(execution.recent_deliveries()[0]["reason"], "decision-expired")
+        self.assertEqual(execution.recent_deliveries()[0]["throttle"], 0.0)
+
+    def test_history_is_bounded_and_undelivered_commands_are_absent(self) -> None:
+        execution = ControlExecution(_RecordingTarget())
+        self.addCleanup(execution.close)
+        for index in range(CONTROL_HISTORY_LIMIT + 5):
+            execution._write_idle(str(index))
+        history = execution.recent_deliveries()
+        self.assertEqual(len(history), CONTROL_HISTORY_LIMIT)
+        self.assertEqual(history[0]["reason"], "5")
+        failing = ControlExecution(_UnreachableTarget())
+        with self.assertRaises(ConnectionError):
+            failing.set_mode("autonomy")
+        self.assertEqual(failing.recent_deliveries(), ())
+
     def test_mode_changes_keep_the_idle_write_receipt(self) -> None:
         target = _RecordingTarget()
         execution = ControlExecution(target)

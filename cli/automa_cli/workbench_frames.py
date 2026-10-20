@@ -136,6 +136,7 @@ def run_frame(
         mode=recorded_context.get("mode", "workbench_replay"),
         user_steering=recorded_context.get("user_steering", 0.0),
         user_throttle=recorded_context.get("user_throttle", 0.0),
+        control_history=tuple(recorded_context.get("control_history", ())),
         shared_memory=shared_memory,
         metadata={
             "source": WORKBENCH_SEQUENCE_ID,

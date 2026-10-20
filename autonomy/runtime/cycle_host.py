@@ -359,7 +359,10 @@ class AutonomyCycleHost:
             run_generation = self._run_generation
         ticket = self.execution.ticket() if self.execution is not None else None
         if ticket is not None:
-            context = replace(context, mode=ticket.mode)
+            context = replace(
+                context, mode=ticket.mode,
+                control_history=self.execution.recent_deliveries(),
+            )
         with self._lock:
             self._cycle_in_progress = {"frame_id": context.frame_id, "started_at_ms": timestamp_ms()}
             if context.shared_memory is None:

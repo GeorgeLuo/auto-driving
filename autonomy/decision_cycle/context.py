@@ -15,7 +15,9 @@ class DecisionFrameContext:
     """Inputs for one cycle tick.
 
     ``shared_memory`` is the host-owned map that perception, memory, and
-    proposal plugins read and write.
+    proposal plugins read and write. ``control_history`` contains recent successful
+    command deliveries on the same clock as capture timestamps, including stops.
+    Delivery acknowledges the command boundary; actuation latency is unknown.
     """
 
     frame_id: str
@@ -27,6 +29,7 @@ class DecisionFrameContext:
     user_throttle: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
     shared_memory: SharedMemory | None = field(default=None, repr=False, compare=False)
+    control_history: tuple[dict[str, Any], ...] = ()
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -38,6 +41,7 @@ class DecisionFrameContext:
             "user_steering": self.user_steering,
             "user_throttle": self.user_throttle,
             "metadata": deepcopy(self.metadata),
+            "control_history": deepcopy(list(self.control_history)),
         }
 
 

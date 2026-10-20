@@ -4,12 +4,15 @@ A target only acquires its transport, writes normalized control, and releases
 it. All mode, freshness, invalidation, and stop policy lives here. A successful
 write acknowledges delivery to the target's command boundary, not measured
 motion. The receipt identifies that boundary on both physical and simulated
-vehicles.
+vehicles. A bounded history records successful writes on the runtime clock,
+including idle stops; it describes commanded control, not measured motion or
+actuation latency.
 """
 from __future__ import annotations
 
 import threading
 import time
+from collections import deque
 from copy import deepcopy
 from dataclasses import asdict, dataclass, replace
 from typing import Any, Protocol
@@ -17,6 +20,7 @@ from typing import Any, Protocol
 from autonomy.runtime.control import AutonomyControl
 
 CONTROL_MAX_AGE_S = 2.0
+CONTROL_HISTORY_LIMIT = 32
 MODES = frozenset({"manual", "observe_only", "autonomy"})
 
 
@@ -76,6 +80,7 @@ class ControlExecution:
         self._deadline: float | None = None
         self._owned = False
         self._output = AutonomyControl(reason="not-started")
+        self._deliveries: deque[dict[str, Any]] = deque(maxlen=CONTROL_HISTORY_LIMIT)
         self._closed = False
         self._wake = threading.Event()
         self._watchdog: threading.Thread | None = None
@@ -166,6 +171,7 @@ class ControlExecution:
                 control = AutonomyControl(reason="decision-unavailable")
             try:
                 receipt = self.target.write(control)
+                delivered_at_ms = int(time.time() * 1000)
                 self._output = control
             except Exception as exc:
                 self._fail(exc, frame_id=result.context.frame_id)
@@ -176,8 +182,9 @@ class ControlExecution:
             self._deadline = time.monotonic() + max(0.0, remaining_s)
             self.last_application = ControlApplication(
                 result.context.frame_id, self._mode, True, control.reason, control,
-                int(time.time() * 1000), receipt,
+                delivered_at_ms, receipt,
             )
+            self._record_delivery()
             self._publish_status()
             return self.last_application
 
@@ -195,7 +202,23 @@ class ControlExecution:
         self.last_application = ControlApplication(
             None, self._mode, True, reason, control, int(time.time() * 1000), receipt
         )
+        self._record_delivery()
         self._publish_status()
+
+    def _record_delivery(self) -> None:
+        application = self.last_application
+        self._deliveries.append({
+            "delivered_at_ms": application.delivered_at_ms,
+            "steering": application.control.steering,
+            "throttle": application.control.throttle,
+            "reason": application.reason,
+            "frame_id": application.frame_id,
+        })
+
+    def recent_deliveries(self) -> tuple[dict[str, Any], ...]:
+        """Successful writes, oldest first, detached from execution-owned state."""
+        with self._lock:
+            return tuple(deepcopy(self._deliveries))
 
     def _fail(self, exc: Exception, *, frame_id: str | None = None) -> None:
         self._generation += 1

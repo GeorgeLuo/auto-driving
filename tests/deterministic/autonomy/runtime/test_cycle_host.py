@@ -7,7 +7,7 @@ import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.activation import (
@@ -24,6 +24,7 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost, sync_live_selection
+from autonomy.runtime.execution import ControlExecution
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from tests.support.action_fixtures import action_runner, plan_runner, proposal_runner
@@ -109,6 +110,25 @@ def _state(report: dict) -> dict:
 
 
 class CycleHostMemoryTests(unittest.TestCase):
+    def test_memory_receives_prior_deliveries(self):
+        from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
+
+        seen = []
+        original = _RecordingMemory.update
+        def update(plugin, context, observation):
+            seen.append(context)
+            return original(plugin, context, observation)
+        with tempfile.TemporaryDirectory() as tmp:
+            host, _ = _host(memory=_memory_step(Path(tmp)))
+            host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+            self.addCleanup(host.close)
+            host.set_mode("autonomy")
+            expected = host.execution.recent_deliveries()
+            with patch.object(_RecordingMemory, "update", update):
+                result = host.run(DecisionFrameContext("frame-history", 0, int(time.time() * 1000)))
+            self.assertEqual(seen[0].control_history, expected)
+            self.assertEqual(result.context.to_dict()["control_history"], list(expected))
+
     def test_failed_start_reports_its_error_instead_of_the_previous_run_error(self):
         host, _ = _host()
         host.stop(reason="error", error="earlier failure")

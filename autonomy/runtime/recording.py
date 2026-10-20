@@ -171,7 +171,7 @@ def append_recording_frame(
     if context is not None:
         entry["context"] = {
             key: copy.deepcopy(context[key])
-            for key in ("mode", "user_steering", "user_throttle") if key in context
+            for key in ("mode", "user_steering", "user_throttle", "control_history") if key in context
         }
     manifest_path = root / RECORDING_MANIFEST_NAME
     payload: dict[str, Any] = {

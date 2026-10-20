@@ -340,7 +340,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             },
         )
 
-    def test_returned_state_is_detached_from_the_ledger(self) -> None:
+    def test_returned_ledger_is_the_stored_ledger(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
         first = ledger.update(
             DecisionFrameContext("frame_1", 1, 1_000),
@@ -350,13 +350,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 things=(_thing("floor_boundary_000"),),
             ),
         )
-        first.records[0].properties["width_fraction"] = 0.99
-        first.metadata["policy"] = "mutated"
-        second = ledger.ledger()
-        self.assertEqual(second.records[0].properties["width_fraction"], 0.2)
-        self.assertEqual(second.metadata["policy"], "bounded_evidence_recency")
-        third = ledger.update(DecisionFrameContext("frame_2", 2, 1_100), None)
-        self.assertEqual(third.records[0].properties["width_fraction"], 0.2)
+        self.assertIs(ledger.ledger(), first)
 
     def test_oversized_properties_are_not_retained(self) -> None:
         ledger = BoundedEvidenceReducer(

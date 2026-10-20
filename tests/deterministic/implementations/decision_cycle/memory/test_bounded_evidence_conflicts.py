@@ -712,15 +712,13 @@ class ConflictMatrixTests(unittest.TestCase):
         self.assertEqual(snap.record_count, 2)
         self.assertEqual(snap.metadata["last_update_conflict_count"], 0)
 
-    def test_caller_mutation_detached(self) -> None:
+    def test_caller_reads_the_stored_ledger(self) -> None:
         ledger = _ledger()
         snap = ledger.update(
             _ctx("f1", 1, 100),
             _observation("o1", created_at_ms=90, things=(_thing(),)),
         )
-        snap.metadata["conflict_count"] = 99
-        again = ledger.ledger()
-        self.assertEqual(again.metadata["conflict_count"], 0)
+        self.assertIs(ledger.ledger(), snap)
 
 
 if __name__ == "__main__":

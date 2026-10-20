@@ -186,9 +186,8 @@ class DecisionStageFlowTests(unittest.TestCase):
         self.assertNotIn("projections", serialized)
         json.dumps(serialized)
 
-        serialized["context"]["metadata"]["route"]["candidate"] = "left"
+        self.assertIs(serialized["context"]["metadata"], context.metadata)
         serialized["memory"]["plugins"][0]["state"]["records"][0]["properties"]["mutated"] = True
-        self.assertEqual(context.metadata["route"]["candidate"], "center")
         self.assertNotIn("mutated", memory["plugins"][0]["state"]["records"][0]["properties"])
 
 

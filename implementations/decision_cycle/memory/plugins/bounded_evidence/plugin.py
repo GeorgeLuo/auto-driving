@@ -19,7 +19,6 @@ from autonomy.decision_cycle.observation.publication import read_observation
 from autonomy.shared_memory import SharedMemory
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     EvidenceLedger,
-    detach_ledger,
 )
 from implementations.decision_cycle.memory.shared.evidence_ledger.reduction import (
     BoundedEvidenceReducer,
@@ -56,10 +55,10 @@ class BoundedEvidenceLedger:
 
         current = None if shared_memory is None else shared_memory.get(LEDGER_KEY)
         if current is None:
-            return detach_ledger(self._empty)
+            return self._empty
         if not isinstance(current, EvidenceLedger):
             raise TypeError(f"{LEDGER_KEY} must hold an EvidenceLedger")
-        return detach_ledger(current)
+        return current
 
     def status(self, shared_memory: SharedMemory | None) -> dict[str, Any]:
         return self.ledger(shared_memory).to_dict()

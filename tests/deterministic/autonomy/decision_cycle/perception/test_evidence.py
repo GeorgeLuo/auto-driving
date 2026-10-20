@@ -70,7 +70,7 @@ class EvidenceValueTests(unittest.TestCase):
 
 
 class PerceptionEvidenceSerializationTests(unittest.TestCase):
-    def test_evidence_survives_detached_perception_serialization(self) -> None:
+    def test_evidence_round_trips_through_perception_serialization(self) -> None:
         polygon = ((0.1, 0.2), (0.7, 0.25), (0.6, 0.8), (0.2, 0.75))
         original = PerceptionText(
             schema=PERCEPTION_TEXT_SCHEMA,
@@ -106,13 +106,10 @@ class PerceptionEvidenceSerializationTests(unittest.TestCase):
         self.assertEqual(restored.things[0].location.polygon_xy_norm, polygon)
         self.assertEqual(restored.things[0].location.bbox_xyxy_norm, (0.1, 0.2, 0.7, 0.8))
 
-        serialized["signals"][0]["properties"]["support"]["frames"].append(3)
-        serialized["things"][0]["properties"]["appearance"]["tags"].append("moving")
-
+        self.assertIs(restored.signals[0].properties, serialized["signals"][0]["properties"])
+        self.assertIs(restored.things[0].properties, serialized["things"][0]["properties"])
         self.assertEqual(original.signals[0].properties["support"]["frames"], [1, 2])
-        self.assertEqual(restored.signals[0].properties["support"]["frames"], [1, 2])
         self.assertEqual(original.things[0].properties["appearance"]["tags"], ["textured"])
-        self.assertEqual(restored.things[0].properties["appearance"]["tags"], ["textured"])
 
 
 if __name__ == "__main__":

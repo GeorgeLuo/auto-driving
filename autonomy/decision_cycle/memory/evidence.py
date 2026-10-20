@@ -7,7 +7,6 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -99,7 +98,6 @@ class RetainedEvidence:
             raise TypeError("retained evidence origin must be MemoryOrigin")
         if self.location is not None and not isinstance(self.location, ViewLocation):
             raise TypeError("retained evidence location must be ViewLocation or None")
-        object.__setattr__(self, "properties", deepcopy(dict(self.properties)))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -109,7 +107,7 @@ class RetainedEvidence:
             "confidence": self.confidence,
             "origin": self.origin.to_dict(),
             "location": self.location.to_dict() if self.location is not None else None,
-            "properties": deepcopy(self.properties),
+            "properties": self.properties,
         }
 
     @classmethod
@@ -123,6 +121,9 @@ class RetainedEvidence:
             if isinstance(location_data, dict)
             else None
         )
+        properties = data.get("properties") or {}
+        if not isinstance(properties, dict):
+            raise TypeError("retained evidence properties must be a dict")
         return cls(
             record_id=str(data.get("record_id") or ""),
             kind=str(data.get("kind") or ""),
@@ -130,7 +131,7 @@ class RetainedEvidence:
             confidence=data.get("confidence"),
             origin=MemoryOrigin.from_dict(origin_data),
             location=location,
-            properties=deepcopy(dict(data.get("properties") or {})),
+            properties=properties,
         )
 
 

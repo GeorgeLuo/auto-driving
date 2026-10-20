@@ -29,7 +29,6 @@ from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import 
     DEFAULT_MAX_SERIALIZED_BYTES,
     EvidenceLedger,
     LedgerBounds,
-    detach_ledger,
     empty_ledger,
     serialized_ledger_bytes,
     serialized_mapping_bytes,
@@ -149,7 +148,7 @@ class BoundedEvidenceReducer:
                 created_at_ms=now_ms,
                 observation=observation,
             )
-        return detach_ledger(self._latest)
+        return self._latest
 
     def reset(self) -> EvidenceLedger:
         self._epoch += 1
@@ -172,11 +171,11 @@ class BoundedEvidenceReducer:
             ),
             metadata=self._metadata(observation_id=None),
         )
-        return detach_ledger(self._latest)
+        return self._latest
 
     def ledger(self) -> EvidenceLedger:
         # Pure read: must not zero last_update_conflict_count.
-        return detach_ledger(self._latest)
+        return self._latest
 
     def _metadata(self, *, observation_id: str | None) -> dict[str, Any]:
         return {

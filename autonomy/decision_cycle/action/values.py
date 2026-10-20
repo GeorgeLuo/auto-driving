@@ -145,16 +145,12 @@ def build_authority(
     proposed: ProposedVehicleCommand | None = None,
     drive_mode_gate: str | None = None,
 ) -> AuthorityResult:
-    # Detach proposed command so authority does not alias plan candidate storage.
-    detached_proposed: ProposedVehicleCommand | None = None
-    if proposed is not None:
-        if not isinstance(proposed, ProposedVehicleCommand):
-            raise TypeError("proposed must be ProposedVehicleCommand or None")
-        detached_proposed = ProposedVehicleCommand.from_dict(proposed.to_dict())
+    if proposed is not None and not isinstance(proposed, ProposedVehicleCommand):
+        raise TypeError("proposed must be ProposedVehicleCommand or None")
     return AuthorityResult(
         frame_id=frame_id,
         gate_id=gate_id,
-        proposed=detached_proposed,
+        proposed=proposed,
         cycle_status=cycle_status,
         cycle_reason=cycle_reason,
         authorized_output=control_output(decision.control),

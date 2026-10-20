@@ -193,14 +193,6 @@ def empty_ledger(
     )
 
 
-def detach_ledger(ledger: EvidenceLedger) -> EvidenceLedger:
-    """Return a deep copy so readers cannot mutate the stored ledger."""
-
-    if not isinstance(ledger, EvidenceLedger):
-        raise TypeError(f"detach_ledger requires EvidenceLedger; got {type(ledger).__name__}")
-    return EvidenceLedger.from_dict(ledger.to_dict())
-
-
 def serialized_ledger_bytes(ledger: EvidenceLedger) -> int:
     """UTF-8 byte length of the compact strict JSON form of a ledger."""
 

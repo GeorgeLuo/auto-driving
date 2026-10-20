@@ -15,7 +15,6 @@ from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import 
     EvidenceLedger,
     LedgerBounds,
     bounds_from_config,
-    detach_ledger,
     empty_ledger,
 )
 
@@ -56,7 +55,7 @@ class EvidenceLedgerTests(unittest.TestCase):
             metadata={"source": "unit-test"},
         )
 
-    def test_ledger_serializes_detached_and_round_trips(self) -> None:
+    def test_ledger_serializes_and_round_trips(self) -> None:
         ledger = self.ledger()
 
         payload = ledger.to_dict()
@@ -65,9 +64,8 @@ class EvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(payload["record_count"], 1)
         self.assertTrue(set(LEDGER_SUMMARY_KEYS).issubset(payload))
         self.assertIn(payload["health"], LEDGER_HEALTH_VALUES)
-        payload["records"][0]["properties"]["width_fraction"] = 0.9
+        self.assertIs(payload["records"][0]["properties"], ledger.records[0].properties)
         payload["metadata"]["source"] = "mutated"
-        self.assertEqual(ledger.records[0].properties["width_fraction"], 0.2)
         self.assertEqual(ledger.metadata["source"], "unit-test")
 
         restored = EvidenceLedger.from_dict(ledger.to_dict())
@@ -76,16 +74,6 @@ class EvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(restored.bounds.max_age_ms, 2_000)
         self.assertEqual(restored.bounds.max_property_bytes, 4_096)
         self.assertEqual(restored.bounds.max_serialized_bytes, 262_144)
-
-    def test_detach_ledger_isolates_nested_mutation(self) -> None:
-        original = self.ledger()
-
-        detached = detach_ledger(original)
-        detached.records[0].properties["width_fraction"] = 0.5
-        detached.metadata["source"] = "mutated"
-
-        self.assertEqual(original.records[0].properties["width_fraction"], 0.2)
-        self.assertEqual(original.metadata["source"], "unit-test")
 
     def test_empty_ledger(self) -> None:
         empty = empty_ledger(memory_id="mem_empty", epoch_id="epoch_1", bounds=self.bounds(), created_at_ms=1)

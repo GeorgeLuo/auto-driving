@@ -37,14 +37,13 @@ class RetainedEvidenceTests(unittest.TestCase):
             properties={"width_fraction": 0.2},
         )
 
-    def test_record_serializes_detached_and_round_trips(self) -> None:
+    def test_record_serializes_and_round_trips(self) -> None:
         record = self.retained()
 
         payload = record.to_dict()
         json.dumps(payload)
         self.assertEqual(payload["origin"]["frame_id"], "donkey_frame_000100")
-        payload["properties"]["width_fraction"] = 0.9
-        self.assertEqual(record.properties["width_fraction"], 0.2)
+        self.assertIs(payload["properties"], record.properties)
 
         restored = RetainedEvidence.from_dict(record.to_dict())
         self.assertEqual(restored.record_id, "rec_1")

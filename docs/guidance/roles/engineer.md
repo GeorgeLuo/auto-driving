@@ -48,11 +48,21 @@ and flag where refactors can be applied to branching lanes from common abstracti
 Think deeply around if the change touches the right place. Generally the "hardness"
 of code is autonomy enforces things that all automation shares in terms of things
 that proceed in time, exist in the substrate of the environment and affect the
-environment. Steps should be treated as equally important and from this, form
-of the code should agree with function between the steps (filesystem layout, patterns).
+environment. Steps should be treated as peers and from this, form of the code 
+should agree with function between the steps (filesystem layout, patterns).
 The implementations shared code should capture abstractions that are general to
 step behavior, plugins themselves are where specific environment dependent values
-are set.
+are set. Summarily, the hierarchy is autonomy/runtime codebase informs at a harness level
+how the state machine operates, autonomy/decision_cycle step files inform general
+i/o and abstractions that are best utilized for that step, and implementations
+is a mix of general framing for intermediate conceptualizations useful during
+execution and very specific transformations of data during execution.
+
+Filetrees should be organized for readability: avoid stubbing imports, shared code
+that is common but not required (helpers) should exist in collections with shared
+designation, while common code for architectural consistency should exist as siblings
+to directories where more specific implementation or logical descendants of the code
+exist.
 
 tag: review, audit
 

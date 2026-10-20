@@ -126,7 +126,7 @@ class LiveRuntimeDecisionViewFixture:
         stream_frame = stream_frame or self._accepted_frame(run_id=run_id)
         frame_path = Path(self._temporary.name) / image_name
         Image.new("RGB", (40, 30), image_color).save(frame_path)
-        values = stream_frame.get("values") if isinstance(stream_frame.get("values"), dict) else {}
+        cycle = stream_frame["cycle"]
         frame_record = {
             "frame_id": stream_frame["frame_id"],
             "frame_index": stream_frame["frame_index"],
@@ -135,8 +135,8 @@ class LiveRuntimeDecisionViewFixture:
             "sensor_frame": {
                 "readings": {"front_camera": {"read_id": stream_frame["frame_id"]}}
             },
-            "observation": values.get("observation"),
-            "memory": values.get("memory"),
+            "observation": cycle["observation"],
+            "memory": cycle["memory"],
         }
         target.perception.publish_frame(
             frame_path=frame_path, frame_record=frame_record

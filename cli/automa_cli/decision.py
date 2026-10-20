@@ -62,7 +62,6 @@ from .host_publications import (
 
 ERROR_SCHEMA = "vehicle_decision_error_v0"
 # A decision frame's cycle holds the proposal, plan, and action step records.
-CYCLE_EXACT_KEYS = frozenset({"proposal", "plan", "action"})
 PROPOSAL_RECORD_EXACT_KEYS = frozenset(
     {"schema", "frame_id", "status", "reason", "candidates"}
 )
@@ -624,7 +623,6 @@ def _require_exact_cycle_export(cycle: dict[str, Any]) -> DecisionRecords:
     is rejected as a class. Returns the records for alignment checks.
     """
 
-    _require_exact_keys(cycle, CYCLE_EXACT_KEYS, field="cycle")
     proposal_payload = cycle.get("proposal")
     action_payload = cycle.get("action")
     if not isinstance(proposal_payload, dict) or not isinstance(action_payload, dict):
@@ -697,7 +695,8 @@ def _require_exact_cycle_export(cycle: dict[str, Any]) -> DecisionRecords:
             f"cycle failed record construction: {exc}",
             details={"field": "cycle"},
         ) from exc
-    _require_canonical_export_equal(cycle, reconstructed.to_dict(), field="cycle")
+    exported = reconstructed.to_dict()
+    _require_canonical_export_equal({key: cycle[key] for key in exported}, exported, field="cycle")
     return reconstructed
 
 

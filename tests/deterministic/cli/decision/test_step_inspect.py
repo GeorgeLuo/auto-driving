@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
-from cli.automa_cli.decision_steps import inspect_decision_step
+from cli.automa_cli.decision_steps import format_step_record, inspect_decision_step
 from cli.automa_cli.step_replay import StepReplay, default_selection
 from cli.automa_cli.workbench_source import ImageSource, ReplayFrame
 from implementations.decision_cycle.catalog import SELECTABLE_STEPS
@@ -57,6 +57,43 @@ class DecisionStepInspectTests(unittest.TestCase):
                 text = inspect_decision_step(step, source=self.frames).message
                 self.assertIn(f"{step.capitalize()} inspect", text)
                 self.assertIn(f"{step.capitalize()}: status=", text)
+
+    def test_proposal_lines_show_observation_each_plugin_and_only_publisher_evidence(self) -> None:
+        retained = [
+            {"record_id": f"r-{index}", "kind": "obstacle", "confidence": None,
+             "origin": {"frame_id": "frame-0"}}
+            for index in range(13)
+        ]
+        memory = {
+            "plugins": [
+                {"plugin_id": "model", "state": {"health": "healthy", "records": [{"record_id": "wrong"}]}},
+                {"plugin_id": "ledger", "state": {
+                    "health": "healthy", "record_count": 13, "epoch_id": "epoch-1", "records": retained,
+                }},
+            ],
+            "evidence_publisher": "ledger",
+        }
+        lines = format_step_record(
+            "proposal", {"status": "ready"}, observation={"observation_id": "obs-1"}, memory=memory,
+        )
+        self.assertIn("Observation: obs-1", lines)
+        self.assertIn("Memory: plugin=model health=healthy records=0 epoch=None", lines)
+        self.assertIn("Memory: plugin=ledger health=healthy records=13 epoch=epoch-1", lines)
+        self.assertIn("Memory: publisher=ledger", lines)
+        self.assertEqual(len([line for line in lines if line.startswith("Retained:")]), 12)
+        self.assertIn("Retained: record_id=r-0 kind=obstacle confidence=none frame_id=frame-0", lines)
+        self.assertNotIn("wrong", "\n".join(lines))
+        absent = format_step_record("proposal", {"status": "ready"})
+        self.assertIn("Observation: none", absent)
+        self.assertIn("Memory: publisher=none", absent)
+
+    def test_proposal_inspect_carries_the_evidence_used_by_its_formatter(self) -> None:
+        frame = self.inspect("proposal")["frames"][0]
+        self.assertIsInstance(frame["observation"], dict)
+        self.assertIsInstance(frame["memory"], dict)
+        text = inspect_decision_step("proposal", source=self.frames).message
+        self.assertIn(f"Observation: {frame['observation']['observation_id']}", text)
+        self.assertIn("Memory: plugin=bounded_evidence", text)
 
     def test_each_frame_carries_every_steps_and_plugins_time(self) -> None:
         """Regression: no command showed step or plugin time, so a slow plugin was invisible."""

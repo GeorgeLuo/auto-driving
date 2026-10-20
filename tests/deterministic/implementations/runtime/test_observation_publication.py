@@ -375,7 +375,7 @@ class ObservationPublicationTests(unittest.TestCase):
                 "completed_at_ms": part.latest_state.completed_at_ms,
             },
         )
-        self.assertEqual(sorted(published["cycle"]), ["action", "plan", "proposal"])
+        self.assertEqual(sorted(published["cycle"]), ["action", "memory", "observation", "plan", "proposal"])
         self.assertEqual(published["cycle"]["action"]["frame_id"], published["frame_id"])
         self.assertEqual(published["cycle"]["plan"]["frame_id"], published["frame_id"])
         self.assertEqual(published["cycle"]["proposal"]["frame_id"], published["frame_id"])

@@ -11,7 +11,7 @@ from autonomy.vehicle import SensorFrame
 
 
 # Input fields shared by live publication, recording, and replay.
-RECORDED_CONTEXT_FIELDS = ("mode", "user_steering", "user_throttle")
+RECORDED_CONTEXT_FIELDS = ("timestamp_ms", "mode", "user_steering", "user_throttle")
 
 
 def recorded_context(data: dict[str, Any]) -> dict[str, Any]:

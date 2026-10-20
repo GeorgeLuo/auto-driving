@@ -54,10 +54,21 @@ The implementations shared code should capture abstractions that are general to
 step behavior, plugins themselves are where specific environment dependent values
 are set.
 
-tag: review_scope, audit
+tag: review, audit
 
 ## Documentation
 
-Comments, READMEs are intended primarily to aid implementers of 
+Comments, READMEs, etc. should prioritize as audience implementers of automations. They
+should shape decisions around how to use the api over minutiae of how they work. For example
+it is better to say how to best write a plugin close to where the plugin files exist,
+rather than trusting that an implementer reads the harness to run the plugin.
+Before adding documentation to the codebase, think about how realistic it is to keep
+it up to date. Practically, it should be either findable through text search via tags
+or shared vocabulary, or the path to discovery should be well visited. For example,
+spending a lot of time defining presets while the state of plugins is very mutable
+adds risk of outdated documentation and slows down implementation work. Too much
+documentation around how things work hints at possibilities in making the code more
+readable, possibility of consolidating similar code, or simply that there was too much
+focus in documentation.
 
-tag: review_scope, audit
+tag: review, audit

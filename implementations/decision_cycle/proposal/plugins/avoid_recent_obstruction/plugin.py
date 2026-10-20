@@ -195,6 +195,7 @@ def propose(
     accepted_kinds: Sequence[str] = DEFAULT_ACCEPTED_KINDS,
     retained_max_age_ms: int = DEFAULT_RETAINED_MAX_AGE_MS,
     steer_magnitude: float = DEFAULT_STEER_MAGNITUDE,
+    max_abs_steering: float = 1.0,
 ) -> ActionProposal:
     """Emit exactly one ActionProposal from the source and retained evidence."""
 
@@ -335,51 +336,7 @@ def propose(
             return _inactive(source, "no_lateral_obstruction_evidence")
 
         assumptions = list(BASE_ASSUMPTIONS)
-        magnitude = float(steer_magnitude)
-        caps = source.capabilities
-        if caps.status == "ready":
-            # Ready but non-mapping or invalid fields fail closed — do not treat
-            # as unavailable fallback. Frozen JSON objects are Mapping, not dict.
-            caps_value = caps.value
-            if hasattr(caps_value, "to_dict") and callable(
-                getattr(caps_value, "to_dict")
-            ):
-                caps_value = caps_value.to_dict()
-            if isinstance(caps_value, Mapping) and not isinstance(
-                caps_value, (str, bytes)
-            ):
-                caps_value = dict(caps_value)
-            if not isinstance(caps_value, dict):
-                return ActionProposal(
-                    plugin_id=AvoidRecentObstruction.plugin_id,
-                    frame_id=source.frame_id,
-                    lifecycle="error",
-                    freshness="none",
-                    confidence=0.0,
-                    reason="invalid_capabilities",
-                    command=None,
-                    assumptions=BASE_ASSUMPTIONS,
-                    available=False,
-                )
-            try:
-                max_abs = float(caps_value.get("max_abs_steering"))
-            except (TypeError, ValueError):
-                max_abs = None
-            if max_abs is None or not math.isfinite(max_abs) or not (0.0 < max_abs <= 1.0):
-                return ActionProposal(
-                    plugin_id=AvoidRecentObstruction.plugin_id,
-                    frame_id=source.frame_id,
-                    lifecycle="error",
-                    freshness="none",
-                    confidence=0.0,
-                    reason="invalid_capabilities",
-                    command=None,
-                    assumptions=BASE_ASSUMPTIONS,
-                    available=False,
-                )
-            magnitude = min(magnitude, max_abs)
-        else:
-            assumptions.append("capabilities_not_ready")
+        magnitude = min(float(steer_magnitude), max_abs_steering)
 
         steering = magnitude if side == "left" else -magnitude
         lifecycle = pool_lifecycle or "retained"
@@ -431,6 +388,7 @@ class AvoidRecentObstruction:
         accepted_kinds: Sequence[str] = DEFAULT_ACCEPTED_KINDS,
         retained_max_age_ms: int = DEFAULT_RETAINED_MAX_AGE_MS,
         steer_magnitude: float = DEFAULT_STEER_MAGNITUDE,
+        max_abs_steering: float = 1.0,
         evidence_key: str = EVIDENCE_KEY,
     ) -> None:
         if type(accepted_kinds) not in (list, tuple):
@@ -452,11 +410,15 @@ class AvoidRecentObstruction:
             raise ValueError("steer_magnitude must be numeric") from exc
         if not math.isfinite(magnitude) or not (0.0 < magnitude <= 1.0):
             raise ValueError("steer_magnitude must satisfy 0 < value <= 1")
+        if (type(max_abs_steering) not in (int, float)
+                or not math.isfinite(max_abs_steering) or not 0 < max_abs_steering <= 1):
+            raise ValueError("max_abs_steering must satisfy 0 < value <= 1")
         if not isinstance(evidence_key, str) or not evidence_key.strip():
             raise ValueError("evidence_key must be a non-empty string")
         self.accepted_kinds = kinds
         self.retained_max_age_ms = retained_max_age_ms
         self.steer_magnitude = magnitude
+        self.max_abs_steering = float(max_abs_steering)
         self.evidence_key = evidence_key
 
     def propose(
@@ -471,4 +433,5 @@ class AvoidRecentObstruction:
             accepted_kinds=self.accepted_kinds,
             retained_max_age_ms=self.retained_max_age_ms,
             steer_magnitude=self.steer_magnitude,
+            max_abs_steering=self.max_abs_steering,
         )

@@ -36,7 +36,9 @@ Start at [presets.py](presets.py): `DEFAULT_PROPOSAL_PRESET` selects
 [plugins/avoid_recent_obstruction/plugin.py](plugins/avoid_recent_obstruction/plugin.py)
 holds its `propose` function and `AvoidRecentObstruction` class. The plugin
 steers away from lateral obstruction evidence retained in shared memory;
-without usable evidence it proposes no command.
+without usable evidence it proposes no command. Its `max_abs_steering` config
+(default `1.0`) clamps `steer_magnitude`; both must be greater than zero and
+at most one.
 
 ## Framework boundary
 

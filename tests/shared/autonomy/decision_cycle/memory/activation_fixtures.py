@@ -2,6 +2,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
+from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 from autonomy.decision_cycle.activation import STEP_ACTIVATION_SCHEMA
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
@@ -11,6 +12,8 @@ class _RecordingMemory:
 
     Keeps its epoch and records at ``<plugin_id>.state`` in the host map.
     """
+
+    contract = MemoryPluginContract(description="Record test observations.")
 
     def __init__(
         self,

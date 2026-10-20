@@ -10,6 +10,7 @@ from pathlib import Path
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 from autonomy.decision_cycle.activation import STEP_ACTIVATION_SCHEMA, read_step_activation
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
 
@@ -35,6 +36,8 @@ class _OrderedMemory(_RecordingMemory):
 
 class _NotMemory:
     """Constructs, but offers no ``update`` or ``reset``."""
+
+    contract = MemoryPluginContract()
 
     def __init__(self, **config):
         self.plugin_id = config["plugin_id"]

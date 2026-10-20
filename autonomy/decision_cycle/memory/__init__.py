@@ -6,6 +6,7 @@ step's backend, composition, failure policy, report, and the ledger summary
 keys tooling reads, and ``runner`` the step runner, which also holds
 the per-plugin runtime and records the evidence publisher. ``errors.MemoryUpdateError``
 stops the cycle when a memory update cannot continue. ``publication`` names the
-key for the retained evidence. ``evidence``
-holds the retained-evidence record types plugins exchange.
+keys for the retained evidence and for each belief. ``evidence``
+holds the retained-evidence record types plugins exchange, and ``beliefs`` the
+checked values a plugin learns.
 """

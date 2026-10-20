@@ -3,12 +3,14 @@ from __future__ import annotations
 import unittest
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 
 class _FeedProbe:
     plugin_id = "feed_probe"
+    contract = MemoryPluginContract(description="Test memory plugin.")
 
     def __init__(self) -> None:
         self.seen: list[DecisionFrameContext] = []

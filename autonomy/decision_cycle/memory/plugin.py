@@ -12,8 +12,7 @@ diagnostics. Framework code owns selection, timing, and failure isolation.
 Every plugin exposes a ``MemoryPluginContract``: what it does and assumes, the
 beliefs it publishes, and its limits. A ``Belief`` (``beliefs``) is a learned
 value and the checks of it; the plugin decides what counts as support and keeps
-it at ``belief_key`` (``publication``). The runner fails an update that writes
-a belief key the contract does not declare, and reset removes the declared keys.
+it at ``belief_key`` (``publication``). Reset removes the declared keys.
 
 A memory plugin reads the host map and the ``observation``; it does not read
 the feed. The context it receives has no ``sensor_frame``. Anything memory needs

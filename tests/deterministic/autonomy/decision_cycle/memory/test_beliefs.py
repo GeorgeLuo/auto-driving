@@ -85,21 +85,14 @@ class BeliefTests(unittest.TestCase):
         self.assertIsNone(discarded.confidence)
         self.assertEqual((discarded.value, discarded.updated_at_ms), (14, 4))
 
-    def test_json_round_trip_and_serialization_detach_nested_data(self):
-        raw = {"range": [1, 2]}
-        belief = Belief("test", raw, "test", 0, properties=raw)
-        raw["range"][0] = 99
-        self.assertEqual(belief.value["range"], [1, 2])
-        belief = belief.opened(Trial("t", "arrival", 1, raw, raw), 4)
-        belief = belief.checked(Check(2, "stop", "support", raw, raw), 8)
+    def test_json_round_trip_derives_confidence_and_records_are_frozen(self):
+        belief = Belief("test", {"range": [1, 2]}, "test", 0, properties={"samples": 3})
+        belief = belief.opened(Trial("t", "arrival", 1, {"row": 12}, {"frame": "f1"}), 4)
+        belief = belief.checked(Check(2, "stop", "support", {"row": 12}, {"row": 11}), 8)
         encoded = json.loads(json.dumps(belief.to_dict()))
         self.assertEqual(Belief.from_dict(encoded), belief)
         forged = {**encoded, "confidence": 1.0, "by_method": {}, "corroborated": True}
         self.assertEqual(Belief.from_dict(forged).to_dict(), belief.to_dict())
-        encoded["value"]["range"][0] = 33
-        encoded["checks"][0]["predicted"]["range"][0] = 44
-        self.assertEqual(belief.value["range"], [1, 2])
-        self.assertEqual(belief.checks[0].predicted["range"][0], 99)
         for value, attribute in ((belief, "value"), (belief.checks[0], "method"), (belief.trials[0], "method")):
             with self.assertRaises(FrozenInstanceError):
                 setattr(value, attribute, None)
@@ -132,13 +125,10 @@ class BeliefTests(unittest.TestCase):
         document = json.loads(json.dumps(shared_memory_document({belief_key(belief.belief_id): belief})))
         self.assertEqual(shared_memory_from_document(document), {"memory.beliefs.test.row": belief})
 
-    def test_readers_get_a_detached_belief_or_none(self):
+    def test_readers_get_the_stored_belief_or_none(self):
         belief = hypothesis().checked(Check(1, "stop", "support"), 5)
         shared = {belief_key(belief.belief_id): belief, belief_key("test.raw"): belief.to_dict()}
-        read = read_belief(shared, belief.belief_id)
-        self.assertEqual(read, belief)
-        read.value["median"] = 99
-        self.assertEqual(belief.value["median"], 12)
+        self.assertIs(read_belief(shared, belief.belief_id), belief)
         for shared_memory, belief_id in ((shared, "absent"), (shared, "test.raw"), (None, "test.row")):
             with self.subTest(belief_id=belief_id):
                 self.assertIsNone(read_belief(shared_memory, belief_id))

@@ -76,14 +76,12 @@ publishes, and its limitations. A plugin keeps each declared belief at
 `belief_key(belief_id)`, `memory.beliefs.<belief_id>`, as the `Belief` record
 itself: that key is both its state and its publication. One plugin owns each
 belief id, and a selection in which two plugins declare the same id is
-rejected. `read_belief` returns a copy of the `Belief`, or `None` when no
+rejected. `read_belief` returns the stored `Belief`, or `None` when no
 plugin has published it. Retained `memory.evidence` still uses last-write-wins.
 
 A plugin that does not check what it learns declares `belief_ids=()` and
-publishes no beliefs, so readers get `None`, never a score. An update that
-writes a belief key its contract does not declare, or anything but its own
-`Belief` with the key's id, is undone and stops the cycle. Reset and removing a
-plugin delete its declared keys, even if its optional reset fails.
+publishes no beliefs, so readers get `None`, never a score. Reset and
+removing a plugin delete its declared keys, even if its optional reset fails.
 
 Confidence is `None` before the first check, then
 `(support + 1) / (support + contradict + 2)` over the retained checks, so it

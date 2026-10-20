@@ -13,8 +13,8 @@ A plugin publishes each ``Belief`` its contract declares at
 ``belief_key(belief_id)``, one key per belief, and keeps it there as its own
 state: it reads the belief back on its next update and writes a new one when a
 check or revision changes it. One plugin owns each belief id. ``read_belief``
-returns a detached copy, or None when no plugin has published that belief,
-never a score.
+returns the stored ``Belief``, or None when no plugin has published that
+belief, never a score.
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def belief_key(belief_id: str) -> str:
 
 
 def read_belief(shared_memory: SharedMemory | None, belief_id: str) -> Belief | None:
-    """A detached copy of the published ``Belief``, or None when the key holds none."""
+    """The published ``Belief``, or None when the key holds none."""
 
     value = None if shared_memory is None else shared_memory.get(belief_key(belief_id))
-    return Belief.from_dict(value.to_dict()) if isinstance(value, Belief) else None
+    return value if isinstance(value, Belief) else None

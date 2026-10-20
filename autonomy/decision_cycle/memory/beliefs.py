@@ -16,7 +16,6 @@ The plugin that declares a belief keeps it at ``publication.belief_key``.
 
 from __future__ import annotations
 
-from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from typing import Any, Literal
 
@@ -40,13 +39,11 @@ class Check:
         require_identifier(self.method, field_name="method")
         if self.outcome not in ("support", "contradict"):
             raise ValueError("outcome must be support or contradict")
-        object.__setattr__(self, "predicted", deepcopy(self.predicted))
-        object.__setattr__(self, "observed", deepcopy(self.observed))
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "at_ms": self.at_ms, "method": self.method, "outcome": self.outcome,
-            "predicted": deepcopy(self.predicted), "observed": deepcopy(self.observed),
+            "predicted": self.predicted, "observed": self.observed,
         }
 
     @classmethod
@@ -70,13 +67,11 @@ class Trial:
         object.__setattr__(
             self, "started_at_ms", require_non_negative_int(self.started_at_ms, field_name="started_at_ms"),
         )
-        object.__setattr__(self, "predicted", deepcopy(self.predicted))
-        object.__setattr__(self, "properties", deepcopy(dict(self.properties)))
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "trial_id": self.trial_id, "method": self.method, "started_at_ms": self.started_at_ms,
-            "predicted": deepcopy(self.predicted), "properties": deepcopy(self.properties),
+            "predicted": self.predicted, "properties": self.properties,
         }
 
     @classmethod
@@ -110,8 +105,6 @@ class Belief:
             raise TypeError("trials must contain Trial values")
         if len({trial.trial_id for trial in self.trials}) != len(self.trials):
             raise ValueError("trial ids must be unique within a belief")
-        object.__setattr__(self, "value", deepcopy(self.value))
-        object.__setattr__(self, "properties", deepcopy(dict(self.properties)))
 
     @property
     def confidence(self) -> float | None:
@@ -160,11 +153,11 @@ class Belief:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "belief_id": self.belief_id, "value": deepcopy(self.value),
+            "belief_id": self.belief_id, "value": self.value,
             "source_plugin_id": self.source_plugin_id, "updated_at_ms": self.updated_at_ms,
             "checks": [check.to_dict() for check in self.checks],
             "trials": [trial.to_dict() for trial in self.trials],
-            "properties": deepcopy(self.properties), "confidence": self.confidence,
+            "properties": self.properties, "confidence": self.confidence,
             "by_method": self.by_method, "corroborated": self.corroborated,
         }
 

@@ -40,7 +40,7 @@ epoch. ``MemoryRunner.reset`` returns that fresh state, and
 plugin's ``memory_required`` flag means that plugin needs this map to perceive.
 
 A memory plugin's belief at ``memory.beliefs.<belief_id>`` is both that
-plugin's state and its publication. Only the plugin whose contract declares the
+plugin's state and its publication. The plugin whose contract declares the
 belief writes it, and the memory runner removes it when that plugin resets.
 """
 

@@ -52,4 +52,12 @@ environment. Steps should be treated as equally important and from this, form
 of the code should agree with function between the steps (filesystem layout, patterns).
 The implementations shared code should capture abstractions that are general to
 step behavior, plugins themselves are where specific environment dependent values
-are set. 
+are set.
+
+tag: review_scope, audit
+
+## Documentation
+
+Comments, READMEs are intended primarily to aid implementers of 
+
+tag: review_scope, audit

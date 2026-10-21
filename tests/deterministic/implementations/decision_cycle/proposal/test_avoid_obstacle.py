@@ -1,14 +1,21 @@
-"""Collision recovery backs up until the right is clear, then turns right until ahead is clear."""
+"""Collision recovery backs up until the right is clear, then turns right until ahead is clear.
+
+A box ahead that perception calls near turns toward a side with more reach, while that side has more.
+"""
 
 import unittest
 
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.beliefs import Belief
+from autonomy.decision_cycle.memory.publication import belief_key
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY, write_observation
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
 from implementations.decision_cycle.proposal.plugins.avoid_obstacle.plugin import AvoidObstacle
 
 KEY = "proposal.avoid_obstacle.maneuver"
-STOP_ROW_KEY = "memory.stop_row.hypothesis"
+STOP_ROW_KEY = belief_key("stop_row.row")
 COLLISION = {"view_static": True, "obstacle_in_sight": True}
+NEAR_300 = ("near", 300)
 
 
 def _backing_up(static_cycles):
@@ -18,21 +25,43 @@ def _backing_up(static_cycles):
 TURNING = {KEY: {"phase": "turning"}}
 
 
-def _source(signals=None, frame_id="frame_1", ahead_row=None):
+def _reach_turn(direction):
+    return {"phase": "turning", "cause": "reach", "direction": direction}
+
+
+def _bands(ahead, left, right):
+    """Closeness signals; a band is ``(value, reach_ms)``, or None with nothing in it."""
+
+    return {"closeness_ahead": ahead, "closeness_left": left, "closeness_right": right}
+
+
+def _closeness_signal(signal_id, band):
+    if band is None:
+        return {"signal_id": signal_id, "value": None, "confidence": None,
+                "properties": {"reach_ms": None, "reason": "nothing_in_band"}}
+    value, reach = band
+    return {"signal_id": signal_id, "value": value, "confidence": None,
+            "properties": {"reach_ms": reach, "reason": "within_one_run" if value == "near" else "beyond_one_run"}}
+
+
+def _stop_row(value):
+    return Belief("stop_row.row", value, "stop_row", 0)
+
+
+def _step(memory, signals, plugin=None, ahead_row=None, closeness=None):
     observation = None if signals is None else Observation(
         observation_id="observation_1", created_at_ms=10, sensor_frame={},
         signals=tuple({"signal_id": signal_id, "value": value, "confidence": None,
                        "properties": {"nearest_bottom_y": ahead_row} if signal_id == "clearance_ahead" else {}}
-                      for signal_id, value in signals.items()),
+                      for signal_id, value in signals.items())
+        + tuple(_closeness_signal(signal_id, band) for signal_id, band in (closeness or {}).items()),
     )
-    return build_decision_data_source(
-        frame_id=frame_id, frame_index=0, timestamp_ms=10,
-        observation=observation, observation_configured=True,
-    )
-
-
-def _step(memory, signals, plugin=None, ahead_row=None):
-    return (plugin or AvoidObstacle()).propose(_source(signals, ahead_row=ahead_row), memory)
+    write_observation(memory, observation)
+    result = (plugin or AvoidObstacle()).propose(DecisionFrameContext(
+        frame_id="frame_1", frame_index=0, timestamp_ms=10, shared_memory=memory,
+    ))
+    memory.pop(OBSERVATION_KEY, None)
+    return result
 
 
 class AvoidObstacleTests(unittest.TestCase):
@@ -90,7 +119,7 @@ class AvoidObstacleTests(unittest.TestCase):
                          "no_collision")
 
     def test_reaching_the_learned_stop_row_backs_up_before_a_collision(self):
-        memory = {STOP_ROW_KEY: {"stop_row": 0.8}}
+        memory = {STOP_ROW_KEY: Belief("stop_row.row", .8, "stop_row", 1)}
         result = _step(memory, {"view_static": False, "clearance_ahead": False}, ahead_row=0.8)
         self.assertEqual(result.reason, "avoid_back_up_until_right_clear")
         self.assertEqual(result.command.throttle, -0.60)
@@ -106,12 +135,12 @@ class AvoidObstacleTests(unittest.TestCase):
             ({"stop_row": True}, 0.9), (None, 0.9), ("0.8", 0.9),
         ):
             with self.subTest(stored=stored, ahead_row=ahead_row):
-                memory = {} if stored is None else {STOP_ROW_KEY: stored}
+                memory = {} if stored is None else {STOP_ROW_KEY: Belief("stop_row.row", stored["stop_row"], "stop_row", 1) if isinstance(stored, dict) else stored}
                 result = _step(memory, {"clearance_ahead": False}, ahead_row=ahead_row)
                 self.assertEqual(result.reason, "no_collision")
                 self.assertNotIn(KEY, memory)
-        memory = {"elsewhere": {"stop_row": 0.5}}
-        result = _step(memory, {"clearance_ahead": False}, AvoidObstacle(stop_row_key="elsewhere"), ahead_row=0.6)
+        memory = {belief_key("elsewhere"): Belief("elsewhere", .5, "stop_row", 1)}
+        result = _step(memory, {"clearance_ahead": False}, AvoidObstacle(stop_row_belief_id="elsewhere"), ahead_row=0.6)
         self.assertEqual(result.reason, "avoid_back_up_until_right_clear")
 
     def test_right_clearance_turns_right_until_ahead_is_clear(self):
@@ -133,6 +162,96 @@ class AvoidObstacleTests(unittest.TestCase):
         result = _step(memory, {"view_static": True, "clearance_ahead": True})
         self.assertEqual(result.reason, "avoid_back_up_until_right_clear")
         self.assertEqual(memory, _backing_up(1))
+
+    def test_a_near_box_ahead_turns_toward_the_side_with_more_reach(self):
+        memory = {STOP_ROW_KEY: _stop_row(0.6)}
+        result = _step(memory, {"view_static": False, "clearance_ahead": False}, ahead_row=0.5,
+                       closeness=_bands(NEAR_300, left=("near", 200), right=("far", 900)))
+        self.assertEqual(result.reason, "avoid_turn_right_toward_reach")
+        self.assertEqual((result.command.steering, result.command.throttle, result.command.gear),
+                         (1.0, 0.60, "forward"))
+        self.assertEqual(memory[KEY], _reach_turn("right"))
+        self.assertEqual([(ref.kind, ref.note) for ref in result.source_refs],
+                         [("memory_record", "turning"), ("observation", "clearance_and_collision_signals")])
+        for left, right, direction in (
+            (("far", 600), ("far", 400), "left"),
+            (None, ("far", 900), "left"),
+            (None, None, "right"),
+            (("far", 600), ("far", 600), "right"),
+            ((None, 400), ("near", 200), "left"),
+        ):
+            with self.subTest(left=left, right=right):
+                memory = {}
+                result = _step(memory, {}, ahead_row=0.5, closeness=_bands(NEAR_300, left=left, right=right))
+                self.assertEqual(result.reason, f"avoid_turn_{direction}_toward_reach")
+                self.assertEqual(result.command.steering, 1.0 if direction == "right" else -1.0)
+                self.assertEqual(memory[KEY], _reach_turn(direction))
+
+    def test_no_turn_unless_the_box_ahead_is_near_and_a_side_has_more_reach(self):
+        for ahead, left, right in (
+            (("far", 2000), None, None),
+            ((None, 300), None, None),
+            (None, None, None),
+            (NEAR_300, ("near", 300), ("near", 200)),
+            (NEAR_300, (None, None), (None, None)),
+            (("near", None), None, None),
+        ):
+            with self.subTest(ahead=ahead, left=left, right=right):
+                memory = {}
+                result = _step(memory, {}, ahead_row=0.5, closeness=_bands(ahead, left=left, right=right))
+                self.assertEqual(result.reason, "no_collision")
+                self.assertEqual(memory, {})
+        self.assertEqual(_step({}, {}, closeness={"closeness_ahead": NEAR_300}).reason, "no_collision")
+        renamed = AvoidObstacle(closeness_ahead_id="a", closeness_left_id="l", closeness_right_id="r")
+        bands = _bands(NEAR_300, left=None, right=None)
+        self.assertEqual(_step({}, {}, renamed, closeness=bands).reason, "no_collision")
+        self.assertEqual(_step({}, {}, renamed, closeness={"a": NEAR_300, "l": None, "r": ("far", 50)}).reason,
+                         "avoid_turn_left_toward_reach")
+
+    def test_a_reach_turn_lasts_while_its_side_has_more_reach_than_a_near_box_ahead(self):
+        memory = {KEY: _reach_turn("right")}
+        result = _step(memory, {}, ahead_row=0.5, closeness=_bands(NEAR_300, left=None, right=("near", 500)))
+        self.assertEqual(result.reason, "avoid_turn_right_toward_reach")
+        self.assertEqual(memory[KEY], _reach_turn("right"))
+        self.assertEqual(_step(memory, None).reason, "avoid_turn_right_toward_reach")
+        for ahead, left, right in (
+            (("near", 500), None, ("near", 400)),
+            (("near", 500), None, ("near", 500)),
+            (("far", 2000), None, None),
+            ((None, 300), None, None),
+        ):
+            with self.subTest(ahead=ahead, left=left, right=right):
+                memory = {KEY: _reach_turn("right")}
+                result = _step(memory, {}, ahead_row=0.5, closeness=_bands(ahead, left=left, right=right))
+                self.assertEqual(result.reason, "no_collision")
+                self.assertNotIn(KEY, memory)
+
+    def test_a_collision_or_the_stop_row_backs_up_before_a_reach_turn(self):
+        bands = _bands(NEAR_300, left=None, right=None)
+        memory = {}
+        _step(memory, COLLISION, closeness=bands)
+        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 1})
+        memory = {STOP_ROW_KEY: _stop_row(0.6)}
+        _step(memory, {"clearance_ahead": False}, ahead_row=0.6, closeness=bands)
+        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 0})
+
+    def test_a_reach_turn_backs_up_at_the_stop_row_or_a_static_view(self):
+        bands = _bands(NEAR_300, left=None, right=None)
+        memory = {STOP_ROW_KEY: _stop_row(0.6), KEY: _reach_turn("left")}
+        result = _step(memory, {"clearance_ahead": False}, ahead_row=0.6, closeness=bands)
+        self.assertEqual(result.reason, "avoid_back_up_until_right_clear")
+        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 0})
+        memory[KEY] = _reach_turn("left")
+        _step(memory, {"view_static": True}, ahead_row=0.5, closeness=bands)
+        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 1})
+
+    def test_the_turn_after_backing_up_still_ends_when_ahead_is_clear(self):
+        memory = dict(TURNING)
+        self.assertEqual(_step(memory, {"clearance_ahead": False}, closeness=_bands(("far", 2000), None, None)).reason,
+                         "avoid_turn_right")
+        self.assertEqual(_step(memory, {"clearance_ahead": True}, closeness=_bands(NEAR_300, None, ("far", 900))).reason,
+                         "no_collision")
+        self.assertEqual(memory, {})
 
     def test_unavailable_observation_keeps_the_phase(self):
         for state, reason in ((_backing_up(2), "avoid_back_up_until_right_clear"), (TURNING, "avoid_turn_right")):
@@ -157,7 +276,9 @@ class AvoidObstacleTests(unittest.TestCase):
         AvoidObstacle().reset(None)
 
     def test_without_shared_memory_is_inactive(self):
-        result = AvoidObstacle().propose(_source(COLLISION), None)
+        result = AvoidObstacle().propose(DecisionFrameContext(
+            frame_id="frame_1", frame_index=0, timestamp_ms=10,
+        ))
         self.assertFalse(result.is_active("frame_1"))
         self.assertEqual(result.reason, "no_shared_memory")
 
@@ -175,7 +296,8 @@ class AvoidObstacleTests(unittest.TestCase):
             {"turn_steering": 0}, {"turn_steering": -1.0}, {"turn_steering": 1.5},
             {"obstacle_signal_ids": []}, {"obstacle_signal_ids": "wall_in_sight"},
             {"obstacle_signal_ids": [None]}, {"max_static_cycles": 0}, {"max_static_cycles": True},
-            {"max_static_cycles": 2.5}, {"stop_row_key": ""}, {"stop_row_key": None},
+            {"max_static_cycles": 2.5}, {"stop_row_belief_id": ""}, {"stop_row_belief_id": None},
+            {"closeness_ahead_id": ""}, {"closeness_left_id": None}, {"closeness_right_id": 3},
         ):
             with self.subTest(config=config), self.assertRaises(ValueError):
                 AvoidObstacle(**config)

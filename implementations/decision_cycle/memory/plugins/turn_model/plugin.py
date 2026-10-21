@@ -11,12 +11,13 @@ sighting is not that landmark (detectors split and merge boxes at the image
 edge, and identities follow the pieces), so it starts a new one.
 
 Each new camera frame (``sensor_id``'s capture time) closes one interval.
-Memory runs before proposal, so the maneuver stored at ``maneuver_key`` is the
-command issued last cycle: its ``turn_phase`` turns, anything else drives
-straight. The commands read since the previous frame, and the one read with
-it (which held until the next command applied), name the interval:
-``turning`` if all of them turned, ``straight`` if none did, and
-``turn_start`` or ``turn_end`` if the turn began or ended within it. Its
+Applied controls covering that capture interval name it: ``turning`` if
+all turn right forward, ``straight`` if all drive forward without steering,
+and ``turn_start`` or ``turn_end`` if steering begins or ends within it.
+A left turn is not learned: that interval places every landmark afresh.
+Reverse-right, straight reverse, and idle learn as their own kinds. Missing
+coverage or mixed directions restart tracking rather than attributing that
+movement to a command. Its
 sample is the median speed, in widths per second, of the landmarks seen at
 both ends. Each kind keeps its last ``max_samples`` samples and its learned
 speed is their median, so ordinary driving teaches the car how fast its turn
@@ -44,34 +45,56 @@ gap between the carried and the seen bearing is the position error. At most
 from __future__ import annotations
 
 import math
+from dataclasses import replace
 from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.memory.beliefs import Belief, Trial
+from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
+from autonomy.decision_cycle.memory.publication import belief_key, read_belief
 from autonomy.decision_cycle.memory.interface import LEDGER_HEALTH_EMPTY, LEDGER_HEALTH_HEALTHY
+from autonomy.decision_cycle.observation.publication import read_observation
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.shared_memory import SharedMemory
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
+from implementations.decision_cycle.memory.shared.motion.control_applications import motions_over
 
 STATE_KEY = "memory.turn_model.state"
 TURN_START = "turn_start"
 TURNING = "turning"
 TURN_END = "turn_end"
-STRAIGHT = "straight"
-INTERVALS = (TURN_START, TURNING, TURN_END, STRAIGHT)
-_FALLBACK = {TURN_START: TURNING, TURN_END: STRAIGHT}
+STRAIGHT = "forward"
+TURN_MOTIONS = ("forward_right", "reverse_right")
+INTERVALS = ("forward", "reverse", "idle", *(
+    f"{motion}.{phase}" for motion in TURN_MOTIONS for phase in (TURN_START, TURNING, TURN_END)
+))
+_FALLBACK = {
+    f"{motion}.{phase}": f"{motion}.{TURNING}" if phase == TURN_START else motion.split("_")[0]
+    for motion in TURN_MOTIONS for phase in (TURN_START, TURN_END)
+}
+
+
+def belief_id(interval):
+    return f"turn_model.view_speed.{interval}"
 _LANDMARK_FIELDS = ("bearing", "width", "in_view", "seen_at_ms", "carried_ms", "straight_ms")
 
 
 class TurnModel:
     plugin_id = "turn_model"
+    contract = MemoryPluginContract(
+        description="Learn applied-command view speeds and check carried landmarks on re-sighting.",
+        assumptions=("positive steering is right", "landmark identities and widths remain comparable",
+                     "each motion kind uses comparable steering and throttle magnitudes"),
+        belief_ids=tuple(belief_id(interval) for interval in INTERVALS),
+        limitations=("accepted target writes are not measured wheel motion",
+                     "checks require a single interval kind throughout the unseen span"),
+    )
 
     def __init__(
         self,
         *,
         landmark_plugin_id: str = "sim_cardboard_permanence",
         sensor_id: str = FRONT_CAMERA_SENSOR_ID,
-        maneuver_key: str = "proposal.avoid_obstacle.maneuver",
-        turn_phase: str = "turning",
         max_samples: int = 64,
         max_interval_ms: int = 250,
         edge_margin: float = 0.01,
@@ -84,7 +107,6 @@ class TurnModel:
     ) -> None:
         for name, value in (
             ("landmark_plugin_id", landmark_plugin_id), ("sensor_id", sensor_id),
-            ("maneuver_key", maneuver_key), ("turn_phase", turn_phase),
         ):
             if not isinstance(value, str) or not value:
                 raise ValueError(f"{name} must be a non-empty string")
@@ -105,8 +127,6 @@ class TurnModel:
             raise ValueError("max_size_change must be a finite number of at least 1")
         self.landmark_plugin_id = landmark_plugin_id
         self.sensor_id = sensor_id
-        self.maneuver_key = maneuver_key
-        self.turn_phase = turn_phase
         self.max_samples = max_samples
         self.max_interval_ms = max_interval_ms
         self.edge_margin = float(edge_margin)
@@ -117,28 +137,33 @@ class TurnModel:
         self.reacquire_within = float(reacquire_within)
         self.max_landmarks = max_landmarks
 
-    def update(self, context: DecisionFrameContext, observation: Observation | None) -> None:
+    def update(self, context: DecisionFrameContext) -> None:
         shared_memory = context.shared_memory
         if shared_memory is None:
             raise ValueError("turn_model requires a shared-memory map")
+        observation = read_observation(shared_memory)
         state = _restore(shared_memory.get(STATE_KEY))
-        maneuver = shared_memory.get(self.maneuver_key)
-        turning = isinstance(maneuver, dict) and maneuver.get("phase") == self.turn_phase
-        state["turned" if turning else "drove"] = True
         captured_at = _captured_at(observation, self.sensor_id)
         previous_at = state["captured_at_ms"]
+        if captured_at is not None and previous_at is not None and captured_at < previous_at:
+            state["landmarks"] = {}
+            previous_at = None
         if captured_at is not None and (previous_at is None or captured_at > previous_at):
             seen = self._seen(observation)
-            interval = _interval(state["turned"], state["drove"], turning)
+            motions = None if previous_at is None else motions_over(shared_memory, previous_at, captured_at)
+            interval = _interval(motions)
+            if interval != state["last_interval"]:
+                state["slow_intervals"] = 0
+            state["last_interval"] = interval
             elapsed = None if previous_at is None else captured_at - previous_at
-            if elapsed is not None and elapsed <= self.max_interval_ms:
+            if elapsed is not None and elapsed <= self.max_interval_ms and interval is not None:
                 speed = self._measure(state, interval, seen, elapsed, captured_at)
-                self._carry(state, interval, seen, elapsed, speed)
+                self._carry(state, interval, seen, elapsed, speed, shared_memory, captured_at)
             else:
                 state["landmarks"] = {}
-            self._observe(state, seen, captured_at)
+            self._observe(state, seen, captured_at, shared_memory)
             state["captured_at_ms"] = captured_at
-            state["turned"], state["drove"] = turning, not turning
+        self._publish(shared_memory, state, context.timestamp_ms)
         state["updated_at_ms"] = context.timestamp_ms
         shared_memory[STATE_KEY] = state
 
@@ -165,6 +190,8 @@ class TurnModel:
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
         if shared_memory is not None:
             shared_memory.pop(STATE_KEY, None)
+            for identifier in self.contract.belief_ids:
+                shared_memory.pop(belief_key(identifier), None)
 
     def _seen(self, observation: Observation | None) -> dict[str, tuple[float, float]]:
         """Bearing and width of this frame's unclipped landmarks, by object id."""
@@ -206,8 +233,8 @@ class TurnModel:
         ])
         if speed is None:
             return None
-        learned = sorted(abs(value) for value in state["samples"][TURNING])
-        if interval == TURNING and learned and abs(speed) < self.stall_fraction * _quantile(learned, 0.75):
+        learned = sorted(abs(value) for value in state["samples"][interval])
+        if interval.endswith(TURNING) and learned and abs(speed) < self.stall_fraction * _quantile(learned, 0.75):
             state["slow_intervals"] += 1
             if state["slow_intervals"] == self.stall_intervals:
                 state["stall_count"] += 1
@@ -221,7 +248,7 @@ class TurnModel:
 
     def _carry(
         self, state: dict[str, Any], interval: str, seen: dict[str, tuple[float, float]], elapsed: int,
-        speed: float | None,
+        speed: float | None, memory: SharedMemory, now: int,
     ) -> None:
         """Move every landmark not seen at both ends by the view's speed over this interval."""
 
@@ -229,12 +256,13 @@ class TurnModel:
             speed = _median(state["samples"][interval])
             if speed is None and interval in _FALLBACK:
                 speed = _median(state["samples"][_FALLBACK[interval]])
-        straight = interval in (TURN_END, STRAIGHT)
+        straight = interval in (STRAIGHT, "reverse", "idle") or interval.endswith("." + TURN_END)
         kept: dict[str, dict[str, Any]] = {}
         for key, item in state["landmarks"].items():
             if not (item["in_view"] and key in seen and self._same(item, seen[key][1])):
                 if speed is None:
                     continue
+                self._predict(memory, item, key, interval, elapsed, now)
                 item["bearing"] = round(item["bearing"] + speed * elapsed / 1000, 4)
                 item["in_view"] = False
                 item["carried_ms"] += elapsed
@@ -245,7 +273,7 @@ class TurnModel:
             kept[key] = item
         state["landmarks"] = kept
 
-    def _observe(self, state: dict[str, Any], seen: dict[str, tuple[float, float]], now: int) -> None:
+    def _observe(self, state: dict[str, Any], seen: dict[str, tuple[float, float]], now: int, memory: SharedMemory) -> None:
         """Place each seen landmark, checking any carried bearing it had."""
 
         landmarks = state["landmarks"]
@@ -262,6 +290,14 @@ class TurnModel:
                 if unseen:
                     carried = landmarks.pop(min(unseen)[1])
             if carried is not None and not carried["in_view"]:
+                prediction = carried.get("prediction")
+                if prediction is not None:
+                    belief = read_belief(memory, prediction["belief_id"])
+                    trial = next((trial for trial in belief.trials if trial.trial_id == prediction["trial_id"]), None)
+                    if trial is not None:
+                        low, high = trial.predicted
+                        memory[belief_key(belief.belief_id)] = belief.resolved(trial.trial_id,
+                            "support" if low <= bearing <= high else "contradict", bearing, now, self.max_samples)
                 state["checked_count"] += 1
                 errors = state["position_errors"]
                 errors.append([round(bearing - carried["bearing"], 4), carried["carried_ms"]])
@@ -273,13 +309,59 @@ class TurnModel:
         newest = sorted(landmarks.items(), key=lambda pair: pair[1]["seen_at_ms"], reverse=True)
         state["landmarks"] = dict(newest[:self.max_landmarks])
 
+    def _predict(self, memory, item, key, interval, elapsed, now):
+        """Advance a prediction using only the belief available before this frame."""
+        identifier = belief_id(interval)
+        belief = read_belief(memory, identifier)
+        previous = item.get("prediction")
+        if previous is not None and previous["belief_id"] != identifier:
+            item.pop("prediction", None)
+            return
+        if belief is None or (not item["in_view"] and previous is None):
+            return
+        low, high = (belief.properties[name] * elapsed / 1000 for name in ("p25", "p75"))
+        if previous is None:
+            trial_id = f"landmark_{key}_{now}"
+            trial = Trial(trial_id, "landmark_reappearance", now - elapsed,
+                          [round(item["bearing"] + low, 4), round(item["bearing"] + high, 4)])
+            belief = belief.opened(trial, self.max_landmarks)
+            item["prediction"] = {"belief_id": identifier, "trial_id": trial_id}
+        else:
+            belief = replace(belief, trials=tuple(
+                replace(trial, predicted=[round(trial.predicted[0] + low, 4), round(trial.predicted[1] + high, 4)])
+                if trial.trial_id == previous["trial_id"] else trial for trial in belief.trials))
+        memory[belief_key(identifier)] = belief
 
-def _interval(turned: bool, drove: bool, turning: bool) -> str:
-    """Name an interval by whether its commands turned, drove straight or both, ending with ``turning``."""
+    def _publish(self, memory, state, now):
+        open_trials = {item["prediction"]["trial_id"] for item in state["landmarks"].values()
+                       if "prediction" in item}
+        for interval, samples in state["samples"].items():
+            identifier = belief_id(interval)
+            belief = read_belief(memory, identifier)
+            if not samples:
+                continue
+            summary = _summary(samples)
+            if belief is None:
+                belief = Belief(identifier, summary["widths_per_s"], self.plugin_id, now)
+            # Samples refine the estimate while an older, explicit prediction remains testable.
+            memory[belief_key(identifier)] = replace(belief, value=summary["widths_per_s"],
+                properties={key: summary[key] for key in ("p25", "p75", "samples")},
+                trials=tuple(trial for trial in belief.trials if trial.trial_id in open_trials),
+                updated_at_ms=max(now, belief.updated_at_ms))
 
-    if turned and drove:
-        return TURN_START if turning else TURN_END
-    return TURNING if turning else STRAIGHT
+
+def _interval(motions: tuple[str, ...] | None) -> str | None:
+    if not motions:
+        return None
+    kinds = set(motions)
+    for motion in TURN_MOTIONS:
+        straight = motion.split("_")[0]
+        if kinds <= {motion, straight} and motion in kinds:
+            phase = TURNING if kinds == {motion} else TURN_START if motions[-1] == motion else TURN_END
+            return f"{motion}.{phase}"
+    if len(kinds) == 1 and motions[0] in ("forward", "reverse", "idle"):
+        return STRAIGHT if motions[0] == "forward" else motions[0]
+    return None
 
 
 def _captured_at(observation: Observation | None, sensor_id: str) -> int | None:
@@ -308,16 +390,17 @@ def _restore(stored: Any) -> dict[str, Any]:
             and all(_is_int(item.get(name)) for name in ("seen_at_ms", "carried_ms", "straight_ms"))
         ):
             landmarks[key] = {name: item[name] for name in _LANDMARK_FIELDS}
+            if isinstance(item.get("prediction"), dict):
+                landmarks[key]["prediction"] = dict(item["prediction"])
     errors = stored.get("position_errors")
     return {
         "captured_at_ms": _int_or(stored.get("captured_at_ms"), None),
-        "turned": stored.get("turned") is True,
-        "drove": stored.get("drove") is True,
         "samples": {
             interval: [value for value in samples[interval] if _is_number(value)]
             if isinstance(samples.get(interval), (list, tuple)) else []
             for interval in INTERVALS
         },
+        "last_interval": stored.get("last_interval"),
         "slow_intervals": _int_or(stored.get("slow_intervals"), 0),
         "stall_count": _int_or(stored.get("stall_count"), 0),
         "last_stall_at_ms": _int_or(stored.get("last_stall_at_ms"), None),

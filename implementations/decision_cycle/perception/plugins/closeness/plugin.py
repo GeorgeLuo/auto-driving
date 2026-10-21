@@ -1,4 +1,4 @@
-"""Report whether the nearest box ahead and on the right is near or far, by how long the car takes to reach it.
+"""Report whether the nearest box ahead and on each side is near or far, by how long the car takes to reach it.
 
 Memory's ``approach_model`` learns how many milliseconds a lower edge spends on
 each image row while the car drives straight, and ``run_ms``, how long it
@@ -8,7 +8,9 @@ descend from its row to the stop row: the sum of the learned times of the rows
 between. The box is near when it would be reached within one usual run, and
 far otherwise, so nothing here is tuned: both numbers are the car's own.
 
-Each band reports its lowest lower edge, the nearest box, as clearance does.
+Each band, ahead, left and right, reports its lowest lower edge, the nearest
+box, as clearance does, and that box's reach, so bands can be compared: the
+one whose nearest box is reached last is the most open.
 A row with no learned time borrows the mean of the learned rows on either side
 of it; the row holding the stop row is seldom timed, since the car stops
 there. When rows are still unknown and the known ones already exceed one run
@@ -21,6 +23,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
+from autonomy.decision_cycle.memory.publication import read_belief
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -37,18 +40,18 @@ _EPS = 1e-9
 
 
 class ClosenessPlugin:
-    """Classify the nearest box in two image bands as near or far."""
+    """Classify the nearest box in three image bands as near or far."""
 
     plugin_id = "closeness"
     contract = PerceptionPluginContract(
         memory_required=True,
-        description="Report whether the nearest box ahead and on the right is near or far, from learned approach times.",
+        description="Report whether the nearest box ahead and on each side is near or far, from learned approach times.",
         assumptions=(
             "the detection plugins run earlier in the same selection",
             "memory's approach_model and stop_row publish to shared memory",
             "a box's lower edge is where it meets the floor",
         ),
-        emits=("signal closeness_ahead", "signal closeness_right"),
+        emits=("signal closeness_ahead", "signal closeness_left", "signal closeness_right"),
         limitations=(
             "reads the memory published by the previous cycle",
             "times are learned while driving straight, so they say nothing about turning toward a box",
@@ -60,11 +63,13 @@ class ClosenessPlugin:
         self,
         *,
         detection_plugin_ids: tuple[str, ...] | list[str] = ("sim_cardboard_obstacle", "sim_wall"),
-        model_key: str = "memory.approach_model.state",
-        stop_row_key: str = "memory.stop_row.hypothesis",
+        model_belief_id: str = "approach_model.ms_per_row",
+        run_belief_id: str = "approach_model.run_ms",
+        stop_row_belief_id: str = "stop_row.row",
         ahead_min_x: float = 0.3,
         ahead_max_x: float = 0.7,
         right_min_x: float = 0.65,
+        left_max_x: float = 0.35,
     ) -> None:
         if (
             not isinstance(detection_plugin_ids, (tuple, list))
@@ -72,34 +77,45 @@ class ClosenessPlugin:
             or not all(isinstance(plugin_id, str) and plugin_id for plugin_id in detection_plugin_ids)
         ):
             raise ValueError("detection_plugin_ids must be a non-empty list of plugin ids")
-        for name, value in (("model_key", model_key), ("stop_row_key", stop_row_key)):
+        for name, value in (
+            ("model_belief_id", model_belief_id), ("run_belief_id", run_belief_id),
+            ("stop_row_belief_id", stop_row_belief_id),
+        ):
             if not isinstance(value, str) or not value:
                 raise ValueError(f"{name} must be a non-empty string")
-        for name, value in (("ahead_min_x", ahead_min_x), ("ahead_max_x", ahead_max_x), ("right_min_x", right_min_x)):
+        for name, value in (
+            ("ahead_min_x", ahead_min_x), ("ahead_max_x", ahead_max_x), ("right_min_x", right_min_x),
+            ("left_max_x", left_max_x),
+        ):
             if not _is_number(value) or not 0 <= value <= 1:
                 raise ValueError(f"{name} must be a finite number in 0..1")
         if not ahead_min_x < ahead_max_x:
             raise ValueError("ahead_min_x must be below ahead_max_x")
         if not right_min_x < 1:
             raise ValueError("right_min_x must be below 1")
+        if not left_max_x > 0:
+            raise ValueError("left_max_x must be above 0")
         self.detection_plugin_ids = tuple(detection_plugin_ids)
-        self.model_key = model_key
-        self.stop_row_key = stop_row_key
+        self.model_belief_id = model_belief_id
+        self.run_belief_id = run_belief_id
+        self.stop_row_belief_id = stop_row_belief_id
         self.ahead_min_x = float(ahead_min_x)
         self.ahead_max_x = float(ahead_max_x)
         self.right_min_x = float(right_min_x)
+        self.left_max_x = float(left_max_x)
 
     def perceive(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
         memory = inputs.shared_memory
         if memory is None:
             raise ValueError(f"{self.plugin_id} requires host shared memory")
-        model = memory.get(self.model_key)
-        model = model if isinstance(model, dict) else {}
-        hypothesis = memory.get(self.stop_row_key)
-        stop_row = hypothesis.get("stop_row") if isinstance(hypothesis, dict) else None
+        model = read_belief(memory, self.model_belief_id)
+        run = read_belief(memory, self.run_belief_id)
+        stop = read_belief(memory, self.stop_row_belief_id)
         learned = _Learned(
-            model.get("ms_per_row"), model.get("row_bins"), model.get("run_ms"),
-            stop_row if _is_number(stop_row) else None,
+            None if model is None else model.value,
+            None if model is None else model.properties.get("row_bins"),
+            None if run is None else run.value,
+            stop.value if stop is not None and _is_number(stop.value) else None,
         )
         boxes = tuple(
             tuple(float(value) for value in thing.location.bbox_xyxy_norm)
@@ -108,6 +124,7 @@ class ClosenessPlugin:
         )
         return PerceptionEvidenceBatch(signals=(
             learned.signal("closeness_ahead", boxes, self.ahead_min_x, self.ahead_max_x),
+            learned.signal("closeness_left", boxes, 0.0, self.left_max_x),
             learned.signal("closeness_right", boxes, self.right_min_x, 1.0),
         ))
 

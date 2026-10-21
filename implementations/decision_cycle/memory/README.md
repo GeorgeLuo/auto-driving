@@ -36,18 +36,21 @@ collision while driving forward starts it, each stop at it (the maneuver's
 `stop_phase`, up to `settle_ms`) then either keeps that lower edge above
 `blind_row` (stopped short) or not (too close), and the row is bisected between
 the deepest that stopped short and the shallowest that came too close. Later
-collisions are counted but do not move the row. It lives in shared memory at `memory.stop_row.hypothesis`;
+collisions are counted but do not move the row. The row is belief `stop_row.row`;
+`memory.stop_row.hypothesis` keeps the bracket and stop observations.
 `status` reports the row, its bounds and the outcome counts, and `reset`
 forgets it.
 
 Its `turn_model` learns how the car's own turn moves what it sees, in image
 widths per second, from the landmarks `sim_cardboard_permanence` tracks. Each
-new camera frame closes an interval named by the `avoid_obstacle` maneuver
-before and over it (`turn_start`, `turning`, `turn_end` or `straight`), whose
-sample is the median shift of the landmarks seen at both ends; each kind's
-speed is the median of its last `max_samples`. Boxes at the image edge, or
-that change size by more than `max_size_change`, do not count. Slow turning is
-not learned, and `stall_intervals` slow intervals in a row are a stall.
+new camera frame closes an interval named by the applied controls over it
+(`forward_right.turn_start`, `forward_right.turning`, `forward_right.turn_end`
+or `forward`, and the reverse and idle kinds). A left turn is not learned, and
+every landmark is placed afresh after it. The sample is the median shift of the
+landmarks seen at both ends; each kind's speed is the median of its last
+`max_samples`. Boxes at the image edge, or that change size by more than
+`max_size_change`, do not count. Slow turning is not learned, and
+`stall_intervals` slow intervals in a row are a stall.
 Landmarks out of view keep a bearing carried by that speed, and one seen again
 records the error of its carried bearing. Nothing is tuned in advance and no
 command changes. It lives at `memory.turn_model.state`; `status` reports each
@@ -59,12 +62,13 @@ Each new camera frame closes an interval; when every command over it drove
 straight, each lower edge in the band ahead from `sim_wall` or
 `sim_cardboard_permanence` that stepped down exactly one of `row_bins` rows
 records how long it spent on the row it left. Each row's time is the median of
-its last `max_samples`. A straight run that ends when `avoid_obstacle` starts
-backing up is how long the car could drive before it had to stop, less any
-static time; `run_ms` is their median, and runs that end any other way do not
-count. Nothing is tuned in advance and no command changes. It lives at
-`memory.approach_model.state`; `status` reports each row's time and samples,
-`run_ms` and the runs. Perception's `closeness` reads it.
+its last `max_samples`. A straight run that ends with applied straight reverse
+for a configured stop reason is how long the car could drive before it had to
+stop, less any static time; `run_ms` is their median, and runs that end any
+other way do not count. Nothing is tuned in advance and no command changes.
+It lives at `memory.approach_model.state`; `status` reports each row's time
+and samples, `run_ms` and the runs. Perception's `closeness` reads the
+published beliefs.
 
 ## Finding the default business logic
 

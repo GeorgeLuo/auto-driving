@@ -2,9 +2,20 @@
 
 import unittest
 
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.publication import write_observation
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
 from implementations.decision_cycle.proposal.plugins.drive_backwards.plugin import DriveBackwards
+
+
+def _context(frame_id="frame_1", timestamp_ms=10, observation=None, memory=None):
+    shared = memory
+    if observation is not None:
+        shared = {} if shared is None else shared
+        write_observation(shared, observation)
+    return DecisionFrameContext(
+        frame_id=frame_id, frame_index=0, timestamp_ms=timestamp_ms, shared_memory=shared,
+    )
 
 
 class DriveBackwardsTests(unittest.TestCase):
@@ -17,11 +28,7 @@ class DriveBackwardsTests(unittest.TestCase):
                     signals=({"signal_id": "obstacle_in_sight", "value": present,
                               "confidence": 1.0, "properties": {}},),
                 )
-                source = build_decision_data_source(
-                    frame_id="frame_1", frame_index=0, timestamp_ms=10,
-                    observation=observation, observation_configured=True,
-                )
-                result = plugin.propose(source, None)
+                result = plugin.propose(_context(observation=observation))
                 self.assertTrue(result.is_active("frame_1"))
                 self.assertEqual(result.command.steering, 0.0)
                 self.assertEqual(result.command.throttle, -0.60)
@@ -29,9 +36,8 @@ class DriveBackwardsTests(unittest.TestCase):
                 self.assertEqual(result.reason, "constant_reverse_baseline")
 
     def test_configured_throttle_is_preserved_without_reading_memory(self):
-        source = build_decision_data_source(frame_id="frame_2", frame_index=1, timestamp_ms=20)
         memory = {"unrelated": {"obstacles": "stop"}}
-        result = DriveBackwards(throttle=-0.25).propose(source, memory)
+        result = DriveBackwards(throttle=-0.25).propose(_context(frame_id="frame_2", timestamp_ms=20, memory=memory))
         self.assertEqual(result.command.throttle, -0.25)
         self.assertEqual(memory, {"unrelated": {"obstacles": "stop"}})
         self.assertEqual(result.frame_id, "frame_2")

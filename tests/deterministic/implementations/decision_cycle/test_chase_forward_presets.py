@@ -10,9 +10,12 @@ import unittest
 
 import numpy as np
 
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle
+from autonomy.decision_cycle.memory.publication import read_belief
 from autonomy.decision_cycle.steps import decision_steps
+from autonomy.runtime.execution import ControlApplication
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.catalog import preset_activation
 
@@ -56,6 +59,10 @@ class ChaseForwardPresetTests(unittest.TestCase):
                 frame_id=f"frame_{index}", frame_index=index, timestamp_ms=at_ms,
                 sensor_frame=frame, shared_memory=shared_memory,
             ))
+            shared_memory[CONTROL_APPLICATIONS_KEY] = (
+                *shared_memory.get(CONTROL_APPLICATIONS_KEY, ()),
+                ControlApplication(result.context.frame_id, "autonomy", True, "test", result.control, at_ms),
+            )
             counts.append(len(result.perception.things))
             self.assertEqual(result.plan.selector_id, "select_proposal")
             signals = {item["signal_id"]: item for item in result.observation.signals}
@@ -78,11 +85,11 @@ class ChaseForwardPresetTests(unittest.TestCase):
             (False, "avoid_obstacle", 0.0, -0.60),  # stop row reached: back up before contact
         ])
         hypothesis = shared_memory["memory.stop_row.hypothesis"]
-        self.assertEqual(hypothesis["stop_row"], 0.79)
+        self.assertEqual(read_belief(shared_memory, "stop_row.row").value, 0.79)
         self.assertEqual(hypothesis["counts"]["collision"], 1)
-        self.assertEqual(hypothesis["trial"]["stop_row"], 0.79)
+        self.assertEqual(read_belief(shared_memory, "stop_row.row").trials[0].predicted, 0.79)
         model = shared_memory["memory.turn_model.state"]
         self.assertEqual([(item["bearing"], item["in_view"]) for item in model["landmarks"].values()], [(0.0, True)])
-        self.assertEqual(model["samples"], {"turn_start": [], "turning": [], "turn_end": [], "straight": []})
+        self.assertTrue(all(not samples for samples in model["samples"].values()))
         self.assertEqual(shared_memory["memory.approach_model.state"]["samples"], {})
         self.assertEqual(signals["closeness_ahead"]["properties"]["reason"], "not_learned")

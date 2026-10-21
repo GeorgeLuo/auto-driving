@@ -9,10 +9,10 @@ plugin's candidate wins whenever it is active this frame.
 from __future__ import annotations
 
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.publication import read_observation
 from autonomy.decision_cycle.plan.values import ActionPlan, PlanContribution
-from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 from autonomy.decision_cycle.proposal.values import ActionProposal
-from autonomy.shared_memory import SharedMemory
 
 
 class SelectProposal:
@@ -35,19 +35,17 @@ class SelectProposal:
 
     def plan(
         self,
+        context: DecisionFrameContext,
         candidates: tuple[ActionProposal, ...],
-        source: DecisionDataSource | None,
-        shared_memory: SharedMemory | None,
-        *,
-        frame_id: str,
-        timestamp_ms: int,
     ) -> ActionPlan:
+        frame_id = context.frame_id
+        timestamp_ms = context.timestamp_ms
         selected = None
         if self.override_proposal_plugin_id is not None:
             selected = _active(candidates, self.override_proposal_plugin_id, frame_id)
         if selected is None:
             target = self.proposal_plugin_id
-            if self.view_static_proposal_plugin_id is not None and _view_static(source):
+            if self.view_static_proposal_plugin_id is not None and _view_static(context):
                 target = self.view_static_proposal_plugin_id
             selected = _active(candidates, target, frame_id)
         if selected is None:
@@ -79,12 +77,13 @@ def _active(
                  and candidate.is_active(frame_id)), None)
 
 
-def _view_static(source: DecisionDataSource | None) -> bool:
+def _view_static(context: DecisionFrameContext) -> bool:
     """True only when this frame's observation reports ``view_static`` as ``True``."""
 
-    if source is None or source.observation.status != "ready":
+    observation = read_observation(context.shared_memory)
+    if observation is None:
         return False
     return any(
         signal.get("signal_id") == "view_static" and signal.get("value") is True
-        for signal in source.observation.value.signals
+        for signal in observation.signals
     )

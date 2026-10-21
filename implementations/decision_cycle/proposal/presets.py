@@ -19,7 +19,8 @@ PROPOSAL_PRESETS: dict[str, dict[str, Any]] = {
             "Chase v1 baseline: propose constant forward and constant reverse "
             "throttle, ignoring obstacles, plus a collision recovery from "
             "cardboard or walls that backs up until the right is clear and "
-            "turns right; the plan chooses one."
+            "turns right, and turns toward the side with more reach when the "
+            "box ahead is near; the plan chooses one."
         ),
         "plugins": ["drive_forward", "drive_backwards", "avoid_obstacle"],
     },

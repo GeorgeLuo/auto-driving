@@ -1,12 +1,19 @@
 """The stop row is a hypothesis: a collision starts it, and each stop narrows it by bisection."""
 
 import unittest
+from dataclasses import replace
+
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
+from autonomy.decision_cycle.memory.publication import belief_key, read_belief
+from autonomy.runtime.control import AutonomyControl
+from autonomy.runtime.execution import ControlApplication
+
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY, write_observation
 from autonomy.decision_cycle.observation.values import Observation
-from implementations.decision_cycle.memory.plugins.stop_row.plugin import STATE_KEY, StopRowHypothesis
+from implementations.decision_cycle.memory.plugins.stop_row.plugin import StopRowHypothesis
 
-MANEUVER_KEY = "proposal.avoid_obstacle.maneuver"
 
 
 class _Car:
@@ -19,10 +26,11 @@ class _Car:
 
     def step(self, row=None, *, static=None, wall=True, phase=None, observed=True):
         self.now += 100
-        if phase is None:
-            self.memory.pop(MANEUVER_KEY, None)
-        else:
-            self.memory[MANEUVER_KEY] = {"phase": phase}
+        command = AutonomyControl(steering=1 if phase == "turning" else 0,
+            throttle=.6 if phase is None or phase == "turning" else -.6)
+        applications = self.memory.get(CONTROL_APPLICATIONS_KEY, ())
+        self.memory[CONTROL_APPLICATIONS_KEY] = (*applications, ControlApplication(
+            None, "autonomy", True, "test", command, self.now - 1))[-32:]
         observation = Observation(
             observation_id=f"observation_{self.now}", created_at_ms=self.now, sensor_frame={},
             signals=(
@@ -32,10 +40,11 @@ class _Car:
                  "properties": {"nearest_bottom_y": row}},
             ),
         ) if observed else None
+        write_observation(self.memory, observation)
         self.plugin.update(DecisionFrameContext(
             frame_id=f"frame_{self.now}", frame_index=self.now // 100, timestamp_ms=self.now,
             shared_memory=self.memory,
-        ), observation)
+        ))
         return self.plugin.status(self.memory)
 
     def collide(self, row=1.0):
@@ -44,7 +53,7 @@ class _Car:
     def stop(self, peak, cycles=11):
         """Reach the stop row, then turn away while the lower edge peaks at ``peak``."""
 
-        self.step(self.memory[STATE_KEY]["stop_row"])
+        self.step(read_belief(self.memory, "stop_row.row").value)
         for _ in range(cycles):
             status = self.step(peak, phase="backing_up")
         return status
@@ -101,7 +110,7 @@ class StopRowHypothesisTests(unittest.TestCase):
         car.collide()
         overshoot = 0.12  # contact once the trigger row is above 0.86
         for _ in range(8):
-            stop_row = car.memory[STATE_KEY]["stop_row"]
+            stop_row = read_belief(car.memory, "stop_row.row").value
             status = car.stop(min(1.0, stop_row + overshoot))
         self.assertLess(status["unsafe_row"] - status["safe_row"], 0.02)
         self.assertEqual(status["stop_row"], status["safe_row"])
@@ -140,10 +149,10 @@ class StopRowHypothesisTests(unittest.TestCase):
         car = _Car()
         car.collide()
         car.stop(0.9)  # 0.79 stops short
-        car.memory[STATE_KEY]["stop_row"] = 0.75
+        car.memory[belief_key("stop_row.row")] = replace(read_belief(car.memory, "stop_row.row"), value=0.75)
         status = car.stop(0.98)  # 0.75 now comes too close, below the safe row
         self.assertEqual((status["safe_row"], status["unsafe_row"]), (0.6, 0.75))
-        car.memory[STATE_KEY]["stop_row"] = 0.8
+        car.memory[belief_key("stop_row.row")] = replace(read_belief(car.memory, "stop_row.row"), value=0.8)
         status = car.stop(0.9)  # 0.8 stops short, above the unsafe row
         self.assertEqual((status["safe_row"], status["unsafe_row"], status["stop_row"]), (0.8, 0.98, 0.89))
 
@@ -169,13 +178,14 @@ class StopRowHypothesisTests(unittest.TestCase):
         car.collide()
         self.assertEqual(_Car(memory=memory).step(0.5)["stop_row"], 0.79)
         StopRowHypothesis().reset(memory)
-        self.assertEqual(memory, {"unrelated": 1})
+        kept = {k: v for k, v in memory.items() if k not in (CONTROL_APPLICATIONS_KEY, OBSERVATION_KEY)}
+        self.assertEqual(kept, {"unrelated": 1})
         status = StopRowHypothesis().status(memory)
         self.assertEqual((status["health"], status["record_count"], status["stop_row"]), ("empty", 0, None))
         StopRowHypothesis().reset(None)
 
     def test_configured_bounds_and_settle_time_are_used(self):
-        car = _Car(StopRowHypothesis(min_stop_row=0.7, blind_row=0.9, settle_ms=200, stop_phase="reversing"))
+        car = _Car(StopRowHypothesis(min_stop_row=0.7, blind_row=0.9, settle_ms=200))
         status = car.collide()
         self.assertEqual(status["stop_row"], 0.8)
         car.step(0.8)
@@ -184,15 +194,44 @@ class StopRowHypothesisTests(unittest.TestCase):
         status = car.step(0.85, phase="reversing")
         self.assertEqual(status["last_outcome"]["kind"], "stopped_short")
 
+    def test_checks_count_stop_outcomes_and_bracket_invalidation_retires_old_checks(self):
+        car = _Car()
+        car.collide()
+        self.assertIsNone(read_belief(car.memory, "stop_row.row").confidence)
+        car.stop(.9)
+        belief = read_belief(car.memory, "stop_row.row")
+        self.assertEqual((belief.confidence, len(belief.checks), belief.trials), (2 / 3, 1, ()))
+        car.memory[belief_key(belief.belief_id)] = replace(belief, value=.75)
+        car.stop(.98)
+        belief = read_belief(car.memory, "stop_row.row")
+        self.assertEqual(belief.checks, ())
+        self.assertIsNone(belief.confidence)
+
+    def test_missing_or_manual_motion_cannot_seed_a_collision_or_complete_a_stop(self):
+        car = _Car()
+        car.collide()
+        car.step(.8)
+        car.memory[CONTROL_APPLICATIONS_KEY] = (*car.memory[CONTROL_APPLICATIONS_KEY],
+            ControlApplication(None, "manual", False, "manual", AutonomyControl(), car.now + 1))
+        status = car.step(.9, phase="backing_up")
+        self.assertFalse(status["testing"])
+        self.assertEqual(read_belief(car.memory, "stop_row.row").checks, ())
+        memory = {}
+        write_observation(memory, Observation(observation_id="o", created_at_ms=10, sensor_frame={}, signals=(
+            {"signal_id": "view_static", "value": True}, {"signal_id": "wall_in_sight", "value": True})))
+        StopRowHypothesis().update(DecisionFrameContext(
+            frame_id="unknown", frame_index=0, timestamp_ms=10, shared_memory=memory))
+        self.assertIsNone(read_belief(memory, "stop_row.row"))
+
     def test_without_shared_memory_the_update_fails(self):
         with self.assertRaises(ValueError):
-            StopRowHypothesis().update(DecisionFrameContext(frame_id="f", frame_index=0, timestamp_ms=1), None)
+            StopRowHypothesis().update(DecisionFrameContext(frame_id="f", frame_index=0, timestamp_ms=1))
 
     def test_invalid_configuration_is_rejected(self):
         for config in (
             {"min_stop_row": 0}, {"min_stop_row": True}, {"blind_row": 1.5}, {"resolution": float("nan")},
             {"min_stop_row": 0.9, "blind_row": 0.8}, {"settle_ms": 0}, {"settle_ms": 1.5},
-            {"obstacle_signal_ids": []}, {"obstacle_signal_ids": "wall_in_sight"}, {"maneuver_key": ""}, {"stop_phase": None},
+            {"obstacle_signal_ids": []}, {"obstacle_signal_ids": "wall_in_sight"},
         ):
             with self.subTest(config=config), self.assertRaises(ValueError):
                 StopRowHypothesis(**config)

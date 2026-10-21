@@ -168,7 +168,7 @@ PERCEPTION_PLUGINS: tuple[dict[str, Any], ...] = (
     },
     {
         "spec": "implementations.decision_cycle.perception.plugins.closeness.plugin:ClosenessPlugin",
-        "description": "Whether the nearest box ahead and on the right is near or far, from learned approach times.",
+        "description": "Whether the nearest box ahead and on each side is near or far, from learned approach times.",
         "default_config": {},
     },
     {

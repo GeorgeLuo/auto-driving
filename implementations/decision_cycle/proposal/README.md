@@ -44,8 +44,13 @@ more than 8 cycles while reversing, the car is blocked behind and turns right
 anyway; a turn that stalls reverses again. Its phase and static-cycle count
 live in shared memory at `proposal.avoid_obstacle.maneuver`; outside the
 maneuver its candidate is inactive. Once memory's `stop_row` has learned a stop
-row (at `memory.stop_row.hypothesis`), the same maneuver also starts before a
+row (belief `stop_row.row`), the same maneuver also starts before a
 collision, when `clearance_ahead`'s `nearest_bottom_y` reaches that row.
+Short of that row, when perception's `closeness_ahead` is `near` and
+`closeness_left` or `closeness_right` has more reach (an empty band has
+unbounded reach), it turns toward the side with the most reach, right on a
+tie, while that side still has more reach than ahead; it backs up if the box
+ahead reaches the stop row or the view goes static.
 
 ## Finding the default business logic
 

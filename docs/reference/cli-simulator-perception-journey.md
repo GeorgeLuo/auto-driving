@@ -119,8 +119,8 @@ Memory's `turn_model` changes no command. It learns, from ordinary driving,
 how the car's own turn moves the boxes `sim_cardboard_permanence` tracks: each
 landmark's bearing is its box centre's offset from the middle of the image, in
 image widths, and each new camera frame contributes the median shift of the
-landmarks seen at both ends, filed by the maneuver over that interval
-(`turn_start`, `turning`, `turn_end` or `straight`). A box touching the image
+landmarks seen at both ends, filed by the applied right turn or straight
+drive over that interval. A left turn is not learned. A box touching the image
 edge, or one that changes size by more than 1.5×, does not count, because the
 detector splits a box leaving the image and identities follow the pieces. Two
 slow turning intervals in a row are counted as a stall instead of learned.
@@ -137,11 +137,14 @@ median. It also times each straight run that ended with `avoid_obstacle`
 backing up, and keeps their median as `run_ms`, how long the car usually
 drives before it must stop. Perception's `closeness` adds the learned row
 times from a box's lower edge down to `stop_row`'s row: that is the box's
-reach. It emits `closeness_ahead` and `closeness_right`, `near` when the
-nearest box in that band would be reached within one usual run and `far`
-otherwise, or no value until the rows between are learned. A row nobody has
-timed borrows its learned neighbours. Both numbers are the car's own, so
-nothing is tuned for this arena.
+reach. It emits `closeness_ahead`, `closeness_left` and `closeness_right`,
+`near` when the nearest box in that band would be reached within one usual run
+and `far` otherwise, or no value until the rows between are learned. A row
+nobody has timed borrows its learned neighbours. Both numbers are the car's
+own, so nothing is tuned for this arena. When the box ahead is near,
+`avoid_obstacle` turns toward the side whose nearest box has more reach (an
+empty side has the most), right on a tie, until ahead has as much reach as
+that side.
 
 Perception's `sim_wall` plugin finds wall pixels by saturation, which lighting
 does not change: the walls are less saturated than the wood floor and more than

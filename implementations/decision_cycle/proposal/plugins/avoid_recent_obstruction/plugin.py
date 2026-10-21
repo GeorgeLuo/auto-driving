@@ -336,50 +336,6 @@ def propose(
 
         assumptions = list(BASE_ASSUMPTIONS)
         magnitude = float(steer_magnitude)
-        caps = source.capabilities
-        if caps.status == "ready":
-            # Ready but non-mapping or invalid fields fail closed — do not treat
-            # as unavailable fallback. Frozen JSON objects are Mapping, not dict.
-            caps_value = caps.value
-            if hasattr(caps_value, "to_dict") and callable(
-                getattr(caps_value, "to_dict")
-            ):
-                caps_value = caps_value.to_dict()
-            if isinstance(caps_value, Mapping) and not isinstance(
-                caps_value, (str, bytes)
-            ):
-                caps_value = dict(caps_value)
-            if not isinstance(caps_value, dict):
-                return ActionProposal(
-                    plugin_id=AvoidRecentObstruction.plugin_id,
-                    frame_id=source.frame_id,
-                    lifecycle="error",
-                    freshness="none",
-                    confidence=0.0,
-                    reason="invalid_capabilities",
-                    command=None,
-                    assumptions=BASE_ASSUMPTIONS,
-                    available=False,
-                )
-            try:
-                max_abs = float(caps_value.get("max_abs_steering"))
-            except (TypeError, ValueError):
-                max_abs = None
-            if max_abs is None or not math.isfinite(max_abs) or not (0.0 < max_abs <= 1.0):
-                return ActionProposal(
-                    plugin_id=AvoidRecentObstruction.plugin_id,
-                    frame_id=source.frame_id,
-                    lifecycle="error",
-                    freshness="none",
-                    confidence=0.0,
-                    reason="invalid_capabilities",
-                    command=None,
-                    assumptions=BASE_ASSUMPTIONS,
-                    available=False,
-                )
-            magnitude = min(magnitude, max_abs)
-        else:
-            assumptions.append("capabilities_not_ready")
 
         steering = magnitude if side == "left" else -magnitude
         lifecycle = pool_lifecycle or "retained"

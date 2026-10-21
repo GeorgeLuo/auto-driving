@@ -304,56 +304,19 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertNotEqual(future.reason, "future_dated_provenance")
 
 
-    def test_capabilities_unavailable_uses_configured_magnitude(self) -> None:
-        from autonomy.decision_cycle.proposal.inputs import unavailable_envelope
+    def test_steering_comes_from_plugin_config(self) -> None:
+        source = build_decision_data_source(frame_id="frame_001", frame_index=0, timestamp_ms=1000)
+        for zone, expected in (("left", 0.25), ("right", -0.25)):
+            with self.subTest(zone=zone):
+                plugin = AvoidRecentObstruction(steer_magnitude=0.25)
+                proposal = plugin.propose(source, {EVIDENCE_KEY: (_record(zone=zone),)})
+                self.assertAlmostEqual(proposal.command.steering, expected)
+        self.assertNotIn("capabilities", source.to_dict())
 
-        memory = {EVIDENCE_KEY: (_record(),)}
-        source = build_decision_data_source(
-            frame_id="frame_001",
-            frame_index=0,
-            timestamp_ms=1000,
-            capabilities=unavailable_envelope(
-                "stage_not_configured", updated_at_ms=1000
-            ),
-        )
-        p = propose((source, memory), steer_magnitude=0.4)
-        self.assertEqual(p.lifecycle, "fresh")
-        assert p.command is not None
-        self.assertAlmostEqual(p.command.steering, 0.4)
-        self.assertIn("capabilities_not_ready", p.assumptions)
-
-    def test_ready_capabilities_invalid_max_abs_steering(self) -> None:
-        from autonomy.decision_cycle.proposal.inputs import (
-            default_capabilities,
-            ready_envelope,
-        )
-
-        memory = {EVIDENCE_KEY: (_record(),)}
-        # Out-of-range / non-numeric fields rejected at source construction.
-        for bad_max in (-0.1, 1.5, "high", None):
-            with self.subTest(max_abs_steering=bad_max):
-                caps = default_capabilities()
-                caps["max_abs_steering"] = bad_max
-                with self.assertRaises((TypeError, ValueError)):
-                    build_decision_data_source(
-                        frame_id="frame_001",
-                        frame_index=0,
-                        timestamp_ms=1000,
-                                capabilities=ready_envelope(caps, updated_at_ms=1000),
-                    )
-        # Zero is legal at source ([0,1]) but not usable for active magnitude.
-        caps = default_capabilities()
-        caps["max_abs_steering"] = 0.0
-        source = build_decision_data_source(
-            frame_id="frame_001",
-            frame_index=0,
-            timestamp_ms=1000,
-            capabilities=ready_envelope(caps, updated_at_ms=1000),
-        )
-        p = propose((source, memory))
-        self.assertEqual(p.lifecycle, "error")
-        self.assertEqual(p.reason, "invalid_capabilities")
-        self.assertIsNone(p.command)
+    def test_invalid_steer_magnitude_is_rejected_in_config(self) -> None:
+        for magnitude in (0, -0.1, 1.1, float("nan"), float("inf"), "high", None):
+            with self.subTest(magnitude=magnitude), self.assertRaises(ValueError):
+                AvoidRecentObstruction(steer_magnitude=magnitude)
 
     def test_missing_zone_bbox_only_is_active(self) -> None:
         """Omitted zone becomes ViewLocation 'unknown'; bbox mid_x still steers."""

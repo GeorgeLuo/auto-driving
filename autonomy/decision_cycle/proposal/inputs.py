@@ -8,9 +8,7 @@ memory itself.
 
 from __future__ import annotations
 
-import math
 import re
-from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -43,12 +41,6 @@ FORBIDDEN_CHANNEL_ORIGINS = frozenset(
         "debug_truth",
         "privileged",
     }
-)
-CAPABILITY_REQUIRED_KEYS = (
-    "max_abs_steering",
-    "max_abs_throttle",
-    "allows_reverse",
-    "coordinate_frame",
 )
 
 
@@ -129,61 +121,6 @@ def _plain_mapping(value: object) -> dict[str, Any]:
     return plain
 
 
-def _require_exact_json_number(value: object, *, field_name: str) -> float:
-    """Require a JSON number (int/float), rejecting bool and string coercions."""
-
-    # bool is a subclass of int — must reject before int acceptance.
-    if type(value) is bool:
-        raise ValueError(f"{field_name} must be a JSON number, not bool")
-    if type(value) is int:
-        return float(value)
-    if type(value) is float:
-        if not math.isfinite(value):
-            raise ValueError(f"{field_name} must be a finite JSON number")
-        return value
-    raise ValueError(
-        f"{field_name} must be a JSON number (int or float); got {type(value).__name__}"
-    )
-
-
-def _require_exact_unit_float(value: object, *, field_name: str) -> float:
-    number = _require_exact_json_number(value, field_name=field_name)
-    if not (0.0 <= number <= 1.0):
-        raise ValueError(f"{field_name} must be a finite float in [0, 1]")
-    return number
-
-
-def _canonical_capabilities_payload(value: object, *, path: str) -> object:
-    """Validate required fields, preserve safe extras, freeze the mapping.
-
-    The accepted schema requires *at least* the four core capability fields;
-    additional strict-JSON, non-privileged keys are retained for host extensions.
-    """
-
-    payload = _plain_mapping(value)
-    missing = [key for key in CAPABILITY_REQUIRED_KEYS if key not in payload]
-    if missing:
-        raise ValueError(
-            f"{path} capabilities missing required keys: {', '.join(missing)}"
-        )
-    _reject_forbidden_channel_keys(payload, path=path)
-    if type(payload["allows_reverse"]) is not bool:
-        raise ValueError(f"{path}.allows_reverse must be a bool")
-    if type(payload["coordinate_frame"]) is not str or not payload["coordinate_frame"]:
-        raise ValueError(f"{path}.coordinate_frame must be a non-empty string")
-    # Preserve extras; overwrite required fields with exact JSON number types.
-    canonical = dict(payload)
-    canonical["max_abs_steering"] = _require_exact_unit_float(
-        payload["max_abs_steering"], field_name=f"{path}.max_abs_steering"
-    )
-    canonical["max_abs_throttle"] = _require_exact_unit_float(
-        payload["max_abs_throttle"], field_name=f"{path}.max_abs_throttle"
-    )
-    canonical["allows_reverse"] = payload["allows_reverse"]
-    canonical["coordinate_frame"] = payload["coordinate_frame"]
-    return deep_freeze(canonical)
-
-
 def _canonical_observation_payload(value: object, *, path: str) -> Observation:
     if isinstance(value, Observation):
         plain = value.to_dict()
@@ -210,8 +147,6 @@ def _canonicalize_ready_component(name: str, envelope: "ComponentEnvelope") -> o
         if not _is_evidence(value):
             raise TypeError(f"{path} must be a tuple of RetainedEvidence when ready")
         return value
-    if name == "capabilities":
-        return _canonical_capabilities_payload(value, path=path)
     raise ValueError(f"unknown decision component {name!r}")
 
 
@@ -349,21 +284,6 @@ def observation_envelope_from_value(
     )
 
 
-def default_capabilities(
-    *,
-    max_abs_steering: float = 1.0,
-    max_abs_throttle: float = 1.0,
-    allows_reverse: bool = True,
-    coordinate_frame: str = "image",
-) -> dict[str, Any]:
-    return {
-        "max_abs_steering": float(max_abs_steering),
-        "max_abs_throttle": float(max_abs_throttle),
-        "allows_reverse": bool(allows_reverse),
-        "coordinate_frame": str(coordinate_frame),
-    }
-
-
 @dataclass(frozen=True)
 class DecisionDataSource:
     """Detached decision input for one proposal call.
@@ -377,7 +297,6 @@ class DecisionDataSource:
     timestamp_ms: int
     observation: ComponentEnvelope
     evidence: ComponentEnvelope
-    capabilities: ComponentEnvelope
     metadata: dict[str, Any] = field(default_factory=dict)
     schema: str = DECISION_DATA_SOURCE_SCHEMA
     source_id: str = ""
@@ -401,7 +320,7 @@ class DecisionDataSource:
             raise ValueError(
                 f"schema must be {DECISION_DATA_SOURCE_SCHEMA!r}; got {self.schema!r}"
             )
-        for name in ("observation", "evidence", "capabilities"):
+        for name in ("observation", "evidence"):
             envelope = getattr(self, name)
             if not isinstance(envelope, ComponentEnvelope):
                 raise TypeError(f"{name} must be ComponentEnvelope")
@@ -432,14 +351,6 @@ class DecisionDataSource:
                 f"DecisionDataSource must be strictly JSON-serializable: {exc}"
             ) from exc
         _reject_forbidden_channel_keys(plain, path="DecisionDataSource")
-        # Final-type assertions on constrained JSON components.
-        caps = plain["capabilities"]
-        if caps["status"] == "ready":
-            for field_name in ("max_abs_steering", "max_abs_throttle"):
-                if type(caps["value"][field_name]) is not float:
-                    raise ValueError(
-                        f"capabilities.value.{field_name} must serialize as float"
-                    )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -450,7 +361,6 @@ class DecisionDataSource:
             "timestamp_ms": self.timestamp_ms,
             "observation": self.observation.to_dict(),
             "evidence": self.evidence.to_dict(),
-            "capabilities": self.capabilities.to_dict(),
             "metadata": frozen_mapping_to_dict(self.metadata),
         }
 
@@ -464,7 +374,6 @@ def build_decision_data_source(
     observation_configured: bool = False,
     observation_error: str | None = None,
     evidence: tuple[RetainedEvidence, ...] | list[RetainedEvidence] | None = None,
-    capabilities: ComponentEnvelope | None = None,
     metadata: dict[str, Any] | None = None,
 ) -> DecisionDataSource:
     """Build a frozen DecisionDataSource for one cycle.
@@ -486,8 +395,6 @@ def build_decision_data_source(
             updated_at_ms=timestamp_ms,
         ),
         evidence=evidence_envelope(evidence, updated_at_ms=timestamp_ms),
-        capabilities=capabilities
-        or ready_envelope(default_capabilities(), updated_at_ms=timestamp_ms),
         metadata={} if metadata is None else metadata,
     )
 
@@ -498,7 +405,6 @@ __all__ = [
     "DECISION_DATA_SOURCE_SCHEMA",
     "DecisionDataSource",
     "build_decision_data_source",
-    "default_capabilities",
     "error_envelope",
     "evidence_envelope",
     "observation_envelope_from_value",

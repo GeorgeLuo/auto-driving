@@ -28,12 +28,9 @@ from autonomy.decision_cycle.action_identifiers import (
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.proposal.inputs import (
-    ComponentEnvelope,
     DecisionDataSource,
     build_decision_data_source,
-    default_capabilities,
     omit_forbidden_channel_keys,
-    ready_envelope,
 )
 from autonomy.decision_cycle.proposal.interface import (
     FAILURE_POLICY,
@@ -171,12 +168,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
                     ),
                     "missing_behavior": "the source marks it unavailable",
                 },
-                {
-                    "name": "capabilities",
-                    "required": False,
-                    "source": "the host's capabilities envelope in context.metadata",
-                    "missing_behavior": "the source holds the default capabilities",
-                },
             ],
             "plugins": [
                 {
@@ -219,16 +210,11 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
     ) -> ProposalResult:
         """Propose for the cycle.
 
-        ``context.metadata`` may carry ``observation_error`` and the host-reported
-        ``capabilities`` envelope.
+        ``context.metadata`` may carry ``observation_error``.
         """
 
         metadata = context.metadata if isinstance(context.metadata, dict) else {}
         observation_error = metadata.get("observation_error")
-
-        def envelope(key: str) -> ComponentEnvelope | None:
-            value = metadata.get(key)
-            return value if isinstance(value, ComponentEnvelope) else None
 
         return self.run(
             frame_id=context.frame_id,
@@ -237,7 +223,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             observation=observation,
             observation_error=observation_error if type(observation_error) is str else None,
             shared_memory=context.shared_memory,
-            capabilities=envelope("capabilities"),
         )
 
     def run(
@@ -249,7 +234,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         observation: Observation | dict[str, Any] | None = None,
         observation_error: str | None = None,
         shared_memory: SharedMemory | None = None,
-        capabilities: ComponentEnvelope | None = None,
     ) -> ProposalResult:
         # Entry precondition: invalid identity never yields a record.
         try:
@@ -293,8 +277,6 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
                         if shared_memory is not None and evidence_key is not None
                         else None
                     ),
-                    capabilities=capabilities
-                    or ready_envelope(default_capabilities(), updated_at_ms=timestamp_ms),
                 )
             except Exception:
                 return fail("decision_data_source_invalid", source=None)

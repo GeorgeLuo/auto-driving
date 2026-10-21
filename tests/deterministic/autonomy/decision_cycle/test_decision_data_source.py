@@ -5,7 +5,6 @@ from __future__ import annotations
 import unittest
 
 from autonomy.decision_cycle.proposal.inputs import (
-    DecisionDataSource,
     build_decision_data_source,
     evidence_envelope,
     omit_forbidden_channel_keys,
@@ -14,7 +13,7 @@ from autonomy.decision_cycle.proposal.inputs import (
 )
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-from tests.support.action_fixtures import decision_chain, packaged_decision_chain
+from tests.support.action_fixtures import packaged_decision_chain
 
 
 def _record(*, frame_id: str = "frame_001", kind: str = "floor_boundary") -> RetainedEvidence:
@@ -85,56 +84,6 @@ class DecisionDataSourceTests(unittest.TestCase):
         self.assertEqual(source.observation.reason, "observation_not_configured")
 
 
-    def test_plugin_cannot_mutate_shared_capabilities(self) -> None:
-        from autonomy.decision_cycle.proposal.values import ActionProposal
-
-        seen: list[object] = []
-
-        def plugin_a(source: DecisionDataSource, shared_memory) -> ActionProposal:
-            seen.append(source.capabilities.value)
-            value = source.capabilities.value
-            # Frozen mapping rejects item assignment; plain dict would mutate a
-            # shared view — neither path may change peer observations.
-            if isinstance(value, dict):
-                value["max_abs_steering"] = 0.01
-            else:
-                try:
-                    value["max_abs_steering"] = 0.01  # type: ignore[index]
-                except TypeError:
-                    pass
-            return ActionProposal(
-                plugin_id="a",
-                frame_id=source.frame_id,
-                lifecycle="inactive",
-                freshness="none",
-                confidence=0.0,
-                reason="noop_a",
-                command=None,
-                available=False,
-            )
-
-        def plugin_b(source: DecisionDataSource, shared_memory) -> ActionProposal:
-            seen.append(source.capabilities.value)
-            return ActionProposal(
-                plugin_id="b",
-                frame_id=source.frame_id,
-                lifecycle="inactive",
-                freshness="none",
-                confidence=0.0,
-                reason="noop_b",
-                command=None,
-                available=False,
-            )
-
-        engine = decision_chain(
-            plugins={"a": plugin_a, "b": plugin_b},
-        )
-        engine.run(frame_id="frame_001", frame_index=0, timestamp_ms=1)
-        self.assertEqual(len(seen), 2)
-        # Peer still sees original frozen capabilities, not a mutated mapping.
-        self.assertEqual(seen[0], seen[1])
-
-
     def test_omitting_evaluator_keys_makes_a_live_capture_admissible(self) -> None:
         dirty = {
             "readings": {
@@ -200,80 +149,6 @@ class DecisionDataSourceTests(unittest.TestCase):
         )
         canonical_json_bytes(source.to_dict())
 
-    def test_ready_component_shapes_and_forbidden_channels(self) -> None:
-        # Privileged channel nested inside capabilities payload.
-        with self.assertRaises(ValueError):
-            build_decision_data_source(
-                frame_id="f",
-                frame_index=0,
-                timestamp_ms=1,
-                capabilities=ready_envelope(
-                    {
-                        "max_abs_steering": 1.0,
-                        "max_abs_throttle": 1.0,
-                        "allows_reverse": True,
-                        "coordinate_frame": "image",
-                        "evaluator": {"reference_decision": True},
-                    },
-                    updated_at_ms=1,
-                ),
-            )
-        # Case/camel privileged aliases rejected on final source tree.
-        with self.assertRaises(ValueError):
-            build_decision_data_source(
-                frame_id="f",
-                frame_index=0,
-                timestamp_ms=1,
-                capabilities=ready_envelope(
-                    {
-                        "max_abs_steering": 1.0,
-                        "max_abs_throttle": 1.0,
-                        "allows_reverse": True,
-                        "coordinate_frame": "image",
-                        "Evaluator": {"ReferenceDecision": "steer-left"},
-                    },
-                    updated_at_ms=1,
-                ),
-            )
-        # Incomplete capabilities (missing required keys).
-        with self.assertRaises(ValueError):
-            build_decision_data_source(
-                frame_id="f",
-                frame_index=0,
-                timestamp_ms=1,
-                capabilities=ready_envelope(
-                    {"max_abs_steering": 1.0}, updated_at_ms=1
-                ),
-            )
-        # Coerced string/bool numerics rejected (not retained as wrong types).
-        with self.assertRaises(ValueError):
-            build_decision_data_source(
-                frame_id="f",
-                frame_index=0,
-                timestamp_ms=1,
-                capabilities=ready_envelope(
-                    {
-                        "max_abs_steering": "0.5",
-                        "max_abs_throttle": True,
-                        "allows_reverse": True,
-                        "coordinate_frame": "image",
-                    },
-                    updated_at_ms=1,
-                ),
-            )
-        # Non-mapping ready capabilities rejected at source, not plugin.
-        with self.assertRaises((TypeError, ValueError)):
-            build_decision_data_source(
-                frame_id="f",
-                frame_index=0,
-                timestamp_ms=1,
-                capabilities=ready_envelope("not-a-dict", updated_at_ms=1),
-            )
-        # Valid capabilities serialize as exact floats.
-        source = build_decision_data_source(frame_id="f", frame_index=0, timestamp_ms=1)
-        caps = source.to_dict()["capabilities"]["value"]
-        self.assertIs(type(caps["max_abs_steering"]), float)
-        self.assertIs(type(caps["max_abs_throttle"]), float)
 
     def test_ready_observation_accepts_detached_dict(self) -> None:
         from autonomy.decision_cycle.observation.values import Observation
@@ -305,14 +180,6 @@ class DecisionDataSourceTests(unittest.TestCase):
             timestamp_ms=1,
             observation=ready,
             evidence=unavailable_envelope("evidence_not_published"),
-            capabilities=ready_envelope(
-                {
-                    "max_abs_steering": 1.0,
-                    "max_abs_throttle": 1.0,
-                    "allows_reverse": True,
-                    "coordinate_frame": "image",
-                }
-            ),
         )
         self.assertEqual(source.observation.status, "ready")
         self.assertIsInstance(source.observation.value, Observation)
@@ -357,37 +224,9 @@ class DecisionDataSourceTests(unittest.TestCase):
                         frame_id="f",
                         frame_index=0,
                         timestamp_ms=1,
-                        capabilities=ready_envelope(
-                            {
-                                "max_abs_steering": 1.0,
-                                "max_abs_throttle": 1.0,
-                                "allows_reverse": True,
-                                "coordinate_frame": "image",
-                                bad_key: {"x": 1},
-                            },
-                            updated_at_ms=1,
-                        ),
+                        metadata={bad_key: {"x": 1}},
                     )
 
-    def test_capabilities_preserve_safe_extension_fields(self) -> None:
-        source = build_decision_data_source(
-            frame_id="f",
-            frame_index=0,
-            timestamp_ms=1,
-            capabilities=ready_envelope(
-                {
-                    "max_abs_steering": 1.0,
-                    "max_abs_throttle": 1.0,
-                    "allows_reverse": True,
-                    "coordinate_frame": "image",
-                    "wheelbase_m": 0.31,
-                },
-                updated_at_ms=1,
-            ),
-        )
-        caps = source.to_dict()["capabilities"]["value"]
-        self.assertEqual(caps["wheelbase_m"], 0.31)
-        self.assertIs(type(caps["max_abs_steering"]), float)
 
     def test_runner_observation_dict_and_error_paths(self) -> None:
         from autonomy.decision_cycle.observation.values import Observation

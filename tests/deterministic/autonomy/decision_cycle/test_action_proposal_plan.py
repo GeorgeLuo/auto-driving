@@ -97,6 +97,12 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(result.control.steering, 0.0)
         self.assertEqual(result.control.throttle, 0.0)
 
+    def test_source_refs_name_an_observation_or_memory_record(self) -> None:
+        for kind in ("observation", "memory_record"):
+            self.assertEqual(SourceRef(kind=kind, id="r1").kind, kind)
+        with self.assertRaisesRegex(ValueError, "invalid SourceRef.kind"):
+            SourceRef(kind="capability", id="caps")
+
     def test_plan_takes_more_than_four_max_size_candidates(self) -> None:
         # Six *exact* 4096-byte proposals with max 64-char plugin ids, max
         # frame_id, max timestamp, and exact 1024-byte plan metadata. Each

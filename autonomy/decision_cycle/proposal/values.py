@@ -137,7 +137,6 @@ class SourceRef:
         allowed = {
             "observation",
             "memory_record",
-            "capability",
         }
         if self.kind not in allowed:
             raise ValueError(f"invalid SourceRef.kind {self.kind!r}")

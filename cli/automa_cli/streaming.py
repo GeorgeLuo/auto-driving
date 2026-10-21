@@ -319,6 +319,12 @@ class _ViewFeed:
             self._last_capture = None
             self.error = f"{type(exc).__name__}: {exc}"
 
+    def ingest_learning(self, autonomy: Any) -> None:
+        """Add the host's ``autonomy`` status to the learning page's history."""
+
+        if self.server is not None:
+            self.server.learning.ingest(autonomy)
+
     def stop(self) -> None:
         if self.server is not None:
             self.server.stop()
@@ -492,8 +498,8 @@ def stream_vehicle_memory(
     ``live`` means the host runs a memory step; update health stays in the
     plugin diagnostics. Each probe lists every applied plugin's ledger and
     names the evidence publisher; the terminal view prints the same, then the
-    memory map and perception view URLs and the latest published memory
-    report.
+    memory map, learning and perception view URLs and the latest published
+    memory report. Each probe's status also feeds the learning view's history.
     """
 
     try:
@@ -511,8 +517,9 @@ def stream_vehicle_memory(
         )
     view = None if json_output else _ViewFeed(vehicle_id, base_url=base_url, timeout_s=timeout_s)
 
-    def render(live: dict[str, Any], _source: Any) -> str:
+    def render(live: dict[str, Any], autonomy: Any) -> str:
         assert view is not None
+        view.ingest_learning(autonomy)
         publication, fetch_error = view.read_observation()
         view.publish(publication)
         return _memory_screen(
@@ -528,10 +535,7 @@ def stream_vehicle_memory(
     try:
         return _poll_stream(
             step="memory",
-            probe=lambda: (
-                _probe_step("memory", vehicle_id=vehicle_id, base_url=base_url, timeout_s=timeout_s),
-                None,
-            ),
+            probe=lambda: _fetch_step("memory", vehicle_id=vehicle_id, base_url=base_url, timeout_s=timeout_s),
             render=render,
             refresh_s=refresh_s,
             once=once,
@@ -561,6 +565,7 @@ def _memory_screen(
         _format_live_memory_screen(vehicle_id=vehicle_id, live=live),
         "",
         _view_line("memory map", view_url, view_error, "/memory"),
+        _view_line("learning view", view_url, view_error, "/learning"),
         _view_line("perception view", view_url, view_error, "/perception"),
         decision_line,
     ]
@@ -592,6 +597,14 @@ def probe_live_step(step: str, *, vehicle_id: str, timeout_s: float = 3.0) -> di
 
 
 def _probe_step(step: str, *, vehicle_id: str, base_url: str, timeout_s: float) -> dict[str, Any]:
+    return _fetch_step(step, vehicle_id=vehicle_id, base_url=base_url, timeout_s=timeout_s)[0]
+
+
+def _fetch_step(
+    step: str, *, vehicle_id: str, base_url: str, timeout_s: float,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """``step``'s live probe and the host's ``autonomy`` status it read, or None when unreachable."""
+
     probe: dict[str, Any] = {
         "schema": LIVE_STEP_SCHEMAS[step],
         "vehicle_id": vehicle_id,
@@ -601,7 +614,7 @@ def _probe_step(step: str, *, vehicle_id: str, base_url: str, timeout_s: float) 
     try:
         status = fetch_autonomy_status(base_url, timeout_s=timeout_s)
     except ConnectionError as exc:
-        return {**probe, "status": "error", "error": str(exc)}
+        return {**probe, "status": "error", "error": str(exc)}, None
 
     session = status.get("session") if isinstance(status.get("session"), dict) else {}
     probe.update(mode=status.get("mode"), session_status=session.get("status"))
@@ -609,14 +622,14 @@ def _probe_step(step: str, *, vehicle_id: str, base_url: str, timeout_s: float) 
     steps = autonomy.get("steps") if isinstance(autonomy.get("steps"), dict) else {}
     runner = steps.get(step) if isinstance(steps.get(step), dict) else None
     if runner is None:
-        return {**probe, "status": "absent", "error": absent_step_error(step, vehicle_id)}
+        return {**probe, "status": "absent", "error": absent_step_error(step, vehicle_id)}, autonomy
     fields = _live_step_fields(step, runner)
     # The host's cycle times each step call; the runner keeps only its
     # plugins' times.
     last_cycle = autonomy.get("last_cycle") if isinstance(autonomy.get("last_cycle"), dict) else {}
     entry = step_timing(last_cycle.get("timing"), step)
     fields["last_duration_ms"] = entry.get("duration_ms") if entry is not None else None
-    return {**probe, "status": "live", **fields}
+    return {**probe, "status": "live", **fields}, autonomy
 
 
 def _live_step_fields(step: str, status: dict[str, Any]) -> dict[str, Any]:

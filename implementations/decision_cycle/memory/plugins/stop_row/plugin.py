@@ -113,7 +113,7 @@ class StopRowHypothesis:
             state["trial"] = None
             motion = issued = None
             if belief is not None:
-                belief = replace(belief, trials=())
+                belief = belief.withdrawn(reason="clock_step" if now < previous else "unknown_motion")
         forward = motion == "forward"
         static = _value(signals, "view_static")
         collided = forward and static is True and any(
@@ -162,7 +162,9 @@ class StopRowHypothesis:
                 belief = Belief(BELIEF_ID, state["stop_row"], self.plugin_id, now)
             if concluded:
                 outcome = state["last_outcome"]
-                belief = belief.revised(state["stop_row"], now, keep_checks=not state.pop("invalidated", False))
+                belief = belief.revised(state["stop_row"], now)
+                if state.pop("invalidated", False):
+                    belief = belief.discarded("bracket_invalidated")
                 if belief.trials:
                     belief = belief.resolved(belief.trials[0].trial_id,
                         "support" if outcome["kind"] == STOPPED_SHORT else "contradict",
@@ -171,7 +173,7 @@ class StopRowHypothesis:
                     belief = belief.checked(collision_check, 64)
             trial = state["trial"]
             if trial is None:
-                belief = replace(belief, trials=())
+                belief = belief.withdrawn(reason="no_stop")
             else:
                 properties = {key: trial[key] for key in ("peak_row", "reversed", "obstacle") if key in trial}
                 if not belief.trials:
@@ -198,6 +200,7 @@ class StopRowHypothesis:
             "stop_row": state["stop_row"],
             "safe_row": state["safe_row"],
             "unsafe_row": state["unsafe_row"],
+            "bracket_width": round(state["unsafe_row"] - state["safe_row"], 4),
             "testing": belief is not None and bool(belief.trials),
             "counts": dict(state["counts"]),
             "last_outcome": state["last_outcome"],

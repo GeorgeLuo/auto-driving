@@ -11,6 +11,12 @@ confidence counts checks, never samples.
 0 or 1. ``to_dict`` adds ``confidence``, ``by_method`` and ``corroborated`` for
 viewers; ``from_dict`` derives them again rather than reading them.
 
+Trials closed without a check (``withdrawn``, or displaced past the trial bound)
+and checks dropped before they age out (``discarded``) are counted for the
+belief's lifetime in ``withdrawals`` and ``discards``, as
+``{method: {reason: count}}``, so a viewer can tell why learning stalled or
+restarted.
+
 The plugin that declares a belief keeps it at ``publication.belief_key``.
 """
 
@@ -91,6 +97,8 @@ class Belief:
     checks: tuple[Check, ...] = ()
     trials: tuple[Trial, ...] = ()
     properties: dict[str, Any] = field(default_factory=dict)
+    withdrawals: dict[str, dict[str, int]] = field(default_factory=dict)
+    discards: dict[str, dict[str, int]] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         canonical_json_utf8(self.value)
@@ -126,26 +134,33 @@ class Belief:
         return sum(counts["support"] > counts["contradict"]
                    for counts in self.by_method.values()) >= 2
 
-    def revised(
-        self, value: Any, at_ms: int, *, properties: dict[str, Any] | None = None,
-        keep_checks: bool = True,
-    ) -> Belief:
-        """Revise the value and optional properties, keeping open predictions."""
+    def revised(self, value: Any, at_ms: int, *, properties: dict[str, Any] | None = None) -> Belief:
+        """Revise the value and optional properties, keeping checks and open predictions."""
         return replace(self, value=value, updated_at_ms=max(self.updated_at_ms, at_ms),
-                       properties=self.properties if properties is None else properties,
-                       checks=self.checks if keep_checks else ())
+                       properties=self.properties if properties is None else properties)
 
     def opened(self, trial: Trial, max_trials: int) -> Belief:
-        """Open or replace a prediction, dropping the oldest beyond ``max_trials``."""
-        trials = tuple(item for item in self.trials if item.trial_id != trial.trial_id)
-        return replace(self, trials=(*trials, trial)[-_bound(max_trials, "max_trials"):],
-                       updated_at_ms=max(self.updated_at_ms, trial.started_at_ms))
+        """Open or replace a prediction, withdrawing the oldest beyond ``max_trials`` as displaced."""
+        trials = (*(item for item in self.trials if item.trial_id != trial.trial_id), trial)
+        kept = trials[-_bound(max_trials, "max_trials"):]
+        return replace(self, trials=kept, updated_at_ms=max(self.updated_at_ms, trial.started_at_ms),
+                       withdrawals=_tally(self.withdrawals, trials[:len(trials) - len(kept)], "displaced"))
 
-    def withdrawn(self, trial_ids: tuple[str, ...] | None = None) -> Belief:
-        """Drop selected predictions, or all of them, without scoring checks."""
-        return replace(self, trials=tuple(
-            trial for trial in self.trials if trial_ids is not None and trial.trial_id not in trial_ids
-        ))
+    def withdrawn(self, trial_ids: tuple[str, ...] | None = None, *, reason: str) -> Belief:
+        """Drop selected predictions, or all of them, without scoring, counted under ``reason``."""
+        require_identifier(reason, field_name="reason")
+        dropped = tuple(trial for trial in self.trials if trial_ids is None or trial.trial_id in trial_ids)
+        if not dropped:
+            return self
+        return replace(self, trials=tuple(trial for trial in self.trials if trial not in dropped),
+                       withdrawals=_tally(self.withdrawals, dropped, reason))
+
+    def discarded(self, reason: str) -> Belief:
+        """Drop every retained check, counted under ``reason``, when they no longer test the value."""
+        require_identifier(reason, field_name="reason")
+        if not self.checks:
+            return self
+        return replace(self, checks=(), discards=_tally(self.discards, self.checks, reason))
 
     def checked(self, check: Check, max_checks: int) -> Belief:
         """Record a check, dropping the oldest beyond ``max_checks``."""
@@ -171,6 +186,7 @@ class Belief:
             "updated_at_ms": self.updated_at_ms, "confidence": self.confidence,
             "by_method": self.by_method, "corroborated": self.corroborated,
             "open_trials": len(self.trials),
+            "withdrawals": self.withdrawals, "discards": self.discards,
         }
 
     def to_dict(self) -> dict[str, Any]:
@@ -181,6 +197,7 @@ class Belief:
             "trials": [trial.to_dict() for trial in self.trials],
             "properties": self.properties, "confidence": self.confidence,
             "by_method": self.by_method, "corroborated": self.corroborated,
+            "withdrawals": self.withdrawals, "discards": self.discards,
         }
 
     @classmethod
@@ -191,7 +208,19 @@ class Belief:
             checks=tuple(Check.from_dict(item) for item in data["checks"]),
             trials=tuple(Trial.from_dict(item) for item in data["trials"]),
             properties=data["properties"],
+            withdrawals=data["withdrawals"], discards=data["discards"],
         )
+
+
+def _tally(
+    counts: dict[str, dict[str, int]], items: tuple[Check | Trial, ...], reason: str,
+) -> dict[str, dict[str, int]]:
+    """Count ``items`` under their method and ``reason``, without changing ``counts``."""
+    tallied = {method: dict(reasons) for method, reasons in counts.items()}
+    for item in items:
+        reasons = tallied.setdefault(item.method, {})
+        reasons[reason] = reasons.get(reason, 0) + 1
+    return tallied
 
 
 def _bound(value: Any, name: str) -> int:

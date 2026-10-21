@@ -10,6 +10,7 @@ from unittest import mock
 
 from PIL import Image
 
+from autonomy.decision_cycle.memory.beliefs import Belief
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli import runtime_monitor
 from cli.automa_cli.run_record import control_application, control_source
@@ -198,6 +199,41 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(state["last_frame"]["capture_to_perception_ms"], 40)
         self.assertEqual(state["last_frame"]["control"]["reason"], "steer-left")
         self.assertEqual(state["published_view"]["available"], False)
+
+    def test_each_host_status_feeds_the_learning_history(self) -> None:
+        hosts = [_host(10), _host(11), _host(13)]
+        for index, host in enumerate(hosts):
+            belief = Belief("recent.count", float(index), "recent", 1_000 + index)
+            host["autonomy"]["last_cycle"] = {"context": {"timestamp_ms": 1_000 + index}}
+            host["autonomy"]["steps"]["memory"].update(
+                reset_count=0,
+                beliefs={belief.belief_id: belief.to_dict()},
+                plugins=[{"plugin_id": "recent", "update_count": index, "failure_count": 0,
+                          "last_duration_ms": 0.2, "last_error": None, "state": {"seen": index}}],
+            )
+        servers = []
+
+        class _KeptServer(runtime_monitor.RuntimeViewServer):
+            def __init__(self, **kwargs) -> None:
+                super().__init__(**kwargs)
+                servers.append(self)
+
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch.object(runtime_monitor, "RuntimeViewServer", _KeptServer):
+            self._monitor(
+                Path(tmp) / "automation",
+                sessions=[_session("running", 1), _session("completed", 2)],
+                hosts=hosts,
+            )
+
+        payload = servers[0].learning.payload()
+        # The status read before the run starts is not part of it.
+        self.assertEqual(payload["now_ms"], 1_002)
+        self.assertEqual(
+            [point[1:] for point in payload["beliefs"]["recent.count"]["series"]["/value"]],
+            [[1_001, 1.0], [1_002, 2.0]],
+        )
+        self.assertEqual(payload["plugins"]["recent"]["current"]["state"], {"seen": 2})
 
     def test_a_missing_capture_counter_is_unavailable_rather_than_zero(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "does not report"):

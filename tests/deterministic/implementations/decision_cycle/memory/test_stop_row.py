@@ -103,6 +103,7 @@ class StopRowHypothesisTests(unittest.TestCase):
         self.assertFalse(status["testing"])
         self.assertEqual(status["last_outcome"], {"kind": "stopped_short", "stop_row": 0.79, "peak_row": 0.9, "at_ms": 1200})
         self.assertEqual((status["safe_row"], status["unsafe_row"], status["stop_row"]), (0.79, 0.98, 0.885))
+        self.assertEqual(status["bracket_width"], 0.19)
 
     def test_coming_too_close_moves_the_stop_row_earlier_at_once(self):
         car = _Car()
@@ -151,6 +152,15 @@ class StopRowHypothesisTests(unittest.TestCase):
         self.assertFalse(status["testing"])
         self.assertEqual(status["counts"], {"collision": 1, "stopped_short": 0, "too_close": 0})
         self.assertEqual(status["stop_row"], 0.79)
+        self.assertEqual(read_belief(car.memory, "stop_row.row").withdrawals, {"stop": {"no_stop": 1}})
+
+    def test_a_clock_step_withdraws_the_open_test(self):
+        car = _Car()
+        car.collide()
+        car.step(0.8)
+        car.now -= 300
+        self.assertFalse(car.step(0.9, phase="backing_up")["testing"])
+        self.assertEqual(read_belief(car.memory, "stop_row.row").withdrawals, {"stop": {"clock_step": 1}})
 
     def test_contradicting_evidence_replaces_the_older_bound(self):
         car = _Car()
@@ -213,6 +223,7 @@ class StopRowHypothesisTests(unittest.TestCase):
         belief = read_belief(car.memory, "stop_row.row")
         self.assertEqual([(check.method, check.outcome) for check in belief.checks], [("stop", "contradict")])
         self.assertEqual(belief.confidence, 1 / 3)
+        self.assertEqual((belief.discards, belief.withdrawals), ({"stop": {"bracket_invalidated": 1}}, {}))
 
     def test_missing_or_manual_motion_cannot_seed_a_collision_or_complete_a_stop(self):
         car = _Car()
@@ -223,6 +234,7 @@ class StopRowHypothesisTests(unittest.TestCase):
         status = car.step(.9, phase="backing_up")
         self.assertFalse(status["testing"])
         self.assertEqual(read_belief(car.memory, "stop_row.row").checks, ())
+        self.assertEqual(read_belief(car.memory, "stop_row.row").withdrawals, {"stop": {"unknown_motion": 1}})
         memory = {}
         write_observation(memory, Observation(observation_id="o", created_at_ms=10, sensor_frame={}, signals=(
             {"signal_id": "view_static", "value": True}, {"signal_id": "wall_in_sight", "value": True})))

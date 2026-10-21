@@ -9,6 +9,8 @@ from urllib.request import Request, urlopen
 
 from PIL import Image
 
+from autonomy.decision_cycle.memory.beliefs import Belief
+from cli.automa_cli.learning_history import LEARNING_HISTORY_SCHEMA
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.perception_view import (
     MAX_BUFFERED_FRAMES,
@@ -167,6 +169,48 @@ class PerceptionViewTests(unittest.TestCase):
                     urlopen(f"{server.url}api/latest", timeout=1.0)
 
                 self.assertEqual(caught.exception.code, 503)
+            finally:
+                server.stop()
+
+    def test_view_serves_the_learning_page_and_its_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            server = RuntimeViewServer(
+                vehicle_id="test-vehicle",
+                automation_dir=Path(tmp),
+                port=0,
+            ).start()
+            try:
+                with urlopen(f"{server.url}learning", timeout=1.0) as response:
+                    self.assertEqual(response.headers.get_content_type(), "text/html")
+                    html = response.read().decode("utf-8")
+                self.assertIn("<title>Automa Learning</title>", html)
+                self.assertNotIn("__DECISION_NAV__", html)
+                self.assertIn('title="Action view unavailable"', html)
+                with urlopen(f"{server.url}", timeout=1.0) as response:
+                    self.assertIn('href="/learning"', response.read().decode("utf-8"))
+
+                server.learning.ingest({
+                    "last_cycle": {"context": {"timestamp_ms": 1000}},
+                    "steps": {"memory": {"reset_count": 0, "plugins": [], "beliefs": {
+                        "stop_row.row": Belief("stop_row.row", 3.0, "stop_row", 1000).to_dict(),
+                    }}},
+                })
+                with urlopen(f"{server.url}api/learning", timeout=1.0) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(payload["schema"], LEARNING_HISTORY_SCHEMA)
+                self.assertEqual(payload["vehicle_id"], "test-vehicle")
+                self.assertEqual((payload["available"], payload["now_ms"]), (True, 1000))
+                self.assertEqual(payload["beliefs"]["stop_row.row"]["series"]["/value"][0][1:], [1000, 3.0])
+
+                with urlopen(f"{server.url}api/learning?since={payload['seq']}", timeout=1.0) as response:
+                    later = json.loads(response.read().decode("utf-8"))
+                self.assertEqual(later["beliefs"]["stop_row.row"]["series"], {})
+                self.assertEqual(later["beliefs"]["stop_row.row"]["current"]["value"], 3.0)
+
+                for since in ("-1", "abc"):
+                    with self.assertRaises(HTTPError) as caught:
+                        urlopen(f"{server.url}api/learning?since={since}", timeout=1.0)
+                    self.assertEqual(caught.exception.code, 400)
             finally:
                 server.stop()
 

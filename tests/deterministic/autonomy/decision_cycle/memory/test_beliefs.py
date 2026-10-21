@@ -65,30 +65,46 @@ class BeliefTests(unittest.TestCase):
         for index in range(4):
             belief = belief.opened(Trial(f"t{index}", "stop", index, index), max_trials=2)
         self.assertEqual([trial.trial_id for trial in belief.trials], ["t2", "t3"])
+        self.assertEqual(belief.withdrawals, {"stop": {"displaced": 2}})
         self.assertEqual(belief.updated_at_ms, 10)
         self.assertEqual(belief.checked(Check(5, "stop", "support"), 8).updated_at_ms, 10)
-        self.assertEqual(belief.revised(13, 4, keep_checks=True).updated_at_ms, 10)
+        self.assertEqual(belief.revised(13, 4).updated_at_ms, 10)
         self.assertEqual(belief.checked(Check(15, "stop", "support"), 8).updated_at_ms, 15)
         for bound in (0, -1, True, 1.5):
             with self.subTest(bound=bound), self.assertRaises(ValueError):
                 belief.opened(Trial("t9", "stop", 1, 1), bound)
 
-    def test_revision_can_retire_old_checks_and_keeps_open_predictions(self):
+    def test_revision_keeps_checks_and_discarding_counts_them_by_reason(self):
         belief = hypothesis().checked(Check(1, "stop", "support"), 5)
-        belief = belief.opened(Trial("t", "stop", 2, 12), 4)
-        retained = belief.revised(13, 3, keep_checks=True)
+        belief = belief.checked(Check(2, "arrival", "contradict"), 5).checked(Check(3, "stop", "support"), 5)
+        belief = belief.opened(Trial("t", "stop", 3, 12), 4)
+        retained = belief.revised(13, 3)
         self.assertEqual(retained.checks, belief.checks)
         self.assertEqual(retained.trials, belief.trials)
-        discarded = belief.revised(14, 4, keep_checks=False)
+        discarded = belief.revised(14, 4).discarded("bracket_invalidated")
         self.assertIsNone(discarded.confidence)
         self.assertEqual((discarded.value, discarded.updated_at_ms), (14, 4))
+        self.assertEqual(discarded.trials, belief.trials)
+        self.assertEqual(discarded.discards, {"stop": {"bracket_invalidated": 2},
+                                              "arrival": {"bracket_invalidated": 1}})
+        again = discarded.checked(Check(5, "stop", "support"), 5).discarded("bracket_invalidated")
+        self.assertEqual(again.discards["stop"], {"bracket_invalidated": 3})
+        self.assertIs(again.discarded("bracket_invalidated"), again)
+        self.assertEqual(belief.discards, {})
+        with self.assertRaises(ValueError):
+            belief.discarded("")
 
     def test_json_round_trip_derives_confidence_and_records_are_frozen(self):
         belief = Belief("test", {"range": [1, 2]}, "test", 0, properties={"samples": 3})
         belief = belief.opened(Trial("t", "arrival", 1, {"row": 12}, {"frame": "f1"}), 4)
         belief = belief.checked(Check(2, "stop", "support", {"row": 12}, {"row": 11}), 8)
+        belief = belief.opened(Trial("u", "stop", 3, 12), 4).withdrawn(("u",), reason="no_stop")
+        belief = belief.checked(Check(4, "stop", "support"), 8).discarded("bracket_invalidated")
+        belief = belief.checked(Check(5, "stop", "support", {"row": 12}, {"row": 11}), 8)
         encoded = json.loads(json.dumps(belief.to_dict()))
         self.assertEqual(Belief.from_dict(encoded), belief)
+        self.assertEqual((encoded["withdrawals"], encoded["discards"]),
+                         ({"stop": {"no_stop": 1}}, {"stop": {"bracket_invalidated": 2}}))
         forged = {**encoded, "confidence": 1.0, "by_method": {}, "corroborated": True}
         self.assertEqual(Belief.from_dict(forged).to_dict(), belief.to_dict())
         for value, attribute in ((belief, "value"), (belief.checks[0], "method"), (belief.trials[0], "method")):
@@ -146,6 +162,7 @@ class BeliefTests(unittest.TestCase):
         updated = Trial("first", "stop", 8, 14)
         replaced = belief.opened(updated, 2)
         self.assertEqual(replaced.trials, (second, updated))
+        self.assertEqual(replaced.withdrawals, {})
         self.assertEqual(replaced.updated_at_ms, 12)
         self.assertEqual(replaced.opened(Trial("third", "stop", 15, 16), 2).trials[0], updated)
 
@@ -153,17 +170,25 @@ class BeliefTests(unittest.TestCase):
         belief = hypothesis().opened(Trial("first", "stop", 10, 12), 3)
         belief = belief.opened(Trial("second", "arrival", 12, 15), 3)
         belief = belief.checked(Check(13, "stop", "support"), 5)
-        withdrawn = belief.withdrawn(("first", "missing"))
+        withdrawn = belief.withdrawn(("first", "missing"), reason="edge_lost")
         self.assertEqual(withdrawn.trials, (belief.trials[1],))
         self.assertEqual(withdrawn.checks, belief.checks)
         self.assertEqual(withdrawn.updated_at_ms, 13)
-        self.assertEqual(belief.withdrawn(()), belief)
-        self.assertEqual(belief.withdrawn().trials, ())
-        self.assertEqual(belief.withdrawn().confidence, belief.confidence)
+        self.assertEqual(withdrawn.withdrawals, {"stop": {"edge_lost": 1}})
+        self.assertIs(belief.withdrawn((), reason="edge_lost"), belief)
+        everything = withdrawn.opened(Trial("third", "arrival", 14, 16), 3).withdrawn(reason="edge_lost")
+        self.assertEqual(everything.trials, ())
+        self.assertEqual(everything.withdrawals, {"stop": {"edge_lost": 1}, "arrival": {"edge_lost": 2}})
+        self.assertEqual(everything.confidence, belief.confidence)
+        self.assertEqual(belief.withdrawals, {})
+        for reason in ("", None):
+            with self.subTest(reason=reason), self.assertRaises((ValueError, TypeError)):
+                belief.withdrawn(reason=reason)
 
     def test_summary_omits_retained_records_and_properties(self):
         belief = hypothesis(properties={"samples": 2}).opened(Trial("t", "stop", 10, 12), 3)
         self.assertEqual(belief.summary(), {
             "value": belief.value, "source_plugin_id": "test", "updated_at_ms": 10,
             "confidence": None, "by_method": {}, "corroborated": False, "open_trials": 1,
+            "withdrawals": {}, "discards": {},
         })

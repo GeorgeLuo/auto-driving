@@ -32,6 +32,7 @@ from .loopback_http import (
     stop_server_thread,
     validate_loopback_host,
 )
+from .learning_history import LearningHistory
 from .plugin_catalog import serve_plugin_catalog
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
@@ -40,6 +41,7 @@ from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 VIEW_HOST = "127.0.0.1"
 RUNTIME_VIEW_HTML_PATH = Path(__file__).with_name("runtime_view.html")
 MEMORY_VIEW_HTML_PATH = Path(__file__).with_name("memory_view.html")
+LEARNING_VIEW_HTML_PATH = Path(__file__).with_name("learning_view.html")
 DECISION_VIEW_HTML_PATH = Path(__file__).with_name("live_decision_view.html")
 
 
@@ -69,6 +71,7 @@ class RuntimeViewServer:
         self.record_path = automation_dir / VIEW_RECORD_NAME
         self.perception = PerceptionView(vehicle_id=vehicle_id)
         self.decision = DecisionView(vehicle_id=vehicle_id, identity=decision_identity)
+        self.learning = LearningHistory()
         self._httpd: _RuntimeHttpServer | None = None
         self._thread: threading.Thread | None = None
         self._started_at_ms: int | None = None
@@ -221,6 +224,8 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             "/perception.html": VIEW_HTML_PATH,
             "/memory": MEMORY_VIEW_HTML_PATH,
             "/memory.html": MEMORY_VIEW_HTML_PATH,
+            "/learning": LEARNING_VIEW_HTML_PATH,
+            "/learning.html": LEARNING_VIEW_HTML_PATH,
         }
         if route in {"/", "/index.html"}:
             try:
@@ -279,6 +284,18 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             self._send_json(
                 200,
                 self.server.publisher.health_payload(),
+                include_body=include_body,
+            )
+            return
+        if route == "/api/learning":
+            since = parse_qs(request.query).get("since", ["0"])[0]
+            if not since.isdigit():
+                self._send_json(400, {"error": "since must be a non-negative integer"}, include_body=include_body)
+                return
+            publisher = self.server.publisher
+            self._send_json(
+                200,
+                {**publisher.learning.payload(int(since)), "vehicle_id": publisher.vehicle_id},
                 include_body=include_body,
             )
             return

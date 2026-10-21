@@ -245,6 +245,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
                 frames_received=max(0, _frames_received(host) - capture_base),
             )
             record_host_status(state, host)
+            server.learning.ingest(host)
             if session["status"] in {"starting", "stopping"}:
                 state["updated_at_ms"] = timestamp_ms()
                 write_json_atomically(state_path, state)

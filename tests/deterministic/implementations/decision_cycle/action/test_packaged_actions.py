@@ -6,6 +6,7 @@ import unittest
 from dataclasses import replace
 
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
+from autonomy.decision_cycle.action.publication import write_host_inputs
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionCycleResult
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
@@ -79,7 +80,7 @@ def _run(
     action: str,
     *,
     zone: str | None,
-    mode: str,
+    mode: str | None,
     frame_id: str = "frame-1",
     observation: Observation | None = None,
     **activation_overrides,
@@ -92,10 +93,15 @@ def _run(
             frame_id=frame_id,
             frame_index=1,
             timestamp_ms=1000,
-            mode=mode,
-            shared_memory={EVIDENCE_KEY: _records(zone)},
+            shared_memory=_shared_memory(zone, mode),
         )
     )
+
+
+def _shared_memory(zone: str | None, mode: str | None) -> dict:
+    shared_memory = {EVIDENCE_KEY: _records(zone)}
+    write_host_inputs(shared_memory, mode=mode)
+    return shared_memory
 
 
 class PackagedCatalogTests(unittest.TestCase):
@@ -181,6 +187,13 @@ class ModeActionTests(unittest.TestCase):
         self.assertEqual(action.control.throttle, 0.0)
         self.assertEqual(action.control.reason, "no_selected_command")
         self.assertFalse(action.authority.proposed_applied)
+
+    def test_missing_mode_holds_with_a_selected_command(self) -> None:
+        action = _run("mode", zone="left", mode=None).action
+        self.assertEqual(action.control.throttle, 0.0)
+        self.assertEqual(action.control.reason, "autonomy-mode-required")
+        self.assertFalse(action.authority.proposed_applied)
+        self.assertIsNone(action.authority.drive_mode_gate)
 
     def test_manual_mode_is_idle_even_with_obstruction(self) -> None:
         action = _run("mode", zone="left", mode="user").action

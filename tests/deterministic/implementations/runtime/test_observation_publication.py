@@ -311,7 +311,7 @@ class ObservationPublicationTests(unittest.TestCase):
             def register_status_provider(self, name, provider):
                 pass
 
-            def run(self, context):
+            def run(self, context, **inputs):
                 del context
                 raise RuntimeError("boom")
 

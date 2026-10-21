@@ -1,7 +1,7 @@
 """Action step runner.
 
 ``ActionRunner`` asks the selected action plugin for the cycle's control. With
-a plan it passes the plan and the drive mode; when the proposal step failed or
+a plan it passes the context and plan; when the proposal step failed or
 there is no plan, it passes the error reason instead, so the plugin fails
 closed. A plugin that raises or returns something other than an
 ``ActionDecision`` is replaced by hold for that cycle with reason
@@ -15,6 +15,7 @@ from typing import ClassVar
 
 from autonomy.decision_cycle.action.hold import HoldAction
 from autonomy.decision_cycle.action.plugin import ActionPlugin
+from autonomy.decision_cycle.action.publication import read_mode
 from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.action.values import ActionDecision, build_authority
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -41,7 +42,6 @@ class ActionRunner(StepRunner[ActionPlugin]):
         proposal: ProposalResult | None,
         plan: ActionPlan | None,
     ) -> ActionResult:
-        mode = context.mode if isinstance(context.mode, str) else "unknown"
         if proposal is not None and proposal.status != "ok":
             error_reason: str | None = proposal.reason
         elif plan is None:
@@ -52,9 +52,8 @@ class ActionRunner(StepRunner[ActionPlugin]):
             self.run_count += 1
             return self._decide(
                 plugin,
-                frame_id=context.frame_id,
+                context=context,
                 plan=plan if error_reason is None else None,
-                mode=mode,
                 error_reason=error_reason,
             )
 
@@ -62,35 +61,30 @@ class ActionRunner(StepRunner[ActionPlugin]):
         self,
         plugin: ActionPlugin,
         *,
-        frame_id: str,
+        context: DecisionFrameContext,
         plan: ActionPlan | None,
-        mode: str,
         error_reason: str | None,
     ) -> ActionResult:
         try:
             if error_reason is None:
-                decision = plugin.decide(plan, mode=mode)
+                decision = plugin.decide(context, plan)
             else:
-                decision = plugin.decide(None, mode=mode, error_reason=error_reason)
+                decision = plugin.decide(context, None, error_reason=error_reason)
             if not isinstance(decision, ActionDecision):
                 raise TypeError("action plugin must return an ActionDecision")
             proposed = _planned_command(plan)
             result = action_result(
-                frame_id=frame_id,
+                frame_id=context.frame_id,
                 plugin_id=plugin.plugin_id,
                 decision=decision,
                 error_reason=error_reason,
                 proposed=proposed,
-                mode=mode,
+                mode=read_mode(context.shared_memory),
             )
         except Exception as exc:  # noqa: BLE001 - the cycle still gets a held control
             self.failure_count += 1
             self.last_error = describe_exception(exc)
-            return error_action_result(
-                frame_id=frame_id,
-                reason="step_internal_error",
-                mode=mode,
-            )
+            return error_action_result(context, reason="step_internal_error")
         self.last_error = None
         return result
 
@@ -109,7 +103,7 @@ def action_result(
     decision: ActionDecision,
     error_reason: str | None = None,
     proposed: ProposedVehicleCommand | None = None,
-    mode: str = "unknown",
+    mode: str | None = None,
 ) -> ActionResult:
     status = "ok" if error_reason is None else "error"
     reason = "" if error_reason is None else error_reason
@@ -131,19 +125,14 @@ def action_result(
     )
 
 
-def error_action_result(
-    *,
-    frame_id: str,
-    reason: str,
-    mode: str = "unknown",
-) -> ActionResult:
+def error_action_result(context: DecisionFrameContext, *, reason: str) -> ActionResult:
     """The fail-closed record when no action plugin could decide: hold."""
 
     hold = HoldAction()
     return action_result(
-        frame_id=frame_id,
+        frame_id=context.frame_id,
         plugin_id=hold.plugin_id,
-        decision=hold.decide(None, mode=mode, error_reason=reason),
+        decision=hold.decide(context, None, error_reason=reason),
         error_reason=reason,
-        mode=mode,
+        mode=read_mode(context.shared_memory),
     )

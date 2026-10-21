@@ -9,7 +9,9 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
+from autonomy.decision_cycle.action.publication import (
+    CONTROL_APPLICATIONS_KEY, MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY,
+)
 from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.activation import (
     STEP_ACTIVATION_SCHEMA,
@@ -39,7 +41,7 @@ class _PushyAction:
 
     plugin_id = "pushy"
 
-    def decide(self, plan, *, mode, error_reason=None) -> ActionDecision:
+    def decide(self, context, plan, *, error_reason=None) -> ActionDecision:
         return ActionDecision(
             AutonomyControl(steering=0.7, throttle=0.4, confidence=1.0, reason="pushy-test-action")
         )
@@ -51,7 +53,7 @@ class _FailOnceAction:
     def __init__(self) -> None:
         self.calls = 0
 
-    def decide(self, plan, *, mode, error_reason=None) -> ActionDecision:
+    def decide(self, context, plan, *, error_reason=None) -> ActionDecision:
         self.calls += 1
         if self.calls == 1:
             raise RuntimeError("transient action failure")
@@ -131,8 +133,13 @@ class CycleHostMemoryTests(unittest.TestCase):
             self.assertNotIn("control_applications", result.context.to_dict())
         without_execution, _ = _host()
         self.addCleanup(without_execution.close)
-        result = without_execution.run(DecisionFrameContext("frame-none", 0, int(time.time() * 1000)))
-        self.assertNotIn(CONTROL_APPLICATIONS_KEY, result.context.shared_memory)
+        without_execution.run(
+            DecisionFrameContext("frame-known", 0, int(time.time() * 1000)),
+            mode="local", user_steering=0.25, user_throttle=0.5,
+        )
+        result = without_execution.run(DecisionFrameContext("frame-none", 1, int(time.time() * 1000)))
+        for key in (CONTROL_APPLICATIONS_KEY, MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY):
+            self.assertNotIn(key, result.context.shared_memory)
 
     def test_mode_and_applications_are_captured_in_the_same_ticket(self):
         host, _ = _host()
@@ -145,8 +152,12 @@ class CycleHostMemoryTests(unittest.TestCase):
             host.set_mode("manual")
             return ticket
         with patch.object(host.execution, "ticket", side_effect=ticket_then_change_mode):
-            result = host.run(DecisionFrameContext("f", 0, int(time.time() * 1000)))
-        self.assertEqual(result.context.mode, "autonomy")
+            result = host.run(DecisionFrameContext("f", 0, int(time.time() * 1000)),
+                              mode="observe_only", user_steering=0.25, user_throttle=0.5)
+        self.assertEqual(result.context.shared_memory["action.mode"], "autonomy")
+        self.assertEqual(result.context.shared_memory["action.user_steering"], 0.25)
+        self.assertEqual(result.context.shared_memory["action.user_throttle"], 0.5)
+        self.assertNotIn("mode", result.context.to_dict())
         self.assertEqual(result.context.shared_memory[CONTROL_APPLICATIONS_KEY][-1].mode, "autonomy")
         self.assertEqual(host.execution.ticket().control_applications[-1].mode, "manual")
         self.assertFalse(result.application.applied)
@@ -370,7 +381,7 @@ class CycleHostStepTests(unittest.TestCase):
         self.assertEqual(host.steps.proposal.plugin_ids, ("avoid_recent_obstruction",))
         self.assertIsNone(host.steps.plan)
         self.assertEqual(host.steps.action.plugin_ids, ("mode",))
-        result = host.run(DecisionFrameContext("frame_1", 1, 1, mode="autonomy"))
+        result = host.run(DecisionFrameContext("frame_1", 1, 1), mode="autonomy")
         self.assertEqual(result.proposal.status, "ok")
         self.assertEqual(result.action.authority.gate_id, "mode")
         self.assertEqual(result.control.reason, "mode-action-error")
@@ -384,6 +395,8 @@ class CycleHostStepTests(unittest.TestCase):
         self.assertEqual(failed.action.status, "error")
         self.assertEqual(failed.action.reason, "step_internal_error")
         self.assertEqual(failed.control.reason, "hold-idle")
+        self.assertEqual(failed.action.authority.gate_id, "hold")
+        self.assertIsNone(failed.action.authority.drive_mode_gate)
         self.assertFalse(failed.action.authority.proposed_applied)
         self.assertIn("transient action failure", host.status()["steps"]["action"]["last_error"])
 

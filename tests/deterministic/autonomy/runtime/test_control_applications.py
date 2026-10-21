@@ -11,7 +11,7 @@ from unittest.mock import patch
 
 from PIL import Image
 
-from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY, MODE_KEY
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
@@ -56,10 +56,16 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                             captured_at_ms=2000 + index, path=str(camera),
                         )}, started_at_ms=2000 + index, completed_at_ms=2000 + index,
                     )
-                    result = host.run(DecisionFrameContext(f"f{index}", index, 2100 + index, sensor_frame=sensors))
+                    result = host.run(DecisionFrameContext(f"f{index}", index, 2100 + index, sensor_frame=sensors),
+                                      mode="local", user_steering=index / 10, user_throttle=0.4)
                     expected.append(result.context.shared_memory[CONTROL_APPLICATIONS_KEY])
             manifest = json.loads((recording.root / RECORDING_MANIFEST_NAME).read_text())
             entries = manifest["frames"]
+            self.assertEqual([entry["action_policy"] for entry in entries], ["autonomy"] * 4)
+            self.assertTrue(all("mode" not in entry for entry in entries))
+            self.assertEqual([entry["user_steering"] for entry in entries], [0, 0.1, 0.2, 0.3])
+            self.assertTrue(all(entry["user_throttle"] == 0.4 for entry in entries))
+            self.assertTrue(all(set(entry["context"]) == {"timestamp_ms"} for entry in entries))
             changes = [entry[CONTROL_APPLICATION_CHANGE_FIELD] for entry in entries]
             self.assertEqual([len(change["added"]) for change in changes], [1, 3, 1, 1])
             self.assertEqual(changes[1]["added"][-1], changes[1]["added"][-2])
@@ -84,6 +90,9 @@ class ControlApplicationRecordingTests(unittest.TestCase):
 
                 def remember(context, observation):
                     seen.append(context.shared_memory[CONTROL_APPLICATIONS_KEY])
+                    self.assertEqual(context.shared_memory["action.mode"], "autonomy")
+                    self.assertEqual(context.shared_memory["action.user_steering"], context.frame_index / 10)
+                    self.assertEqual(context.shared_memory["action.user_throttle"], 0.4)
                     cycle_times.append(context.timestamp_ms)
                     capture_times.append(context.sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].captured_at_ms)
 
@@ -175,13 +184,13 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                     with self.assertRaisesRegex(SourceValidationError, "frame 0 has invalid control applications"):
                         load_image_source(root)
 
-    def test_replay_removes_the_key_when_the_source_recorded_none(self):
+    def test_replay_removes_the_keys_when_the_source_recorded_none(self):
         application = ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100)
         with image_source(1) as root:
             write_manifest(root, {"frames": [{"image_path": "frame_00.png"}]})
             source = load_image_source(root)
         self.assertIsNone(source.frames[0].control_applications)
-        shared_memory = {CONTROL_APPLICATIONS_KEY: (application,)}
+        shared_memory = {CONTROL_APPLICATIONS_KEY: (application,), MODE_KEY: "local"}
         seen = []
         steps = {step: None for step in ("perception", "observation", "memory", "proposal", "plan", "action")}
         steps["memory"] = lambda context, observation: seen.append(dict(context.shared_memory))

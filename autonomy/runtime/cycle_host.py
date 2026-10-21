@@ -38,7 +38,7 @@ from autonomy.decision_cycle.cycle import (
 from autonomy.decision_cycle.steps import (
     STEP_RUNNERS, decision_steps, load_decision_steps, snapshot_step_activations,
 )
-from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
+from autonomy.decision_cycle.action.publication import write_host_inputs
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlExecution, ControlTarget
@@ -355,20 +355,26 @@ class AutonomyCycleHost:
             return
         self._applied_decision = {"generation_id": generation_id, "steps": steps}
 
-    def run(self, context: DecisionFrameContext) -> DecisionCycleResult:
+    def run(
+        self, context: DecisionFrameContext, *, mode: str | None = None,
+        user_steering: float | None = None, user_throttle: float | None = None,
+    ) -> DecisionCycleResult:
         with self._session_lock:
             run_generation = self._run_generation
         with self._lock:
             ticket = self.execution.ticket() if self.execution is not None else None
             if ticket is not None:
-                context = replace(context, mode=ticket.mode)
+                mode = ticket.mode
             self._cycle_in_progress = {"frame_id": context.frame_id, "started_at_ms": timestamp_ms()}
             if context.shared_memory is None:
                 context = replace(context, shared_memory=self.shared_memory)
             else:
                 self.shared_memory = context.shared_memory
-            if ticket is not None:
-                context.shared_memory[CONTROL_APPLICATIONS_KEY] = ticket.control_applications
+            write_host_inputs(
+                context.shared_memory, mode=mode, user_steering=user_steering,
+                user_throttle=user_throttle,
+                control_applications=ticket.control_applications if ticket is not None else None,
+            )
             try:
                 self.sync_selection()
                 self._adopt_selection()

@@ -11,7 +11,7 @@ from autonomy.vehicle import SensorFrame
 
 
 # Input fields shared by live publication, recording, and replay.
-RECORDED_CONTEXT_FIELDS = ("timestamp_ms", "mode", "user_steering", "user_throttle")
+RECORDED_CONTEXT_FIELDS = ("timestamp_ms",)
 
 
 def recorded_context(data: dict[str, Any]) -> dict[str, Any]:
@@ -31,9 +31,6 @@ class DecisionFrameContext:
     frame_index: int
     timestamp_ms: int
     sensor_frame: SensorFrame | None = None
-    mode: str = "autonomy"
-    user_steering: float = 0.0
-    user_throttle: float = 0.0
     metadata: dict[str, Any] = field(default_factory=dict)
     shared_memory: SharedMemory | None = field(default=None, repr=False, compare=False)
 
@@ -43,9 +40,6 @@ class DecisionFrameContext:
             "frame_index": self.frame_index,
             "timestamp_ms": self.timestamp_ms,
             "sensor_frame": self.sensor_frame.to_dict() if self.sensor_frame is not None else None,
-            "mode": self.mode,
-            "user_steering": self.user_steering,
-            "user_throttle": self.user_throttle,
             "metadata": deepcopy(self.metadata),
         }
 

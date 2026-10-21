@@ -9,8 +9,10 @@ from __future__ import annotations
 
 from typing import Any
 
+from autonomy.decision_cycle.action.publication import read_mode
 from autonomy.decision_cycle.action.values import ActionDecision, plan_control_metadata
 from autonomy.decision_cycle.plan.values import ActionPlan
+from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.runtime.control import AutonomyControl
 
 LIVE_MODES = frozenset({"autonomy", "local"})
@@ -23,9 +25,9 @@ class ModeAction:
 
     def decide(
         self,
+        context: DecisionFrameContext,
         plan: ActionPlan | None,
         *,
-        mode: str,
         error_reason: str | None = None,
     ) -> ActionDecision:
         if plan is None:
@@ -36,6 +38,7 @@ class ModeAction:
                     metadata={"error_reason": error_reason, "plugin_id": self.plugin_id},
                 )
             )
+        mode = read_mode(context.shared_memory)
         if mode not in LIVE_MODES:
             return ActionDecision(
                 AutonomyControl(

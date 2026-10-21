@@ -13,6 +13,7 @@ from typing import Protocol, runtime_checkable
 
 from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.plan.values import ActionPlan
+from autonomy.decision_cycle.context import DecisionFrameContext
 
 
 @runtime_checkable
@@ -21,9 +22,9 @@ class ActionPlugin(Protocol):
 
     def decide(
         self,
+        context: DecisionFrameContext,
         plan: ActionPlan | None,
         *,
-        mode: str,
         error_reason: str | None = None,
     ) -> ActionDecision:
         """Return the control for this cycle. ``plan`` is None exactly when ``error_reason`` is set."""

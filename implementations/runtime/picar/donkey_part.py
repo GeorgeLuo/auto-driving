@@ -59,8 +59,8 @@ class AutonomyPilotPart(FrameLoop):
         self,
         image_array=None,
         mode: str = "user",
-        user_steering: float = 0.0,
-        user_throttle: float = 0.0,
+        user_steering: float | None = None,
+        user_throttle: float | None = None,
     ):
         mode = mode or drive_mode("manual")
         mode_name = execution_mode(mode)

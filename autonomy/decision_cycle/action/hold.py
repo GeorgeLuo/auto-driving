@@ -11,6 +11,7 @@ from typing import Any
 
 from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.plan.values import ActionPlan
+from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.runtime.control import AutonomyControl
 
 HOLD_IDLE_REASON = "hold-idle"
@@ -36,9 +37,9 @@ class HoldAction:
 
     def decide(
         self,
+        context: DecisionFrameContext,
         plan: ActionPlan | None,
         *,
-        mode: str,
         error_reason: str | None = None,
     ) -> ActionDecision:
         return ActionDecision(control=idle_control(), applied=False)

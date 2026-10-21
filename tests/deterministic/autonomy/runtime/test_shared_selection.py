@@ -180,7 +180,7 @@ class SharedSelectionTests(unittest.TestCase):
                 startup = host.applied_decision()["generation_id"]
                 sink: dict = {}
                 runner = host.step("proposal")
-                original = runner.run
+                original = runner.__call__
                 written = False
 
                 def run_and_restage(context):
@@ -191,8 +191,8 @@ class SharedSelectionTests(unittest.TestCase):
                         written = True
                     return result
 
-                runner.run = run_and_restage
-                _frame(host, 0)
+                with patch.object(type(runner), "__call__", lambda self, context: run_and_restage(context)):
+                    _frame(host, 0)
                 _publish(host, sink)
                 self.assertEqual(sink["generation_id"], startup)
                 self.assertEqual(list(runner.plugin_ids), ["avoid_recent_obstruction"])

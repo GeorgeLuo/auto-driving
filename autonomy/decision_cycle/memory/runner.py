@@ -33,6 +33,7 @@ from autonomy.decision_cycle.memory.interface import (
 from autonomy.decision_cycle.memory.beliefs import Belief
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, MemoryPluginContract, plugin_status
 from autonomy.decision_cycle.memory.publication import BELIEF_KEY_PREFIX, EVIDENCE_KEY, belief_key
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY, read_observation
 from autonomy.decision_cycle.runner import StepRunner, describe_plugin, reset_plugin
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition, PluginManager
@@ -222,17 +223,19 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
             self.last_error = None
             self._clear_plugin_records()
             try:
-                for plugin in self.plugins.values():
-                    before = _evidence(self._shared_memory)
-                    try:
+                observation = read_observation(context.shared_memory)
+                if observation is not None or FAILURE_POLICY.missing_input == "invoke":
+                    for plugin in self.plugins.values():
+                        before = _evidence(self._shared_memory)
                         try:
-                            plugin.update(memory_context)
+                            try:
+                                plugin.update(memory_context)
+                            finally:
+                                self._record_plugin(
+                                    plugin.plugin_id, plugin.last_duration_ms, plugin.last_error
+                                )
                         finally:
-                            self._record_plugin(
-                                plugin.plugin_id, plugin.last_duration_ms, plugin.last_error
-                            )
-                    finally:
-                        self._note_evidence(plugin.plugin_id, before)
+                            self._note_evidence(plugin.plugin_id, before)
             except Exception as exc:
                 self.failure_count += 1
                 self.last_error = _diagnostic(exc)
@@ -294,6 +297,11 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
     def _describe_schema(self) -> dict[str, Any]:
         """The step's contract: configuration, inputs, plugins, output, composition, failure."""
 
+        missing_observation = (
+            "plugins are still called"
+            if FAILURE_POLICY.missing_input == "invoke"
+            else "plugins are skipped"
+        )
         return {
             **super()._describe_schema(),
             "plugin_id": self.plugin_id,
@@ -305,10 +313,10 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 {
                     "name": "observation",
                     "required": False,
-                    "source": "observation.current in the host map",
+                    "source": f"{OBSERVATION_KEY} in the host map",
                     "missing_behavior": (
                         "the key is absent, read_observation returns None, and "
-                        "plugins are still called"
+                        f"{missing_observation}"
                     ),
                 },
                 {

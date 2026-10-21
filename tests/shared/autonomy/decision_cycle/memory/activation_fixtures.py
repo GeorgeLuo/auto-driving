@@ -1,6 +1,7 @@
 from __future__ import annotations
 import json
 from pathlib import Path
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 from autonomy.decision_cycle.activation import STEP_ACTIVATION_SCHEMA
@@ -40,7 +41,7 @@ class _RecordingMemory:
             raise RuntimeError("forced-update-failure")
         if context.shared_memory is None:
             raise ValueError("recording memory requires a shared-memory map")
-        observation = context.shared_memory.get("observation.current")
+        observation = context.shared_memory.get(OBSERVATION_KEY)
         records = ()
         if observation is not None:
             records = (

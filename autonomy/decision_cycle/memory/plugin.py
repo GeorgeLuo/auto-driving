@@ -40,6 +40,7 @@ from typing import Any, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.evidence import require_identifier
+from autonomy.serialization import canonical_json_utf8
 from autonomy.shared_memory import SharedMemory
 
 
@@ -78,7 +79,8 @@ class MemoryPlugin(Protocol):
 
     The runner that applies a selection of these is a ``MemoryBackend``
     (``interface``). A plugin does not describe the step's schema. ``reset``
-    is optional and may omit the map.
+    is optional and may omit the map. An optional ``status(shared_memory)``
+    summary and published belief values must be JSON data.
     """
 
     plugin_id: str
@@ -92,9 +94,11 @@ class MemoryPlugin(Protocol):
 
 
 def plugin_status(plugin: Any, shared_memory: SharedMemory | None) -> dict[str, Any] | None:
-    """Return the plugin's optional ``status(shared_memory)`` summary, if it has one."""
+    """Return the optional ``status(shared_memory)`` summary as JSON data, or None."""
 
     status = getattr(plugin, "status", None)
     if not callable(status):
         return None
-    return status(shared_memory)
+    state = status(shared_memory)
+    canonical_json_utf8(state)
+    return state

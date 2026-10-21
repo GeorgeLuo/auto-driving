@@ -33,6 +33,7 @@ from .decision import (
     accept_decision_publication,
     decision_error_payload,
 )
+from .memory_report import evidence_publisher, evidence_records, plugin_summaries
 from .paths import ROOT, display_path
 from .host_publications import fetch_decision_publication
 from .inspection_runs import add_seed_provenance, read_shared_memory_seed
@@ -45,6 +46,7 @@ from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationErro
 
 # Each decision step replays every step before it, from perception on.
 _REPLAY_STEPS = ("perception", "observation", "memory", *DECISION_STEPS)
+_RETAINED_SHOWN = 12
 
 
 def inspect_root(step: str) -> Path:
@@ -215,6 +217,8 @@ def stream_vehicle_step(
             # The cycle's timing; a host that does not publish it leaves None.
             "timing": report["values"].get("timing"),
             **({"application": report["application"]} if step == "action" else {}),
+            **({key: report["cycle"][key] for key in ("observation", "memory")}
+               if step == "proposal" else {}),
         }
 
     try:
@@ -292,7 +296,9 @@ def _format_stream_frame(step: str, frame: dict[str, Any]) -> str:
         f"run={frame['run_id']} age_ms={freshness['age_ms']} max_age_ms={freshness['max_age_ms']}",
         f"Generation: {frame['generation_id']}",
         f"Plugins: {', '.join(frame['plugins']) or 'none'}",
-        *format_step_record(step, frame["record"]),
+        *format_step_record(
+            step, frame["record"], observation=frame.get("observation"), memory=frame.get("memory"),
+        ),
     ]
     if step == "action":
         application = frame["application"]
@@ -333,18 +339,38 @@ def _ms(value: Any) -> str:
     return f"{value:.3f} ms" if isinstance(value, (int, float)) else "-"
 
 
-def format_step_record(step: str, record: dict[str, Any] | None) -> list[str]:
+def format_step_record(
+    step: str, record: dict[str, Any] | None, *,
+    observation: dict[str, Any] | None = None, memory: dict[str, Any] | None = None,
+) -> list[str]:
     if record is None:
         return [f"{step.capitalize()}: none (an earlier step failed or {step} is disabled)"]
     if step == "proposal":
-        return _proposal_lines(record)
+        return _proposal_lines(record, observation=observation, memory=memory)
     if step == "plan":
         return _plan_lines(record)
     return _action_lines(record)
 
 
-def _proposal_lines(record: dict[str, Any]) -> list[str]:
-    lines = [f"Proposal: status={record.get('status')} reason={record.get('reason') or '-'}"]
+def _proposal_lines(
+    record: dict[str, Any], *, observation: dict[str, Any] | None, memory: dict[str, Any] | None,
+) -> list[str]:
+    lines = [
+        f"Proposal: status={record.get('status')} reason={record.get('reason') or '-'}",
+        f"Observation: {observation['observation_id'] if observation is not None else 'none'}",
+    ]
+    lines.extend(
+        f"Memory: plugin={item['plugin_id']} health={item['health']} "
+        f"records={item['record_count']} epoch={item['epoch_id']}"
+        for item in plugin_summaries(memory)
+    )
+    lines.append(f"Memory: publisher={evidence_publisher(memory) or 'none'}")
+    for item in (evidence_records(memory) or [])[:_RETAINED_SHOWN]:
+        origin = item.get("origin") or {}
+        lines.append(
+            f"Retained: record_id={item.get('record_id')} kind={item.get('kind')} "
+            f"confidence={confidence_text(item.get('confidence'))} frame_id={origin.get('frame_id')}"
+        )
     lines.extend(_candidate_lines(record.get("candidates"), selected=None))
     return lines
 
@@ -461,6 +487,11 @@ def inspect_decision_step(
             "plugin_report": outcome.plugin_reports.get(step),
             "timing": outcome.result.timing,
             "steps": replay.step_payloads(),
+            **({
+                "observation": (outcome.result.observation.to_dict()
+                                if outcome.result.observation is not None else None),
+                "memory": outcome.result.memory,
+            } if step == "proposal" else {}),
         })
 
     run_id = inspect_run_id(image_source.source_id)
@@ -506,7 +537,9 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
         lines.extend(["", f"Frame {item['position']}: {item['frame_id']}"])
         if item["absence_reason"]:
             lines.append(f"Absent: {item['absence_reason']}")
-        lines.extend(format_step_record(step, item["record"]))
+        lines.extend(format_step_record(
+            step, item["record"], observation=item.get("observation"), memory=item.get("memory"),
+        ))
         lines.append(format_step_timing(step, item["timing"]))
     if report["run_dir"]:
         lines.extend(["", f"Recorded: {display_path(Path(report['run_dir']))}"])

@@ -29,11 +29,6 @@ class _ConfiguredProposal:
         )
 
 
-
-class _ReadsEvidence(_ConfiguredProposal):
-    evidence_key = "test.evidence"
-
-
 class _Raises(_ConfiguredProposal):
     def propose(self, context) -> ActionProposal:
         raise RuntimeError("propose failed")
@@ -127,7 +122,7 @@ class ProposalRunnerTests(unittest.TestCase):
         plugin = _RecordsSource(plugin_id="reader")
         runner = ProposalRunner.from_plugins({"reader": plugin})
 
-        result = runner.run(DecisionFrameContext(frame_id="frame-1", frame_index=0, timestamp_ms=0, shared_memory=None))
+        result = runner(DecisionFrameContext(frame_id="frame-1", frame_index=0, timestamp_ms=0, shared_memory=None))
 
         self.assertEqual(result.status, "ok")
         self.assertIsNone(plugin.shared_memory)
@@ -135,11 +130,9 @@ class ProposalRunnerTests(unittest.TestCase):
     def test_empty_selection_proposes_nothing(self) -> None:
         runner = ProposalRunner.from_activation(_activation([]))
         self.assertEqual(runner.plugins, {})
-        result = runner.run(DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1))
+        result = runner(DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1))
         self.assertEqual(result.status, "ok")
         self.assertEqual(result.candidates, ())
-
-
 
     def test_reset_errors_propagate(self) -> None:
         runner = ProposalRunner.from_plugins({"p0": _ResetRaises(plugin_id="p0")})
@@ -158,7 +151,7 @@ class ProposalRunnerTests(unittest.TestCase):
             for record in runner.plugin_report()["plugins"]
         ))
 
-        result = runner.run(DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1))
+        result = runner(DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1))
         self.assertEqual(result.status, "ok")
         self.assertEqual(
             [candidate.plugin_id for candidate in result.candidates],
@@ -184,7 +177,7 @@ class ProposalRunnerTests(unittest.TestCase):
             "corrupt": _CorruptsCandidate(plugin_id="corrupt"),
             "later": _ConfiguredProposal(plugin_id="later"),
         })
-        result = runner.run(DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1))
+        result = runner(DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1))
         self.assertEqual(result.status, "error")
         self.assertEqual(result.reason, "action_proposal_matrix_violated")
         self.assertEqual(result.candidates, ())
@@ -201,10 +194,10 @@ class ProposalRunnerTests(unittest.TestCase):
         runner = ProposalRunner.from_plugins({"p0": plugin})
         original = plugin.propose
         plugin.propose = _Raises(plugin_id="p0").propose
-        runner.run(DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1))
+        runner(DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1))
         old_report = runner.plugin_report()
         plugin.propose = original
-        runner.run(DecisionFrameContext(frame_id="frame_002", frame_index=1, timestamp_ms=2))
+        runner(DecisionFrameContext(frame_id="frame_002", frame_index=1, timestamp_ms=2))
         self.assertIsNone(runner.plugin_report()["plugins"][0]["error"])
         self.assertEqual(old_report["plugins"][0]["error"], "RuntimeError: propose failed")
 

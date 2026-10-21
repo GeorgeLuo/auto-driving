@@ -7,7 +7,6 @@ its own shared-memory key and publishes the records alone at ``EVIDENCE_KEY``.
 
 from __future__ import annotations
 
-from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -122,7 +121,6 @@ class EvidenceLedger:
             raise ValueError("a healthy ledger requires at least one record")
         object.__setattr__(self, "records", records)
         object.__setattr__(self, "summary", tuple(str(item) for item in self.summary))
-        object.__setattr__(self, "metadata", deepcopy(dict(self.metadata)))
 
     @property
     def record_count(self) -> int:
@@ -140,7 +138,7 @@ class EvidenceLedger:
             "records": [record.to_dict() for record in self.records],
             "summary": list(self.summary),
             "plugin_id": self.plugin_id,
-            "metadata": deepcopy(self.metadata),
+            "metadata": self.metadata,
         }
 
     @classmethod
@@ -163,7 +161,7 @@ class EvidenceLedger:
             plugin_id=(
                 str(data["plugin_id"]) if data.get("plugin_id") is not None else None
             ),
-            metadata=deepcopy(dict(data.get("metadata") or {})),
+            metadata=data.get("metadata") or {},
             schema=str(data.get("schema") or LEDGER_SCHEMA),
         )
 
@@ -191,14 +189,6 @@ def empty_ledger(
         plugin_id=plugin_id,
         metadata=metadata or {},
     )
-
-
-def detach_ledger(ledger: EvidenceLedger) -> EvidenceLedger:
-    """Return a deep copy so readers cannot mutate the stored ledger."""
-
-    if not isinstance(ledger, EvidenceLedger):
-        raise TypeError(f"detach_ledger requires EvidenceLedger; got {type(ledger).__name__}")
-    return EvidenceLedger.from_dict(ledger.to_dict())
 
 
 def serialized_ledger_bytes(ledger: EvidenceLedger) -> int:

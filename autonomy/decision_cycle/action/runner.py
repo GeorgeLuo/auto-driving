@@ -92,8 +92,7 @@ class ActionRunner(StepRunner[ActionPlugin]):
 def _planned_command(plan: ActionPlan | None) -> ProposedVehicleCommand | None:
     if plan is None or plan.command is None:
         return None
-    # The authority owns a detached copy of the planned command.
-    return ProposedVehicleCommand.from_dict(plan.command.to_dict())
+    return plan.command
 
 
 def action_result(

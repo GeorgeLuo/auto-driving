@@ -4,6 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
@@ -91,7 +92,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         config = {"max_records": 8, "max_age_ms": 5_000}
         first = BoundedEvidenceLedger(**config)
         context = DecisionFrameContext("f1", 1, 100, shared_memory=memory)
-        context.shared_memory["observation.current"] = _observation("o1", created_at_ms=90, things=(_thing("a"),))
+        context.shared_memory[OBSERVATION_KEY] = _observation("o1", created_at_ms=90, things=(_thing("a"),))
         first.update(context)
         self.assertFalse(hasattr(first, "_records"))
         self.assertEqual(memory[LEDGER_KEY].record_count, 1)
@@ -99,7 +100,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
 
         recreated = BoundedEvidenceLedger(**config)
         context = DecisionFrameContext("f2", 2, 200, shared_memory=memory)
-        context.shared_memory["observation.current"] = _observation("o2", created_at_ms=190, things=(_thing("b"),))
+        context.shared_memory[OBSERVATION_KEY] = _observation("o2", created_at_ms=190, things=(_thing("b"),))
         recreated.update(context)
         self.assertEqual(memory[LEDGER_KEY].record_count, 2)
         self.assertEqual(len(memory[EVIDENCE_KEY]), 2)
@@ -123,7 +124,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
 
         with self.assertRaises(TypeError) as caught:
             context = DecisionFrameContext("f1", 1, 100, shared_memory=memory)
-            context.shared_memory["observation.current"] = _observation("o1", created_at_ms=90, things=(_thing("a"),))
+            context.shared_memory[OBSERVATION_KEY] = _observation("o1", created_at_ms=90, things=(_thing("a"),))
             ledger.update(context)
 
         self.assertIn(LEDGER_KEY, str(caught.exception))
@@ -290,7 +291,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 host = AutonomyCycleHost(steps=DecisionSteps(memory=step))
 
                 context = DecisionFrameContext("f1", 1, 100, shared_memory=host.shared_memory)
-                context.shared_memory["observation.current"] = observation
+                context.shared_memory[OBSERVATION_KEY] = observation
                 report = step.update(context)
 
                 states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
@@ -340,7 +341,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             },
         )
 
-    def test_returned_state_is_detached_from_the_ledger(self) -> None:
+    def test_returned_ledger_is_the_stored_ledger(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
         first = ledger.update(
             DecisionFrameContext("frame_1", 1, 1_000),
@@ -350,13 +351,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 things=(_thing("floor_boundary_000"),),
             ),
         )
-        first.records[0].properties["width_fraction"] = 0.99
-        first.metadata["policy"] = "mutated"
-        second = ledger.ledger()
-        self.assertEqual(second.records[0].properties["width_fraction"], 0.2)
-        self.assertEqual(second.metadata["policy"], "bounded_evidence_recency")
-        third = ledger.update(DecisionFrameContext("frame_2", 2, 1_100), None)
-        self.assertEqual(third.records[0].properties["width_fraction"], 0.2)
+        self.assertIs(ledger.ledger(), first)
 
     def test_oversized_properties_are_not_retained(self) -> None:
         ledger = BoundedEvidenceReducer(

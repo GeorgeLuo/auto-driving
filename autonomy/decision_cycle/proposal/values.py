@@ -7,7 +7,6 @@ and supporting evidence.
 from __future__ import annotations
 
 import math
-from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -342,7 +341,7 @@ class ActionProposal:
         elif type(raw_metadata) is not dict:
             raise TypeError("metadata must be a dict (JSON object)")
         else:
-            metadata = deepcopy(raw_metadata)
+            metadata = raw_metadata
         raw_assumptions = data.get("assumptions")
         if raw_assumptions is None:
             assumptions: tuple[str, ...] = ()

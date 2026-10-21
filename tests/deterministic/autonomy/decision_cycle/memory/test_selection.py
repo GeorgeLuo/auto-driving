@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.plugins import PluginManager
 
 import json
@@ -105,7 +106,7 @@ class MemorySelectionTests(unittest.TestCase):
         step = MemoryRunner(plugin_manager=manager)
         shared = {}
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory=shared)
-        context.shared_memory["observation.current"] = Observation("obs-1", 90, {})
+        context.shared_memory[OBSERVATION_KEY] = Observation("obs-1", 90, {})
         report = step.update(context)
         self.assertEqual(shared["execution_order"], ["first", "second"])
         self.assertEqual(shared["previous_outputs"], [None, "first"])
@@ -121,7 +122,7 @@ class MemorySelectionTests(unittest.TestCase):
         step = MemoryRunner(plugin_manager=manager)
         shared = {}
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory=shared)
-        context.shared_memory["observation.current"] = Observation("obs-1", 90, {})
+        context.shared_memory[OBSERVATION_KEY] = Observation("obs-1", 90, {})
         step.update(context)
         step.reset()
         self.assertEqual(shared["first.state"], {"epoch": 2, "records": ()})

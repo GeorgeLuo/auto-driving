@@ -27,4 +27,7 @@ class ActionPlugin(Protocol):
         *,
         error_reason: str | None = None,
     ) -> ActionDecision:
-        """Return the control for this cycle. ``plan`` is None exactly when ``error_reason`` is set."""
+        """Return the control, reading mode with ``read_mode(context.shared_memory)``.
+
+        ``plan`` is None exactly when ``error_reason`` is set.
+        """

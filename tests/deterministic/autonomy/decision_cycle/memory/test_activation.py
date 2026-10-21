@@ -1,6 +1,7 @@
 from __future__ import annotations
 import tempfile
 import unittest
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
@@ -43,7 +44,7 @@ class MemoryActivationTests(unittest.TestCase):
             self.assertEqual(result.memory["schema"], MEMORY_REPORT_SCHEMA)
             self.assertEqual(_state(result.memory)["record_count"], 0)
 
-            shared["observation.current"] = observation
+            shared[OBSERVATION_KEY] = observation
             remembered = _state(step(context))
             self.assertEqual(remembered["record_count"], 1)
             self.assertEqual(
@@ -68,7 +69,7 @@ class MemoryActivationTests(unittest.TestCase):
             )
             shared: dict = {"other.key": "kept by the host, not by memory"}
             context = DecisionFrameContext("frame_2", 2, 200, shared_memory=shared)
-            context.shared_memory["observation.current"] = Observation("obs_2", 190, {})
+            context.shared_memory[OBSERVATION_KEY] = Observation("obs_2", 190, {})
             step.update(context)
 
             written = step.reset(shared)
@@ -99,7 +100,7 @@ class MemoryActivationTests(unittest.TestCase):
             )
             shared: dict = {}
             context = DecisionFrameContext("frame_7", 7, 700, shared_memory=shared)
-            context.shared_memory["observation.current"] = Observation("obs_7", 690, {})
+            context.shared_memory[OBSERVATION_KEY] = Observation("obs_7", 690, {})
             report = step.update(context)
             _state(report)["records"][0]["properties"]["extra"] = 1
             _state(report)["record_count"] = 99

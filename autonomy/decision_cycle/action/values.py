@@ -1,7 +1,7 @@
 """The action step's decision and the authority record every action produces.
 
-An action plugin receives the cycle's plan (or the error that prevented one)
-and the drive mode, and returns an ``ActionDecision``: the control to apply and
+An action plugin receives the cycle context and plan (or the error that
+prevented one), and returns an ``ActionDecision``: the control to apply and
 whether it applies the plan's command. ``AuthorityResult`` records the plan's
 command, the control the action authorized, and whether that control is the
 plan's command. ``gate_id`` is the deciding action plugin's ID.
@@ -99,6 +99,8 @@ class AuthorityResult:
             self.proposed, ProposedVehicleCommand
         ):
             raise TypeError("proposed must be ProposedVehicleCommand or None")
+        if self.drive_mode_gate is not None and not isinstance(self.drive_mode_gate, str):
+            raise TypeError("drive_mode_gate must be a string or None")
         output = self.authorized_output
         if not isinstance(output, dict) or set(output) != {
             "steering",
@@ -145,16 +147,10 @@ def build_authority(
     proposed: ProposedVehicleCommand | None = None,
     drive_mode_gate: str | None = None,
 ) -> AuthorityResult:
-    # Detach proposed command so authority does not alias plan candidate storage.
-    detached_proposed: ProposedVehicleCommand | None = None
-    if proposed is not None:
-        if not isinstance(proposed, ProposedVehicleCommand):
-            raise TypeError("proposed must be ProposedVehicleCommand or None")
-        detached_proposed = ProposedVehicleCommand.from_dict(proposed.to_dict())
     return AuthorityResult(
         frame_id=frame_id,
         gate_id=gate_id,
-        proposed=detached_proposed,
+        proposed=proposed,
         cycle_status=cycle_status,
         cycle_reason=cycle_reason,
         authorized_output=control_output(decision.control),

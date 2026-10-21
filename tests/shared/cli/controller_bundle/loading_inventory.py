@@ -182,7 +182,6 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("autonomy.decision_cycle.memory.publication", "EVIDENCE_KEY", "autonomy.decision_cycle.memory.publication", "EVIDENCE_KEY"),
     ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "EvidenceLedger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "EvidenceLedger"),
     ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "bounds_from_config", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "bounds_from_config"),
-    ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "detach_ledger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "detach_ledger"),
     ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "empty_ledger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "empty_ledger"),
 
     # implementations.operations

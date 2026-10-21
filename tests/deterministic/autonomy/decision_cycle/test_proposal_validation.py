@@ -151,7 +151,7 @@ class RunnerBoundaryTests(unittest.TestCase):
         assert selected is not None
         assert selected.command is not None
         assert result.authority.proposed is not None
-        self.assertIsNot(result.authority.proposed, selected.command)
+        self.assertIs(result.authority.proposed, selected.command)
         self.assertEqual(
             result.authority.proposed.to_dict(), selected.command.to_dict()
         )

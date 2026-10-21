@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -76,7 +75,7 @@ class PerceivedThing:
             label=str(data.get("label") or "unknown"),
             location=ViewLocation.from_dict(location),
             confidence=data.get("confidence"),
-            properties=deepcopy(dict(data.get("properties") or {})),
+            properties=data.get("properties") or {},
             source_plugin_id=(
                 str(data["source_plugin_id"])
                 if data.get("source_plugin_id") is not None
@@ -114,7 +113,7 @@ class PerceptionSignal:
             signal_id=str(data.get("signal_id") or "unknown"),
             value=data.get("value"),
             confidence=data.get("confidence"),
-            properties=deepcopy(dict(data.get("properties") or {})),
+            properties=data.get("properties") or {},
             source_plugin_id=(
                 str(data["source_plugin_id"])
                 if data.get("source_plugin_id") is not None

@@ -24,6 +24,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_safe_int,
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.proposal.interface import (
     FAILURE_POLICY,
     PROPOSAL_SCHEMA,
@@ -98,8 +99,6 @@ def _admit_candidate(
     return validated
 
 
-
-
 class ProposalRunner(StepRunner[ProposalPlugin]):
     """Run every selected proposal plugin once per cycle."""
 
@@ -113,14 +112,27 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         if not callable(getattr(plugin, "propose", None)):
             raise TypeError(f"proposal plugin {definition.entrypoint} must implement propose()")
 
-
     def _describe_schema(self) -> dict[str, Any]:
         """The step's contract: configuration, inputs, plugins, output, composition, failure."""
 
+        missing_observation = (
+            "plugins are still called"
+            if FAILURE_POLICY.missing_input == "invoke"
+            else "plugins are skipped"
+        )
         return {
             **super()._describe_schema(),
             "plugin_id": self.plugin_id,
             "inputs": [
+                {
+                    "name": "observation",
+                    "required": False,
+                    "source": f"{OBSERVATION_KEY} in the host map",
+                    "missing_behavior": (
+                        "the key is absent, read_observation returns None, and "
+                        f"{missing_observation}"
+                    ),
+                },
                 {
                     "name": "shared_memory",
                     "required": False,
@@ -152,19 +164,13 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
             "composition": composition_declaration(),
         }
 
-
     def __call__(self, context: DecisionFrameContext) -> ProposalResult:
-        return self.run(context)
-
-    def run(self, context: DecisionFrameContext) -> ProposalResult:
         frame_id = context.frame_id
-        frame_index = context.frame_index
-        timestamp_ms = context.timestamp_ms
         # Entry precondition: invalid identity never yields a record.
         try:
             frame_id = require_ascii_id(frame_id, field_name="frame_id")
-            frame_index = require_safe_int(frame_index, field_name="frame_index")
-            timestamp_ms = require_safe_int(timestamp_ms, field_name="timestamp_ms")
+            require_safe_int(context.frame_index, field_name="frame_index")
+            require_safe_int(context.timestamp_ms, field_name="timestamp_ms")
         except ValueError as exc:
             raise ActionInputError(str(exc)) from exc
 

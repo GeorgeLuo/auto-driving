@@ -36,8 +36,8 @@ def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:
 
 def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
     mode = normalized["decision"]["application"]["mode"]
-    values = normalized["decision"]["values"]
-    observation_value = values.get("observation")
+    cycle = normalized["decision"]["cycle"]
+    observation_value = cycle["observation"]
     observation_value = observation_value if isinstance(observation_value, dict) else None
     sensor_frame = (
         observation_value.get("sensor_frame")
@@ -85,7 +85,7 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         ),
         "perception": perception,
         "observation": observation_value,
-        "memory": values.get("memory"),
+        "memory": cycle["memory"],
         "action_policy": mode,
         "control_source": "runtime_host",
         "control_application": "shared_execution" if mode == "autonomy" else "not_applied",

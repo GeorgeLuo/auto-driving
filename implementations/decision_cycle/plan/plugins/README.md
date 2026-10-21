@@ -9,7 +9,9 @@ plugin lives in `plugins/highest_confidence/`.
 - `plugin.py` holds the plugin class, which declares `plugin_id` and
   implements `plan(context, candidates)`, the `PlanPlugin` protocol in
   `autonomy/decision_cycle/plan/plugin.py`. Frame identity, the timestamp, and
-  the host map come from `context`.
+  the host map come from `context`. Read the current observation with
+  `read_observation(context.shared_memory)` from
+  `autonomy/decision_cycle/observation/publication.py`.
   `ActionProposal.is_active(frame_id)` says which candidates a plan may act
   on. Ids match
   `[A-Za-z0-9._:-]{1,64}` and are unique within the plan step:

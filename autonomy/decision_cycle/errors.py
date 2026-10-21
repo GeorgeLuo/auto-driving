@@ -8,7 +8,6 @@ from __future__ import annotations
 
 CYCLE_ERROR_REASONS = frozenset(
     {
-        "decision_data_source_invalid",
         "action_plan_invariant_violated",
         "action_proposal_matrix_violated",
         "synthetic_error_proposal_failed",

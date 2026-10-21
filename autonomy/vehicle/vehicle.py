@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import math
 import time
-from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
@@ -117,7 +116,7 @@ class SensorReading:
             "captured_at_ms": self.captured_at_ms,
             "path": self.path,
             "has_value": self.value is not None,
-            "metadata": deepcopy(self.metadata),
+            "metadata": self.metadata,
         }
 
 
@@ -137,8 +136,8 @@ class SensorFrame:
             "read_id": self.read_id,
             "started_at_ms": self.started_at_ms,
             "completed_at_ms": self.completed_at_ms,
-            "request": deepcopy(self.request),
-            "metadata": deepcopy(self.metadata),
+            "request": self.request,
+            "metadata": self.metadata,
             "readings": {
                 sensor_id: reading.to_dict()
                 for sensor_id, reading in self.readings.items()

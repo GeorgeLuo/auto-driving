@@ -91,7 +91,7 @@ class SensorValueTests(unittest.TestCase):
         serialized["requested_sensors"].append("imu")
         self.assertFalse(request.sensor_requested("imu"))
 
-    def test_sensor_frame_serialization_omits_values_and_detaches_nested_data(self) -> None:
+    def test_sensor_frame_serialization_omits_values_and_includes_nested_data(self) -> None:
         reading = SensorReading(
             sensor_id=FRONT_CAMERA_SENSOR_ID,
             sensor_kind="camera",
@@ -116,13 +116,9 @@ class SensorValueTests(unittest.TestCase):
         self.assertTrue(serialized_reading["has_value"])
         json.dumps(serialized)
 
-        serialized_reading["metadata"]["capture"]["exposure"] = 99
-        serialized["request"]["options"]["endpoint"] = "/changed.jpg"
-        serialized["metadata"]["vehicle"]["id"] = "changed-car"
-
-        self.assertEqual(reading.metadata["capture"]["exposure"], 7)
-        self.assertEqual(sensor_frame.request["options"]["endpoint"], "/frame.jpg")
-        self.assertEqual(sensor_frame.metadata["vehicle"]["id"], "test-car")
+        self.assertEqual(serialized_reading["metadata"], {"capture": {"exposure": 7}})
+        self.assertEqual(serialized["request"], {"options": {"endpoint": "/frame.jpg"}})
+        self.assertEqual(serialized["metadata"], {"vehicle": {"id": "test-car"}})
 
     def test_capability_serialization_detaches_nested_sensor_metadata(self) -> None:
         capabilities = VehicleCapabilities(

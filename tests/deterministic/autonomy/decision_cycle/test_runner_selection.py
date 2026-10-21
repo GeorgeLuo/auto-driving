@@ -19,7 +19,7 @@ CALLS = {
         read_id="frame", readings={}, started_at_ms=100, completed_at_ms=100,
     ), shared_memory=shared)),
     "memory": lambda runner, shared: runner.update(DecisionFrameContext("frame", 0, 100, shared_memory=shared)),
-    "proposal": lambda runner, shared: runner.run(DecisionFrameContext(frame_id="frame", frame_index=0, timestamp_ms=100, shared_memory=shared)),
+    "proposal": lambda runner, shared: runner(DecisionFrameContext(frame_id="frame", frame_index=0, timestamp_ms=100, shared_memory=shared)),
     "plan": lambda runner, shared: runner(
         DecisionFrameContext("frame", 0, 100, shared_memory=shared), None
     ),

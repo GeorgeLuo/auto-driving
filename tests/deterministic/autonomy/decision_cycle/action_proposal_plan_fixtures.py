@@ -39,7 +39,6 @@ class WeightedMeanPlan:
         self.weights = weights
 
     def plan(self, context, candidates):
-        pass
         active = [item for item in candidates if item.is_active(context.frame_id)]
         total = sum(self.weights[item.plugin_id] for item in active)
         steering = sum(self.weights[item.plugin_id] * item.command.steering for item in active) / total

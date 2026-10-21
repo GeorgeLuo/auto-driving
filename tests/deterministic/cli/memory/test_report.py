@@ -3,10 +3,24 @@ from __future__ import annotations
 import unittest
 
 from autonomy.decision_cycle.memory.interface import LEDGER_SUMMARY_KEYS, RECORD_COUNT
-from cli.automa_cli.memory_report import ledger_summary, memory_summary
+from cli.automa_cli.memory_report import evidence_records, ledger_summary, memory_summary
 
 
 class MemorySummaryTests(unittest.TestCase):
+    def test_records_come_only_from_the_named_evidence_publisher(self) -> None:
+        records = [{"record_id": "retained"}]
+        report = {"evidence_publisher": "second", "plugins": [
+            {"plugin_id": "first", "state": {"records": [{"record_id": "other"}]}},
+            {"plugin_id": "second", "state": {"records": records}},
+        ]}
+        self.assertEqual(evidence_records(report), records)
+        report["evidence_publisher"] = "missing"
+        self.assertIsNone(evidence_records(report))
+        for malformed in (None, {}, {"evidence_publisher": "second", "plugins": [
+            {"plugin_id": "second", "state": {"records": "not a list"}},
+        ]}):
+            self.assertIsNone(evidence_records(malformed))
+
     def test_summary_carries_health_record_count_and_epoch(self) -> None:
         state = {"health": "healthy", "record_count": 3, "epoch_id": "epoch-2", "records": []}
         self.assertEqual(

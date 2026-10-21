@@ -5,6 +5,7 @@ from __future__ import annotations
 import unittest
 from dataclasses import replace
 
+from autonomy.decision_cycle.action.publication import MODE_KEY
 from autonomy.decision_cycle.action.runner import ActionRunner
 from autonomy.decision_cycle.action.selected import SelectedAction
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -31,7 +32,7 @@ def _context() -> DecisionFrameContext:
         "frame_001",
         0,
         1,
-        shared_memory={"action.mode": "autonomy"},
+        shared_memory={MODE_KEY: "autonomy"},
         sensor_frame=SensorFrame(
             read_id="frame_001", readings={}, started_at_ms=1, completed_at_ms=1
         ),

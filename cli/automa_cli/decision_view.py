@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlencode
 
 from autonomy.runtime.report import VehicleReport, diagnostic_ceiling
 from .host_publications import host_telemetry_failure
+from .memory_report import evidence_records
 
 
 DECISION_VIEW_SCHEMA = "automa_live_decision_view_v1"
@@ -95,23 +96,21 @@ def _evidence_projection(
     carries its raw origin but never carries renderable geometry.
     """
 
-    observation_value = observation
-    records = evidence_input
-    raw_records = records if isinstance(records, list) else []
+    raw_records = evidence_input if isinstance(evidence_input, list) else []
     observation_id = (
-        observation_value.get("observation_id")
-        if isinstance(observation_value, dict)
+        observation.get("observation_id")
+        if isinstance(observation, dict)
         else None
     )
     observation_things = (
-        observation_value.get("things")
-        if isinstance(observation_value, dict)
+        observation.get("things")
+        if isinstance(observation, dict)
         else None
     )
     things = observation_things if isinstance(observation_things, list) else []
     observation_plugin_id = (
-        observation_value.get("perception_plugin_id")
-        if isinstance(observation_value, dict)
+        observation.get("perception_plugin_id")
+        if isinstance(observation, dict)
         else None
     )
 
@@ -445,13 +444,7 @@ class DecisionView:
         authority = action.get("authority") if isinstance(action, dict) else None
         observation = transaction.frame_record.get("observation")
         memory = transaction.frame_record.get("memory")
-        evidence_input = None
-        if isinstance(memory, dict):
-            publisher = memory.get("evidence_publisher")
-            for plugin in memory.get("plugins") or []:
-                if plugin.get("plugin_id") == publisher:
-                    evidence_input = (plugin.get("state") or {}).get("records")
-                    break
+        evidence_input = evidence_records(memory)
         evidence = _evidence_projection(
             transaction_id=transaction.transaction_id,
             frame_id=transaction.frame_record["frame_id"],

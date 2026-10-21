@@ -9,6 +9,7 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.action.publication import (
     CONTROL_APPLICATIONS_KEY, MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY,
 )
@@ -71,7 +72,7 @@ class _RecordingProposal:
     def __call__(self, context):
         self.last_shared_memory = dict(context.shared_memory or {})
         shared = context.shared_memory or {}
-        self.last_observation = shared.get("observation.current")
+        self.last_observation = shared.get(OBSERVATION_KEY)
         return self.runner(context)
 
 
@@ -155,9 +156,9 @@ class CycleHostMemoryTests(unittest.TestCase):
         with patch.object(host.execution, "ticket", side_effect=ticket_then_change_mode):
             result = host.run(DecisionFrameContext("f", 0, int(time.time() * 1000)),
                               mode="observe_only", user_steering=0.25, user_throttle=0.5)
-        self.assertEqual(result.context.shared_memory["action.mode"], "autonomy")
-        self.assertEqual(result.context.shared_memory["action.user_steering"], 0.25)
-        self.assertEqual(result.context.shared_memory["action.user_throttle"], 0.5)
+        self.assertEqual(result.context.shared_memory[MODE_KEY], "autonomy")
+        self.assertEqual(result.context.shared_memory[USER_STEERING_KEY], 0.25)
+        self.assertEqual(result.context.shared_memory[USER_THROTTLE_KEY], 0.5)
         self.assertNotIn("mode", result.context.to_dict())
         self.assertEqual(result.context.shared_memory[CONTROL_APPLICATIONS_KEY][-1].mode, "autonomy")
         self.assertEqual(host.execution.ticket().control_applications[-1].mode, "manual")
@@ -283,7 +284,7 @@ class CycleHostMemoryTests(unittest.TestCase):
             step = _memory_step(Path(tmp))
             host, _ = _host(memory=step)
             host.run(DecisionFrameContext("frame_fill", 1, 100))
-            host.shared_memory["observation.current"] = Observation("obs_fill", 90, {})
+            host.shared_memory[OBSERVATION_KEY] = Observation("obs_fill", 90, {})
             step.update(
                 DecisionFrameContext("frame_fill", 1, 100, shared_memory=host.shared_memory),
             )

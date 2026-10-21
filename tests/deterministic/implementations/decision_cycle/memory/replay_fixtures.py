@@ -13,6 +13,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
@@ -86,7 +87,7 @@ def bounded_evidence_replay() -> list[dict[str, Any]]:
     replay = []
     for index, (frame_id, timestamp_ms, frame_observation) in enumerate(frames):
         context = DecisionFrameContext(frame_id, index, timestamp_ms, shared_memory=shared_memory)
-        context.shared_memory["observation.current"] = frame_observation
+        context.shared_memory[OBSERVATION_KEY] = frame_observation
         report = runner.update(context)
         replay.append({"frame_id": frame_id, "report": canonical(report)})
     runner.reset(shared_memory)

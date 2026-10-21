@@ -28,7 +28,7 @@ MEMORY_SCHEMA = "memory_schema_v1"
 MEMORY_REPORT_SCHEMA = "memory_report_v1"
 
 # A memory plugin that raises stops the cycle, a reset failure is recorded,
-# and a missing observation is still passed to the plugin.
+# and plugins are still called when read_observation returns None.
 FAILURE_POLICY = FailurePolicy(
     update="stop_cycle",
     reset="record",
@@ -50,7 +50,7 @@ def composition_declaration() -> dict[str, str]:
 
 @runtime_checkable
 class MemoryBackend(Protocol):
-    """Run memory for one cycle: observation and host map in, a report out."""
+    """Run memory on the cycle context and its host map, returning a report."""
 
     plugin_id: str
 
@@ -84,11 +84,9 @@ LEDGER_HEALTH_VALUES: frozenset[str] = frozenset(
 class MemoryPluginReport:
     """One applied plugin in the memory report.
 
-    ``state`` is that plugin's own status summary. The framework passes
-    through whatever ``status`` returned, including None when the plugin
-    offers none. Serialization returns a detached copy of nested state.
-    Readers can edit the copy without changing the plugin, and later plugin
-    updates leave earlier reports intact.
+    ``state`` is that plugin's own status summary of JSON data, including
+    None when the plugin offers none. Invalid status data becomes a visible
+    ``status_error`` on the plugin. ``to_dict`` serializes that summary with ``asdict``.
     """
 
     plugin_id: str

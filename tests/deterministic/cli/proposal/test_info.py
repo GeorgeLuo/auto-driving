@@ -42,7 +42,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
             "    def propose(self, context):\n"
             "        from implementations.decision_cycle.proposal.plugins."
             "bundle_only_helper import MARKER\n"
-            "        shared_memory['bundle_marker'] = MARKER\n"
+            "        context.shared_memory['bundle_marker'] = MARKER\n"
             "        return super().propose(context)\n",
             encoding="utf-8",
         )
@@ -93,7 +93,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         schema = info_payload["proposal_schema"]
         self.assertEqual(
             [item["name"] for item in schema["inputs"]],
-            ["shared_memory"],
+            ["observation", "shared_memory"],
         )
         self.assertEqual(
             schema["configuration"]["applied_plugin_ids"], ["avoid_recent_obstruction"]

@@ -129,7 +129,7 @@ def run_frame(
 
     sensor_frame = sensor_frame_for_replay_frame(frame)
     write_host_inputs(
-        shared_memory, mode=frame.action_policy, user_steering=frame.user_steering,
+        shared_memory, mode=frame.mode, user_steering=frame.user_steering,
         user_throttle=frame.user_throttle, control_applications=frame.control_applications,
     )
     recorded_context = frame.metadata.get("context", {})
@@ -174,7 +174,7 @@ def run_frame(
         current: DecisionFrameContext,
         perception: PerceptionText | None,
     ) -> Observation:
-        observation = observation_from_perception(
+        return observation_from_perception(
             observation_id=f"{frame.source_id}:{frame.frame_id}",
             sensor_frame=current.sensor_frame,
             perception=perception,
@@ -186,7 +186,6 @@ def run_frame(
             },
             created_at_ms=frame.timestamp_ms,
         )
-        return observation
 
     result = DecisionCycle(
         DecisionSteps(

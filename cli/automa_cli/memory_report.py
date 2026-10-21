@@ -53,6 +53,17 @@ def evidence_publisher(report: object) -> str | None:
     return publisher if isinstance(publisher, str) and publisher else None
 
 
+def evidence_records(report: object) -> list[dict[str, Any]] | None:
+    """The evidence publisher's retained records, or None when unavailable."""
+
+    publisher = evidence_publisher(report)
+    for plugin_id, state in plugin_states(report):
+        if plugin_id == publisher and state is not None:
+            records = state.get("records")
+            return records if isinstance(records, list) else None
+    return None
+
+
 def ledger_summary(state: dict[str, Any] | None) -> dict[str, Any]:
     """The four ledger summary fields. A missing field is None."""
 

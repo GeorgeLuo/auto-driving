@@ -6,10 +6,10 @@ that only one vehicle has goes in ``values``. ``report_from_host_result``
 builds that document from a completed host cycle and the control application
 recorded after the cycle. Each vehicle transports the document itself.
 
-``cycle`` is the proposal, plan, and action records. ``plan`` is null when
-planning did not produce a record, which is how a failed cycle is represented.
-The key stays required. Proposal and action stay objects, so the existing
-typed cycle check can still reconstruct them.
+``cycle`` contains the observation, memory, proposal, plan, and action records.
+Observation, memory, and plan may be null when their steps produce no record.
+All five keys stay required. Proposal and action stay objects, so the typed
+cycle check can reconstruct them.
 
 ``values["timing"]`` is the cycle's ``timing`` record from
 ``autonomy.decision_cycle.timing``: its total and each step's and plugin's
@@ -42,7 +42,7 @@ REPORT_EXACT_KEYS = frozenset(
         "values",
     }
 )
-CYCLE_EXACT_KEYS = frozenset({"proposal", "plan", "action"})
+CYCLE_EXACT_KEYS = frozenset({"observation", "memory", "proposal", "plan", "action"})
 APPLICATION_EXACT_KEYS = frozenset({"applied", "mode", "reason", "steering", "throttle"})
 
 
@@ -91,12 +91,12 @@ def _unit(value: object, *, field: str) -> float:
 
 
 def _cycle_record(record: object, *, key: str) -> Any:
-    """One decision record. ``plan`` may be null; the other two stay objects."""
+    """One cycle record. Observation, memory, and plan may be null."""
 
-    if key == "plan" and record is None:
+    if key in {"observation", "memory", "plan"} and record is None:
         return None
     if type(record) is not dict:
-        expected = "an object or null" if key == "plan" else "an object"
+        expected = "an object or null" if key in {"observation", "memory", "plan"} else "an object"
         raise ValueError(f"cycle.{key} must be {expected}")
     return record
 
@@ -189,7 +189,7 @@ class VehicleReport:
                 _json_copy(self.cycle[key], field=f"cycle.{key}"),
                 key=key,
             )
-            for key in ("proposal", "plan", "action")
+            for key in ("observation", "memory", "proposal", "plan", "action")
         }
         object.__setattr__(self, "cycle", cycle)
         if not isinstance(self.application, ReportApplication):
@@ -311,8 +311,6 @@ def report_from_host_result(
     control = application.control
     values = {} if values is None else dict(values)
     observation = getattr(result, "observation", None)
-    values["observation"] = None if observation is None else observation.to_dict()
-    values["memory"] = getattr(result, "memory", None)
     timing = getattr(result, "timing", None)
     if timing is not None:
         values["timing"] = timing
@@ -327,6 +325,8 @@ def report_from_host_result(
             int(time.time() * 1000) if published_at_ms is None else int(published_at_ms)
         ),
         cycle={
+            "observation": None if observation is None else observation.to_dict(),
+            "memory": getattr(result, "memory", None),
             "proposal": _export_record(proposal, field="cycle.proposal"),
             "plan": None if plan is None else _export_record(plan, field="cycle.plan"),
             "action": _export_record(action, field="cycle.action"),

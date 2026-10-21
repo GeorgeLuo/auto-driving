@@ -1,6 +1,10 @@
 """Later steps read the current observation and evidence from the same map."""
 import unittest
 
+from autonomy.decision_cycle.action.publication import (
+    MODE_KEY, USER_STEERING_KEY, USER_THROTTLE_KEY, read_user_steering, read_user_throttle,
+    write_host_inputs,
+)
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
@@ -23,18 +27,21 @@ class SharedCycleInputsTests(unittest.TestCase):
 
         class Observe:
             plugin_id = "observe"
+
             def observe(self, context, perception):
                 return observation
 
         class Remember:
             plugin_id = "remember"
             contract = MemoryPluginContract()
+
             def update(self, context):
                 seen.append(read_observation(context.shared_memory))
                 context.shared_memory[EVIDENCE_KEY] = ()
 
         class Propose:
             plugin_id = "propose"
+
             def propose(self, context):
                 seen.append(read_observation(context.shared_memory))
                 seen.append(context.shared_memory[EVIDENCE_KEY])
@@ -67,6 +74,7 @@ class SharedCycleInputsTests(unittest.TestCase):
         class Observe:
             plugin_id = "observe"
             value = observation
+
             def observe(self, context, perception):
                 return self.value
 
@@ -92,3 +100,25 @@ class SharedCycleInputsTests(unittest.TestCase):
     def test_unknown_observations_read_none(self):
         for memory in (None, {}, {OBSERVATION_KEY: None}, {OBSERVATION_KEY: "invalid"}):
             self.assertIsNone(read_observation(memory))
+
+
+class HostInputPublicationTests(unittest.TestCase):
+    def test_integer_controls_are_read_as_floats_and_unknown_inputs_remove_keys(self):
+        shared = {}
+        write_host_inputs(shared, mode="autonomy", user_steering=0, user_throttle=1,
+                          control_applications=None)
+        self.assertEqual(read_user_steering(shared), 0.0)
+        self.assertIs(type(read_user_steering(shared)), float)
+        self.assertEqual(read_user_throttle(shared), 1.0)
+        self.assertIs(type(read_user_throttle(shared)), float)
+        write_host_inputs(shared, mode=None, user_steering=None, user_throttle=None,
+                          control_applications=None)
+        self.assertNotIn(MODE_KEY, shared)
+        self.assertNotIn(USER_STEERING_KEY, shared)
+        self.assertNotIn(USER_THROTTLE_KEY, shared)
+
+    def test_partial_host_input_write_raises_without_wiping_the_map(self):
+        shared = {MODE_KEY: "autonomy", USER_STEERING_KEY: 0.5}
+        with self.assertRaises(TypeError):
+            write_host_inputs(shared, mode="manual")
+        self.assertEqual(shared, {MODE_KEY: "autonomy", USER_STEERING_KEY: 0.5})

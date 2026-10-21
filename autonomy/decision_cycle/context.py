@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -40,7 +39,7 @@ class DecisionFrameContext:
             "frame_index": self.frame_index,
             "timestamp_ms": self.timestamp_ms,
             "sensor_frame": self.sensor_frame.to_dict() if self.sensor_frame is not None else None,
-            "metadata": deepcopy(self.metadata),
+            "metadata": self.metadata,
         }
 
     @classmethod

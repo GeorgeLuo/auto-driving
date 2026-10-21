@@ -85,6 +85,17 @@ async function settle() {
     assert(since in answers, `unexpected since=${since}`);
     return { ok: true, json: async () => answers[since] };
   });
+  // Reading layout while a chart section is cleared lets the browser lay out a
+  // shorter page and clamp the scroll position, so record what each read sees.
+  const widthReads = [];
+  const beliefBody = ctx.document.getElementById("beliefBody");
+  const pluginBody = ctx.document.getElementById("pluginBody");
+  Object.defineProperty(beliefBody, "clientWidth", {
+    get() {
+      widthReads.push(beliefBody.children.length > 0 && pluginBody.children.length > 0);
+      return 720;
+    }
+  });
   runPage("cli/automa_cli/learning_view.html", ctx);
   await settle();
   const $ = (id) => ctx.document.getElementById(id);
@@ -150,6 +161,10 @@ async function settle() {
   assert.deepEqual(bars(), []);
   assert(body().textContent.includes("No trials in this window."));
   assert.equal(cells(0)[6], "1 / 0");
+
+  // After the first render, no rebuild reads the width from a cleared section.
+  assert(widthReads.length > 4, `only ${widthReads.length} width reads`);
+  assert.deepEqual(widthReads.slice(1).filter((filled) => !filled), []);
 
   // Paused, the page sends nothing.
   $("pauseButton").listeners.click[0]();

@@ -1169,7 +1169,7 @@
       return Math.max(280, Math.floor(beliefBody.clientWidth || 720));
     }
 
-    function renderBelief() {
+    function renderBelief(width) {
       beliefBody.replaceChildren();
       const track = store.beliefs.get(focusedBelief);
       if (!track) {
@@ -1180,7 +1180,6 @@
         return;
       }
       const belief = track.current;
-      const width = pageWidth();
       const paths = [...track.series.keys()];
       const under = (...prefixes) => paths.filter((path) => prefixes.some((prefix) =>
         path === prefix || path.startsWith(`${prefix}/`) || path.startsWith(`${prefix}#`)));
@@ -1205,7 +1204,7 @@
       rawJson.textContent = JSON.stringify(belief, null, 2);
     }
 
-    function renderPlugin() {
+    function renderPlugin(width) {
       const ids = [...store.plugins.keys()];
       if (ids.join("\0") !== lastTabsFingerprint) {
         lastTabsFingerprint = ids.join("\0");
@@ -1239,7 +1238,7 @@
         ? "—" : `${formatValue(record.last_duration_ms)} ms`);
       appendMetric(pluginMetrics, "Last error", record.last_error ? clip(record.last_error, 120) : "none");
       appendMetric(pluginMetrics, "Series", `${track.series.size}${track.droppedPaths ? ` (${track.droppedPaths} not recorded)` : ""}`);
-      renderPaths(pluginBody, track, [...track.series.keys()], pageWidth());
+      renderPaths(pluginBody, track, [...track.series.keys()], width);
     }
 
     function renderStatus() {
@@ -1254,12 +1253,15 @@
       if (!store.beliefs.has(focusedBelief)) focusedBelief = [...store.beliefs.keys()].sort()[0] ?? null;
       if (!store.plugins.has(focusedPlugin)) focusedPlugin = [...store.plugins.keys()][0] ?? null;
       renderBoard();
-      const key = [store.historyId, cursor, store.now, windowName, focusedBelief, focusedPlugin, pageWidth()].join("\0");
+      // Measured before the sections are cleared: reading layout while one is empty
+      // lays out a shorter page, and Safari clamps the scroll position to it.
+      const width = pageWidth();
+      const key = [store.historyId, cursor, store.now, windowName, focusedBelief, focusedPlugin, width].join("\0");
       if (key !== lastChartsKey) {
         lastChartsKey = key;
         cursors = [];
-        renderBelief();
-        renderPlugin();
+        renderBelief(width);
+        renderPlugin(width);
         hover(hoverT);
       }
       renderStatus();

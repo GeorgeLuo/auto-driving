@@ -116,6 +116,9 @@ class ClosenessPlugin:
             None if model is None else model.properties.get("row_bins"),
             None if run is None else run.value,
             stop.value if stop is not None and _is_number(stop.value) else None,
+            {identifier: None if belief is None else belief.confidence for identifier, belief in (
+                (self.model_belief_id, model), (self.run_belief_id, run), (self.stop_row_belief_id, stop),
+            )},
         )
         boxes = tuple(
             tuple(float(value) for value in thing.location.bbox_xyxy_norm)
@@ -132,7 +135,9 @@ class ClosenessPlugin:
 class _Learned:
     """What memory has learned, read once per frame."""
 
-    def __init__(self, ms_per_row: Any, row_bins: Any, run_ms: Any, stop_row: float | None) -> None:
+    def __init__(self, ms_per_row: Any, row_bins: Any, run_ms: Any, stop_row: float | None,
+                 confidences: dict[str, float | None]) -> None:
+        self.confidences = confidences
         self.rates = {
             int(key): float(value) for key, value in (ms_per_row.items() if isinstance(ms_per_row, dict) else ())
             if isinstance(key, str) and key.isdigit() and _is_number(value) and value > 0
@@ -145,7 +150,7 @@ class _Learned:
         row = max((box[3] for box in boxes if box[0] < max_x and box[2] > min_x), default=None)
         properties: dict[str, Any] = {
             "min_x": min_x, "max_x": max_x, "row": row, "stop_row": self.stop_row,
-            "run_ms": self.run_ms, "reach_ms": None,
+            "run_ms": self.run_ms, "reach_ms": None, "belief_confidences": dict(self.confidences),
         }
         value = None
         if row is None:
@@ -161,7 +166,10 @@ class _Learned:
                 value = NEAR if reach <= self.run_ms else FAR
                 reason = "within_one_run" if value == NEAR else "beyond_one_run"
         properties["reason"] = reason
-        return PerceptionSignal(signal_id=signal_id, value=value, properties=properties)
+        confidence = None
+        if value is not None and all(score is not None for score in self.confidences.values()):
+            confidence = min(self.confidences.values())
+        return PerceptionSignal(signal_id=signal_id, value=value, confidence=confidence, properties=properties)
 
     def _reach(self, row: float) -> tuple[float, bool]:
         """Milliseconds from ``row`` down to the stop row, and whether every row between was known."""

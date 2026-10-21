@@ -39,6 +39,8 @@ BACKING_UP = "backing_up"
 TURNING = "turning"
 NEAR = "near"
 REACH = "reach"
+STOP_ROW = "stop_row"
+COLLISION = "collision"
 LEFT = "left"
 RIGHT = "right"
 PHASE_SIGNAL_IDS = ("view_static", "clearance_right", "clearance_ahead")
@@ -141,7 +143,7 @@ class AvoidObstacle:
             frame_id=context.frame_id,
             lifecycle="fresh",
             freshness="fresh",
-            confidence=1.0,
+            confidence=self._confidence(maneuver, belief, observation),
             reason=reason,
             command=command,
             assumptions=ASSUMPTIONS,
@@ -153,39 +155,52 @@ class AvoidObstacle:
         self, maneuver: Any, signals: dict[str, Any], stop_row: float | None, ahead_row: float | None,
         bands: dict[str, tuple[Any, float | None]],
     ) -> dict[str, Any] | None:
-        """One transition per cycle; a missing or unknown signal keeps the maneuver."""
+        """One transition per cycle; a reach turn needs current closeness bands."""
 
         phase = maneuver.get("phase") if isinstance(maneuver, dict) else None
         static = signals.get("view_static")
         if phase == BACKING_UP:
             if signals.get("clearance_right") is True:
-                return {"phase": TURNING}
+                return {"phase": TURNING, "cause": maneuver.get("cause", COLLISION)}
             static_cycles = maneuver.get("static_cycles", 0)
             if static is True:
                 static_cycles += 1
             elif static is False:
                 static_cycles = 0
             if static_cycles > self.max_static_cycles:
-                return {"phase": TURNING}
-            return {"phase": BACKING_UP, "static_cycles": static_cycles}
+                return {"phase": TURNING, "cause": maneuver.get("cause", COLLISION)}
+            return {"phase": BACKING_UP, "static_cycles": static_cycles,
+                    "cause": maneuver.get("cause", COLLISION)}
         if phase == TURNING:
             if static is True:
-                return {"phase": BACKING_UP, "static_cycles": 1}
+                return {"phase": BACKING_UP, "static_cycles": 1, "cause": COLLISION}
             if maneuver.get("cause") == REACH:
                 if stop_row is not None and ahead_row is not None and ahead_row >= stop_row:
-                    return {"phase": BACKING_UP, "static_cycles": 0}
+                    return {"phase": BACKING_UP, "static_cycles": 0, "cause": STOP_ROW}
                 if not bands:
-                    return maneuver
+                    return None
                 return maneuver if maneuver.get("direction") in _more_reach(bands) else None
             return None if signals.get("clearance_ahead") is True else maneuver
         if self._collided(signals):
-            return {"phase": BACKING_UP, "static_cycles": 1}
+            return {"phase": BACKING_UP, "static_cycles": 1, "cause": COLLISION}
         if stop_row is not None and ahead_row is not None and ahead_row >= stop_row:
-            return {"phase": BACKING_UP, "static_cycles": 0}
+            return {"phase": BACKING_UP, "static_cycles": 0, "cause": STOP_ROW}
         sides = _more_reach(bands)
         if sides:
             return {"phase": TURNING, "cause": REACH, "direction": sides[0]}
         return None
+
+    def _confidence(self, maneuver, belief, observation) -> float | None:
+        cause = maneuver.get("cause", COLLISION)
+        if cause == COLLISION:
+            return 1.0
+        if cause == STOP_ROW:
+            return None if belief is None else belief.confidence
+        identifiers = (self.closeness_ids["ahead"], self.closeness_ids[maneuver["direction"]])
+        signals = () if observation is None else observation.signals
+        scores = [next((signal.get("confidence") for signal in signals
+                        if signal.get("signal_id") == identifier), None) for identifier in identifiers]
+        return None if any(score is None for score in scores) else min(scores)
 
     def _collided(self, signals: dict[str, Any]) -> bool:
         return signals.get("view_static") is True and any(

@@ -32,11 +32,15 @@ equals, else `custom`. `automa vehicles update memory --preset NAME` stages one.
 The Chase v1 preset's `stop_row` learns how near an obstacle ahead may come
 before proposal's `avoid_obstacle` starts reversing. Its hypothesis is an
 image row for perception's `clearance_ahead` `nearest_bottom_y`: the first
-collision while driving forward starts it, each stop at it (the maneuver's
-`stop_phase`, up to `settle_ms`) then either keeps that lower edge above
+collision while driving forward starts it. Each stop at it (applied straight-reverse
+controls from `action.control_applications`, up to `settle_ms`) keeps that lower edge above
 `blind_row` (stopped short) or not (too close), and the row is bisected between
 the deepest that stopped short and the shallowest that came too close. Later
-collisions are counted but do not move the row. The row is belief `stop_row.row`;
+collisions with the same obstacle tracked before contact move the stop row earlier.
+A tracked stop that completes without contact adds a supporting `collision` check;
+contact adds a contradicting one. Missing identity or motion coverage adds no such
+check. These checks and the `stop` method can corroborate the belief, but share
+stop episodes rather than independent experiments. The row is belief `stop_row.row`;
 `memory.stop_row.hypothesis` keeps the bracket and stop observations.
 `status` reports the row, its bounds and the outcome counts, and `reset`
 forgets it.

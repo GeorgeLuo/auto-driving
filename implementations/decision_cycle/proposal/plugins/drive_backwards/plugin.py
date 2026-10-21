@@ -20,6 +20,13 @@ class DriveBackwards:
             raise ValueError("throttle must be a finite normalized reverse command")
 
     def propose(self, context: DecisionFrameContext) -> ActionProposal:
+        observation = read_observation(context.shared_memory)
+        if observation is None:
+            return ActionProposal(
+                plugin_id=self.plugin_id, frame_id=context.frame_id,
+                lifecycle="missing_input", freshness="none", confidence=None,
+                reason="no_observation", command=None, source_refs=(), available=False,
+            )
         return ActionProposal(
             plugin_id=self.plugin_id,
             frame_id=context.frame_id,
@@ -29,16 +36,9 @@ class DriveBackwards:
             reason="constant_reverse_baseline",
             command=ProposedVehicleCommand(steering=0.0, throttle=self.throttle, gear="reverse"),
             assumptions=("obstacles_ignored", "constant_normalized_throttle"),
-            source_refs=(_source_ref(context),),
+            source_refs=(SourceRef(
+                kind="observation", id=observation.observation_id, frame_id=context.frame_id,
+                observation_id=observation.observation_id, note="current_observation",
+            ),),
             available=True,
         )
-
-
-def _source_ref(context: DecisionFrameContext) -> SourceRef:
-    observation = read_observation(context.shared_memory)
-    if observation is None:
-        return SourceRef(kind="memory_record", id=context.frame_id, frame_id=context.frame_id, note="frame")
-    return SourceRef(
-        kind="observation", id=observation.observation_id, frame_id=context.frame_id,
-        observation_id=observation.observation_id, note="current_observation",
-    )

@@ -6,7 +6,7 @@ A box ahead that perception calls near turns toward a side with more reach, whil
 import unittest
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.memory.beliefs import Belief
+from autonomy.decision_cycle.memory.beliefs import Belief, Check
 from autonomy.decision_cycle.memory.publication import belief_key
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY, write_observation
 from autonomy.decision_cycle.observation.values import Observation
@@ -19,10 +19,10 @@ NEAR_300 = ("near", 300)
 
 
 def _backing_up(static_cycles):
-    return {KEY: {"phase": "backing_up", "static_cycles": static_cycles}}
+    return {KEY: {"phase": "backing_up", "static_cycles": static_cycles, "cause": "collision"}}
 
 
-TURNING = {KEY: {"phase": "turning"}}
+TURNING = {KEY: {"phase": "turning", "cause": "collision"}}
 
 
 def _reach_turn(direction):
@@ -123,7 +123,7 @@ class AvoidObstacleTests(unittest.TestCase):
         result = _step(memory, {"view_static": False, "clearance_ahead": False}, ahead_row=0.8)
         self.assertEqual(result.reason, "avoid_back_up_until_right_clear")
         self.assertEqual(result.command.throttle, -0.60)
-        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 0})
+        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 0, "cause": "stop_row"})
         self.assertEqual([(ref.kind, ref.id, ref.note) for ref in result.source_refs[:2]], [
             ("memory_record", KEY, "backing_up"), ("memory_record", STOP_ROW_KEY, "stop_row 0.8"),
         ])
@@ -213,7 +213,8 @@ class AvoidObstacleTests(unittest.TestCase):
         result = _step(memory, {}, ahead_row=0.5, closeness=_bands(NEAR_300, left=None, right=("near", 500)))
         self.assertEqual(result.reason, "avoid_turn_right_toward_reach")
         self.assertEqual(memory[KEY], _reach_turn("right"))
-        self.assertEqual(_step(memory, None).reason, "avoid_turn_right_toward_reach")
+        self.assertEqual(_step(memory, None).reason, "no_collision")
+        self.assertNotIn(KEY, memory)
         for ahead, left, right in (
             (("near", 500), None, ("near", 400)),
             (("near", 500), None, ("near", 500)),
@@ -230,20 +231,20 @@ class AvoidObstacleTests(unittest.TestCase):
         bands = _bands(NEAR_300, left=None, right=None)
         memory = {}
         _step(memory, COLLISION, closeness=bands)
-        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 1})
+        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 1, "cause": "collision"})
         memory = {STOP_ROW_KEY: _stop_row(0.6)}
         _step(memory, {"clearance_ahead": False}, ahead_row=0.6, closeness=bands)
-        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 0})
+        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 0, "cause": "stop_row"})
 
     def test_a_reach_turn_backs_up_at_the_stop_row_or_a_static_view(self):
         bands = _bands(NEAR_300, left=None, right=None)
         memory = {STOP_ROW_KEY: _stop_row(0.6), KEY: _reach_turn("left")}
         result = _step(memory, {"clearance_ahead": False}, ahead_row=0.6, closeness=bands)
         self.assertEqual(result.reason, "avoid_back_up_until_right_clear")
-        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 0})
+        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 0, "cause": "stop_row"})
         memory[KEY] = _reach_turn("left")
         _step(memory, {"view_static": True}, ahead_row=0.5, closeness=bands)
-        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 1})
+        self.assertEqual(memory[KEY], {"phase": "backing_up", "static_cycles": 1, "cause": "collision"})
 
     def test_the_turn_after_backing_up_still_ends_when_ahead_is_clear(self):
         memory = dict(TURNING)
@@ -301,3 +302,36 @@ class AvoidObstacleTests(unittest.TestCase):
         ):
             with self.subTest(config=config), self.assertRaises(ValueError):
                 AvoidObstacle(**config)
+
+    def test_stop_confidence_survives_recovery_and_collision_replaces_its_cause(self):
+        belief = _stop_row(.8).checked(Check(1, "stop", "support"), 64)
+        memory = {STOP_ROW_KEY: belief}
+        first = _step(memory, {"clearance_ahead": False}, ahead_row=.8)
+        self.assertEqual(first.confidence, 2 / 3)
+        self.assertEqual(_step(memory, {"clearance_right": True}).confidence, 2 / 3)
+        self.assertEqual(memory[KEY]["cause"], "stop_row")
+        self.assertEqual(_step(memory, {"view_static": True}).confidence, 1.0)
+        self.assertEqual(memory[KEY]["cause"], "collision")
+
+    def test_reach_turn_uses_both_comparison_signals_confidence_and_plan_passes_it_through(self):
+        from implementations.decision_cycle.plan.plugins.select_proposal.plugin import SelectProposal
+        memory = {}
+        write_observation(memory, Observation("o", 10, {}, signals=(
+            {"signal_id": "closeness_ahead", "value": "near", "confidence": .8,
+             "properties": {"reach_ms": 300}},
+            {"signal_id": "closeness_right", "value": "far", "confidence": .4,
+             "properties": {"reach_ms": 900}},
+        )))
+        context = DecisionFrameContext("f", 0, 10, shared_memory=memory)
+        proposal = AvoidObstacle().propose(context)
+        self.assertEqual(proposal.confidence, .4)
+        plan = SelectProposal(override_proposal_plugin_id="avoid_obstacle").plan(context, (proposal,))
+        self.assertEqual(plan.confidence, .4)
+        self.assertEqual(plan.to_dict()["confidence"], .4)
+        memory[OBSERVATION_KEY] = Observation("o2", 20, {}, signals=(
+            {"signal_id": "closeness_ahead", "value": "near", "confidence": None,
+             "properties": {"reach_ms": 300}},
+            {"signal_id": "closeness_right", "value": "far", "confidence": .4,
+             "properties": {"reach_ms": 900}},
+        ))
+        self.assertIsNone(AvoidObstacle().propose(context).confidence)

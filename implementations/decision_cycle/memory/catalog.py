@@ -64,7 +64,8 @@ MEMORY_PLUGINS: tuple[dict[str, Any], ...] = (
         "default_config": {
             "edge_plugin_ids": ["sim_wall", "sim_cardboard_permanence"], "sensor_id": "front_camera",
             "min_x": 0.3, "max_x": 0.7, "row_bins": 120, "edge_margin": 0.01, "max_samples": 64,
-            "max_interval_ms": 250,
+            "max_interval_ms": 250, "stop_row_belief_id": "stop_row.row",
+            "stop_reasons": ["avoid_back_up_until_right_clear"],
         },
     },
 )

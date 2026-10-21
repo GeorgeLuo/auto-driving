@@ -24,15 +24,22 @@ class _Car:
         self.memory = {} if memory is None else memory
         self.now = 0
 
-    def step(self, row=None, *, static=None, wall=True, phase=None, observed=True):
+    def step(self, row=None, *, static=None, wall=True, phase=None, observed=True,
+             object_id=None, delay_ms=-1, observation_id=None, extra_things=(), captured_at=None):
         self.now += 100
         command = AutonomyControl(steering=1 if phase == "turning" else 0,
             throttle=.6 if phase is None or phase == "turning" else -.6)
         applications = self.memory.get(CONTROL_APPLICATIONS_KEY, ())
         self.memory[CONTROL_APPLICATIONS_KEY] = (*applications, ControlApplication(
-            None, "autonomy", True, "test", command, self.now - 1))[-32:]
+            None, "autonomy", True, "test", command, self.now + delay_ms))[-32:]
         observation = Observation(
-            observation_id=f"observation_{self.now}", created_at_ms=self.now, sensor_frame={},
+            observation_id=observation_id or f"observation_{self.now}", created_at_ms=self.now,
+            sensor_frame={} if captured_at is None else {"readings": {"front_camera": {"captured_at_ms": captured_at}}},
+            things=(() if object_id is None or row is None else ({
+                "kind": "obstruction_evidence", "source_plugin_id": "sim_cardboard_permanence",
+                "properties": {"object_id": object_id},
+                "location": {"bbox_xyxy_norm": (.4, .1, .6, row)},
+            },)) + extra_things,
             signals=(
                 {"signal_id": "view_static", "value": static, "confidence": None, "properties": {}},
                 {"signal_id": "wall_in_sight", "value": wall, "confidence": None, "properties": {}},
@@ -50,12 +57,12 @@ class _Car:
     def collide(self, row=1.0):
         return self.step(row, static=True)
 
-    def stop(self, peak, cycles=11):
+    def stop(self, peak, cycles=11, object_id=None):
         """Reach the stop row, then turn away while the lower edge peaks at ``peak``."""
 
-        self.step(read_belief(self.memory, "stop_row.row").value)
+        self.step(read_belief(self.memory, "stop_row.row").value, static=False, object_id=object_id)
         for _ in range(cycles):
-            status = self.step(peak, phase="backing_up")
+            status = self.step(peak, phase="backing_up", static=False, object_id=object_id)
         return status
 
 
@@ -204,8 +211,8 @@ class StopRowHypothesisTests(unittest.TestCase):
         car.memory[belief_key(belief.belief_id)] = replace(belief, value=.75)
         car.stop(.98)
         belief = read_belief(car.memory, "stop_row.row")
-        self.assertEqual(belief.checks, ())
-        self.assertIsNone(belief.confidence)
+        self.assertEqual([(check.method, check.outcome) for check in belief.checks], [("stop", "contradict")])
+        self.assertEqual(belief.confidence, 1 / 3)
 
     def test_missing_or_manual_motion_cannot_seed_a_collision_or_complete_a_stop(self):
         car = _Car()
@@ -235,3 +242,140 @@ class StopRowHypothesisTests(unittest.TestCase):
         ):
             with self.subTest(config=config), self.assertRaises(ValueError):
                 StopRowHypothesis(**config)
+
+    def test_late_reverse_does_not_open_trials_during_recovery_and_real_stops_conclude(self):
+        for peak, expected in ((.84, "stopped_short"), (.99, "too_close")):
+            with self.subTest(peak=peak):
+                car = _Car()
+                car.step(.5)
+                car.collide()
+                for _ in range(15):
+                    status = car.step(.9, phase="backing_up", delay_ms=150)
+                    self.assertFalse(status["testing"])
+                self.assertEqual(status["stop_row"], .79)
+                for _ in range(5):
+                    car.step(.5, delay_ms=150)
+                self.assertTrue(car.step(.79, delay_ms=150)["testing"])
+                for _ in range(12):
+                    status = car.step(peak, phase="backing_up", delay_ms=150)
+                self.assertEqual(status["last_outcome"]["kind"], expected)
+                self.assertEqual(sum(status["counts"].values()), 2)
+
+    def test_forward_frames_after_reverse_was_issued_still_count_toward_overshoot(self):
+        car = _Car()
+        car.step(.5)
+        car.collide()
+        car.step(.79, delay_ms=150)
+        status = car.step(.99, phase="backing_up", delay_ms=150)
+        self.assertEqual(status["last_outcome"]["kind"], "too_close")
+        self.assertEqual(status["stop_row"], .695)
+
+    def test_tracked_forward_contact_corrects_the_bracket_and_keeps_the_new_check(self):
+        car = _Car()
+        car.collide()
+        car.stop(.9)
+        car.step(.7, static=False, object_id=1)
+        status = car.step(.8, static=True, object_id=1)
+        belief = read_belief(car.memory, "stop_row.row")
+        self.assertEqual((status["unsafe_row"], status["stop_row"]), (.885, .8375))
+        self.assertEqual([(check.method, check.outcome) for check in belief.checks],
+                         [("stop", "support"), ("collision", "contradict")])
+        car.step(.8, static=True, object_id=1)
+        self.assertEqual(read_belief(car.memory, "stop_row.row").checks, belief.checks)
+        car.memory[belief_key(belief.belief_id)] = replace(belief, value=.75)
+        car.step(.7, static=False, object_id=1)
+        car.step(.75, static=True, object_id=1)
+        belief = read_belief(car.memory, "stop_row.row")
+        self.assertEqual([(check.method, check.outcome) for check in belief.checks], [("collision", "contradict")])
+        self.assertEqual(belief.confidence, 1 / 3)
+
+    def test_successful_tracked_stops_support_both_methods_and_can_corroborate(self):
+        car = _Car()
+        car.collide()
+        car.step(.7, static=False, object_id=1)
+        car.stop(.9, object_id=1)
+        belief = read_belief(car.memory, "stop_row.row")
+        self.assertEqual(belief.by_method, {"stop": {"support": 1, "contradict": 0},
+                                          "collision": {"support": 1, "contradict": 0}})
+        self.assertTrue(belief.corroborated)
+        self.assertEqual(belief.confidence, .75)
+        car.step(.7, static=False, object_id=1, phase="backing_up")
+        self.assertEqual(read_belief(car.memory, "stop_row.row").checks, belief.checks)
+
+    def test_identity_switch_missing_identity_and_motion_gap_do_not_score_contact(self):
+        for identity, gap in ((2, False), (None, False), (1, True)):
+            with self.subTest(identity=identity, gap=gap):
+                car = _Car()
+                car.collide()
+                car.step(.7, static=False, object_id=1)
+                if gap:
+                    car.memory[CONTROL_APPLICATIONS_KEY] = ()
+                status = car.step(.75, static=True, object_id=identity)
+                self.assertEqual(status["stop_row"], .79)
+                self.assertEqual(read_belief(car.memory, "stop_row.row").checks, ())
+
+    def test_losing_the_tracked_identity_prevents_a_positive_contact_check(self):
+        for identity in (2, None):
+            with self.subTest(identity=identity):
+                car = _Car()
+                car.collide()
+                car.step(.7, static=False, object_id=1)
+                car.step(.79, static=False, object_id=1)
+                for _ in range(10):
+                    car.step(.85, static=False, object_id=identity, phase="backing_up")
+                belief = read_belief(car.memory, "stop_row.row")
+                self.assertEqual([check.method for check in belief.checks], ["stop"])
+                self.assertFalse(belief.corroborated)
+
+    def test_repeated_observation_does_not_duplicate_collision_learning(self):
+        car = _Car()
+        car.collide()
+        car.step(.7, static=False, object_id=1)
+        car.step(.75, static=True, object_id=1, observation_id="contact")
+        belief = read_belief(car.memory, "stop_row.row")
+        car.step(.75, static=True, object_id=1, observation_id="contact")
+        self.assertEqual(read_belief(car.memory, "stop_row.row"), belief)
+
+    def test_ambiguous_contact_is_not_attributed_to_one_tracked_box(self):
+        for properties in ({"object_id": 2}, {}):
+            with self.subTest(properties=properties):
+                car = _Car()
+                car.collide()
+                car.step(.7, static=False, object_id=1)
+                other = {"kind": "obstruction_evidence", "source_plugin_id": "sim_wall",
+                         "properties": properties, "location": {"bbox_xyxy_norm": (.3, .2, .5, .75)}}
+                status = car.step(.75, static=True, object_id=1, extra_things=(other,))
+                self.assertEqual(status["stop_row"], .79)
+                self.assertEqual(read_belief(car.memory, "stop_row.row").checks, ())
+
+    def test_detector_copy_of_a_tracked_box_does_not_make_identity_ambiguous(self):
+        car = _Car()
+        car.collide()
+        car.step(.7, static=False, object_id=1)
+        detection = {"kind": "obstruction_evidence", "source_plugin_id": "sim_cardboard_obstacle",
+                     "properties": {}, "location": {"bbox_xyxy_norm": (.4, .1, .6, .75)}}
+        status = car.step(.75, static=True, object_id=1, extra_things=(detection,))
+        self.assertEqual(status["stop_row"], .695)
+        self.assertEqual(read_belief(car.memory, "stop_row.row").checks[-1].method, "collision")
+
+    def test_a_repeated_capture_under_a_new_observation_id_is_not_scored_twice(self):
+        car = _Car()
+        car.collide()
+        car.step(.7, static=False, object_id=1, captured_at=200)
+        car.step(.75, static=True, object_id=1, captured_at=300)
+        belief = read_belief(car.memory, "stop_row.row")
+        car.step(.75, static=True, object_id=1, captured_at=300)
+        self.assertEqual(read_belief(car.memory, "stop_row.row"), belief)
+
+    def test_tracked_trial_continues_after_a_shared_memory_round_trip(self):
+        from autonomy.shared_memory import shared_memory_document, shared_memory_from_document
+        car = _Car()
+        car.collide()
+        car.step(.7, static=False, object_id=1)
+        car.step(.79, static=False, object_id=1)
+        car.step(.85, static=False, object_id=1, phase="backing_up")
+        car.memory = shared_memory_from_document(shared_memory_document(car.memory))
+        car.plugin = StopRowHypothesis()
+        for _ in range(9):
+            car.step(.85, static=False, object_id=1, phase="backing_up")
+        self.assertTrue(read_belief(car.memory, "stop_row.row").corroborated)

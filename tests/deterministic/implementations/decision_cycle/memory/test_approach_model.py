@@ -243,3 +243,16 @@ class ApproachModelTests(unittest.TestCase):
         ):
             with self.subTest(config=config), self.assertRaises(ValueError):
                 ApproachModel(**config)
+
+    def test_arrival_prediction_reads_the_configured_stop_belief_and_ignores_nonnumeric_values(self):
+        for value, expected in ((63 / BINS, True), (None, False), (True, False), (".5", False)):
+            with self.subTest(value=value):
+                car = _Car(ApproachModel(stop_row_belief_id="custom.stop"))
+                car.memory[belief_key("custom.stop")] = Belief("custom.stop", value, "stop_row", 1)
+                for row in (60, 61, 62, 63, 60, 61):
+                    car.step((1, row))
+                belief = read_belief(car.memory, "approach_model.ms_per_row")
+                self.assertEqual(bool(belief.trials), expected)
+        for value in (None, "", 1):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                ApproachModel(stop_row_belief_id=value)

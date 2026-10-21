@@ -69,6 +69,7 @@ class ApproachModel:
         edge_plugin_ids: tuple[str, ...] | list[str] = ("sim_wall", "sim_cardboard_permanence"),
         sensor_id: str = FRONT_CAMERA_SENSOR_ID,
         stop_reasons: tuple[str, ...] | list[str] = ("avoid_back_up_until_right_clear",),
+        stop_row_belief_id: str = "stop_row.row",
         min_x: float = 0.3,
         max_x: float = 0.7,
         row_bins: int = 120,
@@ -85,7 +86,7 @@ class ApproachModel:
         if (not isinstance(stop_reasons, (tuple, list)) or not stop_reasons
                 or not all(isinstance(reason, str) and reason for reason in stop_reasons)):
             raise ValueError("stop_reasons must be a non-empty list of applied control reasons")
-        for name, value in (("sensor_id", sensor_id),):
+        for name, value in (("sensor_id", sensor_id), ("stop_row_belief_id", stop_row_belief_id)):
             if not isinstance(value, str) or not value:
                 raise ValueError(f"{name} must be a non-empty string")
         for name, value in (
@@ -103,6 +104,7 @@ class ApproachModel:
         self.edge_plugin_ids = tuple(edge_plugin_ids)
         self.sensor_id = sensor_id
         self.stop_reasons = tuple(stop_reasons)
+        self.stop_row_belief_id = stop_row_belief_id
         self.min_x = float(min_x)
         self.max_x = float(max_x)
         self.row_bins = row_bins
@@ -216,8 +218,9 @@ class ApproachModel:
                 row_belief = Belief(ROWS_BELIEF_ID, state["ms_per_row"], self.plugin_id, now)
             row_belief = replace(row_belief, value=state["ms_per_row"], properties=properties,
                                  updated_at_ms=max(now, row_belief.updated_at_ms))
-            stop = read_belief(memory, "stop_row.row")
-            if straight and captured_at is not None and not row_belief.trials and stop is not None and edges:
+            stop = read_belief(memory, self.stop_row_belief_id)
+            if (straight and captured_at is not None and not row_belief.trials
+                    and stop is not None and _is_number(stop.value) and edges):
                 edge_id, edge = max(edges.items(), key=lambda pair: pair[1]["row"])
                 target = math.ceil(stop.value * self.row_bins - _EPS)
                 rows = [precision.get(str(index)) for index in range(edge["row"], target)]

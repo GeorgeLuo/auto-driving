@@ -5,7 +5,7 @@ from dataclasses import replace
 from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
-from implementations.decision_cycle.memory.shared.motion.control_applications import motion_at, motions_over
+from implementations.decision_cycle.memory.shared.motion.control_applications import application_at, latest_motion, motion_at, motions_over
 
 
 def _application(at, steering=0, throttle=.6, mode="autonomy"):
@@ -41,3 +41,19 @@ class ControlIntervalTests(unittest.TestCase):
     def test_idle_and_reverse_do_not_count_as_forward(self):
         memory = {CONTROL_APPLICATIONS_KEY: (_application(10, throttle=0), _application(20, throttle=-.6))}
         self.assertEqual(motions_over(memory, 10, 20), ("idle", "reverse"))
+
+    def test_document_round_trip_keeps_motion_and_latest_issued_target(self):
+        from autonomy.shared_memory import shared_memory_document, shared_memory_from_document
+        memory = {CONTROL_APPLICATIONS_KEY: (_application(10), _application(25, throttle=-.6))}
+        restored = shared_memory_from_document(shared_memory_document(memory))
+        self.assertIsInstance(restored[CONTROL_APPLICATIONS_KEY], list)
+        self.assertEqual(motions_over(restored, 20, 30), ("forward", "reverse"))
+        self.assertEqual(motion_at(restored, 20), "forward")
+        self.assertEqual(latest_motion(restored), "reverse")
+        self.assertEqual(application_at(restored, 30).control.throttle, -.6)
+
+    def test_latest_target_does_not_skip_an_unknown_or_manual_write(self):
+        for last in (_application(20, mode="manual"), replace(_application(20), applied=False),
+                     replace(_application(20), delivered_at_ms=None), _application(5)):
+            with self.subTest(last=last):
+                self.assertIsNone(latest_motion({CONTROL_APPLICATIONS_KEY: (_application(10), last)}))

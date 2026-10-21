@@ -19,11 +19,11 @@ def _context(frame_id="frame_1", timestamp_ms=10, observation=None, memory=None)
 
 
 class DriveForwardTests(unittest.TestCase):
-    def test_obstacle_presence_and_unavailable_observation_do_not_change_command(self):
+    def test_obstacle_presence_does_not_change_command(self):
         plugin = DriveForward()
-        for present in (False, True, None):
+        for present in (False, True):
             with self.subTest(present=present):
-                observation = None if present is None else Observation(
+                observation = Observation(
                     observation_id="observation_1", created_at_ms=10, sensor_frame={},
                     signals=({"signal_id": "obstacle_in_sight", "value": present,
                               "confidence": 1.0, "properties": {}},),
@@ -37,12 +37,20 @@ class DriveForwardTests(unittest.TestCase):
 
     def test_configured_throttle_is_preserved_without_reading_memory(self):
         memory = {"unrelated": {"obstacles": "stop"}}
-        result = DriveForward(throttle=0.25).propose(_context(frame_id="frame_2", timestamp_ms=20, memory=memory))
+        result = DriveForward(throttle=0.25).propose(_context(frame_id="frame_2", timestamp_ms=20, memory=memory,
+            observation=Observation("o", 20, {})))
         self.assertEqual(result.command.throttle, 0.25)
-        self.assertEqual(memory, {"unrelated": {"obstacles": "stop"}})
+        self.assertEqual(memory["unrelated"], {"obstacles": "stop"})
         self.assertEqual(result.frame_id, "frame_2")
 
     def test_invalid_forward_throttle_is_rejected_at_construction(self):
         for value in (0, -0.1, 1.1, 1e-12, float("nan"), float("inf")):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 DriveForward(throttle=value)
+
+    def test_missing_observation_has_no_command_or_invented_source_ref(self):
+        result = DriveForward().propose(_context(memory={}))
+        self.assertEqual(result.lifecycle, "missing_input")
+        self.assertFalse(result.is_active("frame_1"))
+        self.assertIsNone(result.command)
+        self.assertEqual(result.source_refs, ())

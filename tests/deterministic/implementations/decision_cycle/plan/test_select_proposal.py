@@ -22,7 +22,7 @@ def _context(frame_id="frame_1", timestamp_ms=10, *, shared_memory=None, observa
 
 
 def _candidate(frame_id="frame_1"):
-    return DriveForward().propose(_context(frame_id))
+    return DriveForward().propose(_context(frame_id, observation=Observation("o", 10, {})))
 
 
 def _view(view_static=None, *, signal=True):
@@ -136,3 +136,13 @@ class SelectProposalTests(unittest.TestCase):
     def test_invalid_override_id_is_rejected(self):
         with self.assertRaises(ValueError):
             SelectProposal(override_proposal_plugin_id="not ascii é")
+
+    def test_chase_without_observation_plans_idle(self):
+        from implementations.decision_cycle.proposal.plugins.avoid_obstacle.plugin import AvoidObstacle
+        context = _context(shared_memory={})
+        candidates = (DriveForward().propose(context), DriveBackwards().propose(context),
+                      AvoidObstacle().propose(context))
+        plan = SelectProposal(override_proposal_plugin_id="avoid_obstacle",
+                              view_static_proposal_plugin_id="drive_backwards").plan(context, candidates)
+        self.assertEqual(plan.status, "idle")
+        self.assertIsNone(plan.command)

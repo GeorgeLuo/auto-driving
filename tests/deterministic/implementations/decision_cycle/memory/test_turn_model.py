@@ -1,6 +1,7 @@
 """The turn model learns how its own turn command moves landmarks, and carries them out of view."""
 
 import unittest
+from dataclasses import replace
 
 from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
 from autonomy.runtime.control import AutonomyControl
@@ -8,7 +9,7 @@ from autonomy.runtime.execution import ControlApplication
 
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.memory.publication import read_belief
+from autonomy.decision_cycle.memory.publication import belief_key, read_belief
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY, write_observation
 from autonomy.decision_cycle.observation.values import Observation
 from implementations.decision_cycle.memory.plugins.turn_model.plugin import STATE_KEY, TurnModel
@@ -312,3 +313,26 @@ class TurnModelTests(unittest.TestCase):
         ):
             with self.subTest(config=config), self.assertRaises(ValueError):
                 TurnModel(**config)
+
+    def test_resighting_a_landmark_with_its_belief_removed_keeps_tracking(self):
+        car = _Car()
+        for boxes in (((1, .2), (2, .4)), ((1, .2), (2, .4)),
+                      ((1, .3), (2, .5)), ((1, .4), (2, .6)), ((1, .5),)):
+            car.step(*boxes, phase="turning")
+        identifier = "turn_model.view_speed.forward_right.turning"
+        self.assertTrue(read_belief(car.memory, identifier).trials)
+        car.memory.pop(belief_key(identifier))
+        status = car.step((1, .6), (2, .8), phase="turning")
+        self.assertIn(2, _bearings(status))
+        self.assertEqual(read_belief(car.memory, identifier).checks, ())
+
+    def test_seeded_belief_without_precision_drops_its_prediction(self):
+        car = _Car()
+        car.step((1, .2), (2, .4), phase="turning")
+        car.step((1, .3), (2, .5), phase="turning")
+        car.step((1, .4), phase="turning")
+        identifier = "turn_model.view_speed.forward_right.turning"
+        belief = read_belief(car.memory, identifier)
+        car.memory[belief_key(identifier)] = replace(belief, properties={})
+        car.step((1, .5), phase="turning")
+        self.assertNotIn("prediction", car.memory[STATE_KEY]["landmarks"]["2"])

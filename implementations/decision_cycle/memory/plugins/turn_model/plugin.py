@@ -293,7 +293,8 @@ class TurnModel:
                 prediction = carried.get("prediction")
                 if prediction is not None:
                     belief = read_belief(memory, prediction["belief_id"])
-                    trial = next((trial for trial in belief.trials if trial.trial_id == prediction["trial_id"]), None)
+                    trial = None if belief is None else next(
+                        (trial for trial in belief.trials if trial.trial_id == prediction["trial_id"]), None)
                     if trial is not None:
                         low, high = trial.predicted
                         memory[belief_key(belief.belief_id)] = belief.resolved(trial.trial_id,
@@ -317,7 +318,10 @@ class TurnModel:
         if previous is not None and previous["belief_id"] != identifier:
             item.pop("prediction", None)
             return
-        if belief is None or (not item["in_view"] and previous is None):
+        if belief is None or not all(_is_number(belief.properties.get(name)) for name in ("p25", "p75")):
+            item.pop("prediction", None)
+            return
+        if not item["in_view"] and previous is None:
             return
         low, high = (belief.properties[name] * elapsed / 1000 for name in ("p25", "p75"))
         if previous is None:

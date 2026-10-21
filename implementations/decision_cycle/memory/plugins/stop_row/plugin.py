@@ -23,14 +23,14 @@ from dataclasses import replace
 from typing import Any
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.memory.beliefs import Belief, Trial
+from autonomy.decision_cycle.memory.beliefs import Belief, Check, Trial
 from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 from autonomy.decision_cycle.memory.publication import belief_key, read_belief
 from autonomy.decision_cycle.memory.interface import LEDGER_HEALTH_EMPTY, LEDGER_HEALTH_HEALTHY
 from autonomy.decision_cycle.observation.publication import read_observation
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.shared_memory import SharedMemory
-from implementations.decision_cycle.memory.shared.motion.control_applications import motion_at, motions_over
+from implementations.decision_cycle.memory.shared.motion.control_applications import latest_motion, motion_at, motions_over
 
 BELIEF_ID = "stop_row.row"
 STATE_KEY = "memory.stop_row.hypothesis"
@@ -94,61 +94,94 @@ class StopRowHypothesis:
         state["trial"] = None if prediction is None else {
             "stop_row": prediction.predicted, "started_at_ms": prediction.started_at_ms, **prediction.properties,
         }
+        now = context.timestamp_ms
+        captured_at = _captured_at(observation, now)
+        if observation is not None and (
+            observation.observation_id == state.get("observation_id")
+            or captured_at == state.get("captured_at_ms")
+        ):
+            return  # Replayed camera frames cannot test a hypothesis twice.
         signals = _signals(observation)
         row = _ahead_row(signals)
-        now = context.timestamp_ms
-        motion = motion_at(shared_memory, now)
+        identity = _ahead_identity(observation, signals, row)
+        motion = motion_at(shared_memory, captured_at)
+        issued = latest_motion(shared_memory)
         previous = state["updated_at_ms"]
-        span = None if previous is None else motions_over(shared_memory, previous, now)
+        previous_capture = state.get("captured_at_ms")
+        span = None if previous_capture is None else motions_over(shared_memory, previous_capture, captured_at)
         if previous is not None and (span is None or now < previous):
             state["trial"] = None
-            motion = None
+            motion = issued = None
             if belief is not None:
                 belief = replace(belief, trials=())
         forward = motion == "forward"
+        static = _value(signals, "view_static")
+        collided = forward and static is True and any(
+            _value(signals, signal_id) is True for signal_id in self.obstacle_signal_ids
+        )
+        tracked = identity is not None and identity == state.get("ahead_identity") and span == ("forward",)
         trial = state["trial"]
-        if trial is not None:
-            stopping = motion == "reverse"
-            if stopping:
-                trial["reversed"] = True
-            if stopping and row is not None:
+        collision_check = None
+        concluded = False
+        if collided and state["stop_row"] is not None and tracked:
+            predicted = state["stop_row"] if trial is None else trial["stop_row"]
+            self._conclude(state, COLLISION, predicted, row, now)
+            collision_check = Check(now, "collision", "contradict", predicted,
+                                    {"obstacle": identity, "row": row})
+            concluded = True
+        elif trial is not None:
+            # Captures may still show the forward approach after reverse was issued.
+            if motion in ("forward", "reverse") and row is not None:
                 trial["peak_row"] = max(trial["peak_row"], row)
-            if forward or motion is None or motion == "idle" or not trial.get("reversed"):
+            if identity != trial.get("obstacle") or static is not False:
+                trial["obstacle"] = None
+            if issued == "reverse":
+                trial["reversed"] = True
+            if issued in (None, "forward", "idle") or not trial.get("reversed"):
                 state["trial"] = None
             elif trial["peak_row"] >= self.blind_row:
                 self._conclude(state, TOO_CLOSE, trial["stop_row"], trial["peak_row"], now)
-            elif not stopping or now - trial["started_at_ms"] >= self.settle_ms:
+                concluded = True
+            elif issued != "reverse" or now - trial["started_at_ms"] >= self.settle_ms:
                 self._conclude(state, STOPPED_SHORT, trial["stop_row"], trial["peak_row"], now)
-        elif forward and _value(signals, "view_static") is True and any(
-            _value(signals, signal_id) is True for signal_id in self.obstacle_signal_ids
-        ):
+                concluded = True
+                if trial.get("obstacle") is not None:
+                    collision_check = Check(now, "collision", "support", trial["stop_row"],
+                                            {"obstacle": trial["obstacle"], "contact": False})
+        elif collided:
             state["counts"][COLLISION] += 1
             state["last_outcome"] = _outcome(COLLISION, state["stop_row"], row, now)
             if state["stop_row"] is None:
                 state["stop_row"] = self._next_stop_row(state)
-        elif forward and state["stop_row"] is not None and row is not None and row >= state["stop_row"]:
-            state["trial"] = {"stop_row": state["stop_row"], "started_at_ms": now, "peak_row": row}
+        elif (forward and issued == "forward" and state["stop_row"] is not None
+              and row is not None and row >= state["stop_row"]):
+            state["trial"] = {"stop_row": state["stop_row"], "started_at_ms": now, "peak_row": row,
+                              "obstacle": identity if tracked and static is False else None}
         if state["stop_row"] is not None:
             if belief is None:
                 belief = Belief(BELIEF_ID, state["stop_row"], self.plugin_id, now)
-            outcome = state["last_outcome"]
-            if outcome is not None and outcome["at_ms"] == now and outcome["kind"] != COLLISION:
+            if concluded:
+                outcome = state["last_outcome"]
+                belief = belief.revised(state["stop_row"], now, keep_checks=not state.pop("invalidated", False))
                 if belief.trials:
                     belief = belief.resolved(belief.trials[0].trial_id,
                         "support" if outcome["kind"] == STOPPED_SHORT else "contradict",
                         outcome, now, 64)
-                belief = belief.revised(state["stop_row"], now, keep_checks=not state.pop("invalidated", False))
+                if collision_check is not None:
+                    belief = belief.checked(collision_check, 64)
             trial = state["trial"]
             if trial is None:
                 belief = replace(belief, trials=())
-            elif not belief.trials:
-                belief = belief.opened(Trial(f"stop_{now}", "stop", now, trial["stop_row"],
-                    {"peak_row": trial["peak_row"], "reversed": trial.get("reversed", False)}), 1)
             else:
-                belief = replace(belief, trials=(replace(belief.trials[0], properties={
-                    "peak_row": trial["peak_row"], "reversed": trial.get("reversed", False),
-                }),))
+                properties = {key: trial[key] for key in ("peak_row", "reversed", "obstacle") if key in trial}
+                if not belief.trials:
+                    belief = belief.opened(Trial(f"stop_{now}", "stop", now, trial["stop_row"], properties), 1)
+                else:
+                    belief = replace(belief, trials=(replace(belief.trials[0], properties=properties),))
             shared_memory[belief_key(BELIEF_ID)] = belief
+        state["ahead_identity"] = identity if forward and static is False else None
+        state["observation_id"] = None if observation is None else observation.observation_id
+        state["captured_at_ms"] = captured_at
         state["updated_at_ms"] = now
         state.pop("stop_row")
         state.pop("trial")
@@ -244,3 +277,41 @@ def _ahead_row(signals: dict[str, dict[str, Any]]) -> float | None:
     if isinstance(row, bool) or not isinstance(row, (int, float)) or not math.isfinite(row):
         return None
     return float(row)
+
+
+def _captured_at(observation: Observation | None, fallback: int) -> int:
+    readings = None if observation is None else observation.sensor_frame.get("readings")
+    reading = readings.get("front_camera") if isinstance(readings, dict) else None
+    at = reading.get("captured_at_ms") if isinstance(reading, dict) else None
+    return at if isinstance(at, int) and not isinstance(at, bool) and at >= 0 else fallback
+
+
+def _ahead_identity(
+    observation: Observation | None, signals: dict[str, dict[str, Any]], row: float | None,
+) -> str | None:
+    """An unambiguous tracked box at clearance's nearest row, never a detection index."""
+    if observation is None or row is None:
+        return None
+    properties = signals.get("clearance_ahead", {}).get("properties") or {}
+    min_x, max_x = properties.get("min_x", 0.3), properties.get("max_x", 0.7)
+    identities = []
+    boxes = []
+    for thing in observation.things:
+        if not isinstance(thing, dict) or thing.get("kind") != "obstruction_evidence":
+            continue
+        bbox = (thing.get("location") or {}).get("bbox_xyxy_norm")
+        object_id = (thing.get("properties") or {}).get("object_id")
+        source = thing.get("source_plugin_id")
+        if (not isinstance(bbox, (list, tuple)) or len(bbox) != 4
+                or not all(isinstance(value, (int, float)) and not isinstance(value, bool)
+                           and math.isfinite(value) for value in bbox)):
+            continue
+        if bbox[0] < max_x and bbox[2] > min_x and math.isclose(bbox[3], row, rel_tol=0, abs_tol=1e-9):
+            boxes.append(tuple(bbox))
+            if isinstance(object_id, int) and not isinstance(object_id, bool) and isinstance(source, str):
+                identities.append((f"{source}#{object_id}", tuple(bbox)))
+    # The detector and its tracker can publish the same box. A different box at
+    # the same row makes contact attribution ambiguous, even if it has no ID.
+    if len(identities) != 1 or any(box != identities[0][1] for box in boxes):
+        return None
+    return identities[0][0]

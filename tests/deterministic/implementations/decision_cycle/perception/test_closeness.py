@@ -3,7 +3,7 @@
 import unittest
 from dataclasses import replace
 
-from autonomy.decision_cycle.memory.beliefs import Belief
+from autonomy.decision_cycle.memory.beliefs import Belief, Check
 from autonomy.decision_cycle.memory.publication import belief_key
 
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, ViewLocation
@@ -65,6 +65,8 @@ class ClosenessTests(unittest.TestCase):
         self.assertEqual(signal.properties, {
             "min_x": 0.3, "max_x": 0.7, "row": 0.45, "stop_row": 0.6, "run_ms": 250.0,
             "reach_ms": 250, "reason": "within_one_run",
+            "belief_confidences": {"approach_model.ms_per_row": None, "approach_model.run_ms": None,
+                                   "stop_row.row": None},
         })
 
     def test_each_band_reads_its_own_nearest_box(self):
@@ -132,3 +134,17 @@ class ClosenessTests(unittest.TestCase):
         ):
             with self.subTest(config=config), self.assertRaises(ValueError):
                 ClosenessPlugin(**config)
+
+    def test_confidence_uses_the_lowest_checked_belief_and_exposes_each_score(self):
+        memory = _memory()
+        for key in memory:
+            memory[key] = memory[key].checked(Check(2, "test", "support"), 64)
+        memory[STOP_ROW_KEY] = memory[STOP_ROW_KEY].checked(Check(3, "test", "contradict"), 64)
+        signal = _signals(_box((.4, .2, .6, .5)), memory=memory)["closeness_ahead"]
+        self.assertEqual(signal.confidence, .5)
+        self.assertEqual(signal.properties["belief_confidences"], {
+            "approach_model.ms_per_row": 2 / 3, "approach_model.run_ms": 2 / 3, "stop_row.row": .5,
+        })
+        memory[RUN_KEY] = replace(memory[RUN_KEY], checks=())
+        self.assertIsNone(_signals(_box((.4, .2, .6, .5)), memory=memory)["closeness_ahead"].confidence)
+        self.assertIsNone(_signals(memory=memory)["closeness_ahead"].confidence)

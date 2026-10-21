@@ -9,8 +9,7 @@ them.
 from __future__ import annotations
 
 import math
-from collections.abc import Mapping
-from typing import Any, Sequence
+from typing import Sequence
 
 from autonomy.decision_cycle.confidence import confidence_rank
 from autonomy.decision_cycle.proposal.values import (
@@ -18,7 +17,7 @@ from autonomy.decision_cycle.proposal.values import (
     ProposedVehicleCommand,
     SourceRef,
 )
-from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
+from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.evidence import RetainedEvidence
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
@@ -172,10 +171,10 @@ def _source_ref(record: RetainedEvidence) -> SourceRef:
     )
 
 
-def _inactive(source: DecisionDataSource, reason: str) -> ActionProposal:
+def _inactive(context: DecisionFrameContext, reason: str) -> ActionProposal:
     return ActionProposal(
         plugin_id=AvoidRecentObstruction.plugin_id,
-        frame_id=source.frame_id,
+        frame_id=context.frame_id,
         lifecycle="inactive",
         freshness="none",
         confidence=0.0,
@@ -188,34 +187,21 @@ def _inactive(source: DecisionDataSource, reason: str) -> ActionProposal:
 
 
 def propose(
-    source: DecisionDataSource,
-    shared_memory: Mapping[str, Any] | None = None,
+    context: DecisionFrameContext,
     *,
     evidence_key: str = EVIDENCE_KEY,
     accepted_kinds: Sequence[str] = DEFAULT_ACCEPTED_KINDS,
     retained_max_age_ms: int = DEFAULT_RETAINED_MAX_AGE_MS,
     steer_magnitude: float = DEFAULT_STEER_MAGNITUDE,
 ) -> ActionProposal:
-    """Emit exactly one ActionProposal from the source and retained evidence."""
+    """Emit exactly one ActionProposal from the context and retained evidence."""
 
-    if not isinstance(source, DecisionDataSource):
-        return ActionProposal(
-            plugin_id=AvoidRecentObstruction.plugin_id,
-            frame_id="invalid",
-            lifecycle="error",
-            freshness="none",
-            confidence=0.0,
-            reason="decision_source_missing",
-            command=None,
-            assumptions=BASE_ASSUMPTIONS,
-            available=False,
-        )
-
+    shared_memory = context.shared_memory
     records = shared_memory.get(evidence_key) if shared_memory is not None else None
     if records is None:
         return ActionProposal(
             plugin_id=AvoidRecentObstruction.plugin_id,
-            frame_id=source.frame_id,
+            frame_id=context.frame_id,
             lifecycle="missing_input",
             freshness="none",
             confidence=0.0,
@@ -230,7 +216,7 @@ def propose(
     ):
         return ActionProposal(
             plugin_id=AvoidRecentObstruction.plugin_id,
-            frame_id=source.frame_id,
+            frame_id=context.frame_id,
             lifecycle="error",
             freshness="none",
             confidence=0.0,
@@ -259,7 +245,7 @@ def propose(
         # Accepted kinds present but none image-located.
         return ActionProposal(
             plugin_id=AvoidRecentObstruction.plugin_id,
-            frame_id=source.frame_id,
+            frame_id=context.frame_id,
             lifecycle="incompatible",
             freshness="none",
             confidence=0.0,
@@ -270,14 +256,14 @@ def propose(
         )
 
     if not candidates:
-        return _inactive(source, "no_accepted_obstruction_evidence")
+        return _inactive(context, "no_accepted_obstruction_evidence")
 
     classified: list[tuple[str, RetainedEvidence]] = []
     for record in candidates:
         cls = _freshness_class(
             record,
-            now=source.timestamp_ms,
-            frame_id=source.frame_id,
+            now=context.timestamp_ms,
+            frame_id=context.frame_id,
             retained_max_age_ms=retained_max_age_ms,
         )
         classified.append((cls, record))
@@ -285,7 +271,7 @@ def propose(
     if classified and all(cls == "invalid_future" for cls, _ in classified):
         return ActionProposal(
             plugin_id=AvoidRecentObstruction.plugin_id,
-            frame_id=source.frame_id,
+            frame_id=context.frame_id,
             lifecycle="error",
             freshness="none",
             confidence=0.0,
@@ -332,7 +318,7 @@ def propose(
                 break
         if primary is None:
             # Active freshness class present but no lateral cue in that class.
-            return _inactive(source, "no_lateral_obstruction_evidence")
+            return _inactive(context, "no_lateral_obstruction_evidence")
 
         assumptions = list(BASE_ASSUMPTIONS)
         magnitude = float(steer_magnitude)
@@ -347,7 +333,7 @@ def propose(
         )
         return ActionProposal(
             plugin_id=AvoidRecentObstruction.plugin_id,
-            frame_id=source.frame_id,
+            frame_id=context.frame_id,
             lifecycle=lifecycle,
             freshness=lifecycle,
             confidence=primary.confidence,
@@ -362,7 +348,7 @@ def propose(
         primary = pick(stale)
         return ActionProposal(
             plugin_id=AvoidRecentObstruction.plugin_id,
-            frame_id=source.frame_id,
+            frame_id=context.frame_id,
             lifecycle="stale",
             freshness="stale",
             confidence=primary.confidence,
@@ -373,7 +359,7 @@ def propose(
             available=False,
         )
 
-    return _inactive(source, "no_accepted_obstruction_evidence")
+    return _inactive(context, "no_accepted_obstruction_evidence")
 
 
 class AvoidRecentObstruction:
@@ -415,14 +401,9 @@ class AvoidRecentObstruction:
         self.steer_magnitude = magnitude
         self.evidence_key = evidence_key
 
-    def propose(
-        self,
-        source: DecisionDataSource,
-        shared_memory: Mapping[str, Any] | None = None,
-    ) -> ActionProposal:
+    def propose(self, context: DecisionFrameContext) -> ActionProposal:
         return propose(
-            source,
-            shared_memory,
+            context,
             evidence_key=self.evidence_key,
             accepted_kinds=self.accepted_kinds,
             retained_max_age_ms=self.retained_max_age_ms,

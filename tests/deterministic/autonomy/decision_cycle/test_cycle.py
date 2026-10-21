@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 
+from dataclasses import replace
+
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
@@ -97,12 +99,13 @@ class DecisionCycleTests(unittest.TestCase):
             calls.append(("observation", received))
             return observation_step(context, received)
 
-        def remember(context, observation):
-            calls.append(("memory", observation))
+        def remember(context):
+            calls.append(("memory", context.shared_memory.get("observation.current")))
             return None
 
-        def propose(context, observation):
-            calls.append(("proposal", observation))
+        def propose(context):
+            shared = context.shared_memory or {}
+            calls.append(("proposal", shared.get("observation.current")))
             return None
 
         def plan(context, proposal):
@@ -122,7 +125,7 @@ class DecisionCycleTests(unittest.TestCase):
                 plan=plan,
                 action=act,
             )
-        ).run(self.context())
+        ).run(replace(self.context(), shared_memory={}))
 
         self.assertEqual(
             [name for name, _ in calls],
@@ -175,7 +178,7 @@ class DecisionCycleTests(unittest.TestCase):
         report = {"schema": "memory_report_v1", "plugins": [{"state": {"record_count": 0}}]}
 
         result = DecisionCycle(
-            DecisionSteps(memory=lambda context, observation: report)
+            DecisionSteps(memory=lambda context: report)
         ).run(self.context())
 
         self.assertIs(result.memory, report)

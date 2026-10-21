@@ -43,7 +43,8 @@ class MemoryActivationTests(unittest.TestCase):
             self.assertEqual(result.memory["schema"], MEMORY_REPORT_SCHEMA)
             self.assertEqual(_state(result.memory)["record_count"], 0)
 
-            remembered = _state(step(context, observation))
+            shared["observation.current"] = observation
+            remembered = _state(step(context))
             self.assertEqual(remembered["record_count"], 1)
             self.assertEqual(
                 remembered["records"][0]["origin"]["observation_id"],
@@ -66,10 +67,9 @@ class MemoryActivationTests(unittest.TestCase):
                 read_step_activation(_write_payload(tmp, _valid_payload()), "memory")
             )
             shared: dict = {"other.key": "kept by the host, not by memory"}
-            step.update(
-                DecisionFrameContext("frame_2", 2, 200, shared_memory=shared),
-                Observation("obs_2", 190, {}),
-            )
+            context = DecisionFrameContext("frame_2", 2, 200, shared_memory=shared)
+            context.shared_memory["observation.current"] = Observation("obs_2", 190, {})
+            step.update(context)
 
             written = step.reset(shared)
 
@@ -98,10 +98,9 @@ class MemoryActivationTests(unittest.TestCase):
                 read_step_activation(_write_payload(tmp, _valid_payload()), "memory")
             )
             shared: dict = {}
-            report = step.update(
-                DecisionFrameContext("frame_7", 7, 700, shared_memory=shared),
-                Observation("obs_7", 690, {}),
-            )
+            context = DecisionFrameContext("frame_7", 7, 700, shared_memory=shared)
+            context.shared_memory["observation.current"] = Observation("obs_7", 690, {})
+            report = step.update(context)
             _state(report)["records"][0]["properties"]["extra"] = 1
             _state(report)["record_count"] = 99
 

@@ -310,6 +310,9 @@ def report_from_host_result(
     plan = getattr(result, "plan", None)
     control = application.control
     values = {} if values is None else dict(values)
+    observation = getattr(result, "observation", None)
+    values["observation"] = None if observation is None else observation.to_dict()
+    values["memory"] = getattr(result, "memory", None)
     timing = getattr(result, "timing", None)
     if timing is not None:
         values["timing"] = timing

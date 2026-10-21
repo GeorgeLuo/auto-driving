@@ -6,7 +6,6 @@ import unittest
 from autonomy.decision_cycle.memory.evidence import (
     MemoryOrigin,
     RetainedEvidence,
-    detach_evidence,
 )
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
@@ -63,14 +62,6 @@ class RetainedEvidenceTests(unittest.TestCase):
         payload["confidence"] = 0.0
         self.assertEqual(RetainedEvidence.from_dict(payload).confidence, 0.0)
 
-    def test_detach_evidence_isolates_nested_mutation(self) -> None:
-        original = (self.retained("a"), self.retained("b"))
-
-        detached = detach_evidence(original)
-        detached[0].properties["width_fraction"] = 0.5
-
-        self.assertEqual(original[0].properties["width_fraction"], 0.2)
-        self.assertEqual([record.record_id for record in detached], ["a", "b"])
 
 
 if __name__ == "__main__":

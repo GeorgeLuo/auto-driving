@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -91,19 +90,17 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         memory = {}
         config = {"max_records": 8, "max_age_ms": 5_000}
         first = BoundedEvidenceLedger(**config)
-        first.update(
-            DecisionFrameContext("f1", 1, 100, shared_memory=memory),
-            _observation("o1", created_at_ms=90, things=(_thing("a"),)),
-        )
+        context = DecisionFrameContext("f1", 1, 100, shared_memory=memory)
+        context.shared_memory["observation.current"] = _observation("o1", created_at_ms=90, things=(_thing("a"),))
+        first.update(context)
         self.assertFalse(hasattr(first, "_records"))
         self.assertEqual(memory[LEDGER_KEY].record_count, 1)
         self.assertEqual(memory[EVIDENCE_KEY], memory[LEDGER_KEY].records)
 
         recreated = BoundedEvidenceLedger(**config)
-        recreated.update(
-            DecisionFrameContext("f2", 2, 200, shared_memory=memory),
-            _observation("o2", created_at_ms=190, things=(_thing("b"),)),
-        )
+        context = DecisionFrameContext("f2", 2, 200, shared_memory=memory)
+        context.shared_memory["observation.current"] = _observation("o2", created_at_ms=190, things=(_thing("b"),))
+        recreated.update(context)
         self.assertEqual(memory[LEDGER_KEY].record_count, 2)
         self.assertEqual(len(memory[EVIDENCE_KEY]), 2)
 
@@ -116,7 +113,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(recreated.status(memory), reset.to_dict())
 
         memory.clear()
-        recreated.update(DecisionFrameContext("f3", 3, 300, shared_memory=memory), None)
+        recreated.update(DecisionFrameContext("f3", 3, 300, shared_memory=memory))
         self.assertEqual(memory[LEDGER_KEY].record_count, 0)
         self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-1")
 
@@ -125,10 +122,9 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         ledger = BoundedEvidenceLedger(max_records=8)
 
         with self.assertRaises(TypeError) as caught:
-            ledger.update(
-                DecisionFrameContext("f1", 1, 100, shared_memory=memory),
-                _observation("o1", created_at_ms=90, things=(_thing("a"),)),
-            )
+            context = DecisionFrameContext("f1", 1, 100, shared_memory=memory)
+            context.shared_memory["observation.current"] = _observation("o1", created_at_ms=90, things=(_thing("a"),))
+            ledger.update(context)
 
         self.assertIn(LEDGER_KEY, str(caught.exception))
         ledger.reset(memory)
@@ -293,10 +289,9 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 step = MemoryRunner.from_plugins({plugin_id: plugins[plugin_id] for plugin_id in order})
                 host = AutonomyCycleHost(steps=DecisionSteps(memory=step))
 
-                report = step.update(
-                    DecisionFrameContext("f1", 1, 100, shared_memory=host.shared_memory),
-                    observation,
-                )
+                context = DecisionFrameContext("f1", 1, 100, shared_memory=host.shared_memory)
+                context.shared_memory["observation.current"] = observation
+                report = step.update(context)
 
                 states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
                 self.assertEqual([entry["plugin_id"] for entry in report["plugins"]], list(order))

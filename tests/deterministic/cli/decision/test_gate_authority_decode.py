@@ -46,10 +46,12 @@ def _applied_cycle() -> dict:
         frame_index=1,
         timestamp_ms=1000,
         mode="local",
-        observation=Observation(
-            observation_id="obs-1", created_at_ms=1000, sensor_frame={}, summary=("t",)
-        ),
-        shared_memory={EVIDENCE_KEY: _left_obstruction()},
+        shared_memory={
+            "observation.current": Observation(
+                observation_id="obs-1", created_at_ms=1000, sensor_frame={}, summary=("t",)
+            ),
+            EVIDENCE_KEY: _left_obstruction(),
+        },
     )
     assert records.authority.proposed_applied
     return records.to_dict()
@@ -62,6 +64,15 @@ class ActionAuthorityDecodeTests(unittest.TestCase):
 
         self.assertTrue(cycle.authority.proposed_applied)
         self.assertEqual(cycle.authority.gate_id, "mode")
+
+    def test_the_plan_is_accepted_as_the_staged_plugin_chose_it(self) -> None:
+        # The plan plugin read shared memory that acceptance cannot see, so it
+        # is not run again here.
+        payload = _applied_cycle()
+        payload["plan"]["metadata"] = {"observation_id": "obs-1"}
+        cycle = _require_exact_cycle_export(payload)
+        _require_runner_plan_alignment(cycle, packaged_decision_steps("mode"))
+        self.assertEqual(cycle.plan.metadata, {"observation_id": "obs-1"})
 
 
 if __name__ == "__main__":

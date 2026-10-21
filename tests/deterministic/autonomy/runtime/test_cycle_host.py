@@ -68,10 +68,11 @@ class _RecordingProposal:
         self.last_shared_memory: dict | None = None
         self.last_observation = None
 
-    def __call__(self, context, observation):
+    def __call__(self, context):
         self.last_shared_memory = dict(context.shared_memory or {})
-        self.last_observation = observation
-        return self.runner(context, observation)
+        shared = context.shared_memory or {}
+        self.last_observation = shared.get("observation.current")
+        return self.runner(context)
 
 
 def _memory_step(
@@ -118,9 +119,9 @@ class CycleHostMemoryTests(unittest.TestCase):
 
         seen = []
         original = _RecordingMemory.update
-        def update(plugin, context, observation):
+        def update(plugin, context):
             seen.append(context)
-            return original(plugin, context, observation)
+            return original(plugin, context)
         with tempfile.TemporaryDirectory() as tmp:
             host, _ = _host(memory=_memory_step(Path(tmp)))
             host.execution = ControlExecution(Mock(write=Mock(return_value={})))
@@ -282,9 +283,9 @@ class CycleHostMemoryTests(unittest.TestCase):
             step = _memory_step(Path(tmp))
             host, _ = _host(memory=step)
             host.run(DecisionFrameContext("frame_fill", 1, 100))
+            host.shared_memory["observation.current"] = Observation("obs_fill", 90, {})
             step.update(
                 DecisionFrameContext("frame_fill", 1, 100, shared_memory=host.shared_memory),
-                Observation("obs_fill", 90, {}),
             )
             host.shared_memory["perception.history"] = "from an earlier frame"
             self.assertEqual(_state(step.report())["record_count"], 1)
@@ -315,7 +316,7 @@ class CycleHostMemoryTests(unittest.TestCase):
             seen.append(context.shared_memory.get("test.previous"))
             return Observation(context.frame_id, context.timestamp_ms, {})
 
-        def remember(context, observation):
+        def remember(context):
             context.shared_memory["test.previous"] = context.frame_id
             return {"schema": "memory_report_v1", "plugins": []}
 
@@ -433,11 +434,11 @@ class CycleHostStepTests(unittest.TestCase):
         entered, release = threading.Event(), threading.Event()
         recording = _RecordingProposal()
 
-        def slow_proposal(context, observation):
+        def slow_proposal(context):
             if context.frame_id != "frame_1":
                 entered.set()
                 release.wait(5.0)
-            return recording(context, observation)
+            return recording(context)
 
         host, _ = _host(proposal=slow_proposal)
         host.run(DecisionFrameContext("frame_1", 0, 1_000))
@@ -477,8 +478,8 @@ def _uploaded_proposal(plugin_id: str, *, constructor: str = "pass") -> bytes:
         f"    plugin_id = {plugin_id!r}\n"
         "    def __init__(self):\n"
         f"        {constructor}\n"
-        "    def propose(self, source, shared_memory):\n"
-        "        return ActionProposal(plugin_id=self.plugin_id, frame_id=source.frame_id,\n"
+        "    def propose(self, context):\n"
+        "        return ActionProposal(plugin_id=self.plugin_id, frame_id=context.frame_id,\n"
         "            lifecycle='inactive', freshness='none', confidence=0.0, reason='uploaded',\n"
         "            command=None, metadata={})\n"
     ).encode()

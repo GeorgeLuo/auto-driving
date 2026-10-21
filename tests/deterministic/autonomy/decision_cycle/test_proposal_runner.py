@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from autonomy.decision_cycle.context import DecisionFrameContext
 
 from autonomy.decision_cycle.activation import step_activation
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
@@ -15,10 +16,10 @@ class _ConfiguredProposal:
         self.plugin_id = plugin_id
         self.reason = reason
 
-    def propose(self, source, shared_memory) -> ActionProposal:
+    def propose(self, context) -> ActionProposal:
         return ActionProposal(
             plugin_id=self.plugin_id,
-            frame_id=source.frame_id,
+            frame_id=context.frame_id,
             lifecycle="inactive",
             freshness="none",
             confidence=0.0,
@@ -34,7 +35,7 @@ class _ReadsEvidence(_ConfiguredProposal):
 
 
 class _Raises(_ConfiguredProposal):
-    def propose(self, source, shared_memory) -> ActionProposal:
+    def propose(self, context) -> ActionProposal:
         raise RuntimeError("propose failed")
 
 
@@ -44,15 +45,15 @@ class _ResetRaises(_ConfiguredProposal):
 
 
 class _InvalidReturn(_ConfiguredProposal):
-    def propose(self, source, shared_memory):
+    def propose(self, context):
         return None
 
 
 class _DeclaredError(_ConfiguredProposal):
-    def propose(self, source, shared_memory) -> ActionProposal:
+    def propose(self, context) -> ActionProposal:
         return ActionProposal(
             plugin_id=self.plugin_id,
-            frame_id=source.frame_id,
+            frame_id=context.frame_id,
             lifecycle="error",
             freshness="none",
             confidence=0.0,
@@ -63,17 +64,17 @@ class _DeclaredError(_ConfiguredProposal):
 
 
 class _CorruptsCandidate(_ConfiguredProposal):
-    def propose(self, source, shared_memory) -> ActionProposal:
-        candidate = super().propose(source, shared_memory)
+    def propose(self, context) -> ActionProposal:
+        candidate = super().propose(context)
         object.__setattr__(candidate, "available", True)
         return candidate
 
 
 class _RecordsSource(_ConfiguredProposal):
-    def propose(self, source, shared_memory) -> ActionProposal:
-        self.source = source
-        self.shared_memory = shared_memory
-        return super().propose(source, shared_memory)
+    def propose(self, context) -> ActionProposal:
+        self.source = context
+        self.shared_memory = context.shared_memory
+        return super().propose(context)
 
 
 class _RecordsReset(_ConfiguredProposal):
@@ -126,9 +127,7 @@ class ProposalRunnerTests(unittest.TestCase):
         plugin = _RecordsSource(plugin_id="reader")
         runner = ProposalRunner.from_plugins({"reader": plugin})
 
-        result = runner.run(
-            frame_id="frame-1", frame_index=0, timestamp_ms=0, shared_memory=None
-        )
+        result = runner.run(DecisionFrameContext(frame_id="frame-1", frame_index=0, timestamp_ms=0, shared_memory=None))
 
         self.assertEqual(result.status, "ok")
         self.assertIsNone(plugin.shared_memory)
@@ -136,26 +135,11 @@ class ProposalRunnerTests(unittest.TestCase):
     def test_empty_selection_proposes_nothing(self) -> None:
         runner = ProposalRunner.from_activation(_activation([]))
         self.assertEqual(runner.plugins, {})
-        result = runner.run(frame_id="frame_001", frame_index=0, timestamp_ms=1)
+        result = runner.run(DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1))
         self.assertEqual(result.status, "ok")
         self.assertEqual(result.candidates, ())
 
 
-    def test_declared_evidence_key_is_copied_into_the_source(self) -> None:
-        runner = ProposalRunner.from_activation(
-            step_activation(
-                "proposal",
-                ["p0"],
-                {"p0": _spec("_ReadsEvidence")},
-                {"p0": {"plugin_id": "p0"}},
-            )
-        )
-        self.assertEqual(runner.evidence_key, "test.evidence")
-        result = runner.run(
-            frame_id="frame_001", frame_index=0, timestamp_ms=1, shared_memory={"test.evidence": ()}
-        )
-        assert result.source is not None
-        self.assertEqual(result.source.evidence.status, "ready")
 
     def test_reset_errors_propagate(self) -> None:
         runner = ProposalRunner.from_plugins({"p0": _ResetRaises(plugin_id="p0")})
@@ -174,7 +158,7 @@ class ProposalRunnerTests(unittest.TestCase):
             for record in runner.plugin_report()["plugins"]
         ))
 
-        result = runner.run(frame_id="frame_001", frame_index=0, timestamp_ms=1)
+        result = runner.run(DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1))
         self.assertEqual(result.status, "ok")
         self.assertEqual(
             [candidate.plugin_id for candidate in result.candidates],
@@ -200,7 +184,7 @@ class ProposalRunnerTests(unittest.TestCase):
             "corrupt": _CorruptsCandidate(plugin_id="corrupt"),
             "later": _ConfiguredProposal(plugin_id="later"),
         })
-        result = runner.run(frame_id="frame_001", frame_index=0, timestamp_ms=1)
+        result = runner.run(DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1))
         self.assertEqual(result.status, "error")
         self.assertEqual(result.reason, "action_proposal_matrix_violated")
         self.assertEqual(result.candidates, ())
@@ -212,49 +196,17 @@ class ProposalRunnerTests(unittest.TestCase):
         self.assertEqual(records[2], {"plugin_id": "later", "duration_ms": None, "error": None})
         self.assertEqual(runner.status()["failure_count"], 1)
 
-    def test_recovery_and_source_failure_do_not_reuse_old_plugin_records(self) -> None:
+    def test_recovery_does_not_reuse_old_plugin_records(self) -> None:
         plugin = _ConfiguredProposal(plugin_id="p0")
         runner = ProposalRunner.from_plugins({"p0": plugin})
         original = plugin.propose
         plugin.propose = _Raises(plugin_id="p0").propose
-        runner.run(frame_id="frame_001", frame_index=0, timestamp_ms=1)
+        runner.run(DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1))
         old_report = runner.plugin_report()
         plugin.propose = original
-        runner.run(frame_id="frame_002", frame_index=1, timestamp_ms=2)
+        runner.run(DecisionFrameContext(frame_id="frame_002", frame_index=1, timestamp_ms=2))
         self.assertIsNone(runner.plugin_report()["plugins"][0]["error"])
         self.assertEqual(old_report["plugins"][0]["error"], "RuntimeError: propose failed")
-
-        result = runner.run(
-            frame_id="frame_003", frame_index=2, timestamp_ms=3, observation=object(),
-        )
-        self.assertEqual(result.reason, "decision_data_source_invalid")
-        self.assertEqual(runner.plugin_report()["plugins"], [
-            {"plugin_id": "p0", "duration_ms": None, "error": None},
-        ])
-
-    def test_evidence_audit_uses_first_declared_key_and_plugins_share_the_host_map(self) -> None:
-        first = _RecordsSource(plugin_id="first")
-        second = _RecordsSource(plugin_id="second")
-        first.evidence_key = "first.evidence"
-        second.evidence_key = "second.evidence"
-        shared_memory = {first.evidence_key: (), second.evidence_key: None}
-        runner = ProposalRunner.from_plugins({"first": first, "second": second})
-        runner.run(
-            frame_id="frame_001", frame_index=0, timestamp_ms=1, shared_memory=shared_memory,
-        )
-        self.assertEqual(first.source.evidence.status, "ready")
-        self.assertEqual(second.source.evidence.status, "ready")
-        self.assertIsNot(first.source, second.source)
-        self.assertIs(first.shared_memory, shared_memory)
-        self.assertIs(second.shared_memory, shared_memory)
-
-        runner.plugin_manager.select(["second", "first"])
-        runner.apply_selection(shared_memory)
-        runner.run(
-            frame_id="frame_002", frame_index=1, timestamp_ms=2, shared_memory=shared_memory,
-        )
-        self.assertEqual(first.source.evidence.status, "unavailable")
-        self.assertEqual(second.source.evidence.status, "unavailable")
 
     def test_optional_reset_receives_the_host_map_on_reset_and_selection_removal(self) -> None:
         mapped = _RecordsReset(plugin_id="mapped")

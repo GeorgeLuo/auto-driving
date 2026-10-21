@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import unittest
 
-from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
+from autonomy.decision_cycle.context import DecisionFrameContext
+from dataclasses import replace
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
@@ -18,7 +19,7 @@ def propose(inputs, **kwargs):
     """Call the plugin with a (source, shared_memory) pair, or a source and an empty map."""
 
     source, shared_memory = inputs if isinstance(inputs, tuple) else (inputs, {})
-    return _propose(source, shared_memory, **kwargs)
+    return _propose(replace(source, shared_memory=shared_memory), **kwargs)
 
 
 def _record(
@@ -61,7 +62,7 @@ def _record(
 def _source(records: tuple[RetainedEvidence, ...], *, now: int = 1000, frame: str = "frame_001"):
     """A source for the frame and a host map where memory published ``records``."""
 
-    source = build_decision_data_source(frame_id=frame, frame_index=1, timestamp_ms=now)
+    source = DecisionFrameContext(frame_id=frame, frame_index=1, timestamp_ms=now)
     return source, {EVIDENCE_KEY: tuple(records)}
 
 
@@ -176,13 +177,13 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         self.assertEqual(p.lifecycle, "incompatible")
 
     def test_unpublished_evidence_is_missing_input(self) -> None:
-        source = build_decision_data_source(frame_id="frame_001", frame_index=0, timestamp_ms=1)
+        source = DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1)
         p = propose((source, {}))
         self.assertEqual(p.lifecycle, "missing_input")
         self.assertEqual(p.reason, "memory_unavailable")
 
     def test_malformed_evidence_value_is_error(self) -> None:
-        source = build_decision_data_source(frame_id="frame_001", frame_index=0, timestamp_ms=1)
+        source = DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1)
         p = propose((source, {EVIDENCE_KEY: "not evidence"}))
         self.assertEqual(p.lifecycle, "error")
         self.assertEqual(p.reason, "invalid_memory_value")
@@ -305,11 +306,11 @@ class AvoidRecentObstructionTests(unittest.TestCase):
 
 
     def test_steering_comes_from_plugin_config(self) -> None:
-        source = build_decision_data_source(frame_id="frame_001", frame_index=0, timestamp_ms=1000)
+        source = DecisionFrameContext(frame_id="frame_001", frame_index=0, timestamp_ms=1000)
         for zone, expected in (("left", 0.25), ("right", -0.25)):
             with self.subTest(zone=zone):
                 plugin = AvoidRecentObstruction(steer_magnitude=0.25)
-                proposal = plugin.propose(source, {EVIDENCE_KEY: (_record(zone=zone),)})
+                proposal = plugin.propose(replace(source, shared_memory={EVIDENCE_KEY: (_record(zone=zone),)}))
                 self.assertAlmostEqual(proposal.command.steering, expected)
         self.assertNotIn("capabilities", source.to_dict())
 
@@ -348,17 +349,9 @@ class AvoidRecentObstructionTests(unittest.TestCase):
             location=location,
             properties={},
         )
-        # Round-trip through the source's evidence audit copy (detach) like production.
-        source = build_decision_data_source(
-            frame_id="frame_001",
-            frame_index=0,
-            timestamp_ms=1000,
-            evidence=(record,),
-        )
-        # The detached copy must preserve the canonical unknown zone.
-        detached_zone = source.evidence.value[0].location.zone
-        self.assertEqual(detached_zone, "unknown")
-        p = propose((source, {EVIDENCE_KEY: source.evidence.value}))
+        context = DecisionFrameContext("frame_001", 0, 1000, shared_memory={EVIDENCE_KEY: (record,)})
+        self.assertEqual(record.location.zone, "unknown")
+        p = _propose(context)
         self.assertEqual(p.lifecycle, "fresh")
         assert p.command is not None
         self.assertAlmostEqual(p.command.steering, 1.0)
@@ -370,8 +363,9 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         plugin = AvoidRecentObstruction(steer_magnitude=0.5)
         self.assertEqual(plugin.plugin_id, "avoid_recent_obstruction")
         inputs = _source((_record(zone="left"),))
+        source, shared_memory = inputs
         self.assertEqual(
-            plugin.propose(*inputs).to_dict(),
+            plugin.propose(replace(source, shared_memory=shared_memory)).to_dict(),
             propose(inputs, steer_magnitude=0.5).to_dict(),
         )
 

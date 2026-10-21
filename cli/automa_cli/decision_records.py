@@ -2,7 +2,7 @@
 
 The decision tools (stream, apply, inspect, view) read the three decision
 steps' records together. ``DecisionRecords`` holds them and answers the
-questions the tools ask of a frame (its status, source, plan, and authority).
+questions the tools ask of a frame (its status, plan, and authority).
 ``DecisionRunners`` builds the three steps' runners from activation payloads
 and runs them for one frame, as the cycle would after memory. A payload a
 vehicle recorded runs on the controller release it names, as in every replay.
@@ -24,7 +24,6 @@ from autonomy.decision_cycle.action.publication import write_host_inputs
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.plan.values import ActionPlan
-from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.decision_cycle.steps import builtin_activation
@@ -51,9 +50,6 @@ class DecisionRecords:
     def reason(self) -> str:
         return self.action.reason
 
-    @property
-    def source(self) -> DecisionDataSource | None:
-        return self.proposal.source
 
     @property
     def authority(self):
@@ -137,23 +133,17 @@ class DecisionRunners:
         frame_index: int,
         timestamp_ms: int,
         mode: str | None = None,
-        **proposal_inputs: Any,
+        shared_memory: dict[str, Any] | None = None,
     ) -> DecisionRecords:
-        shared_memory = proposal_inputs.get("shared_memory")
         if shared_memory is None:
-            shared_memory = proposal_inputs["shared_memory"] = {}
+            shared_memory = {}
         write_host_inputs(shared_memory, mode=mode)
-        proposal = self.proposal.run(
-            frame_id=frame_id,
-            frame_index=frame_index,
-            timestamp_ms=timestamp_ms,
-            **proposal_inputs,
-        )
         context = DecisionFrameContext(
             frame_id=frame_id,
             frame_index=frame_index,
             timestamp_ms=timestamp_ms,
             shared_memory=shared_memory,
         )
+        proposal = self.proposal(context)
         plan = self.plan(context, proposal)
         return DecisionRecords(proposal, plan, self.action(context, proposal, plan))

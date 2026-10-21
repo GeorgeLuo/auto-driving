@@ -238,8 +238,6 @@ class SelectionRebuildTests(unittest.TestCase):
                 reference_decision = json.loads(
                     json.dumps(expected["steps"]["decision"])
                 )
-                for payload in (decision, reference_decision):
-                    payload["proposal"]["source"]["observation"]["value"].pop("summary")
                 self.assertEqual(decision, reference_decision)
                 post_action(base, {"action": "reset", "run_id": run_id})
 

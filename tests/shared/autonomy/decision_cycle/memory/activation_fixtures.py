@@ -35,16 +35,17 @@ class _RecordingMemory:
         current = shared_memory.get(self.state_key) if shared_memory is not None else None
         return current if isinstance(current, dict) else {"epoch": 1, "records": ()}
 
-    def update(self, context, observation):
+    def update(self, context):
         if self.fail_on_update:
             raise RuntimeError("forced-update-failure")
         if context.shared_memory is None:
             raise ValueError("recording memory requires a shared-memory map")
+        observation = context.shared_memory.get("observation.current")
         records = ()
         if observation is not None:
             records = (
                 RetainedEvidence(
-                    record_id=f"rec-{observation.observation_id}",
+                    record_id="rec-" + observation.observation_id,
                     kind="observation_presence",
                     label="observed",
                     confidence=1.0,

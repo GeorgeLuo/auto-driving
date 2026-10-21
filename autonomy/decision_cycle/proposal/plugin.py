@@ -1,11 +1,8 @@
 """Proposal plugin protocol.
 
-A proposal plugin returns one candidate command per cycle from the detached
-``DecisionDataSource`` and the host map. Its candidate is admitted only under
-the plugin ID it was selected by. A plugin that reads retained evidence from
-the host map may declare that key as ``evidence_key``; the step records an
-audit copy of the first selected plugin's declared key in every source copy.
-Other plugins still read their own keys directly from the shared host map.
+A proposal plugin reads the cycle context and shared memory and returns one
+candidate command per cycle. Its candidate is admitted only under the plugin
+ID it was selected by. Plugins choose which shared-memory keys they read.
 
 An optional ``reset()`` or ``reset(shared_memory)`` starts a new epoch and also
 runs when the plugin leaves the selection. Reset errors propagate. Return a
@@ -19,14 +16,13 @@ from __future__ import annotations
 
 from typing import Protocol, runtime_checkable
 
-from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
+from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.proposal.values import ActionProposal
-from autonomy.shared_memory import SharedMemory
 
 
 @runtime_checkable
 class ProposalPlugin(Protocol):
     plugin_id: str
 
-    def propose(self, source: DecisionDataSource, shared_memory: SharedMemory | None) -> ActionProposal:
-        """Return this plugin's candidate for ``source.frame_id``."""
+    def propose(self, context: DecisionFrameContext) -> ActionProposal:
+        """Return this plugin's candidate for ``context.frame_id``."""

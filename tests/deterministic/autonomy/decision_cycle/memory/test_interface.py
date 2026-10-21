@@ -27,7 +27,7 @@ class _SummaryMemory:
     plugin_id = "summary_memory"
     contract = MemoryPluginContract(description="Test memory plugin.")
 
-    def update(self, context, observation) -> None:
+    def update(self, context) -> None:
         return None
 
     def reset(self, shared_memory: SharedMemory) -> None:
@@ -56,7 +56,7 @@ class _OwnedSummaryMemory:
             "records": [],
         }
 
-    def update(self, context, observation) -> None:
+    def update(self, context) -> None:
         self.state[RECORD_COUNT] += 1
         self.state[HEALTH] = LEDGER_HEALTH_HEALTHY
         self.state["records"].append({"properties": {"frame_id": context.frame_id}})
@@ -73,8 +73,8 @@ class _NoResetMemory:
     plugin_id = "no_reset"
     contract = MemoryPluginContract(description="Test memory plugin.")
 
-    def update(self, context, observation) -> None:
-        del context, observation
+    def update(self, context) -> None:
+        pass
 
 
 class MemoryInterfaceTests(unittest.TestCase):
@@ -89,7 +89,7 @@ class MemoryInterfaceTests(unittest.TestCase):
     def test_serializing_a_report_detaches_nested_plugin_state(self) -> None:
         plugin = _OwnedSummaryMemory()
         runner = MemoryRunner.from_plugins({plugin.plugin_id: plugin})
-        report = runner.update(DecisionFrameContext("original", 1, 100, shared_memory={}), None)
+        report = runner.update(DecisionFrameContext("original", 1, 100, shared_memory={}))
         serialized = report["plugins"][0]["state"]
         serialized[BOUNDS]["max_records"] = 99
         serialized["records"][0]["properties"]["frame_id"] = "reader-change"
@@ -102,8 +102,8 @@ class MemoryInterfaceTests(unittest.TestCase):
         plugin = _OwnedSummaryMemory()
         runner = MemoryRunner.from_plugins({plugin.plugin_id: plugin})
         shared = {}
-        first = runner.update(DecisionFrameContext("first", 1, 100, shared_memory=shared), None)
-        second = runner.update(DecisionFrameContext("second", 2, 200, shared_memory=shared), None)
+        first = runner.update(DecisionFrameContext("first", 1, 100, shared_memory=shared))
+        second = runner.update(DecisionFrameContext("second", 2, 200, shared_memory=shared))
 
         self.assertEqual(first["plugins"][0]["state"][RECORD_COUNT], 1)
         self.assertEqual(len(first["plugins"][0]["state"]["records"]), 1)

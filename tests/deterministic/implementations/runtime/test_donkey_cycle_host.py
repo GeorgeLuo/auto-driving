@@ -166,7 +166,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
     def test_memory_update_failure_stops_future_pilot_cycles(self) -> None:
         calls = 0
 
-        def remember(_context, _observation):
+        def remember(_context):
             nonlocal calls
             calls += 1
             if calls == 2:

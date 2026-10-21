@@ -21,7 +21,7 @@ class _Learner:
         self.belief_id = belief_id
         self.fail_reset = fail_reset
 
-    def update(self, context, observation):
+    def update(self, context):
         belief = read_belief(context.shared_memory, self.belief_id)
         if belief is None:
             belief = Belief(self.belief_id, 12, self.plugin_id, context.timestamp_ms)
@@ -42,7 +42,7 @@ class BeliefRunnerTests(unittest.TestCase):
     def test_contract_is_required_even_when_update_exists(self):
         class MissingContract:
             plugin_id = "missing"
-            def update(self, context, observation):
+            def update(self, context):
                 pass
         with self.assertRaisesRegex(TypeError, "must expose MemoryPluginContract"):
             MemoryRunner.from_plugins({"missing": MissingContract()})
@@ -65,11 +65,11 @@ class BeliefRunnerTests(unittest.TestCase):
         class Counter:
             plugin_id = "counter"
             contract = MemoryPluginContract(description="Counts cycles; checks nothing.")
-            def update(self, context, observation):
+            def update(self, context):
                 context.shared_memory["memory.counter.count"] = context.shared_memory.get("memory.counter.count", 0) + 1
         shared = {}
         runner = MemoryRunner.from_plugins({"counter": Counter()})
-        report = runner.update(_context(shared), None)
+        report = runner.update(_context(shared))
         self.assertEqual(report["beliefs"], {})
         self.assertEqual(runner.status()["beliefs"], {})
         self.assertIsNone(read_belief(shared, "counter.count"))
@@ -78,14 +78,14 @@ class BeliefRunnerTests(unittest.TestCase):
         class Second(_Learner):
             plugin_id = "second"
 
-            def update(self, context, observation):
+            def update(self, context):
                 context.shared_memory[belief_key(self.belief_id)] = Belief(
                     self.belief_id, 99, self.plugin_id, context.timestamp_ms
                 )
 
         shared = {}
         runner = MemoryRunner.from_plugins({"learner": _Learner(), "second": Second()})
-        report = runner.update(_context(shared), None)
+        report = runner.update(_context(shared))
         self.assertEqual(report["beliefs"]["learner.row"]["value"], 99)
         self.assertEqual(read_belief(shared, "learner.row").source_plugin_id, "second")
 
@@ -94,15 +94,15 @@ class BeliefRunnerTests(unittest.TestCase):
         second.plugin_id = "second"
         second.contract = MemoryPluginContract(belief_ids=("second.row",))
         runner = MemoryRunner.from_plugins({"learner": _Learner(), "second": second})
-        report = runner.update(_context({}), None)
+        report = runner.update(_context({}))
         self.assertEqual(set(report["beliefs"]), {"learner.row", "second.row"})
         self.assertEqual(report["beliefs"]["second.row"]["source_plugin_id"], "second")
 
     def test_report_serializes_confidence(self):
         runner = MemoryRunner.from_plugins({"learner": _Learner()})
         shared = {}
-        first = runner.update(_context(shared), None)
-        second = runner.update(_context(shared, 20), None)
+        first = runner.update(_context(shared))
+        second = runner.update(_context(shared, 20))
         self.assertAlmostEqual(first["beliefs"]["learner.row"]["confidence"], 2 / 3)
         self.assertAlmostEqual(second["beliefs"]["learner.row"]["confidence"], 3 / 4)
         decoded = MemoryReport.from_dict(json.loads(json.dumps(first)))
@@ -128,11 +128,11 @@ class BeliefRunnerTests(unittest.TestCase):
             with self.subTest(fail=fail):
                 runner = MemoryRunner.from_plugins({"learner": _Learner(fail_reset=fail)})
                 shared = {belief_key("other.row"): other}
-                runner.update(_context(shared), None)
+                runner.update(_context(shared))
                 runner.reset()
                 self.assertEqual(shared, {belief_key("other.row"): other})
                 self.assertEqual(runner.failure_count, int(fail))
-                runner.update(_context(shared, 20), None)
+                runner.update(_context(shared, 20))
                 runner.plugin_manager.select(())
                 runner.apply_selection(shared)
                 self.assertEqual(shared, {belief_key("other.row"): other})
@@ -141,7 +141,7 @@ class BeliefRunnerTests(unittest.TestCase):
         belief = Belief("same", 12, "learner", 0)
         shared = {belief_key("a"): belief, belief_key("b"): belief}
         runner = MemoryRunner.from_plugins({})
-        report = runner.update(_context(shared), None)
+        report = runner.update(_context(shared))
         self.assertEqual(set(report["beliefs"]), {"a", "b"})
         self.assertEqual(set(runner.status()["beliefs"]), {"a", "b"})
 
@@ -155,7 +155,7 @@ class BeliefRunnerTests(unittest.TestCase):
 
         runner = MemoryRunner.from_plugins({"learner": Prior()})
         shared = {"memory.learner.epoch": 3}
-        runner.update(_context(shared), None)
+        runner.update(_context(shared))
         fresh = runner.reset(shared)
         self.assertEqual(fresh[belief_key("learner.row")].value, 4)
         host = AutonomyCycleHost(steps=DecisionSteps(memory=runner))

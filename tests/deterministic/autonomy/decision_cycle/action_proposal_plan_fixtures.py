@@ -38,15 +38,15 @@ class WeightedMeanPlan:
     def __init__(self, weights: dict[str, float]) -> None:
         self.weights = weights
 
-    def plan(self, candidates, source, shared_memory, *, frame_id, timestamp_ms):
-        del source, shared_memory
-        active = [item for item in candidates if item.is_active(frame_id)]
+    def plan(self, context, candidates):
+        pass
+        active = [item for item in candidates if item.is_active(context.frame_id)]
         total = sum(self.weights[item.plugin_id] for item in active)
         steering = sum(self.weights[item.plugin_id] * item.command.steering for item in active) / total
         throttle = sum(self.weights[item.plugin_id] * item.command.throttle for item in active) / total
         return ActionPlan(
-            frame_id=frame_id,
-            timestamp_ms=timestamp_ms,
+            frame_id=context.frame_id,
+            timestamp_ms=context.timestamp_ms,
             status="composed",
             candidates=tuple(candidates),
             selector_id=self.plugin_id,

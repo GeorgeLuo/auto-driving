@@ -215,7 +215,7 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertEqual((status, payload["status"]), (200, "reset"))
         self.assertEqual(payload["memory"]["plugin_ids"], ["recording_test"])
 
-        _, routes = _routes(steps=replace(decision_steps(), memory=lambda context, observation: None))
+        _, routes = _routes(steps=replace(decision_steps(), memory=lambda context: None))
         status, payload = _json(routes.handle("POST", "/autonomy/memory/reset", b""))
         self.assertEqual((status, payload["status"]), (500, "error"))
         self.assertEqual(payload["error"], "TypeError: configured memory step does not support reset")

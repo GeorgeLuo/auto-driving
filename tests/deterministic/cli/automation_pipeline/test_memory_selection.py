@@ -68,8 +68,8 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 steps.append(step)
                 update = step.update
 
-                def update_with_cli_edits(context, observation):
-                    report = update(context, observation)
+                def update_with_cli_edits(context):
+                    report = update(context)
                     applied.append(step.plugin_ids)
                     plugins = (report or {}).get("plugins") or []
                     outputs.append(plugins[-1]["plugin_id"] if plugins else None)

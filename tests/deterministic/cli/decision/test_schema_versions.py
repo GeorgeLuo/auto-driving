@@ -3,11 +3,10 @@ import unittest
 
 from cli.automa_cli.decision import (
     DecisionSurfaceError, _strict_decode_authority, _strict_decode_command,
-    _strict_decode_plan, _strict_decode_proposal, _strict_decode_source,
+    _strict_decode_plan, _strict_decode_proposal,
 )
 from autonomy.decision_cycle.action.values import AUTHORITY_RESULT_SCHEMA
 from autonomy.decision_cycle.plan.values import ACTION_PLAN_SCHEMA
-from autonomy.decision_cycle.proposal.inputs import DECISION_DATA_SOURCE_SCHEMA
 from autonomy.decision_cycle.proposal.values import ACTION_PROPOSAL_SCHEMA, PROPOSED_VEHICLE_COMMAND_SCHEMA
 
 
@@ -18,7 +17,6 @@ class SchemaVersionTests(unittest.TestCase):
             (_strict_decode_proposal, ACTION_PROPOSAL_SCHEMA),
             (_strict_decode_plan, ACTION_PLAN_SCHEMA),
             (_strict_decode_authority, AUTHORITY_RESULT_SCHEMA),
-            (_strict_decode_source, DECISION_DATA_SOURCE_SCHEMA),
         )
         for decoder, schema in decoders:
             with self.subTest(decoder=decoder.__name__):

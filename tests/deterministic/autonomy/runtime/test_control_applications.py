@@ -88,7 +88,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                 capture_times = []
                 steps = {step: None for step in ("perception", "observation", "memory", "proposal", "plan", "action")}
 
-                def remember(context, observation):
+                def remember(context):
                     seen.append(context.shared_memory[CONTROL_APPLICATIONS_KEY])
                     self.assertEqual(context.shared_memory["action.mode"], "autonomy")
                     self.assertEqual(context.shared_memory["action.user_steering"], context.frame_index / 10)
@@ -193,6 +193,6 @@ class ControlApplicationRecordingTests(unittest.TestCase):
         shared_memory = {CONTROL_APPLICATIONS_KEY: (application,), MODE_KEY: "local"}
         seen = []
         steps = {step: None for step in ("perception", "observation", "memory", "proposal", "plan", "action")}
-        steps["memory"] = lambda context, observation: seen.append(dict(context.shared_memory))
+        steps["memory"] = lambda context: seen.append(dict(context.shared_memory))
         run_frame(source.frames[0], steps=steps, shared_memory=shared_memory)
         self.assertEqual(seen, [{}])

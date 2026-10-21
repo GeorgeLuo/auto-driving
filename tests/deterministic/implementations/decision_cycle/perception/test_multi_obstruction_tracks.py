@@ -100,11 +100,11 @@ class TrackedEvidenceReachesMemoryTests(unittest.TestCase):
                 things=tuple(thing.to_dict() for thing in batch.things),
                 signals=tuple(signal.to_dict() for signal in batch.signals),
             )
+            shared_memory["observation.current"] = observation
             runner.update(
                 DecisionFrameContext(
                     f"frame_{index}", index, 100 + index * 100, shared_memory=shared_memory
                 ),
-                observation,
             )
         return shared_memory
 

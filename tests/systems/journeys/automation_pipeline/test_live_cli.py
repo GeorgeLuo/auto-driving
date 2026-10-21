@@ -25,9 +25,8 @@ from tests.support.cli_runner import run_automa, start_automa
 
 class LiveCommandsTests(LiveHostTestCase):
     def test_stream_plan_checks_an_uploaded_plan_the_executable_never_loaded(self) -> None:
-        # The stream runs the staged plan itself to check each published plan.
-        # An uploaded plan's source is only in the host's catalog until the
-        # executable reads it from there.
+        # The stream accepts the plan an uploaded plugin chose without loading
+        # that plugin itself.
         source = (ROOT / "implementations" / "decision_cycle" / "plan" / "plugins"
                   / "highest_confidence" / "plugin.py").read_bytes() + f"# {uuid.uuid4().hex}\n".encode()
         name = f"{hashlib.sha256(source).hexdigest()}.py"

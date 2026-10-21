@@ -35,7 +35,6 @@ from .decision import (
 )
 from .paths import ROOT, display_path
 from .host_publications import fetch_decision_publication
-from .host_sources import host_source_loader
 from .inspection_runs import add_seed_provenance, read_shared_memory_seed
 from .runtime_hosts import RuntimeHostError, bundle_paths, runtime_base_url
 from .step_activations import decision_identity
@@ -46,7 +45,6 @@ from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationErro
 
 # Each decision step replays every step before it, from perception on.
 _REPLAY_STEPS = ("perception", "observation", "memory", *DECISION_STEPS)
-_RETAINED_SHOWN = 12
 
 
 def inspect_root(step: str) -> Path:
@@ -202,7 +200,6 @@ def stream_vehicle_step(
             ) from exc
         normalized = accept_decision_publication(
             publication, vehicle_id=vehicle_id, now_ms=int(time.time() * 1000),
-            load_source=host_source_loader(base_url, timeout_s=timeout_s),
         )
         report = normalized["decision"]
         activation = report["values"]["activation"]
@@ -347,20 +344,7 @@ def format_step_record(step: str, record: dict[str, Any] | None) -> list[str]:
 
 
 def _proposal_lines(record: dict[str, Any]) -> list[str]:
-    source = record.get("source") if isinstance(record.get("source"), dict) else None
-    observation = _observation_summary(source)
-    memory = _memory_summary(source)
-    lines = [
-        f"Proposal: status={record.get('status')} reason={record.get('reason') or '-'}",
-        f"Observation: status={observation['status']} frame_id={observation['frame_id']} "
-        f"reason={observation['reason'] or '-'}",
-        f"Memory: status={memory['status']} health={memory['health']} records={memory['record_count']}",
-    ]
-    lines.extend(
-        f"Retained: record_id={item['record_id']} kind={item['kind']} "
-        f"confidence={confidence_text(item['confidence'])} frame_id={item['frame_id']}"
-        for item in memory["records"]
-    )
+    lines = [f"Proposal: status={record.get('status')} reason={record.get('reason') or '-'}"]
     lines.extend(_candidate_lines(record.get("candidates"), selected=None))
     return lines
 
@@ -410,41 +394,6 @@ def _command(command: Any) -> dict[str, Any] | None:
     if not isinstance(command, dict):
         return None
     return {"steering": command.get("steering"), "throttle": command.get("throttle")}
-
-
-def _observation_summary(source: dict[str, Any] | None) -> dict[str, Any]:
-    observation = source.get("observation") if source is not None else None
-    if not isinstance(observation, dict):
-        return {"status": "absent", "frame_id": None, "reason": "no_observation"}
-    status = observation.get("status")
-    if status == "ready":
-        value = observation.get("value") if isinstance(observation.get("value"), dict) else {}
-        return {"status": "ready", "frame_id": value.get("observation_id") or source.get("frame_id"), "reason": ""}
-    return {"status": str(status or "absent"), "frame_id": None, "reason": str(observation.get("reason") or status)}
-
-
-def _memory_summary(source: dict[str, Any] | None) -> dict[str, Any]:
-    evidence = source.get("evidence") if source is not None else None
-    value = evidence.get("value") if isinstance(evidence, dict) else None
-    if not isinstance(evidence, dict) or evidence.get("status") != "ready" or not isinstance(value, list):
-        status = evidence.get("status") if isinstance(evidence, dict) else None
-        return {"status": str(status or "absent"), "health": None, "record_count": None, "records": []}
-    records = []
-    for item in value[:_RETAINED_SHOWN]:
-        if isinstance(item, dict):
-            origin = item.get("origin") if isinstance(item.get("origin"), dict) else {}
-            records.append({
-                "record_id": item.get("record_id"),
-                "kind": item.get("kind"),
-                "confidence": item.get("confidence"),
-                "frame_id": origin.get("frame_id"),
-            })
-    return {
-        "status": "ready",
-        "health": "healthy" if value else "empty",
-        "record_count": len(value),
-        "records": records,
-    }
 
 
 # ---------------------------------------------------------------------------

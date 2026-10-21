@@ -128,25 +128,6 @@ class HoldActionTests(unittest.TestCase):
         self.assertNotEqual(action.authority.proposed.steering, 0.0)
         self.assertEqual(action.authority.drive_mode_gate, "autonomy")
 
-    def test_evaluator_metadata_is_stripped_from_a_live_capture(self) -> None:
-        observation = _observation(
-            observation_id="obs_live",
-            sensor_frame={
-                "readings": {
-                    "front_camera": {
-                        "metadata": {
-                            "content_type": "image/png",
-                            "evaluator_reference": {"status": "available"},
-                        }
-                    }
-                }
-            },
-        )
-        result = _run("hold", zone="left", mode="autonomy", observation=observation)
-        self.assertEqual(result.proposal.status, "ok")
-        self.assertEqual(result.action.status, "ok")
-        self.assertEqual(result.control.reason, HOLD_IDLE_REASON)
-
     def test_empty_proposal_selection_holds_idle(self) -> None:
         result = _run("hold", zone="left", mode="autonomy", plugins=[])
         self.assertEqual(result.proposal.candidates, ())
@@ -205,8 +186,7 @@ class ModeActionTests(unittest.TestCase):
         self.assertEqual(action.authority.drive_mode_gate, "user")
 
     def test_donkey_pilot_part_forwards_live_command_in_local_mode(self) -> None:
-        def remember(context, observation):  # noqa: ANN001 - test step
-            del observation
+        def remember(context):  # noqa: ANN001 - test step
             context.shared_memory[EVIDENCE_KEY] = _records(
                 "left", frame_id=context.frame_id, updated_at_ms=context.timestamp_ms
             )

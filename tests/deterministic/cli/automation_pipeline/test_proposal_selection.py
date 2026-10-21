@@ -46,8 +46,8 @@ class AutomationProposalSelectionTests(unittest.TestCase):
                     return
                 run = step.run
 
-                def run_with_cli_restage(**kwargs):
-                    result = run(**kwargs)
+                def run_with_cli_restage(context):
+                    result = run(context)
                     applied.append(step.plugin_ids)
                     if len(applied) == 1 and restaged is not None:
                         stage_activation(bundle, restaged, vehicle_id=VEHICLE_ID)

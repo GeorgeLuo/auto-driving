@@ -1,6 +1,6 @@
 """The proposal step's record for one cycle.
 
-``ProposalResult`` holds the detached source the plugins read and one admitted
+``ProposalResult`` holds one admitted
 candidate per selected plugin. Status ``error`` records why the step could not
 produce candidates; the plan step then does not plan and the action step
 fails closed.
@@ -13,7 +13,6 @@ from typing import Any
 
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
-from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
 from autonomy.decision_cycle.proposal.values import ActionProposal
 
 PROPOSAL_RESULT_SCHEMA = "proposal_result_v0"
@@ -25,7 +24,6 @@ class ProposalResult:
     status: str
     candidates: tuple[ActionProposal, ...] = ()
     reason: str = ""
-    source: DecisionDataSource | None = None
     schema: str = PROPOSAL_RESULT_SCHEMA
 
     def __post_init__(self) -> None:
@@ -38,8 +36,6 @@ class ProposalResult:
         if not all(isinstance(item, ActionProposal) for item in candidates):
             raise TypeError("candidates must be ActionProposal")
         object.__setattr__(self, "candidates", candidates)
-        if self.source is not None and not isinstance(self.source, DecisionDataSource):
-            raise TypeError("source must be DecisionDataSource or None")
         if self.status == "ok":
             if self.reason != "":
                 raise ValueError("ok reason must be empty")
@@ -57,6 +53,5 @@ class ProposalResult:
             "frame_id": self.frame_id,
             "status": self.status,
             "reason": self.reason,
-            "source": self.source.to_dict() if self.source is not None else None,
             "candidates": [candidate.to_dict() for candidate in self.candidates],
         }

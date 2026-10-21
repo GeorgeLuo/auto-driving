@@ -13,9 +13,8 @@ from typing import Any
 
 from autonomy.decision_cycle.confidence import confidence_rank
 from autonomy.decision_cycle.plan.values import ActionPlan, PlanContribution
-from autonomy.decision_cycle.proposal.inputs import DecisionDataSource
+from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.proposal.values import ActionProposal
-from autonomy.shared_memory import SharedMemory
 
 
 def select_highest_confidence_plan(
@@ -74,16 +73,12 @@ class HighestConfidencePlan:
 
     def plan(
         self,
+        context: DecisionFrameContext,
         candidates: tuple[ActionProposal, ...],
-        source: DecisionDataSource | None,
-        shared_memory: SharedMemory | None,
-        *,
-        frame_id: str,
-        timestamp_ms: int,
     ) -> ActionPlan:
         return select_highest_confidence_plan(
-            frame_id=frame_id,
-            timestamp_ms=timestamp_ms,
+            frame_id=context.frame_id,
+            timestamp_ms=context.timestamp_ms,
             candidates=candidates,
             selector_id=self.plugin_id,
         )

@@ -39,11 +39,11 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
             "avoid_recent_obstruction.plugin import AvoidRecentObstruction\n"
             "class BundleOnlyProposal(AvoidRecentObstruction):\n"
             "    plugin_id = 'bundle_only'\n"
-            "    def propose(self, source, shared_memory):\n"
+            "    def propose(self, context):\n"
             "        from implementations.decision_cycle.proposal.plugins."
             "bundle_only_helper import MARKER\n"
             "        shared_memory['bundle_marker'] = MARKER\n"
-            "        return super().propose(source, shared_memory)\n",
+            "        return super().propose(context)\n",
             encoding="utf-8",
         )
         plugin_path.with_name("bundle_only_helper.py").write_text(
@@ -93,11 +93,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         schema = info_payload["proposal_schema"]
         self.assertEqual(
             [item["name"] for item in schema["inputs"]],
-            [
-                "observation",
-                "shared_memory",
-                "evidence",
-            ],
+            ["shared_memory"],
         )
         self.assertEqual(
             schema["configuration"]["applied_plugin_ids"], ["avoid_recent_obstruction"]

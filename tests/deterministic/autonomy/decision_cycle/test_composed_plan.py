@@ -36,7 +36,7 @@ class ComposedPlanTests(unittest.TestCase):
         left = _active_proposal(plugin_id="left", confidence=0.2, steering=0.2)
         right = _active_proposal(plugin_id="right", confidence=0.9, steering=-0.2)
         proposal = ProposalResult(
-            frame_id="frame_001", status="ok", candidates=(left, right), source=None
+            frame_id="frame_001", status="ok", candidates=(left, right)
         )
         plan_runner = PlanRunner.from_plugins(
             {"weighted_mean": WeightedMeanPlan({"left": 0.25, "right": 0.75})}

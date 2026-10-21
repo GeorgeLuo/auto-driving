@@ -70,8 +70,8 @@ class RecordedPluginFlows(unittest.TestCase):
                     "from autonomy.decision_cycle.proposal.values import ActionProposal\n"
                     "class AvoidRecentObstruction:\n"
                     "    plugin_id = 'recorded'\n"
-                    "    def propose(self, source, shared_memory):\n"
-                    "        return ActionProposal(plugin_id=self.plugin_id, frame_id=source.frame_id,\n"
+                    "    def propose(self, context):\n"
+                    "        return ActionProposal(plugin_id=self.plugin_id, frame_id=context.frame_id,\n"
                     f"            lifecycle='inactive', freshness='none', confidence=0.0, reason='bundle {index}',\n"
                     f"            command=None, metadata={{'bundle': {index}}})\n"
                 )

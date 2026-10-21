@@ -873,7 +873,6 @@ class ChaseSimCar(CarInterface):
             "frame_index": frame_index,
             "frame_id": format_chase_frame_id(frame_index),
             "identity_pairing": "atomic_evaluation_capture",
-            "evaluator_reference": passive["evaluator_reference"],
             "passive_capture": {
                 "status": passive["status"],
                 "session_preservation": passive["session_preservation"],
@@ -919,7 +918,6 @@ class ChaseSimCar(CarInterface):
                 "status": self._last_passive_capture.get("status"),
                 "mutation_attempted": False,
             }
-            sensor_frame_metadata["evaluator_reference"] = self.last_evaluator_reference
 
         return SensorFrame(
             read_id=request.read_id,

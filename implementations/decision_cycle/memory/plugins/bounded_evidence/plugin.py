@@ -15,7 +15,7 @@ from typing import Any
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
-from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.observation.publication import read_observation
 from autonomy.shared_memory import SharedMemory
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     EvidenceLedger,
@@ -89,7 +89,6 @@ class BoundedEvidenceLedger:
     def update(
         self,
         context: DecisionFrameContext,
-        observation: Observation | None,
     ) -> None:
         if context.shared_memory is None:
             raise ValueError("bounded evidence requires a shared-memory map")
@@ -98,7 +97,7 @@ class BoundedEvidenceLedger:
             reduce_evidence(
                 self.ledger(context.shared_memory),
                 context,
-                observation,
+                read_observation(context.shared_memory),
                 plugin_id=self.plugin_id,
                 **self.config,
             ),

@@ -9,7 +9,6 @@ from autonomy.decision_cycle.action.runner import ActionRunner
 from autonomy.decision_cycle.action.selected import SelectedAction
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.runner import PlanRunner
-from autonomy.decision_cycle.proposal.inputs import build_decision_data_source
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
 from autonomy.vehicle import SensorFrame
@@ -43,9 +42,8 @@ def _context() -> DecisionFrameContext:
 def _composed_cycle() -> DecisionRecords:
     left = _active_proposal(plugin_id="left", steering=0.2)
     right = _active_proposal(plugin_id="right", steering=-0.2)
-    source = build_decision_data_source(frame_id="frame_001", frame_index=0, timestamp_ms=1)
     proposal = ProposalResult(
-        frame_id="frame_001", status="ok", candidates=(left, right), source=source
+        frame_id="frame_001", status="ok", candidates=(left, right)
     )
     plan = PlanRunner.from_plugins(
         {"weighted_mean": WeightedMeanPlan({"left": 0.25, "right": 0.75})}

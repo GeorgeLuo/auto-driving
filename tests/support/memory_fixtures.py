@@ -73,21 +73,21 @@ def two_plugin_runner(*, frames: int = 1) -> tuple[MemoryRunner, dict[str, Any]]
     for index in range(frames):
         frame_id = f"frame-{index}"
         timestamp_ms = 1_000 + index * 100
+        shared["observation.current"] = Observation(
+            observation_id=frame_id,
+            created_at_ms=timestamp_ms,
+            sensor_frame={},
+            things=(
+                {
+                    "thing_id": "boundary",
+                    "kind": "floor_boundary",
+                    "label": "boundary",
+                    "confidence": 0.9,
+                    "location": {"frame": "image", "zone": "center"},
+                },
+            ),
+        )
         runner.update(
             DecisionFrameContext(frame_id, index, timestamp_ms, shared_memory=shared),
-            Observation(
-                observation_id=frame_id,
-                created_at_ms=timestamp_ms,
-                sensor_frame={},
-                things=(
-                    {
-                        "thing_id": "boundary",
-                        "kind": "floor_boundary",
-                        "label": "boundary",
-                        "confidence": 0.9,
-                        "location": {"frame": "image", "zone": "center"},
-                    },
-                ),
-            ),
         )
     return runner, shared

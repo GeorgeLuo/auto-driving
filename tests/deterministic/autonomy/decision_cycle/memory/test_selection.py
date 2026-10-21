@@ -25,13 +25,13 @@ class _OnceMemory(_RecordingMemory):
 
 
 class _OrderedMemory(_RecordingMemory):
-    def update(self, context, observation):
+    def update(self, context):
         context.shared_memory.setdefault("execution_order", []).append(self.plugin_id)
         context.shared_memory.setdefault("previous_outputs", []).append(
             context.shared_memory.get("last_writer")
         )
         context.shared_memory["last_writer"] = self.plugin_id
-        super().update(context, observation)
+        super().update(context)
 
 
 class _NotMemory:
@@ -90,12 +90,12 @@ class MemorySelectionTests(unittest.TestCase):
         self.assertEqual(step.plugins, {})
         manager.add("second")
         step.apply_selection({})
-        report = step.update(DecisionFrameContext("frame-1", 1, 100, shared_memory={}), None)
+        report = step.update(DecisionFrameContext("frame-1", 1, 100, shared_memory={}))
         self.assertEqual(report["plugins"][0]["plugin_id"], "second")
         self.assertEqual(step.status()["available_plugins"], ["first", "second"])
         manager.remove("second")
         step.apply_selection({})
-        step.update(DecisionFrameContext("frame-2", 2, 200, shared_memory={}), None)
+        step.update(DecisionFrameContext("frame-2", 2, 200, shared_memory={}))
         self.assertEqual(step.status()["available_plugins"], ["first", "second"])
         self.assertEqual(step.plugins, {})
 
@@ -104,10 +104,9 @@ class MemorySelectionTests(unittest.TestCase):
         manager.select(["first", "second"])
         step = MemoryRunner(plugin_manager=manager)
         shared = {}
-        report = step.update(
-            DecisionFrameContext("frame-1", 1, 100, shared_memory=shared),
-            Observation("obs-1", 90, {}),
-        )
+        context = DecisionFrameContext("frame-1", 1, 100, shared_memory=shared)
+        context.shared_memory["observation.current"] = Observation("obs-1", 90, {})
+        report = step.update(context)
         self.assertEqual(shared["execution_order"], ["first", "second"])
         self.assertEqual(shared["previous_outputs"], [None, "first"])
         self.assertEqual(shared["last_writer"], "second")
@@ -121,7 +120,9 @@ class MemorySelectionTests(unittest.TestCase):
         manager.select(["first"])
         step = MemoryRunner(plugin_manager=manager)
         shared = {}
-        step.update(DecisionFrameContext("frame-1", 1, 100, shared_memory=shared), Observation("obs-1", 90, {}))
+        context = DecisionFrameContext("frame-1", 1, 100, shared_memory=shared)
+        context.shared_memory["observation.current"] = Observation("obs-1", 90, {})
+        step.update(context)
         step.reset()
         self.assertEqual(shared["first.state"], {"epoch": 2, "records": ()})
         self.assertEqual(step.status()["plugins"][0]["state"]["epoch_id"], "epoch-2")
@@ -132,21 +133,21 @@ class MemorySelectionTests(unittest.TestCase):
         step = MemoryRunner(plugin_manager=manager)
         first, second = step.plugins.values()
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory={})
-        step.update(context, None)
+        step.update(context)
         manager.select(["second", "first"])
         step.apply_selection(context.shared_memory)
-        step.update(context, None)
+        step.update(context)
         self.assertEqual(step.plugins, {"second": second, "first": first})
         self.assertEqual(list(step.plugins), ["second", "first"])
         manager.remove("first")
         step.apply_selection(context.shared_memory)
-        step.update(context, None)
+        step.update(context)
         self.assertEqual(first.reset_count, 1)
         self.assertEqual(step.plugins, {"second": second})
         self.assertEqual(second.reset_count, 0)
         manager.add("first")
         step.apply_selection(context.shared_memory)
-        step.update(context, None)
+        step.update(context)
         self.assertIsNot(step.plugins["first"], first)
         self.assertIs(step.plugins["second"], second)
         self.assertEqual(step.plugins["first"].update_count, 1)
@@ -156,13 +157,13 @@ class MemorySelectionTests(unittest.TestCase):
         step = MemoryRunner(plugin_manager=manager)
         shared = {}
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory=shared)
-        self.assertEqual(step.update(context, None)["plugins"], [])
+        self.assertEqual(step.update(context)["plugins"], [])
         manager.add("first")
         step.apply_selection(shared)
-        self.assertEqual(step.update(context, None)["plugins"][0]["plugin_id"], "first")
+        self.assertEqual(step.update(context)["plugins"][0]["plugin_id"], "first")
         manager.remove("first")
         step.apply_selection(shared)
-        self.assertEqual(step.update(context, None)["plugins"], [])
+        self.assertEqual(step.update(context)["plugins"], [])
         self.assertEqual(step.status()["plugin_ids"], [])
 
     def test_prepare_selection_constructs_a_replacement_once(self):
@@ -205,7 +206,7 @@ class MemorySelectionTests(unittest.TestCase):
         step = MemoryRunner(plugin_manager=manager)
         first = step.plugins["first"]
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory={})
-        step.update(context, None)
+        step.update(context)
 
         # Applying a selection that cannot load raises the loader's own error.
         manager.select(["missing"])
@@ -216,11 +217,11 @@ class MemorySelectionTests(unittest.TestCase):
             step.apply_selection(context.shared_memory)
         # Nothing was published: the plugin that was applied is still the one that runs.
         self.assertEqual(step.plugins, {"first": first})
-        step.update(context, None)
+        step.update(context)
 
         manager.select(["first"])
         step.apply_selection(context.shared_memory)
-        step.update(context, None)
+        step.update(context)
         self.assertIs(step.plugins["first"], first)
         self.assertEqual(first.update_count, 3)
 

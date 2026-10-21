@@ -85,10 +85,9 @@ def bounded_evidence_replay() -> list[dict[str, Any]]:
     )
     replay = []
     for index, (frame_id, timestamp_ms, frame_observation) in enumerate(frames):
-        report = runner.update(
-            DecisionFrameContext(frame_id, index, timestamp_ms, shared_memory=shared_memory),
-            frame_observation,
-        )
+        context = DecisionFrameContext(frame_id, index, timestamp_ms, shared_memory=shared_memory)
+        context.shared_memory["observation.current"] = frame_observation
+        report = runner.update(context)
         replay.append({"frame_id": frame_id, "report": canonical(report)})
     runner.reset(shared_memory)
     replay.append({"frame_id": "reset", "report": canonical(runner.report())})

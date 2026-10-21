@@ -40,7 +40,6 @@ from typing import Any, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.evidence import require_identifier
-from autonomy.decision_cycle.observation.values import Observation
 from autonomy.shared_memory import SharedMemory
 
 
@@ -88,7 +87,6 @@ class MemoryPlugin(Protocol):
     def update(
         self,
         context: DecisionFrameContext,
-        observation: Observation | None,
     ) -> None:
         """Remember one observation in ``context.shared_memory``; raise on failure."""
 

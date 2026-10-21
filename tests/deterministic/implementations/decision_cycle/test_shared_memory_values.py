@@ -301,24 +301,17 @@ class SharedMemoryValueTests(unittest.TestCase):
     def test_bounded_evidence_matches_after_a_round_trip(self) -> None:
         plugin = BoundedEvidenceLedger(max_records=8)
         memory: dict[str, Any] = {}
-        plugin.update(
-            DecisionFrameContext("f1", 1, 100, shared_memory=memory),
-            _observation("o1", 90, "a"),
-        )
-        plugin.update(
-            DecisionFrameContext("f2", 2, 200, shared_memory=memory),
-            _observation("o2", 190, "b"),
-        )
+        memory["observation.current"] = _observation("o1", 90, "a")
+        plugin.update(DecisionFrameContext("f1", 1, 100, shared_memory=memory))
+        memory["observation.current"] = _observation("o2", 190, "b")
+        plugin.update(DecisionFrameContext("f2", 2, 200, shared_memory=memory))
         restored = _round_trip(memory)
         continued = BoundedEvidenceLedger(max_records=8)
 
-        plugin.update(
-            DecisionFrameContext("f3", 3, 300, shared_memory=memory),
-            _observation("o3", 290, "c"),
-        )
-        continued.update(
-            DecisionFrameContext("f3", 3, 300, shared_memory=restored),
-            _observation("o3", 290, "c"),
-        )
+        third = _observation("o3", 290, "c")
+        memory["observation.current"] = third
+        plugin.update(DecisionFrameContext("f3", 3, 300, shared_memory=memory))
+        restored["observation.current"] = third
+        continued.update(DecisionFrameContext("f3", 3, 300, shared_memory=restored))
 
         self.assertEqual(memory[LEDGER_KEY].to_dict(), restored[LEDGER_KEY].to_dict())

@@ -18,6 +18,14 @@ from __future__ import annotations
 
 # (legacy spec, canonical module, canonical attribute)
 LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
+    ("implementations.decision_cycle.perception.plugins.view_stagnation.plugin:ViewStagnationPlugin", "implementations.decision_cycle.perception.plugins.view_stagnation.plugin", "ViewStagnationPlugin"),
+    ("implementations.decision_cycle.perception.plugins.clearance.plugin:ClearancePlugin", "implementations.decision_cycle.perception.plugins.clearance.plugin", "ClearancePlugin"),
+    ("implementations.decision_cycle.perception.plugins.closeness.plugin:ClosenessPlugin", "implementations.decision_cycle.perception.plugins.closeness.plugin", "ClosenessPlugin"),
+    ("implementations.decision_cycle.perception.plugins.sim_wall.plugin:SimWallPlugin", "implementations.decision_cycle.perception.plugins.sim_wall.plugin", "SimWallPlugin"),
+    ("implementations.decision_cycle.proposal.plugins.drive_forward.plugin:DriveForward", "implementations.decision_cycle.proposal.plugins.drive_forward.plugin", "DriveForward"),
+    ("implementations.decision_cycle.proposal.plugins.drive_backwards.plugin:DriveBackwards", "implementations.decision_cycle.proposal.plugins.drive_backwards.plugin", "DriveBackwards"),
+    ("implementations.decision_cycle.proposal.plugins.avoid_obstacle.plugin:AvoidObstacle", "implementations.decision_cycle.proposal.plugins.avoid_obstacle.plugin", "AvoidObstacle"),
+    ("implementations.decision_cycle.plan.plugins.select_proposal.plugin:SelectProposal", "implementations.decision_cycle.plan.plugins.select_proposal.plugin", "SelectProposal"),
     ("autonomy.decision_cycle.perception.runner:PerceptionRunner", "autonomy.decision_cycle.perception.runner", "PerceptionRunner"),
     ("autonomy.decision_cycle.memory.runner:MemoryRunner", "autonomy.decision_cycle.memory.runner", "MemoryRunner"),
     ("autonomy.decision_cycle.proposal.runner:ProposalRunner", "autonomy.decision_cycle.proposal.runner", "ProposalRunner"),
@@ -27,6 +35,9 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("autonomy.decision_cycle.action.selected:SelectedAction", "autonomy.decision_cycle.action.selected", "SelectedAction"),
     ("implementations.decision_cycle.action.mode.plugin:ModeAction", "implementations.decision_cycle.action.mode.plugin", "ModeAction"),
     ("implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger", "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin", "BoundedEvidenceLedger"),
+    ("implementations.decision_cycle.memory.plugins.stop_row.plugin:StopRowHypothesis", "implementations.decision_cycle.memory.plugins.stop_row.plugin", "StopRowHypothesis"),
+    ("implementations.decision_cycle.memory.plugins.turn_model.plugin:TurnModel", "implementations.decision_cycle.memory.plugins.turn_model.plugin", "TurnModel"),
+    ("implementations.decision_cycle.memory.plugins.approach_model.plugin:ApproachModel", "implementations.decision_cycle.memory.plugins.approach_model.plugin", "ApproachModel"),
     ("implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin:AvoidRecentObstruction", "implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin", "AvoidRecentObstruction"),
     ("implementations.decision_cycle.perception.feeds.camera:provide_camera_frame", "implementations.decision_cycle.perception.feeds.camera", "provide_camera_frame"),
     ("implementations.decision_cycle.perception.plugins.motion_tracks.plugin:MotionTracksPlugin", "implementations.decision_cycle.perception.plugins.motion_tracks.plugin", "MotionTracksPlugin"),

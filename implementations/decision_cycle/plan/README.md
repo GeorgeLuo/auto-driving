@@ -28,6 +28,14 @@ equals, else `custom`. `automa vehicles update plan --preset NAME` stages one.
 | Preset | Plugins |
 |---|---|
 | `most_confident` (default) | `highest_confidence` |
+| `chase-v1-detect-by-color` | `select_proposal`, configured for `avoid_obstacle` while active, else `drive_forward`, or `drive_backwards` while the view is static |
+
+The Chase v1 plan selects only an active current-frame candidate from
+`drive_forward`. While the current observation's `view_static` signal is
+`true`, it selects `drive_backwards` instead (`view_static_proposal_plugin_id`).
+Other candidates do not compete by confidence. If the named candidate is
+missing or inactive, the plan is idle. Perception, proposal and plan each
+expose this same v1 preset name for staging a matching set.
 
 ## Finding the default business logic
 

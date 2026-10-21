@@ -27,6 +27,25 @@ equals, else `custom`. `automa vehicles update proposal --preset NAME` stages on
 | Preset | Plugins |
 |---|---|
 | `obstruction_avoidance` (default) | `avoid_recent_obstruction` |
+| `chase-v1-detect-by-color` | `drive_forward`, `drive_backwards`, `avoid_obstacle` |
+
+The matching Chase v1 perception, proposal and plan presets share the name
+`chase-v1-detect-by-color`. Proposal's `drive_forward` always requests steering
+`0.0` and throttle `0.60` (configurable), regardless of detections or retained
+memory. `drive_backwards` likewise always requests steering `0.0` and throttle
+`-0.60`. Both run every cycle; the plan picks one. They are the indiscriminate
+movement baselines for later stopping and avoidance comparisons. Their
+confidence describes the fixed command choice, not whether the path is clear.
+`avoid_obstacle` is the collision recovery: after `view_static` while
+`obstacle_in_sight` or `wall_in_sight`, it requests reverse (`-0.60`) until
+perception's `clearance_right` is true, then a full right turn (steering `1.0`,
+throttle `0.60`) until `clearance_ahead` is true. If the view stays static for
+more than 8 cycles while reversing, the car is blocked behind and turns right
+anyway; a turn that stalls reverses again. Its phase and static-cycle count
+live in shared memory at `proposal.avoid_obstacle.maneuver`; outside the
+maneuver its candidate is inactive. Once memory's `stop_row` has learned a stop
+row (at `memory.stop_row.hypothesis`), the same maneuver also starts before a
+collision, when `clearance_ahead`'s `nearest_bottom_y` reaches that row.
 
 ## Finding the default business logic
 

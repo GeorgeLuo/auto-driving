@@ -1,0 +1,1 @@
+"""Constant reverse proposal baseline."""

@@ -146,7 +146,7 @@ class TurnModel:
         captured_at = _captured_at(observation, self.sensor_id)
         previous_at = state["captured_at_ms"]
         if captured_at is not None and previous_at is not None and captured_at < previous_at:
-            state["landmarks"] = {}
+            _forget(state, "clock_step")
             previous_at = None
         if captured_at is not None and (previous_at is None or captured_at > previous_at):
             seen = self._seen(observation)
@@ -160,7 +160,8 @@ class TurnModel:
                 speed = self._measure(state, interval, seen, elapsed, captured_at)
                 self._carry(state, interval, seen, elapsed, speed, shared_memory, captured_at)
             else:
-                state["landmarks"] = {}
+                _forget(state, "capture_gap" if elapsed is None or elapsed > self.max_interval_ms
+                        else "unnamed_interval")
             self._observe(state, seen, captured_at, shared_memory)
             state["captured_at_ms"] = captured_at
         self._publish(shared_memory, state, context.timestamp_ms)
@@ -175,7 +176,9 @@ class TurnModel:
             "health": LEDGER_HEALTH_EMPTY if stored is None else LEDGER_HEALTH_HEALTHY,
             "record_count": sum(len(samples) for samples in state["samples"].values()),
             "speeds": {interval: _summary(state["samples"][interval]) for interval in INTERVALS},
-            "stalls": {"count": state["stall_count"], "last_at_ms": state["last_stall_at_ms"]},
+            "stalls": {"count": state["stall_count"], "last_at_ms": state["last_stall_at_ms"],
+                       "slow_samples": state["slow_samples"]},
+            "last_sample": state["last_sample"],
             "positions": {
                 "checked": state["checked_count"],
                 "median_abs_error": _median([abs(error) for error, _carried in errors]),
@@ -234,7 +237,14 @@ class TurnModel:
         if speed is None:
             return None
         learned = sorted(abs(value) for value in state["samples"][interval])
-        if interval.endswith(TURNING) and learned and abs(speed) < self.stall_fraction * _quantile(learned, 0.75):
+        slow_below = self.stall_fraction * _quantile(learned, 0.75) if interval.endswith(TURNING) and learned else None
+        slow = slow_below is not None and abs(speed) < slow_below
+        state["last_sample"] = {
+            "interval": interval, "widths_per_s": round(speed, 4), "at_ms": now,
+            "slow_below": None if slow_below is None else round(slow_below, 4), "learned": not slow,
+        }
+        if slow:
+            state["slow_samples"] += 1
             state["slow_intervals"] += 1
             if state["slow_intervals"] == self.stall_intervals:
                 state["stall_count"] += 1
@@ -261,14 +271,16 @@ class TurnModel:
         for key, item in state["landmarks"].items():
             if not (item["in_view"] and key in seen and self._same(item, seen[key][1])):
                 if speed is None:
+                    _drop(state, item, "no_speed")
                     continue
-                self._predict(memory, item, key, interval, elapsed, now)
+                self._predict(state, memory, item, key, interval, elapsed, now)
                 item["bearing"] = round(item["bearing"] + speed * elapsed / 1000, 4)
                 item["in_view"] = False
                 item["carried_ms"] += elapsed
                 if straight:
                     item["straight_ms"] += elapsed
                 if item["straight_ms"] > self.forget_straight_ms:
+                    _drop(state, item, "straight_driving")
                     continue
             kept[key] = item
         state["landmarks"] = kept
@@ -280,6 +292,7 @@ class TurnModel:
         for key, (bearing, width) in sorted(seen.items(), key=lambda pair: pair[1][0]):
             carried = landmarks.get(key)
             if carried is not None and not self._same(carried, width):
+                _drop(state, carried, "size_changed")
                 carried = None
             if carried is None:
                 unseen = [
@@ -308,18 +321,20 @@ class TurnModel:
                 "carried_ms": 0, "straight_ms": 0,
             }
         newest = sorted(landmarks.items(), key=lambda pair: pair[1]["seen_at_ms"], reverse=True)
+        for _key, item in newest[self.max_landmarks:]:
+            _drop(state, item, "displaced")
         state["landmarks"] = dict(newest[:self.max_landmarks])
 
-    def _predict(self, memory, item, key, interval, elapsed, now):
+    def _predict(self, state, memory, item, key, interval, elapsed, now):
         """Advance a prediction using only the belief available before this frame."""
         identifier = belief_id(interval)
         belief = read_belief(memory, identifier)
         previous = item.get("prediction")
         if previous is not None and previous["belief_id"] != identifier:
-            item.pop("prediction", None)
+            _drop(state, item, "kind_changed")
             return
         if belief is None or not all(_is_number(belief.properties.get(name)) for name in ("p25", "p75")):
-            item.pop("prediction", None)
+            _drop(state, item, "no_precision")
             return
         if not item["in_view"] and previous is None:
             return
@@ -337,6 +352,7 @@ class TurnModel:
         memory[belief_key(identifier)] = belief
 
     def _publish(self, memory, state, now):
+        dropped = state.pop("dropped")
         open_trials = {item["prediction"]["trial_id"] for item in state["landmarks"].values()
                        if "prediction" in item}
         for interval, samples in state["samples"].items():
@@ -347,11 +363,33 @@ class TurnModel:
             summary = _summary(samples)
             if belief is None:
                 belief = Belief(identifier, summary["widths_per_s"], self.plugin_id, now)
+            # A trial whose landmark was forgotten is withdrawn under the reason it was forgotten.
+            closed: dict[str, list[str]] = {}
+            for trial in belief.trials:
+                if trial.trial_id not in open_trials:
+                    closed.setdefault(dropped.get(trial.trial_id, "untracked"), []).append(trial.trial_id)
+            for reason, trial_ids in closed.items():
+                belief = belief.withdrawn(tuple(trial_ids), reason=reason)
             # Samples refine the estimate while an older, explicit prediction remains testable.
             memory[belief_key(identifier)] = replace(belief, value=summary["widths_per_s"],
                 properties={key: summary[key] for key in ("p25", "p75", "samples")},
-                trials=tuple(trial for trial in belief.trials if trial.trial_id in open_trials),
                 updated_at_ms=max(now, belief.updated_at_ms))
+
+
+def _drop(state: dict[str, Any], item: dict[str, Any], reason: str) -> None:
+    """Forget a landmark's open prediction; publishing withdraws its trial under ``reason``."""
+
+    prediction = item.pop("prediction", None)
+    if prediction is not None:
+        state["dropped"][prediction["trial_id"]] = reason
+
+
+def _forget(state: dict[str, Any], reason: str) -> None:
+    """Forget every landmark, so the next interval places each one afresh."""
+
+    for item in state["landmarks"].values():
+        _drop(state, item, reason)
+    state["landmarks"] = {}
 
 
 def _interval(motions: tuple[str, ...] | None) -> str | None:
@@ -406,6 +444,8 @@ def _restore(stored: Any) -> dict[str, Any]:
         },
         "last_interval": stored.get("last_interval"),
         "slow_intervals": _int_or(stored.get("slow_intervals"), 0),
+        "slow_samples": _int_or(stored.get("slow_samples"), 0),
+        "last_sample": stored.get("last_sample") if isinstance(stored.get("last_sample"), dict) else None,
         "stall_count": _int_or(stored.get("stall_count"), 0),
         "last_stall_at_ms": _int_or(stored.get("last_stall_at_ms"), None),
         "landmarks": landmarks,
@@ -415,6 +455,7 @@ def _restore(stored: Any) -> dict[str, Any]:
             if isinstance(error, (list, tuple)) and len(error) == 2 and _is_number(error[0]) and _is_int(error[1])
         ],
         "updated_at_ms": _int_or(stored.get("updated_at_ms"), None),
+        "dropped": {},
     }
 
 

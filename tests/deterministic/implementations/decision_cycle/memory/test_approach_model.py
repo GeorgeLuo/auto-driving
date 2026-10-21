@@ -1,6 +1,7 @@
 """The approach model times lower edges stepping down one row while driving straight, and how long it drives before stopping."""
 
 import unittest
+from dataclasses import replace
 
 from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
 from autonomy.runtime.control import AutonomyControl
@@ -74,6 +75,7 @@ class ApproachModelTests(unittest.TestCase):
         status = car.step((1, 62))
         self.assertEqual(_rows(status), {round(61 / BINS, 4): (150, 1)})
         self.assertEqual(status["edges"], 1)
+        self.assertEqual(status["last_sample"], {"row": round(61 / BINS, 4), "ms": 150, "at_ms": car.now})
         car.step((1, 63), after=200)
         self.assertEqual(_rows(car.step((1, 64), after=100)), {
             round(61 / BINS, 4): (150, 1), round(62 / BINS, 4): (200, 1), round(63 / BINS, 4): (100, 1),
@@ -149,7 +151,7 @@ class ApproachModelTests(unittest.TestCase):
             car.step()
         car.step(static=True, unchanged_ms=120)
         status = car.step(maneuver={"phase": "backing_up", "static_cycles": 1})
-        self.assertEqual((status["run_ms"], status["runs"]), (165, 2))
+        self.assertEqual((status["run_ms"], status["runs"], status["uncounted_runs"]), (165, 2, 0))
 
     def test_runs_ended_any_other_way_are_not_counted(self):
         for name, ending in {
@@ -164,7 +166,7 @@ class ApproachModelTests(unittest.TestCase):
                 for step in ending:
                     car.step(**step)
                 status = car.step(maneuver={"phase": "backing_up", "static_cycles": 0})
-                self.assertEqual((status["run_ms"], status["runs"]), (None, 0))
+                self.assertEqual((status["run_ms"], status["runs"], status["uncounted_runs"]), (None, 0, 1))
 
     def test_rows_learned_at_another_resolution_are_dropped_and_reset_clears(self):
         car = _Car()
@@ -197,6 +199,20 @@ class ApproachModelTests(unittest.TestCase):
         self.assertEqual(belief.checks[0].predicted, trial.predicted)
         self.assertEqual(belief.trials, ())
 
+    def test_a_run_that_is_not_counted_withdraws_its_prediction(self):
+        car = _Car()
+        for _ in range(4):
+            car.step()
+        car.step(maneuver={"phase": "backing_up", "static_cycles": 0})
+        car.step(maneuver={"phase": "turning"})
+        for _ in range(3):
+            car.step()
+        self.assertEqual(len(read_belief(car.memory, "approach_model.run_ms").trials), 1)
+        status = car.step(maneuver={"phase": "turning"})
+        belief = read_belief(car.memory, "approach_model.run_ms")
+        self.assertEqual((belief.trials, belief.withdrawals), ((), {"run_duration": {"run_not_counted": 1}}))
+        self.assertEqual(status["uncounted_runs"], 1)
+
     def test_arrival_checks_use_the_original_row_prediction_as_samples_change(self):
         car = _Car()
         for row in (60, 61, 62):
@@ -227,6 +243,35 @@ class ApproachModelTests(unittest.TestCase):
                 car.step((1, 62), after=gap)
                 belief = read_belief(car.memory, "approach_model.ms_per_row")
                 self.assertEqual((belief.trials, belief.checks), ((), ()))
+                self.assertEqual(belief.withdrawals, {"arrival": {"not_straight": 1}})
+
+    def test_a_lost_edge_or_another_row_resolution_retires_an_arrival_prediction(self):
+        def predicting():
+            car = _Car()
+            for row in (60, 61, 62):
+                car.step((1, row))
+            car.memory[belief_key("stop_row.row")] = Belief("stop_row.row", 62 / BINS, "stop_row", car.now)
+            car.step((1, 60))
+            car.step((1, 61))
+            return car
+
+        car = predicting()
+        car.step((1, 61), (2, 30))
+        car.step((2, 31))
+        belief = read_belief(car.memory, "approach_model.ms_per_row")
+        self.assertEqual((belief.trials, belief.withdrawals), ((), {"arrival": {"edge_lost": 1}}))
+        car = predicting()
+        car.step((1, 62))
+        car.step((1, 60))
+        car.step((1, 61))
+        belief = read_belief(car.memory, "approach_model.ms_per_row")
+        self.assertEqual((len(belief.checks), len(belief.trials)), (1, 1))
+        car.memory[belief_key(belief.belief_id)] = replace(belief, properties={**belief.properties, "row_bins": 60})
+        car.step((1, 62))
+        belief = read_belief(car.memory, belief.belief_id)
+        self.assertEqual((belief.checks, belief.properties["row_bins"]), ((), BINS))
+        self.assertEqual((belief.withdrawals, belief.discards),
+                         ({"arrival": {"row_bins_changed": 1}}, {"arrival": {"row_bins_changed": 1}}))
 
     def test_shared_memory_is_required(self):
         with self.assertRaises(ValueError):

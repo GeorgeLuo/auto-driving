@@ -139,9 +139,12 @@ class TurnModelTests(unittest.TestCase):
         car.step((1, 0.4), phase="turning")
         car.step((1, 0.5), phase="turning")
         status = car.step((1, 0.5), phase="turning")
-        self.assertEqual((_speeds(status)["turning"], status["stalls"]), ((2.0, 1), {"count": 0, "last_at_ms": None}))
+        self.assertEqual((_speeds(status)["turning"], status["stalls"]),
+                         ((2.0, 1), {"count": 0, "last_at_ms": None, "slow_samples": 1}))
+        self.assertEqual(status["last_sample"], {"interval": "forward_right.turning", "widths_per_s": 0.0,
+                                                 "at_ms": car.now, "slow_below": 0.5, "learned": False})
         status = car.step((1, 0.51), phase="turning")
-        self.assertEqual(status["stalls"], {"count": 1, "last_at_ms": car.now})
+        self.assertEqual(status["stalls"], {"count": 1, "last_at_ms": car.now, "slow_samples": 2})
         self.assertEqual(car.step((1, 0.51), phase="turning")["stalls"]["count"], 1)
         car.step((1, 0.61), phase="turning")
         car.step((1, 0.61), phase="turning")
@@ -199,6 +202,8 @@ class TurnModelTests(unittest.TestCase):
         self.assertEqual(_bearings(car.step((1, 0.5))), {1: (0.0, True), 2: (-0.2, False)})
         self.assertIn(2, _bearings(car.step((1, 0.5))))
         self.assertNotIn(2, _bearings(car.step((1, 0.5))))
+        self.assertEqual(read_belief(car.memory, "turn_model.view_speed.forward").withdrawals,
+                         {"landmark_reappearance": {"straight_driving": 1}})
         car = _Car()
         car.step((1, 0.5))
         self.assertEqual(car.step(phase="turning")["landmarks"], [])
@@ -223,6 +228,29 @@ class TurnModelTests(unittest.TestCase):
                 status = carried().step((1, 0.8), box, phase="turning")
                 self.assertEqual(status["positions"]["checked"], 0)
                 self.assertEqual(set(_bearings(status)), {1, 2, 3})
+
+    def test_a_forgotten_landmark_withdraws_its_prediction_under_the_reason(self):
+        identifier = "turn_model.view_speed.forward_right.turning"
+        for reason, boxes, step in (
+            ("clock_step", ((1, .6),), dict(after=-100, phase="turning")),
+            ("capture_gap", ((1, .6),), dict(after=300, phase="turning")),
+            ("unnamed_interval", ((1, .6),), dict(steering=-1)),
+            ("kind_changed", ((1, .6),), dict()),
+            ("no_speed", (), dict()),
+            ("size_changed", ((1, .6), (2, .62, .4)), dict(phase="turning")),
+            ("displaced", ((1, .6),), dict(phase="turning")),
+        ):
+            with self.subTest(reason=reason):
+                car = _Car()
+                for seen in (((1, .2), (2, .4)), ((1, .2), (2, .4)),
+                             ((1, .3), (2, .5)), ((1, .4), (2, .6)), ((1, .5),)):
+                    car.step(*seen, phase="turning")
+                self.assertEqual(len(read_belief(car.memory, identifier).trials), 1)
+                if reason == "displaced":
+                    car.plugin = TurnModel(max_landmarks=1)
+                car.step(*boxes, **step)
+                belief = read_belief(car.memory, identifier)
+                self.assertEqual((belief.trials, belief.withdrawals), ((), {"landmark_reappearance": {reason: 1}}))
 
     def test_samples_and_landmarks_are_bounded(self):
         car = _Car(TurnModel(max_samples=2, max_landmarks=2))
@@ -253,12 +281,14 @@ class TurnModelTests(unittest.TestCase):
             "samples": {"forward_right.turning": [2.0, "fast", float("nan")], "forward": "none"},
             "landmarks": {"x": landmark, "5": landmark, "6": {**landmark, "width": 0}},
             "position_errors": [[0.1, 50], "bad"], "stall_count": True,
+            "slow_samples": "many", "last_sample": "bad",
         }}
         status = TurnModel().status(memory)
         self.assertEqual(_speeds(status)["turning"], (2.0, 1))
         self.assertEqual(_bearings(status), {5: (0.1, True)})
         self.assertEqual(status["positions"]["median_abs_error"], 0.1)
         self.assertEqual(status["stalls"]["count"], 0)
+        self.assertEqual((status["stalls"]["slow_samples"], status["last_sample"]), (0, None))
 
     def test_right_and_reverse_right_learn_separate_speeds_and_left_does_not(self):
         car = _Car()
@@ -336,3 +366,5 @@ class TurnModelTests(unittest.TestCase):
         car.memory[belief_key(identifier)] = replace(belief, properties={})
         car.step((1, .5), phase="turning")
         self.assertNotIn("prediction", car.memory[STATE_KEY]["landmarks"]["2"])
+        self.assertEqual(read_belief(car.memory, identifier).withdrawals,
+                         {"landmark_reappearance": {"no_precision": 1}})

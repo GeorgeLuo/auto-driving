@@ -144,7 +144,7 @@ class BeliefRunnerTests(unittest.TestCase):
         self.assertEqual(decoded.to_dict(), first)
         self.assertEqual(set(first["beliefs"]["learner.row"]), {
             "value", "source_plugin_id", "updated_at_ms", "confidence", "by_method",
-            "corroborated", "open_trials",
+            "corroborated", "open_trials", "withdrawals", "discards",
         })
         self.assertIn("checks", runner.status()["beliefs"]["learner.row"])
         self.assertIsNot(MemoryReport.from_dict(first).beliefs["learner.row"], first["beliefs"]["learner.row"])

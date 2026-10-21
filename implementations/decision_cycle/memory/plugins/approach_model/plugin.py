@@ -130,14 +130,14 @@ class ApproachModel:
         if not straight:
             if stopped and state["straight"] and state["run_started_at_ms"] is not None:
                 ended_run = self._end_run(state) is not None
-            state["run_started_at_ms"] = None
+            _stop_run(state, counted=ended_run)
         state["bent"] = state["bent"] or not straight
         captured_at = _captured_at(observation, self.sensor_id)
         previous_at = state["captured_at_ms"]
         covered = straight
         if captured_at is not None and previous_at is not None and captured_at < previous_at:
             state["edges"] = {}
-            state["run_started_at_ms"] = None
+            _stop_run(state)
             state["captured_at_ms"] = None
             previous_at = None
             state["bent"] = True
@@ -150,7 +150,7 @@ class ApproachModel:
                     state["run_started_at_ms"] = previous_at
                 self._step(state, self._edges(observation), captured_at)
             else:
-                state["run_started_at_ms"] = None
+                _stop_run(state)
                 state["edges"] = {key: {"row": row, "since_ms": None} for key, row in self._edges(observation).items()}
             state["captured_at_ms"] = captured_at
             state["bent"] = not straight
@@ -181,7 +181,9 @@ class ApproachModel:
             ],
             "run_ms": state["run_ms"],
             "runs": len(state["runs"]),
+            "uncounted_runs": state["uncounted_runs"],
             "edges": len(state["edges"]),
+            "last_sample": state["last_sample"],
         }
 
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
@@ -199,13 +201,15 @@ class ApproachModel:
             same_rows = row_belief.properties.get("row_bins") == self.row_bins
             if not same_rows and not state["samples"]:
                 memory.pop(belief_key(ROWS_BELIEF_ID), None)
-            if not same_rows or not straight:
-                row_belief = replace(row_belief, trials=(), checks=row_belief.checks if same_rows else ())
+            if not same_rows:
+                row_belief = row_belief.withdrawn(reason="row_bins_changed").discarded("row_bins_changed")
+            elif not straight:
+                row_belief = row_belief.withdrawn(reason="not_straight")
             elif captured_at is not None and row_belief.trials:
                 trial = row_belief.trials[0]
                 edge = edges.get(trial.properties["edge"])
                 if edge is None:
-                    row_belief = replace(row_belief, trials=())
+                    row_belief = row_belief.withdrawn(reason="edge_lost")
                 elif edge["row"] >= trial.properties["target"]:
                     elapsed = captured_at - trial.started_at_ms
                     low, high = trial.predicted
@@ -237,7 +241,7 @@ class ApproachModel:
                 run_belief = run_belief.resolved(trial.trial_id,
                     "support" if low <= duration <= high else "contradict", duration, now, self.max_samples)
             elif not straight:
-                run_belief = replace(run_belief, trials=())
+                run_belief = run_belief.withdrawn(reason="run_not_counted")
         if state["runs"]:
             if run_belief is None:
                 run_belief = Belief(RUN_BELIEF_ID, state["run_ms"], self.plugin_id, now)
@@ -279,6 +283,8 @@ class ApproachModel:
                 if last["since_ms"] is not None:
                     samples = state["samples"].setdefault(str(last["row"]), [])
                     samples.append(now - last["since_ms"])
+                    state["last_sample"] = {"row": round(last["row"] / state["row_bins"], 4),
+                                            "ms": now - last["since_ms"], "at_ms": now}
                     del samples[:-self.max_samples]
                     state["ms_per_row"][str(last["row"])] = _median(samples)
                 edges[key] = {"row": row, "since_ms": now}
@@ -298,6 +304,14 @@ class ApproachModel:
             del state["runs"][:-self.max_samples]
             state["run_ms"] = _median(state["runs"])
             return run
+
+
+def _stop_run(state: dict[str, Any], *, counted: bool = False) -> None:
+    """Stop timing the current run; one stopped without being counted adds to ``uncounted_runs``."""
+
+    if state["run_started_at_ms"] is not None and not counted:
+        state["uncounted_runs"] += 1
+    state["run_started_at_ms"] = None
 
 
 def _view(observation: Observation | None) -> tuple[bool, int]:
@@ -357,6 +371,8 @@ def _restore(stored: Any, row_bins: int) -> dict[str, Any]:
         "run_started_at_ms": _int_or(stored.get("run_started_at_ms"), None),
         "runs": runs,
         "run_ms": _median(runs),
+        "uncounted_runs": _int_or(stored.get("uncounted_runs"), 0),
+        "last_sample": stored.get("last_sample") if isinstance(stored.get("last_sample"), dict) else None,
         "updated_at_ms": _int_or(stored.get("updated_at_ms"), None),
     }
 

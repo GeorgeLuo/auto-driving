@@ -42,8 +42,8 @@ contact adds a contradicting one. Missing identity or motion coverage adds no su
 check. These checks and the `stop` method can corroborate the belief, but share
 stop episodes rather than independent experiments. The row is belief `stop_row.row`;
 `memory.stop_row.hypothesis` keeps the bracket and stop observations.
-`status` reports the row, its bounds and the outcome counts, and `reset`
-forgets it.
+`status` reports the row, its bounds and their width, and the outcome counts,
+and `reset` forgets it.
 
 Its `turn_model` learns how the car's own turn moves what it sees, in image
 widths per second, from the landmarks `sim_cardboard_permanence` tracks. Each
@@ -58,7 +58,8 @@ landmarks seen at both ends; each kind's speed is the median of its last
 Landmarks out of view keep a bearing carried by that speed, and one seen again
 records the error of its carried bearing. Nothing is tuned in advance and no
 command changes. It lives at `memory.turn_model.state`; `status` reports each
-speed with its quartiles, the stalls, the position errors and the landmarks.
+speed with its quartiles, the stalls and slow samples, the last sample, the
+position errors and the landmarks.
 
 Its `approach_model` learns how fast things ahead come closer while the car
 drives straight, in image rows and milliseconds on the camera's capture clock.
@@ -71,7 +72,7 @@ for a configured stop reason is how long the car could drive before it had to
 stop, less any static time; `run_ms` is their median, and runs that end any
 other way do not count. Nothing is tuned in advance and no command changes.
 It lives at `memory.approach_model.state`; `status` reports each row's time
-and samples, `run_ms` and the runs. Perception's `closeness` reads the
+and samples, the last sample, `run_ms`, and the runs counted and not counted. Perception's `closeness` reads the
 published beliefs.
 
 ## Finding the default business logic
@@ -133,8 +134,11 @@ Confidence is `None` before the first check, then
 `(support + 1) / (support + contradict + 2)` over the retained checks, so it
 never reaches 0 or 1. A belief is corroborated when at least two different
 methods each have more supports than contradictions. Revising a value keeps
-its open trials; withdrawal drops trials without scoring them. The plugin
-chooses whether to keep its checks. Reports and recordings include belief
+its checks and open trials. Withdrawal drops trials without scoring them, and
+`discarded` drops checks that no longer test the value; both count the drop by
+method and reason in `withdrawals` and `discards`, and opening past the trial
+bound counts as `displaced`. Give each drop a short reason, because the
+runtime viewer's Learning page charts them. Reports and recordings include belief
 summaries and confidence; consumers do not yet use confidence
 to choose behavior. The framework leaves checks and retention policy to each
 plugin.

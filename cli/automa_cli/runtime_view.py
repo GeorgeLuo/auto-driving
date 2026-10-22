@@ -149,6 +149,15 @@ class RuntimeViewServer:
             )
         return '<span class="decision-unavailable">Action view unavailable</span>'
 
+    def host_status_html(self) -> str:
+        """The splash-page dot for whether this viewer has a host."""
+
+        if self.host_attached:
+            dot, label = "live", "connected"
+        else:
+            dot, label = "error", DISCONNECTED_HOST_ERROR
+        return f'<span class="status-dot {dot}"></span><span class="status-text">{label}</span>'
+
     def stop(self) -> None:
         httpd = self._httpd
         thread = self._thread
@@ -263,9 +272,11 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
                 self._send_json(500, {"error": str(exc)}, include_body=include_body)
                 return
             decision_nav = self.server.publisher.decision_navigation_html(compact=False)
+            html = html.replace("__DECISION_NAV__", decision_nav)
+            html = html.replace("__HOST_STATUS__", self.server.publisher.host_status_html())
             self._send(
                 200,
-                html.replace("__DECISION_NAV__", decision_nav).encode("utf-8"),
+                html.encode("utf-8"),
                 "text/html; charset=utf-8",
                 include_body=include_body,
             )

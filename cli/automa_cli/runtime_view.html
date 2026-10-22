@@ -12,10 +12,33 @@
       color: #ededed;
       --muted: #8c8c8c;
       --line: rgba(255, 255, 255, 0.14);
+      --green: #3ecf8e;
+      --red: #ef6b6b;
     }
     body { margin: 0; background: #0a0a0a; letter-spacing: -0.01em; }
     main { max-width: 280px; margin: 18vh auto; padding: 16px; }
-    h1 { margin: 0 0 14px; font-size: 13px; font-weight: 500; }
+    .identity {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 14px;
+    }
+    h1 { margin: 0; font-size: 13px; font-weight: 500; }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+    }
+    .status-dot.live { background: var(--green); }
+    .status-dot.error { background: var(--red); }
+    .status-text {
+      color: var(--muted);
+      font-size: 12px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
     nav { display: grid; gap: 8px; }
     a, .decision-unavailable {
       display: block;
@@ -36,7 +59,10 @@
 </head>
 <body>
   <main>
-    <h1>Automa</h1>
+    <div class="identity">
+      <h1>Automa</h1>
+      __HOST_STATUS__
+    </div>
     <nav aria-label="Runtime views">
       <a href="/perception">Perception</a>
       <a href="/memory">Memory</a>

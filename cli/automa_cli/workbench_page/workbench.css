@@ -379,7 +379,6 @@ h3, .kicker {
   flex: 0 0 auto;
   min-height: 24px;
 }
-#floatLayer { pointer-events: none; }
 .viewer {
   flex: 1;
   min-height: 0;
@@ -389,98 +388,6 @@ h3, .kicker {
   background: #050505;
   position: relative;
 }
-.float-frame {
-  position: fixed;
-  z-index: 30;
-  display: flex;
-  flex-direction: column;
-  min-width: 220px;
-  color: var(--fg);
-  background: var(--bg);
-  border: 1px solid var(--line);
-  box-shadow: none;
-  user-select: none;
-  pointer-events: auto;
-}
-.float-frame[hidden] { display: none; }
-.float-frame[data-minimized="true"] { height: auto !important; min-height: 0; }
-.float-frame-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 6px 8px;
-  background: transparent;
-  border-bottom: 1px solid var(--line);
-  cursor: grab;
-}
-.float-frame[data-minimized="true"] .float-frame-header { border-bottom: 0; }
-.float-frame-header:active { cursor: grabbing; }
-.float-frame-title {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  font-size: 12px;
-  font-weight: 400;
-  color: var(--fg);
-  white-space: nowrap;
-}
-.float-frame-title .muted {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-.float-frame-title .grip { color: var(--muted); }
-.float-frame-title strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-weight: 400;
-}
-.float-frame-controls { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
-.float-frame-controls .icon-btn {
-  width: 16px;
-  height: 16px;
-  border-color: transparent;
-  color: var(--muted);
-}
-.float-frame-controls .icon-btn svg { width: 12px; height: 12px; }
-.float-frame-controls .icon-btn:hover:not(:disabled) {
-  background: transparent;
-  color: var(--fg);
-}
-.float-frame-body {
-  flex: 1;
-  min-height: 0;
-  overflow: auto;
-  padding: 12px;
-  font-size: 12px;
-  background: var(--bg);
-  color: var(--fg);
-}
-.float-frame[data-minimized="true"] .float-frame-body,
-.float-frame[data-minimized="true"] .float-resize { display: none; }
-.float-frame pre { max-height: none; }
-.float-resize {
-  position: absolute;
-  z-index: 21;
-  padding: 0;
-  border: 0;
-  background: transparent;
-}
-.float-resize[data-dir="n"], .float-resize[data-dir="s"] { left: 12px; right: 12px; height: 6px; cursor: ns-resize; }
-.float-resize[data-dir="e"], .float-resize[data-dir="w"] { top: 12px; bottom: 12px; width: 6px; cursor: ew-resize; }
-.float-resize[data-dir="n"] { top: 0; }
-.float-resize[data-dir="s"] { bottom: 0; }
-.float-resize[data-dir="e"] { right: 0; }
-.float-resize[data-dir="w"] { left: 0; }
-.float-resize[data-dir="ne"], .float-resize[data-dir="nw"],
-.float-resize[data-dir="se"], .float-resize[data-dir="sw"] { width: 12px; height: 12px; }
-.float-resize[data-dir="ne"] { top: 0; right: 0; cursor: nesw-resize; }
-.float-resize[data-dir="nw"] { top: 0; left: 0; cursor: nwse-resize; }
-.float-resize[data-dir="se"] { bottom: 0; right: 0; cursor: nwse-resize; }
-.float-resize[data-dir="sw"] { bottom: 0; left: 0; cursor: nesw-resize; }
 .viewer-frame { max-width: 100%; max-height: 100%; position: relative; line-height: 0; }
 .viewer img { display: block; max-width: 100%; max-height: 100%; object-fit: contain; }
 .viewer canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }

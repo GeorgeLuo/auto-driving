@@ -40,6 +40,11 @@ from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
 VIEW_HOST = "127.0.0.1"
+FLOAT_PAGE_DIR = Path(__file__).with_name("workbench_page")
+FLOAT_FILES = {
+    "/static/float.css": ("float.css", "text/css; charset=utf-8"),
+    "/static/js/float.js": ("js/float.js", "text/javascript; charset=utf-8"),
+}
 # Vehicle views take 8500–8999. This port is the viewer opened with no host.
 VIEWER_PORT = 8473
 DISCONNECTED_HOST_ERROR = "not connected to a host"
@@ -214,6 +219,16 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
     def _handle_request(self, *, include_body: bool) -> None:
         request = urlparse(self.path)
         route = request.path
+        asset = FLOAT_FILES.get(route)
+        if asset is not None:
+            relative, content_type = asset
+            try:
+                body = (FLOAT_PAGE_DIR / relative).read_bytes()
+            except OSError as exc:
+                self._send_json(500, {"error": str(exc)}, include_body=include_body)
+                return
+            self._send(200, body, content_type, include_body=include_body)
+            return
         if not self.server.publisher.host_attached and route in {
             PLUGIN_CATALOG_PATH,
             "/api/decision/latest",

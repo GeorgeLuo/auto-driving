@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Automa</title>
+  <link rel="stylesheet" href="/static/float.css">
   <style>
     :root {
       color-scheme: dark;
@@ -34,7 +35,7 @@
     .status-dot.live { background: var(--green); }
     .status-dot.error { background: var(--red); }
     nav { display: grid; gap: 8px; }
-    button, a, .decision-unavailable {
+    nav > button, nav > a, .decision-unavailable {
       display: block;
       width: 100%;
       box-sizing: border-box;
@@ -50,17 +51,17 @@
       text-decoration: none;
       cursor: pointer;
     }
-    button:hover, button:focus-visible, a:hover, a:focus-visible {
+    nav > button:hover, nav > button:focus-visible, nav > a:hover, nav > a:focus-visible {
       background: rgba(255, 255, 255, 0.06);
       color: #ededed;
     }
     .decision-unavailable { color: #6a6a6a; cursor: default; }
-    body.disconnected nav a {
+    body.disconnected nav > a {
       color: #6a6a6a;
       pointer-events: none;
       cursor: default;
     }
-    body.disconnected nav a:hover, body.disconnected nav a:focus-visible {
+    body.disconnected nav > a:hover, body.disconnected nav > a:focus-visible {
       background: transparent;
       color: #6a6a6a;
     }
@@ -73,12 +74,32 @@
       __HOST_STATUS__
     </div>
     <nav aria-label="Runtime views">
-      <button type="button">Connect</button>
+      <button type="button" data-recall="connectFrame">Connect</button>
       <a href="/perception">Perception</a>
       <a href="/memory">Memory</a>
       __DECISION_NAV__
       <a href="/plugins">Plugins</a>
     </nav>
   </main>
+  <div id="floatLayer">
+    <article class="float-frame" id="connectFrame" data-frame-anchor="center" data-frame-width="320" data-frame-height="220" data-frame-start="closed" hidden>
+      <div class="float-frame-header" data-frame-header>
+        <div class="float-frame-title">
+          <span class="grip" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+          </span>
+          <strong>Connect</strong>
+        </div>
+        <div class="float-frame-controls">
+          <button type="button" class="icon-btn" data-frame-close aria-label="Close Connect" title="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+          <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Connect" title="Minimize"></button>
+        </div>
+      </div>
+      <div class="float-frame-body" data-frame-body></div>
+    </article>
+  </div>
+  <script src="/static/js/float.js"></script>
 </body>
 </html>

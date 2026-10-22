@@ -166,7 +166,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(
             sorted(path for path in paths if path.endswith(".js")),
             sorted(f"js/{name}.js" for name in (
-                "core", "decision", "frame", "main", "memory", "perception", "plugins", "transport",
+                "core", "decision", "float", "frame", "main", "memory", "perception", "plugins", "transport",
             )),
         )
         for path in paths:

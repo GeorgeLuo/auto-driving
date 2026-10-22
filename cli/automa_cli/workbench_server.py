@@ -37,7 +37,7 @@ WORKBENCH_STATIC_TYPES = {
     ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
 }
-WORKBENCH_STATIC_PATTERN = re.compile(r"^/static/(workbench\.css|js/[a-z]+\.js)$")
+WORKBENCH_STATIC_PATTERN = re.compile(r"^/static/(workbench\.css|float\.css|js/[a-z]+\.js)$")
 
 
 class ReplayRunner(Protocol):

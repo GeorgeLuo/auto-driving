@@ -54,7 +54,7 @@ def build_parser() -> argparse.ArgumentParser:
         prog="automa",
         description="Single access point for local and vehicle-facing automation commands.",
     )
-    subcommands = parser.add_subparsers(dest="command", required=True)
+    subcommands = parser.add_subparsers(dest="command", required=False)
 
     help_command = subcommands.add_parser(
         "help",
@@ -1475,6 +1475,9 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "- vehicles   Discover vehicles, stage bundles, and inspect each runtime layer.",
                 "- simulators Explicitly prepare or inspect simulator environments.",
                 "",
+                "Open the runtime viewer. It does not require a host:",
+                "- ./cli/automa",
+                "",
                 "Detailed help:",
                 "- ./cli/automa --help",
                 "- ./cli/automa <command> help",
@@ -2221,11 +2224,19 @@ def _handle_simulators_ensure(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
+def _handle_open_viewer(args: argparse.Namespace) -> int:
+    from .runtime_view import serve_unattached_viewer
+
+    return serve_unattached_viewer()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     handler: Any = getattr(args, "handler", None)
     if handler is None:
+        if args.command is None:
+            return _handle_open_viewer(args)
         parser.print_help()
         return 2
     try:

@@ -719,7 +719,14 @@
       refreshing = true;
       try {
         const response = await fetch("/api/latest", { cache: "no-store" });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) {
+          const failure = await response.json().catch(() => null);
+          if (failure?.error === "not connected to a host") {
+            setStatus(failure.error, "error");
+            return;
+          }
+          throw new Error(`HTTP ${response.status}`);
+        }
         const next = await response.json();
         const frameId = next.frame?.frame_id || String(next.published_at_ms);
         if (frameId !== loadedFrameId) {

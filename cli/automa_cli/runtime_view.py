@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 import threading
 import time
+import webbrowser
 import zlib
 from pathlib import Path
 from typing import Any, Callable
@@ -38,6 +40,9 @@ from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
 VIEW_HOST = "127.0.0.1"
+# Vehicle views take 8500–8999. This port is the viewer opened with no host.
+VIEWER_PORT = 8473
+DISCONNECTED_HOST_ERROR = "not connected to a host"
 RUNTIME_VIEW_HTML_PATH = Path(__file__).with_name("runtime_view.html")
 MEMORY_VIEW_HTML_PATH = Path(__file__).with_name("memory_view.html")
 DECISION_VIEW_HTML_PATH = Path(__file__).with_name("live_decision_view.html")
@@ -57,9 +62,11 @@ class RuntimeViewServer:
         worker_pid: int | None = None,
         decision_identity: dict[str, Any] | None = None,
         plugin_catalog: Callable | None = None,
+        host_attached: bool = True,
     ) -> None:
         validate_loopback_host(host, owner="runtime view")
         self.vehicle_id = vehicle_id
+        self.host_attached = host_attached
         self.plugin_catalog = plugin_catalog
         self.automation_dir = automation_dir
         self.host = host
@@ -95,7 +102,9 @@ class RuntimeViewServer:
             httpd,
             name=f"automa-runtime-view-{self.vehicle_id}",
         )
-        _write_json(self.record_path, self.describe())
+        # A viewer with no host is not a vehicle's published view.
+        if self.host_attached:
+            _write_json(self.record_path, self.describe())
         return self
 
     def describe(self, *, status: str = "running") -> dict[str, Any]:
@@ -125,6 +134,10 @@ class RuntimeViewServer:
     def decision_navigation_html(self, *, compact: bool) -> str:
         """Return a usable decision link or an explicit unavailable status."""
 
+        if not self.host_attached:
+            if compact:
+                return '<a class="nav" href="/decision">Action</a>'
+            return '<a href="/decision">Action</a>'
         page_url = self.decision.page_url()
         if page_url is not None:
             if compact:
@@ -143,7 +156,8 @@ class RuntimeViewServer:
             return
         stop_server_thread(httpd, thread)
         self.decision.stop()
-        _write_json(self.record_path, self.describe(status="stopped"))
+        if self.host_attached:
+            _write_json(self.record_path, self.describe(status="stopped"))
         self._httpd = None
         self._thread = None
 
@@ -163,6 +177,9 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
 
     def do_POST(self) -> None:
         if urlparse(self.path).path == PLUGIN_CATALOG_PATH:
+            if not self.server.publisher.host_attached:
+                self._send_disconnected(include_body=True)
+                return
             serve_plugin_catalog(self, self.server.publisher.plugin_catalog)
             return
         self._reject_write_method()
@@ -191,6 +208,15 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
     def _handle_request(self, *, include_body: bool) -> None:
         request = urlparse(self.path)
         route = request.path
+        if not self.server.publisher.host_attached and route in {
+            PLUGIN_CATALOG_PATH,
+            "/api/decision/latest",
+            "/api/decision/image",
+            "/api/latest",
+            "/frame",
+        }:
+            self._send_disconnected(include_body=include_body)
+            return
         if route == PLUGIN_CATALOG_PATH:
             serve_plugin_catalog(self, self.server.publisher.plugin_catalog, include_body=include_body)
             return
@@ -203,6 +229,14 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             self._send(204, b"", "image/x-icon", include_body=False)
             return
         if route in {"/decision", "/decision.html"}:
+            if not self.server.publisher.host_attached:
+                try:
+                    body = DECISION_VIEW_HTML_PATH.read_bytes()
+                except OSError as exc:
+                    self._send_json(500, {"error": str(exc)}, include_body=include_body)
+                    return
+                self._send(200, body, "text/html; charset=utf-8", include_body=include_body)
+                return
             try:
                 self.server.publisher.decision.require_generation(
                     parse_generation_query(request.query)
@@ -320,6 +354,13 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             return
         self._send_json(404, {"error": "not found"}, include_body=include_body)
 
+    def _send_disconnected(self, *, include_body: bool) -> None:
+        self._send_json(
+            503,
+            {"ok": False, "error": DISCONNECTED_HOST_ERROR},
+            include_body=include_body,
+        )
+
     def _send_decision_error(
         self,
         error: DecisionViewError,
@@ -331,6 +372,47 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             decision_error_payload(self.server.publisher.decision, reason=error.reason),
             include_body=include_body,
         )
+
+
+def serve_unattached_viewer() -> int:
+    """Serve the runtime pages with no vehicle host and stay in the foreground."""
+
+    directory = tempfile.TemporaryDirectory(prefix="automa-viewer-")
+    server = RuntimeViewServer(
+        vehicle_id="viewer",
+        automation_dir=Path(directory.name),
+        port=VIEWER_PORT,
+        host_attached=False,
+    )
+    try:
+        server.start()
+        print(_browser_open_message(server.url or ""), flush=True)
+        while True:
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        return 130
+    finally:
+        server.stop()
+        directory.cleanup()
+    return 0
+
+
+def _browser_open_message(url: str) -> str:
+    """Attempt the same browser launch as ``automation run --open-view``."""
+
+    try:
+        opened = webbrowser.open(url, new=2)
+    except (OSError, webbrowser.Error) as exc:
+        opened = False
+        detail = f"{type(exc).__name__}: {exc}"
+    else:
+        detail = "browser launcher returned false"
+    if opened:
+        return f"Browser opened: {url}"
+    return (
+        f"Warning: could not open the browser ({detail}). "
+        f"Open manually: {url}"
+    )
 
 
 def _vehicle_view_port(vehicle_id: str) -> int:

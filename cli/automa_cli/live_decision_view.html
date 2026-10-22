@@ -684,10 +684,20 @@
       const requestToken = ++refreshToken;
       try {
         if (!/^[0-9a-f]{64}$/.test(generation || "")) {
+          const probe = await fetch("/api/decision/latest", { cache: "no-store" });
+          const failure = await probe.json().catch(() => null);
+          if (failure?.error === "not connected to a host") {
+            setStatus(failure.error, "error");
+            return;
+          }
           throw new Error("this page needs a producer generation");
         }
         const response = await fetch("/api/decision/latest?generation=" + encodeURIComponent(generation), { cache: "no-store" });
         const payload = await response.json();
+        if (payload?.error === "not connected to a host") {
+          setStatus(payload.error, "error");
+          return;
+        }
         const restaged = restagedGeneration(response, payload);
         if (restaged) {
           generation = restaged;

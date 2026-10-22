@@ -181,9 +181,15 @@
       for (const cell of table.querySelectorAll('td.enabled')) cell.replaceChildren(enabledDot('Unknown'));
       const status = document.getElementById('status');
       status.hidden = false;
-      status.textContent = 'Catalog unavailable · ' + error.message +
-        (document.getElementById('plugins').children.length ? ' · Showing stale snapshot' : '') +
-        ' · Retrying automatically';
+      if (error.message === "not connected to a host") {
+        const dot = document.createElement("span");
+        dot.className = "status-dot error";
+        status.replaceChildren(dot, document.createTextNode(" " + error.message));
+      } else {
+        status.textContent = 'Catalog unavailable · ' + error.message +
+          (document.getElementById('plugins').children.length ? ' · Showing stale snapshot' : '') +
+          ' · Retrying automatically';
+      }
     }
     setTimeout(refresh, 500);
   }

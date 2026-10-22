@@ -34,30 +34,46 @@
     .status-dot.live { background: var(--green); }
     .status-dot.error { background: var(--red); }
     nav { display: grid; gap: 8px; }
-    a, .decision-unavailable {
+    button, a, .decision-unavailable {
       display: block;
+      width: 100%;
+      box-sizing: border-box;
       padding: 7px 10px;
       border: 1px solid var(--line);
       border-radius: 6px;
       color: var(--muted);
       background: transparent;
+      font: inherit;
       font-size: 12px;
+      line-height: 1.35;
+      text-align: left;
       text-decoration: none;
+      cursor: pointer;
     }
-    a:hover, a:focus-visible {
+    button:hover, button:focus-visible, a:hover, a:focus-visible {
       background: rgba(255, 255, 255, 0.06);
       color: #ededed;
     }
-    .decision-unavailable { color: #6a6a6a; }
+    .decision-unavailable { color: #6a6a6a; cursor: default; }
+    body.disconnected nav a {
+      color: #6a6a6a;
+      pointer-events: none;
+      cursor: default;
+    }
+    body.disconnected nav a:hover, body.disconnected nav a:focus-visible {
+      background: transparent;
+      color: #6a6a6a;
+    }
   </style>
 </head>
-<body>
+<body class="__HOST_CLASS__">
   <main>
     <div class="identity">
       <h1>Automa</h1>
       __HOST_STATUS__
     </div>
     <nav aria-label="Runtime views">
+      <button type="button">Connect</button>
       <a href="/perception">Perception</a>
       <a href="/memory">Memory</a>
       __DECISION_NAV__

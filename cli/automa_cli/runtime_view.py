@@ -271,6 +271,10 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             decision_nav = self.server.publisher.decision_navigation_html(compact=False)
             html = html.replace("__DECISION_NAV__", decision_nav)
             html = html.replace("__HOST_STATUS__", self.server.publisher.host_status_html())
+            html = html.replace(
+                "__HOST_CLASS__",
+                "" if self.server.publisher.host_attached else "disconnected",
+            )
             self._send(
                 200,
                 html.encode("utf-8"),

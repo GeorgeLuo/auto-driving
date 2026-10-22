@@ -65,6 +65,21 @@
       background: transparent;
       color: #6a6a6a;
     }
+    #connectFrame .env-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 6px 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    #connectFrame .env-error {
+      margin: 0;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
   </style>
 </head>
 <body class="__HOST_CLASS__">
@@ -101,5 +116,78 @@
     </article>
   </div>
   <script src="/static/js/float.js"></script>
+  <script>
+    (function () {
+      var button = document.querySelector("[data-recall='connectFrame']");
+      var frame = document.getElementById("connectFrame");
+      var body = frame.querySelector("[data-frame-body]");
+      var ticket = 0;
+
+      function row(id, state) {
+        var item = document.createElement("div");
+        item.className = "env-row";
+        var name = document.createElement("span");
+        name.textContent = id;
+        item.appendChild(name);
+        if (state) {
+          var mark = document.createElement("span");
+          mark.textContent = state;
+          item.appendChild(mark);
+        }
+        return item;
+      }
+
+      function showError(text) {
+        var line = document.createElement("p");
+        line.className = "env-error";
+        line.textContent = text;
+        body.replaceChildren(line);
+      }
+
+      function render(payload) {
+        var nodes = [];
+        (payload.vehicles || []).forEach(function (card) {
+          if (!card || !card.vehicle_id) return;
+          var readiness = card.readiness || {};
+          var state = readiness.status === "ready"
+            ? "ready"
+            : (readiness.blocking_layer || readiness.status || "");
+          nodes.push(row(String(card.vehicle_id), state ? String(state) : ""));
+        });
+        (payload.other_local_deployments || []).forEach(function (item) {
+          if (!item || !item.vehicle_id) return;
+          nodes.push(row(String(item.vehicle_id), ""));
+        });
+        body.replaceChildren.apply(body, nodes);
+      }
+
+      function load() {
+        var current = ++ticket;
+        body.replaceChildren();
+        fetch("/connect").then(function (response) {
+          return response.json().then(function (payload) {
+            return { ok: response.ok, payload: payload };
+          });
+        }).then(function (result) {
+          if (current !== ticket) return;
+          var payload = result.payload || {};
+          if (!result.ok || payload.schema !== "automa_vehicle_status_v1") {
+            showError(payload.error || "vehicles status failed");
+            return;
+          }
+          render(payload);
+        }).catch(function () {
+          if (current !== ticket) return;
+          showError("vehicles status failed");
+        });
+      }
+
+      button.addEventListener("click", function () {
+        if (frame.hidden || frame.getAttribute("data-minimized") === "true") return;
+        load();
+      });
+      if (!frame.hidden && frame.getAttribute("data-minimized") !== "true") load();
+    })();
+  </script>
 </body>
 </html>

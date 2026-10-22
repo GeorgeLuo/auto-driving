@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -40,6 +42,11 @@ from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
 VIEW_HOST = "127.0.0.1"
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+_AUTOMA = _REPO_ROOT / "cli" / "automa"
+_STATUS_SCHEMA = "automa_vehicle_status_v1"
+# The status command's own probe defaults to 5s. This only stops a hung process.
+_STATUS_LIMIT_S = 20
 FLOAT_PAGE_DIR = Path(__file__).with_name("workbench_page")
 FLOAT_FILES = {
     "/static/float.css": ("float.css", "text/css; charset=utf-8"),
@@ -51,6 +58,37 @@ DISCONNECTED_HOST_ERROR = "not connected to a host"
 RUNTIME_VIEW_HTML_PATH = Path(__file__).with_name("runtime_view.html")
 MEMORY_VIEW_HTML_PATH = Path(__file__).with_name("memory_view.html")
 DECISION_VIEW_HTML_PATH = Path(__file__).with_name("live_decision_view.html")
+
+
+def known_environments() -> dict[str, Any]:
+    """Run ``vehicles status --json`` and return its payload, or an error object."""
+
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(_AUTOMA), "vehicles", "status", "--json"],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=_STATUS_LIMIT_S,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {"error": "vehicles status timed out"}
+    except OSError as exc:
+        return {"error": str(exc)}
+    stdout = completed.stdout.strip()
+    try:
+        payload = json.loads(stdout) if stdout else None
+    except json.JSONDecodeError:
+        payload = None
+    if (
+        isinstance(payload, dict)
+        and payload.get("schema") == _STATUS_SCHEMA
+        and isinstance(payload.get("vehicles"), list)
+    ):
+        return payload
+    detail = completed.stderr.strip() or stdout or f"vehicles status exited {completed.returncode}"
+    return {"error": detail.splitlines()[0].strip()[:240]}
 
 
 class RuntimeViewServer:
@@ -228,6 +266,11 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
                 self._send_json(500, {"error": str(exc)}, include_body=include_body)
                 return
             self._send(200, body, content_type, include_body=include_body)
+            return
+        if route == "/connect":
+            payload = known_environments()
+            status = 200 if payload.get("schema") == _STATUS_SCHEMA else 502
+            self._send_json(status, payload, include_body=include_body)
             return
         if not self.server.publisher.host_attached and route in {
             PLUGIN_CATALOG_PATH,

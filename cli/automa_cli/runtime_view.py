@@ -152,11 +152,8 @@ class RuntimeViewServer:
     def host_status_html(self) -> str:
         """The splash-page dot for whether this viewer has a host."""
 
-        if self.host_attached:
-            dot, label = "live", "connected"
-        else:
-            dot, label = "error", DISCONNECTED_HOST_ERROR
-        return f'<span class="status-dot {dot}"></span><span class="status-text">{label}</span>'
+        dot = "live" if self.host_attached else "error"
+        return f'<span class="status-dot {dot}"></span>'
 
     def stop(self) -> None:
         httpd = self._httpd

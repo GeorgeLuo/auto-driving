@@ -81,7 +81,56 @@
   background: var(--bg);
   color: var(--fg);
 }
+/* A .float-frame-status after the body is the frame's status box: it fills the
+   space the body leaves, and its status text scrolls under the clickable-text
+   actions in its bottom-right corner, which take button chrome once the text
+   is scrollable. */
+.float-frame:has(> .float-frame-status) > .float-frame-body { flex: 0 1 auto; }
+.float-frame-status {
+  position: relative;
+  flex: 1 0 56px;
+  margin: 0 12px 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+.float-frame-status-text {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  /* The bottom padding keeps short text clear of the actions. */
+  padding: 8px 10px 28px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+.float-frame-status-actions {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  z-index: 1;
+  display: flex;
+  gap: 4px;
+}
+.float-frame-status-actions button {
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+.float-frame-status[data-scrollable="true"] .float-frame-status-actions button {
+  border-color: var(--line);
+  background: var(--bg);
+}
+.float-frame-status-actions button:hover,
+.float-frame-status-actions button:focus-visible { color: var(--fg); }
 .float-frame[data-minimized="true"] .float-frame-body,
+.float-frame[data-minimized="true"] .float-frame-status,
 .float-frame[data-minimized="true"] .float-resize { display: none; }
 .float-resize {
   position: absolute;

@@ -2,7 +2,8 @@
 // .float-frame drags, resizes, minimizes, and closes; a [data-recall] button
 // toggles the frame it names. Frames anchor inside the element that
 // #floatLayer's data-frame-bounds names, or the window. Opening a frame
-// dispatches "frame-open" on it.
+// dispatches "frame-open" on it. A .float-frame-status marks itself
+// data-scrollable while its text overflows.
 // Classic script: the page's files share one global scope.
 "use strict";
 
@@ -241,6 +242,15 @@ function bindFloatingFrame(root) {
     });
   }
 }
+function bindFrameStatus(status) {
+  var text = status.querySelector(".float-frame-status-text");
+  function measure() {
+    status.setAttribute("data-scrollable", text.scrollHeight > text.clientHeight ? "true" : "false");
+  }
+  new ResizeObserver(measure).observe(text);
+  new MutationObserver(measure).observe(text, { childList: true, characterData: true, subtree: true });
+  measure();
+}
 function syncRecall() {
   Array.prototype.forEach.call(document.querySelectorAll("[data-recall]"), function (button) {
     var frame = floatingFrames[button.getAttribute("data-recall")];
@@ -249,6 +259,7 @@ function syncRecall() {
   });
 }
 Array.prototype.forEach.call(document.querySelectorAll(".float-frame"), bindFloatingFrame);
+Array.prototype.forEach.call(document.querySelectorAll(".float-frame-status"), bindFrameStatus);
 Array.prototype.forEach.call(document.querySelectorAll("[data-recall]"), function (button) {
   button.addEventListener("click", function () {
     var frame = floatingFrames[button.getAttribute("data-recall")];

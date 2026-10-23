@@ -12,12 +12,29 @@
       color: #ededed;
       --muted: #8c8c8c;
       --line: rgba(255, 255, 255, 0.14);
+      --green: #3ecf8e;
+      --red: #ef6b6b;
     }
     body { margin: 0; background: #0a0a0a; letter-spacing: -0.01em; }
     main { max-width: 280px; margin: 18vh auto; padding: 16px; }
-    h1 { margin: 0 0 14px; font-size: 13px; font-weight: 500; }
+    .identity {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin: 0 0 14px;
+    }
+    h1 { margin: 0; font-size: 13px; font-weight: 500; }
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      flex: 0 0 auto;
+      transform: translateY(2px);
+    }
+    .status-dot.live { background: var(--green); }
+    .status-dot.error { background: var(--red); }
     nav { display: grid; gap: 8px; }
-    a, .decision-unavailable {
+    .nav {
       display: block;
       padding: 7px 10px;
       border: 1px solid var(--line);
@@ -27,21 +44,21 @@
       font-size: 12px;
       text-decoration: none;
     }
-    a:hover, a:focus-visible {
+    a.nav:hover, a.nav:focus-visible {
       background: rgba(255, 255, 255, 0.06);
       color: #ededed;
     }
-    .decision-unavailable { color: #6a6a6a; }
+    span.nav.unavailable { color: #6a6a6a; cursor: default; }
   </style>
 </head>
 <body>
   <main>
-    <h1>Automa</h1>
+    <div class="identity">
+      <h1>Automa</h1>
+      __CONNECTION_DOT__
+    </div>
     <nav aria-label="Runtime views">
-      <a href="/perception">Perception</a>
-      <a href="/memory">Memory</a>
-      __DECISION_NAV__
-      <a href="/plugins">Plugins</a>
+      __RUNTIME_NAV__
     </nav>
   </main>
 </body>

@@ -38,6 +38,16 @@ class ViewerWithoutHostTests(unittest.TestCase):
             Request(f"{self.server.url}api/plugins", data=b"{}", method="POST")
         )
 
+    def test_splash_marks_every_page_unavailable(self) -> None:
+        html = _read_text(self.server.url)
+        self.assertIn(f'class="status-dot error" title="{NOT_CONNECTED_ERROR}"', html)
+        for label in ("Perception", "Memory", "Action", "Plugins"):
+            self.assertIn(
+                f'<span class="nav unavailable" title="{NOT_CONNECTED_ERROR}">{label}</span>',
+                html,
+            )
+        self.assertNotIn("href=", html)
+
     def test_viewer_publishes_no_discovery_record(self) -> None:
         self.assertIsNone(self.server.record_path)
         self.assertIsNone(self.server.describe()["record_path"])
@@ -52,11 +62,29 @@ class ViewerWithoutHostTests(unittest.TestCase):
         )
 
 
+class ConnectedSplashTests(unittest.TestCase):
+    def test_splash_links_runtime_pages_while_connected(self) -> None:
+        server = RuntimeViewServer(vehicle_id="test-vehicle", automation_dir=None, port=0).start()
+        self.addCleanup(server.stop)
+
+        html = _read_text(server.url)
+
+        self.assertIn('class="status-dot live"', html)
+        for href in ("/perception", "/memory", "/plugins"):
+            self.assertIn(f'<a class="nav" href="{href}">', html)
+        self.assertIn('<span class="nav unavailable" title="Action view unavailable">Action</span>', html)
+
+
 class OpenViewerCommandTests(unittest.TestCase):
     def test_automa_without_a_command_serves_the_viewer(self) -> None:
         with mock.patch.object(app, "serve_viewer", return_value=130) as serve_viewer:
             self.assertEqual(app.main([]), 130)
         serve_viewer.assert_called_once_with()
+
+
+def _read_text(url: str) -> str:
+    with urlopen(url, timeout=1.0) as response:
+        return response.read().decode("utf-8")
 
 
 if __name__ == "__main__":

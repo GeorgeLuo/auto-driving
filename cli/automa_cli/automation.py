@@ -1057,7 +1057,7 @@ def _collect_automation_status(
         candidate = runtime_hosts.RUNTIME_ROOT / safe_path_part(vehicle_id)
         candidates = [candidate] if candidate.is_dir() else []
     elif runtime_hosts.RUNTIME_ROOT.exists():
-        candidates = sorted(path for path in runtime_hosts.RUNTIME_ROOT.iterdir() if path.is_dir())
+        candidates = sorted(path for path in runtime_hosts.RUNTIME_ROOT.iterdir() if path.is_dir() and not path.name.startswith("."))
     else:
         candidates = []
 
@@ -1264,9 +1264,9 @@ def _collect_automation_status(
                 "published_view": published_view,
             }
         )
-        if host_url is not None and not pid_alive:
+        if host_url is not None and not pid_alive and _remaining_view_budget() > 0:
             host = _host_runtime_status(
-                vehicle_name, host_url, timeout_s=_remaining_view_budget() or 0.5
+                vehicle_name, host_url, timeout_s=_remaining_view_budget()
             )
             applied = host.pop("applied_decision")
             statuses[-1]["steps"] = _applied_selections(selections, host.pop("steps")) or selections

@@ -36,13 +36,22 @@ class RuntimeClient:
             with exc:
                 body = exc.read()
             try:
-                return json.loads(body)
+                decoded = json.loads(body)
+                if not isinstance(decoded, dict):
+                    raise ValueError("expected an object")
+                return decoded
             except ValueError:
                 raise RuntimeError(f"{method} {url} returned HTTP {exc.code}") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             reason = getattr(exc, "reason", exc)
             raise RuntimeError(f"{method} {url} failed: {reason}") from exc
-        return json.loads(body)
+        try:
+            decoded = json.loads(body)
+            if not isinstance(decoded, dict):
+                raise ValueError("expected an object")
+            return decoded
+        except ValueError as exc:
+            raise RuntimeError(f"{method} {url} returned invalid JSON: {exc}") from exc
 
     def _command(self, command: str, **data: Any) -> dict[str, Any]:
         response = self.request("POST", RUNTIME_PATH, {"command": command, **data})
@@ -52,6 +61,10 @@ class RuntimeClient:
 
     def start(self, configuration: RunConfiguration | None = None, *, record: bool = False) -> dict[str, Any]:
         return self._command("run", configuration=(configuration or RunConfiguration()).to_dict(), record=record)
+
+    def connect_observation(self) -> dict[str, Any]:
+        """Connect without replacing a session that started concurrently."""
+        return self._command("connect")
 
     def read_recording(self, run_id: str, *, after: int) -> dict[str, Any]:
         return self._command("read_recording", run_id=run_id, after=after)["recording"]

@@ -72,6 +72,20 @@ class RuntimeRoutesTests(unittest.TestCase):
         status, payload = _json(routes.handle("POST", "/autonomy/runtime", b'{"command": "stop"}'))
         self.assertEqual(payload["session"]["status"], "stopped")
 
+    def test_connect_reuses_observation_and_refuses_to_replace_driving(self) -> None:
+        loop, routes = _routes()
+        status, payload = _json(routes.handle("POST", "/autonomy/runtime", b'{"command":"connect"}'))
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["session"]["configuration"]["mode"], "observe_only")
+        with patch.object(loop, "start", wraps=loop.start) as start:
+            self.assertEqual(_json(routes.handle("POST", "/autonomy/runtime", b'{"command":"connect"}'))[0], 200)
+            start.assert_not_called()
+        routes.handle("POST", "/autonomy/runtime", b'{"command":"run","configuration":{"mode":"autonomy"}}')
+        status, payload = _json(routes.handle("POST", "/autonomy/runtime", b'{"command":"connect"}'))
+        self.assertEqual(status, 400)
+        self.assertIn("stopped explicitly", payload["error"])
+        self.assertEqual(loop.host.session_status()["configuration"]["mode"], "autonomy")
+
     def test_bad_requests_return_the_reason(self) -> None:
         _, routes = _routes()
         self.assertEqual(

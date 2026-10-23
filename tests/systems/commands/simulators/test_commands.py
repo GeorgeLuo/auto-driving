@@ -73,7 +73,7 @@ class SimulatorStatusTests(unittest.TestCase):
         self.assertEqual(human.stderr, "")
         self.assertEqual(machine.stderr, "")
 
-    def test_offline_backend_status_has_matching_recovery(self) -> None:
+    def test_offline_unrelated_backend_does_not_hide_valid_chase_capture(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             human, _, payload = _run_fake_forms(
                 Path(tmp),
@@ -82,15 +82,15 @@ class SimulatorStatusTests(unittest.TestCase):
             )
 
         result = payload["result"]
-        self.assertEqual(result["status"], "degraded")
-        self.assertEqual(result["reason_code"], "backend_offline")
-        self.assertFalse(result["usable"])
-        self.assertIn(result["error"], human.stdout)
-        self.assertIn(result["recovery"], human.stdout)
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["reason_code"], "ready")
+        self.assertTrue(result["usable"])
+        self.assertIsNone(result["error"])
+        self.assertIsNone(result["recovery"])
         self.assertIn("online: no", human.stdout)
         self.assertNotIn("processAlive", human.stdout)
 
-    def test_missing_frontend_status_has_matching_recovery(self) -> None:
+    def test_inventory_frontend_summary_cannot_override_valid_chase_capture(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             human, _, payload = _run_fake_forms(
                 Path(tmp),
@@ -99,12 +99,10 @@ class SimulatorStatusTests(unittest.TestCase):
             )
 
         result = payload["result"]
-        self.assertEqual(result["status"], "degraded")
-        self.assertEqual(result["reason_code"], "frontend_missing")
-        self.assertFalse(result["usable"])
-        self.assertIn(result["error"], human.stdout)
-        self.assertIn(result["recovery"], human.stdout)
-        self.assertIn("frontend tab connected: no", human.stdout)
+        self.assertEqual(result["status"], "ready")
+        self.assertTrue(result["usable"])
+        self.assertEqual(payload["environment"]["state"], "ready")
+        self.assertIn("frontend tab connected: yes", human.stdout)
 
 
 class SimulatorEnsureTests(unittest.TestCase):

@@ -471,6 +471,7 @@ class AutonomyCycleHost:
     def _refresh_session_view(self) -> None:
         self._session_view = {
             "status": self.run_state, "configuration": self.configuration.to_dict(),
+            "error": self.last_error,
             "processed_decisions": self.run_decisions,
             "recording": self.recording.status() if self.recording is not None else None,
         }

@@ -221,6 +221,14 @@ def get_vehicle_status(
     if chase_url is not None and chase_ws_url is not None:
         raise ValueError("--chase-url and --chase-ws-url cannot be used together")
     operation_timeout = _require_positive_timeout(timeout_s)
+    from .connection_targets import resolve_target
+    from .connection_status import Deadline, assess_connection, environment_from_probe
+    if vehicle_id is not None and not is_chase_vehicle_id(vehicle_id):
+        target = resolve_target(vehicle_id=vehicle_id, chase_url=chase_url or chase_ws_url)
+        connection = assess_connection(target, Deadline(operation_timeout))
+        return {"schema": STATUS_SCHEMA, "vehicle_id": vehicle_id,
+                "endpoint": {"operator_url": target.endpoint}, "connection": connection,
+                "layers": {}, "next_action": None, "checked_at_ms": connection["checked_at_ms"]}
     operator_url = (
         chase_url
         or chase_ws_url
@@ -230,7 +238,7 @@ def get_vehicle_status(
     display_url = chase_operator_url(endpoint)
     started = time.monotonic()
     candidate = Candidate("chase-sim", endpoint, "cli")
-    probe = _probe_chase(candidate, timeout_s=operation_timeout)
+    probe = _probe_chase(candidate, timeout_s=operation_timeout * 0.6)
     discovery = {
         "schema": "automa_vehicle_discovery_v0",
         "checked_at_ms": int(time.time() * 1000),
@@ -250,7 +258,7 @@ def get_vehicle_status(
     remaining = operation_timeout - (time.monotonic() - started)
     automation = _collect_automation_status(
         vehicle_id=vehicle_id,
-        view_timeout_s=remaining if remaining >= 0.05 else 0.0,
+        view_timeout_s=remaining * 0.25 if remaining >= 0.05 else 0.0,
     )
     all_deployed_by_id = {
         str(item.get("vehicle_id")): item
@@ -316,6 +324,11 @@ def get_vehicle_status(
         )
         for known_id in sorted(known_ids)
     ]
+    for card in cards:
+        target = resolve_target(vehicle_id=card["vehicle_id"], chase_url=endpoint)
+        deadline = Deadline(operation_timeout)
+        deadline.end = started + operation_timeout
+        card["connection"] = assess_connection(target, deadline, environment=environment_from_probe(probe))
     checked_at_ms = int(time.time() * 1000)
     if vehicle_id is not None:
         return cards[0]
@@ -428,7 +441,7 @@ def _build_vehicle_status_card(
         if discoverable is not None or diagnostics.get("frontend_connected")
         else "disconnected"
     )
-    if discoverable is not None:
+    if discoverable is not None or diagnostics.get("chase_loaded"):
         game_state = "ready"
     elif error_code == "wrong_game":
         game_state = "wrong_game"
@@ -794,8 +807,8 @@ def _vehicle_next_action(
                 if layers["perception_view"]["state"] == "stale"
                 else "view_unavailable",
                 command=(
-                    "./cli/automa vehicles automation restart "
-                    f"--id {vehicle_id} --observe-only --num-decisions 0"
+                    "./cli/automa vehicles stream perception "
+                    f"--id {vehicle_id}"
                 ),
                 expected_state="perception_view=available",
             ),
@@ -806,6 +819,9 @@ def _vehicle_next_action(
 
 
 def _format_vehicle_status_card(card: dict[str, Any]) -> list[str]:
+    if isinstance(card.get("connection"), dict):
+        from .connection_status import format_connection
+        return format_connection(card["connection"]).splitlines()
     layers = card.get("layers") if isinstance(card.get("layers"), dict) else {}
     endpoint = card.get("endpoint") if isinstance(card.get("endpoint"), dict) else {}
     capture = card.get("capture") if isinstance(card.get("capture"), dict) else {}

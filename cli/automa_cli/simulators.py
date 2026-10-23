@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import selectors
 import os
 import shlex
 import shutil
@@ -52,44 +53,46 @@ class SimevalRun:
 
 
 def get_simulator_status(
-    *,
-    timeout_ms: int = DEFAULT_TIMEOUT_MS,
-    json_output: bool = False,
+    *, timeout_ms: int = DEFAULT_TIMEOUT_MS, json_output: bool = False,
+    chase_url: str | None = None,
 ) -> CommandResult:
+    from .connection_targets import resolve_target
+    from .connection_status import Deadline, environment_status
+    target = resolve_target(vehicle_id="chase-sim-chaser", chase_url=chase_url or get_default_chase_ui_ws_url())
+    deadline = Deadline(timeout_ms / 1000.0)
     executable = _simeval_executable()
     payload = _base_payload("automa_simulator_status_v0", executable=executable)
-    if executable is None:
-        error = "simeval was not found on PATH. Set AUTOMA_SIMEVAL_BIN or install simeval."
-        payload["status"] = {
-            "online": False,
-            "error": error,
-        }
-        payload["frontend"] = _skipped_summary("simeval is unavailable")
-        payload["result"] = {
-            "status": "unavailable",
-            "reason_code": "simeval_missing",
-            "usable": False,
-            "error": error,
-            "recovery": (
-                "Install simeval or set AUTOMA_SIMEVAL_BIN, then rerun "
-                "./cli/automa simulators status."
-            ),
-        }
-        payload["commands"] = []
-        return _result(payload, json_output=json_output, exit_code=2)
-
-    status_run = _run_simeval(executable, ["status", "--all", "--timeout", str(timeout_ms)])
-    summary = _summarize_status_run(status_run)
-    frontend_run = _run_ui_verify(executable, auto_serve=False, observe_ms=500)
+    # The selected Chase capture is authoritative. Backend inventory is supplemental.
+    environment = environment_status(target, deadline)
+    payload["target"] = target.to_dict()
+    payload["environment"] = environment
+    commands = []
+    try:
+        if executable:
+            remaining = deadline.remaining()
+            run = _run_simeval(executable, ["status", "--all", "--timeout", str(max(1, int(remaining * 1000)))],
+                               timeout_s=remaining)
+            commands.append(run.to_dict())
+            summary = _summarize_status_run(run)
+        else:
+            summary = {"online": False, "status": "unknown", "error": "simeval was not found on PATH. Set AUTOMA_SIMEVAL_BIN or install simeval."}
+    except TimeoutError:
+        summary = {"online": False, "status": "unknown", "error": "Inventory was not checked before the deadline."}
+    usable = environment["state"] == "ready"
+    reason = "ready" if usable else environment.get("reason_code", "unknown")
+    if not executable and not usable:
+        reason = "simeval_missing"
     payload["status"] = summary
-    payload["frontend"] = _summarize_frontend_run(frontend_run)
-    payload["result"] = _simulator_status_result(
-        status=summary,
-        frontend=payload["frontend"],
-    )
-    payload["commands"] = [status_run.to_dict(), frontend_run.to_dict()]
-
-    return _result(payload, json_output=json_output, exit_code=0)
+    payload["frontend"] = {"frontend_connected": usable, "ui_server": usable,
+                           "status": environment["state"], "error": environment.get("message")}
+    payload["result"] = {
+        "status": "ready" if usable else "unavailable" if not executable else "degraded",
+        "reason_code": reason, "usable": usable,
+        "error": None if usable else environment.get("message") or summary.get("error"),
+        "recovery": None if usable else target.command(verb="status"),
+    }
+    payload["commands"] = commands
+    return _result(payload, json_output=json_output, exit_code=0 if usable else 2 if not executable else 1)
 
 
 def ensure_simulator(
@@ -521,7 +524,9 @@ def _run_simeval(
     return _run_process([executable, *args], timeout_s=timeout_s)
 
 
-def _run_process(command: list[str], *, timeout_s: float = 20) -> SimevalRun:
+def _run_process(command: list[str], *, timeout_s: float = 20, emit: Any = None) -> SimevalRun:
+    if emit is not None:
+        return _run_process_streaming(command, timeout_s=timeout_s, emit=emit)
     started = time.perf_counter()
     try:
         process = subprocess.run(
@@ -556,6 +561,47 @@ def _run_process(command: list[str], *, timeout_s: float = 20) -> SimevalRun:
             stderr=str(exc),
             duration_ms=int((time.perf_counter() - started) * 1000),
         )
+
+
+def _run_process_streaming(command: list[str], *, timeout_s: float, emit: Any) -> SimevalRun:
+    """Bound a child process and forward diagnostics without corrupting machine output."""
+    started = time.monotonic()
+    chunks: dict[str, list[bytes]] = {"stdout": [], "stderr": []}
+    try:
+        process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    except OSError as exc:
+        return SimevalRun(tuple(command), 127, "", str(exc), 0)
+    timed_out = False
+    try:
+        with selectors.DefaultSelector() as selector:
+            for name in chunks:
+                selector.register(getattr(process, name), selectors.EVENT_READ, name)
+            while selector.get_map():
+                remaining = timeout_s - (time.monotonic() - started)
+                if remaining <= 0:
+                    raise TimeoutError(f"Command timed out after {timeout_s:g}s: {shlex.join(command)}")
+                for key, _ in selector.select(min(0.25, remaining)):
+                    chunk = os.read(key.fileobj.fileno(), 4096)
+                    if not chunk:
+                        selector.unregister(key.fileobj)
+                    else:
+                        chunks[key.data].append(chunk)
+                        emit("diagnostic", phase="subprocess", stream=key.data,
+                             message=chunk.decode("utf-8", errors="replace"))
+            process.wait(timeout=max(0.001, timeout_s - (time.monotonic() - started)))
+    except (TimeoutError, subprocess.TimeoutExpired) as exc:
+        timed_out = True
+        chunks["stderr"].append(str(exc).encode())
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait()
+        for pipe in (process.stdout, process.stderr):
+            pipe.close()
+    return SimevalRun(tuple(command), 124 if timed_out else process.returncode,
+        b"".join(chunks["stdout"]).decode("utf-8", errors="replace"),
+        b"".join(chunks["stderr"]).decode("utf-8", errors="replace"),
+        int((time.monotonic() - started) * 1000))
 
 
 def _run_ui_verify(

@@ -462,6 +462,18 @@ class FrameLoop:
             return self.frame_jpeg(camera)
         return encode_jpeg(image)
 
+    def connect_observation(self) -> dict[str, Any]:
+        """Atomically reuse observation or start it only while the host is idle."""
+        with self._lifecycle_lock:
+            session = self.host.session_status()
+            if session["status"] == "running":
+                if session["configuration"]["mode"] != "observe_only":
+                    raise RuntimeError("An active non-observation session must be stopped explicitly before connecting.")
+                return session
+            if session["status"] in {"starting", "stopping"}:
+                raise RuntimeError("The runtime session is changing; check status and retry connection.")
+            return self.start(RunConfiguration(mode="observe_only", num_decisions=0))
+
     def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
         with self._lifecycle_lock:
             if record and (self.recording_root is None or self.vehicle_id is None):

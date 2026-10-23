@@ -120,7 +120,8 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | Command | Reads or changes |
 |---|---|
 | `vehicles active` | Probes discoverable PiCar and Chase endpoints; does not imply deployment, worker, or view state. |
-| `vehicles status` | Reads the complete Chase simulator, vehicle, deployment, worker, capture, and view state without changing it; other local deployments are listed separately with their inspection command. |
+| `vehicles connect` | Attaches to one status target and verifies a fresh observation without enabling driving. Stops with the next command when repair or a simulator reset is required; `--allow-repair` and `--allow-reset` perform that one tier and keep the selected endpoint. |
+| `vehicles status` | Reads connection readiness for each configured vehicle without changing it: simulator capture, host, and a fresh observation. Prints the next connect, repair, or reset command. A local view is optional and is not a connection gate. |
 | `vehicles update perception\|memory\|proposal\|plan` | Packages code and stages that step's preset or plugin selection locally (`--preset`, or repeatable `--plugin`; default presets `lightweight_observer`, `recency_ledger`, `obstruction_avoidance` and `most_confident`). |
 | `vehicles update observation\|action` | Packages code and stages that step's plugins locally (repeatable `--plugin`; without it, the step's default plugins and configs). |
 | `vehicles plugins upload` | Stores a local file in an existing live catalog, refusing source that does not compile; `--arm` also arms it through the same operation as `plugins arm`. |
@@ -288,15 +289,14 @@ operator's current simulator session:
 ./cli/automa vehicles update perception \
   --id chase-sim-chaser \
   --preset lightweight_observer
-./cli/automa vehicles automation run \
-  --id chase-sim-chaser \
-  --observe-only \
-  --num-decisions 0 \
-  --open-view
+./cli/automa vehicles connect --id chase-sim-chaser --chase-url http://localhost:5050
+./cli/automa vehicles stream perception --id chase-sim-chaser
 ./cli/automa vehicles status --id chase-sim-chaser
 ./cli/automa vehicles automation stop --id chase-sim-chaser
 ./cli/automa vehicles status --id chase-sim-chaser
 ```
+
+`vehicles connect` is the attachment. It starts observation only. When status prints a `Next:` command, run that command; repair and reset stay separate and keep the same endpoint. A later `vehicles update` keeps the staged endpoint instead of returning the vehicle to the default simulator URL. `vehicles stream perception` opens the local view and is not required for the connection to succeed.
 
 The memory update stages the Memory view's ledger; without a memory or
 perception activation, the live cycle runs no plugins for that step. Each update replaces only its named

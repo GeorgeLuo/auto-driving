@@ -67,7 +67,7 @@ class PluginUploadFlows(unittest.TestCase):
                 page = browser.new_page()
                 page.goto(view.url + "plugins")
                 page.get_by_role("checkbox", name="Show revisions").check()
-                for index, phase in enumerate(("stopped", "running", "completed")):
+                for index, phase in enumerate(("pre_start", "running", "completed")):
                     if phase == "running":
                         host.start(RunConfiguration(mode="observe_only", num_decisions=1))
                     elif phase == "completed":

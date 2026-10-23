@@ -29,7 +29,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             try:
                 _wait(record.exists, timeout_s=10.0, message="the host never wrote its record")
                 base_url = json.loads(record.read_text(encoding="utf-8"))["base_url"]
-                self.assertEqual(RuntimeClient(base_url).status()["session"]["status"], "stopped")
+                self.assertEqual(RuntimeClient(base_url).status()["session"]["status"], "pre_start")
                 record.unlink()
                 self.assertEqual(process.wait(timeout=5.0), 0)
             finally:

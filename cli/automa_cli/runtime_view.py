@@ -57,6 +57,7 @@ FLOAT_PAGE_DIR = Path(__file__).with_name("workbench_page")
 FLOAT_FILES = {
     "/static/float.css": ("float.css", "text/css; charset=utf-8"),
     "/static/js/float.js": ("js/float.js", "text/javascript; charset=utf-8"),
+    "/static/js/automation.js": ("js/automation.js", "text/javascript; charset=utf-8"),
 }
 # Vehicle views take 8500–8999. This port is the viewer opened with no host.
 VIEWER_PORT = 8473
@@ -335,10 +336,13 @@ class RuntimeViewServer:
         if type(decisions) is not int or decisions < 0:
             decisions = 0
         try:
-            RuntimeClient(self.host_base_url or "", timeout_s=5.0).start(
+            RuntimeClient(self.host_base_url or "", timeout_s=_OBSERVE_RUN_TIMEOUT_S).start(
                 RunConfiguration(mode=mode, num_decisions=decisions)
             )
         except RuntimeError as exc:
+            settled = self.automation_state()
+            if settled.get("running") and bool(settled.get("automation")) is enabled:
+                return settled
             error = str(exc).splitlines()[0].strip()[:240]
             return {"ok": False, "error": error or "automation did not change"}
         return self.automation_state()

@@ -97,24 +97,6 @@
     #connectFrame.is-loading .float-frame-body { visibility: hidden; }
     #connectFrame .title-loading { white-space: nowrap; }
     #connectFrame .title-loading em { font-style: italic; color: var(--muted); }
-    #connectFrame .float-frame-title { flex: 1 1 auto; }
-    #connectFrame .automation-toggle {
-      margin-left: auto;
-      padding: 0;
-      border: 0;
-      background: transparent;
-      color: var(--muted);
-      font: inherit;
-      font-size: 12px;
-      cursor: pointer;
-    }
-    #connectFrame .automation-toggle.is-on { color: var(--green); }
-    #connectFrame .automation-toggle:hover, #connectFrame .automation-toggle:focus-visible {
-      color: #ededed;
-    }
-    #connectFrame .automation-toggle.is-busy { color: #6a6a6a; pointer-events: none; }
-    #connectFrame .automation-toggle[hidden],
-    #connectFrame.is-loading .automation-toggle { display: none; }
     #connectFrame .float-frame-body {
       display: flex;
       flex-direction: column;
@@ -186,7 +168,6 @@
           </span>
           <strong>Connect</strong>
           <span class="title-loading" hidden> <em>CONTENT LOADING</em></span>
-          <button type="button" class="automation-toggle" hidden aria-pressed="false">automation</button>
         </div>
         <div class="float-frame-controls">
           <button type="button" class="icon-btn" data-frame-close aria-label="Close Connect" title="Close">
@@ -214,7 +195,6 @@
       var message = body.querySelector(".host-message");
       var create = body.querySelector(".host-create");
       var loadingTitle = frame.querySelector(".title-loading");
-      var automation = frame.querySelector(".automation-toggle");
       var ticket = 0;
       var viewGeneration = 0;
 
@@ -231,49 +211,6 @@
         frame.classList.toggle("is-loading", on);
         loadingTitle.hidden = !on;
       }
-
-      function applyAutomation(state) {
-        var running = !!(state && state.running);
-        automation.hidden = !running;
-        var on = running && !!state.automation;
-        automation.classList.toggle("is-on", on);
-        automation.setAttribute("aria-pressed", on ? "true" : "false");
-        automation.classList.remove("is-busy");
-      }
-
-      function refreshAutomation() {
-        return fetch("/automation").then(function (response) {
-          return response.json();
-        }).then(applyAutomation).catch(function () {
-          applyAutomation(null);
-        });
-      }
-
-      automation.addEventListener("click", function () {
-        if (automation.hidden || automation.classList.contains("is-busy")) return;
-        var next = automation.getAttribute("aria-pressed") !== "true";
-        automation.classList.add("is-busy");
-        fetch("/automation", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ automation: next })
-        }).then(function (response) {
-          return response.json().then(function (payload) {
-            return { ok: response.ok, payload: payload };
-          });
-        }).then(function (result) {
-          var payload = result.payload || {};
-          if (!result.ok || !payload.ok) {
-            automation.classList.remove("is-busy");
-            showConnectError(payload.error || "automation did not change");
-            return;
-          }
-          applyAutomation(payload);
-        }).catch(function () {
-          automation.classList.remove("is-busy");
-          showConnectError("automation did not change");
-        });
-      });
 
       function setMessage(text, done) {
         var next = text || "";
@@ -551,12 +488,10 @@
             render(payload);
           }
           setLoading(false);
-          refreshAutomation();
         }).catch(function () {
           if (current !== ticket) return;
           showError("vehicles status failed");
           setLoading(false);
-          refreshAutomation();
         });
       }
 

@@ -92,6 +92,11 @@
       background: rgba(255, 255, 255, 0.05);
       color: var(--fg);
     }
+    button.automation-toggle.is-on,
+    button.automation-toggle.is-on:hover,
+    button.automation-toggle.is-on:focus-visible { color: var(--green); }
+    button.automation-toggle.is-busy { color: #6a6a6a; pointer-events: none; }
+    button.automation-toggle[hidden] { display: none; }
 
     span.nav, span.nav.unavailable { cursor: default; color: #6a6a6a; }
 
@@ -335,6 +340,7 @@
       <a class="nav" href="/">Automa</a>
       <a class="nav" href="/memory">Memory</a>
       __DECISION_NAV__
+      <button type="button" class="automation-toggle" id="automationToggle" hidden aria-pressed="false">automation</button>
       <button type="button" id="pauseButton">Pause</button>
     </div>
   </header>
@@ -761,5 +767,6 @@
     refresh();
     setInterval(refresh, 1000 / 30);
   </script>
+  <script src="/static/js/automation.js"></script>
 </body>
 </html>

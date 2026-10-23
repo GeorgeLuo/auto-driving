@@ -74,6 +74,11 @@
       background: rgba(255, 255, 255, 0.05);
       color: var(--fg);
     }
+    button.automation-toggle.is-on,
+    button.automation-toggle.is-on:hover,
+    button.automation-toggle.is-on:focus-visible { color: var(--green); }
+    button.automation-toggle.is-busy { color: #6a6a6a; pointer-events: none; }
+    button.automation-toggle[hidden] { display: none; }
     span.nav, span.nav.unavailable { cursor: default; color: #6a6a6a; }
     button:focus-visible, a.nav:focus-visible {
       outline: 1px solid rgba(255, 255, 255, 0.45);
@@ -212,6 +217,7 @@
       <a class="nav" href="/">Automa</a>
       <a class="nav" href="/perception">Perception</a>
       __DECISION_NAV__
+      <button type="button" class="automation-toggle" id="automationToggle" hidden aria-pressed="false">automation</button>
       <button type="button" id="pauseButton">Pause</button>
     </div>
   </header>
@@ -730,5 +736,6 @@
     refresh();
     setInterval(refresh, 200);
   </script>
+  <script src="/static/js/automation.js"></script>
 </body>
 </html>

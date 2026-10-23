@@ -150,6 +150,7 @@ class RuntimeViewServer:
         validate_loopback_host(host, owner="runtime view")
         self.vehicle_id = vehicle_id
         self.host_attached = host_attached
+        self.host_base_url: str | None = None
         self.plugin_catalog = plugin_catalog
         self.automation_dir = automation_dir
         self.host = host
@@ -266,6 +267,7 @@ class RuntimeViewServer:
             self.vehicle_id = vehicle_id
             self.perception.vehicle_id = vehicle_id
             self.host_attached = True
+            self.host_base_url = base_url
             self._feed_generation += 1
             generation = self._feed_generation
             stop = threading.Event()
@@ -279,6 +281,67 @@ class RuntimeViewServer:
             self._feed_thread = thread
             thread.start()
         return {"ok": True, "vehicle_id": vehicle_id}
+
+    def _host_session(self) -> dict[str, Any] | None:
+        if not self.host_attached or not self.host_base_url:
+            return None
+        from autonomy.runtime.client import RuntimeClient
+
+        status = RuntimeClient(self.host_base_url, timeout_s=2.0).status()
+        session = status.get("session") if isinstance(status, dict) else None
+        return session if isinstance(session, dict) else None
+
+    def automation_state(self) -> dict[str, Any]:
+        """Whether the attached host session is applying automation."""
+
+        try:
+            session = self._host_session()
+        except RuntimeError:
+            return {"ok": True, "running": False, "automation": False}
+        if session is None or session.get("status") != "running":
+            return {"ok": True, "running": False, "automation": False, "vehicle_id": self.vehicle_id}
+        configuration = session.get("configuration") if isinstance(session.get("configuration"), dict) else {}
+        mode = configuration.get("mode")
+        return {
+            "ok": True,
+            "running": True,
+            "automation": mode == "autonomy",
+            "mode": mode,
+            "vehicle_id": self.vehicle_id,
+        }
+
+    def set_automation(self, enabled: bool) -> dict[str, Any]:
+        """Switch the running session between autonomy and observe-only.
+
+        The host process stays up. Its current run is replaced with the same
+        decision bound and the requested mode.
+        """
+
+        from autonomy.runtime.client import RuntimeClient
+        from autonomy.runtime.session import RunConfiguration
+
+        try:
+            session = self._host_session()
+        except RuntimeError as exc:
+            error = str(exc).splitlines()[0].strip()[:240]
+            return {"ok": False, "error": error or "automation did not change"}
+        if session is None or session.get("status") != "running":
+            return {"ok": False, "error": "no automation session is running"}
+        configuration = session.get("configuration") if isinstance(session.get("configuration"), dict) else {}
+        mode = "autonomy" if enabled else "observe_only"
+        if configuration.get("mode") == mode:
+            return self.automation_state()
+        decisions = configuration.get("num_decisions")
+        if type(decisions) is not int or decisions < 0:
+            decisions = 0
+        try:
+            RuntimeClient(self.host_base_url or "", timeout_s=5.0).start(
+                RunConfiguration(mode=mode, num_decisions=decisions)
+            )
+        except RuntimeError as exc:
+            error = str(exc).splitlines()[0].strip()[:240]
+            return {"ok": False, "error": error or "automation did not change"}
+        return self.automation_state()
 
     def create_host(
         self,
@@ -409,6 +472,15 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlparse(self.path).path
+        if route == "/automation":
+            body = self._read_json_object(limit=4096)
+            enabled = body.get("automation") if isinstance(body, dict) else None
+            if type(enabled) is not bool:
+                self._send_json(400, {"ok": False, "error": "automation must be true or false"})
+                return
+            result = self.server.publisher.set_automation(enabled)
+            self._send_json(200 if result.get("ok") else 409, result)
+            return
         if route in {"/connect", "/host", "/release", "/run"}:
             vehicle_id = self._posted_vehicle_id()
             if vehicle_id is None:
@@ -518,6 +590,13 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
                 self._send_json(500, {"error": str(exc)}, include_body=include_body)
                 return
             self._send(200, body, content_type, include_body=include_body)
+            return
+        if route == "/automation":
+            self._send_json(
+                200,
+                self.server.publisher.automation_state(),
+                include_body=include_body,
+            )
             return
         if route == "/connect":
             payload = known_environments()

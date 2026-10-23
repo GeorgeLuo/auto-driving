@@ -39,6 +39,7 @@ from .loopback_http import (
 )
 from .host_publications import LATEST_JSON_PATH
 from .plugin_catalog import serve_plugin_catalog
+from .runtime_hosts import RuntimeHostError, ensure_chase_host
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
@@ -278,6 +279,16 @@ class RuntimeViewServer:
             thread.start()
         return {"ok": True, "vehicle_id": vehicle_id}
 
+    def create_host(self, vehicle_id: str) -> dict[str, Any]:
+        """Start this vehicle's Chase host and wait until it answers."""
+
+        try:
+            ensure_chase_host(vehicle_id)
+        except RuntimeHostError as exc:
+            error = str(exc).splitlines()[0].strip()[:240]
+            return {"ok": False, "error": error or "the host did not start"}
+        return {"ok": True, "vehicle_id": vehicle_id}
+
     def _run_feed(self, feed: Any, stop: threading.Event, generation: int) -> None:
         while not stop.is_set() and generation == self._feed_generation:
             publication, _error = feed.read_observation()
@@ -326,13 +337,16 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlparse(self.path).path
-        if route == "/connect":
-            body = self._read_json_object(limit=4096)
-            vehicle_id = body.get("vehicle_id") if isinstance(body, dict) else None
-            if not isinstance(vehicle_id, str) or _VEHICLE_ID.fullmatch(vehicle_id) is None:
+        if route in {"/connect", "/host"}:
+            vehicle_id = self._posted_vehicle_id()
+            if vehicle_id is None:
                 self._send_json(400, {"ok": False, "error": "vehicle id is not valid"})
                 return
-            result = self.server.publisher.connect_host(vehicle_id)
+            publisher = self.server.publisher
+            if route == "/connect":
+                result = publisher.connect_host(vehicle_id)
+            else:
+                result = publisher.create_host(vehicle_id)
             self._send_json(200 if result.get("ok") else 409, result)
             return
         if route == PLUGIN_CATALOG_PATH:
@@ -360,6 +374,13 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
 
     def do_CONNECT(self) -> None:
         self._reject_write_method()
+
+    def _posted_vehicle_id(self) -> str | None:
+        body = self._read_json_object(limit=4096)
+        vehicle_id = body.get("vehicle_id") if isinstance(body, dict) else None
+        if not isinstance(vehicle_id, str) or _VEHICLE_ID.fullmatch(vehicle_id) is None:
+            return None
+        return vehicle_id
 
     def _read_json_object(self, *, limit: int) -> dict[str, Any] | None:
         try:

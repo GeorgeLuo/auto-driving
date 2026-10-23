@@ -35,7 +35,7 @@
     .status-dot.live { background: var(--green); }
     .status-dot.error { background: var(--red); }
     nav { display: grid; gap: 8px; }
-    nav > button, nav > a, .decision-unavailable {
+    nav > button, nav > a, .decision-unavailable, #hostFrame .host-actions button {
       display: block;
       width: 100%;
       box-sizing: border-box;
@@ -51,7 +51,8 @@
       text-decoration: none;
       cursor: pointer;
     }
-    nav > button:hover, nav > button:focus-visible, nav > a:hover, nav > a:focus-visible {
+    nav > button:hover, nav > button:focus-visible, nav > a:hover, nav > a:focus-visible,
+    #hostFrame .host-actions button:hover, #hostFrame .host-actions button:focus-visible {
       background: rgba(255, 255, 255, 0.06);
       color: #ededed;
     }
@@ -94,6 +95,19 @@
       font-size: 12px;
       line-height: 1.35;
     }
+    #hostFrame .host-message, #hostFrame .host-status {
+      margin: 0 0 12px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+    #hostFrame .host-actions { display: grid; gap: 8px; }
+    #hostFrame .host-actions button:disabled,
+    #hostFrame .host-actions button:disabled:hover {
+      background: transparent;
+      color: #6a6a6a;
+      cursor: default;
+    }
   </style>
 </head>
 <body class="__HOST_CLASS__">
@@ -124,6 +138,23 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
           </button>
           <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Connect" title="Minimize"></button>
+        </div>
+      </div>
+      <div class="float-frame-body" data-frame-body></div>
+    </article>
+    <article class="float-frame" id="hostFrame" data-frame-anchor="center" data-frame-width="320" data-frame-height="220" data-frame-start="closed" hidden>
+      <div class="float-frame-header" data-frame-header>
+        <div class="float-frame-title">
+          <span class="grip" aria-hidden="true">
+            <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+          </span>
+          <strong>Host</strong>
+        </div>
+        <div class="float-frame-controls">
+          <button type="button" class="icon-btn" data-frame-close aria-label="Close host" title="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+          <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize host" title="Minimize"></button>
         </div>
       </div>
       <div class="float-frame-body" data-frame-body></div>
@@ -170,6 +201,68 @@
         body.appendChild(line);
       }
 
+      function openHostWindow(id, message) {
+        var prior = body.querySelector(".env-error");
+        if (prior) prior.remove();
+        var host = floatingFrames.hostFrame;
+        var hostFrame = document.getElementById("hostFrame");
+        var hostBody = hostFrame.querySelector("[data-frame-body]");
+        hostFrame.querySelector("strong").textContent = id;
+        hostBody.replaceChildren();
+        var line = document.createElement("p");
+        line.className = "host-message";
+        line.textContent = message;
+        var actions = document.createElement("div");
+        actions.className = "host-actions";
+        var close = document.createElement("button");
+        close.type = "button";
+        close.textContent = "Close";
+        close.addEventListener("click", function () { host.close(); });
+        var create = document.createElement("button");
+        create.type = "button";
+        create.textContent = "Create host";
+        create.addEventListener("click", function () { createHost(id, create, hostBody); });
+        actions.appendChild(close);
+        actions.appendChild(create);
+        hostBody.appendChild(line);
+        hostBody.appendChild(actions);
+        host.restore();
+      }
+
+      function showHostStatus(hostBody, text) {
+        var line = hostBody.querySelector(".host-status");
+        if (!line) {
+          line = document.createElement("p");
+          line.className = "host-status";
+          hostBody.insertBefore(line, hostBody.querySelector(".host-actions"));
+        }
+        line.textContent = text;
+      }
+
+      function createHost(id, button, hostBody) {
+        button.disabled = true;
+        fetch("/host", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vehicle_id: id })
+        }).then(function (response) {
+          return response.json().then(function (payload) {
+            return { ok: response.ok, payload: payload };
+          });
+        }).then(function (result) {
+          var payload = result.payload || {};
+          if (result.ok && payload.ok) {
+            showHostStatus(hostBody, "Host is running.");
+            return;
+          }
+          button.disabled = false;
+          showHostStatus(hostBody, payload.error || "the host did not start");
+        }).catch(function () {
+          button.disabled = false;
+          showHostStatus(hostBody, "the host did not start");
+        });
+      }
+
       function connect(id) {
         fetch("/connect", {
           method: "POST",
@@ -185,7 +278,12 @@
             window.location.reload();
             return;
           }
-          showConnectError(payload.error || "perception stream is not live");
+          var error = payload.error || "perception stream is not live";
+          if (error.indexOf("No Chase host is running for ") === 0) {
+            openHostWindow(id, error);
+            return;
+          }
+          showConnectError(error);
         }).catch(function () {
           showConnectError("perception stream is not live");
         });

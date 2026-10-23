@@ -6,7 +6,7 @@ from unittest import mock
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from cli.automa_cli import app
+from cli.automa_cli import app, runtime_view
 from cli.automa_cli.runtime_view import (
     NOT_CONNECTED_ERROR,
     RUNTIME_HOST_ROUTES,
@@ -46,7 +46,34 @@ class ViewerWithoutHostTests(unittest.TestCase):
                 f'<span class="nav unavailable" title="{NOT_CONNECTED_ERROR}">{label}</span>',
                 html,
             )
-        self.assertNotIn("href=", html)
+        self.assertNotIn('<a class="nav"', html)
+
+    def test_shared_frame_files_are_served(self) -> None:
+        for name, content_type in (("float.js", "javascript"), ("float.css", "css")):
+            with self.subTest(name=name):
+                with urlopen(f"{self.server.url}static/shared/{name}", timeout=1.0) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertIn(content_type, response.headers["Content-Type"])
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(f"{self.server.url}static/shared/missing.js", timeout=1.0)
+        self.assertEqual(caught.exception.code, 404)
+
+    def test_hosts_are_listed_with_their_readiness(self) -> None:
+        status = {
+            "vehicles": [
+                {"vehicle_id": "chase-sim-chaser", "readiness": {"blocking_layer": None}},
+                {"vehicle_id": "chase-sim-runner", "readiness": {"blocking_layer": "simulator_server"}},
+            ],
+            "other_local_deployments": [{"vehicle_id": "piracer"}],
+        }
+        with mock.patch.object(runtime_view, "get_vehicle_status", return_value=status):
+            payload = json.loads(_read_text(f"{self.server.url}api/hosts"))
+
+        self.assertEqual(payload["hosts"], [
+            {"vehicle_id": "chase-sim-chaser", "state": "ready"},
+            {"vehicle_id": "chase-sim-runner", "state": "simulator_server"},
+            {"vehicle_id": "piracer", "state": None},
+        ])
 
     def test_viewer_publishes_no_discovery_record(self) -> None:
         self.assertIsNone(self.server.record_path)

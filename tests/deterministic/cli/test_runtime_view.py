@@ -48,6 +48,11 @@ class ViewerWithoutHostTests(unittest.TestCase):
             )
         self.assertNotIn('<a class="nav"', html)
 
+    def test_connect_window_has_a_status_box(self) -> None:
+        html = _read_text(self.server.url)
+        self.assertIn('<p class="float-frame-status-text" role="status"></p>', html)
+        self.assertIn('<div class="float-frame-status-actions"></div>', html)
+
     def test_shared_frame_files_are_served(self) -> None:
         for name, content_type in (("float.js", "javascript"), ("float.css", "css")):
             with self.subTest(name=name):

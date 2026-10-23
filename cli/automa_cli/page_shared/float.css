@@ -59,13 +59,14 @@
   align-items: center;
   justify-content: center;
   padding: 0;
-  border: 1px solid transparent;
+  border: 0;
   border-radius: 6px;
   background: transparent;
   color: var(--muted);
   cursor: pointer;
 }
-.float-frame-controls .icon-btn svg { width: 12px; height: 12px; display: block; }
+/* The close mark fills half its box, so a 16px box draws it at the title's cap height. */
+.float-frame-controls .icon-btn svg { width: 16px; height: 16px; display: block; stroke-width: 1.5; }
 .float-frame-controls .icon-btn:hover:not(:disabled) {
   background: transparent;
   color: var(--fg);

@@ -97,8 +97,8 @@ function bindFloatingFrame(root) {
       var mark = document.createElement("span");
       mark.style.display = "block";
       if (state.minimized) {
-        mark.style.width = "10px";
-        mark.style.height = "10px";
+        mark.style.width = "9px";
+        mark.style.height = "9px";
         mark.style.border = "1px solid currentColor";
       } else {
         mark.style.width = "12px";

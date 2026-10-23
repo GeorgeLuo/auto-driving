@@ -121,8 +121,6 @@
       margin: 0;
       min-height: 0;
       overflow: auto;
-      opacity: 1;
-      transition: opacity 140ms ease;
     }
     #connectFrame .host-create {
       flex: 0 0 auto;
@@ -196,37 +194,17 @@
       function setMessage(text, done) {
         var next = text || "";
         var generation = ++messageGeneration;
-        if (message.textContent === next) {
-          if (done) done();
-          return;
-        }
         function reveal() {
           if (generation !== messageGeneration) return;
           message.textContent = next;
           if (done) done();
-          window.requestAnimationFrame(function () {
-            if (generation !== messageGeneration) return;
-            message.style.opacity = "1";
-          });
         }
-        if (!message.textContent) {
-          message.style.opacity = "0";
-          message.textContent = next;
-          if (done) done();
-          window.requestAnimationFrame(function () {
-            window.requestAnimationFrame(function () {
-              if (generation !== messageGeneration) return;
-              message.style.opacity = "1";
-            });
-          });
+        if (!message.textContent || message.textContent === next) {
+          reveal();
           return;
         }
-        message.style.opacity = "0";
-        window.setTimeout(function () {
-          if (generation !== messageGeneration) return;
-          message.textContent = "";
-          window.setTimeout(reveal, 80);
-        }, 140);
+        message.textContent = "";
+        window.setTimeout(reveal, 40);
       }
 
       function activateCreate(event) {

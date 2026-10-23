@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 import socket
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 from typing import Any
 
 
@@ -14,6 +16,13 @@ DEFAULT_CONTENT_SECURITY_POLICY = (
     "default-src 'self'; img-src 'self'; connect-src 'self'; "
     "style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
 )
+STATIC_CONTENT_TYPES = {
+    ".css": "text/css; charset=utf-8",
+    ".js": "text/javascript; charset=utf-8",
+}
+# Files every loopback page may load, served read-only under /static/shared/.
+SHARED_PAGE_DIR = Path(__file__).with_name("page_shared")
+SHARED_STATIC_PATTERN = re.compile(r"^/static/shared/([a-z]+\.(?:css|js))$")
 
 
 def validate_loopback_host(host: str, *, owner: str) -> str:
@@ -128,6 +137,20 @@ class LoopbackHTTPRequestHandler(BaseHTTPRequestHandler):
         self.end_headers()
         if include_body:
             self.wfile.write(body)
+
+    def _serve_shared_file(self, route: str, *, include_body: bool) -> bool:
+        """Serve the shared page file ``route`` names; False leaves the route to the caller."""
+
+        match = SHARED_STATIC_PATTERN.match(route)
+        if match is None:
+            return False
+        path = SHARED_PAGE_DIR / match.group(1)
+        try:
+            body = path.read_bytes()
+        except FileNotFoundError:
+            return False
+        self._send(200, body, STATIC_CONTENT_TYPES[path.suffix], include_body=include_body)
+        return True
 
     def log_message(self, format: str, *args: Any) -> None:
         return None

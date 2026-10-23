@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Automa Workbench</title>
   <link rel="stylesheet" href="/static/workbench.css">
+  <link rel="stylesheet" href="/static/shared/float.css">
 </head>
 <body>
   <main class="app">
@@ -103,12 +104,12 @@
     </div>
   </main>
 
-  <div id="floatLayer">
+  <div id="floatLayer" data-frame-bounds="viewerStage">
           <article class="float-frame" id="memoryFrame" data-frame-anchor="tr" data-frame-width="280" data-frame-height="260">
             <div class="float-frame-header" data-frame-header>
               <div class="float-frame-title">
                 <span class="grip" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
                 </span>
                 <strong>Memory</strong>
                 <span id="memoryHealth" class="muted">no frame yet</span>
@@ -145,7 +146,7 @@
             <div class="float-frame-header" data-frame-header>
               <div class="float-frame-title">
                 <span class="grip" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
                 </span>
                 <strong>Perception</strong>
                 <span id="perceptionSummary" class="muted">no output</span>
@@ -169,7 +170,7 @@
             <div class="float-frame-header" data-frame-header>
               <div class="float-frame-title">
                 <span class="grip" aria-hidden="true">
-                  <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
                 </span>
                 <strong>Decision</strong>
                 <span id="decisionSummary" class="muted">no cycle</span>
@@ -206,6 +207,7 @@
 
   <script src="/static/js/core.js"></script>
   <script src="/static/js/transport.js"></script>
+  <script src="/static/shared/float.js"></script>
   <script src="/static/js/frame.js"></script>
   <script src="/static/js/plugins.js"></script>
   <script src="/static/js/perception.js"></script>

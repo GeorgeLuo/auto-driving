@@ -34,6 +34,7 @@ from .loopback_http import (
     validate_loopback_host,
 )
 from .plugin_catalog import serve_plugin_catalog
+from .vehicles import get_vehicle_status
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
@@ -238,6 +239,8 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         route = request.path
         if self._refuse_when_not_connected(route, include_body=include_body):
             return
+        if self._serve_shared_file(route, include_body=include_body):
+            return
         if route == PLUGIN_CATALOG_PATH:
             serve_plugin_catalog(self, self.server.publisher.plugin_catalog, include_body=include_body)
             return
@@ -331,6 +334,13 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
                 include_body=include_body,
             )
             return
+        if route == "/api/hosts":
+            self._send_json(
+                200,
+                {"hosts": connectable_hosts(get_vehicle_status())},
+                include_body=include_body,
+            )
+            return
         if route == "/api/latest":
             body = self.server.publisher.perception.latest_json()
             if body is None:
@@ -417,6 +427,22 @@ def open_view_message(url: str) -> str:
         f"Warning: could not open the browser ({detail}). "
         f"Open manually: {url}"
     )
+
+
+def connectable_hosts(status: dict[str, Any]) -> list[dict[str, Any]]:
+    """List the runtime hosts in a ``vehicles status`` payload with a one-word state."""
+
+    # A blocked host is named by the layer that blocks it.
+    hosts = [
+        {"vehicle_id": card["vehicle_id"], "state": card["readiness"]["blocking_layer"] or "ready"}
+        for card in status["vehicles"]
+    ]
+    # vehicles status does not probe deployments outside Chase.
+    hosts.extend(
+        {"vehicle_id": deployment["vehicle_id"], "state": None}
+        for deployment in status["other_local_deployments"]
+    )
+    return hosts
 
 
 def _nav_link(label: str, href: str) -> str:

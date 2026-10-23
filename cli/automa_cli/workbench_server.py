@@ -11,6 +11,7 @@ from typing import Any, Protocol
 from urllib.parse import parse_qs, urlparse
 
 from .loopback_http import (
+    STATIC_CONTENT_TYPES,
     LoopbackHTTPRequestHandler,
     LoopbackHTTPServer,
     start_server_thread,
@@ -32,11 +33,7 @@ from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
 WORKBENCH_PAGE_DIR = Path(__file__).with_name("workbench_page")
-# The page's own files, served read-only under /static/; nothing else is reachable.
-WORKBENCH_STATIC_TYPES = {
-    ".css": "text/css; charset=utf-8",
-    ".js": "text/javascript; charset=utf-8",
-}
+# The page's own files, served read-only under /static/ beside /static/shared/.
 WORKBENCH_STATIC_PATTERN = re.compile(r"^/static/(workbench\.css|js/[a-z]+\.js)$")
 
 
@@ -284,6 +281,8 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
         if WORKBENCH_STATIC_PATTERN.match(request.path):
             self._serve_file(request.path.removeprefix("/static/"), include_body=include_body)
             return
+        if self._serve_shared_file(request.path, include_body=include_body):
+            return
         if request.path == "/favicon.ico":
             self._send(204, b"", "image/x-icon", include_body=False)
             return
@@ -435,7 +434,7 @@ class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
         self._send(
             200,
             body,
-            WORKBENCH_STATIC_TYPES.get(path.suffix, "text/html; charset=utf-8"),
+            STATIC_CONTENT_TYPES.get(path.suffix, "text/html; charset=utf-8"),
             include_body=include_body,
         )
 

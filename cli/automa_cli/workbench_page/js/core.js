@@ -56,16 +56,6 @@ function remember(key, value) {
     else window.localStorage.removeItem(key);
   } catch (error) {}
 }
-function rememberJson(key, value) {
-  try { window.localStorage.setItem(key, JSON.stringify(value)); }
-  catch (error) {}
-}
-function rememberedJson(key) {
-  try {
-    var raw = window.localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
-  } catch (error) { return null; }
-}
 function text(value, fallback) {
   if (value === null || value === undefined || value === "") return fallback || "—";
   return String(value);

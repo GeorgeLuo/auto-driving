@@ -163,17 +163,21 @@ class WorkbenchTests(unittest.TestCase):
         page = urlopen(base, timeout=2).read().decode("utf-8")
         paths = re.findall(r'(?:src|href)="/static/([^"]+)"', page)
         self.assertIn("workbench.css", paths)
+        self.assertIn("shared/float.css", paths)
         self.assertEqual(
             sorted(path for path in paths if path.endswith(".js")),
-            sorted(f"js/{name}.js" for name in (
+            sorted([*(f"js/{name}.js" for name in (
                 "core", "decision", "frame", "main", "memory", "perception", "plugins", "transport",
-            )),
+            )), "shared/float.js"]),
         )
         for path in paths:
             served = urlopen(base + "static/" + path, timeout=2)
             self.assertEqual(served.status, 200)
             self.assertIn("javascript" if path.endswith(".js") else "css", served.headers["Content-Type"])
-        for blocked in ("static/../workbench_server.py", "static/js/../index.html", "static/index.html", "static/js/missing.js"):
+        for blocked in (
+            "static/../workbench_server.py", "static/js/../index.html", "static/index.html", "static/js/missing.js",
+            "static/shared/../loopback_http.py", "static/shared/missing.js",
+        ):
             with self.assertRaises(HTTPError) as caught:
                 urlopen(base + blocked, timeout=2)
             self.assertEqual(caught.exception.code, 404)

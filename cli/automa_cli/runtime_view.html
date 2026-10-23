@@ -94,7 +94,21 @@
       font-size: 12px;
       line-height: 1.35;
     }
+    #connectFrame .float-frame-body {
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    #connectFrame .env-list {
+      flex: 0 1 auto;
+      min-height: 0;
+      overflow: auto;
+    }
     #connectFrame .host-offer {
+      flex: 1 1 auto;
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
       margin-top: 12px;
       padding: 10px;
       border: 1px solid var(--line);
@@ -103,15 +117,19 @@
       font-size: 12px;
       line-height: 1.35;
     }
-    #connectFrame .host-offer p { margin: 0; }
-    #connectFrame .host-status { margin-top: 8px; }
+    #connectFrame .host-message {
+      margin: 0;
+      min-height: 0;
+      overflow: auto;
+    }
     #connectFrame .host-create {
-      display: block;
-      margin-top: 10px;
+      flex: 0 0 auto;
+      margin-top: auto;
       color: var(--muted);
       text-align: right;
       cursor: pointer;
     }
+    #connectFrame .host-create[hidden] { display: none; }
     #connectFrame .host-create:hover, #connectFrame .host-create:focus-visible {
       color: #ededed;
     }
@@ -151,7 +169,13 @@
           <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Connect" title="Minimize"></button>
         </div>
       </div>
-      <div class="float-frame-body" data-frame-body></div>
+      <div class="float-frame-body" data-frame-body>
+        <div class="env-list"></div>
+        <div class="host-offer">
+          <p class="host-message"></p>
+          <span class="host-create" hidden tabindex="0">create</span>
+        </div>
+      </div>
     </article>
   </div>
   <script src="/static/js/float.js"></script>
@@ -160,7 +184,22 @@
       var button = document.querySelector("[data-recall='connectFrame']");
       var frame = document.getElementById("connectFrame");
       var body = frame.querySelector("[data-frame-body]");
+      var list = body.querySelector(".env-list");
+      var message = body.querySelector(".host-message");
+      var create = body.querySelector(".host-create");
       var ticket = 0;
+
+      function setMessage(text) {
+        message.textContent = text || "";
+      }
+
+      function activateCreate(event) {
+        if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
+        if (event.type === "keydown") event.preventDefault();
+        createHost(create.dataset.vehicleId);
+      }
+      create.addEventListener("click", activateCreate);
+      create.addEventListener("keydown", activateCreate);
 
       function row(id, state) {
         var item = document.createElement("div");
@@ -183,55 +222,24 @@
         var line = document.createElement("p");
         line.className = "env-error";
         line.textContent = text;
-        body.replaceChildren(line);
+        list.replaceChildren(line);
       }
 
       function showConnectError(text) {
-        var prior = body.querySelector(".env-error");
-        if (prior) prior.remove();
-        var line = document.createElement("p");
-        line.className = "env-error";
-        line.textContent = text;
-        body.appendChild(line);
+        setMessage(text);
+        create.hidden = true;
+        create.classList.remove("is-busy");
       }
 
-      function showHostOffer(id, message) {
-        var prior = body.querySelector(".env-error");
-        if (prior) prior.remove();
-        var existing = body.querySelector(".host-offer");
-        if (existing) existing.remove();
-        var box = document.createElement("div");
-        box.className = "host-offer";
-        var line = document.createElement("p");
-        line.textContent = message;
-        var create = document.createElement("span");
-        create.className = "host-create";
-        create.tabIndex = 0;
-        create.textContent = "create";
-        function activate(event) {
-          if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
-          if (event.type === "keydown") event.preventDefault();
-          createHost(id, create, box);
-        }
-        create.addEventListener("click", activate);
-        create.addEventListener("keydown", activate);
-        box.appendChild(line);
-        box.appendChild(create);
-        body.appendChild(box);
+      function showHostOffer(id, text) {
+        setMessage(text);
+        create.dataset.vehicleId = id;
+        create.hidden = false;
+        create.classList.remove("is-busy");
       }
 
-      function showHostStatus(box, text) {
-        var line = box.querySelector(".host-status");
-        if (!line) {
-          line = document.createElement("p");
-          line.className = "host-status";
-          box.insertBefore(line, box.querySelector(".host-create"));
-        }
-        line.textContent = text;
-      }
-
-      function createHost(id, create, box) {
-        if (create.classList.contains("is-busy")) return;
+      function createHost(id) {
+        if (!id || create.classList.contains("is-busy")) return;
         create.classList.add("is-busy");
         fetch("/host", {
           method: "POST",
@@ -244,15 +252,16 @@
         }).then(function (result) {
           var payload = result.payload || {};
           if (result.ok && payload.ok) {
-            showHostStatus(box, "Host is running.");
-            create.remove();
+            setMessage("Host is running.");
+            create.hidden = true;
+            create.classList.remove("is-busy");
             return;
           }
           create.classList.remove("is-busy");
-          showHostStatus(box, payload.error || "the host did not start");
+          setMessage(payload.error || "the host did not start");
         }).catch(function () {
           create.classList.remove("is-busy");
-          showHostStatus(box, "the host did not start");
+          setMessage("the host did not start");
         });
       }
 
@@ -296,12 +305,12 @@
           if (!item || !item.vehicle_id) return;
           nodes.push(row(String(item.vehicle_id), ""));
         });
-        body.replaceChildren.apply(body, nodes);
+        list.replaceChildren.apply(list, nodes);
       }
 
       function load() {
         var current = ++ticket;
-        body.replaceChildren();
+        list.replaceChildren();
         fetch("/connect").then(function (response) {
           return response.json().then(function (payload) {
             return { ok: response.ok, payload: payload };

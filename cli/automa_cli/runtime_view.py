@@ -60,6 +60,7 @@ FLOAT_FILES = {
 }
 # Vehicle views take 8500–8999. This port is the viewer opened with no host.
 VIEWER_PORT = 8473
+_OBSERVE_RUN_TIMEOUT_S = 20.0
 DISCONNECTED_HOST_ERROR = "not connected to a host"
 RUNTIME_VIEW_HTML_PATH = Path(__file__).with_name("runtime_view.html")
 MEMORY_VIEW_HTML_PATH = Path(__file__).with_name("memory_view.html")
@@ -293,6 +294,62 @@ class RuntimeViewServer:
             return {"ok": False, "error": error or "the host did not start"}
         return {"ok": True, "vehicle_id": vehicle_id}
 
+    def start_run(
+        self,
+        vehicle_id: str,
+        on_status: Any = None,
+    ) -> dict[str, Any]:
+        """Start an observe-only session on the running host, then attach once perception is live."""
+
+        from autonomy.runtime.client import RuntimeClient
+        from autonomy.runtime.session import RunConfiguration
+
+        from .host_publications import fetch_observation_publication
+        from .runtime_hosts import _log_offset, _new_log_lines, runtime_base_url
+
+        try:
+            base_url = runtime_base_url(vehicle_id)
+        except RuntimeHostError as exc:
+            error = str(exc).splitlines()[0].strip()[:240]
+            return {"ok": False, "error": error or "the run did not start"}
+        offset = _log_offset(vehicle_id)
+        client = RuntimeClient(base_url, timeout_s=3.0)
+        try:
+            client.start(RunConfiguration(mode="observe_only", num_decisions=0))
+        except RuntimeError as exc:
+            error = str(exc).splitlines()[0].strip()[:240]
+            return {"ok": False, "error": error or "the run did not start"}
+
+        def emit_log() -> None:
+            nonlocal offset
+            if on_status is None:
+                return
+            offset, lines = _new_log_lines(vehicle_id, offset)
+            for line in lines:
+                on_status(line)
+
+        deadline = time.monotonic() + _OBSERVE_RUN_TIMEOUT_S
+        while time.monotonic() < deadline:
+            emit_log()
+            try:
+                publication = fetch_observation_publication(base_url, timeout_s=2.0)
+            except (OSError, ConnectionError, TimeoutError, ValueError, RuntimeError):
+                publication = None
+            if isinstance(publication, dict) and publication.get("health") == "healthy":
+                emit_log()
+                return self.connect_host(vehicle_id)
+            try:
+                session = client.status().get("session") or {}
+            except RuntimeError:
+                session = {}
+            if session.get("status") in {"error", "stopped"}:
+                time.sleep(0.1)
+                emit_log()
+                return {"ok": False, "error": "the run stopped before perception was live"}
+            time.sleep(0.1)
+        emit_log()
+        return {"ok": False, "error": "The observation publication health is 'warming'."}
+
     def create_release(self, vehicle_id: str) -> dict[str, Any]:
         """Package this vehicle's controller release."""
 
@@ -352,19 +409,22 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlparse(self.path).path
-        if route in {"/connect", "/host", "/release"}:
+        if route in {"/connect", "/host", "/release", "/run"}:
             vehicle_id = self._posted_vehicle_id()
             if vehicle_id is None:
                 self._send_json(400, {"ok": False, "error": "vehicle id is not valid"})
                 return
             publisher = self.server.publisher
+            if route == "/host":
+                self._stream_json(lambda emit: publisher.create_host(vehicle_id, on_status=emit))
+                return
+            if route == "/run":
+                self._stream_json(lambda emit: publisher.start_run(vehicle_id, on_status=emit))
+                return
             if route == "/connect":
                 result = publisher.connect_host(vehicle_id)
-            elif route == "/release":
-                result = publisher.create_release(vehicle_id)
             else:
-                self._stream_host_creation(vehicle_id)
-                return
+                result = publisher.create_release(vehicle_id)
             self._send_json(200 if result.get("ok") else 409, result)
             return
         if route == PLUGIN_CATALOG_PATH:
@@ -393,7 +453,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
     def do_CONNECT(self) -> None:
         self._reject_write_method()
 
-    def _stream_host_creation(self, vehicle_id: str) -> None:
+    def _stream_json(self, produce: Callable[[Callable[[str], None]], dict[str, Any]]) -> None:
         self.protocol_version = "HTTP/1.1"
         self.close_connection = True
         self.send_response(200)
@@ -408,7 +468,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             self._write_chunk(body)
 
         try:
-            result = self.server.publisher.create_host(vehicle_id, on_status=emit)
+            result = produce(emit)
             done = (json.dumps(result, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
             self._write_chunk(done)
             self.wfile.write(b"0\r\n\r\n")

@@ -232,6 +232,7 @@
         if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
         if (event.type === "keydown") event.preventDefault();
         if (create.dataset.action === "release") createRelease(create.dataset.vehicleId);
+        else if (create.dataset.action === "run") startRun(create.dataset.vehicleId);
         else createHost(create.dataset.vehicleId);
       }
       create.addEventListener("click", activateCreate);
@@ -270,7 +271,7 @@
 
       function showOffer(id, text, label) {
         create.dataset.vehicleId = id;
-        create.dataset.action = label === "create release" ? "release" : "host";
+        create.dataset.action = label === "create release" ? "release" : label === "start run" ? "run" : "host";
         setMessage(text, function () {
           create.textContent = label;
           create.hidden = false;
@@ -329,11 +330,9 @@
         showOffer(id, error, label);
       }
 
-      function createHost(id) {
-        if (!id || create.classList.contains("is-busy")) return;
-        create.classList.add("is-busy");
+      function readStream(path, id) {
         var sawLine = false;
-        fetch("/host", {
+        return fetch(path, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ vehicle_id: id })
@@ -360,16 +359,48 @@
               pieces.forEach(take);
               if (part.done) {
                 if (buffer) take(buffer);
-                return events;
+                return { events: events, sawLine: sawLine };
               }
               return pump();
             });
           }
           return pump();
-        }).then(function (events) {
-          finishHost(id, (events && events[events.length - 1]) || {}, sawLine);
+        });
+      }
+
+      function createHost(id) {
+        if (!id || create.classList.contains("is-busy")) return;
+        create.classList.add("is-busy");
+        readStream("/host", id).then(function (result) {
+          var events = result.events || [];
+          finishHost(id, events[events.length - 1] || {}, result.sawLine);
         }).catch(function () {
           showOffer(id, "the host did not start", "create host");
+        });
+      }
+
+      function startRun(id) {
+        if (!id || create.classList.contains("is-busy")) return;
+        create.classList.add("is-busy");
+        readStream("/run", id).then(function (result) {
+          var events = result.events || [];
+          var payload = events[events.length - 1] || {};
+          if (payload.ok) {
+            window.location.reload();
+            return;
+          }
+          var error = payload.error || "the run did not start";
+          if (result.sawLine) {
+            appendStatus(error);
+            create.textContent = "start run";
+            create.dataset.action = "run";
+            create.hidden = false;
+            create.classList.remove("is-busy");
+            return;
+          }
+          showOffer(id, error, "start run");
+        }).catch(function () {
+          showOffer(id, "the run did not start", "start run");
         });
       }
 
@@ -408,6 +439,10 @@
           var error = payload.error || "perception stream is not live";
           if (error.indexOf("No Chase host is running for ") === 0) {
             showHostOffer(id, error);
+            return;
+          }
+          if (error.indexOf("The observation publication health is 'warming'") === 0) {
+            showOffer(id, error, "start run");
             return;
           }
           showConnectError(error);

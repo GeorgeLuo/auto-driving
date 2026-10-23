@@ -27,6 +27,7 @@ from autonomy.runtime.session import RunConfiguration
 from implementations.vehicle.chase_sim import (
     ChaseCameraCapture, ChaseSimCar,
 )
+from implementations.vehicle.chase_sim.presence import MetricsUiPresence
 
 from . import create_host
 
@@ -224,7 +225,11 @@ def serve(*, vehicle_id: str, ws_url: str | None, runtime_dir: Path, port: int,
         car=car, runtime_dir=runtime_dir, vehicle_id=vehicle_id, port=port,
         on_restart=lambda: (restart.set(), stop.set()),
     )
-    with runtime:
+    # The simulator lists this socket to `vehicles status` as the attached host.
+    presence = MetricsUiPresence(car.ws_url, {
+        "kind": "vehicle-host", "vehicle_id": vehicle_id, "url": runtime.base_url, "pid": os.getpid(),
+    })
+    with runtime, presence:
         write_host_record(host_record, {
             "schema": HOST_RECORD_SCHEMA,
             "vehicle_id": vehicle_id,

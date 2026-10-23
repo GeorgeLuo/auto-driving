@@ -190,10 +190,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = vehicle_commands.add_parser(
         "status",
-        help="Show simulator, vehicle, deployment, worker, and perception-view state.",
+        help="Show whether the simulator is running and which host is attached to it.",
         description=(
-            "Read the complete passive Chase journey state without starting a "
-            "simulator, changing its session, launching a browser, or starting a worker."
+            "Report whether the Chase simulator is running and which vehicle host is "
+            "attached to it, then each known vehicle's layers and the next action."
         ),
     )
     status.add_argument(

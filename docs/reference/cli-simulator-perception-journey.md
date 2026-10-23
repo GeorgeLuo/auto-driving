@@ -47,7 +47,12 @@ explicitly restaged using the recovery that status prints.
 ./cli/automa vehicles status --id chase-sim-chaser
 ```
 
-`vehicles status` is read-only. An HTTP(S) Metrics UI origin is resolved to the
+`vehicles status` is read-only. Its first two lines say whether the simulator
+is running and which vehicle host is attached to it. A running host holds an
+agent socket that Metrics UI lists to other agents (`list_agents`); a Metrics
+UI too old to list agents reports the host as unknown.
+
+An HTTP(S) Metrics UI origin is resolved to the
 same origin at `/ws/control`; an explicit non-root WS(S) path is preserved.
 Use either `--chase-url` or the compatibility option `--chase-ws-url`, not
 both. When neither is supplied, Automa uses `CHASE_UI_WS_URL` when set and

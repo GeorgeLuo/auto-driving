@@ -190,7 +190,14 @@ class MetricsUiConnection:
                     raise MetricsUiWebSocketError("Expected JSON object from WebSocket")
                 return data
             if opcode == 0x8:
-                raise MetricsUiWebSocketError("WebSocket closed by server")
+                # A close payload is a 2-byte status code then a UTF-8 reason.
+                close_code = struct.unpack("!H", payload[:2])[0] if len(payload) >= 2 else None
+                reason = payload[2:].decode("utf-8", errors="replace")
+                cause = " ".join(part for part in (str(close_code or ""), reason) if part)
+                raise MetricsUiWebSocketError(
+                    f"WebSocket closed by server: {cause}" if cause else "WebSocket closed by server",
+                    details={"close_code": close_code, "close_reason": reason},
+                )
             if opcode == 0x9:
                 self._send_frame(payload, opcode=0xA)
             if opcode == 0xA:
@@ -341,6 +348,13 @@ class MetricsUiWsClient:
         response = self.command({"type": "get_state"}, response_type="state_update", timeout_s=timeout_s)
         payload = response.payload
         return payload if isinstance(payload, dict) else {}
+
+    def list_agents(self, *, timeout_s: float | None = None) -> list[dict[str, Any]]:
+        """Other registered agents, each with the ``client`` it registered with."""
+        response = self.command({"type": "list_agents"}, response_type="agent_list", timeout_s=timeout_s)
+        payload = response.payload
+        agents = payload.get("agents") if isinstance(payload, dict) else None
+        return [agent for agent in agents if isinstance(agent, dict)] if isinstance(agents, list) else []
 
     def play(self) -> dict[str, Any]:
         return self.command({"type": "play"}, wait_for_frontend_ack=True).message

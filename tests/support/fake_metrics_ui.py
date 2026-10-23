@@ -24,14 +24,21 @@ _JPEG_DATA_URL = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAgGBgc
 def fake_metrics_ui_server() -> Iterator[str]:
     """Serve the read-only Chase protocol used by deterministic CLI gates."""
 
+    with fake_metrics_ui() as server:
+        yield server.url
+
+
+@contextmanager
+def fake_metrics_ui() -> Iterator[_ThreadingWebSocketServer]:
+    """The same server, for tests that act on the agents attached to it."""
+
     server = _ThreadingWebSocketServer(("127.0.0.1", 0), _MetricsUiHandler)
     thread = threading.Thread(
         target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
     )
     thread.start()
-    host, port = server.server_address[:2]
     try:
-        yield f"ws://{host}:{port}/ws/control"
+        yield server
     finally:
         server.shutdown()
         server.server_close()
@@ -41,6 +48,42 @@ def fake_metrics_ui_server() -> Iterator[str]:
 class _ThreadingWebSocketServer(socketserver.ThreadingTCPServer):
     allow_reuse_address = True
     daemon_threads = True
+
+    def __init__(self, *args: object) -> None:
+        super().__init__(*args)
+        self._agents_lock = threading.Lock()
+        # Like Metrics UI, each registered agent's description, listed to the others.
+        self._agents: dict[_MetricsUiHandler, dict] = {}
+
+    @property
+    def url(self) -> str:
+        host, port = self.server_address[:2]
+        return f"ws://{host}:{port}/ws/control"
+
+    def add_agent(self, handler: _MetricsUiHandler, client: object) -> None:
+        connected_at = time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime())
+        with self._agents_lock:
+            self._agents[handler] = {
+                "client": client if isinstance(client, dict) else None,
+                "connectedAt": connected_at,
+            }
+
+    def remove_agent(self, handler: _MetricsUiHandler) -> None:
+        with self._agents_lock:
+            self._agents.pop(handler, None)
+
+    def list_agents(self, requester: _MetricsUiHandler) -> list[dict]:
+        with self._agents_lock:
+            return [agent for handler, agent in self._agents.items() if handler is not requester]
+
+    def close_agents(self, reason: str) -> None:
+        """Close every agent socket the way a Metrics UI shutdown does."""
+
+        with self._agents_lock:
+            handlers = list(self._agents)
+        for handler in handlers:
+            with handler.send_lock:
+                _send_close(handler.request, 1001, reason)
 
 
 class _MetricsUiHandler(socketserver.BaseRequestHandler):
@@ -63,7 +106,7 @@ class _MetricsUiHandler(socketserver.BaseRequestHandler):
                 "\r\n"
             ).encode("ascii")
         )
-        send_lock = threading.Lock()
+        self.send_lock = send_lock = threading.Lock()
         stopped = threading.Event()
         sender = None
         def send(message):
@@ -95,13 +138,19 @@ class _MetricsUiHandler(socketserver.BaseRequestHandler):
                     sender.start()
                 elif message.get("type") == "play_camera_stream_unsubscribe":
                     stopped.set()
+                elif message.get("type") == "list_agents":
+                    send(_message("agent_list", message.get("request_id"),
+                                  {"agents": self.server.list_agents(self)}))
                 else:
+                    if message.get("type") == "register":
+                        self.server.add_agent(self, message.get("client"))
                     response = _response_for(message)
                     if response is not None:
                         send(response)
         except (ConnectionError, OSError):
             return
         finally:
+            self.server.remove_agent(self)
             stopped.set()
             if sender is not None:
                 sender.join(timeout=1)
@@ -219,6 +268,11 @@ def _send_text(connection: object, text: str) -> None:
         header.append(127)
         header.extend(struct.pack("!Q", len(payload)))
     connection.sendall(bytes(header) + payload)
+
+
+def _send_close(connection: object, code: int, reason: str) -> None:
+    payload = struct.pack("!H", code) + reason.encode("utf-8")
+    connection.sendall(bytes([0x88, len(payload)]) + payload)
 
 
 def _state() -> dict:

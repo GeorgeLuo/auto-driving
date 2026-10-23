@@ -8,6 +8,7 @@ import time
 import urllib.error
 import urllib.request
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
@@ -20,6 +21,7 @@ from implementations.vehicle.chase_sim.defaults import (
     CHASE_UI_WS_URL_ENV,
     DEFAULT_CHASE_UI_WS_URL,
 )
+from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
 from implementations.vehicle.picar import create_picar
 from implementations.vehicle.picar.defaults import (
     DEFAULT_LOCAL_CAR_BASE_URL,
@@ -29,6 +31,9 @@ from implementations.vehicle.picar.defaults import (
 DEFAULT_READINESS_TIMEOUT_S = 5.0
 STATUS_SCHEMA = "automa_vehicle_status_v1"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
+# A current simulator answers list_agents itself; an older one forwards it
+# to the browser, which never answers.
+LIST_AGENTS_TIMEOUT_S = 1.0
 
 
 @dataclass(frozen=True)
@@ -230,7 +235,8 @@ def get_vehicle_status(
     display_url = chase_operator_url(endpoint)
     started = time.monotonic()
     candidate = Candidate("chase-sim", endpoint, "cli")
-    probe = _probe_chase(candidate, timeout_s=operation_timeout)
+    probe = _probe_chase(candidate, timeout_s=operation_timeout, list_hosts=True)
+    simulator = _simulator_summary(probe, display_url)
     discovery = {
         "schema": "automa_vehicle_discovery_v0",
         "checked_at_ms": int(time.time() * 1000),
@@ -313,6 +319,7 @@ def get_vehicle_status(
             discoverable=discoverable_by_id.get(known_id),
             inactive=inactive,
             automation=deployed_by_id.get(known_id),
+            simulator=simulator,
         )
         for known_id in sorted(known_ids)
     ]
@@ -322,6 +329,7 @@ def get_vehicle_status(
     return {
         "schema": STATUS_SCHEMA,
         "vehicle_id": None,
+        "simulator": simulator,
         "endpoint": {
             "operator_url": display_url,
             "resolved_ws_url": endpoint,
@@ -362,9 +370,11 @@ def get_vehicle_status(
 def format_vehicle_status(payload: dict[str, Any]) -> str:
     """Format one status card or an aggregate list with truthful layer names."""
 
+    simulator = payload.get("simulator")
+    lines = [*_format_simulator(simulator), ""] if isinstance(simulator, dict) else []
     cards = payload.get("vehicles")
     if isinstance(cards, list):
-        lines = [f"Known Chase vehicles: {len(cards)}"]
+        lines.append(f"Known Chase vehicles: {len(cards)}")
         for card in cards:
             if isinstance(card, dict):
                 lines.extend(["", *_format_vehicle_status_card(card)])
@@ -379,7 +389,60 @@ def format_vehicle_status(payload: dict[str, Any]) -> str:
                     f"{deployment.get('inspection_command', 'inspection unavailable')}"
                 )
         return "\n".join(lines)
-    return "\n".join(_format_vehicle_status_card(payload))
+    return "\n".join([*lines, *_format_vehicle_status_card(payload)])
+
+
+def _simulator_summary(probe: ProbeResult, operator_url: str) -> dict[str, Any]:
+    """Whether the simulator is running, and the vehicle hosts attached to it.
+
+    ``hosts`` is None when the simulator could not list them.
+    """
+
+    diagnostics = probe.diagnostics
+    if probe.active or diagnostics.get("frontend_connected"):
+        state = "running"
+    elif diagnostics.get("ws_server"):
+        state = "frontend_disconnected"
+    else:
+        state = "unreachable"
+    attached = diagnostics.get("attached_hosts")
+    attached = attached if isinstance(attached, dict) else {}
+    return {
+        "state": state,
+        "operator_url": operator_url,
+        "hosts": attached.get("hosts"),
+        "hosts_error": attached.get("error"),
+    }
+
+
+def _format_simulator(simulator: dict[str, Any]) -> list[str]:
+    url = simulator.get("operator_url", "unknown")
+    state = simulator.get("state")
+    if state == "unreachable":
+        return [f"Simulator: not reachable at {url}", "Host: unknown while the simulator is unreachable"]
+    if state == "running":
+        lines = [f"Simulator: running at {url}"]
+    else:
+        lines = [f"Simulator: server up at {url}, but no browser has the simulator open"]
+    hosts = simulator.get("hosts")
+    if hosts is None:
+        reason = simulator.get("hosts_error") or "it did not answer list_agents"
+        lines.append(f"Host: unknown, this simulator cannot list attached hosts ({reason})")
+    elif not hosts:
+        lines.append("Host: none attached")
+    for host in hosts or []:
+        lines.append(
+            f"Host: {host.get('vehicle_id', 'unknown')} at {host.get('url', 'unknown')} "
+            f"(pid {host.get('pid', 'unknown')}), attached since {_local_time(host.get('connected_at'))}"
+        )
+    return lines
+
+
+def _local_time(value: Any) -> str:
+    try:
+        return datetime.fromisoformat(str(value)).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return str(value)
 
 
 def is_chase_vehicle_id(vehicle_id: str) -> bool:
@@ -396,6 +459,7 @@ def _build_vehicle_status_card(
     discoverable: dict[str, Any] | None,
     inactive: dict[str, Any] | None,
     automation: dict[str, Any] | None,
+    simulator: dict[str, Any],
 ) -> dict[str, Any]:
     diagnostics = (
         inactive.get("diagnostics")
@@ -564,6 +628,7 @@ def _build_vehicle_status_card(
     return {
         "schema": STATUS_SCHEMA,
         "vehicle_id": vehicle_id,
+        "simulator": simulator,
         "endpoint": {
             "operator_url": operator_url,
             "resolved_ws_url": endpoint,
@@ -1178,8 +1243,30 @@ def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     )
 
 
-def _probe_chase(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
+def _probe_chase(candidate: Candidate, *, timeout_s: float, list_hosts: bool = False) -> ProbeResult:
     car = ChaseSimCar(ws_url=candidate.url, timeout_s=timeout_s)
+    probe = _probe_chase_session(car, candidate, timeout_s=timeout_s)
+    if list_hosts and probe.diagnostics.get("ws_server"):
+        probe.diagnostics["attached_hosts"] = _attached_hosts(car, timeout_s=timeout_s)
+    return probe
+
+
+def _attached_hosts(car: ChaseSimCar, *, timeout_s: float) -> dict[str, Any]:
+    """The vehicle hosts holding an agent socket on this simulator."""
+
+    try:
+        agents = car.client.list_agents(timeout_s=min(timeout_s, LIST_AGENTS_TIMEOUT_S))
+    except (OSError, MetricsUiWebSocketError) as exc:
+        return {"hosts": None, "error": str(exc)}
+    hosts = [
+        {**agent["client"], "connected_at": agent.get("connectedAt")}
+        for agent in agents
+        if isinstance(agent.get("client"), dict) and agent["client"].get("kind") == "vehicle-host"
+    ]
+    return {"hosts": hosts, "error": None}
+
+
+def _probe_chase_session(car: ChaseSimCar, candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     diagnostics: dict[str, Any] = {
         "ws_server": False,
         "frontend_connected": False,

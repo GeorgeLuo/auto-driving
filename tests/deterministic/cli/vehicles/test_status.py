@@ -8,11 +8,16 @@ from cli.automa_cli.app import _vehicle_status_exit_code
 from cli.automa_cli.vehicles import (
     Candidate,
     ProbeResult,
+    chase_operator_url,
     format_vehicle_status,
     get_vehicle_status,
     normalize_chase_url,
 )
+from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
+from implementations.vehicle.chase_sim.presence import MetricsUiPresence
 from tests.shared.cli.invoke import invoke_automa
+from tests.shared.implementations.runtime.wait import wait_until
+from tests.support.fake_metrics_ui import fake_metrics_ui
 
 
 def _passive_vehicle() -> dict:
@@ -142,6 +147,7 @@ class VehicleStatusTests(unittest.TestCase):
             {
                 "schema",
                 "vehicle_id",
+                "simulator",
                 "endpoint",
                 "layers",
                 "capture",
@@ -414,6 +420,54 @@ class VehicleStatusTests(unittest.TestCase):
             "expected_state": "automation_deployment=deployed",
         }
         self.assertEqual(_vehicle_status_exit_code(payload), 0)
+
+    def status_against(self, ws_url: str) -> dict:
+        with patch(
+            "cli.automa_cli.automation._collect_automation_status",
+            return_value=[],
+        ):
+            return get_vehicle_status(vehicle_id="chase-sim-chaser", chase_ws_url=ws_url, timeout_s=2.0)
+
+    def test_status_names_the_host_attached_to_the_simulator(self) -> None:
+        host = {"kind": "vehicle-host", "vehicle_id": "chase-sim-chaser",
+                "url": "http://127.0.0.1:8123", "pid": 4321}
+        with fake_metrics_ui() as server, MetricsUiPresence(server.url, host, retry_s=0.05):
+            wait_until(MetricsUiWsClient(server.url).list_agents, message="the host never attached")
+            payload = self.status_against(server.url)
+
+        self.assertEqual(payload["simulator"]["state"], "running")
+        self.assertEqual([item["url"] for item in payload["simulator"]["hosts"]], [host["url"]])
+        lines = format_vehicle_status(payload).splitlines()
+        self.assertEqual(lines[0], f"Simulator: running at {chase_operator_url(server.url)}")
+        self.assertTrue(
+            lines[1].startswith(
+                "Host: chase-sim-chaser at http://127.0.0.1:8123 (pid 4321), attached since "
+            ),
+            lines[1],
+        )
+
+    def test_status_says_when_no_host_is_attached(self) -> None:
+        with fake_metrics_ui() as server:
+            payload = self.status_against(server.url)
+
+        self.assertEqual(payload["simulator"]["hosts"], [])
+        self.assertEqual(format_vehicle_status(payload).splitlines()[1], "Host: none attached")
+
+    def test_status_says_why_hosts_are_unknown(self) -> None:
+        url = "http://localhost:5050/"
+        unlisted = {"state": "running", "operator_url": url, "hosts": None,
+                    "hosts_error": "Timed out waiting for agent_list for list_agents"}
+        self.assertEqual(
+            format_vehicle_status({"simulator": unlisted, "vehicles": []}).splitlines()[:2],
+            [f"Simulator: running at {url}",
+             "Host: unknown, this simulator cannot list attached hosts "
+             "(Timed out waiting for agent_list for list_agents)"],
+        )
+        unreachable = {**unlisted, "state": "unreachable", "hosts_error": None}
+        self.assertEqual(
+            format_vehicle_status({"simulator": unreachable, "vehicles": []}).splitlines()[:2],
+            [f"Simulator: not reachable at {url}", "Host: unknown while the simulator is unreachable"],
+        )
 
     def test_conflicting_explicit_urls_exit_two_before_any_probe(self) -> None:
         result = invoke_automa(

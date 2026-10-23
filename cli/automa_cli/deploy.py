@@ -520,6 +520,8 @@ def _update_local_autonomy(
     restart: bool,
     json_output: bool,
     output: TextIO | None,
+    vehicle: dict[str, Any] | None = None,
+    preserve_selections: bool = False,
 ) -> CommandResult:
     """Package a release for a locally hosted vehicle; ``restart`` moves its host onto it."""
 
@@ -541,9 +543,10 @@ def _update_local_autonomy(
     if problems:
         return CommandResult(2, format_activation_problems(problems))
     try:
-        vehicle = staged_vehicle(vehicle_id)
+        vehicle = vehicle if vehicle is not None else staged_vehicle(vehicle_id)
         release = sync_controller_bundle(bundle, output=output)
-        ensure_step_activations(vehicle_id=vehicle_id, bundle=bundle, release=release, vehicle=vehicle)
+        ensure_step_activations(vehicle_id=vehicle_id, bundle=bundle, release=release, vehicle=vehicle,
+                                preserve_selections=preserve_selections)
         _, summary = release_code_dir(vehicle_id, release["archive"]["sha256"])
     except RuntimeHostError as exc:
         return CommandResult(2, str(exc))

@@ -214,6 +214,35 @@ class UpdateVehicleTests(unittest.TestCase):
             self.assertIsNone(error)
             self.assertEqual(vehicle["connection"]["base_url"], "http://old.local:8887")
 
+    def test_staged_chase_endpoint_wins_over_the_offline_default(self) -> None:
+        from implementations.decision_cycle.catalog import packaged_activation
+
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            vehicle, error = staging_vehicle("chase-sim-chaser", runtime_root=root)
+            self.assertIsNone(error)
+            self.assertEqual(vehicle["connection"]["source"], "offline-default")
+            bundle = vehicle_bundle("chase-sim-chaser", root)
+            payload = packaged_activation("perception").to_payload()
+            payload["metadata"] = {
+                "vehicle_id": "chase-sim-chaser",
+                "provider": "chase-sim",
+                "vehicle_kind": "chase-sim",
+                "activated_at_ms": 5,
+                "runtime": {
+                    "connection": {
+                        "ws_url": "ws://127.0.0.1:5099/ws/control",
+                        "source": "connection",
+                    }
+                },
+            }
+            path = bundle_activation_path(bundle, "perception")
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(payload))
+            vehicle, error = staging_vehicle("chase-sim-chaser", runtime_root=root)
+            self.assertIsNone(error)
+            self.assertEqual(vehicle["connection"]["ws_url"], "ws://127.0.0.1:5099/ws/control")
+
     def test_unknown_vehicle_json_is_transferable_between_all_step_commands(self) -> None:
         for step in STEPS:
             with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:

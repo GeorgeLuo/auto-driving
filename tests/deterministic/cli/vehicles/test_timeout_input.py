@@ -136,16 +136,13 @@ class TimeoutInputTests(unittest.TestCase):
     def test_valid_positive_timeout_reaches_each_consumer_unchanged(self) -> None:
         with patch(
             "cli.automa_cli.app.get_vehicle_status",
-            return_value={"vehicles": []},
+            return_value={"vehicle_id": "chase-sim-chaser", "connection": {"state": "ready", "target": {"vehicle_id": "chase-sim-chaser", "endpoint": "ws://localhost:5050/ws/control"}, "reason_code": "host_stopped", "message": "Ready"}},
         ) as get_status:
             code, _, _ = _invoke("vehicles", "status", "--timeout-s", "1.25")
         self.assertEqual(code, 0)
-        get_status.assert_called_once_with(
-            vehicle_id=None,
-            chase_url=None,
-            chase_ws_url=None,
-            timeout_s=1.25,
-        )
+        self.assertEqual(get_status.call_count, 1)
+        self.assertGreater(get_status.call_args.kwargs["timeout_s"], 0)
+        self.assertLessEqual(get_status.call_args.kwargs["timeout_s"], 1.25)
 
         with patch(
             "cli.automa_cli.app.run_vehicle_automation",
@@ -168,11 +165,12 @@ class TimeoutInputTests(unittest.TestCase):
 
         with patch(
             "cli.automa_cli.app.get_vehicle_status",
-            return_value={"vehicles": []},
+            return_value={"vehicle_id": "chase-sim-chaser", "connection": {"state": "ready", "target": {"vehicle_id": "chase-sim-chaser", "endpoint": "ws://localhost:5050/ws/control"}, "reason_code": "host_stopped", "message": "Ready"}},
         ) as get_status:
             code, _, _ = _invoke("vehicles", "status")
         self.assertEqual(code, 0)
-        self.assertEqual(get_status.call_args.kwargs["timeout_s"], 5.0)
+        self.assertGreater(get_status.call_args.kwargs["timeout_s"], 0)
+        self.assertLessEqual(get_status.call_args.kwargs["timeout_s"], 5.0)
 
         with patch(
             "cli.automa_cli.app.run_vehicle_automation",

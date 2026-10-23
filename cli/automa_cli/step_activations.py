@@ -203,16 +203,18 @@ def staging_vehicle(
 ) -> tuple[dict[str, Any] | None, str | None]:
     """The vehicle every ``vehicles update <step>`` stages for, or why it is unknown.
 
-    A Chase sim id and a vehicle whose identity was recorded by any staged
-    step are known without discovery. Identity must match the requested id;
-    directory names alone do not establish it. The newest valid matching
-    record supplies the connection. Any other id must be discoverable.
-    ``timeout_s`` bounds each discovery probe, not the whole update command.
+    A vehicle whose identity was recorded by any staged step is known without
+    discovery. The newest valid matching record supplies the connection, so a
+    later update keeps the endpoint a connection selected. A Chase sim id with
+    nothing staged uses the offline default endpoint. Identity must match the
+    requested id; directory names alone do not establish it. Any other id must
+    be discoverable. ``timeout_s`` bounds each discovery probe, not the whole
+    update command.
     """
 
-    vehicle = _offline_sim_vehicle(vehicle_id) or _offline_staged_vehicle(
+    vehicle = _offline_staged_vehicle(
         vehicle_bundle(vehicle_id, runtime_root), vehicle_id
-    )
+    ) or _offline_sim_vehicle(vehicle_id)
     if vehicle is not None:
         _emit(output, "Using local vehicle metadata; network liveness is not required for local staging.")
         return vehicle, None
@@ -415,6 +417,7 @@ def ensure_step_activations(
     bundle: dict[str, str],
     release: dict[str, Any],
     vehicle: dict[str, Any] | None = None,
+    preserve_selections: bool = False,
 ) -> dict[str, Path]:
     """Stage every step a deploy ships, recording ``release`` on each.
 
@@ -429,7 +432,7 @@ def ensure_step_activations(
         existing = read_bundle_activation(bundle, step)
         preset = existing.metadata.get("preset") if existing is not None else None
         named = isinstance(preset, str) and preset in STEP_PRESETS.get(step, {})
-        if existing is not None and not named:
+        if existing is not None and (preserve_selections or not named):
             refresh_release(bundle, step, release)
             paths[step] = bundle_activation_path(bundle, step)
             continue

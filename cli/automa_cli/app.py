@@ -4,6 +4,7 @@ import argparse
 import json
 import math
 import sys
+import time
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -232,7 +233,28 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print automa_vehicle_status_v1 JSON.",
     )
+    status.add_argument("--target", help="Exact target reference from status JSON; use without --id or URL flags.")
+    status.add_argument("--picar-url", help="Explicit PiCar host URL (requires --id).")
+    status.add_argument("--watch", action="store_true", help="Keep reporting CLI-owned readiness checks until interrupted.")
+    status.add_argument("--events", action="store_true", help="Stream versioned JSON Lines status events.")
+    status.add_argument("--interval-s", type=float, default=1.0, help="Delay between watch checks (default: 1).")
     status.set_defaults(handler=_handle_vehicles_status)
+
+    connect = vehicle_commands.add_parser("connect", help="Connect to a listed host and verify fresh observation without driving.",
+        description="Try attachment first. If requested, repair the same target; reset requires --allow-reset. "
+                    "Every failure explains the next command and its effects.")
+    connect.add_argument("--id", dest="vehicle_id", help="Vehicle id from vehicles status.")
+    connect.add_argument("--target", help="Exact target reference from status JSON.")
+    connect.add_argument("--chase-url", help="Selected Metrics UI HTTP(S) or WS(S) URL.")
+    connect.add_argument("--chase-ws-url", help="Compatibility alias for an explicit Metrics UI WebSocket URL.")
+    connect.add_argument("--picar-url", help="Selected PiCar host URL (requires --id).")
+    connect.add_argument("--timeout-s", type=float, default=60.0, help="Whole operation deadline in seconds (default: 60).")
+    connect.add_argument("--allow-repair", action="store_true", help="Allow preparation and non-resetting connection repair.")
+    connect.add_argument("--allow-reset", action="store_true", help="Also allow scenario changes or restart of the selected managed UI.")
+    output = connect.add_mutually_exclusive_group()
+    output.add_argument("--json", action="store_true", help="Print one structured terminal result.")
+    output.add_argument("--events", action="store_true", help="Stream progress and one terminal result as JSON Lines.")
+    connect.set_defaults(handler=_handle_vehicles_connect)
 
     automation = vehicle_commands.add_parser(
         "automation",
@@ -1317,6 +1339,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the full machine-readable simulator status payload.",
     )
+    simulators_status.add_argument("--chase-url", help="Selected Metrics UI endpoint; usability requires passive Chase capture.")
     simulators_status.set_defaults(handler=_handle_simulators_status)
 
     simulators_ensure = simulator_commands.add_parser(
@@ -1518,7 +1541,8 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "automa vehicles commands",
                 "",
                 "- active       discover vehicle endpoints (not worker/deployment state)",
-                "- status       inspect simulator, deployment, worker, and view layers",
+                "- status       inspect connection readiness and the next action",
+                "- connect      attach for observation; offer repair and reset when needed",
                 "- update       stage controller selections or deploy vehicle code",
                 "- plugins      upload, arm, disarm and inspect plugins in a live catalog",
                 "- automation   manage locally deployed automation workers",
@@ -1741,35 +1765,95 @@ def _handle_vehicles_active(args: argparse.Namespace) -> int:
     return 0
 
 
+def _connection_target_args(args: argparse.Namespace) -> dict:
+    if args.chase_url and args.chase_ws_url:
+        raise ValueError("--chase-url and --chase-ws-url cannot be used together")
+    return {"reference": args.target, "vehicle_id": args.vehicle_id,
+            "chase_url": args.chase_url or args.chase_ws_url, "picar_url": args.picar_url}
+
+
+def _connection_input_error(args: argparse.Namespace, exc: Exception) -> int:
+    from .connections import ConnectionEvents
+    payload = {"schema": "automa_connection_error_v1", "reason_code": "invalid_arguments",
+               "message": str(exc), "exit_code": 2}
+    if args.events:
+        ConnectionEvents(None, output=sys.stdout, events=True).emit("result", result=payload, exit_code=2)
+    elif args.json:
+        print(json.dumps(payload, sort_keys=True))
+    else:
+        print(str(exc), file=sys.stderr)
+    return 2
+
+
+def _handle_vehicles_connect(args: argparse.Namespace) -> int:
+    from .connection_targets import resolve_target
+    from .connection_status import Deadline
+    from .connections import connect
+    try:
+        Deadline(args.timeout_s)
+        target = resolve_target(**_connection_target_args(args))
+    except (ValueError, OSError) as exc:
+        return _connection_input_error(args, exc)
+    code, _ = connect(target, timeout_s=args.timeout_s, allow_repair=args.allow_repair,
+                      allow_reset=args.allow_reset, output=sys.stdout, events=args.events, json_output=args.json)
+    return code
+
+
 def _handle_vehicles_status(args: argparse.Namespace) -> int:
-    if not _validate_timeout_input(
-        args.timeout_s,
-        command="automa vehicles status",
-        json_output=args.json,
-        human_stream=sys.stderr,
+    from .connection_targets import configured_targets, resolve_target
+    from .connection_status import Deadline, assess_connection, verdict
+    from .connections import ConnectionEvents
+    if not args.events and not _validate_timeout_input(
+        args.timeout_s, command="automa vehicles status", json_output=args.json, human_stream=sys.stderr,
     ):
         return 2
-    if args.chase_url is not None and args.chase_ws_url is not None:
-        print(
-            "automa vehicles status: --chase-url and --chase-ws-url cannot be used together",
-            file=sys.stderr,
-        )
-        return 2
     try:
-        payload = get_vehicle_status(
-            vehicle_id=args.vehicle_id,
-            chase_url=args.chase_url,
-            chase_ws_url=args.chase_ws_url,
-            timeout_s=args.timeout_s,
-        )
-    except ValueError as exc:
-        print(f"automa vehicles status: {exc}", file=sys.stderr)
-        return 2
-    if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
-    else:
-        print(format_vehicle_status(payload))
-    return _vehicle_status_exit_code(payload)
+        Deadline(args.timeout_s)
+        if not math.isfinite(args.interval_s) or args.interval_s <= 0:
+            raise ValueError("--interval-s must be finite and greater than zero.")
+        if args.json and args.events:
+            raise ValueError("Choose --json or --events.")
+        if args.watch and args.json:
+            raise ValueError("Use --watch --events for a machine-readable stream; --json produces one snapshot.")
+        selectors = _connection_target_args(args)
+        targets = [resolve_target(**selectors)] if any(selectors.values()) else configured_targets()
+    except (ValueError, OSError) as exc:
+        return _connection_input_error(args, exc)
+    reporter = ConnectionEvents(None, output=sys.stdout, events=args.events, quiet=args.json)
+    try:
+        while True:
+            deadline = Deadline(args.timeout_s)
+            cards = []
+            for target in targets:
+                try:
+                    if target.provider == "chase-sim":
+                        card = get_vehicle_status(vehicle_id=target.vehicle_id, chase_ws_url=target.endpoint,
+                                                  timeout_s=deadline.remaining())
+                    else:
+                        connection = assess_connection(target, deadline)
+                        card = {"schema": "automa_vehicle_status_v1", "vehicle_id": target.vehicle_id,
+                                "endpoint": {"operator_url": target.endpoint}, "connection": connection, "layers": {}}
+                except TimeoutError as exc:
+                    card = {"vehicle_id": target.vehicle_id, "connection": verdict(target, "unknown", "deadline_exceeded", str(exc), action="refresh")}
+                cards.append(card)
+            payload = cards[0] if any(selectors.values()) else {"schema": "automa_vehicle_status_v1", "vehicle_id": None,
+                "vehicles": cards, "checked_at_ms": int(time.time() * 1000), "other_local_deployments": []}
+            code = 0 if all(c["connection"]["state"] in {"ready", "connected"} for c in cards) else 1
+            if args.events:
+                reporter.emit("status", status=payload)
+            elif args.json:
+                print(json.dumps(payload, indent=2, sort_keys=True))
+            else:
+                print(format_vehicle_status(payload), flush=True)
+            if not args.watch:
+                if args.events:
+                    reporter.emit("result", result=payload, exit_code=code)
+                return code
+            time.sleep(args.interval_s)
+    except KeyboardInterrupt:
+        if args.events:
+            reporter.emit("result", result={"state": "cancelled", "reason_code": "cancelled"}, exit_code=1)
+        return 1
 
 
 def _vehicle_status_exit_code(payload: dict[str, Any]) -> int:
@@ -2213,6 +2297,7 @@ def _handle_simulators_status(args: argparse.Namespace) -> int:
     result = get_simulator_status(
         timeout_ms=args.timeout_ms,
         json_output=args.json,
+        chase_url=args.chase_url,
     )
     if result.message:
         print(result.message)
@@ -2232,7 +2317,22 @@ def _handle_simulators_ensure(args: argparse.Namespace) -> int:
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    machine_connection = arguments[:2] in (["vehicles", "connect"], ["vehicles", "status"]) and ("--json" in arguments or "--events" in arguments)
+    if machine_connection and "--help" not in arguments:
+        from contextlib import redirect_stderr
+        import io
+        errors = io.StringIO()
+        try:
+            with redirect_stderr(errors):
+                args = parser.parse_args(arguments)
+        except SystemExit as exc:
+            if exc.code != 0:
+                return _connection_input_error(argparse.Namespace(events="--events" in arguments, json="--json" in arguments),
+                                               ValueError(errors.getvalue().strip()))
+            raise
+    else:
+        args = parser.parse_args(arguments)
     handler: Any = getattr(args, "handler", None)
     if handler is None and args.command is None:
         handler = _handle_open_viewer

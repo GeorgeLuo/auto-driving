@@ -158,6 +158,8 @@ class RuntimeRoutes:
                 if not isinstance(configuration, dict):
                     raise ValueError("configuration must be an object")
                 self.loop.start(RunConfiguration(**configuration), record=bool(data.get("record", False)))
+            elif command == "connect":
+                self.loop.connect_observation()
             elif command == "read_recording":
                 recording = self.host.recording
                 if recording is None:

@@ -197,8 +197,6 @@ def serve_chase_host(vehicle_id: str) -> int:
     the same across restarts so a client's ``base_url`` survives them.
     """
 
-    vehicle = staged_vehicle(vehicle_id)
-    ws_url = (vehicle.get("connection") or {}).get("ws_url")
     runtime_dir = bundle_root(vehicle_id) / "runtime"
     record_path = automation_dir(vehicle_id) / HOST_RECORD
     port = _free_port()
@@ -214,6 +212,10 @@ def serve_chase_host(vehicle_id: str) -> int:
     signal.signal(signal.SIGINT, forward)
     while True:
         try:
+            # Read on every child start so a restart follows a restaged endpoint
+            # instead of the URL captured when the supervisor process began.
+            vehicle = staged_vehicle(vehicle_id)
+            ws_url = (vehicle.get("connection") or {}).get("ws_url")
             release_dir, release = release_code_dir(vehicle_id)
         except RuntimeHostError as exc:
             print(f"Chase host cannot start: {exc}", file=sys.stderr, flush=True)
@@ -238,7 +240,7 @@ def _wait_for_host(vehicle_id: str, process: subprocess.Popen[Any] | None, timeo
         record = host_record(vehicle_id)
         if record is not None:
             try:
-                RuntimeClient(record["base_url"], timeout_s=1.0).status()
+                RuntimeClient(record["base_url"], timeout_s=max(0.001, min(1.0, deadline - time.monotonic()))).status()
                 return record
             except RuntimeError:
                 pass
@@ -247,7 +249,7 @@ def _wait_for_host(vehicle_id: str, process: subprocess.Popen[Any] | None, timeo
                 f"The Chase host for {vehicle_id} exited with code {process.returncode} before serving.\n"
                 + host_log_tail(vehicle_id)
             )
-        time.sleep(0.1)
+        time.sleep(max(0.0, min(0.1, deadline - time.monotonic())))
     raise RuntimeHostError(
         f"The Chase host for {vehicle_id} did not serve within {timeout_s:g} s.\n" + host_log_tail(vehicle_id)
     )
@@ -296,7 +298,21 @@ def ensure_chase_host(vehicle_id: str, *, timeout_s: float = HOST_START_TIMEOUT_
             cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
             start_new_session=True, env={**os.environ, "PYTHONUNBUFFERED": "1"},
         )
-    return _wait_for_host(vehicle_id, process, timeout_s)["base_url"]
+    try:
+        return _wait_for_host(vehicle_id, process, timeout_s)["base_url"]
+    except BaseException:
+        # This invocation owns the new supervisor's process group. Do not leave
+        # an unrecorded launch behind on timeout/cancellation for the next caller.
+        if process.poll() is None:
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+                process.wait(timeout=0.5)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+            except ProcessLookupError:
+                pass
+        raise
 
 
 def stop_chase_host(vehicle_id: str, *, wait_s: float = 3.0) -> bool:

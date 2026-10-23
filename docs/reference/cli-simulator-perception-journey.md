@@ -34,11 +34,9 @@ explicitly restaged using the recovery that status prints.
   --id chase-sim-chaser \
   --preset lightweight_observer
 
-./cli/automa vehicles automation run \
-  --id chase-sim-chaser \
-  --observe-only \
-  --num-decisions 0 \
-  --open-view
+./cli/automa vehicles connect --id chase-sim-chaser --chase-url http://localhost:5050
+
+./cli/automa vehicles stream perception --id chase-sim-chaser
 
 ./cli/automa vehicles status --id chase-sim-chaser
 
@@ -47,18 +45,27 @@ explicitly restaged using the recovery that status prints.
 ./cli/automa vehicles status --id chase-sim-chaser
 ```
 
-`vehicles status` is read-only. An HTTP(S) Metrics UI origin is resolved to the
-same origin at `/ws/control`; an explicit non-root WS(S) path is preserved.
-Use either `--chase-url` or the compatibility option `--chase-ws-url`, not
-both. When neither is supplied, Automa uses `CHASE_UI_WS_URL` when set and
-otherwise connects to `http://localhost:5050`.
+`vehicles status` is read-only. It reports whether the selected target can
+serve a fresh observation, and the one next command when it cannot. An
+HTTP(S) Metrics UI origin is resolved to the same origin at `/ws/control`; an
+explicit non-root WS(S) path is preserved. Use either `--chase-url` or the
+compatibility option `--chase-ws-url`, not both. When neither is supplied,
+Automa uses the staged endpoint, then `CHASE_UI_WS_URL`, then
+`http://localhost:5050`.
+
+`vehicles connect` attaches to that same target. Connected means the host is
+serving a fresh observation and driving is not enabled. `--allow-repair`
+performs one non-resetting repair. `--allow-reset` is a separate confirmation
+that may restart only the managed UI at the selected endpoint and restore its
+scenario. Neither flag switches the vehicle to a different endpoint. A local
+perception view is optional; open it with `vehicles stream perception`.
 
 `update memory` stages the memory preset and `update perception` the observer.
 Without them, an otherwise fresh cycle runs no memory or perception plugins,
 and `automation run` starts the same way. Each update writes only its own step; absent observation, plan and action activations run
 their built-in plugins. Neither update command starts a worker, applies
-movement, or requires a live simulator. `vehicles status` reports whether the
-run command is ready.
+movement, or requires a live simulator. `vehicles status` reports whether
+`vehicles connect` can attach.
 
 `automation run --observe-only` preserves the current scenario, playback
 state, control source, and input. It succeeds only after one camera frame, the
@@ -225,35 +232,33 @@ it from a slow frontend.
 
 ## Recovery
 
-Targeted status prints exactly one `Next action:` when a required layer is
-blocked. Run the command as printed, or perform the named external change.
+Targeted status prints one `Next:` command when the connection is not ready.
+Run that command. Its endpoint is the one status checked. Repair
+(`--allow-repair`) and reset (`--allow-reset`) are separate confirmations.
 
 | Condition | Recovery |
 | --- | --- |
-| Server unreachable | `./cli/automa simulators ensure --scenario chaser-depth-obstacles` is an explicit configuration-changing option |
-| Frontend disconnected | Open or reload the exact Metrics UI HTTP URL, then rerun status |
-| Wrong game | Preserve it unless you explicitly choose the configuration-changing `simulators ensure --scenario ...` command |
-| Capture identity/image invalid | Repair the exact field named by `capture_identity_invalid` or `capture_image_invalid` |
-| Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it |
-| Deployment absent | Run the printed `vehicles update perception` command; stage memory separately when you want its ledger |
-| Staged step invalid (including a retired schema) | Status, startup, `vehicles info`, and the autonomy update identify its step, activation path, and restage command. Run its `vehicles update <step>` command with your intended selection, then rerun status. Checking never rewrites configs, and known invalid documents prevent worker startup, restart, and physical deployment |
-| Worker stopped | Run the printed observation-only `automation run --open-view` command |
-| View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
+| UI down or browser frontend gone | The printed `vehicles connect --allow-repair` command. It restores or opens that endpoint and preserves the scenario. |
+| Wrong game, or repair did not produce a fresh observation | The printed `vehicles connect --allow-reset` command. It may restart only the managed UI for that endpoint and restore the scenario. |
+| Capture identity/image invalid | Repair the exact field named by `capture_identity_invalid` or `capture_image_invalid`. This is blocked, not a reset. |
+| Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it. |
+| Controller not packaged | The printed repair command packages the local controller and keeps existing step selections. |
+| Staged step invalid (including a retired schema) | Status names the step, activation path, reason, and restage command. Run that `vehicles update <step>` command, then check status. Checking never rewrites configs. |
+| Staged endpoint differs | Connect to the staged endpoint printed as `Next:`. Updates keep that endpoint. |
+| Host is driving | Stop it with the printed `vehicles automation stop` command before connecting. |
+| Host ready, observation stopped | The printed `vehicles connect` command starts observation only. |
 
-Status exits nonzero for failed simulator, capture, worker-error, and view-error
-gates. Normal lifecycle next steps—an undeployed bundle or an intentionally
-stopped worker—remain successful status reads and print the command that
-advances the journey.
+`ready` and `connected` exit 0. Repair, reset, blocked, and unknown exit 1.
+An optional local view is not part of this result. Open it with
+`vehicles stream perception` after the host is connected.
 
-Simulator preparation is deliberately outside passive attachment:
+`simulators ensure` remains an explicit configuration change for the default
+Metrics UI deployment. Status and connect do not call it. It may launch a
+browser, select Play, and select a scenario:
 
 ```sh
 ./cli/automa simulators ensure --scenario chaser-depth-obstacles
 ```
-
-That command may launch a browser, select Play, and select a scenario. Status,
-staging, observation-only automation, viewing, and cleanup never invoke it
-implicitly.
 
 Metrics UI's passive-observation capability request is tracked in
 [metrics-ui#150](https://github.com/GeorgeLuo/metrics-ui/issues/150), with the

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import unittest
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 from cli.automa_cli.app import _vehicle_status_exit_code
@@ -58,6 +60,13 @@ def _passive_vehicle() -> dict:
 
 
 class VehicleStatusTests(unittest.TestCase):
+    def setUp(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        patched = patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", Path(temporary.name))
+        patched.start()
+        self.addCleanup(patched.stop)
+
     def test_normalizes_http_origins_and_preserves_explicit_ws_paths(self) -> None:
         self.assertEqual(
             normalize_chase_url("http://localhost:5050"),
@@ -151,6 +160,7 @@ class VehicleStatusTests(unittest.TestCase):
                 "timeout_s",
                 "elapsed_ms",
                 "diagnostics",
+                "connection",
             },
         )
         self.assertEqual(
@@ -178,9 +188,9 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertIsNone(payload["next_action"]["external_change"])
 
         human = format_vehicle_status(payload)
-        self.assertIn("vehicle: discoverable", human)
-        self.assertIn("automation_worker: stopped", human)
-        self.assertEqual(human.count("Next action:"), 1)
+        self.assertIn("Connection: repair_required", human)
+        self.assertIn("preparation_missing", human)
+        self.assertEqual(human.count("Next:"), 1)
 
     def test_running_observe_only_worker_reports_authority_and_current_view(self) -> None:
         candidate = Candidate(
@@ -252,10 +262,9 @@ class VehicleStatusTests(unittest.TestCase):
             "available",
         )
         human = format_vehicle_status(payload)
-        self.assertIn("action_policy=observe_only", human)
-        self.assertIn("control_application=not_applied", human)
-        self.assertIn("Ready for: inspect perception and stop automation", human)
-        self.assertNotIn("Next action:", human)
+        # A legacy monitor record alone no longer proves a reachable runtime host.
+        self.assertNotIn("Connection: connected", human)
+        self.assertIn("preparation_missing", human)
 
     def test_aggregate_separates_non_chase_local_deployments(self) -> None:
         candidate = Candidate(
@@ -336,9 +345,9 @@ class VehicleStatusTests(unittest.TestCase):
 
         human = format_vehicle_status(payload)
         next_line = next(
-            line for line in human.splitlines() if line.startswith("Next action:")
+            line for line in human.splitlines() if line.startswith("Next:")
         )
-        self.assertIn("Open or reload http://localhost:5050/", next_line)
+        self.assertIn("--chase-url http://localhost:5050/ --allow-repair", next_line)
         self.assertNotIn('{"', next_line)
         self.assertEqual(_vehicle_status_exit_code(payload), 1)
 
@@ -428,8 +437,8 @@ class VehicleStatusTests(unittest.TestCase):
         )
 
         self.assertEqual(result.returncode, 2)
-        self.assertEqual(result.stdout, "")
-        self.assertIn("cannot be used together", result.stderr)
+        self.assertIn("cannot be used together", json.loads(result.stdout)["message"])
+        self.assertEqual(result.stderr, "")
 
     def test_active_json_schema_remains_compatible_while_human_copy_is_narrower(self) -> None:
         result = invoke_automa(

@@ -72,7 +72,7 @@ class AutonomyCycleHost:
         self._session_lock = threading.RLock()
         self._session_view: dict[str, Any] = {}
         self.configuration = RunConfiguration(mode="manual")
-        self.run_state = "stopped"
+        self.run_state = "pre_start"
         self.run_decisions = 0
         self.recording: RunRecording | None = None
         self._run_generation = 0

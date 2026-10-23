@@ -21,7 +21,7 @@ Run these commands from the repository root with the environment from
 perception and memory presets. For an existing tuned deployment, stage your
 intended selections instead: each update replaces its named step's configs.
 `runtime/` persists across branch changes; incompatible activations must be
-explicitly restaged using the recovery that status prints.
+explicitly restaged using the recovery that `vehicles automation status` prints.
 
 ```sh
 ./cli/automa vehicles status --chase-url http://localhost:5050
@@ -40,17 +40,20 @@ explicitly restaged using the recovery that status prints.
   --num-decisions 0 \
   --open-view
 
-./cli/automa vehicles status --id chase-sim-chaser
+./cli/automa vehicles automation status --id chase-sim-chaser
 
 ./cli/automa vehicles automation stop --id chase-sim-chaser
 
-./cli/automa vehicles status --id chase-sim-chaser
+./cli/automa vehicles automation status --id chase-sim-chaser
 ```
 
-`vehicles status` is read-only. Its first two lines say whether the simulator
-is running and which vehicle host is attached to it. A running host holds an
-agent socket that Metrics UI lists to other agents (`list_agents`); a Metrics
-UI too old to list agents reports the host as unknown.
+`vehicles status` is read-only and prints only whether the simulator is running
+and which vehicle hosts are attached to it. The simulator is running when its
+Metrics UI server answers, whether or not a browser has it open. A running host
+holds an agent socket that Metrics UI lists to other agents (`list_agents`); a
+Metrics UI too old to list agents reports the hosts as unknown. `--id` shows
+only that vehicle's host. Status exits 1 only when the simulator is not
+reachable, and its JSON is `automa_simulator_status_v1`.
 
 An HTTP(S) Metrics UI origin is resolved to the
 same origin at `/ws/control`; an explicit non-root WS(S) path is preserved.
@@ -62,8 +65,8 @@ otherwise connects to `http://localhost:5050`.
 Without them, an otherwise fresh cycle runs no memory or perception plugins,
 and `automation run` starts the same way. Each update writes only its own step; absent observation, plan and action activations run
 their built-in plugins. Neither update command starts a worker, applies
-movement, or requires a live simulator. `vehicles status` reports whether the
-run command is ready.
+movement, or requires a live simulator. `vehicles automation status` reports
+invalid staged steps, and `automation run` checks them before it starts.
 
 `automation run --observe-only` preserves the current scenario, playback
 state, control source, and input. It succeeds only after one camera frame, the
@@ -196,12 +199,7 @@ The commands keep these layers separate:
 
 The compatibility command `vehicles active` means only “discoverable vehicle.”
 It does not imply a deployed bundle, running worker, or healthy browser view.
-Its JSON remains `automa_vehicle_discovery_v0`; aggregate status JSON is
-`automa_vehicle_status_v1`.
-
-Aggregate status evaluates Chase cards only. Other local deployments, such as
-PiRacer, are listed separately with their `vehicles automation status` command
-instead of being assigned Chase simulator, camera, or frontend state.
+Its JSON remains `automa_vehicle_discovery_v0`.
 
 An absent or malformed evaluator reference does not block camera perception.
 It is excluded from perception, observation, memory, and decision inputs.
@@ -230,25 +228,24 @@ it from a slow frontend.
 
 ## Recovery
 
-Targeted status prints exactly one `Next action:` when a required layer is
-blocked. Run the command as printed, or perform the named external change.
+The automation commands and `simulators ensure` print the recovery when a
+required layer is blocked. Run the command as printed, or perform the named
+external change.
 
 | Condition | Recovery |
 | --- | --- |
 | Server unreachable | `./cli/automa simulators ensure --scenario chaser-depth-obstacles` is an explicit configuration-changing option |
-| Frontend disconnected | Open or reload the exact Metrics UI HTTP URL, then rerun status |
+| Frontend disconnected | Open or reload the exact Metrics UI HTTP URL, then rerun the command |
 | Wrong game | Preserve it unless you explicitly choose the configuration-changing `simulators ensure --scenario ...` command |
 | Capture identity/image invalid | Repair the exact field named by `capture_identity_invalid` or `capture_image_invalid` |
 | Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it |
 | Deployment absent | Run the printed `vehicles update perception` command; stage memory separately when you want its ledger |
-| Staged step invalid (including a retired schema) | Status, startup, `vehicles info`, and the autonomy update identify its step, activation path, and restage command. Run its `vehicles update <step>` command with your intended selection, then rerun status. Checking never rewrites configs, and known invalid documents prevent worker startup, restart, and physical deployment |
+| Staged step invalid (including a retired schema) | `vehicles automation status`, startup, `vehicles info`, and the autonomy update identify its step, activation path, and restage command. Run its `vehicles update <step>` command with your intended selection, then rerun `vehicles automation status`. Checking never rewrites configs, and known invalid documents prevent worker startup, restart, and physical deployment |
 | Worker stopped | Run the printed observation-only `automation run --open-view` command |
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 
-Status exits nonzero for failed simulator, capture, worker-error, and view-error
-gates. Normal lifecycle next steps—an undeployed bundle or an intentionally
-stopped worker—remain successful status reads and print the command that
-advances the journey.
+`vehicles status` exits nonzero only when the simulator is not reachable; no
+attached host is a successful read.
 
 Simulator preparation is deliberately outside passive attachment:
 

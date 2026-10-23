@@ -45,8 +45,8 @@ from .vehicles import (
     DEFAULT_READINESS_TIMEOUT_S,
     discover_active_vehicles,
     format_active_vehicles,
-    format_vehicle_status,
-    get_vehicle_status,
+    format_chase_simulator_status,
+    get_chase_simulator_status,
 )
 
 
@@ -190,17 +190,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = vehicle_commands.add_parser(
         "status",
-        help="Show whether the simulator is running and which host is attached to it.",
+        help="Show whether the simulator is running and which hosts are attached to it.",
         description=(
-            "Report whether the Chase simulator is running and which vehicle host is "
-            "attached to it, then each known vehicle's layers and the next action."
+            "Report whether the Chase simulator is running and which vehicle hosts are "
+            "attached to it. Exits 1 when the simulator is not running."
         ),
     )
     status.add_argument(
         "--id",
         dest="vehicle_id",
         default=None,
-        help="Vehicle id to inspect. Omit to list every discoverable or locally deployed id.",
+        help="Show only this vehicle's host. Omit to list every attached host.",
     )
     status.add_argument(
         "--chase-url",
@@ -223,14 +223,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_READINESS_TIMEOUT_S,
         help=(
-            "One wall-clock deadline for all Chase readiness phases in seconds "
+            "One wall-clock deadline for every simulator query in seconds "
             f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
     )
     status.add_argument(
         "--json",
         action="store_true",
-        help="Print automa_vehicle_status_v1 JSON.",
+        help="Print automa_simulator_status_v1 JSON.",
     )
     status.set_defaults(handler=_handle_vehicles_status)
 
@@ -260,7 +260,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Discoverable vehicle id from `automa vehicles status`.",
+        help="Discoverable vehicle id from `automa vehicles active`.",
     )
     automation_run.add_argument(
         "--timeout-s",
@@ -338,7 +338,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Locally deployed vehicle id from `automa vehicles status`.",
+        help="Locally deployed vehicle id from `automa vehicles automation status`.",
     )
     automation_stop.add_argument(
         "--wait-s",
@@ -1397,7 +1397,7 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "- status  show live catalog availability and plugin revisions (list is an alias)",
         "- help    show this summary", "",
         "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; upload, arm and disarm do not start automation.",
-        "Use ./cli/automa vehicles status --id <vehicle> for the next startup action when no host is running.",
+        "Use ./cli/automa vehicles status --id <vehicle> to see whether its host is attached to the simulator.",
         "Use --url <runtime-or-workbench-url> to address an existing catalog directly.", "",
         "Example:",
         "  ./cli/automa vehicles plugins upload --id chase-sim-chaser --file ./prototype.py --step perception --plugin-id prototype --entrypoint prototype:Prototype",
@@ -1756,7 +1756,7 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
         )
         return 2
     try:
-        payload = get_vehicle_status(
+        payload = get_chase_simulator_status(
             vehicle_id=args.vehicle_id,
             chase_url=args.chase_url,
             chase_ws_url=args.chase_ws_url,
@@ -1768,28 +1768,8 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
-        print(format_vehicle_status(payload))
-    return _vehicle_status_exit_code(payload)
-
-
-def _vehicle_status_exit_code(payload: dict[str, Any]) -> int:
-    cards = payload.get("vehicles")
-    status_cards = (
-        [card for card in cards if isinstance(card, dict)]
-        if isinstance(cards, list)
-        else [payload]
-    )
-    normal_next_steps = {
-        "automation_not_deployed",
-        "worker_stopped",
-    }
-    for card in status_cards:
-        next_action = card.get("next_action")
-        if not isinstance(next_action, dict):
-            continue
-        if str(next_action.get("reason")) not in normal_next_steps:
-            return 1
-    return 0
+        print(format_chase_simulator_status(payload))
+    return 0 if payload["state"] == "running" else 1
 
 
 def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:

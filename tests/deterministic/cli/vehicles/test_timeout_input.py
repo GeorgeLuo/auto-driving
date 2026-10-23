@@ -29,7 +29,7 @@ def _timeout_args(value: str) -> tuple[str, ...]:
 class TimeoutInputTests(unittest.TestCase):
     def test_invalid_status_values_use_one_json_error_envelope_before_status_work(self) -> None:
         for value in INVALID_TIMEOUTS:
-            with self.subTest(value=value), patch("cli.automa_cli.app.get_vehicle_status") as get_status:
+            with self.subTest(value=value), patch("cli.automa_cli.app.get_chase_simulator_status") as get_status:
                 code, stdout, stderr = _invoke(
                     "vehicles",
                     "status",
@@ -51,7 +51,7 @@ class TimeoutInputTests(unittest.TestCase):
 
     def test_invalid_status_values_use_the_existing_human_error_channel(self) -> None:
         for value in INVALID_TIMEOUTS:
-            with self.subTest(value=value), patch("cli.automa_cli.app.get_vehicle_status") as get_status:
+            with self.subTest(value=value), patch("cli.automa_cli.app.get_chase_simulator_status") as get_status:
                 code, stdout, stderr = _invoke(
                     "vehicles",
                     "status",
@@ -135,8 +135,8 @@ class TimeoutInputTests(unittest.TestCase):
 
     def test_valid_positive_timeout_reaches_each_consumer_unchanged(self) -> None:
         with patch(
-            "cli.automa_cli.app.get_vehicle_status",
-            return_value={"vehicles": []},
+            "cli.automa_cli.app.get_chase_simulator_status",
+            return_value={"state": "running", "operator_url": "http://localhost:5050/", "hosts": []},
         ) as get_status:
             code, _, _ = _invoke("vehicles", "status", "--timeout-s", "1.25")
         self.assertEqual(code, 0)
@@ -167,8 +167,8 @@ class TimeoutInputTests(unittest.TestCase):
         self.assertEqual(run_automation.call_args.kwargs["timeout_s"], 1.25)
 
         with patch(
-            "cli.automa_cli.app.get_vehicle_status",
-            return_value={"vehicles": []},
+            "cli.automa_cli.app.get_chase_simulator_status",
+            return_value={"state": "running", "operator_url": "http://localhost:5050/", "hosts": []},
         ) as get_status:
             code, _, _ = _invoke("vehicles", "status")
         self.assertEqual(code, 0)

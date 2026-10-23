@@ -30,28 +30,17 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     env = {"CHASE_UI_WS_URL": ws_url}
                     command = f"./cli/automa vehicles update {step} --id {VEHICLE_ID}"
                     human = invoke_automa(
-                        "vehicles", "status", "--id", VEHICLE_ID,
-                        runtime_root=runtime_root, extra_env=env, check=False,
+                        "vehicles", "automation", "status", "--id", VEHICLE_ID,
+                        runtime_root=runtime_root, extra_env=env,
                     )
-                    machine = invoke_automa(
-                        "vehicles", "status", "--id", VEHICLE_ID, "--json",
-                        runtime_root=runtime_root, extra_env=env, check=False,
-                    )
-                    payload = json.loads(machine.stdout)
-                    self.assertEqual(human.returncode, 1, human.stdout + human.stderr)
-                    self.assertEqual(machine.returncode, 1)
                     self.assertIn(f"Invalid {step} activation:", human.stdout)
-                    self.assertIn(f"Next action: {command}", human.stdout)
-                    self.assertEqual(payload["layers"]["automation_deployment"]["state"], "invalid")
-                    self.assertEqual(payload["next_action"]["reason"], "step_activation_invalid")
-                    self.assertEqual(payload["next_action"]["command"], command)
-                    details = payload["layers"]["automation_deployment"]["details"]
-                    self.assertEqual(details["activation_problems"][0]["step"], step)
+                    self.assertIn(f"next: {command}", human.stdout)
                     automation = json.loads(invoke_automa(
                         "vehicles", "automation", "status", "--id", VEHICLE_ID, "--json",
                         runtime_root=runtime_root, extra_env=env,
                     ).stdout)
                     self.assertEqual(automation["outcome"]["status"], "degraded")
+                    self.assertEqual(automation["vehicles"][0]["activation_problems"][0]["step"], step)
                     self.assertEqual(automation["vehicles"][0]["process"]["recovery"], command)
                     for verb in ("run", "restart"):
                         result = invoke_automa(
@@ -82,13 +71,6 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                 runtime_root=runtime_root, extra_env=env,
             )
             self.assertEqual(path.read_text(encoding="utf-8"), original)
-            blocked = json.loads(invoke_automa(
-                "vehicles", "status", "--id", VEHICLE_ID, "--json",
-                runtime_root=runtime_root, extra_env=env, check=False,
-            ).stdout)
-            self.assertEqual(blocked["readiness"]["status"], "blocked")
-            self.assertEqual(blocked["readiness"]["blocking_layer"], "automation_deployment")
-            self.assertEqual(blocked["next_action"]["reason"], "step_activation_invalid")
             automation = json.loads(invoke_automa(
                 "vehicles", "automation", "status", "--id", VEHICLE_ID, "--json",
                 runtime_root=runtime_root, extra_env=env,
@@ -99,12 +81,12 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                 "vehicles", "update", "memory", "--id", VEHICLE_ID,
                 "--preset", "recency_ledger", runtime_root=runtime_root, extra_env=env,
             )
-            status = json.loads(invoke_automa(
-                "vehicles", "status", "--id", VEHICLE_ID, "--json",
+            restaged = json.loads(invoke_automa(
+                "vehicles", "automation", "status", "--id", VEHICLE_ID, "--json",
                 runtime_root=runtime_root, extra_env=env,
-            ).stdout)
-            self.assertEqual(status["layers"]["automation_deployment"]["state"], "deployed")
-            self.assertEqual(status["next_action"]["reason"], "worker_stopped")
+            ).stdout)["vehicles"][0]
+            self.assertTrue(restaged["deployed"])
+            self.assertFalse(restaged["process"]["running"])
 
     def test_info_and_stream_name_the_invalid_step_and_its_restage_command(self) -> None:
         with fake_metrics_ui_server() as ws_url:

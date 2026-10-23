@@ -430,14 +430,14 @@ def open_view_message(url: str) -> str:
 
 
 def connectable_hosts(status: dict[str, Any]) -> list[dict[str, Any]]:
-    """List the runtime hosts in a ``vehicles status`` payload with a one-word state."""
+    """List the runtime hosts in a ``get_vehicle_status`` payload with a one-word state."""
 
     # A blocked host is named by the layer that blocks it.
     hosts = [
         {"vehicle_id": card["vehicle_id"], "state": card["readiness"]["blocking_layer"] or "ready"}
         for card in status["vehicles"]
     ]
-    # vehicles status does not probe deployments outside Chase.
+    # get_vehicle_status does not probe deployments outside Chase.
     hosts.extend(
         {"vehicle_id": deployment["vehicle_id"], "state": None}
         for deployment in status["other_local_deployments"]

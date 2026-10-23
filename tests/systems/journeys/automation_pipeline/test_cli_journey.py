@@ -10,15 +10,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from implementations.vehicle.chase_sim.car import ChaseSimCar
 from tests.shared.cli.invoke import invoke_automa
+from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.cli_runner import AUTOMA_PATH, WORKSPACE_ROOT, run_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
 
-def _session_fingerprint(payload: dict) -> dict:
-    passive = payload["layers"]["passive_capture"]
+def _session_fingerprint(ws_url: str) -> dict:
+    passive = ChaseSimCar(ws_url=ws_url, timeout_s=5.0).inspect_passive_capture()
     preservation = passive["session_preservation"]
-    if passive["state"] != "available" or preservation["preserved"] is not True:
+    if passive["status"] != "available" or preservation["preserved"] is not True:
         raise AssertionError(f"passive session is not proven: {passive}")
     if passive["mutation_attempted"] is not False:
         raise AssertionError(f"passive capture attempted a mutation: {passive}")
@@ -97,28 +99,15 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     "/ws/control"
                 )
 
-                initial = json.loads(
-                    invoke_automa(
-                        "vehicles",
-                        "status",
-                        "--chase-url",
-                        http_url,
-                        "--json",
-                        runtime_root=runtime_root,
-                        extra_env=env,
-                    ).stdout
-                )
-                self.assertEqual(len(initial["vehicles"]), 1)
-                initial_vehicle = initial["vehicles"][0]
-                self.assertEqual(
-                    initial_vehicle["layers"]["passive_capture"]["state"],
-                    "available",
-                )
-                self.assertEqual(
-                    initial_vehicle["layers"]["automation_deployment"]["state"],
-                    "not_deployed",
-                )
-                initial_fingerprint = _session_fingerprint(initial_vehicle)
+                def simulator() -> dict:
+                    return json.loads(invoke_automa(
+                        "vehicles", "status", "--chase-url", http_url, "--json",
+                        runtime_root=runtime_root, extra_env=env,
+                    ).stdout)
+
+                initial = simulator()
+                self.assertEqual((initial["state"], initial["hosts"]), ("running", []))
+                initial_fingerprint = _session_fingerprint(ws_url)
 
                 invoke_automa(
                     "vehicles", "update", "memory", "--id", "chase-sim-chaser",
@@ -137,11 +126,11 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     extra_env=env,
                 )
                 staged = json.loads(invoke_automa(
-                    "vehicles", "status", "--id", "chase-sim-chaser", "--json",
+                    "vehicles", "automation", "status", "--id", "chase-sim-chaser", "--json",
                     runtime_root=runtime_root, extra_env=env,
-                ).stdout)
-                self.assertEqual(staged["layers"]["automation_deployment"]["state"], "deployed")
-                self.assertEqual(staged["next_action"]["reason"], "worker_stopped")
+                ).stdout)["vehicles"][0]
+                self.assertTrue(staged["deployed"])
+                self.assertFalse(staged["process"]["running"])
 
                 try:
                     run = run_automa(
@@ -187,38 +176,18 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     ).stdout)["vehicles"][0]["state"]["run_id"]
                     self.assertNotEqual(new_run, old_run)
 
-                    running = json.loads(
-                        invoke_automa(
-                            "vehicles",
-                            "status",
-                            "--id",
-                            "chase-sim-chaser",
-                            "--json",
-                            runtime_root=runtime_root,
-                            extra_env=env,
-                        ).stdout
+                    wait_until(
+                        lambda: [host["vehicle_id"] for host in simulator()["hosts"]] == ["chase-sim-chaser"],
+                        message="the simulator never listed the running host",
                     )
-                    self.assertEqual(
-                        running["layers"]["automation_worker"]["state"],
-                        "running",
-                    )
-                    self.assertEqual(
-                        running["layers"]["perception_view"]["state"],
-                        "available",
-                        json.dumps(running, indent=2, sort_keys=True),
-                    )
-                    authority = running["layers"]["automation_worker"]["details"][
-                        "authority"
-                    ]
-                    self.assertEqual(authority["action_policy"], "observe_only")
-                    self.assertEqual(
-                        authority["control_application"],
-                        "not_applied",
-                    )
-                    self.assertEqual(
-                        _session_fingerprint(running),
-                        initial_fingerprint,
-                    )
+                    running = json.loads(invoke_automa(
+                        "vehicles", "automation", "status", "--id", "chase-sim-chaser",
+                        "--json", runtime_root=runtime_root, extra_env=env,
+                    ).stdout)["vehicles"][0]
+                    self.assertTrue(running["process"]["running"])
+                    self.assertEqual(running["state"]["action_policy"], "observe_only")
+                    self.assertEqual(running["state"]["control_application"], "not_applied")
+                    self.assertEqual(_session_fingerprint(ws_url), initial_fingerprint)
                 finally:
                     stopped = invoke_automa(
                         "vehicles",
@@ -237,33 +206,13 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     stopped.stdout,
                 )
 
-                final = json.loads(
-                    invoke_automa(
-                        "vehicles",
-                        "status",
-                        "--id",
-                        "chase-sim-chaser",
-                        "--json",
-                        runtime_root=runtime_root,
-                        extra_env=env,
-                    ).stdout
-                )
-                self.assertEqual(
-                    final["layers"]["automation_deployment"]["state"],
-                    "deployed",
-                )
-                self.assertEqual(
-                    final["layers"]["automation_worker"]["state"],
-                    "stopped",
-                )
-                self.assertNotEqual(
-                    final["layers"]["perception_view"]["state"],
-                    "available",
-                )
-                self.assertEqual(
-                    _session_fingerprint(final),
-                    initial_fingerprint,
-                )
+                final = json.loads(invoke_automa(
+                    "vehicles", "automation", "status", "--id", "chase-sim-chaser",
+                    "--json", runtime_root=runtime_root, extra_env=env,
+                ).stdout)["vehicles"][0]
+                self.assertTrue(final["deployed"])
+                self.assertFalse(final["process"]["running"])
+                self.assertEqual(_session_fingerprint(ws_url), initial_fingerprint)
 
 
 if __name__ == "__main__":

@@ -16,7 +16,7 @@ class FloorPlaneConfig:
     seed_x1_ratio: float = 0.75
     seed_y0_ratio: float = 0.72
     seed_y1_ratio: float = 0.96
-    floor_threshold: float = 3.8
+    floor_threshold: float = 3.2
     brightness_weight: float = 0.55
     morph_radius: int = 2
     morph_threshold: float = 0.42

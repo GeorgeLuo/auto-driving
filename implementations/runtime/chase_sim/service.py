@@ -85,6 +85,10 @@ class ChaseFrameLoop(FrameLoop):
             if (generation != self._capture_generation or not self._capture_enabled
                     or self.host.run_state != "running"):
                 return
+            target = getattr(getattr(self.host, "execution", None), "target", None)
+            note_view = getattr(target, "note_view", None)
+            if callable(note_view):
+                note_view(capture.jpeg_bytes)
             self.submit(
                 None, frame_id=capture.frame_id, frame_index=capture.frame_index,
                 captured_at_ms=capture.captured_at_ms, jpeg_bytes=capture.jpeg_bytes,

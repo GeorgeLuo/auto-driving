@@ -192,24 +192,26 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         p = propose(_source(()))
         self.assertEqual(p.lifecycle, "inactive")
 
-    def test_center_band_inactive(self) -> None:
-        p = propose(
-            _source(
-                (
-                    _record(
-                        zone="center",
-                        bbox=(0.45, 0.0, 0.55, 1.0),
-                    ),
-                )
-            )
+    def test_center_band_drives(self) -> None:
+        cases = (
+            ("center", (0.45, 0.0, 0.55, 1.0), "steer_away_right_obstruction"),
+            ("mid_center", (0.29, 0.47, 0.65, 0.49), "steer_away_left_obstruction"),
         )
-        self.assertEqual(p.lifecycle, "inactive")
+        for zone, bbox, reason in cases:
+            with self.subTest(zone=zone):
+                p = propose(_source((_record(zone=zone, bbox=bbox),)))
+                self.assertEqual(p.lifecycle, "fresh")
+                self.assertEqual(p.reason, reason)
+                self.assertIsNotNone(p.command)
+                assert p.command is not None
+                self.assertGreater(p.command.throttle, 0.0)
+                self.assertNotEqual(p.command.steering, 0.0)
 
     def test_fresh_center_does_not_fall_back_to_retained_side(self) -> None:
-        # Fresh pool exists (center-band cue only). Must not fall back to older retained left.
+        # Fresh center leans right. Do not replace it with the older retained left.
         fresh_center = _record(
-            zone="center",
-            bbox=(0.45, 0.0, 0.55, 1.0),
+            zone="mid_center",
+            bbox=(0.46, 0.0, 0.56, 1.0),
             frame_id="frame_002",
             updated_at_ms=2000,
             confidence=0.5,
@@ -225,8 +227,9 @@ class AvoidRecentObstructionTests(unittest.TestCase):
         p = propose(
             _source((fresh_center, retained_left), now=2000, frame="frame_002")
         )
-        self.assertEqual(p.lifecycle, "inactive")
-        self.assertIsNone(p.command)
+        self.assertEqual(p.lifecycle, "fresh")
+        self.assertEqual(p.reason, "steer_away_right_obstruction")
+        self.assertIsNotNone(p.command)
 
     def test_chase_compound_zone_with_bbox_is_active(self) -> None:
         """Live floor_continuity zones are mid_left/near_right, not exact left/right."""

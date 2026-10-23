@@ -51,7 +51,16 @@ def _bbox_mid_x(record: RetainedEvidence) -> float | None:
 
 # Zones that mean "no explicit left/right" so bbox mid_x may supply the cue.
 # "unknown" is ViewLocation.from_dict's canonical missing-zone value.
-_BBOX_FALLBACK_ZONES = frozenset({None, "", "center", "unknown"})
+# Compound center zones are what a boundary across the view is labeled.
+_BBOX_FALLBACK_ZONES = frozenset({
+    None,
+    "",
+    "center",
+    "unknown",
+    "near_center",
+    "mid_center",
+    "far_center",
+})
 _IMAGE_LATERAL_ZONES = {
     "left": "left",
     "right": "right",
@@ -89,7 +98,7 @@ def _has_lateral_cue(record: RetainedEvidence) -> bool:
 
 
 def _lateral_side(record: RetainedEvidence) -> str | None:
-    """Resolved side for command emission; center-band cue yields None (try next)."""
+    """Resolved side. A centered bbox still turns, leaning left below 0.5."""
 
     location = record.location
     if location is None:
@@ -103,11 +112,9 @@ def _lateral_side(record: RetainedEvidence) -> str | None:
     mid_x = _bbox_mid_x(record)
     if mid_x is None:
         return None
-    if mid_x < 0.45:
+    if mid_x < 0.5:
         return "left"
-    if mid_x > 0.55:
-        return "right"
-    return None
+    return "right"
 
 
 def _bbox_bottom(record: RetainedEvidence) -> float:
@@ -290,8 +297,8 @@ def propose(
     def pick(records: list[RetainedEvidence]) -> RetainedEvidence:
         return sorted(records, key=lambda r: (*confidence_rank(r.confidence), r.record_id))[0]
 
-    # Fresh pool first if any fresh records exist — do not fall back to retained
-    # when the fresh pool is only center-band (no usable lateral side).
+    # Fresh pool first. A fresh record keeps its own side; do not replace it
+    # with an older retained side.
     if fresh:
         active_pool: list[RetainedEvidence] | None = fresh
         pool_lifecycle = "fresh"

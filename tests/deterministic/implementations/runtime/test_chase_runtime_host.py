@@ -229,6 +229,43 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 self.assertIn("simulator_capability_missing", host.loop.host.last_error)
                 self.assertEqual(host.loop.frames_received, 0)
 
+    def test_a_frozen_picture_backs_up_until_the_camera_changes(self) -> None:
+        from autonomy.runtime.control import AutonomyControl
+        from autonomy.runtime.frame_loop import encode_jpeg
+        from implementations.runtime.chase_sim.control import ChaseControlTarget, _STILL_VIEWS
+
+        def jpeg(value: int) -> bytes:
+            return encode_jpeg(np.full((48, 64, 3), value, dtype=np.uint8))
+
+        class Car:
+            def __init__(self) -> None:
+                self.sent: list[tuple[bool, bool, float, float]] = []
+
+            def execute_action(self, action, *, throttle):
+                sent = (bool(action.forward), bool(action.reverse), float(action.steering), float(throttle))
+                self.sent.append(sent)
+                return {"payload": {"motion": "reverse" if action.reverse else "forward"}}
+
+        car = Car()
+        target = ChaseControlTarget(car)
+        command = AutonomyControl(steering=1.0, throttle=0.6, reason="steer_away_left_obstruction")
+        for _ in range(_STILL_VIEWS):
+            target.note_view(jpeg(100))
+        target.write(command)
+        self.assertEqual(car.sent[-1][:2], (True, False))
+        # A still camera's encoder noise is not a new picture.
+        target.note_view(jpeg(101))
+        target.write(command)
+        self.assertEqual(car.sent[-1][:3], (False, True, 1.0))
+        target.note_view(jpeg(40))
+        target.write(command)
+        self.assertEqual(car.sent[-1][:2], (True, False))
+        hold = AutonomyControl(steering=0.0, throttle=0.0, reason="no-selected-command")
+        for _ in range(_STILL_VIEWS):
+            target.note_view(jpeg(40))
+        target.write(hold)
+        self.assertEqual(car.sent[-1][:3], (False, True, 1.0))
+
     def test_capability_error_ends_the_run(self):
         from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
         car = _FakeCar()

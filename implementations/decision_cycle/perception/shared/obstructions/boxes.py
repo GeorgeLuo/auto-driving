@@ -12,9 +12,8 @@ def clamp(value: float, low: float, high: float) -> float:
 def zone(bbox: tuple[float, float, float, float]) -> str:
     cx = (bbox[0] + bbox[2]) / 2.0
     cy = (bbox[1] + bbox[3]) / 2.0
-    # Keep the lateral bands aligned with the proposal plugin's image-space
-    # fallback thresholds.  This lets a centered-looking box still contribute
-    # when its bbox supplies an unambiguous side cue.
+    # Left of 0.45 and right of 0.55 are explicit sides. A center label is
+    # still a bbox cue: the avoidance proposal turns toward the side it leans.
     horizontal = "left" if cx < 0.45 else "right" if cx > 0.55 else "center"
     vertical = "near" if cy > 0.66 else "far" if cy < 0.33 else "mid"
     return f"{vertical}_{horizontal}"

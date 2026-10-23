@@ -74,8 +74,22 @@
       font-size: 12px;
       line-height: 1.35;
     }
+    #connectFrame .env-name {
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12px;
+      line-height: 1.35;
+      text-align: left;
+      cursor: pointer;
+    }
+    #connectFrame .env-name:hover, #connectFrame .env-name:focus-visible {
+      color: #ededed;
+    }
     #connectFrame .env-error {
-      margin: 0;
+      margin: 8px 0 0;
       color: var(--muted);
       font-size: 12px;
       line-height: 1.35;
@@ -126,8 +140,11 @@
       function row(id, state) {
         var item = document.createElement("div");
         item.className = "env-row";
-        var name = document.createElement("span");
+        var name = document.createElement("button");
+        name.type = "button";
+        name.className = "env-name";
         name.textContent = id;
+        name.addEventListener("click", function () { connect(id); });
         item.appendChild(name);
         if (state) {
           var mark = document.createElement("span");
@@ -142,6 +159,36 @@
         line.className = "env-error";
         line.textContent = text;
         body.replaceChildren(line);
+      }
+
+      function showConnectError(text) {
+        var prior = body.querySelector(".env-error");
+        if (prior) prior.remove();
+        var line = document.createElement("p");
+        line.className = "env-error";
+        line.textContent = text;
+        body.appendChild(line);
+      }
+
+      function connect(id) {
+        fetch("/connect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vehicle_id: id })
+        }).then(function (response) {
+          return response.json().then(function (payload) {
+            return { ok: response.ok, payload: payload };
+          });
+        }).then(function (result) {
+          var payload = result.payload || {};
+          if (result.ok && payload.ok) {
+            window.location.reload();
+            return;
+          }
+          showConnectError(payload.error || "perception stream is not live");
+        }).catch(function () {
+          showConnectError("perception stream is not live");
+        });
       }
 
       function render(payload) {

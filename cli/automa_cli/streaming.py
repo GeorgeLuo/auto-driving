@@ -232,12 +232,16 @@ class _ViewFeed:
     from the observation even while no matched decision is available.
     """
 
-    def __init__(self, vehicle_id: str, *, base_url: str, timeout_s: float) -> None:
-        runtime_dir = runtime_view_dir(vehicle_id)
-        runtime_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(
+        self,
+        vehicle_id: str,
+        *,
+        base_url: str,
+        timeout_s: float,
+        server: RuntimeViewServer | None = None,
+    ) -> None:
         self.base_url = base_url
         self.timeout_s = timeout_s
-        self.frame_path = runtime_dir / "latest_frame.jpg"
         self.server: RuntimeViewServer | None = None
         self.decision: DecisionViewAdapter | None = None
         self.error: str | None = None
@@ -245,17 +249,29 @@ class _ViewFeed:
         self._observation_cache = TransactionCache()
         self._observation: tuple[dict[str, Any], bytes | None] | None = None
         self._last_capture: tuple[Any, ...] | None = None
-        try:
-            self.server = RuntimeViewServer(
-                vehicle_id=vehicle_id,
-                automation_dir=runtime_dir,
-                plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
-            ).start()
-            self.decision = DecisionViewAdapter(
-                vehicle_id=vehicle_id, base_url=base_url, view_server=self.server, timeout_s=timeout_s,
-            )
-        except OSError as exc:
-            self.error = f"{type(exc).__name__}: {exc}"
+        self._owns_server = server is None
+        if server is None:
+            runtime_dir = runtime_view_dir(vehicle_id)
+            runtime_dir.mkdir(parents=True, exist_ok=True)
+            self.frame_path = runtime_dir / "latest_frame.jpg"
+            try:
+                self.server = RuntimeViewServer(
+                    vehicle_id=vehicle_id,
+                    automation_dir=runtime_dir,
+                    plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
+                ).start()
+                self.decision = DecisionViewAdapter(
+                    vehicle_id=vehicle_id, base_url=base_url, view_server=self.server, timeout_s=timeout_s,
+                )
+            except OSError as exc:
+                self.error = f"{type(exc).__name__}: {exc}"
+            return
+        self.frame_path = server.automation_dir / "latest_frame.jpg"
+        self.server = server
+        server.plugin_catalog = PluginCatalogClient(base_url, timeout_s=timeout_s)
+        self.decision = DecisionViewAdapter(
+            vehicle_id=vehicle_id, base_url=base_url, view_server=server, timeout_s=timeout_s,
+        )
 
     @property
     def url(self) -> str | None:
@@ -320,7 +336,7 @@ class _ViewFeed:
             self.error = f"{type(exc).__name__}: {exc}"
 
     def stop(self) -> None:
-        if self.server is not None:
+        if self._owns_server and self.server is not None:
             self.server.stop()
 
 

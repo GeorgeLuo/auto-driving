@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -36,6 +37,7 @@ from .loopback_http import (
     stop_server_thread,
     validate_loopback_host,
 )
+from .host_publications import LATEST_JSON_PATH
 from .plugin_catalog import serve_plugin_catalog
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
@@ -45,8 +47,11 @@ VIEW_HOST = "127.0.0.1"
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 _AUTOMA = _REPO_ROOT / "cli" / "automa"
 _STATUS_SCHEMA = "automa_vehicle_status_v1"
+_PERCEPTION_LIVE_SCHEMA = "vehicle_perception_live_v0"
 # The status command's own probe defaults to 5s. This only stops a hung process.
 _STATUS_LIMIT_S = 20
+_VEHICLE_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
+_FEED_REFRESH_S = 0.5
 FLOAT_PAGE_DIR = Path(__file__).with_name("workbench_page")
 FLOAT_FILES = {
     "/static/float.css": ("float.css", "text/css; charset=utf-8"),
@@ -91,6 +96,39 @@ def known_environments() -> dict[str, Any]:
     return {"error": detail.splitlines()[0].strip()[:240]}
 
 
+def _command_json(args: list[str]) -> dict[str, Any] | None:
+    try:
+        completed = subprocess.run(
+            [sys.executable, str(_AUTOMA), *args],
+            cwd=_REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=_STATUS_LIMIT_S,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    stdout = completed.stdout.strip()
+    if not stdout:
+        return None
+    try:
+        payload = json.loads(stdout.splitlines()[-1])
+    except json.JSONDecodeError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def probe_perception_host(vehicle_id: str) -> dict[str, Any]:
+    """Run one ``vehicles stream perception --once --json`` probe."""
+
+    payload = _command_json(
+        ["vehicles", "stream", "perception", "--id", vehicle_id, "--once", "--json"]
+    )
+    if isinstance(payload, dict) and payload.get("schema") == _PERCEPTION_LIVE_SCHEMA:
+        return payload
+    return {"error": "perception stream is not live"}
+
+
 class RuntimeViewServer:
     """Serve peer runtime pages; retain the existing discovery and health contract."""
 
@@ -122,6 +160,11 @@ class RuntimeViewServer:
         self._httpd: _RuntimeHttpServer | None = None
         self._thread: threading.Thread | None = None
         self._started_at_ms: int | None = None
+        self._publish_record = False
+        self._feed_lock = threading.Lock()
+        self._feed_stop: threading.Event | None = None
+        self._feed_thread: threading.Thread | None = None
+        self._feed_generation = 0
 
     @property
     def url(self) -> str | None:
@@ -146,7 +189,9 @@ class RuntimeViewServer:
             name=f"automa-runtime-view-{self.vehicle_id}",
         )
         # A viewer with no host is not a vehicle's published view.
+        # Attaching later keeps that choice: this server is a reader, not the record.
         if self.host_attached:
+            self._publish_record = True
             _write_json(self.record_path, self.describe())
         return self
 
@@ -198,14 +243,69 @@ class RuntimeViewServer:
         dot = "live" if self.host_attached else "error"
         return f'<span class="status-dot {dot}"></span>'
 
+    def connect_host(self, vehicle_id: str) -> dict[str, Any]:
+        """Attach this server to a running host, after one live perception probe."""
+
+        probe = probe_perception_host(vehicle_id)
+        if probe.get("status") != "live":
+            error = str(probe.get("error") or "perception stream is not live")
+            return {"ok": False, "error": error.splitlines()[0].strip()[:240]}
+        endpoint = str(probe.get("endpoint") or "")
+        if not endpoint.endswith(LATEST_JSON_PATH):
+            return {"ok": False, "error": "perception stream did not name a host"}
+        base_url = endpoint[: -len(LATEST_JSON_PATH)].rstrip("/")
+        from .streaming import _ViewFeed
+
+        with self._feed_lock:
+            self._stop_feed()
+            feed = _ViewFeed(vehicle_id, base_url=base_url, timeout_s=3.0, server=self)
+            if feed.server is None or feed.decision is None:
+                return {"ok": False, "error": feed.error or "perception stream is not live"}
+            self.vehicle_id = vehicle_id
+            self.perception.vehicle_id = vehicle_id
+            self.host_attached = True
+            self._feed_generation += 1
+            generation = self._feed_generation
+            stop = threading.Event()
+            self._feed_stop = stop
+            thread = threading.Thread(
+                target=self._run_feed,
+                args=(feed, stop, generation),
+                name=f"automa-view-feed-{vehicle_id}",
+                daemon=True,
+            )
+            self._feed_thread = thread
+            thread.start()
+        return {"ok": True, "vehicle_id": vehicle_id}
+
+    def _run_feed(self, feed: Any, stop: threading.Event, generation: int) -> None:
+        while not stop.is_set() and generation == self._feed_generation:
+            publication, _error = feed.read_observation()
+            if stop.is_set() or generation != self._feed_generation:
+                return
+            feed.publish(publication)
+            stop.wait(_FEED_REFRESH_S)
+
+    def _stop_feed(self) -> None:
+        stop = self._feed_stop
+        thread = self._feed_thread
+        self._feed_generation += 1
+        self._feed_stop = None
+        self._feed_thread = None
+        if stop is not None:
+            stop.set()
+        if thread is not None and thread is not threading.current_thread():
+            thread.join(timeout=_STATUS_LIMIT_S)
+
     def stop(self) -> None:
+        self._stop_feed()
         httpd = self._httpd
         thread = self._thread
         if httpd is None:
             return
         stop_server_thread(httpd, thread)
         self.decision.stop()
-        if self.host_attached:
+        if self._publish_record:
             _write_json(self.record_path, self.describe(status="stopped"))
         self._httpd = None
         self._thread = None
@@ -225,7 +325,17 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         self._handle_request(include_body=False)
 
     def do_POST(self) -> None:
-        if urlparse(self.path).path == PLUGIN_CATALOG_PATH:
+        route = urlparse(self.path).path
+        if route == "/connect":
+            body = self._read_json_object(limit=4096)
+            vehicle_id = body.get("vehicle_id") if isinstance(body, dict) else None
+            if not isinstance(vehicle_id, str) or _VEHICLE_ID.fullmatch(vehicle_id) is None:
+                self._send_json(400, {"ok": False, "error": "vehicle id is not valid"})
+                return
+            result = self.server.publisher.connect_host(vehicle_id)
+            self._send_json(200 if result.get("ok") else 409, result)
+            return
+        if route == PLUGIN_CATALOG_PATH:
             if not self.server.publisher.host_attached:
                 self._send_disconnected(include_body=True)
                 return
@@ -250,6 +360,20 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
 
     def do_CONNECT(self) -> None:
         self._reject_write_method()
+
+    def _read_json_object(self, *, limit: int) -> dict[str, Any] | None:
+        try:
+            size = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return None
+        if size < 0 or size > limit:
+            return None
+        raw = self.rfile.read(size) if size else b""
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError):
+            return None
+        return payload if isinstance(payload, dict) else None
 
     def _reject_write_method(self) -> None:
         self._send_json(405, {"error": "GET and HEAD only"})

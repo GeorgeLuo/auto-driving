@@ -7,7 +7,6 @@ import signal
 import subprocess
 import sys
 import time
-import webbrowser
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
@@ -39,6 +38,7 @@ from .step_activations import (
     selection_label,
     staged_selections,
 )
+from .runtime_view import open_view_message
 from .run_record import (
     control_application,
     control_source,
@@ -378,7 +378,7 @@ def start_vehicle_automation_background(
                     ]
                 ),
             )
-        browser_line = _open_view_message(str(view["url"])) if open_view else None
+        browser_line = open_view_message(str(view["url"])) if open_view else None
         return CommandResult(
             0,
             "\n".join(
@@ -514,7 +514,7 @@ def start_vehicle_automation_background(
         lines.append("Ready for: inspect perception and stop automation")
         lines.append(f"Stop: ./cli/automa vehicles automation stop --id {vehicle_id}")
         if open_view:
-            lines.append(_open_view_message(str(startup.get("view_url"))))
+            lines.append(open_view_message(str(startup.get("view_url"))))
         exit_code = 0
     elif startup_status == "completed":
         lines = [
@@ -778,24 +778,6 @@ def _view_ready_for_inspection(view: dict[str, Any]) -> bool:
 def _duration_label(phase: dict[str, Any]) -> str:
     value = phase.get("duration_ms")
     return f"{value}ms" if isinstance(value, (int, float)) else "not reported"
-
-
-def _open_view_message(url: str) -> str:
-    """Attempt the explicit browser launch without weakening worker readiness."""
-
-    try:
-        opened = webbrowser.open(url, new=2)
-    except (OSError, webbrowser.Error) as exc:
-        opened = False
-        detail = f"{type(exc).__name__}: {exc}"
-    else:
-        detail = "browser launcher returned false"
-    if opened:
-        return f"Browser opened: {url}"
-    return (
-        f"Warning: could not open the browser ({detail}). "
-        f"Open manually: {url}"
-    )
 
 
 def _mark_automation_startup_error(

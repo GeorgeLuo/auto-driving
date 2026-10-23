@@ -6,6 +6,7 @@ import json
 import os
 import threading
 import time
+import webbrowser
 import zlib
 from pathlib import Path
 from typing import Any, Callable
@@ -38,6 +39,17 @@ from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
 VIEW_HOST = "127.0.0.1"
+# Vehicle views take 8500–8999. This port is the viewer opened with no host.
+VIEWER_PORT = 8473
+NOT_CONNECTED_ERROR = "not connected to a host"
+# Routes answered from a runtime host; a viewer that is not connected refuses them.
+RUNTIME_HOST_ROUTES = frozenset({
+    PLUGIN_CATALOG_PATH,
+    "/api/latest",
+    "/frame",
+    "/api/decision/latest",
+    "/api/decision/image",
+})
 RUNTIME_VIEW_HTML_PATH = Path(__file__).with_name("runtime_view.html")
 MEMORY_VIEW_HTML_PATH = Path(__file__).with_name("memory_view.html")
 DECISION_VIEW_HTML_PATH = Path(__file__).with_name("live_decision_view.html")
@@ -50,23 +62,26 @@ class RuntimeViewServer:
         self,
         *,
         vehicle_id: str,
-        automation_dir: Path,
+        automation_dir: Path | None,
         host: str = VIEW_HOST,
         port: int | None = None,
         run_id: str | None = None,
         worker_pid: int | None = None,
         decision_identity: dict[str, Any] | None = None,
         plugin_catalog: Callable | None = None,
+        connected: bool = True,
     ) -> None:
         validate_loopback_host(host, owner="runtime view")
         self.vehicle_id = vehicle_id
+        self.connected = connected
         self.plugin_catalog = plugin_catalog
         self.automation_dir = automation_dir
         self.host = host
         self.preferred_port = _vehicle_view_port(vehicle_id) if port is None else int(port)
         self.run_id = run_id
         self.worker_pid = int(worker_pid) if isinstance(worker_pid, int) else os.getpid()
-        self.record_path = automation_dir / VIEW_RECORD_NAME
+        # Without an automation dir the server publishes no discovery record.
+        self.record_path = None if automation_dir is None else automation_dir / VIEW_RECORD_NAME
         self.perception = PerceptionView(vehicle_id=vehicle_id)
         self.decision = DecisionView(vehicle_id=vehicle_id, identity=decision_identity)
         self._httpd: _RuntimeHttpServer | None = None
@@ -82,7 +97,6 @@ class RuntimeViewServer:
     def start(self) -> "RuntimeViewServer":
         if self._httpd is not None:
             return self
-        self.automation_dir.mkdir(parents=True, exist_ok=True)
         httpd = _RuntimeHttpServer.bind_with_ephemeral_fallback(
             host=self.host,
             preferred_port=self.preferred_port,
@@ -95,7 +109,7 @@ class RuntimeViewServer:
             httpd,
             name=f"automa-runtime-view-{self.vehicle_id}",
         )
-        _write_json(self.record_path, self.describe())
+        self._write_record("running")
         return self
 
     def describe(self, *, status: str = "running") -> dict[str, Any]:
@@ -112,7 +126,7 @@ class RuntimeViewServer:
             "port": self._httpd.server_address[1] if self._httpd is not None else None,
             "pid": os.getpid(),
             "started_at_ms": self._started_at_ms,
-            "record_path": str(self.record_path),
+            "record_path": None if self.record_path is None else str(self.record_path),
         }
 
     def health_payload(self) -> dict[str, Any]:
@@ -143,9 +157,13 @@ class RuntimeViewServer:
             return
         stop_server_thread(httpd, thread)
         self.decision.stop()
-        _write_json(self.record_path, self.describe(status="stopped"))
+        self._write_record("stopped")
         self._httpd = None
         self._thread = None
+
+    def _write_record(self, status: str) -> None:
+        if self.record_path is not None:
+            _write_json(self.record_path, self.describe(status=status))
 
 
 class _RuntimeHttpServer(LoopbackHTTPServer):
@@ -162,7 +180,10 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         self._handle_request(include_body=False)
 
     def do_POST(self) -> None:
-        if urlparse(self.path).path == PLUGIN_CATALOG_PATH:
+        route = urlparse(self.path).path
+        if self._refuse_when_not_connected(route, include_body=True):
+            return
+        if route == PLUGIN_CATALOG_PATH:
             serve_plugin_catalog(self, self.server.publisher.plugin_catalog)
             return
         self._reject_write_method()
@@ -188,9 +209,19 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
     def _reject_write_method(self) -> None:
         self._send_json(405, {"error": "GET and HEAD only"})
 
+    def _refuse_when_not_connected(self, route: str, *, include_body: bool) -> bool:
+        """Answer a runtime-host route while no host is connected; True if answered."""
+
+        if self.server.publisher.connected or route not in RUNTIME_HOST_ROUTES:
+            return False
+        self._send_json(503, {"ok": False, "error": NOT_CONNECTED_ERROR}, include_body=include_body)
+        return True
+
     def _handle_request(self, *, include_body: bool) -> None:
         request = urlparse(self.path)
         route = request.path
+        if self._refuse_when_not_connected(route, include_body=include_body):
+            return
         if route == PLUGIN_CATALOG_PATH:
             serve_plugin_catalog(self, self.server.publisher.plugin_catalog, include_body=include_body)
             return
@@ -331,6 +362,43 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             decision_error_payload(self.server.publisher.decision, reason=error.reason),
             include_body=include_body,
         )
+
+
+def serve_viewer() -> int:
+    """Serve the runtime pages with no runtime host until interrupted."""
+
+    server = RuntimeViewServer(
+        vehicle_id="viewer",
+        automation_dir=None,
+        port=VIEWER_PORT,
+        connected=False,
+    ).start()
+    print(open_view_message(server.url or ""), flush=True)
+    try:
+        while True:
+            time.sleep(0.5)
+    except KeyboardInterrupt:
+        return 130
+    finally:
+        server.stop()
+
+
+def open_view_message(url: str) -> str:
+    """Open ``url`` in a browser tab; return the line telling the user where it is."""
+
+    try:
+        opened = webbrowser.open(url, new=2)
+    except (OSError, webbrowser.Error) as exc:
+        opened = False
+        detail = f"{type(exc).__name__}: {exc}"
+    else:
+        detail = "browser launcher returned false"
+    if opened:
+        return f"Browser opened: {url}"
+    return (
+        f"Warning: could not open the browser ({detail}). "
+        f"Open manually: {url}"
+    )
 
 
 def _vehicle_view_port(vehicle_id: str) -> int:

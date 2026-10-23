@@ -187,7 +187,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     },
                 ),
                 patch(
-                    "cli.automa_cli.automation.webbrowser.open",
+                    "cli.automa_cli.runtime_view.webbrowser.open",
                     return_value=True,
                 ) as browser_open,
             ):
@@ -260,7 +260,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     side_effect=AssertionError("must not spawn a duplicate worker"),
                 ),
                 patch(
-                    "cli.automa_cli.automation.webbrowser.open",
+                    "cli.automa_cli.runtime_view.webbrowser.open",
                     return_value=False,
                 ) as browser_open,
             ):

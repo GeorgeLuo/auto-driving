@@ -702,8 +702,9 @@
       refreshing = true;
       try {
         const response = await fetch("/api/latest", { cache: "no-store" });
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        latest = await response.json();
+        const next = await response.json();
+        if (!response.ok) throw new Error(next.error || `HTTP ${response.status}`);
+        latest = next;
         renderLedger();
         renderStatus();
       } catch (error) {

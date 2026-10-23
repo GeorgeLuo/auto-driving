@@ -39,6 +39,7 @@ from .viability import (
     run_memory_viability_measurement,
     run_perception_viability_measurement,
 )
+from .runtime_view import serve_viewer
 from .streaming import stream_vehicle_memory, stream_vehicle_perception
 from .vehicles import (
     DEFAULT_READINESS_TIMEOUT_S,
@@ -54,7 +55,8 @@ def build_parser() -> argparse.ArgumentParser:
         prog="automa",
         description="Single access point for local and vehicle-facing automation commands.",
     )
-    subcommands = parser.add_subparsers(dest="command", required=True)
+    # With no command, automa opens the runtime viewer.
+    subcommands = parser.add_subparsers(dest="command", required=False)
 
     help_command = subcommands.add_parser(
         "help",
@@ -1475,6 +1477,9 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "- vehicles   Discover vehicles, stage bundles, and inspect each runtime layer.",
                 "- simulators Explicitly prepare or inspect simulator environments.",
                 "",
+                "Open the runtime viewer. It does not require a host:",
+                "- ./cli/automa",
+                "",
                 "Detailed help:",
                 "- ./cli/automa --help",
                 "- ./cli/automa <command> help",
@@ -1482,6 +1487,10 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
         )
     )
     return 0
+
+
+def _handle_open_viewer(args: argparse.Namespace) -> int:
+    return serve_viewer()
 
 
 def _handle_simulators_help(args: argparse.Namespace) -> int:
@@ -2225,6 +2234,8 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     handler: Any = getattr(args, "handler", None)
+    if handler is None and args.command is None:
+        handler = _handle_open_viewer
     if handler is None:
         parser.print_help()
         return 2

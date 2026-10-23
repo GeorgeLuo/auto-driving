@@ -289,6 +289,17 @@ class RuntimeViewServer:
             return {"ok": False, "error": error or "the host did not start"}
         return {"ok": True, "vehicle_id": vehicle_id}
 
+    def create_release(self, vehicle_id: str) -> dict[str, Any]:
+        """Package this vehicle's controller release."""
+
+        from .deploy import update_vehicle_autonomy
+
+        result = update_vehicle_autonomy(vehicle_id=vehicle_id)
+        if result.exit_code != 0:
+            error = str(result.message or "the release was not created").splitlines()[0].strip()[:240]
+            return {"ok": False, "error": error or "the release was not created"}
+        return {"ok": True, "vehicle_id": vehicle_id}
+
     def _run_feed(self, feed: Any, stop: threading.Event, generation: int) -> None:
         while not stop.is_set() and generation == self._feed_generation:
             publication, _error = feed.read_observation()
@@ -337,7 +348,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
 
     def do_POST(self) -> None:
         route = urlparse(self.path).path
-        if route in {"/connect", "/host"}:
+        if route in {"/connect", "/host", "/release"}:
             vehicle_id = self._posted_vehicle_id()
             if vehicle_id is None:
                 self._send_json(400, {"ok": False, "error": "vehicle id is not valid"})
@@ -345,8 +356,10 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             publisher = self.server.publisher
             if route == "/connect":
                 result = publisher.connect_host(vehicle_id)
-            else:
+            elif route == "/host":
                 result = publisher.create_host(vehicle_id)
+            else:
+                result = publisher.create_release(vehicle_id)
             self._send_json(200 if result.get("ok") else 409, result)
             return
         if route == PLUGIN_CATALOG_PATH:

@@ -177,7 +177,7 @@
         <div class="env-list"></div>
         <div class="host-offer">
           <p class="host-message"></p>
-          <span class="host-create" hidden tabindex="0">create</span>
+          <span class="host-create" hidden tabindex="0">create host</span>
         </div>
       </div>
     </article>
@@ -228,7 +228,8 @@
       function activateCreate(event) {
         if (event.type === "keydown" && event.key !== "Enter" && event.key !== " ") return;
         if (event.type === "keydown") event.preventDefault();
-        createHost(create.dataset.vehicleId);
+        if (create.dataset.action === "release") createRelease(create.dataset.vehicleId);
+        else createHost(create.dataset.vehicleId);
       }
       create.addEventListener("click", activateCreate);
       create.addEventListener("keydown", activateCreate);
@@ -264,18 +265,22 @@
         });
       }
 
-      function showHostOffer(id, text) {
+      function showOffer(id, text, label) {
         create.dataset.vehicleId = id;
+        create.dataset.action = label === "create release" ? "release" : "host";
         setMessage(text, function () {
+          create.textContent = label;
           create.hidden = false;
           create.classList.remove("is-busy");
         });
       }
 
-      function createHost(id) {
-        if (!id || create.classList.contains("is-busy")) return;
-        create.classList.add("is-busy");
-        fetch("/host", {
+      function showHostOffer(id, text) {
+        showOffer(id, text, "create host");
+      }
+
+      function postVehicle(path, id) {
+        return fetch(path, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ vehicle_id: id })
@@ -283,7 +288,13 @@
           return response.json().then(function (payload) {
             return { ok: response.ok, payload: payload };
           });
-        }).then(function (result) {
+        });
+      }
+
+      function createHost(id) {
+        if (!id || create.classList.contains("is-busy")) return;
+        create.classList.add("is-busy");
+        postVehicle("/host", id).then(function (result) {
           var payload = result.payload || {};
           if (result.ok && payload.ok) {
             setMessage("Host is running.", function () {
@@ -292,13 +303,26 @@
             });
             return;
           }
-          setMessage(payload.error || "the host did not start", function () {
-            create.classList.remove("is-busy");
-          });
+          var error = payload.error || "the host did not start";
+          var label = error.indexOf("No controller release") === 0 ? "create release" : "create host";
+          showOffer(id, error, label);
         }).catch(function () {
-          setMessage("the host did not start", function () {
-            create.classList.remove("is-busy");
-          });
+          showOffer(id, "the host did not start", "create host");
+        });
+      }
+
+      function createRelease(id) {
+        if (!id || create.classList.contains("is-busy")) return;
+        create.classList.add("is-busy");
+        postVehicle("/release", id).then(function (result) {
+          var payload = result.payload || {};
+          if (result.ok && payload.ok) {
+            showOffer(id, "Release created.", "create host");
+            return;
+          }
+          showOffer(id, payload.error || "the release was not created", "create release");
+        }).catch(function () {
+          showOffer(id, "the release was not created", "create release");
         });
       }
 

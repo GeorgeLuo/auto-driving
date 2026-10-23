@@ -59,7 +59,7 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["mode"], "manual")
         self.assertEqual(payload["host_run_id"], "test-run")
-        self.assertEqual(payload["session"]["status"], "stopped")
+        self.assertEqual(payload["session"]["status"], "pre_start")
         self.assertNotIn("drive_mode", payload)
 
     def test_runtime_commands_start_and_stop_the_shared_session(self) -> None:

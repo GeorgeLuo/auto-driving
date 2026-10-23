@@ -64,7 +64,7 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertNotEqual(applied["applied_decision"]["generation_id"], before["applied_decision"]["generation_id"])
                 self.assertEqual(proposal(result, "prototype-proposal").metadata["memory"],
                                  {"revision": 1, "perception": 1, "count": 1})
-                self.assertEqual(host.session_status()["status"], "stopped")
+                self.assertEqual(host.session_status()["status"], "pre_start")
                 human = invoke_automa("vehicles", "plugins", "status", "--url", base).stdout
                 self.assertIn("Arming: applied", human)
                 self.assertIn("Applied proposal: prototype-proposal", human)

@@ -75,7 +75,7 @@ class PluginArmingFlows(unittest.TestCase):
     def test_arming_before_during_and_after_completion_does_not_start_or_change_mode(self):
         with image_source(1) as root, plugin_host(root) as (host, base):
             file = root / "proposal.py"
-            for index, phase in enumerate(("stopped", "running", "completed"), start=1):
+            for index, phase in enumerate(("pre_start", "running", "completed"), start=1):
                 if phase == "running":
                     host.start(RunConfiguration(mode="observe_only", num_decisions=1))
                 write_plugin(file, "proposal", "prototype", index)
@@ -88,7 +88,7 @@ class PluginArmingFlows(unittest.TestCase):
                     host.start(RunConfiguration(mode="observe_only", num_decisions=1))
                 host.run(frame(root, index))
                 self.assertEqual(catalog(base)["arming"]["status"], "applied")
-                if phase != "stopped":
+                if phase != "pre_start":
                     self.assertEqual(host.session_status()["status"], "completed")
 
     def test_an_import_failure_fails_the_arm_and_keeps_the_previous_selection(self):

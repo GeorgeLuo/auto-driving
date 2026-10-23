@@ -183,7 +183,7 @@ class PluginDisarmingFlows(unittest.TestCase):
         with image_source(1) as root, plugin_host(root, activations={
                 "perception": packaged_activation("perception", ["frame"]),
         }) as (host, base):
-            for index, phase in enumerate(("stopped", "running", "completed"), start=1):
+            for index, phase in enumerate(("pre_start", "running", "completed"), start=1):
                 arm_step(base, "perception", "frame")
                 host.run(frame(root, index * 2))
                 if phase == "running":

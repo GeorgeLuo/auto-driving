@@ -122,6 +122,7 @@ class RuntimeRoutes:
             "ok": True,
             "host_run_id": self.loop.run_id,
             "runtime": self.loop.runtime,
+            "vehicle_id": self.loop.vehicle_id,
             "mode": session["execution"]["mode"],
             "session": session,
             "autonomy": self.host.status(),

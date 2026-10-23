@@ -253,14 +253,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Start an automation run and verify one correlated camera/perception publication.",
         description=(
             "Start autonomous movement using the staged plugins. Success requires one camera frame, its "
-            "completed perception result, and a healthy current-generation loopback view."
+            "completed perception result, and a healthy current-generation loopback view. "
+            "--host-url runs an existing host instead of starting one; that host reports its vehicle id."
         ),
     )
-    automation_run.add_argument(
+    run_target = automation_run.add_mutually_exclusive_group(required=True)
+    run_target.add_argument(
         "--id",
-        required=True,
         dest="vehicle_id",
         help="Discoverable vehicle id from `automa vehicles status`.",
+    )
+    run_target.add_argument(
+        "--host-url",
+        dest="host_url",
+        help=(
+            "Base URL of a runtime host that is already running. "
+            "Run that host instead of starting one. The host reports its vehicle id."
+        ),
     )
     automation_run.add_argument(
         "--timeout-s",
@@ -1803,6 +1812,7 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
     if args.foreground:
         result = run_vehicle_automation(
             vehicle_id=args.vehicle_id,
+            host_url=args.host_url,
             timeout_s=args.timeout_s,
             num_decisions=args.num_decisions,
             unbounded=args.unbounded,
@@ -1814,6 +1824,7 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
     else:
         result = start_vehicle_automation_background(
             vehicle_id=args.vehicle_id,
+            host_url=args.host_url,
             timeout_s=args.timeout_s,
             num_decisions=args.num_decisions,
             unbounded=args.unbounded,
@@ -1825,7 +1836,7 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
         )
     if result.message:
         print(result.message)
-    if args.foreground:
+    if args.foreground and args.vehicle_id:
         record_vehicle_automation_terminal_result(
             vehicle_id=args.vehicle_id,
             result=result,

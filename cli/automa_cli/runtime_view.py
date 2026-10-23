@@ -136,19 +136,35 @@ class RuntimeViewServer:
             "decision": self.decision.health_payload(),
         }
 
-    def decision_navigation_html(self, *, compact: bool) -> str:
+    def connection_dot_html(self) -> str:
+        """The splash-page dot: live while connected to a runtime host."""
+
+        if self.connected:
+            return '<span class="status-dot live"></span>'
+        return f'<span class="status-dot error" title="{NOT_CONNECTED_ERROR}"></span>'
+
+    def splash_navigation_html(self) -> str:
+        """One entry per runtime page; none is available until connected."""
+
+        if not self.connected:
+            return "\n".join(
+                _unavailable_nav(label, NOT_CONNECTED_ERROR)
+                for label in ("Perception", "Memory", "Action", "Plugins")
+            )
+        return "\n".join((
+            _nav_link("Perception", "/perception"),
+            _nav_link("Memory", "/memory"),
+            self.decision_navigation_html(),
+            _nav_link("Plugins", "/plugins"),
+        ))
+
+    def decision_navigation_html(self) -> str:
         """Return a usable decision link or an explicit unavailable status."""
 
         page_url = self.decision.page_url()
-        if page_url is not None:
-            if compact:
-                return f'<a class="nav" href="{page_url}">Action</a>'
-            return f'<a href="{page_url}">Action</a>'
-        if compact:
-            return (
-                '<span class="nav unavailable" title="Action view unavailable">Action</span>'
-            )
-        return '<span class="decision-unavailable">Action view unavailable</span>'
+        if page_url is None:
+            return _unavailable_nav("Action", "Action view unavailable")
+        return _nav_link("Action", page_url)
 
     def stop(self) -> None:
         httpd = self._httpd
@@ -259,10 +275,12 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             except OSError as exc:
                 self._send_json(500, {"error": str(exc)}, include_body=include_body)
                 return
-            decision_nav = self.server.publisher.decision_navigation_html(compact=False)
+            publisher = self.server.publisher
+            html = html.replace("__CONNECTION_DOT__", publisher.connection_dot_html())
+            html = html.replace("__RUNTIME_NAV__", publisher.splash_navigation_html())
             self._send(
                 200,
-                html.replace("__DECISION_NAV__", decision_nav).encode("utf-8"),
+                html.encode("utf-8"),
                 "text/html; charset=utf-8",
                 include_body=include_body,
             )
@@ -272,7 +290,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
                 html = pages[route].read_text(encoding="utf-8")
                 html = html.replace(
                     "__DECISION_NAV__",
-                    self.server.publisher.decision_navigation_html(compact=True),
+                    self.server.publisher.decision_navigation_html(),
                 )
             except OSError as exc:
                 self._send_json(500, {"error": str(exc)}, include_body=include_body)
@@ -399,6 +417,14 @@ def open_view_message(url: str) -> str:
         f"Warning: could not open the browser ({detail}). "
         f"Open manually: {url}"
     )
+
+
+def _nav_link(label: str, href: str) -> str:
+    return f'<a class="nav" href="{href}">{label}</a>'
+
+
+def _unavailable_nav(label: str, reason: str) -> str:
+    return f'<span class="nav unavailable" title="{reason}">{label}</span>'
 
 
 def _vehicle_view_port(vehicle_id: str) -> int:

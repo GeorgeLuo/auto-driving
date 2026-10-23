@@ -44,7 +44,9 @@
   text-overflow: ellipsis;
   min-width: 0;
 }
-.float-frame-title .grip { color: var(--muted); }
+.float-frame-title .grip { display: flex; color: var(--muted); }
+/* The dots span 14/24 of the box, so a 16px box draws them as tall as the title. */
+.float-frame-title .grip svg { width: 16px; height: 16px; }
 .float-frame-title strong {
   overflow: hidden;
   text-overflow: ellipsis;

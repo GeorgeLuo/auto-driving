@@ -121,9 +121,12 @@
       line-height: 1.35;
     }
     #connectFrame .host-message {
+      flex: 1 1 auto;
       margin: 0;
       min-height: 0;
       overflow: auto;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
     }
     #connectFrame .host-create {
       flex: 0 0 auto;
@@ -291,21 +294,80 @@
         });
       }
 
-      function createHost(id) {
-        if (!id || create.classList.contains("is-busy")) return;
-        create.classList.add("is-busy");
-        postVehicle("/host", id).then(function (result) {
-          var payload = result.payload || {};
-          if (result.ok && payload.ok) {
+      function appendStatus(line) {
+        messageGeneration += 1;
+        message.textContent = message.textContent ? message.textContent + "\n" + line : line;
+        message.scrollTop = message.scrollHeight;
+      }
+
+      function finishHost(id, payload, sawLine) {
+        if (payload.ok) {
+          if (sawLine) {
+            appendStatus("Host is running.");
+            create.hidden = true;
+            create.classList.remove("is-busy");
+          } else {
             setMessage("Host is running.", function () {
               create.hidden = true;
               create.classList.remove("is-busy");
             });
-            return;
           }
-          var error = payload.error || "the host did not start";
-          var label = error.indexOf("No controller release") === 0 ? "create release" : "create host";
-          showOffer(id, error, label);
+          return;
+        }
+        var error = payload.error || "the host did not start";
+        if (sawLine) {
+          appendStatus(error);
+          create.classList.remove("is-busy");
+          if (error.indexOf("No controller release") === 0) {
+            create.textContent = "create release";
+            create.dataset.action = "release";
+            create.hidden = false;
+          }
+          return;
+        }
+        var label = error.indexOf("No controller release") === 0 ? "create release" : "create host";
+        showOffer(id, error, label);
+      }
+
+      function createHost(id) {
+        if (!id || create.classList.contains("is-busy")) return;
+        create.classList.add("is-busy");
+        var sawLine = false;
+        fetch("/host", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ vehicle_id: id })
+        }).then(function (response) {
+          var reader = response.body.getReader();
+          var decoder = new TextDecoder();
+          var buffer = "";
+          var events = [];
+          function take(raw) {
+            if (!raw.trim()) return;
+            var payload = JSON.parse(raw);
+            if (payload.line) {
+              sawLine = true;
+              appendStatus(payload.line);
+              return;
+            }
+            events.push(payload);
+          }
+          function pump() {
+            return reader.read().then(function (part) {
+              buffer += decoder.decode(part.value || new Uint8Array(), { stream: !part.done });
+              var pieces = buffer.split("\n");
+              buffer = pieces.pop();
+              pieces.forEach(take);
+              if (part.done) {
+                if (buffer) take(buffer);
+                return events;
+              }
+              return pump();
+            });
+          }
+          return pump();
+        }).then(function (events) {
+          finishHost(id, (events && events[events.length - 1]) || {}, sawLine);
         }).catch(function () {
           showOffer(id, "the host did not start", "create host");
         });

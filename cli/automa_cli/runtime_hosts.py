@@ -19,7 +19,7 @@ import sys
 import tarfile
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from autonomy.runtime.client import RuntimeClient
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, RESTART_EXIT_CODE
@@ -232,9 +232,47 @@ def serve_chase_host(vehicle_id: str) -> int:
             return code
 
 
-def _wait_for_host(vehicle_id: str, process: subprocess.Popen[Any] | None, timeout_s: float) -> dict[str, Any]:
+def _log_offset(vehicle_id: str) -> int:
+    path = automation_dir(vehicle_id) / HOST_LOG
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
+
+
+def _new_log_lines(vehicle_id: str, offset: int) -> tuple[int, list[str]]:
+    """Complete host-log lines written after ``offset``."""
+
+    path = automation_dir(vehicle_id) / HOST_LOG
+    try:
+        with path.open("rb") as handle:
+            handle.seek(offset)
+            data = handle.read()
+    except OSError:
+        return offset, []
+    if b"\n" not in data:
+        return offset, []
+    complete, _sep, _rest = data.rpartition(b"\n")
+    consumed = complete + b"\n"
+    lines = [line for line in consumed.decode("utf-8", "replace").splitlines() if line.strip()]
+    return offset + len(consumed), lines
+
+
+def _wait_for_host(
+    vehicle_id: str,
+    process: subprocess.Popen[Any] | None,
+    timeout_s: float,
+    *,
+    log_offset: int = 0,
+    on_status: Callable[[str], None] | None = None,
+) -> dict[str, Any]:
     deadline = time.monotonic() + timeout_s
+    offset = log_offset
     while time.monotonic() < deadline:
+        if on_status is not None:
+            offset, lines = _new_log_lines(vehicle_id, offset)
+            for line in lines:
+                on_status(line)
         record = host_record(vehicle_id)
         if record is not None:
             try:
@@ -253,7 +291,12 @@ def _wait_for_host(vehicle_id: str, process: subprocess.Popen[Any] | None, timeo
     )
 
 
-def ensure_chase_host(vehicle_id: str, *, timeout_s: float = HOST_START_TIMEOUT_S) -> str:
+def ensure_chase_host(
+    vehicle_id: str,
+    *,
+    timeout_s: float = HOST_START_TIMEOUT_S,
+    on_status: Callable[[str], None] | None = None,
+) -> str:
     """The base URL of a Chase host running the latest release, started if needed.
 
     An idle host on an older release is restarted onto the latest one; a host
@@ -280,23 +323,29 @@ def ensure_chase_host(vehicle_id: str, *, timeout_s: float = HOST_START_TIMEOUT_
                 f"{latest['archive_sha256'][:12]}.\n"
                 f"Stop the run first: ./cli/automa vehicles automation stop --id {vehicle_id}"
             )
+        log_offset = _log_offset(vehicle_id)
         try:
             client.restart(timeout_s=timeout_s)
         except (RuntimeError, TimeoutError) as exc:
             raise RuntimeHostError(f"Could not restart the Chase host onto the latest release: {exc}") from exc
-        return _wait_for_host(vehicle_id, None, timeout_s)["base_url"]
+        return _wait_for_host(
+            vehicle_id, None, timeout_s, log_offset=log_offset, on_status=on_status,
+        )["base_url"]
 
     release_code_dir(vehicle_id)
     directory = automation_dir(vehicle_id)
     directory.mkdir(parents=True, exist_ok=True)
     (directory / HOST_RECORD).unlink(missing_ok=True)
+    log_offset = _log_offset(vehicle_id)
     with (directory / HOST_LOG).open("a", encoding="utf-8") as log:
         process = subprocess.Popen(
             [sys.executable, str(AUTOMA_EXECUTABLE), "vehicles", "automation", "host", "--id", vehicle_id],
             cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
             start_new_session=True, env={**os.environ, "PYTHONUNBUFFERED": "1"},
         )
-    return _wait_for_host(vehicle_id, process, timeout_s)["base_url"]
+    return _wait_for_host(
+        vehicle_id, process, timeout_s, log_offset=log_offset, on_status=on_status,
+    )["base_url"]
 
 
 def stop_chase_host(vehicle_id: str, *, wait_s: float = 3.0) -> bool:

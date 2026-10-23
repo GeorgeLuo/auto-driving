@@ -279,11 +279,15 @@ class RuntimeViewServer:
             thread.start()
         return {"ok": True, "vehicle_id": vehicle_id}
 
-    def create_host(self, vehicle_id: str) -> dict[str, Any]:
+    def create_host(
+        self,
+        vehicle_id: str,
+        on_status: Any = None,
+    ) -> dict[str, Any]:
         """Start this vehicle's Chase host and wait until it answers."""
 
         try:
-            ensure_chase_host(vehicle_id)
+            ensure_chase_host(vehicle_id, on_status=on_status)
         except RuntimeHostError as exc:
             error = str(exc).splitlines()[0].strip()[:240]
             return {"ok": False, "error": error or "the host did not start"}
@@ -356,10 +360,11 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             publisher = self.server.publisher
             if route == "/connect":
                 result = publisher.connect_host(vehicle_id)
-            elif route == "/host":
-                result = publisher.create_host(vehicle_id)
-            else:
+            elif route == "/release":
                 result = publisher.create_release(vehicle_id)
+            else:
+                self._stream_host_creation(vehicle_id)
+                return
             self._send_json(200 if result.get("ok") else 409, result)
             return
         if route == PLUGIN_CATALOG_PATH:
@@ -387,6 +392,35 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
 
     def do_CONNECT(self) -> None:
         self._reject_write_method()
+
+    def _stream_host_creation(self, vehicle_id: str) -> None:
+        self.protocol_version = "HTTP/1.1"
+        self.close_connection = True
+        self.send_response(200)
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Transfer-Encoding", "chunked")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+        def emit(line: str) -> None:
+            body = (json.dumps({"line": line}, separators=(",", ":")) + "\n").encode("utf-8")
+            self._write_chunk(body)
+
+        try:
+            result = self.server.publisher.create_host(vehicle_id, on_status=emit)
+            done = (json.dumps(result, separators=(",", ":"), sort_keys=True) + "\n").encode("utf-8")
+            self._write_chunk(done)
+            self.wfile.write(b"0\r\n\r\n")
+            self.wfile.flush()
+        except OSError:
+            return
+
+    def _write_chunk(self, payload: bytes) -> None:
+        self.wfile.write(f"{len(payload):X}\r\n".encode("ascii"))
+        self.wfile.write(payload)
+        self.wfile.write(b"\r\n")
+        self.wfile.flush()
 
     def _posted_vehicle_id(self) -> str | None:
         body = self._read_json_object(limit=4096)

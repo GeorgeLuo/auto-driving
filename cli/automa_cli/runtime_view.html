@@ -94,6 +94,9 @@
       font-size: 12px;
       line-height: 1.35;
     }
+    #connectFrame.is-loading .float-frame-body { visibility: hidden; }
+    #connectFrame .title-loading { white-space: nowrap; }
+    #connectFrame .title-loading em { font-style: italic; }
     #connectFrame .float-frame-body {
       display: flex;
       flex-direction: column;
@@ -161,6 +164,7 @@
             <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg>
           </span>
           <strong>Connect</strong>
+          <span class="title-loading" hidden> <em>CONTENT LOADING</em>...</span>
         </div>
         <div class="float-frame-controls">
           <button type="button" class="icon-btn" data-frame-close aria-label="Close Connect" title="Close">
@@ -187,9 +191,23 @@
       var list = body.querySelector(".env-list");
       var message = body.querySelector(".host-message");
       var create = body.querySelector(".host-create");
+      var loadingTitle = frame.querySelector(".title-loading");
       var ticket = 0;
+      var viewGeneration = 0;
 
       var messageGeneration = 0;
+
+      function clearMessage() {
+        messageGeneration += 1;
+        message.textContent = "";
+        create.hidden = true;
+        create.classList.remove("is-busy");
+      }
+
+      function setLoading(on) {
+        frame.classList.toggle("is-loading", on);
+        loadingTitle.hidden = !on;
+      }
 
       function setMessage(text, done) {
         var next = text || "";
@@ -285,6 +303,7 @@
       }
 
       function connect(id) {
+        var view = viewGeneration;
         fetch("/connect", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -294,6 +313,7 @@
             return { ok: response.ok, payload: payload };
           });
         }).then(function (result) {
+          if (view !== viewGeneration) return;
           var payload = result.payload || {};
           if (result.ok && payload.ok) {
             window.location.reload();
@@ -306,6 +326,7 @@
           }
           showConnectError(error);
         }).catch(function () {
+          if (view !== viewGeneration) return;
           showConnectError("perception stream is not live");
         });
       }
@@ -329,7 +350,10 @@
 
       function load() {
         var current = ++ticket;
+        viewGeneration += 1;
+        clearMessage();
         list.replaceChildren();
+        setLoading(true);
         fetch("/connect").then(function (response) {
           return response.json().then(function (payload) {
             return { ok: response.ok, payload: payload };
@@ -339,12 +363,14 @@
           var payload = result.payload || {};
           if (!result.ok || payload.schema !== "automa_vehicle_status_v1") {
             showError(payload.error || "vehicles status failed");
-            return;
+          } else {
+            render(payload);
           }
-          render(payload);
+          setLoading(false);
         }).catch(function () {
           if (current !== ticket) return;
           showError("vehicles status failed");
+          setLoading(false);
         });
       }
 

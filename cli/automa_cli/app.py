@@ -190,10 +190,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = vehicle_commands.add_parser(
         "status",
-        help="Show whether the simulator is running and which hosts are attached to it.",
+        help="Show whether the simulator is running and whether each attached host is live.",
         description=(
-            "Report whether the Chase simulator is running and which vehicle hosts are "
-            "attached to it. Exits 1 when the simulator is not running."
+            "Report whether the Chase simulator is running and whether each attached "
+            "vehicle host is live. A host in error shows that error. Exits 1 when the "
+            "simulator is not running."
         ),
     )
     status.add_argument(

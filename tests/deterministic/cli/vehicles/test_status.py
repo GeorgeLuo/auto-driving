@@ -380,10 +380,11 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertEqual(lines[0], f"Simulator: running at {chase_operator_url(server.url)}")
         self.assertTrue(
             lines[1].startswith(
-                "Host: chase-sim-chaser at http://127.0.0.1:8123 (pid 4321), attached since "
+                "Host: chase-sim-chaser at http://127.0.0.1:8123 (pid 4321), not live: "
             ),
             lines[1],
         )
+        self.assertIn(", attached since ", lines[1])
         self.assertEqual(
             set(machine), {"schema", "vehicle_id", "operator_url", "state", "hosts", "hosts_error"}
         )
@@ -391,6 +392,26 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertEqual(machine["state"], "running")
         self.assertEqual([item["url"] for item in machine["hosts"]], [host["url"]])
         self.assertEqual(other["hosts"], [])
+
+    def test_status_prints_a_host_error_on_that_hosts_line(self) -> None:
+        text = format_chase_simulator_status({
+            "state": "running",
+            "operator_url": "http://127.0.0.1:5050/",
+            "hosts": [{
+                "vehicle_id": "chase-sim-chaser",
+                "url": "http://127.0.0.1:51281",
+                "pid": 33090,
+                "connected_at": "2026-10-23T22:14:24+00:00",
+                "liveness": "error",
+                "session_status": "error",
+                "error": "Chase passiveCaptureError: session moved",
+            }],
+        })
+        self.assertIn(
+            "error: Chase passiveCaptureError: session moved",
+            text,
+        )
+        self.assertNotIn("live, session", text)
 
     def test_status_says_when_no_host_is_attached(self) -> None:
         with fake_metrics_ui() as server:

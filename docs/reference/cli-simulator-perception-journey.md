@@ -47,13 +47,15 @@ explicitly restaged using the recovery that `vehicles automation status` prints.
 ./cli/automa vehicles automation status --id chase-sim-chaser
 ```
 
-`vehicles status` is read-only and prints only whether the simulator is running
-and which vehicle hosts are attached to it. The simulator is running when its
-Metrics UI server answers, whether or not a browser has it open. A running host
-holds an agent socket that Metrics UI lists to other agents (`list_agents`); a
-Metrics UI too old to list agents reports the hosts as unknown. `--id` shows
-only that vehicle's host. Status exits 1 only when the simulator is not
-reachable, and its JSON is `automa_simulator_status_v1`.
+`vehicles status` is read-only. It prints whether the simulator is running and,
+for each attached vehicle host, whether that host is live. The simulator is
+running when its Metrics UI server answers, whether or not a browser has it
+open. A host holds an agent socket that Metrics UI lists to other agents
+(`list_agents`); status then reads that host's `/autonomy/status`. A host that
+answers with a session error prints that error. A Metrics UI too old to list
+agents reports the hosts as unknown. `--id` shows only that vehicle's host.
+Status exits 1 only when the simulator is not reachable, and its JSON is
+`automa_simulator_status_v1`.
 
 An HTTP(S) Metrics UI origin is resolved to the
 same origin at `/ws/control`; an explicit non-root WS(S) path is preserved.

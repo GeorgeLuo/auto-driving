@@ -12,6 +12,7 @@ from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
+from autonomy.runtime.client import RuntimeClient
 from implementations.vehicle.chase_sim import (
     ChaseCaptureValidationError,
     ChasePassiveCaptureError,
@@ -362,6 +363,34 @@ def get_vehicle_status(
     }
 
 
+def _host_liveness(url: Any, timeout_s: float) -> dict[str, Any]:
+    """Whether one attached host answers, and the error when its session failed.
+
+    The simulator's agent list only proves the socket is open. Liveness is the
+    host's own ``/autonomy/status``: ``live`` when that answers and the session
+    is not in error, ``error`` when the host reports a session error, and
+    ``not live`` when the host cannot be read.
+    """
+
+    if not isinstance(url, str) or not url.strip():
+        return {"liveness": "not live", "session_status": None, "error": "the host has no url"}
+    try:
+        payload = RuntimeClient(url, timeout_s=timeout_s).host_status()
+    except (RuntimeError, OSError, TimeoutError, ValueError) as exc:
+        return {"liveness": "not live", "session_status": None, "error": str(exc)}
+    session = payload.get("session") if isinstance(payload.get("session"), dict) else {}
+    autonomy = payload.get("autonomy") if isinstance(payload.get("autonomy"), dict) else {}
+    session_status = session.get("status")
+    last_error = autonomy.get("last_error") or session.get("last_error")
+    if payload.get("ok") is False or session_status == "error" or last_error:
+        return {
+            "liveness": "error",
+            "session_status": session_status,
+            "error": last_error or payload.get("error") or "the host session is error",
+        }
+    return {"liveness": "live", "session_status": session_status, "error": None}
+
+
 def get_chase_simulator_status(
     *,
     vehicle_id: str | None = None,
@@ -369,11 +398,11 @@ def get_chase_simulator_status(
     chase_ws_url: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
 ) -> dict[str, Any]:
-    """Whether the Chase simulator is running, and the vehicle hosts attached to it.
+    """Whether the Chase simulator is running, and the liveness of each attached host.
 
-    The simulator answers both: it runs when its server answers ``get_state``,
-    and each host holds an agent socket the server lists. ``hosts`` is None
-    when it could not list them.
+    The simulator runs when its server answers ``get_state``. Each host holds an
+    agent socket the server lists, and this reads that host's status. ``hosts``
+    is None when the simulator could not list them.
     """
 
     if chase_url is not None and chase_ws_url is not None:
@@ -408,14 +437,32 @@ def get_chase_simulator_status(
     except failures as exc:
         status["hosts_error"] = str(exc)
     else:
-        status["hosts"] = [
-            {**agent["client"], "connected_at": agent.get("connectedAt")}
-            for agent in agents
-            if isinstance(agent.get("client"), dict)
-            and agent["client"].get("kind") == "vehicle-host"
-            and vehicle_id in (None, agent["client"].get("vehicle_id"))
-        ]
+        status["hosts"] = []
+        for agent in agents:
+            client_info = agent.get("client")
+            if (
+                not isinstance(client_info, dict)
+                or client_info.get("kind") != "vehicle-host"
+                or vehicle_id not in (None, client_info.get("vehicle_id"))
+            ):
+                continue
+            host = {**client_info, "connected_at": agent.get("connectedAt")}
+            host.update(_host_liveness(host.get("url"), remaining()))
+            status["hosts"].append(host)
     return status
+
+
+def _host_liveness_text(host: dict[str, Any]) -> str:
+    liveness = host.get("liveness")
+    if liveness == "error":
+        return f"error: {host.get('error') or 'the host session is error'}"
+    if liveness == "not live":
+        detail = host.get("error")
+        return f"not live: {detail}" if detail else "not live"
+    if liveness == "live":
+        session_status = host.get("session_status")
+        return f"live, session {session_status}" if session_status else "live"
+    return "unknown"
 
 
 def format_chase_simulator_status(status: dict[str, Any]) -> str:
@@ -431,7 +478,8 @@ def format_chase_simulator_status(status: dict[str, Any]) -> str:
     for host in hosts or []:
         lines.append(
             f"Host: {host.get('vehicle_id', 'unknown')} at {host.get('url', 'unknown')} "
-            f"(pid {host.get('pid', 'unknown')}), attached since {_local_time(host.get('connected_at'))}"
+            f"(pid {host.get('pid', 'unknown')}), {_host_liveness_text(host)}, "
+            f"attached since {_local_time(host.get('connected_at'))}"
         )
     return "\n".join(lines)
 

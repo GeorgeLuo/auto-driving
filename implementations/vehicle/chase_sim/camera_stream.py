@@ -1,6 +1,7 @@
 """A passive camera subscription with one waiting frame, decoded in memory."""
 from __future__ import annotations
 
+import json
 import threading
 import time
 from typing import Any, Callable
@@ -85,7 +86,10 @@ class ChaseCameraStream:
                     continue
                 payload = message.get("payload")
                 if not isinstance(payload, dict) or payload.get("event") != "subscribed":
-                    raise MetricsUiWebSocketError("Camera stream subscription was rejected", details=payload)
+                    raise MetricsUiWebSocketError(
+                        f"Camera stream subscription was rejected: {json.dumps(payload, sort_keys=True)}",
+                        details=payload,
+                    )
                 self._validate_subscription(payload)
                 self._accept_frame(payload.get("frame"))
                 break

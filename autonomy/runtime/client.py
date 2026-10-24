@@ -21,7 +21,10 @@ class RuntimeClient:
         self.timeout_s = float(timeout_s)
 
     def request(self, method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any]:
-        """Return the JSON body, including error responses that carry one."""
+        """Return the JSON object body, including error responses that carry one.
+
+        Any other reply raises ``RuntimeError``, as an unreachable host does.
+        """
 
         url = f"{self.base_url}{path}"
         data = None if payload is None else json.dumps(payload).encode("utf-8")
@@ -36,13 +39,13 @@ class RuntimeClient:
             with exc:
                 body = exc.read()
             try:
-                return json.loads(body)
-            except ValueError:
+                return _json_object(body, f"{method} {url}")
+            except RuntimeError:
                 raise RuntimeError(f"{method} {url} returned HTTP {exc.code}") from exc
         except (urllib.error.URLError, TimeoutError, OSError) as exc:
             reason = getattr(exc, "reason", exc)
             raise RuntimeError(f"{method} {url} failed: {reason}") from exc
-        return json.loads(body)
+        return _json_object(body, f"{method} {url}")
 
     def _command(self, command: str, **data: Any) -> dict[str, Any]:
         response = self.request("POST", RUNTIME_PATH, {"command": command, **data})
@@ -79,7 +82,17 @@ class RuntimeClient:
             try:
                 if self.status().get("host_run_id") != previous:
                     return
-            except (RuntimeError, OSError, ValueError):
+            except RuntimeError:
                 pass
             time.sleep(0.2)
         raise TimeoutError(f"runtime at {self.base_url} did not restart within {timeout_s:g} s")
+
+
+def _json_object(body: bytes, request: str) -> dict[str, Any]:
+    try:
+        payload = json.loads(body)
+    except ValueError as exc:
+        raise RuntimeError(f"{request} returned non-JSON body") from exc
+    if not isinstance(payload, dict):
+        raise RuntimeError(f"{request} returned a non-object JSON payload")
+    return payload

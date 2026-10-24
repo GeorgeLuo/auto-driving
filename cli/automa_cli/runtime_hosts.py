@@ -257,7 +257,8 @@ def ensure_chase_host(vehicle_id: str, *, timeout_s: float = HOST_START_TIMEOUT_
     """The base URL of a Chase host running the latest release, started if needed.
 
     An idle host on an older release is restarted onto the latest one; a host
-    with a running session is never replaced.
+    with a running session is never replaced. A host started here that does
+    not serve within ``timeout_s``, or whose start is interrupted, is ended.
     """
 
     latest = release_summary(release_manifest(vehicle_id))
@@ -296,7 +297,18 @@ def ensure_chase_host(vehicle_id: str, *, timeout_s: float = HOST_START_TIMEOUT_
             cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
             start_new_session=True, env={**os.environ, "PYTHONUNBUFFERED": "1"},
         )
-    return _wait_for_host(vehicle_id, process, timeout_s)["base_url"]
+    try:
+        return _wait_for_host(vehicle_id, process, timeout_s)["base_url"]
+    except BaseException:
+        # The supervisor leads its own session, so this ends its host too.
+        if process.poll() is None:
+            os.killpg(process.pid, signal.SIGTERM)
+            try:
+                process.wait(timeout=3.0)
+            except subprocess.TimeoutExpired:
+                os.killpg(process.pid, signal.SIGKILL)
+                process.wait()
+        raise
 
 
 def stop_chase_host(vehicle_id: str, *, wait_s: float = 3.0) -> bool:

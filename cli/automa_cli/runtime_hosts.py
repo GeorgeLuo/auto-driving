@@ -23,6 +23,12 @@ from typing import Any
 
 from autonomy.runtime.client import RuntimeClient
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, RESTART_EXIT_CODE
+from implementations.vehicle.picar.defaults import (
+    LOCAL_CAR_BASE_URL_ENV,
+    LOCAL_CAR_ID_ENV,
+    get_default_picar_base_url,
+    get_default_picar_id,
+)
 
 from .bundles import controller_bundle_paths
 from .paths import ROOT, display_path, safe_path_part
@@ -397,6 +403,8 @@ def runtime_base_url(vehicle_id: str, *, start: bool = False, timeout_s: float =
             f"Run: ./cli/automa vehicles automation run --id {vehicle_id} --observe-only"
         )
     raise RuntimeHostError(
-        f"Vehicle {vehicle_id!r} has no staged runtime base URL.\n"
-        f"Run: ./cli/automa vehicles update autonomy --id {vehicle_id}"
+        f"Vehicle {vehicle_id!r} has no staged runtime base URL: it is not a Chase id "
+        "(chase-sim-*), and no PiCar connection is staged under it.\n"
+        f"vehicles update stages a PiCar under {LOCAL_CAR_ID_ENV} ({get_default_picar_id()!r}), "
+        f"at {LOCAL_CAR_BASE_URL_ENV} ({get_default_picar_base_url()})."
     )

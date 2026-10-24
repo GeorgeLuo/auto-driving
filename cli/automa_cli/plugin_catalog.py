@@ -207,9 +207,10 @@ def _target_args(url: str | None, vehicle_id: str | None) -> str:
     return f"--url {shlex.quote(url)}" if url else f"--id {shlex.quote(vehicle_id)}"
 
 
-def _catalog_recovery(url: str | None, vehicle_id: str | None) -> str:
+def _catalog_recovery(url: str | None, vehicle_id: str | None) -> str | None:
+    # The error already says why the vehicle's host cannot be reached.
     if vehicle_id:
-        return f"./cli/automa vehicles status --id {shlex.quote(vehicle_id)}"
+        return None
     return f"Check that the catalog host at {url} is running, then retry ./cli/automa vehicles plugins status {_target_args(url, vehicle_id)}"
 
 

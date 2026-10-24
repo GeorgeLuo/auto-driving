@@ -121,7 +121,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | Command | Reads or changes |
 |---|---|
 | `vehicles active` | Probes discoverable PiCar and Chase endpoints; does not imply deployment, worker, or view state. |
-| `vehicles status` | Shows whether the Chase simulator is running and whether each attached vehicle host is live, including the host's error when it reports one, without changing anything. |
+| `vehicles status` | Shows the Chase simulator (running, its frontend and game) and each vehicle host's state (session, mode, decision and error counts, last frame), whether it is attached to the simulator or only known locally, and its error, without changing anything. |
 | `vehicles update perception\|memory\|proposal\|plan` | Packages code and stages that step's preset or plugin selection locally (`--preset`, or repeatable `--plugin`; default presets `lightweight_observer`, `recency_ledger`, `obstruction_avoidance` and `most_confident`). |
 | `vehicles update observation\|action` | Packages code and stages that step's plugins locally (repeatable `--plugin`; without it, the step's default plugins and configs). |
 | `vehicles plugins upload` | Stores a local file in an existing live catalog, refusing source that does not compile; `--arm` also arms it through the same operation as `plugins arm`. |

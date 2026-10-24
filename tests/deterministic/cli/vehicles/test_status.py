@@ -1,24 +1,16 @@
 from __future__ import annotations
 
 import json
-import socket
 import unittest
 from unittest.mock import patch
 
 from cli.automa_cli.vehicles import (
     Candidate,
     ProbeResult,
-    chase_operator_url,
-    format_chase_simulator_status,
-    get_chase_simulator_status,
     get_vehicle_status,
     normalize_chase_url,
 )
-from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
-from implementations.vehicle.chase_sim.presence import MetricsUiPresence
 from tests.shared.cli.invoke import invoke_automa
-from tests.shared.implementations.runtime.wait import wait_until
-from tests.support.fake_metrics_ui import fake_metrics_ui
 
 
 def _passive_vehicle() -> dict:
@@ -364,84 +356,6 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertNotIn(
             "atomic-evaluation-capture",
             json.dumps(payload["next_action"]),
-        )
-
-    def test_status_shows_only_the_simulator_and_the_host_attached_to_it(self) -> None:
-        host = {"kind": "vehicle-host", "vehicle_id": "chase-sim-chaser",
-                "url": "http://127.0.0.1:8123", "pid": 4321}
-        with fake_metrics_ui() as server, MetricsUiPresence(server.url, host, retry_s=0.05):
-            wait_until(MetricsUiWsClient(server.url).list_agents, message="the host never attached")
-            human = invoke_automa("vehicles", "status", "--chase-ws-url", server.url)
-            machine = json.loads(invoke_automa("vehicles", "status", "--chase-ws-url", server.url, "--json").stdout)
-            other = get_chase_simulator_status(vehicle_id="chase-sim-follower", chase_ws_url=server.url)
-
-        lines = human.stdout.splitlines()
-        self.assertEqual(len(lines), 2, human.stdout)
-        self.assertEqual(lines[0], f"Simulator: running at {chase_operator_url(server.url)}")
-        self.assertTrue(
-            lines[1].startswith(
-                "Host: chase-sim-chaser at http://127.0.0.1:8123 (pid 4321), not live: "
-            ),
-            lines[1],
-        )
-        self.assertIn(", attached since ", lines[1])
-        self.assertEqual(
-            set(machine), {"schema", "vehicle_id", "operator_url", "state", "hosts", "hosts_error"}
-        )
-        self.assertEqual(machine["schema"], "automa_simulator_status_v1")
-        self.assertEqual(machine["state"], "running")
-        self.assertEqual([item["url"] for item in machine["hosts"]], [host["url"]])
-        self.assertEqual(other["hosts"], [])
-
-    def test_status_prints_a_host_error_on_that_hosts_line(self) -> None:
-        text = format_chase_simulator_status({
-            "state": "running",
-            "operator_url": "http://127.0.0.1:5050/",
-            "hosts": [{
-                "vehicle_id": "chase-sim-chaser",
-                "url": "http://127.0.0.1:51281",
-                "pid": 33090,
-                "connected_at": "2026-10-23T22:14:24+00:00",
-                "liveness": "error",
-                "session_status": "error",
-                "error": "Chase passiveCaptureError: session moved",
-            }],
-        })
-        self.assertIn(
-            "error: Chase passiveCaptureError: session moved",
-            text,
-        )
-        self.assertNotIn("live, session", text)
-
-    def test_status_says_when_no_host_is_attached(self) -> None:
-        with fake_metrics_ui() as server:
-            result = invoke_automa("vehicles", "status", "--chase-ws-url", server.url)
-
-        self.assertEqual(
-            result.stdout.splitlines(),
-            [f"Simulator: running at {chase_operator_url(server.url)}", "Host: none attached"],
-        )
-
-    def test_status_exits_one_when_the_simulator_is_not_reachable(self) -> None:
-        with socket.socket() as closed:
-            closed.bind(("127.0.0.1", 0))
-            url = f"http://127.0.0.1:{closed.getsockname()[1]}"
-        result = invoke_automa("vehicles", "status", "--chase-url", url, check=False)
-
-        self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertEqual(
-            result.stdout.splitlines(),
-            [f"Simulator: not reachable at {chase_operator_url(normalize_chase_url(url))}",
-             "Host: unknown while the simulator is unreachable"],
-        )
-
-    def test_status_says_why_hosts_are_unknown(self) -> None:
-        url = "http://localhost:5050/"
-        unlisted = {"state": "running", "operator_url": url, "hosts": None,
-                    "hosts_error": "Frontend not connected"}
-        self.assertEqual(
-            format_chase_simulator_status(unlisted).splitlines(),
-            [f"Simulator: running at {url}", "Host: unknown, this simulator cannot list attached hosts"],
         )
 
     def test_conflicting_explicit_urls_exit_two_before_any_probe(self) -> None:

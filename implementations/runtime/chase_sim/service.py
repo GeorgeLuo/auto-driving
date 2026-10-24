@@ -229,7 +229,9 @@ def serve(*, vehicle_id: str, ws_url: str | None, runtime_dir: Path, port: int,
     presence = MetricsUiPresence(car.ws_url, {
         "kind": "vehicle-host", "vehicle_id": vehicle_id, "url": runtime.base_url, "pid": os.getpid(),
     })
-    with runtime, presence:
+    # Presence closes last, so the runtime releases control first and within
+    # the stop deadline.
+    with presence, runtime:
         write_host_record(host_record, {
             "schema": HOST_RECORD_SCHEMA,
             "vehicle_id": vehicle_id,

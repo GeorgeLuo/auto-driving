@@ -6,7 +6,7 @@ import threading
 import time
 from typing import Any
 
-from .metrics_ws import MetricsUiConnection, MetricsUiWebSocketError, MetricsUiWsClient
+from .metrics_ws import MetricsUiConnection, MetricsUiWsClient
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +67,8 @@ class MetricsUiPresence:
                 ws.set_read_timeout(None)
                 while True:
                     ws.recv_json()
-            except (OSError, ValueError, MetricsUiWebSocketError) as exc:
+            except Exception as exc:
+                # Any failure retries, so the host never silently stops attaching.
                 # Report each new reason once, not every retry.
                 if not self._stop.is_set() and str(exc) != reported:
                     reported = str(exc)

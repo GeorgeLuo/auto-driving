@@ -31,6 +31,7 @@ from .runtime_hosts import (
     staged_vehicle,
     stop_chase_host,
 )
+from .host_publications import host_state
 from .runtime_monitor import monitor_runtime
 from .step_activations import (
     bundle_activation_problems,
@@ -81,11 +82,10 @@ def _host_runtime_status(
     """
 
     endpoint = f"{base_url}/autonomy/status"
-    try:
-        status = RuntimeClient(base_url, timeout_s=max(0.1, timeout_s)).host_status()
-        error = None
-    except RuntimeError as exc:
-        status, error = {}, str(exc)
+    host = host_state(base_url, vehicle_id=vehicle_id, timeout_s=max(0.1, timeout_s))
+    status = host["reply"] or {}
+    error = host["error"] if host["state"] in {"not answering", "error"} else None
+    worker_status = "error" if error is not None else host["state"]
     autonomy = status.get("autonomy") if isinstance(status.get("autonomy"), dict) else {}
     components = autonomy.get("components") if isinstance(autonomy.get("components"), dict) else {}
     observation = (
@@ -93,10 +93,6 @@ def _host_runtime_status(
     )
     latest = observation.get("latest") if isinstance(observation.get("latest"), dict) else {}
     completed_at_ms = _int_or_none(latest.get("completed_at_ms"))
-    if error is None and not autonomy:
-        error = f"{base_url} answers but reports no runtime host"
-    session = autonomy.get("session") or {}
-    worker_status = str(session.get("status") or "stopped") if error is None else "error"
     view = discover_runtime_view(
         vehicle_id,
         lambda directory: get_perception_view_status(

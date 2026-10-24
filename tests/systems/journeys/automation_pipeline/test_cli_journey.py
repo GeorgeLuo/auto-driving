@@ -176,10 +176,15 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     ).stdout)["vehicles"][0]["state"]["run_id"]
                     self.assertNotEqual(new_run, old_run)
 
-                    wait_until(
-                        lambda: [host["vehicle_id"] for host in simulator()["hosts"]] == ["chase-sim-chaser"],
-                        message="the simulator never listed the running host",
+                    # The host record alone lists the host; wait until it attaches.
+                    [host] = wait_until(
+                        lambda: [
+                            host for host in simulator()["hosts"]
+                            if (host["vehicle_id"], host["attached"]) == ("chase-sim-chaser", True)
+                        ],
+                        message="the simulator never listed the running host as attached",
                     )
+                    self.assertEqual((host["state"], host["mode"], host["error"]), ("running", "observe_only", None))
                     running = json.loads(invoke_automa(
                         "vehicles", "automation", "status", "--id", "chase-sim-chaser",
                         "--json", runtime_root=runtime_root, extra_env=env,

@@ -54,6 +54,18 @@ class _ThreadingWebSocketServer(socketserver.ThreadingTCPServer):
         self._agents_lock = threading.Lock()
         # Like Metrics UI, each registered agent's description, listed to the others.
         self._agents: dict[_MetricsUiHandler, dict] = {}
+        self._refusals: dict[str, dict] = {}
+
+    def refuse(self, message_type: str, error: str, code: str | None = None) -> None:
+        """Answer every ``message_type`` request with this error, as Metrics UI does."""
+
+        self._refusals[message_type] = {"error": error, "payload": {"code": code}}
+
+    def refusal(self, message: dict) -> dict | None:
+        refusal = self._refusals.get(message.get("type"))
+        if refusal is None:
+            return None
+        return {"type": "error", "request_id": message.get("request_id"), **refusal}
 
     @property
     def url(self) -> str:
@@ -126,7 +138,10 @@ class _MetricsUiHandler(socketserver.BaseRequestHandler):
                 if frame[0] != 0x1:
                     continue
                 message = json.loads(frame[1].decode("utf-8"))
-                if message.get("type") == "play_camera_stream_subscribe":
+                refusal = self.server.refusal(message)
+                if refusal is not None:
+                    send(refusal)
+                elif message.get("type") == "play_camera_stream_subscribe":
                     first = _atomic_capture(next(_FRAME_INDEXES))
                     send(_message("play_camera_stream_result", message.get("request_id"), {
                         "event": "subscribed", "subscriptionId": "fixture-stream",

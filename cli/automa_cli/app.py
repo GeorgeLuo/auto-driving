@@ -190,18 +190,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = vehicle_commands.add_parser(
         "status",
-        help="Show whether the simulator is running and whether each attached host is live.",
+        help="Show the Chase simulator and the state of each vehicle host.",
         description=(
-            "Report whether the Chase simulator is running and whether each attached "
-            "vehicle host is live. A host in error shows that error. Exits 1 when the "
-            "simulator is not running."
+            "Report whether the Chase simulator is running and its frontend connected, "
+            "and the state of each vehicle host the simulator lists or that has a local "
+            "host record or staged connection, with the host's error. Exits 1 when the "
+            "simulator is unreachable, or when --id names a host that is not found, not "
+            "answering, or in error."
         ),
     )
     status.add_argument(
         "--id",
         dest="vehicle_id",
         default=None,
-        help="Show only this vehicle's host. Omit to list every attached host.",
+        help=(
+            "Show only this vehicle's host, and exit 1 when it is not found, not "
+            "answering, or in error. Omit to list every host."
+        ),
     )
     status.add_argument(
         "--chase-url",
@@ -224,8 +229,8 @@ def build_parser() -> argparse.ArgumentParser:
         type=float,
         default=DEFAULT_READINESS_TIMEOUT_S,
         help=(
-            "One wall-clock deadline for every simulator query in seconds "
-            f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
+            "One wall-clock deadline in seconds for the simulator queries and the "
+            f"host reads, which run in parallel (default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
     )
     status.add_argument(
@@ -1407,7 +1412,7 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "- status  show live catalog availability and plugin revisions (list is an alias)",
         "- help    show this summary", "",
         "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; upload, arm and disarm do not start automation.",
-        "Use ./cli/automa vehicles status --id <vehicle> to see whether its host is attached to the simulator.",
+        "Use ./cli/automa vehicles status --id <vehicle> to see its host's state.",
         "Use --url <runtime-or-workbench-url> to address an existing catalog directly.", "",
         "Example:",
         "  ./cli/automa vehicles plugins upload --id chase-sim-chaser --file ./prototype.py --step perception --plugin-id prototype --entrypoint prototype:Prototype",
@@ -1528,7 +1533,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "automa vehicles commands",
                 "",
                 "- active       discover vehicle endpoints (not worker/deployment state)",
-                "- status       inspect simulator, deployment, worker, and view layers",
+                "- status       show the simulator, its frontend, and each vehicle host's state",
                 "- update       stage controller selections or deploy vehicle code",
                 "- plugins      upload, arm, disarm and inspect plugins in a live catalog",
                 "- automation   manage locally deployed automation workers",
@@ -1779,7 +1784,13 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         print(format_chase_simulator_status(payload))
-    return 0 if payload["state"] == "running" else 1
+    if payload["state"] != "running":
+        return 1
+    # Without --id, no host's state changes the exit.
+    failed = {"not found", "not answering", "error"}
+    if args.vehicle_id is not None and any(host["state"] in failed for host in payload["hosts"]):
+        return 1
+    return 0
 
 
 def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:

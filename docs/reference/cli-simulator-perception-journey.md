@@ -47,15 +47,39 @@ explicitly restaged using the recovery that `vehicles automation status` prints.
 ./cli/automa vehicles automation status --id chase-sim-chaser
 ```
 
-`vehicles status` is read-only. It prints whether the simulator is running and,
-for each attached vehicle host, whether that host is live. The simulator is
-running when its Metrics UI server answers, whether or not a browser has it
-open. A host holds an agent socket that Metrics UI lists to other agents
-(`list_agents`); status then reads that host's `/autonomy/status`. A host that
-answers with a session error prints that error. A Metrics UI too old to list
-agents reports the hosts as unknown. `--id` shows only that vehicle's host.
-Status exits 1 only when the simulator is not reachable, and its JSON is
-`automa_simulator_status_v1`.
+`vehicles status` is read-only and is the one status overview. It prints a
+heading for the simulator and for each vehicle host, with details indented
+below it:
+
+```text
+Simulator  running at http://localhost:5050/
+  frontend connected, game chase
+
+Host chase-sim-chaser  running, observe only
+  120 decisions, 0 errors, last frame 0.3s ago
+  attached since 2026-10-23 16:27:55
+  http://127.0.0.1:54665, pid 50057
+
+Host chase-sim-follower  not answering
+  no answer within 2.0s
+  not attached to this simulator (local host record)
+  http://127.0.0.1:54701, pid 50122
+```
+
+The simulator is running when its Metrics UI server answers, whether or not a
+browser has it open; `frontend not connected` (or `not answering`) says no
+browser is serving it.
+When it is unreachable, the next line says why. The hosts are those Metrics UI
+lists as attached agents (`list_agents`), every local host record whose process
+is alive, and each staged PiCar connection. Status reads every host's
+`/autonomy/status` in parallel, within the one `--timeout-s` deadline, so a
+host that never answers does not hold up the others. A host's state is its
+session state (`not started`, `starting`, `running`, `stopping`, `stopped`,
+`completed`, `error`) followed by its mode, `not answering` with the reason, or
+`error` when its reply is not a runtime host status; its last error prints
+below. When the simulator cannot list agents, the line `cannot list attached
+hosts` says why and local hosts are still shown. `--id` shows only that
+vehicle's host, or `not found`. The JSON is `automa_simulator_status_v1`.
 
 An HTTP(S) Metrics UI origin is resolved to the
 same origin at `/ws/control`; an explicit non-root WS(S) path is preserved.
@@ -246,8 +270,10 @@ external change.
 | Worker stopped | Run the printed observation-only `automation run --open-view` command |
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 
-`vehicles status` exits nonzero only when the simulator is not reachable; no
-attached host is a successful read.
+`vehicles status` exits 1 when the simulator is not reachable, or when `--id`
+names a host that is `not found`, `not answering` or in `error`; otherwise it
+exits 0, including when no host is found or the browser is closed. Invalid
+arguments exit 2.
 
 Simulator preparation is deliberately outside passive attachment:
 

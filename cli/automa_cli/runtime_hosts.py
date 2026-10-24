@@ -346,6 +346,28 @@ def running_base_url(vehicle_id: str) -> str | None:
     return base_url.rstrip("/") if isinstance(base_url, str) and base_url.strip() else None
 
 
+def local_hosts() -> list[dict[str, Any]]:
+    """The host each local vehicle addresses now, by ``running_base_url``.
+
+    ``local`` names where the host was found: a Chase car's running host
+    record, or a PiCar's staged connection.
+    """
+
+    if not RUNTIME_ROOT.is_dir():
+        return []
+    hosts = []
+    for path in sorted(path for path in RUNTIME_ROOT.iterdir() if path.is_dir()):
+        if is_chase_vehicle_id(path.name):
+            record = host_record(path.name)
+            if record is not None:
+                hosts.append({"vehicle_id": path.name, "url": record["base_url"],
+                              "pid": record.get("pid"), "local": "host record"})
+        elif (base_url := running_base_url(path.name)) is not None:
+            hosts.append({"vehicle_id": path.name, "url": base_url, "pid": None,
+                          "local": "staged connection"})
+    return hosts
+
+
 def runtime_base_url(vehicle_id: str, *, start: bool = False, timeout_s: float = HOST_START_TIMEOUT_S) -> str:
     """Where the vehicle's runtime serves the shared routes, or why it cannot be reached.
 

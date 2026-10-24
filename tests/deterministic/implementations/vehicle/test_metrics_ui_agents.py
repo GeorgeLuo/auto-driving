@@ -60,6 +60,30 @@ class PresenceTests(unittest.TestCase):
         self.assertTrue(any("WebSocket closed by server: 1001 server shutdown (api)" in line
                             for line in logs.output), logs.output)
 
+    def test_an_unexpected_failure_is_reported_and_the_presence_still_attaches(self) -> None:
+        failures = iter([RuntimeError("unexpected registration reply")])
+
+        class FailingOnce(MetricsUiConnection):
+            def connect(self) -> None:
+                for failure in failures:
+                    raise failure
+                super().connect()
+
+        with (
+            fake_metrics_ui() as server,
+            mock.patch("implementations.vehicle.chase_sim.presence.MetricsUiConnection", FailingOnce),
+            self.assertLogs("implementations.vehicle.chase_sim.presence", "INFO") as logs,
+            MetricsUiPresence(server.url, HOST, retry_s=0.05),
+        ):
+            client = MetricsUiWsClient(server.url, timeout_s=2.0)
+            wait_until(lambda: [agent["client"] for agent in client.list_agents()] == [HOST],
+                       message="the presence never attached after the failure")
+        self.assertEqual(
+            [line for line in logs.output if "unexpected registration reply" in line],
+            [f"WARNING:implementations.vehicle.chase_sim.presence:Not attached to Metrics UI at "
+             f"{server.url}: unexpected registration reply; retrying every 0.05s"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

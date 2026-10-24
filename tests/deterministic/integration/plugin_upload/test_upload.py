@@ -275,7 +275,7 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertNotEqual(unavailable.returncode, 0)
             self.assertEqual(missing["vehicle_id"], "chase-sim-chaser")
             self.assertEqual(missing["outcome"]["status"], "unavailable")
-            self.assertEqual(missing["outcome"]["recovery"], "./cli/automa vehicles status --id chase-sim-chaser")
+            self.assertIsNone(missing["outcome"]["recovery"])
             bundle = controller_bundle_paths(runtime_root / "chase-sim-chaser")
             chase = self.enterContext(chase_runtime(runtime_root))
             viewer = RuntimeViewServer(vehicle_id="chase-sim-chaser", automation_dir=Path(bundle["runtime_dir"]) / "automation",

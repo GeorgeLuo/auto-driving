@@ -7,7 +7,9 @@ import socket
 import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
@@ -16,18 +18,23 @@ from implementations.vehicle.chase_sim import (
     ChasePassiveCaptureError,
     ChaseSimCar,
 )
+from implementations.vehicle.chase_sim.car import FRONTEND_DELIVERY_PROTOCOL_CODES
 from implementations.vehicle.chase_sim.defaults import (
     CHASE_UI_WS_URL_ENV,
     DEFAULT_CHASE_UI_WS_URL,
 )
+from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
 from implementations.vehicle.picar import create_picar
 from implementations.vehicle.picar.defaults import (
     DEFAULT_LOCAL_CAR_BASE_URL,
     LOCAL_CAR_BASE_URL_ENV,
 )
 
+from .host_publications import host_state
+
 DEFAULT_READINESS_TIMEOUT_S = 5.0
 STATUS_SCHEMA = "automa_vehicle_status_v1"
+SIMULATOR_STATUS_SCHEMA = "automa_simulator_status_v1"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
 
 
@@ -359,27 +366,230 @@ def get_vehicle_status(
     }
 
 
-def format_vehicle_status(payload: dict[str, Any]) -> str:
-    """Format one status card or an aggregate list with truthful layer names."""
+def get_chase_simulator_status(
+    *,
+    vehicle_id: str | None = None,
+    chase_url: str | None = None,
+    chase_ws_url: str | None = None,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
+) -> dict[str, Any]:
+    """The Chase simulator, and the state of each vehicle host.
 
-    cards = payload.get("vehicles")
-    if isinstance(cards, list):
-        lines = [f"Known Chase vehicles: {len(cards)}"]
-        for card in cards:
-            if isinstance(card, dict):
-                lines.extend(["", *_format_vehicle_status_card(card)])
-        other = payload.get("other_local_deployments")
-        if isinstance(other, list) and other:
-            lines.extend(["", f"Other local deployments: {len(other)}"])
-            for deployment in other:
-                if not isinstance(deployment, dict):
+    The simulator runs when its server answers; its frontend is connected when
+    a browser has the page open. The hosts are the ones the simulator lists as
+    attached agents plus each local vehicle's host (``local_hosts``). Every
+    host's ``/autonomy/status`` is read in parallel within the one deadline.
+    """
+
+    from .runtime_hosts import local_hosts
+
+    if chase_url is not None and chase_ws_url is not None:
+        raise ValueError("--chase-url and --chase-ws-url cannot be used together")
+    operation_timeout = _require_positive_timeout(timeout_s)
+    endpoint = normalize_chase_url(
+        (chase_url or chase_ws_url or os.environ.get(CHASE_UI_WS_URL_ENV, DEFAULT_CHASE_UI_WS_URL)).strip()
+    )
+    client = MetricsUiWsClient(endpoint, timeout_s=operation_timeout)
+    deadline = time.monotonic() + operation_timeout
+
+    def remaining() -> float:
+        # The client refuses a zero timeout; a spent budget times out at once instead.
+        return max(deadline - time.monotonic(), 1e-3)
+
+    status: dict[str, Any] = {
+        "schema": SIMULATOR_STATUS_SCHEMA,
+        "vehicle_id": vehicle_id,
+        "operator_url": chase_operator_url(endpoint),
+        "state": "unreachable",
+        "error": None,
+        "frontend": None,
+        "game": None,
+        "hosts": [],
+        "hosts_error": None,
+    }
+    failures = (OSError, ValueError, MetricsUiWebSocketError)
+    hosts: dict[str, dict[str, Any]] = {}
+    reads: dict[str, Any] = {}
+
+    with ThreadPoolExecutor() as pool:
+
+        def add(host: dict[str, Any]) -> dict[str, Any]:
+            hosts[host["url"]] = host
+            reads[host["url"]] = pool.submit(
+                host_state, host["url"], vehicle_id=host["vehicle_id"], timeout_s=remaining()
+            )
+            return host
+
+        for local in local_hosts():
+            if vehicle_id in (None, local["vehicle_id"]):
+                add(_host_entry(**local))
+        agents = pool.submit(client.list_agents, timeout_s=remaining())
+        state_error = listed = list_error = None
+        try:
+            client.get_state(timeout_s=remaining())
+        except failures as exc:
+            state_error = exc
+        try:
+            listed = agents.result()
+        except failures as exc:
+            list_error = exc
+        # A server that answers either query is running; without a browser,
+        # get_state fails with a frontend delivery code.
+        frontend_error = state_error if _frontend_code(state_error) else None
+        if state_error is None or frontend_error is not None or listed is not None:
+            status["state"] = "running"
+        if state_error is not None and frontend_error is None:
+            status["error"] = str(state_error)
+        if listed is None:
+            if status["state"] == "running":
+                status["hosts_error"] = str(list_error)
+        else:
+            for host in hosts.values():
+                host["attached"] = False
+            for agent in listed:
+                client_info = agent.get("client")
+                if (
+                    not isinstance(client_info, dict)
+                    or client_info.get("kind") != "vehicle-host"
+                    or not isinstance(client_info.get("url"), str)
+                    or vehicle_id not in (None, client_info.get("vehicle_id"))
+                ):
                     continue
-                lines.append(
-                    f"- {deployment.get('vehicle_id', 'unknown')}: "
-                    f"{deployment.get('inspection_command', 'inspection unavailable')}"
+                url = client_info["url"].rstrip("/")
+                host = hosts.get(url) or add(
+                    _host_entry(client_info.get("vehicle_id"), url, client_info.get("pid"))
                 )
-        return "\n".join(lines)
-    return "\n".join(_format_vehicle_status_card(payload))
+                host.update(attached=True, attached_since=agent.get("connectedAt"))
+                if host["pid"] is None:
+                    host["pid"] = client_info.get("pid")
+        if status["state"] == "running" and frontend_error is None:
+            try:
+                debug = client.get_play_debug(timeout_s=remaining())
+            except failures as exc:
+                frontend_error = exc
+            else:
+                status["frontend"], status["game"] = "connected", debug.get("gameId")
+        if frontend_error is not None:
+            code = _frontend_code(frontend_error)
+            status["frontend"] = "not answering" if code == "frontend_unresponsive" else "not connected"
+            if code is None:
+                status["error"] = status["error"] or str(frontend_error)
+
+    for url, read in reads.items():
+        state = read.result()
+        state.pop("reply")
+        hosts[url].update(state)
+    status["hosts"] = sorted(hosts.values(), key=lambda host: (str(host["vehicle_id"]), host["url"]))
+    if vehicle_id is not None and not status["hosts"]:
+        status["hosts"].append({
+            **_host_entry(vehicle_id, None),
+            "attached": False if listed is not None else None,
+            "state": "not found",
+        })
+    return status
+
+
+def _frontend_code(exc: BaseException | None) -> str | None:
+    """The code Metrics UI fails a query with when no browser frontend answers it."""
+
+    code = getattr(exc, "code", None)
+    return code if code in FRONTEND_DELIVERY_PROTOCOL_CODES else None
+
+
+def _host_entry(vehicle_id: Any, url: str | None, pid: Any = None, local: str | None = None) -> dict[str, Any]:
+    return {
+        "vehicle_id": vehicle_id, "url": url, "pid": pid, "attached": None, "attached_since": None,
+        "local": local, "state": None, "mode": None, "decision_count": None, "error_count": None,
+        "last_frame_at_ms": None, "error": None,
+    }
+
+
+def host_state_text(host: dict[str, Any]) -> str:
+    """A host's state in words, with its mode: ``running, observe only``."""
+
+    state = host.get("state")
+    text = "not started" if state == "pre_start" else str(state or "unknown")
+    mode = host.get("mode")
+    return f"{text}, {mode.replace('_', ' ')}" if isinstance(mode, str) and mode else text
+
+
+def format_chase_simulator_status(status: dict[str, Any]) -> str:
+    url = status.get("operator_url", "unknown")
+    if status.get("state") == "running":
+        simulator = [f"Simulator  running at {url}"]
+        if status.get("frontend") == "connected" and status.get("game"):
+            simulator.append(f"  frontend connected, game {status['game']}")
+        elif status.get("frontend"):
+            simulator.append(f"  frontend {status['frontend']}")
+    else:
+        simulator = [f"Simulator  unreachable at {url}"]
+    simulator += _indented(status.get("error"))
+    if status.get("hosts_error"):
+        simulator.append(f"  cannot list attached hosts: {status['hosts_error']}")
+    blocks = ["\n".join(simulator)]
+    hosts = status.get("hosts") or []
+    if not hosts:
+        blocks.append("No hosts found")
+    blocks.extend(_host_block(host) for host in hosts)
+    return "\n\n".join(blocks)
+
+
+def _host_block(host: dict[str, Any]) -> str:
+    lines = [f"Host {host.get('vehicle_id')}  {host_state_text(host)}"]
+    activity = [
+        _count(host.get("decision_count"), "decision"),
+        _count(host.get("error_count"), "error"),
+        _frame_age(host.get("last_frame_at_ms")),
+    ]
+    if any(activity):
+        lines.append("  " + ", ".join(part for part in activity if part))
+    lines += _indented(host.get("error"))
+    attachment = _attachment_text(host)
+    if attachment:
+        lines.append(f"  {attachment}")
+    address = [host.get("url"), None if host.get("pid") is None else f"pid {host['pid']}"]
+    if any(address):
+        lines.append("  " + ", ".join(part for part in address if part))
+    return "\n".join(lines)
+
+
+def _attachment_text(host: dict[str, Any]) -> str | None:
+    if host.get("state") == "not found":
+        return None
+    if host.get("attached"):
+        since = host.get("attached_since")
+        return f"attached since {_local_time(since)}" if since else "attached"
+    local = "local host record" if host.get("local") == "host record" else host.get("local")
+    # A PiCar is not a simulator host.
+    if local == "staged connection" or host.get("attached") is None:
+        return local
+    return f"not attached to this simulator ({local})" if local else "not attached to this simulator"
+
+
+def _count(value: Any, noun: str) -> str | None:
+    if type(value) is not int:
+        return None
+    return f"{value} {noun}" + ("" if value == 1 else "s")
+
+
+def _frame_age(completed_at_ms: Any) -> str | None:
+    if type(completed_at_ms) is not int:
+        return None
+    age_s = max(0.0, time.time() - completed_at_ms / 1000)
+    if age_s < 60:
+        return f"last frame {age_s:.1f}s ago"
+    return f"last frame at {datetime.fromtimestamp(completed_at_ms / 1000).strftime('%Y-%m-%d %H:%M:%S')}"
+
+
+def _indented(text: Any) -> list[str]:
+    return [f"  {line}" for line in str(text).splitlines()] if text else []
+
+
+def _local_time(value: Any) -> str:
+    try:
+        return datetime.fromisoformat(str(value)).astimezone().strftime("%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        return str(value)
 
 
 def is_chase_vehicle_id(vehicle_id: str) -> bool:
@@ -634,10 +844,6 @@ def _vehicle_next_action(
                 external_change={
                     "component": "Metrics UI browser frontend",
                     "change": f"Open or reload {operator_url}",
-                    "then": (
-                        "./cli/automa vehicles status "
-                        f"--id {vehicle_id} --chase-url {operator_url}"
-                    ),
                 },
                 expected_state="simulator_frontend=connected",
             ),
@@ -774,17 +980,13 @@ def _vehicle_next_action(
             if isinstance(layers["perception_view"].get("details"), dict)
             else {}
         )
-        # Live worker still publishing: re-check status rather than restart.
+        # Live worker still publishing: the view becomes available without a restart.
         if (
             layers["automation_worker"]["state"] == "running"
             and view_details.get("status") == "warming"
         ):
             return (
-                action(
-                    "view_warming",
-                    command=f"./cli/automa vehicles status --id {vehicle_id}",
-                    expected_state="perception_view=available",
-                ),
+                action("view_warming", expected_state="perception_view=available"),
                 "perception_view",
                 "inspect perception",
             )
@@ -803,105 +1005,6 @@ def _vehicle_next_action(
             "inspect perception",
         )
     return None, None, "inspect perception and stop automation"
-
-
-def _format_vehicle_status_card(card: dict[str, Any]) -> list[str]:
-    layers = card.get("layers") if isinstance(card.get("layers"), dict) else {}
-    endpoint = card.get("endpoint") if isinstance(card.get("endpoint"), dict) else {}
-    capture = card.get("capture") if isinstance(card.get("capture"), dict) else {}
-    evaluator = (
-        capture.get("evaluator_reference")
-        if isinstance(capture.get("evaluator_reference"), dict)
-        else {}
-    )
-    lines = [
-        f"Vehicle: {card.get('vehicle_id', 'unknown')}",
-        f"Endpoint: {endpoint.get('operator_url', 'unknown')} -> {endpoint.get('resolved_ws_url', 'unknown')}",
-    ]
-    for name in (
-        "simulator_server",
-        "simulator_frontend",
-        "chase_game",
-        "vehicle",
-        "passive_capture",
-        "automation_deployment",
-        "automation_worker",
-        "perception_view",
-    ):
-        layer = layers.get(name) if isinstance(layers.get(name), dict) else {}
-        lines.append(f"{name}: {layer.get('state', 'unknown')}")
-    deployment = layers.get("automation_deployment", {}).get("details") or {}
-    for problem in deployment.get("activation_problems") or []:
-        lines.append(f"Invalid {problem['step']} activation: {problem['activation']}")
-        lines.append(f"Reason: {problem['reason']}")
-    worker = (
-        layers.get("automation_worker")
-        if isinstance(layers.get("automation_worker"), dict)
-        else {}
-    )
-    worker_details = (
-        worker.get("details") if isinstance(worker.get("details"), dict) else {}
-    )
-    authority = (
-        worker_details.get("authority")
-        if isinstance(worker_details.get("authority"), dict)
-        else {}
-    )
-    if authority:
-        lines.append(
-            "authority: "
-            f"control_source={authority.get('control_source', 'unknown')}, "
-            f"action_policy={authority.get('action_policy', 'unknown')}, "
-            f"control_application={authority.get('control_application', 'unknown')}"
-        )
-    lines.append(
-        "evaluator_reference: "
-        f"{evaluator.get('status', 'unavailable')}"
-        + (
-            f" ({evaluator.get('reason')})"
-            if evaluator.get("reason")
-            else ""
-        )
-    )
-    readiness = (
-        card.get("readiness")
-        if isinstance(card.get("readiness"), dict)
-        else {}
-    )
-    if readiness.get("status") == "ready":
-        lines.append(f"Ready for: {readiness.get('ready_for')}")
-    else:
-        lines.append(f"Not ready for: {readiness.get('ready_for')}")
-    next_action = card.get("next_action")
-    if isinstance(next_action, dict):
-        recovery = next_action.get("command")
-        if recovery is None:
-            external = next_action.get("external_change")
-            recovery = _format_external_status_recovery(external)
-        lines.append(f"Next action: {recovery}")
-    return lines
-
-
-def _format_external_status_recovery(external: Any) -> str:
-    if not isinstance(external, dict):
-        return str(external)
-    change = external.get("change")
-    then = external.get("then")
-    if change and then:
-        return f"{change}; then run `{then}`"
-    component = str(external.get("component") or "External component")
-    missing = external.get("missing_capability")
-    failing_path = external.get("failing_path")
-    minimum = external.get("minimum_contract")
-    if missing:
-        summary = f"{component} must expose {missing}"
-    elif failing_path:
-        summary = f"{component} must repair {failing_path}"
-    else:
-        summary = f"{component} change required"
-    if minimum:
-        summary += f": {minimum}"
-    return summary
 
 
 def _format_vehicle(index: int, vehicle: dict[str, Any]) -> list[str]:

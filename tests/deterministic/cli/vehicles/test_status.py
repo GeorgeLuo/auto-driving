@@ -4,11 +4,9 @@ import json
 import unittest
 from unittest.mock import patch
 
-from cli.automa_cli.app import _vehicle_status_exit_code
 from cli.automa_cli.vehicles import (
     Candidate,
     ProbeResult,
-    format_vehicle_status,
     get_vehicle_status,
     normalize_chase_url,
 )
@@ -177,11 +175,6 @@ class VehicleStatusTests(unittest.TestCase):
         )
         self.assertIsNone(payload["next_action"]["external_change"])
 
-        human = format_vehicle_status(payload)
-        self.assertIn("vehicle: discoverable", human)
-        self.assertIn("automation_worker: stopped", human)
-        self.assertEqual(human.count("Next action:"), 1)
-
     def test_running_observe_only_worker_reports_authority_and_current_view(self) -> None:
         candidate = Candidate(
             "chase-sim",
@@ -251,11 +244,6 @@ class VehicleStatusTests(unittest.TestCase):
             payload["layers"]["perception_view"]["state"],
             "available",
         )
-        human = format_vehicle_status(payload)
-        self.assertIn("action_policy=observe_only", human)
-        self.assertIn("control_application=not_applied", human)
-        self.assertIn("Ready for: inspect perception and stop automation", human)
-        self.assertNotIn("Next action:", human)
 
     def test_aggregate_separates_non_chase_local_deployments(self) -> None:
         candidate = Candidate(
@@ -304,43 +292,6 @@ class VehicleStatusTests(unittest.TestCase):
                 }
             ],
         )
-        human = format_vehicle_status(payload)
-        self.assertIn("Known Chase vehicles: 1", human)
-        self.assertIn("Other local deployments: 1", human)
-        self.assertNotIn("Vehicle: piracer", human)
-
-    def test_external_recovery_is_human_text_and_failed_gate_exits_nonzero(self) -> None:
-        candidate = Candidate(
-            "chase-sim",
-            "ws://localhost:5050/ws/control",
-            "cli",
-        )
-        probe = ProbeResult(
-            active=False,
-            candidate=candidate,
-            error="frontend disconnected",
-            diagnostics={
-                "ws_server": True,
-                "frontend_connected": False,
-                "error_code": "frontend_disconnected",
-            },
-        )
-        with patch(
-            "cli.automa_cli.vehicles._probe_chase",
-            return_value=probe,
-        ), patch(
-            "cli.automa_cli.automation._collect_automation_status",
-            return_value=[],
-        ):
-            payload = get_vehicle_status(vehicle_id="chase-sim-chaser")
-
-        human = format_vehicle_status(payload)
-        next_line = next(
-            line for line in human.splitlines() if line.startswith("Next action:")
-        )
-        self.assertIn("Open or reload http://localhost:5050/", next_line)
-        self.assertNotIn('{"', next_line)
-        self.assertEqual(_vehicle_status_exit_code(payload), 1)
 
     def test_mid_capture_frontend_delivery_failure_recovers_with_browser_reload(
         self,
@@ -406,14 +357,6 @@ class VehicleStatusTests(unittest.TestCase):
             "atomic-evaluation-capture",
             json.dumps(payload["next_action"]),
         )
-
-        payload["next_action"] = {
-            "reason": "automation_not_deployed",
-            "command": "./cli/automa vehicles update autonomy",
-            "external_change": None,
-            "expected_state": "automation_deployment=deployed",
-        }
-        self.assertEqual(_vehicle_status_exit_code(payload), 0)
 
     def test_conflicting_explicit_urls_exit_two_before_any_probe(self) -> None:
         result = invoke_automa(

@@ -121,7 +121,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | Command | Reads or changes |
 |---|---|
 | `vehicles active` | Probes discoverable PiCar and Chase endpoints; does not imply deployment, worker, or view state. |
-| `vehicles status` | Reads the complete Chase simulator, vehicle, deployment, worker, capture, and view state without changing it; other local deployments are listed separately with their inspection command. |
+| `vehicles status` | Shows the Chase simulator (running, its frontend and game) and each vehicle host's state (session, mode, decision and error counts, last frame), whether it is attached to the simulator or only known locally, and its error, without changing anything. |
 | `vehicles update perception\|memory\|proposal\|plan` | Packages code and stages that step's preset or plugin selection locally (`--preset`, or repeatable `--plugin`; default presets `lightweight_observer`, `recency_ledger`, `obstruction_avoidance` and `most_confident`). |
 | `vehicles update observation\|action` | Packages code and stages that step's plugins locally (repeatable `--plugin`; without it, the step's default plugins and configs). |
 | `vehicles plugins upload` | Stores a local file in an existing live catalog, refusing source that does not compile; `--arm` also arms it through the same operation as `plugins arm`. |
@@ -264,7 +264,8 @@ staged now. If the archive is gone, replay exits 2 naming the release and
 
 Every step's update returns the same `vehicle_step_update_v0` payload under
 `--json`: `step`, `preset`, `plugins`, the staged `manifest`, and the `apply`
-commands. Staging does not check readiness; `vehicles status` does. An
+commands. Staging does not check readiness; `vehicles automation run` does before
+it starts, and `vehicles automation status` reports invalid staged steps. An
 unknown-vehicle failure under `--json` returns `vehicle_step_update_error_v0`
 with `vehicle_id`, `step`, `error: unknown_vehicle`, and the discovery
 diagnostic in `message`; the command exits 2 and stages nothing.
@@ -294,9 +295,9 @@ operator's current simulator session:
   --observe-only \
   --num-decisions 0 \
   --open-view
-./cli/automa vehicles status --id chase-sim-chaser
+./cli/automa vehicles automation status --id chase-sim-chaser
 ./cli/automa vehicles automation stop --id chase-sim-chaser
-./cli/automa vehicles status --id chase-sim-chaser
+./cli/automa vehicles automation status --id chase-sim-chaser
 ```
 
 The memory update stages the Memory view's ledger; without a memory or
@@ -307,9 +308,9 @@ uses its packaged configs.
 
 `runtime/` survives Git branch changes. Old per-step schemas, including
 `automa_memory_activation_v0`, are incompatible with the shared
-`automa_step_activation_v0` documents. Status reports an invalid deployment and
-the affected step's `vehicles update <step>` command. Restage that step with
-your intended selection, then check status again. Every command that reads
+`automa_step_activation_v0` documents. `vehicles automation status` reports an
+invalid deployment and the affected step's `vehicles update <step>` command.
+Restage that step with your intended selection, then check it again. Every command that reads
 staged documents checks them first and prints the same step, path, reason, and
 restage command: startup and restart before launching or stopping a worker,
 `vehicles update autonomy` before packaging or writing, and `vehicles info`, `vehicles stream proposal|plan|action`, and

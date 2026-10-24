@@ -1,17 +1,27 @@
 from __future__ import annotations
 
 import json
+import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from cli.automa_cli import app, runtime_view
+from cli.automa_cli import app
 from cli.automa_cli.runtime_view import (
     NOT_CONNECTED_ERROR,
     RUNTIME_HOST_ROUTES,
     RuntimeViewServer,
 )
+from implementations.vehicle.chase_sim.defaults import CHASE_UI_WS_URL_ENV
+from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
+from implementations.vehicle.chase_sim.presence import MetricsUiPresence
+from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
+from tests.shared.implementations.runtime.wait import wait_until
+from tests.support.fake_hosts import closed_url
+from tests.support.fake_metrics_ui import fake_metrics_ui
 
 
 class ViewerWithoutHostTests(unittest.TestCase):
@@ -63,21 +73,21 @@ class ViewerWithoutHostTests(unittest.TestCase):
             urlopen(f"{self.server.url}static/shared/missing.js", timeout=1.0)
         self.assertEqual(caught.exception.code, 404)
 
-    def test_hosts_are_listed_with_their_readiness(self) -> None:
-        status = {
-            "vehicles": [
-                {"vehicle_id": "chase-sim-chaser", "readiness": {"blocking_layer": None}},
-                {"vehicle_id": "chase-sim-runner", "readiness": {"blocking_layer": "simulator_server"}},
-            ],
-            "other_local_deployments": [{"vehicle_id": "piracer"}],
-        }
-        with mock.patch.object(runtime_view, "get_vehicle_status", return_value=status):
+    def test_hosts_are_listed_with_their_status_state(self) -> None:
+        runner = {"kind": "vehicle-host", "vehicle_id": "chase-sim-runner", "url": closed_url(), "pid": os.getpid()}
+        with (
+            tempfile.TemporaryDirectory() as tmp,
+            fake_metrics_ui() as simulator,
+            mock.patch.dict(os.environ, {CHASE_UI_WS_URL_ENV: simulator.url}),
+            chase_runtime(Path(tmp)),
+            MetricsUiPresence(simulator.url, runner, retry_s=0.05),
+        ):
+            wait_until(MetricsUiWsClient(simulator.url).list_agents, message="the runner never attached")
             payload = json.loads(_read_text(f"{self.server.url}api/hosts"))
 
         self.assertEqual(payload["hosts"], [
-            {"vehicle_id": "chase-sim-chaser", "state": "ready"},
-            {"vehicle_id": "chase-sim-runner", "state": "simulator_server"},
-            {"vehicle_id": "piracer", "state": None},
+            {"vehicle_id": "chase-sim-chaser", "state": "not started, manual"},
+            {"vehicle_id": "chase-sim-runner", "state": "not answering"},
         ])
 
     def test_viewer_publishes_no_discovery_record(self) -> None:

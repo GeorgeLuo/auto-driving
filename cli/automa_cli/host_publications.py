@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import http.client
 import json
 import math
 import urllib.error
@@ -143,6 +144,9 @@ def _request(url: str, *, timeout_s: float,
         raise ConnectionError(f"GET {url} failed: {exc.reason}") from exc
     except TimeoutError as exc:
         raise ConnectionError(f"GET {url} timed out after {timeout_s}s") from exc
+    except (OSError, http.client.HTTPException) as exc:
+        # A dropped or garbled reply escapes urlopen unwrapped.
+        raise ConnectionError(f"GET {url} failed: {exc}") from exc
 
 
 def _json_object(body: bytes, url: str, status_code: int) -> dict[str, Any]:
@@ -202,6 +206,61 @@ def fetch_autonomy_status(base_url: str, *, timeout_s: float = 3.0) -> dict[str,
     """GET /autonomy/status from a runtime host."""
 
     return _get_json(base_url, STATUS_JSON_PATH, timeout_s=timeout_s)
+
+
+def host_state(base_url: str, *, vehicle_id: str | None = None, timeout_s: float) -> dict[str, Any]:
+    """A runtime host's state as its ``/autonomy/status`` reports it; never raises.
+
+    ``state`` is the session status the host reports, ``not answering`` when no
+    reply arrives, or ``error`` when the reply is not this host's status.
+    ``error`` says why, or is the host's last cycle error. ``reply`` is the
+    status object the host answered with.
+    """
+
+    result: dict[str, Any] = {
+        "state": "not answering", "mode": None, "decision_count": None, "error_count": None,
+        "last_frame_at_ms": None, "error": None, "reply": None,
+    }
+    url = f"{base_url.rstrip('/')}{STATUS_JSON_PATH}"
+    try:
+        status_code, _headers, body = _request(url, timeout_s=timeout_s)
+    except ConnectionError as exc:
+        return {**result, "error": _no_answer(exc, timeout_s)}
+    no_host = f"{base_url} answers but reports no runtime host"
+    try:
+        reply = _json_object(body, url, status_code)
+    except ConnectionError:
+        return {**result, "state": "error", "error": no_host}
+    result["reply"] = reply
+    if reply.get("ok") is not True:
+        return {**result, "state": "error", "error": str(reply.get("error") or f"HTTP {status_code}")}
+    if vehicle_id is not None and reply.get("vehicle_id") not in (None, vehicle_id):
+        return {**result, "state": "error", "error": f"{base_url} answers as {reply['vehicle_id']}"}
+    session = reply.get("session") if isinstance(reply.get("session"), dict) else {}
+    autonomy = reply.get("autonomy") if isinstance(reply.get("autonomy"), dict) else {}
+    if not autonomy or not isinstance(session.get("status"), str):
+        return {**result, "state": "error", "error": no_host}
+    components = autonomy.get("components") if isinstance(autonomy.get("components"), dict) else {}
+    observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
+    latest = observation.get("latest") if isinstance(observation.get("latest"), dict) else {}
+    completed_at_ms = latest.get("completed_at_ms")
+    return {
+        **result,
+        "state": session["status"],
+        "mode": reply.get("mode"),
+        "decision_count": session.get("processed_decisions"),
+        "error_count": autonomy.get("error_count"),
+        "last_frame_at_ms": completed_at_ms if type(completed_at_ms) is int else None,
+        # The host keeps it after a stop, until the next start or good cycle.
+        "error": autonomy.get("last_error"),
+    }
+
+
+def _no_answer(exc: ConnectionError, timeout_s: float) -> str:
+    cause = getattr(exc.__cause__, "reason", exc.__cause__)
+    if isinstance(cause, TimeoutError):
+        return f"no answer within {max(0.1, float(timeout_s)):.1f}s"
+    return getattr(cause, "strerror", None) or str(cause or exc)
 
 
 def fetch_observation_publication(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:

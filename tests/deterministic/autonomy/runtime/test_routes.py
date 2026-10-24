@@ -59,6 +59,7 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["mode"], "manual")
         self.assertEqual(payload["host_run_id"], "test-run")
+        self.assertEqual(payload["vehicle_id"], "test-car")
         self.assertEqual(payload["session"]["status"], "pre_start")
         self.assertNotIn("drive_mode", payload)
 

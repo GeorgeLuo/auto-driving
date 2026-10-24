@@ -10,6 +10,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
+from urllib.parse import urlparse
 
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.runtime.client import RuntimeClient
@@ -189,6 +190,49 @@ def _applied_selections(
     return applied
 
 
+def _normalize_host_url(value: str) -> str:
+    """The host base URL, or why this value cannot name one."""
+
+    text = value.strip()
+    parsed = urlparse(text)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("--host-url must be an http or https URL with a host")
+    if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
+        raise ValueError("--host-url must be the host base URL, not a route or query")
+    return text.rstrip("/")
+
+
+def _vehicle_id_at_host(host_url: str, *, timeout_s: float) -> str:
+    """The one vehicle id that host was started with."""
+
+    try:
+        status = RuntimeClient(host_url, timeout_s=max(0.1, timeout_s)).host_status()
+    except RuntimeError as exc:
+        raise RuntimeHostError(f"Could not read the host at {host_url}: {exc}") from exc
+    vehicle_id = status.get("vehicle_id") if isinstance(status, dict) else None
+    if not isinstance(vehicle_id, str) or not vehicle_id.strip():
+        raise RuntimeHostError(f"The host at {host_url} did not report a vehicle id.")
+    return vehicle_id
+
+
+def _resolve_run_target(
+    vehicle_id: str | None, host_url: str | None, *, timeout_s: float,
+) -> tuple[str, str | None]:
+    """The vehicle id to record, and the existing host URL when one was named.
+
+    ``--id`` finds or starts the checkout's host later. ``--host-url`` is that
+    host, and its status reports the vehicle id. Passing both or neither is refused.
+    """
+
+    if (vehicle_id is None) == (host_url is None):
+        raise ValueError("Pass either --id or --host-url.")
+    if host_url is None:
+        assert vehicle_id is not None
+        return vehicle_id, None
+    normalized = _normalize_host_url(host_url)
+    return _vehicle_id_at_host(normalized, timeout_s=timeout_s), normalized
+
+
 def _run_configuration(*, take_control: bool, num_decisions: int,
                        unbounded: bool = False) -> RunConfiguration:
     """Movement runs require a positive bound or an explicit unbounded opt-in."""
@@ -212,7 +256,8 @@ def _run_configuration(*, take_control: bool, num_decisions: int,
 
 def run_vehicle_automation(
     *,
-    vehicle_id: str,
+    vehicle_id: str | None = None,
+    host_url: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     num_decisions: int = 0,
     unbounded: bool = False,
@@ -225,7 +270,8 @@ def run_vehicle_automation(
         configuration = _run_configuration(
             take_control=take_control, num_decisions=num_decisions, unbounded=unbounded,
         )
-    except (TypeError, ValueError) as exc:
+        vehicle_id, host_url = _resolve_run_target(vehicle_id, host_url, timeout_s=timeout_s)
+    except (TypeError, ValueError, RuntimeHostError) as exc:
         return CommandResult(2, str(exc))
     # Every vehicle runs its staged steps on its runtime host: a PiCar's Donkey
     # service or a local Chase host, each from its controller release.
@@ -239,10 +285,13 @@ def run_vehicle_automation(
         identity = decision_identity(bundle)
     except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
         return CommandResult(2, f"Could not read staged step activations for {vehicle_id}: {exc}")
-    try:
-        base_url = runtime_base_url(vehicle_id, start=True)
-    except RuntimeHostError as exc:
-        return CommandResult(2, str(exc))
+    if host_url is None:
+        try:
+            base_url = runtime_base_url(vehicle_id, start=True)
+        except RuntimeHostError as exc:
+            return CommandResult(2, str(exc))
+    else:
+        base_url = host_url
     code, message = monitor_runtime(
         vehicle_id=vehicle_id, base_url=base_url,
         automation_dir=Path(bundle["runtime_dir"]) / "automation",
@@ -256,7 +305,8 @@ def run_vehicle_automation(
 
 def start_vehicle_automation_background(
     *,
-    vehicle_id: str,
+    vehicle_id: str | None = None,
+    host_url: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     num_decisions: int = 0,
     unbounded: bool = False,
@@ -271,7 +321,8 @@ def start_vehicle_automation_background(
         configuration = _run_configuration(
             take_control=take_control, num_decisions=num_decisions, unbounded=unbounded,
         )
-    except (TypeError, ValueError) as exc:
+        vehicle_id, host_url = _resolve_run_target(vehicle_id, host_url, timeout_s=timeout_s)
+    except (TypeError, ValueError, RuntimeHostError) as exc:
         return CommandResult(2, str(exc))
     automation_dir = vehicle_automation_dir(vehicle_id)
     automation_dir.mkdir(parents=True, exist_ok=True)
@@ -401,8 +452,7 @@ def start_vehicle_automation_background(
         "vehicles",
         "automation",
         "run",
-        "--id",
-        vehicle_id,
+        *(["--host-url", host_url] if host_url is not None else ["--id", vehicle_id]),
         "--timeout-s",
         str(timeout_s),
         "--num-decisions",

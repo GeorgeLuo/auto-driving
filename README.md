@@ -9,6 +9,7 @@ authorizes the plan's selected command. A shared execution runtime owns movement
 mode, delivery, freshness, and stopping on both Chase and PiCar. Starting
 `vehicles automation run --id <vehicle>` enables autonomous movement;
 `--observe-only` runs the same plugins without delivering their output.
+`--host-url <host>` runs that existing host instead of starting one, and the host reports its vehicle id.
 Without a proposal, the cycle produces idle control.
 
 ## Setup

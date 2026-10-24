@@ -86,7 +86,7 @@ class ViewerWithoutHostTests(unittest.TestCase):
             payload = json.loads(_read_text(f"{self.server.url}api/hosts"))
 
         self.assertEqual(payload["hosts"], [
-            {"vehicle_id": "chase-sim-chaser", "state": "not started, manual"},
+            {"vehicle_id": "chase-sim-chaser", "state": "not started"},
             {"vehicle_id": "chase-sim-runner", "state": "not answering"},
         ])
 

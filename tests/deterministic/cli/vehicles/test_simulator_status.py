@@ -91,7 +91,7 @@ class SimulatorStatusTests(unittest.TestCase):
         self.assertEqual(human.returncode, 0, human.stderr)
         simulator, attached = _blocks(human.stdout)
         self.assertEqual(simulator, self.simulator)
-        self.assertEqual(attached[:2], ["Host chase-sim-chaser  not started, manual", "  0 decisions, 0 errors"])
+        self.assertEqual(attached[:2], ["Host chase-sim-chaser  not started", "  0 decisions, 0 errors"])
         self.assertRegex(attached[2], r"^  attached since \d{4}-\d\d-\d\d \d\d:\d\d:\d\d$")
         self.assertEqual(attached[3:], [f"  {host.base_url}, pid {os.getpid()}"])
         self.assertEqual(machine["schema"], "automa_simulator_status_v1")
@@ -109,7 +109,7 @@ class SimulatorStatusTests(unittest.TestCase):
         result = self.status()
 
         self.assertEqual(_blocks(result.stdout)[1], [
-            "Host chase-sim-chaser  not started, manual",
+            "Host chase-sim-chaser  not started",
             "  0 decisions, 0 errors",
             "  not attached to this simulator (local host record)",
             f"  {host.base_url}, pid {os.getpid()}",
@@ -127,7 +127,7 @@ class SimulatorStatusTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         _simulator, chaser, follower = _blocks(result.stdout)
-        self.assertEqual(chaser[0], "Host chase-sim-chaser  not started, manual")
+        self.assertEqual(chaser[0], "Host chase-sim-chaser  not started")
         self.assertEqual(follower, [
             "Host chase-sim-follower  not answering",
             "  no answer within 1.0s",
@@ -178,6 +178,28 @@ class SimulatorStatusTests(unittest.TestCase):
             "  Chase passiveCaptureError: session moved",
         ])
         self.assertTrue(host[3].startswith("  attached since "), host)
+
+    def test_a_host_shows_its_run_state_without_the_idle_mode(self) -> None:
+        for session, mode, heading, state in (
+            ("stopped", "manual", "finished run", "finished_run"),
+            ("completed", "manual", "finished run", "finished_run"),
+            ("running", "observe_only", "running, observe only", "running"),
+        ):
+            body = json.dumps({
+                "ok": True, "vehicle_id": "chase-sim-chaser", "mode": mode,
+                "session": {"status": session, "processed_decisions": 1}, "autonomy": {"error_count": 0},
+            }).encode()
+            with self.subTest(session=session), answering(body) as url:
+                _record(self.runtime_root, "chase-sim-chaser", url)
+
+                result = self.status("--id", "chase-sim-chaser")
+                machine = json.loads(self.status("--id", "chase-sim-chaser", "--json").stdout)
+
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(_blocks(result.stdout)[1][:2], [
+                    f"Host chase-sim-chaser  {heading}", "  1 decision, 0 errors",
+                ])
+                self.assertEqual(machine["hosts"][0]["state"], state)
 
     def test_a_staged_picar_is_listed_from_its_connection(self) -> None:
         url = closed_url()

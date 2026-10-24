@@ -103,6 +103,16 @@ class ChaseCameraStreamTests(unittest.TestCase):
             self.fail("invalid receipt accepted")
         self.assertTrue(self.connection.closed)
 
+    def test_a_rejected_subscription_says_what_the_simulator_replied(self):
+        self.connection.result = {"event": "rejected", "reason": "camera front is not attached"}
+        with self.assertRaises(MetricsUiWebSocketError) as caught, _capturing(self.client):
+            self.fail("rejected subscription accepted")
+        self.assertEqual(
+            str(caught.exception),
+            'Camera stream subscription was rejected: {"event": "rejected", "reason": "camera front is not attached"}',
+        )
+        self.assertTrue(self.connection.closed)
+
     def test_malformed_frames_and_source_clock_jumps_are_fatal(self):
         for key, value in [("subscriptionId", "other"), ("actorId", "evader"), ("cameraId", "other"),
                            ("sourceTimestampUs", True), ("publishedAtUs", 0),

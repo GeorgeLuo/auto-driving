@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import re
 import threading
 import unittest
 
 from autonomy.runtime.client import RuntimeClient
 from implementations.runtime.chase_sim.service import RuntimeHTTPServer
 from tests.deterministic.autonomy.runtime.test_routes import _routes
+from tests.support.fake_hosts import answering
 
 
 class RuntimeClientTests(unittest.TestCase):
@@ -26,6 +28,16 @@ class RuntimeClientTests(unittest.TestCase):
 
         with self.assertRaisesRegex(RuntimeError, r"^POST http://127\.0\.0\.1:\d+/autonomy/memory/reset failed: "):
             client.reset_memory()
+
+    def test_a_reply_that_is_not_a_json_object_raises_a_runtime_error(self) -> None:
+        for body, status, reason in (
+            (b"[]", 200, "returned a non-object JSON payload"),
+            (b"<html></html>", 200, "returned non-JSON body"),
+            (b"[]", 500, "returned HTTP 500"),
+        ):
+            with self.subTest(body=body, status=status), answering(body, status) as url:
+                with self.assertRaisesRegex(RuntimeError, rf"^GET {re.escape(url)}/autonomy/runtime {reason}$"):
+                    RuntimeClient(url, timeout_s=3.0).status()
 
 
 if __name__ == "__main__":

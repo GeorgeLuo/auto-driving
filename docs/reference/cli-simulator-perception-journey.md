@@ -74,8 +74,10 @@ lists as attached agents (`list_agents`), every local host record whose process
 is alive, and each staged PiCar connection. Status reads every host's
 `/autonomy/status` in parallel, within the one `--timeout-s` deadline, so a
 host that never answers does not hold up the others. A host's state is its
-session state (`not started`, `starting`, `running`, `stopping`, `stopped`,
-`completed`, `error`) followed by its mode, `not answering` with the reason, or
+session state (`not started`, `starting`, `running`, `stopping`, `finished run`,
+`error`), followed by the mode of a run that has control (`observe only`,
+`autonomy`). `finished run` (JSON `finished_run`) means its last run was stopped
+or reached its limit. Otherwise the state is `not answering` with the reason, or
 `error` when its reply is not a runtime host status; its last error prints
 below. When the simulator cannot list agents, the line `cannot list attached
 hosts` says why and local hosts are still shown. `--id` shows only that

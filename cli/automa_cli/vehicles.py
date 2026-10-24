@@ -478,6 +478,9 @@ def get_chase_simulator_status(
     for url, read in reads.items():
         state = read.result()
         state.pop("reply")
+        # A bounded run ends "completed", but the CLI's closing stop leaves it "stopped".
+        if state["state"] in {"stopped", "completed"}:
+            state["state"] = "finished_run"
         hosts[url].update(state)
     status["hosts"] = sorted(hosts.values(), key=lambda host: (str(host["vehicle_id"]), host["url"]))
     if vehicle_id is not None and not status["hosts"]:
@@ -505,12 +508,13 @@ def _host_entry(vehicle_id: Any, url: str | None, pid: Any = None, local: str | 
 
 
 def host_state_text(host: dict[str, Any]) -> str:
-    """A host's state in words, with its mode: ``running, observe only``."""
+    """A host's state in words, with the mode of a run that has control: ``running, observe only``."""
 
     state = host.get("state")
-    text = "not started" if state == "pre_start" else str(state or "unknown")
+    text = {"pre_start": "not started", "finished_run": "finished run"}.get(state, str(state or "unknown"))
     mode = host.get("mode")
-    return f"{text}, {mode.replace('_', ' ')}" if isinstance(mode, str) and mode else text
+    # Manual is the mode whenever no run has control, so it adds nothing.
+    return f"{text}, {mode.replace('_', ' ')}" if isinstance(mode, str) and mode and mode != "manual" else text
 
 
 def format_chase_simulator_status(status: dict[str, Any]) -> str:

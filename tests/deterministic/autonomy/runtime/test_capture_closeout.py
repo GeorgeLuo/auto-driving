@@ -134,7 +134,7 @@ class CaptureCloseoutTests(unittest.TestCase):
             status = loop.observation_status()
             self.assertEqual((status["frames_received"], status["frames_dropped"]), (8, 6))
             self.assertEqual(decoded, [1])
-            status, headers, jpeg = routes.handle("GET", "/autonomy/camera/latest/frame.jpg")
+            status, headers, jpeg = routes.handle("GET", "/host/camera/latest/frame.jpg")
             self.assertEqual((status, headers["X-Frame-Id"], jpeg), (200, "8", wire))
             self.assertEqual(decoded, [1], "camera publication decoded a waiting capture")
         finally:
@@ -178,9 +178,9 @@ class CaptureCloseoutTests(unittest.TestCase):
         try:
             self.assertTrue(entered.wait(1))
             began = time.monotonic()
-            status, payload = _json(routes.handle("GET", "/autonomy/status"))
-            routes.handle("GET", "/autonomy/observation/transaction")
-            routes.handle("GET", "/autonomy/camera/latest")
+            status, payload = _json(routes.handle("GET", "/host/status"))
+            routes.handle("GET", "/host/observation/transaction")
+            routes.handle("GET", "/host/camera/latest")
             self.assertLess(time.monotonic() - began, 0.25)
             self.assertEqual((status, payload["session"]["status"]), (200, "starting"))
             self.assertEqual(payload["mode"], "manual")
@@ -197,7 +197,7 @@ class CaptureCloseoutTests(unittest.TestCase):
         loop.submit(np.zeros((4, 4, 3), dtype=np.uint8), frame_id="first")
         loop.wait_for_cycle()
         for kind in ("observation", "decision"):
-            path = f"/autonomy/{kind}/transaction"
+            path = f"/host/{kind}/transaction"
             status, headers, body = routes.handle("GET", path)
             self.assertEqual(status, 200, body)
             with patch.object(FrameLoop, "frame_jpeg", side_effect=AssertionError("unchanged image encoded")):
@@ -210,10 +210,10 @@ class CaptureCloseoutTests(unittest.TestCase):
         loop, routes = _active_routes()
         loop.submit(np.zeros((4, 4, 3), dtype=np.uint8))
         loop.wait_for_cycle()
-        status, headers, _ = routes.handle("GET", "/autonomy/decision/transaction")
+        status, headers, _ = routes.handle("GET", "/host/decision/transaction")
         self.assertEqual(status, 200)
         with patch("autonomy.runtime.frame_loop.timestamp_ms", return_value=loop.latest_state.completed_at_ms + 100_000):
-            status, payload = _json(routes.handle("GET", "/autonomy/decision/transaction",
+            status, payload = _json(routes.handle("GET", "/host/decision/transaction",
                                                   headers={"If-None-Match": headers["ETag"]}))
         self.assertEqual(status, 503)
         self.assertEqual(payload["publication"]["reason"], "expired")
@@ -225,10 +225,10 @@ class CaptureCloseoutTests(unittest.TestCase):
         loop.wait_for_cycle()
         for kind in ("observation", "decision"):
             with patch.object(FrameLoop, "frame_jpeg", side_effect=ValueError("bad image")):
-                status, payload = _json(routes.handle("GET", f"/autonomy/{kind}/transaction"))
+                status, payload = _json(routes.handle("GET", f"/host/{kind}/transaction"))
             self.assertEqual(status, 503)
             self.assertEqual(payload["reason"], "image_encoding_failed")
             self.assertIsNone(payload["image_base64"])
-            status, payload = _json(routes.handle("GET", f"/autonomy/{kind}/transaction"))
+            status, payload = _json(routes.handle("GET", f"/host/{kind}/transaction"))
             self.assertEqual(status, 200)
             self.assertEqual(payload["image_frame_id"], "first")

@@ -442,7 +442,7 @@
       <div class="feedback">
         <div class="node vehicle">
           <h3>On PiRacer</h3>
-          <p><code>AutonomyPilotPart</code> adapts Donkey vehicle-memory values to the shared cycle at a bounded cadence in manual mode. It retains one detached latest state (frame and result) and publishes it on <code>/autonomy/observation/latest</code> (plus matching <code>frame.jpg</code>). Each step's activation selects its plugins; pilot outputs stay zero while drive mode remains <code>user</code>. Automa inspects the path through stream, local overlay, guided check, and viability measurement without hosting a second Pi frontend.</p>
+          <p><code>AutonomyPilotPart</code> adapts Donkey vehicle-memory values to the shared cycle at a bounded cadence in manual mode. It retains one detached latest state (frame and result) and publishes it on <code>/host/observation/latest</code> (plus matching <code>frame.jpg</code>). Each step's activation selects its plugins; pilot outputs stay zero while drive mode remains <code>user</code>. Automa inspects the path through stream, local overlay, guided check, and viability measurement without hosting a second Pi frontend.</p>
         </div>
         <div class="node perception">
           <h3>In Simulation</h3>

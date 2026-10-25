@@ -125,8 +125,8 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 # leaves running. Allow that one read, then hold.
                 captured = car.capture_count
                 time.sleep(0.3)
-                observation = client.host_status()["autonomy"]["components"]["observation"]
-                decision = client.request("GET", "/autonomy/decision/latest")
+                observation = client.host_status()["host"]["components"]["observation"]
+                decision = client.request("GET", "/host/decision/latest")
 
         self.assertEqual((session["status"], session["processed_decisions"]), ("completed", 2))
         self.assertLessEqual(car.capture_count, captured + 1, "the host captured after its session ended")

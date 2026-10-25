@@ -39,7 +39,7 @@ def _status_response(mode: str, steps: dict[str, list[str]]) -> MagicMock:
         {
             "ok": True,
             "mode": mode,
-            "autonomy": {
+            "host": {
                 "steps": {step: {"plugin_ids": plugins} for step, plugins in steps.items()},
                 "components": {},
             },

@@ -26,7 +26,7 @@ class RuntimeClientTests(unittest.TestCase):
             server.server_close()
             thread.join(3.0)
 
-        with self.assertRaisesRegex(RuntimeError, r"^POST http://127\.0\.0\.1:\d+/autonomy/memory/reset failed: "):
+        with self.assertRaisesRegex(RuntimeError, r"^POST http://127\.0\.0\.1:\d+/host/memory/reset failed: "):
             client.reset_memory()
 
     def test_a_reply_that_is_not_a_json_object_raises_a_runtime_error(self) -> None:
@@ -36,7 +36,7 @@ class RuntimeClientTests(unittest.TestCase):
             (b"[]", 500, "returned HTTP 500"),
         ):
             with self.subTest(body=body, status=status), answering(body, status) as url:
-                with self.assertRaisesRegex(RuntimeError, rf"^GET {re.escape(url)}/autonomy/runtime {reason}$"):
+                with self.assertRaisesRegex(RuntimeError, rf"^GET {re.escape(url)}/host/runtime {reason}$"):
                     RuntimeClient(url, timeout_s=3.0).status()
 
 

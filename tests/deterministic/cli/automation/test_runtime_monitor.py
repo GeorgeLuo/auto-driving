@@ -75,7 +75,7 @@ def _session(status: str, processed: int) -> dict:
 
 def _host(camera: int, *, last_error: str | None = None) -> dict:
     return {
-        "autonomy": {
+        "host": {
             "components": {"observation": {"frames_received": camera, "frames_dropped": 0}},
             "steps": {"memory": {"plugin_ids": ["recent"], "last_error": None}, "proposal": None},
             "cycle_count": camera,
@@ -137,7 +137,7 @@ class RuntimeMonitorTests(unittest.TestCase):
     def test_a_run_prints_and_records_the_host_session(self) -> None:
         hosts = [_host(10), _host(11), _host(13)]
         for host, count in zip(hosts, (4, 5, 6)):
-            host["autonomy"]["components"]["observation"]["frames_dropped"] = count
+            host["host"]["components"]["observation"]["frames_dropped"] = count
         with tempfile.TemporaryDirectory() as tmp:
             automation_dir = Path(tmp) / "automation"
             client, code, message, lines, state = self._monitor(
@@ -202,7 +202,7 @@ class RuntimeMonitorTests(unittest.TestCase):
     def test_a_missing_capture_counter_is_unavailable_rather_than_zero(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "does not report"):
             runtime_monitor._frames_received({"components": {"observation": {}}})
-        self.assertEqual(runtime_monitor._frames_received(_host(0)["autonomy"]), 0)
+        self.assertEqual(runtime_monitor._frames_received(_host(0)["host"]), 0)
 
     def test_a_host_cycle_error_fails_the_run_with_the_host_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -244,7 +244,7 @@ class MonitorPacingTests(unittest.TestCase):
                            for value in (None, True, -1, 1.5, "2"))):
                 with self.subTest(counter=counter, host=host), self.assertRaisesRegex(RuntimeError, "update"):
                     read(host)
-        self.assertEqual(runtime_monitor._frames_dropped(_host(2)["autonomy"]), 0)
+        self.assertEqual(runtime_monitor._frames_dropped(_host(2)["host"]), 0)
 
     def test_adaptive_pause_keeps_a_gap_on_fast_and_slow_hosts(self):
         for elapsed_ms, expected_ms in [(5, 1000 / 30 - 5), (20, 20), (30, 30),

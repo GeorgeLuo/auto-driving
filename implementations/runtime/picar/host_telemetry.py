@@ -18,8 +18,8 @@ from typing import Any, Callable, Mapping, cast
 
 
 HOST_TELEMETRY_SCHEMA = "automa_host_boundary_telemetry_v0"
-HOST_TELEMETRY_LATEST_PATH = "/autonomy/telemetry/latest"
-HOST_TELEMETRY_RECORDS_PATH = "/autonomy/telemetry/records"
+HOST_TELEMETRY_LATEST_PATH = "/host/telemetry/latest"
+HOST_TELEMETRY_RECORDS_PATH = "/host/telemetry/records"
 HOST_TELEMETRY_LIMITS = {
     "max_source_age_ms": 1500,
     "max_publication_age_ms": 1500,

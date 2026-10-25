@@ -125,7 +125,7 @@ def prepare_live_pi(*, base_url: str, timeout_s: float) -> bool:
         )
     except RuntimeError as exc:
         _print_pi_unavailable(
-            endpoint=f"{normalized_url}/autonomy/status",
+            endpoint=f"{normalized_url}/host/status",
             reason=str(exc),
         )
         return False

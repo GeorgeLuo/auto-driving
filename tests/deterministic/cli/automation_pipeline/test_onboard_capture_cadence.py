@@ -108,7 +108,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
             polls = 0
 
             def host_status(self):
-                return {"autonomy": part.host.status()}
+                return {"host": part.host.status()}
 
             def start(self, configuration, *, record=False):
                 if record:

@@ -24,15 +24,15 @@ from autonomy.decision_cycle.action_identifiers import (
 )
 from autonomy.runtime.report import VehicleReport, diagnostic_ceiling
 
-LATEST_JSON_PATH = "/autonomy/observation/latest"
-LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
-OBSERVATION_TRANSACTION_PATH = "/autonomy/observation/transaction"
+LATEST_JSON_PATH = "/host/observation/latest"
+LATEST_FRAME_PATH = "/host/observation/latest/frame.jpg"
+OBSERVATION_TRANSACTION_PATH = "/host/observation/transaction"
 OBSERVATION_TRANSACTION_SCHEMA = "automa_observation_transaction_v0"
-DECISION_LATEST_PATH = "/autonomy/decision/latest"
-DECISION_TRANSACTION_PATH = "/autonomy/decision/transaction"
-STATUS_JSON_PATH = "/autonomy/status"
-HOST_TELEMETRY_LATEST_PATH = "/autonomy/telemetry/latest"
-HOST_TELEMETRY_RECORDS_PATH = "/autonomy/telemetry/records"
+DECISION_LATEST_PATH = "/host/decision/latest"
+DECISION_TRANSACTION_PATH = "/host/decision/transaction"
+STATUS_JSON_PATH = "/host/status"
+HOST_TELEMETRY_LATEST_PATH = "/host/telemetry/latest"
+HOST_TELEMETRY_RECORDS_PATH = "/host/telemetry/records"
 DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
 HOST_TELEMETRY_SCHEMA = "automa_host_boundary_telemetry_v0"
 HOST_TELEMETRY_RECORDS_SCHEMA = "automa_host_boundary_telemetry_records_v0"
@@ -203,13 +203,13 @@ def _get_transaction(base_url: str, path: str, *, timeout_s: float,
 
 
 def fetch_autonomy_status(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:
-    """GET /autonomy/status from a runtime host."""
+    """GET /host/status from a runtime host."""
 
     return _get_json(base_url, STATUS_JSON_PATH, timeout_s=timeout_s)
 
 
 def host_state(base_url: str, *, vehicle_id: str | None = None, timeout_s: float) -> dict[str, Any]:
-    """A runtime host's state as its ``/autonomy/status`` reports it; never raises.
+    """A runtime host's state as its ``/host/status`` reports it; never raises.
 
     ``state`` is the session status the host reports, ``not answering`` when no
     reply arrives, or ``error`` when the reply is not this host's status.
@@ -237,7 +237,7 @@ def host_state(base_url: str, *, vehicle_id: str | None = None, timeout_s: float
     if vehicle_id is not None and reply.get("vehicle_id") not in (None, vehicle_id):
         return {**result, "state": "error", "error": f"{base_url} answers as {reply['vehicle_id']}"}
     session = reply.get("session") if isinstance(reply.get("session"), dict) else {}
-    autonomy = reply.get("autonomy") if isinstance(reply.get("autonomy"), dict) else {}
+    autonomy = reply.get("host") if isinstance(reply.get("host"), dict) else {}
     if not autonomy or not isinstance(session.get("status"), str):
         return {**result, "state": "error", "error": no_host}
     components = autonomy.get("components") if isinstance(autonomy.get("components"), dict) else {}

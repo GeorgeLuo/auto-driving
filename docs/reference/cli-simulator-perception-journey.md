@@ -72,7 +72,7 @@ browser is serving it.
 When it is unreachable, the next line says why. The hosts are those Metrics UI
 lists as attached agents (`list_agents`), every local host record whose process
 is alive, and each staged PiCar connection. Status reads every host's
-`/autonomy/status` in parallel, within the one `--timeout-s` deadline, so a
+`/host/status` in parallel, within the one `--timeout-s` deadline, so a
 host that never answers does not hold up the others. A host's state is its
 session state (`not started`, `starting`, `running`, `stopping`, `finished run`,
 `error`), followed by the mode of a run that has control (`observe only`,

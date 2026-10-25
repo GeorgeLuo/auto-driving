@@ -71,7 +71,7 @@ def _frames_dropped(host: dict[str, Any]) -> int:
 
 
 def _host_status(client: RuntimeClient) -> dict[str, Any]:
-    autonomy = client.host_status().get("autonomy")
+    autonomy = client.host_status().get("host")
     if not isinstance(autonomy, dict):
         raise RuntimeError(f"{client.base_url} answers but reports no runtime host")
     return autonomy

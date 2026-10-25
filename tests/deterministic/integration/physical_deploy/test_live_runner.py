@@ -24,7 +24,7 @@ def _runtime_status_response(*, mode: str, action: list[str] | None = ["hold"]) 
         {
             "ok": True,
             "mode": mode,
-            "autonomy": {"steps": steps, "components": {}},
+            "host": {"steps": steps, "components": {}},
         }
     ).encode("utf-8")
     return response
@@ -53,7 +53,7 @@ class PiLiveRunnerTests(unittest.TestCase):
                 "http://piracer.test:8887",
             )
             urlopen.assert_called_once_with(
-                "http://piracer.test:8887/autonomy/status",
+                "http://piracer.test:8887/host/status",
                 timeout=0.5,
             )
 

@@ -275,7 +275,7 @@ def update_vehicle_core(
         _emit(stream, "Donkey runtime service restarted.")
         readiness = {
             "ok": True,
-            "status_url": f"{_target_base_url(target)}/autonomy/status",
+            "status_url": f"{_target_base_url(target)}/host/status",
             "mode": "manual",
         }
     else:
@@ -1077,7 +1077,7 @@ def inspect_picar_autonomy_runtime(
     normalized_url = str(base_url).strip().rstrip("/")
     if not normalized_url:
         raise RuntimeError("PiCar base URL is required for runtime inspection")
-    status_url = f"{normalized_url}/autonomy/status"
+    status_url = f"{normalized_url}/host/status"
     payload = _read_runtime_status(status_url, timeout_s=max(0.1, float(timeout_s)))
     if payload.get("ok") is not True:
         raise RuntimeError(
@@ -1085,7 +1085,7 @@ def inspect_picar_autonomy_runtime(
             f"{payload.get('error') or 'no error reported'}"
         )
 
-    autonomy = payload.get("autonomy")
+    autonomy = payload.get("host")
     if not isinstance(autonomy, dict):
         raise RuntimeError(f"{status_url} did not report autonomy runtime status")
 
@@ -1135,7 +1135,7 @@ def _wait_for_donkey_readiness(
     timeout_s: float,
 ) -> dict[str, Any]:
     base_url = _target_base_url(target)
-    status_url = f"{base_url.rstrip('/')}/autonomy/status"
+    status_url = f"{base_url.rstrip('/')}/host/status"
     deadline = time.monotonic() + max(0.1, float(timeout_s))
     last_error = "no response"
     while time.monotonic() < deadline:

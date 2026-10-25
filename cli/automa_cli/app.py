@@ -536,7 +536,7 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Show the latest perception output, replacing the terminal view as it updates. "
             "Chase uses the local automation worker; PiCar polls onboard "
-            "/autonomy/observation/latest and serves a local frame-matched view whose "
+            "/host/observation/latest and serves a local frame-matched view whose "
             "URL the terminal shows."
         ),
     )
@@ -668,7 +668,7 @@ def build_parser() -> argparse.ArgumentParser:
         "reset",
         help="Reset live memory to a new empty epoch on the vehicle's runtime host.",
         description=(
-            "POST /autonomy/memory/reset to the vehicle's runtime host. Confirms that every "
+            "POST /host/memory/reset to the vehicle's runtime host. Confirms that every "
             "applied plugin started a new epoch or holds no records when the host answers. "
             "Does not move the vehicle."
         ),

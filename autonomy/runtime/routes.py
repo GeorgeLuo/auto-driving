@@ -33,12 +33,12 @@ from autonomy.runtime.plugin_catalog import catalog_write_error
 
 logger = logging.getLogger(__name__)
 
-STATUS_PATH = "/autonomy/status"
-RUNTIME_PATH = "/autonomy/runtime"
+STATUS_PATH = "/host/status"
+RUNTIME_PATH = "/host/runtime"
 PLUGINS_PATH = "/api/plugins"
-MEMORY_RESET_PATH = "/autonomy/memory/reset"
-TELEMETRY_LATEST_PATH = "/autonomy/telemetry/latest"
-TELEMETRY_RECORDS_PATH = "/autonomy/telemetry/records"
+MEMORY_RESET_PATH = "/host/memory/reset"
+TELEMETRY_LATEST_PATH = "/host/telemetry/latest"
+TELEMETRY_RECORDS_PATH = "/host/telemetry/records"
 MEMORY_RESET_SCHEMA = "automa_memory_reset_v0"
 TELEMETRY_SCHEMA = "automa_host_boundary_telemetry_v0"
 RESTART_DELAY_S = 0.2
@@ -125,7 +125,7 @@ class RuntimeRoutes:
             "vehicle_id": self.loop.vehicle_id,
             "mode": session["execution"]["mode"],
             "session": session,
-            "autonomy": self.host.status(),
+            "host": self.host.status(),
         }
 
     @staticmethod
@@ -263,7 +263,7 @@ class RuntimeRoutes:
     def _memory_reset(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:
         payload = {"schema": MEMORY_RESET_SCHEMA, **self.loop.reset_memory()}
         autonomy = self.host.status()
-        payload["autonomy"] = autonomy
+        payload["host"] = autonomy
         steps = autonomy.get("steps")
         if isinstance(steps, dict) and isinstance(steps.get("memory"), dict):
             payload.setdefault("memory", steps["memory"])

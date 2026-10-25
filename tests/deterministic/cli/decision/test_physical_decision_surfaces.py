@@ -246,10 +246,10 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 self.wfile.write(body)
 
             def do_GET(self) -> None:  # noqa: N802
-                if self.path == "/autonomy/status":
+                if self.path == "/host/status":
                     self._write_json({"ok": True, "drive_mode": "user"})
                     return
-                if self.path == "/autonomy/decision/latest":
+                if self.path == "/host/decision/latest":
                     template = part.publish_decision_latest(
                         now_ms=part.latest_state.completed_at_ms
                     )

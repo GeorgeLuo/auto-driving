@@ -378,7 +378,7 @@ def get_chase_simulator_status(
     The simulator runs when its server answers; its frontend is connected when
     a browser has the page open. The hosts are the ones the simulator lists as
     attached agents plus each local vehicle's host (``local_hosts``). Every
-    host's ``/autonomy/status`` is read in parallel within the one deadline.
+    host's ``/host/status`` is read in parallel within the one deadline.
     """
 
     from .runtime_hosts import local_hosts
@@ -1034,7 +1034,7 @@ def _format_vehicle(index: int, vehicle: dict[str, Any]) -> list[str]:
     if mode is not None:
         lines.append(f"   mode: {mode}")
 
-    autonomy = status.get("autonomy")
+    autonomy = status.get("host")
     if isinstance(autonomy, dict):
         steps = autonomy.get("steps") if isinstance(autonomy.get("steps"), dict) else {}
         action = steps.get("action") if isinstance(steps.get("action"), dict) else {}
@@ -1239,7 +1239,7 @@ def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     car = create_picar(base_url=base_url, timeout_s=timeout_s)
     capabilities = car.capabilities.to_dict()
 
-    status, error = _get_json(base_url, "/autonomy/status", timeout_s=timeout_s)
+    status, error = _get_json(base_url, "/host/status", timeout_s=timeout_s)
     if status is not None:
         return ProbeResult(
             active=True,
@@ -1250,7 +1250,7 @@ def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
                 "provider": "picar",
                 "connection": {
                     "base_url": base_url,
-                    "status_endpoint": "/autonomy/status",
+                    "status_endpoint": "/host/status",
                     "source": candidate.source,
                 },
                 "capabilities": capabilities,

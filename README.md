@@ -132,7 +132,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles proposal\|plan\|action inspect` | Offline: replays an image, a directory of images, or a recorded automation or inspect run through perception, observation, memory and the decision steps, and prints that step's record for every frame, with that step's and each of its plugins' time and the cycle's (`--json` carries every step's in `timing`). A recording restores the selections it recorded for each frame; `--plugin` replaces the inspected step's; proposal and plan also accept `--preset`. `--frame N` reports one 0-based frame after replaying the ones before it. `--record` also saves the report and source frames under `runtime/<step>-inspections/`; that run replays as a source. |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
 | `vehicles automation ...` | Starts, stops or inspects a run on the vehicle's runtime host. |
-| `vehicles stream perception` | Displays rolling latest perception from the runtime host's `/autonomy/observation/latest` and serves a local frame-matched `/perception` view (link to Memory map) whose URL the terminal shows. |
+| `vehicles stream perception` | Displays rolling latest perception from the runtime host's `/host/observation/latest` and serves a local frame-matched `/perception` view (link to Memory map) whose URL the terminal shows. |
 | `vehicles stream memory` | Inspects live memory as a key→value ledger. The terminal shows health and counts and serves a local `/memory` map page whose URL it shows. Keys are `record_id`s; click a key to see the retained value. |
 | `vehicles stream proposal\|plan\|action` | Prints that step's record from the latest cycle the vehicle's runtime host published, with its age, generation, plugins, and the step's and each plugin's time; action also shows how the host applied control. `--once` prints one and exits 2 with the reason when none is current; `--json` returns `vehicle_<step>_stream_v1`. A running terminal stream also serves the local action view below. |
 | `vehicles memory reset` | Clears live retained evidence on the runtime host and starts a new epoch. Exits 0 once the host's answer shows every plugin on a new epoch or empty, even while a running session refills memory. Does not move the vehicle. |
@@ -218,9 +218,9 @@ the observation.
 
 Every vehicle's runtime host serves the same routes; the CLI finds a Chase
 host from its host record and a PiCar's from its staged `base_url`.
-Perception reads `/autonomy/observation/latest`: a healthy publication with a
+Perception reads `/host/observation/latest`: a healthy publication with a
 perception payload is live, and `age_ms` comes from the host's clock.
-Memory reads the retained step in `/autonomy/status`: the step's presence is
+Memory reads the retained step in `/host/status`: the step's presence is
 live. Its `plugins[]` entries retain each applied plugin's `state` and expose
 that plugin's `health`, `epoch_id`, `record_count`, and `bounds` alongside it;
 `evidence_publisher` names the plugin whose evidence is published.
@@ -385,7 +385,7 @@ Useful run options:
   configured capture interval.
 - Each capture goes straight to the decision worker, so no capture waits and none
   is dropped. Drive ticks during an in-flight cycle are not captures, and
-  `/autonomy/camera/latest` updates once per capture.
+  `/host/camera/latest` updates once per capture.
 - `--observe-only` applies no decision output on either vehicle. Starting passive observation in Chase preserves its current simulator session.
 - `--open-view` opens the browser only after the correlated view is healthy.
 - `--record` keeps every completed decision and its exact camera image, capture
@@ -643,7 +643,7 @@ and `vehicles info action` report the same for their step, plan with its
 `plan_schema_v1` contract under `plan_schema` and action with none. Like memory
 info, it probes the running autonomy engine and reports its proposal step
 under `live` (`vehicle_proposal_live_v1`): the plugins it runs and its run and failure
-counts, from the runtime host's `/autonomy/status`. That is the engine's step, not the proposals any view last
+counts, from the runtime host's `/host/status`. That is the engine's step, not the proposals any view last
 rendered. A worker loads the staged proposals from the controller bundle when
 it starts, as it loads memory, and reports them under `proposal` in its state
 and `proposal_plugin_report` in each frame. Staging replaces the selection. A
@@ -741,7 +741,7 @@ restart the autonomy release:
 ```
 
 `update core` installs and enables `automa-donkey.service`. The first install
-starts it automatically and waits for `/autonomy/status` to report manual
+starts it automatically and waits for `/host/status` to report manual
 `user` mode. Later Pi boots start the same service without another CLI command,
 and systemd restarts the runtime if its process exits. If HTTP discovery is
 down, core update falls back to the configured `piracer` SSH target and reports
@@ -797,19 +797,19 @@ selection keeps its plugins, specs and configs. Every deployed step records the
 same release and bundle paths. The Pi loads those activations. The Donkey assembly runs the
 shared autonomy cycle independently of `run_pilot`. The drive loop still runs at
 `DRIVE_LOOP_HZ` (20 Hz) and submits a detached sample every tick, so
-`/autonomy/camera/latest` updates at the drive-loop rate. Each background
+`/host/camera/latest` updates at the drive-loop rate. Each background
 decision takes the newest waiting sample; received samples increment
 `frames_received` and waiting samples replaced by newer arrivals increment
 `frames_dropped`. No backlog builds. A memory halt keeps camera inspection
 available without accumulating pending work or overload drops. The matched result remains
-`/autonomy/observation/latest`. While mode remains `user`, pilot outputs stay
+`/host/observation/latest`. While mode remains `user`, pilot outputs stay
 zero and Donkey DriveMode keeps manual input authoritative.
 
 **Deploy split:** autonomy packages ship the controller tree and activation
 files (`runtime/<step>/active.json` for each staged step). The code path that
 *loads* the steps into the Donkey loop lives in `manage.py` from **core**. After
 harness changes, run core then autonomy with `--restart`. Autonomy `--restart`
-verification fails if a step was shipped but `/autonomy/status` does not report
+verification fails if a step was shipped but `/host/status` does not report
 it running the staged plugins.
 
 Step selections are local until the next autonomy deployment:
@@ -951,16 +951,16 @@ The Donkey server exposes:
 - `http://piracer.local:8887/drive`
 - `http://piracer.local:8887/frame.jpg`
 - `http://piracer.local:8887/frame-highres.jpg`
-- `http://piracer.local:8887/autonomy/status`
-- `http://piracer.local:8887/autonomy/observation/latest`
-- `http://piracer.local:8887/autonomy/observation/latest/frame.jpg`
-- `http://piracer.local:8887/autonomy/observation/transaction`
+- `http://piracer.local:8887/host/status`
+- `http://piracer.local:8887/host/observation/latest`
+- `http://piracer.local:8887/host/observation/latest/frame.jpg`
+- `http://piracer.local:8887/host/observation/transaction`
 
-`/frame.jpg` is the live camera feed. The `/autonomy/observation/latest*`
+`/frame.jpg` is the live camera feed. The `/host/observation/latest*`
 endpoints publish the exact onboard-processed frame and its matching
 findings (in-memory only; no default history or disk writes). The JPEG
 response includes `X-Frame-Id` so clients can pair image and JSON.
-The CLI viewer uses `/autonomy/observation/transaction`, which returns the
+The CLI viewer uses `/host/observation/transaction`, which returns the
 publication and its JPEG together so a newer frame cannot split the pair
 between requests over Wi-Fi.
 

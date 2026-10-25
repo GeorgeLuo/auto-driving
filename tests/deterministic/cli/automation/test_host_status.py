@@ -34,7 +34,7 @@ class HostRuntimeStatusTests(unittest.TestCase):
         body = json.dumps({
             "ok": True, "vehicle_id": VEHICLE_ID, "mode": "autonomy",
             "session": {"status": "error"},
-            "autonomy": {"last_error": "Chase passiveCaptureError: session moved"},
+            "host": {"last_error": "Chase passiveCaptureError: session moved"},
         }).encode()
         with answering(body) as url:
             process = self.read(url)

@@ -139,7 +139,7 @@ class RunConfigurationTests(unittest.TestCase):
         self.assertEqual(monitor.call_args.kwargs["base_url"], "http://127.0.0.1:54355")
 
     def test_host_url_without_a_host_does_not_start_one(self):
-        for host_url in ("not-a-host", "http://127.0.0.1:54355/autonomy/status"):
+        for host_url in ("not-a-host", "http://127.0.0.1:54355/host/status"):
             with (
                 self.subTest(host_url=host_url),
                 patch("cli.automa_cli.automation.runtime_base_url", side_effect=AssertionError("started a host")) as started,

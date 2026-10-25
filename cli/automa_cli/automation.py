@@ -74,19 +74,19 @@ def _host_runtime_status(
     *,
     timeout_s: float,
 ) -> dict[str, Any]:
-    """A runtime host's ``/autonomy/status`` in the worker status rows.
+    """A runtime host's ``/host/status`` in the worker status rows.
 
     While a monitor runs, its state record holds these rows; otherwise the
     host reports the same cycle counters from its observation status
     provider. The local view is the one a terminal ``vehicles stream`` hosts.
     """
 
-    endpoint = f"{base_url}/autonomy/status"
+    endpoint = f"{base_url}/host/status"
     host = host_state(base_url, vehicle_id=vehicle_id, timeout_s=max(0.1, timeout_s))
     status = host["reply"] or {}
     error = host["error"] if host["state"] in {"not answering", "error"} else None
     worker_status = "error" if error is not None else host["state"]
-    autonomy = status.get("autonomy") if isinstance(status.get("autonomy"), dict) else {}
+    autonomy = status.get("host") if isinstance(status.get("host"), dict) else {}
     components = autonomy.get("components") if isinstance(autonomy.get("components"), dict) else {}
     observation = (
         components.get("observation") if isinstance(components.get("observation"), dict) else {}

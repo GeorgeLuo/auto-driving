@@ -34,7 +34,7 @@ Movement uses the same commands as Chase after deployment:
 ./cli/automa vehicles automation restart --id piracer --observe-only
 ```
 
-These commands use `/autonomy/runtime` to operate the shared host. Restart
+These commands use `/host/runtime` to operate the shared host. Restart
 stops execution and restarts the systemd-managed process before starting a new
 run. The service still boots in manual mode. The CLI's local monitor publishes
 the onboard frames and decisions; it never calculates a second control policy.

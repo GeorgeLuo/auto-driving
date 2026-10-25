@@ -115,7 +115,7 @@ class ObservationSampleTests(unittest.TestCase):
         self.assertEqual(publication, _publication())
         self.assertEqual(jpeg, b"jpeg")
         self.assertEqual(read.call_count, 1)
-        self.assertEqual(read.call_args.args[0], "http://host.invalid/autonomy/observation/transaction")
+        self.assertEqual(read.call_args.args[0], "http://host.invalid/host/observation/transaction")
 
     def test_warming_returns_no_image(self):
         payload = _transaction()

@@ -470,7 +470,7 @@ class ObservationPublicationTests(unittest.TestCase):
         # Vendor checkout is generated; the tracked patch is the durable source.
         patch = (root / "patches" / "waveshare-donkeycar-local.patch").read_text(encoding="utf-8")
         self.assertIn('+            (r"/(?:autonomy/.*|api/plugins)", AutonomyRoutesAPI),', patch)
-        self.assertNotIn("/autonomy/mode", patch)
+        self.assertNotIn("/host/mode", patch)
         dispatcher = patch.split("+class AutonomyRoutesAPI", 1)[1].split(" class WsTest", 1)[0]
         code = compile(
             "class AutonomyRoutesAPI(RequestHandler):\n" + "\n".join(
@@ -497,7 +497,7 @@ class ObservationPublicationTests(unittest.TestCase):
             route.handle.return_value = status, {"ETag": "test"}, body
             handler = namespace["AutonomyRoutesAPI"]()
             handler.application = SimpleNamespace(autonomy_routes=route)
-            handler.request = SimpleNamespace(method="GET", uri="/autonomy/observation/transaction",
+            handler.request = SimpleNamespace(method="GET", uri="/host/observation/transaction",
                 body=b"", headers={"If-None-Match": "test"}, protocol="http", host="car.test")
             asyncio.run(handler._dispatch())
             self.assertEqual(handler.status, status)

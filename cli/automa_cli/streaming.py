@@ -2,7 +2,7 @@
 
 Every vehicle host serves ``autonomy.runtime.routes``, so a stream resolves
 the host's ``base_url`` (``runtime_hosts``) and reads the same routes for a
-PiCar or a Chase car: ``/autonomy/status`` for the steps the host runs, and
+PiCar or a Chase car: ``/host/status`` for the steps the host runs, and
 the observation publication for the latest cycle.
 """
 from __future__ import annotations
@@ -582,7 +582,7 @@ def probe_live_memory(*, vehicle_id: str, timeout_s: float = 3.0) -> dict[str, A
 
 def probe_live_step(step: str, *, vehicle_id: str, timeout_s: float = 3.0) -> dict[str, Any]:
     """``step`` as the vehicle's runtime host runs it: its runner's status
-    under ``/autonomy/status``, not what any view last rendered."""
+    under ``/host/status``, not what any view last rendered."""
 
     try:
         base_url = runtime_base_url(vehicle_id)
@@ -595,7 +595,7 @@ def _probe_step(step: str, *, vehicle_id: str, base_url: str, timeout_s: float) 
     probe: dict[str, Any] = {
         "schema": LIVE_STEP_SCHEMAS[step],
         "vehicle_id": vehicle_id,
-        "endpoint": f"{base_url}/autonomy/status",
+        "endpoint": f"{base_url}/host/status",
         "probed_at_ms": _timestamp_ms(),
     }
     try:
@@ -605,7 +605,7 @@ def _probe_step(step: str, *, vehicle_id: str, base_url: str, timeout_s: float) 
 
     session = status.get("session") if isinstance(status.get("session"), dict) else {}
     probe.update(mode=status.get("mode"), session_status=session.get("status"))
-    autonomy = status.get("autonomy") if isinstance(status.get("autonomy"), dict) else {}
+    autonomy = status.get("host") if isinstance(status.get("host"), dict) else {}
     steps = autonomy.get("steps") if isinstance(autonomy.get("steps"), dict) else {}
     runner = steps.get(step) if isinstance(steps.get(step), dict) else None
     if runner is None:

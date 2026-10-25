@@ -297,7 +297,7 @@ class UpdateVehicleTests(unittest.TestCase):
             server.shutdown()
             server.server_close()
             worker.join(2)
-        self.assertEqual(requests, ["/autonomy/status"])
+        self.assertEqual(requests, ["/host/status"])
 
     def test_a_slow_host_is_reported_with_the_wait_not_only_as_not_found(self) -> None:
         class SlowHandler(BaseHTTPRequestHandler):
@@ -327,7 +327,7 @@ class UpdateVehicleTests(unittest.TestCase):
             worker.join(2)
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("Vehicle 'slow-pi' was not found among discoverable vehicles.", result.stdout)
-        self.assertIn(f"GET {base_url}/autonomy/status did not answer within 0.2 s", result.stdout)
+        self.assertIn(f"GET {base_url}/host/status did not answer within 0.2 s", result.stdout)
 
     def test_help_explains_the_shared_identity_rule(self) -> None:
         for step in STEPS:

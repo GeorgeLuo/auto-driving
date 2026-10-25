@@ -160,7 +160,7 @@ class SimulatorStatusTests(unittest.TestCase):
         body = json.dumps({
             "ok": True, "vehicle_id": "chase-sim-chaser", "mode": "autonomy",
             "session": {"status": "error", "processed_decisions": 3},
-            "autonomy": {"error_count": 2, "last_error": "Chase passiveCaptureError: session moved"},
+            "host": {"error_count": 2, "last_error": "Chase passiveCaptureError: session moved"},
         }).encode()
         url = self.enterContext(answering(body))
         _record(self.runtime_root, "chase-sim-chaser", url)
@@ -187,7 +187,7 @@ class SimulatorStatusTests(unittest.TestCase):
         ):
             body = json.dumps({
                 "ok": True, "vehicle_id": "chase-sim-chaser", "mode": mode,
-                "session": {"status": session, "processed_decisions": 1}, "autonomy": {"error_count": 0},
+                "session": {"status": session, "processed_decisions": 1}, "host": {"error_count": 0},
             }).encode()
             with self.subTest(session=session), answering(body) as url:
                 _record(self.runtime_root, "chase-sim-chaser", url)

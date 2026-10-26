@@ -215,7 +215,7 @@ class FrameLoop:
         *,
         host: AutonomyCycleHost,
         presets: dict[str, str] | None = None,
-        vehicle_id: str | None = None,
+        host_id: str | None = None,
         source_id: str | None = None,
         decision_activations: dict[str, dict[str, Any] | None] | None = None,
         generation_id: str | None = None,
@@ -262,9 +262,9 @@ class FrameLoop:
         self._session_frame_id: str | None = None
         self._last_control = AutonomyControl(reason="observation-warming").to_dict()
         self._last_cycle: dict[str, Any] | None = None
-        self.vehicle_id = vehicle_id
+        self.host_id = host_id
         self.source_id = source_id or (
-            f"{runtime}:{vehicle_id}" if isinstance(vehicle_id, str) and vehicle_id else None
+            f"{runtime}:{host_id}" if isinstance(host_id, str) and host_id else None
         )
         self.decision_activations = (
             deepcopy(dict(decision_activations))
@@ -464,10 +464,10 @@ class FrameLoop:
 
     def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
         with self._lifecycle_lock:
-            if record and (self.recording_root is None or self.vehicle_id is None):
-                raise RuntimeError("recording requires a runtime directory and vehicle identity")
+            if record and (self.recording_root is None or self.host_id is None):
+                raise RuntimeError("recording requires a runtime directory and host identity")
             recording = RunRecording(
-                self.recording_root, vehicle_id=self.vehicle_id, encode_image=self._recording_jpeg,
+                self.recording_root, host_id=self.host_id, encode_image=self._recording_jpeg,
             ) if record else None
             with self._lock:
                 self._session_frame_id = None
@@ -742,9 +742,9 @@ class FrameLoop:
         """Validate runtime-owned identity supplied to the publication owner."""
 
         try:
-            if self.vehicle_id is None:
-                return "vehicle_id_missing"
-            require_ascii_id(self.vehicle_id, field_name="vehicle_id")
+            if self.host_id is None:
+                return "host_id_missing"
+            require_ascii_id(self.host_id, field_name="host_id")
             if self.source_id is None:
                 return "source_id_missing"
             require_ascii_id(self.source_id, field_name="source_id")
@@ -811,7 +811,7 @@ class FrameLoop:
         published_at_ms: int,
         status: str,
     ) -> tuple[dict[str, Any] | None, str | None]:
-        """Capture the shared ``vehicle_report_v0`` for this completed cycle.
+        """Capture the shared ``host_report_v0`` for this completed cycle.
 
         Runtime identity (source, activation, and the capture frame) goes in
         ``values``, with the display freshness limit. A failed cycle that
@@ -838,7 +838,7 @@ class FrameLoop:
         try:
             report = report_from_host_result(
                 records,
-                vehicle_id=self.vehicle_id,
+                host_id=self.host_id,
                 run_id=self.run_id,
                 generation_id=self.generation_id,
                 published_at_ms=published_at_ms,

@@ -17,8 +17,7 @@ from tests.support.runtime_fixtures import write_runtime_fixture
 class PerceptionCommandTests(unittest.TestCase):
     def test_perception_replay_is_not_retained_as_an_alias(self) -> None:
         result = invoke_automa(
-            "vehicles",
-            "perception",
+            "host", "perception",
             "replay",
             check=False,
         )
@@ -37,8 +36,7 @@ class PerceptionCommandTests(unittest.TestCase):
             Image.new("RGB", (32, 24), (50, 40, 30)).save(frames / "001.png")
             inspect_root = root / "applies"
             result = invoke_automa(
-                "vehicles",
-                "perception",
+                "host", "perception",
                 "inspect",
                 str(frames),
                 "--json",
@@ -46,7 +44,7 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
             payload = json.loads(result.stdout)
-            self.assertEqual(payload["schema"], "perception_inspect_v0")
+            self.assertEqual(payload["schema"], "perception_inspect_v1")
             self.assertEqual(payload["source"]["kind"], "images")
             self.assertEqual(payload["summary"]["frames"], 2)
             self.assertIsNone(payload["run_dir"])
@@ -63,8 +61,7 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
             result = invoke_automa(
-                "vehicles",
-                "info",
+                "host", "info",
                 "perception",
                 "--id",
                 "chase-sim-chaser",
@@ -73,7 +70,7 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
         payload = json.loads(result.stdout)
-        self.assertEqual(payload["schema"], "vehicle_perception_info_v1")
+        self.assertEqual(payload["schema"], "host_perception_info_v1")
         self.assertEqual(payload["activation"]["preset"], "sim_debug")
         self.assertEqual(
             payload["perception_schema"]["schema"], "perception_schema_v3"
@@ -86,18 +83,18 @@ class PerceptionCommandTests(unittest.TestCase):
     def test_perception_info_reports_running_view_url(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            vehicle_id = "chase-sim-chaser"
+            host_id = "chase-sim-chaser"
             write_runtime_fixture(
                 runtime_root,
-                vehicle_id,
+                host_id,
                 pid=os.getpid(),
                 manifest_bundle_root=ROOT,
             )
             automation_dir = (
-                runtime_root / vehicle_id / "bundle" / "runtime" / "automation"
+                runtime_root / host_id / "bundle" / "runtime" / "automation"
             )
             server = RuntimeViewServer(
-                vehicle_id=vehicle_id,
+                host_id=host_id,
                 automation_dir=automation_dir,
                 port=0,
                 run_id="test-run",
@@ -125,19 +122,17 @@ class PerceptionCommandTests(unittest.TestCase):
             expected_url = server.url
             try:
                 text_result = invoke_automa(
-                    "vehicles",
-                    "info",
+                    "host", "info",
                     "perception",
                     "--id",
-                    vehicle_id,
+                    host_id,
                     runtime_root=runtime_root,
                 )
                 json_result = invoke_automa(
-                    "vehicles",
-                    "info",
+                    "host", "info",
                     "perception",
                     "--id",
-                    vehicle_id,
+                    host_id,
                     "--json",
                     runtime_root=runtime_root,
                 )

@@ -23,7 +23,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             record = runtime_dir / "automation" / "host.json"
             process = subprocess.Popen(
                 [sys.executable, "-m", "implementations.runtime.chase_sim.service",
-                 "--vehicle-id", "chase-sim-chaser", "--ws-url", ws_url,
+                 "--host-id", "chase-sim-chaser", "--ws-url", ws_url,
                  "--runtime-dir", str(runtime_dir), "--port", "0", "--host-record", str(record)],
                 cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
@@ -44,7 +44,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             record = runtime_dir / "automation" / "host.json"
             process = subprocess.Popen(
                 [sys.executable, "-m", "implementations.runtime.chase_sim.service",
-                 "--vehicle-id", "chase-sim-chaser", "--ws-url", ws_url,
+                 "--host-id", "chase-sim-chaser", "--ws-url", ws_url,
                  "--runtime-dir", str(runtime_dir), "--port", "0", "--host-record", str(record)],
                 cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
@@ -54,7 +54,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 host = json.loads(record.read_text(encoding="utf-8"))
                 [agent] = _wait(simulator.list_agents, message="the host never attached")
                 self.assertEqual(agent["client"], {
-                    "kind": "vehicle-host", "vehicle_id": "chase-sim-chaser",
+                    "kind": "host", "host_id": "chase-sim-chaser",
                     "url": host["base_url"], "pid": host["pid"],
                 })
                 record.unlink()

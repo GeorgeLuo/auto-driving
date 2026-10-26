@@ -16,8 +16,8 @@ from implementations.decision_cycle.catalog import step_plugins
 from cli.automa_cli.decision_steps import get_vehicle_step_info
 from cli.automa_cli.step_activations import (
     bundle_activation_path,
-    update_vehicle_step,
-    vehicle_bundle,
+    stage_host_step,
+    host_bundle,
 )
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
     DecisionSurfaceFixture,
@@ -28,7 +28,7 @@ from tests.shared.cli.decision.decision_surfaces_fixtures import (
 class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
     def test_info_loads_decision_steps_from_the_staged_bundle(self) -> None:
         self._stage()
-        bundle = vehicle_bundle("chase-sim-chaser", self.runtime_root)
+        bundle = host_bundle("chase-sim-chaser", self.runtime_root)
         activation_path = bundle_activation_path(bundle, "proposal")
         original = read_step_activation(activation_path, "proposal")
         plugin_path = Path(bundle["root_dir"]) / (
@@ -56,7 +56,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         ))
 
         info = get_vehicle_step_info(
-            "proposal", vehicle_id="chase-sim-chaser", json_output=True, include_live=False,
+            "proposal", host_id="chase-sim-chaser", json_output=True, include_live=False,
         )
         self.assertEqual(info.exit_code, 0, info.message)
         payload = json.loads(info.message)
@@ -71,7 +71,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         action["metadata"]["controller_bundle"]["root_dir"] = str(self.runtime_root / "missing")
         action_path.write_text(json.dumps(action), encoding="utf-8")
         missing = get_vehicle_step_info(
-            "action", vehicle_id="chase-sim-chaser", json_output=True, include_live=False,
+            "action", host_id="chase-sim-chaser", json_output=True, include_live=False,
         )
         self.assertEqual(missing.exit_code, 2)
         self.assertIn("Controller bundle is missing", missing.message)
@@ -82,14 +82,14 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         expected = packaged_decision_steps()["proposal"]
         for key in ("plugins", "plugin_specs", "plugin_configs"):
             self.assertEqual(staged[key], expected[key])
-        self.assertEqual(staged["metadata"]["vehicle_id"], "chase-sim-chaser")
+        self.assertEqual(staged["metadata"]["host_id"], "chase-sim-chaser")
 
         info = get_vehicle_step_info(
-            "proposal", vehicle_id="chase-sim-chaser", json_output=True, include_live=False
+            "proposal", host_id="chase-sim-chaser", json_output=True, include_live=False
         )
         self.assertEqual(info.exit_code, 0, info.message)
         info_payload = json.loads(info.message)
-        self.assertEqual(info_payload["schema"], "vehicle_proposal_info_v1")
+        self.assertEqual(info_payload["schema"], "host_proposal_info_v1")
         schema = info_payload["proposal_schema"]
         self.assertEqual(
             [item["name"] for item in schema["inputs"]],
@@ -113,7 +113,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
             },
         )
 
-        human = get_vehicle_step_info("proposal", vehicle_id="chase-sim-chaser", include_live=False).message
+        human = get_vehicle_step_info("proposal", host_id="chase-sim-chaser", include_live=False).message
         for expected in (
             "avoid_recent_obstruction",
             HOLD_IDLE_REASON,
@@ -122,8 +122,8 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
             self.assertIn(expected, human)
 
     def test_stage_unknown_plugin_and_invalid_config(self) -> None:
-        code, message = update_vehicle_step(
-            vehicle_id="chase-sim-chaser",
+        code, message = stage_host_step(
+            host_id="chase-sim-chaser",
             step="action",
             plugins=["ghost"],
             runtime_root=self.runtime_root,
@@ -138,8 +138,8 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         entry = step_plugins("proposal")["avoid_recent_obstruction"]
         bad_config = {**entry["default_config"], "steer_magnitude": 0.0}
         with patch.dict(entry, {"default_config": bad_config}):
-            code, message = update_vehicle_step(
-                vehicle_id="chase-sim-chaser",
+            code, message = stage_host_step(
+                host_id="chase-sim-chaser",
                 step="proposal",
                 runtime_root=self.runtime_root,
                 json_output=True,
@@ -157,7 +157,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertFalse(activation.exists())
 
     def test_info_missing_activation(self) -> None:
-        result = get_vehicle_step_info("proposal", vehicle_id="missing", json_output=True)
+        result = get_vehicle_step_info("proposal", host_id="missing", json_output=True)
         self.assertEqual(result.exit_code, 2)
         self.assertIn("No active proposal activation found", result.message)
 

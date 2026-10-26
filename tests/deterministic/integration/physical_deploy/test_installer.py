@@ -19,9 +19,9 @@ from implementations.decision_cycle.catalog import (
 )
 
 TARGET = PicarTarget(
-    vehicle_id="piracer",
+    host_id="piracer",
     vehicle={
-        "vehicle_id": "piracer",
+        "host_id": "piracer",
         "vehicle_kind": "picar",
         "provider": "picar",
         "connection": {"base_url": "http://piracer.local:8887"},
@@ -56,10 +56,10 @@ class PhysicalDeployTests(unittest.TestCase):
             return json.loads(paths[step].read_text(encoding="utf-8"))
 
         with tempfile.TemporaryDirectory() as tmp:
-            bundle = controller_bundle_paths(Path(tmp) / "runtime" / "vehicles" / "piracer")
+            bundle = controller_bundle_paths(Path(tmp) / "runtime" / "hosts" / "piracer")
             release = sync_controller_bundle(bundle, output=None)
             ensure = lambda: ensure_step_activations(  # noqa: E731
-                vehicle_id="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.vehicle),
+                host_id="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.vehicle),
             )
             paths = ensure()
             self.assertEqual(set(paths), set(STEPS))
@@ -74,7 +74,7 @@ class PhysicalDeployTests(unittest.TestCase):
                 stale = staged(paths, step)
                 stale["plugins"] = []
                 paths[step].write_text(json.dumps(stale), encoding="utf-8")
-            stage_activation(bundle, selection_activation("action", plugins=["hold"]), vehicle_id="piracer")
+            stage_activation(bundle, selection_activation("action", plugins=["hold"]), host_id="piracer")
             paths = ensure()
             for step in SELECTABLE_STEPS:
                 with self.subTest(step=step, staged="named preset"):
@@ -85,7 +85,7 @@ class PhysicalDeployTests(unittest.TestCase):
 
             custom = selection_activation("proposal", plugins=[])
             self.assertEqual(custom.metadata["preset"], "custom")
-            stage_activation(bundle, custom, vehicle_id="piracer")
+            stage_activation(bundle, custom, host_id="piracer")
             paths = ensure()
             self.assertEqual(staged(paths, "proposal")["plugins"], [])
             self.assertEqual(staged(paths, "action")["plugins"], ["hold"])

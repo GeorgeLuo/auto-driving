@@ -42,8 +42,8 @@ class PerceptionCommandTests(unittest.TestCase):
     def test_perception_bundle_syncs_configured_visual_observer_plugins(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            vehicle_id = "chase-sim-chaser"
-            vehicle_runtime_dir = runtime_root / vehicle_id
+            host_id = "chase-sim-chaser"
+            vehicle_runtime_dir = runtime_root / host_id
             bundle = controller_bundle_paths(vehicle_runtime_dir)
             release = sync_controller_bundle(bundle, output=None)
 
@@ -79,27 +79,25 @@ class PerceptionCommandTests(unittest.TestCase):
                 _activation(
                     {**bundle, "release": release_activation_summary(release)},
                     "visual_observer",
-                    vehicle_id=vehicle_id,
+                    host_id=host_id,
                     vehicle_kind="chase-sim-ws",
                     provider="chase-sim",
                 ),
             )
 
             json_result = invoke_automa(
-                "vehicles",
-                "info",
+                "host", "info",
                 "perception",
                 "--id",
-                vehicle_id,
+                host_id,
                 "--json",
                 runtime_root=runtime_root,
             )
             text_result = invoke_automa(
-                "vehicles",
-                "info",
+                "host", "info",
                 "perception",
                 "--id",
-                vehicle_id,
+                host_id,
                 runtime_root=runtime_root,
             )
 
@@ -153,7 +151,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 Path(bundle["perception_runtime_dir"]) / "active.json",
                 _activation(
                     bundle,
-                    vehicle_id="piracer",
+                    host_id="piracer",
                     vehicle_kind="picar",
                     provider="picar",
                     runtime={"kind": "onboard_controller", "connection": {}},
@@ -161,8 +159,7 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
             result = invoke_automa(
-                "vehicles",
-                "update",
+                "host", "stage",
                 "perception",
                 "--id",
                 "piracer",
@@ -173,7 +170,7 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
         payload = json.loads(result.stdout)
-        self.assertEqual(payload["vehicle_id"], "piracer")
+        self.assertEqual(payload["host_id"], "piracer")
         self.assertEqual(payload["preset"], "visual_observer")
         self.assertEqual(payload["manifest"]["metadata"]["provider"], "picar")
 

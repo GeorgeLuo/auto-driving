@@ -12,7 +12,7 @@ from autonomy.decision_cycle.activation import read_step_activation, write_step_
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import BoundedEvidenceLedger
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
-    VEHICLE_ID,
+    HOST_ID,
     _SlowMapper,
     _write_activations,
     chase_runtime,
@@ -48,7 +48,7 @@ class AutomationMemorySelectionTests(unittest.TestCase):
     def test_edits_to_the_staged_activation_change_plugins_on_the_next_cycle_of_the_running_host(self):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            bundle = controller_bundle_paths(runtime_root / VEHICLE_ID)
+            bundle = controller_bundle_paths(runtime_root / HOST_ID)
             _write_activations(bundle)
             payload = packaged_activation("memory", ["bounded_evidence"]).to_payload()
             payload["plugin_specs"]["second"] = f"{__name__}:SecondLedger"
@@ -85,7 +85,7 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 chase_runtime(runtime_root),
             ):
                 result = run_vehicle_automation(
-                    vehicle_id=VEHICLE_ID, num_decisions=5, take_control=False,
+                    host_id=HOST_ID, num_decisions=5, take_control=False,
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             self.assertEqual(

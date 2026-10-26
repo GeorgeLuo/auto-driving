@@ -209,7 +209,7 @@ def normalize_image_directory(
     recorded_root = _recorded_root(manifest)
     recorded_source = (
         _recorded_source_mapping(manifest, source_path, recorded_root)
-        if manifest is not None and manifest.get("schema") == "perception_inspect_v0"
+        if manifest is not None and manifest.get("schema") == "perception_inspect_v1"
         else None
     )
     if (
@@ -515,7 +515,7 @@ def _build_frame(
             raise SourceValidationError(f"frame {position} context must be an object")
         metadata["context"] = copy.deepcopy(entry["context"])
     # A recording manifest keeps the report identity and staged step selections.
-    for key in ("vehicle_id", "run_id", "generation_id"):
+    for key in ("host_id", "run_id", "generation_id"):
         value = entry.get(key)
         if isinstance(value, str) and value:
             metadata[key] = value

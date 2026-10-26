@@ -186,7 +186,7 @@ class DecisionStepInspectTests(unittest.TestCase):
     def test_cli_has_a_group_per_step_and_no_decision_command(self) -> None:
         for step in DECISION_STEPS:
             with self.subTest(step=step):
-                flags = invoke_automa("vehicles", step, "inspect", "--help").stdout
+                flags = invoke_automa("host", step, "inspect", "--help").stdout
                 for flag in ("--plugin", "--frame", "--record", "--json", "--max-frames"):
                     self.assertIn(flag, flags)
         removed = invoke_automa("vehicles", "decision", "help", check=False)

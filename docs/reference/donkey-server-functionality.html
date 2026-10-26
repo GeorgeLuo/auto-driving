@@ -542,7 +542,7 @@
           <tr>
             <td><code>POST /host/memory/reset</code></td>
             <td>Resets the activated memory step to a new empty epoch without restarting Donkey.</td>
-            <td>Requires observation publisher <code>reset_memory</code> (autonomy package) and this route (core vendor patch). Used by <code>automa vehicles memory reset</code>.</td>
+            <td>Requires observation publisher <code>reset_memory</code> (autonomy package) and this route (core vendor patch). Used by <code>automa host memory reset</code>.</td>
           </tr>
           <tr>
             <td><code>GET /calibrate</code>, <code>WS /wsCalibrate</code></td>
@@ -680,7 +680,7 @@ Content-Type: application/json
       </p>
       <ul>
         <li>API/web control is now the default restart mode.</li>
-        <li>Use <code>./cli/automa vehicles host create --id piracer --provider picar --url http://piracer.local:8887 --drive-args=--js</code> when you want the handheld controller to be active.</li>
+        <li>Use <code>./cli/automa host create --id piracer --provider picar --url http://piracer.local:8887 --drive-args=--js</code> when you want the handheld controller to be active.</li>
         <li>Changing the action plugin does not change the drive mode; movement authority requires an explicit autonomy-mode request.</li>
         <li>For autonomous experiments, choose one command source at a time and record which one is active.</li>
       </ul>

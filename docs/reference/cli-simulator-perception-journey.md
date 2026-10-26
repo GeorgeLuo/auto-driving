@@ -10,8 +10,8 @@ Use `help` to descend through command groups and `--help` for the final command:
 ```sh
 ./cli/automa help
 ./cli/automa vehicles help
-./cli/automa vehicles host help
-./cli/automa vehicles host run --help
+./cli/automa host help
+./cli/automa host run --help
 ```
 
 ## Primary Journey
@@ -21,76 +21,46 @@ Run these commands from the repository root with the environment from
 perception and memory presets. For an existing tuned deployment, stage your
 intended selections instead: each update replaces its named step's configs.
 `runtime/` persists across branch changes; incompatible activations must be
-explicitly restaged using the recovery that `vehicles host status` prints.
+explicitly restaged using the recovery that `host status` prints.
 
 ```sh
 ./cli/automa vehicles status
-./cli/automa vehicles host create --id chase-sim-chaser --provider chase-sim --url http://localhost:5050
+./cli/automa host create --id chase-sim-chaser --provider chase-sim --url http://localhost:5050
 
-./cli/automa vehicles update memory \
+./cli/automa host stage memory \
   --id chase-sim-chaser \
   --preset recency_ledger
 
-./cli/automa vehicles update perception \
+./cli/automa host stage perception \
   --id chase-sim-chaser \
   --preset lightweight_observer
 
-./cli/automa vehicles host run \
+./cli/automa host run \
   --id chase-sim-chaser \
   --observe-only \
   --num-decisions 0 \
   --open-view
 
-./cli/automa vehicles host status --id chase-sim-chaser
+./cli/automa host status --id chase-sim-chaser
 
-./cli/automa vehicles host stop --id chase-sim-chaser
+./cli/automa host stop --id chase-sim-chaser
 
-./cli/automa vehicles host status --id chase-sim-chaser
+./cli/automa host status --id chase-sim-chaser
 ```
 
-`vehicles status` is read-only and is the one status overview. It prints a
-heading for the default simulator, each created simulator, each discovered
-vehicle and each vehicle host, with details indented below it. A vehicle's heading names the provider
-and URL that `vehicles host create --provider <provider> --url <url>` takes for it:
+`vehicles status` is read-only. It lists the default simulator, created
+simulators and discovered vehicles, with each environment's provider, URL and
+reachability. Use the provider and URL with `host create`.
 
-```text
-Simulator (chase-sim)  running at http://localhost:5050/
-  frontend connected, game chase
+`host status` lists each created host, its vehicle provider and endpoint, host
+URL, simulator attachment, deployment, run and view state. `--id` selects one host; `--json` emits
+`automa_host_status_v1` with a `hosts` array and `host_id` for each entry.
+Host names are chosen at creation and do not identify the vehicle environment.
 
-PiCar (picar)  answering at http://piracer.local:8887
-
-Host chase-sim-chaser  running, observe only
-  120 decisions, 0 errors, last frame 0.3s ago
-  attached since 2026-10-23 16:27:55
-  http://127.0.0.1:54665, pid 50057
-
-Host chase-sim-follower  not answering
-  no answer within 2.0s
-  not attached to its simulator (local host record)
-  http://127.0.0.1:54701, pid 50122
-```
-
-The simulator is running when its Metrics UI server answers, whether or not a
-browser has it open; `frontend not connected` (or `not answering`) says no
-browser is serving it.
-When it is unreachable, the next line says why. Hosts are the names created with `vehicles host create`. A created Chase host
-without a live process appears as `not running`. Metrics UI attachment is shown
-for those hosts, each against the simulator it was created at; ID prefixes have no meaning. Status reads every host's
-`/host/status` in parallel, within the one `--timeout-s` deadline, so a
-host that never answers does not hold up the others. A host's state is its
-session state (`not started`, `starting`, `running`, `stopping`, `finished run`,
-`error`), followed by the mode of a run that has control (`observe only`,
-`autonomy`). `finished run` (JSON `finished_run`) means its last run was stopped
-or reached its limit. Otherwise the state is `not answering` with the reason, or
-`error` when its reply is not a runtime host status; its last error prints
-below. When the simulator cannot list agents, the line `cannot list attached
-hosts` says why and local hosts are still shown. `--id` shows only that
-vehicle's host, or `not found`. The JSON is `automa_simulator_status_v2`.
-
-To look through a host, pass the URL on its last status line to `vehicles viewer`:
+To look through a host, pass the URL on its last status line to `host viewer`:
 
 ```sh
-./cli/automa vehicles viewer --host-url http://127.0.0.1:54665
+./cli/automa host viewer --host-url http://127.0.0.1:54665
 ```
 
 It serves the runtime viewer fed from that host (Perception, Memory, Action and
@@ -109,7 +79,7 @@ list it once:
 ./cli/automa vehicles remove --url http://localhost:5051
 ```
 
-`vehicles discover` adds the vehicle to `runtime/vehicles/discovered.json` when
+`vehicles discover` adds the vehicle to `runtime/hosts/discovered.json` when
 it can take a host: a simulator whose frontend is connected with the Chase game
 loaded, or a PiCar whose machine answers. Otherwise it exits 2 and says why;
 `--force` lists it anyway. The provider is required because a PiCar without its
@@ -132,7 +102,7 @@ export AUTOMA_METRICS_UI_DIR=~/path/to/metrics-ui
 free port from 5051, and prints `Created Simulator (chase-sim) at <URL>` once
 the launcher reports it ready. A launcher that exits or is not ready within
 45 s is ended, and the command exits 2 with the end of its log
-(`runtime/vehicles/simulators/<port>/simulator.log`). The simulator outlives
+(`runtime/hosts/simulators/<port>/simulator.log`). The simulator outlives
 the command: status lists it, with `created by simulators create, pid <pid>`,
 until its process ends or `simulators delete` ends it. Delete refuses while a
 host was created at that simulator.
@@ -141,7 +111,7 @@ host was created at that simulator.
 Without them, an otherwise fresh cycle runs no memory or perception plugins,
 and `host run` starts the same way. Each update writes only its own step; absent observation, plan and action activations run
 their built-in plugins. Neither update command starts a worker, applies
-movement, or requires a live simulator. `vehicles host status` reports
+movement, or requires a live simulator. `host status` reports
 invalid staged steps, and `host run` checks them before it starts.
 
 `host run --observe-only` preserves the current scenario, playback
@@ -159,7 +129,7 @@ Ctrl-C in a terminal stream stops that stream, not the worker. For a passive
 restart, keep `--observe-only` explicit:
 
 ```sh
-./cli/automa vehicles host restart --id chase-sim-chaser --observe-only --num-decisions 0 --open-view
+./cli/automa host restart --id chase-sim-chaser --observe-only --num-decisions 0 --open-view
 ```
 
 Stopping the worker keeps its local deployment staged and makes its previous
@@ -171,14 +141,14 @@ With a Chase worker and its viewer open, upload a local plugin file separately
 from selecting it:
 
 ```sh
-./cli/automa vehicles plugins upload \
+./cli/automa host plugins upload \
   --id chase-sim-chaser \
   --file ./prototype.py \
   --step perception \
   --plugin-id prototype \
   --entrypoint prototype:Prototype
 
-./cli/automa vehicles plugins status --id chase-sim-chaser --step perception
+./cli/automa host plugins status --id chase-sim-chaser --step perception
 ```
 
 The command reports success after the source is stored and its revision is
@@ -212,9 +182,9 @@ worker exits. Keeping that host alive between runs is separate work.
 After uploading, request the available revision without restarting the worker:
 
 ```sh
-./cli/automa vehicles plugins arm --id chase-sim-chaser --step perception --plugin prototype
-./cli/automa vehicles plugins status --id chase-sim-chaser --step perception
-./cli/automa vehicles stream perception --id chase-sim-chaser --once
+./cli/automa host plugins arm --id chase-sim-chaser --step perception --plugin prototype
+./cli/automa host plugins status --id chase-sim-chaser --step perception
+./cli/automa host stream perception --id chase-sim-chaser --once
 ```
 
 The host imports and constructs the selection before answering. The receipt
@@ -240,8 +210,8 @@ selection document:
 ```
 
 ```sh
-./cli/automa vehicles plugins arm --id chase-sim-chaser --selection ./selection.json
-./cli/automa vehicles plugins status --id chase-sim-chaser
+./cli/automa host plugins arm --id chase-sim-chaser --selection ./selection.json
+./cli/automa host plugins status --id chase-sim-chaser
 ```
 
 The host loads every changed step before publishing any of the group. The
@@ -273,12 +243,10 @@ The commands keep these layers separate:
 | `perception_view` | `available`, `unavailable`, `stale` | Loopback view belongs to the current worker generation |
 | `evaluator_reference` | `available`, `unavailable`, `invalid` | Optional frame-scoped scoring reference |
 
-`vehicles status` lists the default simulator, each created simulator, each discovered vehicle, and created hosts.
-The JSON's `vehicles` list holds each one's `{provider, url, state, error}`, a
-simulator adding `frontend`, `game`, `hosts_error` and `pid` (the process of a
-simulator `simulators create` started, else null), and each host has its
-provider and vehicle URL. It exits 1 when no listed vehicle is reachable, or the
-requested host is missing, not running, not answering, or in error.
+`vehicles status --json` lists vehicle environments in `vehicles`, including
+provider, URL, state and error. Simulator entries also include frontend, game
+and created-process information. `host status --json` reports the associated
+hosts separately, including their host IDs, vehicle URLs and runtime URLs.
 
 An absent or malformed evaluator reference does not block camera perception.
 It is excluded from perception, observation, memory, and decision inputs.
@@ -318,15 +286,13 @@ external change.
 | Wrong game | Preserve it unless you explicitly choose the configuration-changing `simulators ensure --scenario ...` command |
 | Capture identity/image invalid | Repair the exact field named by `capture_identity_invalid` or `capture_image_invalid` |
 | Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it |
-| Deployment absent | Run the printed `vehicles update perception` command; stage memory separately when you want its ledger |
-| Staged step invalid (including a retired schema) | `vehicles host status`, startup, `vehicles info`, and the autonomy update identify its step, activation path, and restage command. Run its `vehicles update <step>` command with your intended selection, then rerun `vehicles host status`. Checking never rewrites configs, and known invalid documents prevent worker startup, restart, and physical deployment |
+| Deployment absent | Run the printed `host stage perception` command; stage memory separately when you want its ledger |
+| Staged step invalid (including a retired schema) | `host status`, startup, `host info`, and the autonomy update identify its step, activation path, and restage command. Run its `host stage <step>` command with your intended selection, then rerun `host status`. Checking never rewrites configs, and known invalid documents prevent worker startup, restart, and physical deployment |
 | Worker stopped | Run the printed observation-only `host run --open-view` command |
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 
-`vehicles status` exits 1 when no listed vehicle is reachable, or when `--id`
-names a host that is `not found`, `not answering` or in `error`; otherwise it
-exits 0, including when no host is found or the browser is closed. Invalid
-arguments exit 2.
+`vehicles status` exits 1 when no listed vehicle is reachable. `host status
+--id <host>` exits 2 when the host does not exist. Invalid arguments exit 2.
 
 Simulator preparation is deliberately outside passive attachment:
 

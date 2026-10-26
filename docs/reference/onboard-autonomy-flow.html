@@ -370,11 +370,11 @@
         <code>mode</code> action provides the first bounded live-control path.
       </p>
       <p class="source-line">
-        Create a named host with <code>vehicles host create --id car --provider picar --url http://piracer.local:8887</code>
+        Create a named host with <code>host create --id car --provider picar --url http://piracer.local:8887</code>
         after <code>vehicles discover --provider picar --url http://piracer.local:8887</code> lists it in
-        <code>vehicles status</code>. Stage selections with <code>vehicles update &lt;step&gt;</code>,
-        deploy with <code>vehicles host update --id car --restart</code>, then use <code>vehicles host run</code>.
-        <code>vehicles host delete --id car</code> stops the service and removes its local record.
+        <code>vehicles status</code>. Stage selections with <code>host stage &lt;step&gt;</code>,
+        deploy with <code>host update --id car --restart</code>, then use <code>host run</code>.
+        <code>host delete --id car</code> stops the service and removes its local record.
         <br>
         Source points: <code>autonomy/decision_cycle/cycle.py</code>,
         <code>autonomy/runtime/cycle_host.py</code>,
@@ -595,14 +595,14 @@
         <div>
           <h3>Live Controller</h3>
           <p>Inspect staged contracts and the latest local worker result.</p>
-          <p><code>./cli/automa vehicles info perception --id chase-sim-chaser</code></p>
-          <p><code>./cli/automa vehicles info proposal --id chase-sim-chaser</code></p>
-          <p><code>./cli/automa vehicles stream perception --id chase-sim-chaser</code></p>
+          <p><code>./cli/automa host info perception --id chase-sim-chaser</code></p>
+          <p><code>./cli/automa host info proposal --id chase-sim-chaser</code></p>
+          <p><code>./cli/automa host stream perception --id chase-sim-chaser</code></p>
         </div>
         <div>
           <h3>Recorded Cycle</h3>
           <p>Opt into a bounded recording when the full perception, observation, control, and cycle result need inspection.</p>
-          <p><code>./cli/automa vehicles host run --id chase-sim-chaser --num-decisions 5 --record</code></p>
+          <p><code>./cli/automa host run --id chase-sim-chaser --num-decisions 5 --record</code></p>
           <p>Recorded cycle JSON reflects the actual runtime; unimplemented state steps remain <code>null</code>.</p>
         </div>
       </div>

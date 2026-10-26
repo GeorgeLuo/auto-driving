@@ -20,7 +20,7 @@ from tests.support.runtime_fixtures import write_json
 
 VEHICLE = "chase-sim-chaser"
 UNSTAGED = {step: "builtin" if builtin_activation(step) else "none" for step in STEPS}
-UNAVAILABLE_VIEW = {"schema": "automa_perception_view_v1", "available": False, "status": "unavailable", "url": None}
+UNAVAILABLE_VIEW = {"schema": "automa_perception_view_v2", "available": False, "status": "unavailable", "url": None}
 
 
 def _invoke(*args: str) -> tuple[int, str]:
@@ -37,13 +37,13 @@ class StepFairnessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
-            with mock.patch("cli.automa_cli.app.VEHICLES_RUNTIME_ROOT", root), mock.patch(
+            with mock.patch("cli.automa_cli.app.HOSTS_RUNTIME_ROOT", root), mock.patch(
                 "cli.automa_cli.runtime_hosts.RUNTIME_ROOT", root
             ), mock.patch(
                 "cli.automa_cli.automation.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
             ):
                 for step in staged:
-                    code, stdout = _invoke("vehicles", "update", step, "--id", VEHICLE, "--json")
+                    code, stdout = _invoke("host", "stage", step, "--id", VEHICLE, "--json")
                     self.assertEqual(code, 0, stdout)
                 (root / VEHICLE / "bundle").mkdir(parents=True, exist_ok=True)
                 if released and not staged:
@@ -54,7 +54,7 @@ class StepFairnessTests(unittest.TestCase):
                 yield root
 
     def _status(self) -> dict:
-        (status,) = _collect_automation_status(vehicle_id=VEHICLE, view_timeout_s=0)
+        (status,) = _collect_automation_status(host_id=VEHICLE, view_timeout_s=0)
         return status
 
     def test_a_run_starts_with_any_single_step_staged(self) -> None:
@@ -68,7 +68,7 @@ class StepFairnessTests(unittest.TestCase):
                 "cli.automa_cli.automation.monitor_runtime", return_value=(0, "done")
             ) as monitor:
                 result = run_vehicle_automation(
-                    vehicle_id=VEHICLE, take_control=False, num_decisions=1, output=io.StringIO()
+                    host_id=VEHICLE, take_control=False, num_decisions=1, output=io.StringIO()
                 )
                 self.assertEqual((result.exit_code, result.message), (0, "done"))
                 selections = monitor.call_args.kwargs["selections"]
@@ -85,7 +85,7 @@ class StepFairnessTests(unittest.TestCase):
         for step in STEPS:
             with self.subTest(step=step), self._runtime(step):
                 status = self._status()
-                code, human = _invoke("vehicles", "host", "status", "--id", VEHICLE)
+                code, human = _invoke("host", "status", "--id", VEHICLE)
             self.assertEqual(code, 0, human)
             steps = status["steps"]
             self.assertEqual({name: item["source"] for name, item in steps.items()}, {**UNSTAGED, step: "staged"})
@@ -106,7 +106,7 @@ class StepFairnessTests(unittest.TestCase):
             write_json(automation / "process.json", {"pid": os.getpid()})
             write_json(automation / "state.json", {"pid": os.getpid(), "status": "running", "steps": {**applied, "cycle_count": 3}})
             status = self._status()
-            code, human = _invoke("vehicles", "host", "status", "--id", VEHICLE)
+            code, human = _invoke("host", "status", "--id", VEHICLE)
 
         self.assertEqual(code, 0, human)
         self.assertEqual(list(status["steps"]), list(STEPS))

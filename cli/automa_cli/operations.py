@@ -15,7 +15,7 @@ from implementations.operations import (
 from implementations.operations.artifact_writers import write_json
 from .paths import ROOT, display_path
 from .vehicle_access import create_vehicle_access
-from .step_activations import staging_vehicle
+from .step_activations import staging_host
 from . import runtime_hosts
 
 
@@ -32,7 +32,7 @@ class CommandResult:
 
 def run_vehicle_startup_check(
     *,
-    vehicle_id: str,
+    host_id: str,
     timeout_s: float = 8.0,
     throttle: float = 0.22,
     duration_s: float = 0.3,
@@ -40,7 +40,7 @@ def run_vehicle_startup_check(
     dry_run: bool = False,
     json_output: bool = False,
 ) -> CommandResult:
-    vehicle, error = staging_vehicle(vehicle_id, runtime_root=runtime_hosts.RUNTIME_ROOT)
+    vehicle, error = staging_host(host_id, runtime_root=runtime_hosts.RUNTIME_ROOT)
     if vehicle is None:
         return CommandResult(2, error)
 
@@ -51,7 +51,7 @@ def run_vehicle_startup_check(
         return CommandResult(2, str(exc))
     car = access.car
     image_extension = access.image_extension
-    run_id = f"{vehicle_id}-{time.strftime('%Y%m%d-%H%M%S')}"
+    run_id = f"{host_id}-{time.strftime('%Y%m%d-%H%M%S')}"
     out_dir = OPERATION_OUTPUT_ROOT / run_id
     try:
         plan = build_basic_startup_action_check_plan(
@@ -69,10 +69,10 @@ def run_vehicle_startup_check(
     acquired = False
     if not dry_run:
         try:
-            preparation = _acquire_control(access.control, vehicle_id)
+            preparation = _acquire_control(access.control, host_id)
             acquired = True
         except Exception as exc:
-            return CommandResult(2, f"Could not prepare vehicle {vehicle_id!r}: {exc}")
+            return CommandResult(2, f"Could not prepare host {host_id!r}: {exc}")
         control.append({"event": "acquire", "at_ms": int(time.time() * 1000), "receipt": preparation})
 
     release_error: Exception | None = None
@@ -105,7 +105,7 @@ def run_vehicle_startup_check(
     report["control"] = control
     write_json(out_dir / "report.json", report)
     if release_error is not None:
-        return CommandResult(2, f"Could not release vehicle {vehicle_id!r}: {release_error}")
+        return CommandResult(2, f"Could not release host {host_id!r}: {release_error}")
 
     payload = _compact_startup_report(report, out_dir, preparation)
     exit_code = 0 if dry_run or report["passed"] else 1
@@ -114,7 +114,7 @@ def run_vehicle_startup_check(
     return CommandResult(exit_code, _format_startup_report(payload))
 
 
-def _acquire_control(control: ControlTarget | None, vehicle_id: str) -> dict[str, Any] | None:
+def _acquire_control(control: ControlTarget | None, host_id: str) -> dict[str, Any] | None:
     if control is None:
         raise RuntimeError("no control target")
     receipt = control.acquire()
@@ -122,7 +122,7 @@ def _acquire_control(control: ControlTarget | None, vehicle_id: str) -> dict[str
         return None
     if not isinstance(receipt, dict):
         raise RuntimeError(
-            f"control target for {vehicle_id!r} returned {type(receipt).__name__}, expected a receipt"
+            f"control target for {host_id!r} returned {type(receipt).__name__}, expected a receipt"
         )
     return receipt
 

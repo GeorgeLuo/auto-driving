@@ -55,7 +55,7 @@ def plugin_host(root, vehicle="chase", activations=None):
     host = (create_chase_host(ChaseSimCar(), steps=steps) if vehicle == "chase"
             else create_picar_host(steps=steps))
     host.follow_activations(selected, root / "runtime")
-    view = RuntimeViewServer(vehicle_id=vehicle, automation_dir=root / "automation",
+    view = RuntimeViewServer(host_id=vehicle, automation_dir=root / "automation",
                              port=0, plugin_catalog=host.plugin_catalog).start()
     try:
         yield host, view.url
@@ -65,7 +65,7 @@ def plugin_host(root, vehicle="chase", activations=None):
 
 
 def upload(base, file, step, plugin_id, *, arm=False, check=True):
-    command = ["vehicles", "plugins", "upload", "--url", base, "--file", str(file),
+    command = ["host", "plugins", "upload", "--url", base, "--file", str(file),
                "--step", step, "--plugin-id", plugin_id, "--entrypoint", "prototype:Prototype", "--json"]
     if arm:
         command.append("--arm")
@@ -74,11 +74,11 @@ def upload(base, file, step, plugin_id, *, arm=False, check=True):
 
 
 def catalog(base):
-    return json.loads(invoke_automa("vehicles", "plugins", "status", "--url", base, "--json").stdout)
+    return json.loads(invoke_automa("host", "plugins", "status", "--url", base, "--json").stdout)
 
 
 def arm_step(base, step, *ids):
-    command = ["vehicles", "plugins", "arm", "--url", base, "--step", step, "--json"]
+    command = ["host", "plugins", "arm", "--url", base, "--step", step, "--json"]
     for plugin_id in ids:
         command.extend(["--plugin", plugin_id])
     return json.loads(invoke_automa(*command).stdout)

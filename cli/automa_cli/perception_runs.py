@@ -52,7 +52,7 @@ from .workbench_source import (
 DEFAULT_FRAME_COUNT = 5
 DEFAULT_INTERVAL_S = 0.25
 INSPECT_ROOT = Path(os.environ.get("AUTOMA_PERCEPTION_INSPECT_ROOT", ROOT / "runtime" / "perception-inspections"))
-PERCEPTION_INSPECT_SCHEMA = "perception_inspect_v0"
+PERCEPTION_INSPECT_SCHEMA = "perception_inspect_v1"
 
 
 @dataclass(frozen=True)
@@ -64,7 +64,7 @@ class CommandResult:
 def inspect_perception(
     source: Path | None = None,
     *,
-    vehicle_id: str | None = None,
+    host_id: str | None = None,
     frames: int | None = None,
     interval_s: float | None = None,
     timeout_s: float | None = None,
@@ -92,7 +92,7 @@ def inspect_perception(
         return _unreadable_source("max_frames must be greater than zero")
     if source is not None:
         live_only = {
-            "--id": vehicle_id,
+            "--id": host_id,
             "--frames": frames,
             "--interval-s": interval_s,
             "--timeout-s": timeout_s,
@@ -113,7 +113,7 @@ def inspect_perception(
             seed=seed,
         )
     return _inspect_vehicle(
-        vehicle_id=vehicle_id,
+        host_id=host_id,
         frames=DEFAULT_FRAME_COUNT if frames is None else frames,
         interval_s=DEFAULT_INTERVAL_S if interval_s is None else interval_s,
         timeout_s=3.0 if timeout_s is None else timeout_s,
@@ -127,7 +127,7 @@ def inspect_perception(
 
 def _inspect_vehicle(
     *,
-    vehicle_id: str | None,
+    host_id: str | None,
     frames: int,
     interval_s: float,
     timeout_s: float,
@@ -137,13 +137,13 @@ def _inspect_vehicle(
     plugins: list[str] | None,
     seed: SharedMemorySeed | None,
 ) -> CommandResult:
-    discovery = {} if vehicle_id is not None else discover_active_vehicles(
+    discovery = {} if host_id is not None else discover_active_vehicles(
         timeout_s=timeout_s,
         include_picar=True,
         include_chase_sim=True,
         include_inactive=True,
     )
-    vehicle, selection, error = _select_vehicle(discovery, vehicle_id)
+    vehicle, selection, error = _select_vehicle(discovery, host_id)
     if error or vehicle is None:
         return CommandResult(
             2,
@@ -165,7 +165,7 @@ def _inspect_vehicle(
         return CommandResult(2, f"Could not prepare perception runtime: {type(exc).__name__}: {exc}")
 
     frame_count = max(1, int(frames))
-    run_id = _run_id("inspect", str(vehicle.get("vehicle_id") or "vehicle"))
+    run_id = _run_id("inspect", str(vehicle.get("host_id") or vehicle.get("vehicle_id") or "vehicle"))
     record_dir, error = _create_record_dir(run_id) if record else (None, None)
     if error is not None:
         return error
@@ -205,6 +205,7 @@ def _inspect_vehicle(
                     metadata={
                         "run_id": run_id,
                         "frame_index": index,
+                        "host_id": vehicle.get("host_id"),
                         "vehicle_id": vehicle.get("vehicle_id"),
                         "recording": record,
                     },
@@ -222,6 +223,7 @@ def _inspect_vehicle(
                 run_id=run_id,
                 source={
                     "kind": "vehicle",
+                    "host_id": vehicle.get("host_id"),
                     "vehicle_id": vehicle.get("vehicle_id"),
                     "provider": vehicle.get("provider"),
                     "selection": selection,
@@ -389,9 +391,9 @@ def _select_vehicle(
     requested_id: str | None,
 ) -> tuple[dict[str, Any] | None, str | None, str | None]:
     if requested_id:
-        from .step_activations import staging_vehicle
+        from .step_activations import staging_host
         from .runtime_hosts import RUNTIME_ROOT
-        vehicle, error = staging_vehicle(requested_id, runtime_root=RUNTIME_ROOT)
+        vehicle, error = staging_host(requested_id, runtime_root=RUNTIME_ROOT)
         return vehicle, "explicit id", error
 
     vehicles = [item for item in discovery.get("vehicles", []) if isinstance(item, dict)]
@@ -591,7 +593,7 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
     summary = report["summary"]
     source = report["source"]
     perception = report["perception"]
-    source_label = source.get("vehicle_id") or source.get("path") or source.get("kind")
+    source_label = source.get("host_id") or source.get("vehicle_id") or source.get("path") or source.get("kind")
     detail = f"{summary['frames']} frames"
     if source.get("selection"):
         detail += f"; {source['selection']}"

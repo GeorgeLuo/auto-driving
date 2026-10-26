@@ -25,7 +25,7 @@ from tests.shared.cli.invoke import invoke_automa
 
 class PluginDisarmingFlows(unittest.TestCase):
     def disarm(self, base, *args, check=True):
-        return invoke_automa("vehicles", "plugins", "disarm", "--url", base, *args, check=check)
+        return invoke_automa("host", "plugins", "disarm", "--url", base, *args, check=check)
 
     def test_named_removal_keeps_catalog_order_and_retained_instances(self):
         for vehicle in ("chase", "picar"):
@@ -40,7 +40,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                 with patch.object(host.step("proposal"), "_reset_plugin", wraps=host.step("proposal")._reset_plugin) as reset:
                     receipt = json.loads(self.disarm(base, "--step", "proposal", "--plugin", "second",
                                                     "--plugin", "second", "--json").stdout)
-                    self.assertEqual(receipt["schema"], "automa_plugin_disarm_v0")
+                    self.assertEqual(receipt["schema"], "automa_plugin_disarm_v1")
                     self.assertEqual(receipt["outcome"]["status"], "requested")
                     self.assertEqual(selected(receipt, "applied", "proposal"), selected(before, "applied", "proposal"))
                     reset.assert_not_called()
@@ -207,7 +207,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "reset refused"):
                         host.run(frame(root, 2))
                     cycle.assert_not_called()
-                result = invoke_automa("vehicles", "plugins", "status", "--url", base, "--json", check=False)
+                result = invoke_automa("host", "plugins", "status", "--url", base, "--json", check=False)
                 self.assertEqual(result.returncode, 2)
                 shown = json.loads(result.stdout)
                 self.assertEqual(shown["arming"]["status"], "failed")
@@ -249,7 +249,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                     with self.assertRaisesRegex(MemoryUpdateError, "memory reset refused"):
                         host.run(frame(root, 2))
                     cycle.assert_not_called()
-                result = invoke_automa("vehicles", "plugins", "status", "--url", base, "--json", check=False)
+                result = invoke_automa("host", "plugins", "status", "--url", base, "--json", check=False)
                 self.assertEqual(result.returncode, 2)
                 shown = json.loads(result.stdout)
                 self.assertEqual(selected(shown, "applied", "perception"), [])

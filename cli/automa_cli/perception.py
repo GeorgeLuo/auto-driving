@@ -30,7 +30,7 @@ from .runtime_hosts import RuntimeHostError, runtime_base_url
 
 
 ROOT = Path(__file__).resolve().parents[2]
-RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
+RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))
 
 
 @dataclass(frozen=True)
@@ -53,9 +53,12 @@ def live_perception_selection(
     package.
     """
 
-    vehicle_id = str(vehicle.get("vehicle_id") or "vehicle")
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    problems = bundle_activation_problems(bundle, vehicle_id, steps=("perception",))
+    host_id = _host_id(vehicle)
+    if host_id is None:
+        # A discovered environment does not identify a controller host.
+        return selection_activation("perception", preset=preset, plugins=plugins)
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(host_id))
+    problems = bundle_activation_problems(bundle, host_id, steps=("perception",))
     if problems:
         raise ValueError(format_activation_problems(problems))
     staged = read_bundle_activation(bundle, "perception")
@@ -67,7 +70,7 @@ def live_perception_selection(
     return staged_activation(
         bundle,
         selection,
-        vehicle_id=_vehicle_id(vehicle),
+        host_id=_host_id(vehicle),
         vehicle=vehicle,
         release_summary=_activation_release(staged),
     )
@@ -75,33 +78,33 @@ def live_perception_selection(
 
 def get_vehicle_perception_info(
     *,
-    vehicle_id: str,
+    host_id: str,
     json_output: bool = False,
     timeout_s: float = 3.0,
 ) -> CommandResult:
     """The staged perception, the local view, and the runtime host's latest publication."""
 
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    staged, error = staged_step_info(bundle, vehicle_id, "perception")
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(host_id))
+    staged, error = staged_step_info(bundle, host_id, "perception")
     if error is not None:
         return CommandResult(2, error)
     payload: dict[str, Any] = {
-        "schema": "vehicle_perception_info_v1",
-        "vehicle_id": vehicle_id,
+        "schema": "host_perception_info_v1",
+        "host_id": host_id,
         **staged,
         "published_view": discover_runtime_view(
-            vehicle_id, get_perception_view_status, runtime_root=RUNTIME_ROOT
+            host_id, get_perception_view_status, runtime_root=RUNTIME_ROOT
         ),
-        "live_observation": _live_observation_info(vehicle_id, timeout_s=timeout_s),
+        "live_observation": _live_observation_info(host_id, timeout_s=timeout_s),
     }
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
     return CommandResult(0, _format_perception_info(payload))
 
 
-def _vehicle_id(vehicle: dict[str, Any]) -> str | None:
-    vehicle_id = vehicle.get("vehicle_id")
-    return vehicle_id if isinstance(vehicle_id, str) else None
+def _host_id(vehicle: dict[str, Any]) -> str | None:
+    host_id = vehicle.get("host_id")
+    return host_id if isinstance(host_id, str) else None
 
 
 def _activation_release(activation: StepActivation | None) -> dict[str, Any] | None:
@@ -129,7 +132,7 @@ def _format_published_view(value: Any) -> str:
     reason = view.get("reason") or "no view is running"
     return (
         f"Perception view: unavailable ({reason}); "
-        "`./cli/automa vehicles stream perception --id <vehicle_id>` starts one"
+        "`./cli/automa host stream perception --id <host_id>` starts one"
     )
 
 
@@ -154,11 +157,11 @@ def _format_live_observation(live: dict[str, Any]) -> str:
     ])
 
 
-def _live_observation_info(vehicle_id: str, *, timeout_s: float) -> dict[str, Any]:
+def _live_observation_info(host_id: str, *, timeout_s: float) -> dict[str, Any]:
     """The runtime host's latest observation publication, for any vehicle."""
 
     try:
-        base_url = runtime_base_url(vehicle_id)
+        base_url = runtime_base_url(host_id)
     except RuntimeHostError as exc:
         return {"available": False, "error": str(exc)}
     try:

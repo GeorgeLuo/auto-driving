@@ -9,7 +9,7 @@ from pathlib import Path
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.runtime_fixtures import write_runtime_fixture
 
-VEHICLE_ID = "chase-sim-chaser"
+HOST_ID = "chase-sim-chaser"
 
 
 class StagedActivationRecoveryTests(unittest.TestCase):
@@ -18,18 +18,18 @@ class StagedActivationRecoveryTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
             try:
-                paths = write_runtime_fixture(runtime_root, VEHICLE_ID, pid=child.pid)
+                paths = write_runtime_fixture(runtime_root, HOST_ID, pid=child.pid)
                 path = paths.bundle_root / "runtime/memory/active.json"
                 path.parent.mkdir(parents=True)
                 path.write_text('{"schema":"automa_memory_activation_v0"}', encoding="utf-8")
                 process = paths.automation_process.read_bytes()
                 state = paths.automation_state.read_bytes()
                 result = invoke_automa(
-                    "vehicles", "host", "restart", "--id", VEHICLE_ID,
+                    "host", "restart", "--id", HOST_ID,
                     "--observe-only", runtime_root=runtime_root, check=False,
                 )
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-                self.assertIn("vehicles update memory", result.stdout)
+                self.assertIn("host stage memory", result.stdout)
                 self.assertIsNone(child.poll())
                 self.assertEqual(paths.automation_process.read_bytes(), process)
                 self.assertEqual(paths.automation_state.read_bytes(), state)
@@ -42,12 +42,12 @@ class StagedActivationRecoveryTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])
             try:
-                paths = write_runtime_fixture(runtime_root, VEHICLE_ID, pid=child.pid)
+                paths = write_runtime_fixture(runtime_root, HOST_ID, pid=child.pid)
                 process = paths.automation_process.read_bytes()
                 for command in ("run", "restart"):
                     with self.subTest(command=command):
                         result = invoke_automa(
-                            "vehicles", "host", command, "--id", VEHICLE_ID,
+                            "host", command, "--id", HOST_ID,
                             runtime_root=runtime_root, check=False,
                         )
                         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)

@@ -106,11 +106,11 @@ class PluginArmingFlows(unittest.TestCase):
                  "--entrypoint", "prototype:Prototype", "--arm"),
             ):
                 with self.subTest(command=command[0]):
-                    refused = invoke_automa("vehicles", "plugins", *command, "--url", base, check=False)
+                    refused = invoke_automa("host", "plugins", *command, "--url", base, check=False)
                     self.assertEqual(refused.returncode, 2, refused.stdout)
                     self.assertIn("Arming: failed", refused.stdout)
                     self.assertIn("ModuleNotFoundError: No module named 'not_uploaded_yet'", refused.stdout)
-            failed = invoke_automa("vehicles", "plugins", "status", "--url", base, "--json", check=False)
+            failed = invoke_automa("host", "plugins", "status", "--url", base, "--json", check=False)
             self.assertEqual(failed.returncode, 2)
             shown = json.loads(failed.stdout)
             self.assertEqual(shown["arming"]["status"], "failed")

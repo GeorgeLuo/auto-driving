@@ -19,7 +19,7 @@ class DecisionCommandTests(unittest.TestCase):
             runtime = runtime_root / "chase-sim-chaser" / "bundle" / "runtime"
 
             dry_run = invoke_automa(
-                "vehicles", "update", "action", *vehicle, "--plugin", "mode", "--dry-run",
+                "host", "stage", "action", *vehicle, "--plugin", "mode", "--dry-run",
                 runtime_root=runtime_root,
             )
             self.assertEqual(dry_run.returncode, 0, dry_run.stderr + dry_run.stdout)
@@ -27,7 +27,7 @@ class DecisionCommandTests(unittest.TestCase):
 
             for step, plugins in (("proposal", ()), ("action", ("--plugin", "mode"))):
                 update = invoke_automa(
-                    "vehicles", "update", step, *vehicle, *plugins,
+                    "host", "stage", step, *vehicle, *plugins,
                     runtime_root=runtime_root,
                 )
                 self.assertEqual(update.returncode, 0, update.stderr + update.stdout)
@@ -44,21 +44,21 @@ class DecisionCommandTests(unittest.TestCase):
 
             before_info = snapshot_files()
             unstaged = invoke_automa(
-                "vehicles", "info", "plan", *vehicle, runtime_root=runtime_root, check=False,
+                "host", "info", "plan", *vehicle, runtime_root=runtime_root, check=False,
             )
             self.assertEqual(unstaged.returncode, 2, unstaged.stdout)
-            self.assertIn("./cli/automa vehicles update plan --id", unstaged.stdout)
+            self.assertIn("./cli/automa host stage plan --id", unstaged.stdout)
 
             for step, plugins in (("proposal", ["avoid_recent_obstruction"]), ("action", ["mode"])):
-                info = invoke_automa("vehicles", "info", step, *vehicle, runtime_root=runtime_root)
+                info = invoke_automa("host", "info", step, *vehicle, runtime_root=runtime_root)
                 self.assertEqual(info.returncode, 0, info.stderr + info.stdout)
                 payload = json.loads(info.stdout)
-                self.assertEqual(payload["schema"], f"vehicle_{step}_info_v1")
+                self.assertEqual(payload["schema"], f"host_{step}_info_v1")
                 self.assertEqual(payload["activation"]["plugins"], plugins)
                 self.assertEqual(payload["decision"]["plugins"]["action"], ["mode"])
                 self.assertEqual(payload["decision"]["authority"]["gate_id"], "mode")
                 # No runtime host runs, so the probe has no step to report.
-                self.assertEqual(payload["live"]["schema"], f"vehicle_{step}_live_v1")
+                self.assertEqual(payload["live"]["schema"], f"host_{step}_live_v1")
                 self.assertEqual(payload["live"]["status"], "unavailable")
                 self.assertEqual(
                     f"{step}_schema" in payload, STEP_RUNNERS[step].schema_name is not None

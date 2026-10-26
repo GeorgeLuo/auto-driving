@@ -33,7 +33,7 @@ from implementations.vehicle.picar.defaults import (
 from .host_publications import host_state
 
 DEFAULT_READINESS_TIMEOUT_S = 5.0
-STATUS_SCHEMA = "automa_vehicle_status_v1"
+STATUS_SCHEMA = "automa_host_readiness_v1"
 SIMULATOR_STATUS_SCHEMA = "automa_simulator_status_v2"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
 # Each vehicle's heading names the --provider that discover and host create take for it.
@@ -163,7 +163,7 @@ def format_active_vehicles(
 
 def get_vehicle_status(
     *,
-    vehicle_id: str,
+    host_id: str,
     chase_url: str | None = None,
     chase_ws_url: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
@@ -201,21 +201,19 @@ def get_vehicle_status(
 
     remaining = operation_timeout - (time.monotonic() - started)
     automation = _collect_automation_status(
-        vehicle_id=vehicle_id,
+        host_id=host_id,
         view_timeout_s=remaining if remaining >= 0.05 else 0.0,
     )
     all_deployed_by_id = {
-        str(item.get("vehicle_id")): item
+        str(item.get("host_id")): item
         for item in automation
-        if isinstance(item, dict) and item.get("vehicle_id")
+        if isinstance(item, dict) and item.get("host_id")
     }
     deployed_by_id = all_deployed_by_id
-    discoverable_by_id = {
-        str(item.get("vehicle_id")): item
-        for item in discovery.get("vehicles", [])
-        if isinstance(item, dict) and item.get("vehicle_id")
-    }
-    known_ids = {vehicle_id}
+    # The probe describes the environment at the requested endpoint, not a
+    # host whose name happens to match a vehicle capability identifier.
+    discovered_vehicle = probe.vehicle if probe.active else None
+    known_ids = {host_id}
 
     inactive = next(
         (
@@ -230,12 +228,12 @@ def get_vehicle_status(
     )
     cards = [
         _build_vehicle_status_card(
-            vehicle_id=known_id,
+            host_id=known_id,
             endpoint=endpoint,
             operator_url=display_url,
             timeout_s=operation_timeout,
             elapsed_ms=int((time.monotonic() - started) * 1000),
-            discoverable=discoverable_by_id.get(known_id),
+            discoverable=discovered_vehicle,
             inactive=inactive,
             automation=deployed_by_id.get(known_id),
         )
@@ -246,8 +244,9 @@ def get_vehicle_status(
 
 def get_chase_simulator_status(
     *,
-    vehicle_id: str | None = None,
+    host_id: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
+    include_hosts: bool = True,
 ) -> dict[str, Any]:
     """Each listed vehicle, and the state of each vehicle host.
 
@@ -277,15 +276,15 @@ def get_chase_simulator_status(
             for candidate in candidates
         ]
         reads = {}
-        for local in local_hosts():
-            if vehicle_id not in (None, local["vehicle_id"]):
+        for local in local_hosts() if include_hosts else ():
+            if host_id not in (None, local["host_id"]):
                 continue
-            host = hosts[local["vehicle_id"]] = _host_entry(**local)
+            host = hosts[local["host_id"]] = _host_entry(**local)
             if host["url"] is None:
                 host["state"] = "not running"
             else:
-                reads[host["vehicle_id"]] = pool.submit(
-                    host_state, host["url"], vehicle_id=host["vehicle_id"], timeout_s=remaining()
+                reads[host["host_id"]] = pool.submit(
+                    host_state, host["url"], host_id=host["host_id"], timeout_s=remaining()
                 )
         results = [probe.result() for probe in probes]
         states = {host_id: read.result() for host_id, read in reads.items()}
@@ -307,28 +306,32 @@ def get_chase_simulator_status(
             client_info = agent.get("client")
             if (
                 isinstance(client_info, dict)
-                and client_info.get("kind") == "vehicle-host"
-                and client_info.get("vehicle_id") == host["vehicle_id"]
+                and client_info.get("kind") == "host"
+                and client_info.get("host_id") == host["host_id"]
                 and isinstance(client_info.get("url"), str)
                 and client_info["url"].rstrip("/") == host["url"]
             ):
                 host.update(attached=True, attached_since=agent.get("connectedAt"))
                 if host["pid"] is None:
                     host["pid"] = client_info.get("pid")
-    for host_id, state in states.items():
+    for name, state in states.items():
         state.pop("reply")
         # A bounded run ends "completed", but the CLI's closing stop leaves it "stopped".
         if state["state"] in {"stopped", "completed"}:
             state["state"] = "finished_run"
-        hosts[host_id].update(state)
+        hosts[name].update(state)
     status: dict[str, Any] = {
-        "schema": SIMULATOR_STATUS_SCHEMA,
-        "vehicle_id": vehicle_id,
+        "schema": SIMULATOR_STATUS_SCHEMA if include_hosts else "automa_vehicle_environments_status_v1",
         "vehicles": [vehicle for vehicle, _ in results],
-        "hosts": sorted(hosts.values(), key=lambda host: (str(host["vehicle_id"]), host["url"])),
     }
-    if vehicle_id is not None and not status["hosts"]:
-        status["hosts"].append({**_host_entry(vehicle_id, None), "state": "not found"})
+    if not include_hosts:
+        for vehicle in status["vehicles"]:
+            vehicle.pop("hosts_error", None)
+        return status
+    status["host_id"] = host_id
+    status["hosts"] = sorted(hosts.values(), key=lambda host: (str(host["host_id"]), host["url"] or ""))
+    if host_id is not None and not status["hosts"]:
+        status["hosts"].append({**_host_entry(host_id, None), "state": "not found"})
     return status
 
 
@@ -492,10 +495,10 @@ def _frontend_code(exc: BaseException | None) -> str | None:
     return code if code in FRONTEND_DELIVERY_PROTOCOL_CODES else None
 
 
-def _host_entry(vehicle_id: Any, url: str | None, pid: Any = None, local: str | None = None,
+def _host_entry(host_id: Any, url: str | None, pid: Any = None, local: str | None = None,
                 provider: str | None = None, vehicle_url: str | None = None) -> dict[str, Any]:
     return {
-        "vehicle_id": vehicle_id, "url": url, "pid": pid, "attached": None, "attached_since": None,
+        "host_id": host_id, "url": url, "pid": pid, "attached": None, "attached_since": None,
         "provider": provider, "vehicle_url": vehicle_url,
         "local": local, "state": None, "mode": None, "decision_count": None, "error_count": None,
         "last_frame_at_ms": None, "error": None,
@@ -514,6 +517,8 @@ def host_state_text(host: dict[str, Any]) -> str:
 
 def format_chase_simulator_status(status: dict[str, Any]) -> str:
     blocks = [_vehicle_block(vehicle) for vehicle in status.get("vehicles") or []]
+    if "hosts" not in status:
+        return "\n\n".join(blocks)
     hosts = status.get("hosts") or []
     if not hosts:
         blocks.append("No hosts found")
@@ -539,7 +544,7 @@ def _vehicle_block(vehicle: dict[str, Any]) -> str:
 
 
 def _host_block(host: dict[str, Any]) -> str:
-    lines = [f"Host {host.get('vehicle_id')}  {host_state_text(host)}"]
+    lines = [f"Host {host.get('host_id')}  {host_state_text(host)}"]
     if host.get("vehicle_url"):
         kind = "chaser" if host.get("provider") == "chase-sim" else "PiCar"
         lines.append(f"  {kind} at {host['vehicle_url']}")
@@ -601,7 +606,7 @@ def _local_time(value: Any) -> str:
 
 def _build_vehicle_status_card(
     *,
-    vehicle_id: str,
+    host_id: str,
     endpoint: str,
     operator_url: str,
     timeout_s: float,
@@ -755,7 +760,7 @@ def _build_vehicle_status_card(
         else None,
     }
     next_action, blocking_layer, ready_for = _vehicle_next_action(
-        vehicle_id=vehicle_id,
+        host_id=host_id,
         operator_url=operator_url,
         endpoint=endpoint,
         layers=layers,
@@ -776,7 +781,7 @@ def _build_vehicle_status_card(
     }
     return {
         "schema": STATUS_SCHEMA,
-        "vehicle_id": vehicle_id,
+        "host_id": host_id,
         "endpoint": {
             "operator_url": operator_url,
             "resolved_ws_url": endpoint,
@@ -807,7 +812,7 @@ def _ready_layer_states(layer: str) -> set[str]:
 
 def _vehicle_next_action(
     *,
-    vehicle_id: str,
+    host_id: str,
     operator_url: str,
     endpoint: str,
     layers: dict[str, dict[str, Any]],
@@ -945,7 +950,7 @@ def _vehicle_next_action(
         return (
             action(
                 "automation_not_deployed",
-                command=f"./cli/automa vehicles host update --id {vehicle_id}",
+                command=f"./cli/automa host update --id {host_id}",
                 expected_state="automation_deployment=deployed",
             ),
             "automation_deployment",
@@ -956,8 +961,8 @@ def _vehicle_next_action(
             action(
                 "worker_start_failed",
                 command=(
-                    "./cli/automa vehicles host run "
-                    f"--id {vehicle_id} --observe-only --num-decisions 0 --open-view --log"
+                    "./cli/automa host run "
+                    f"--id {host_id} --observe-only --num-decisions 0 --open-view --log"
                 ),
                 expected_state="automation_worker=running",
             ),
@@ -969,8 +974,8 @@ def _vehicle_next_action(
             action(
                 "worker_stopped",
                 command=(
-                    "./cli/automa vehicles host run "
-                    f"--id {vehicle_id} --observe-only --num-decisions 0 --open-view"
+                    "./cli/automa host run "
+                    f"--id {host_id} --observe-only --num-decisions 0 --open-view"
                 ),
                 expected_state="automation_worker=running, perception_view=available",
             ),
@@ -999,8 +1004,8 @@ def _vehicle_next_action(
                 if layers["perception_view"]["state"] == "stale"
                 else "view_unavailable",
                 command=(
-                    "./cli/automa vehicles host restart "
-                    f"--id {vehicle_id} --observe-only --num-decisions 0"
+                    "./cli/automa host restart "
+                    f"--id {host_id} --observe-only --num-decisions 0"
                 ),
                 expected_state="perception_view=available",
             ),

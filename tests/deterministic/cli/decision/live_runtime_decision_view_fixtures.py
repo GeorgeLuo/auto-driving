@@ -8,7 +8,7 @@ from urllib.request import HTTPRedirectHandler, urlopen
 from PIL import Image
 from cli.automa_cli.decision_records import DecisionRunners
 from cli.automa_cli.runtime_view import RuntimeViewServer
-from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
+from cli.automa_cli.step_activations import decision_identity, stage_host_step, host_bundle
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
     published_cycle,
     frame_inputs,
@@ -36,8 +36,8 @@ class LiveRuntimeDecisionViewFixture:
         from tests.support.runtime_fixtures import write_host_fixture
         write_host_fixture(self.runtime_root, "chase-sim-chaser")
         for step in ("proposal", "action"):
-            code, message = update_vehicle_step(
-                vehicle_id="chase-sim-chaser",
+            code, message = stage_host_step(
+                host_id="chase-sim-chaser",
                 step=step,
                 runtime_root=self.runtime_root,
                 json_output=True,
@@ -46,9 +46,9 @@ class LiveRuntimeDecisionViewFixture:
         self.vehicle_runtime = self.runtime_root / "chase-sim-chaser"
         self.runtime_dir = self.vehicle_runtime / "bundle" / "runtime"
         self.automation_dir = self.runtime_dir / "automation"
-        self.activation = decision_identity(vehicle_bundle("chase-sim-chaser", self.runtime_root))
+        self.activation = decision_identity(host_bundle("chase-sim-chaser", self.runtime_root))
         self.server = RuntimeViewServer(
-            vehicle_id="chase-sim-chaser",
+            host_id="chase-sim-chaser",
             automation_dir=self.automation_dir,
             port=0,
             run_id="run-live",
@@ -60,7 +60,7 @@ class LiveRuntimeDecisionViewFixture:
         """The decision producer a runtime host session announces."""
 
         return {
-            "vehicle_id": "chase-sim-chaser",
+            "host_id": "chase-sim-chaser",
             "source_id": SOURCE_ID,
             "run_id": run_id,
             "producer_generation_id": self.activation["generation_id"],
@@ -83,7 +83,7 @@ class LiveRuntimeDecisionViewFixture:
         observation, memory = published_cycle(raw)
         return vehicle_report_for_records(
             records,
-            vehicle_id="chase-sim-chaser",
+            host_id="chase-sim-chaser",
             run_id=run_id,
             generation_id=self.activation["generation_id"],
             frame_id=raw["frame_id"],

@@ -15,10 +15,9 @@ class HelpCommandTests(unittest.TestCase):
             ["vehicles", "status"],
             ["vehicles", "discover", "--provider", "chase-sim", "--url", "http://localhost:5051"],
             ["vehicles", "remove", "--url", "http://localhost:5051"],
-            ["vehicles", "viewer", "--host-url", "http://127.0.0.1:54665"],
+            ["host", "viewer", "--host-url", "http://127.0.0.1:54665"],
             [
-                "vehicles",
-                "update",
+                "host", "stage",
                 "perception",
                 "--id",
                 "chase-sim-chaser",
@@ -26,7 +25,6 @@ class HelpCommandTests(unittest.TestCase):
                 "lightweight_observer",
             ],
             [
-                "vehicles",
                 "host",
                 "run",
                 "--id",
@@ -37,15 +35,15 @@ class HelpCommandTests(unittest.TestCase):
                 "--open-view",
             ],
             [
-                "vehicles", "host", "restart", "--id", "piracer",
+                "host", "restart", "--id", "piracer",
                 "--num-decisions", "7",
             ],
-            ["vehicles", "status", "--id", "chase-sim-chaser"],
-            ["vehicles", "host", "stop", "--id", "chase-sim-chaser"],
+            ["vehicles", "status"],
+            ["host", "stop", "--id", "chase-sim-chaser"],
         ):
             with self.subTest(args=args):
                 parsed = parser.parse_args(args)
-                self.assertEqual(parsed.command, "vehicles")
+                self.assertEqual(parsed.command, args[0])
                 if "--num-decisions" in args:
                     self.assertEqual(parsed.num_decisions, int(args[args.index("--num-decisions") + 1]))
 
@@ -62,12 +60,15 @@ class HelpCommandTests(unittest.TestCase):
             ["delete", "--id", "demo"],
         ):
             with self.subTest(args=args):
-                parsed = parser.parse_args(["vehicles", "host", *args])
-                self.assertEqual((parsed.host_command, parsed.vehicle_id), (args[0], "demo"))
+                parsed = parser.parse_args(["host", *args])
+                self.assertEqual((parsed.host_command, parsed.host_id), (args[0], "demo"))
         for args in (
+            ["vehicles", "host", "status"],
+            ["vehicles", "plugins", "status", "--id", "demo"],
+            ["vehicles", "update", "perception", "--id", "demo"],
             ["vehicles", "automation", "run", "--id", "demo"],
             ["vehicles", "create", "host", "--id", "demo", "--provider", "chase-sim", "--url", "http://localhost:5050"],
-            ["vehicles", "update", "host", "--id", "demo"],
+            ["host", "stage", "host", "--id", "demo"],
             ["vehicles", "delete", "host", "--id", "demo"],
         ):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
@@ -87,10 +88,9 @@ class HelpCommandTests(unittest.TestCase):
         for args in (
             ["vehicles", "active", "--verbose"],
             ["vehicles", "active", "--include-inactive"],
-            ["vehicles", "host", "run", "--id", "chase-sim-chaser", "--frames", "3"],
-            ["vehicles", "host", "restart", "--id", "piracer", "--frames", "3"],
+            ["host", "run", "--id", "chase-sim-chaser", "--frames", "3"],
+            ["host", "restart", "--id", "piracer", "--frames", "3"],
             [
-                "vehicles",
                 "host",
                 "run",
                 "--id",

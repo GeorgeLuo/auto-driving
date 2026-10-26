@@ -17,7 +17,7 @@ from urllib.request import urlopen
 
 from cli.automa_cli.host_publications import fetch_observation_sample
 from cli.automa_cli.streaming import _ViewFeed, _read_publication
-from tests.shared.cli.automation_pipeline.pipeline_fixtures import VEHICLE_ID
+from tests.shared.cli.automation_pipeline.pipeline_fixtures import HOST_ID
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.integration.live_host import LiveHostTestCase, stage_runtime as _stage, wait_until
 from tests.support.fake_hosts import closed_url
@@ -29,7 +29,7 @@ class LiveCommandsTests(LiveHostTestCase):
     def test_the_perception_view_stays_live_while_the_decision_is_unavailable(self) -> None:
         self.observe()
         with patch("cli.automa_cli.streaming.runtime_view_dir", return_value=self.runtime_root / "view"):
-            feed = _ViewFeed(VEHICLE_ID, base_url=self.host.base_url, timeout_s=3.0)
+            feed = _ViewFeed(HOST_ID, base_url=self.host.base_url, timeout_s=3.0)
         self.addCleanup(feed.stop)
         feed.decision.refresh = Mock(side_effect=ConnectionError("decision route down"))
         publication = _read_publication(self.host.base_url, timeout_s=3.0)[0]
@@ -55,7 +55,7 @@ class LiveCommandsTests(LiveHostTestCase):
             self.assertEqual(response.read(), jpeg)
 
     def automa(self, *args: str):
-        return invoke_automa("vehicles", *args, "--id", VEHICLE_ID, runtime_root=self.runtime_root, check=False)
+        return invoke_automa("host", *args, "--id", HOST_ID, runtime_root=self.runtime_root, check=False)
 
     def test_streams_are_live_only_while_a_session_runs(self) -> None:
         idle = self.automa("stream", "perception", "--once", "--json")
@@ -78,7 +78,7 @@ class LiveCommandsTests(LiveHostTestCase):
         self.assertIn(f"host: {self.host.base_url}", terminal.stdout)
 
     def viewer(self, url: str):
-        return invoke_automa("vehicles", "viewer", "--host-url", url, runtime_root=self.runtime_root, check=False)
+        return invoke_automa("host", "viewer", "--host-url", url, runtime_root=self.runtime_root, check=False)
 
     def view_once(self, url: str):
         """The viewer's result, its view's URL, and the view's /api/latest status and body
@@ -105,7 +105,7 @@ class LiveCommandsTests(LiveHostTestCase):
         result, view_url, (status, latest) = self.view_once(self.host.base_url + "/")
 
         self.assertEqual(result.stdout,
-                         f"Viewing host {VEHICLE_ID} at {self.host.base_url}\nBrowser opened: {view_url}\n")
+                         f"Viewing host {HOST_ID} at {self.host.base_url}\nBrowser opened: {view_url}\n")
         self.assertEqual((status, latest["overlay"]["status"]), (200, "current"))
         with self.assertRaises(OSError):
             urlopen(view_url, timeout=1)
@@ -118,14 +118,14 @@ class LiveCommandsTests(LiveHostTestCase):
         result, view_url, served = self.view_once(self.host.base_url)
 
         reason = "The observation publication health is 'stale'."
-        self.assertEqual(result.stdout, f"Viewing host {VEHICLE_ID} at {self.host.base_url}\n"
+        self.assertEqual(result.stdout, f"Viewing host {HOST_ID} at {self.host.base_url}\n"
                                         f"Not live: {reason}\nBrowser opened: {view_url}\n")
         self.assertEqual(served, (503, {"error": reason}))
 
     def test_the_viewer_refuses_a_url_without_an_answering_host(self) -> None:
         unknown = self.viewer("http://localhost:5050")
         self.assertEqual((unknown.returncode, unknown.stdout),
-                         (2, f"No host at http://localhost:5050. Hosts: {VEHICLE_ID} at {self.host.base_url}.\n"))
+                         (2, f"No host at http://localhost:5050. Hosts: {HOST_ID} at {self.host.base_url}.\n"))
 
         url = closed_url()
         write_host_fixture(self.runtime_root, "piracer", provider="picar", url=url)
@@ -195,7 +195,7 @@ class NoRuntimeHostTests(unittest.TestCase):
             ):
                 with self.subTest(args=args):
                     result = invoke_automa(
-                        "vehicles", *args, "--id", VEHICLE_ID, runtime_root=runtime_root, check=False
+                        "host", *args, "--id", HOST_ID, runtime_root=runtime_root, check=False
                     )
                     self.assertEqual(result.returncode, 2)
                     self.assertIn(START_HOST, result.stdout + result.stderr)

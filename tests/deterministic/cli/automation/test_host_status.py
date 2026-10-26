@@ -10,7 +10,7 @@ from cli.automa_cli.automation import _host_runtime_status
 from tests.support.fake_hosts import answering
 
 
-VEHICLE_ID = "chase-sim-chaser"
+HOST_ID = "chase-sim-chaser"
 
 
 class HostRuntimeStatusTests(unittest.TestCase):
@@ -18,7 +18,7 @@ class HostRuntimeStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, mock.patch(
             "cli.automa_cli.runtime_hosts.RUNTIME_ROOT", Path(tmp)
         ):
-            return _host_runtime_status(VEHICLE_ID, url, timeout_s=1.0)["process"]
+            return _host_runtime_status(HOST_ID, url, timeout_s=1.0)["process"]
 
     def test_a_reply_that_is_not_a_host_status_is_a_worker_error(self) -> None:
         for body, reason in (
@@ -32,7 +32,7 @@ class HostRuntimeStatusTests(unittest.TestCase):
 
     def test_a_session_error_carries_the_hosts_last_error(self) -> None:
         body = json.dumps({
-            "ok": True, "vehicle_id": VEHICLE_ID, "mode": "autonomy",
+            "ok": True, "host_id": HOST_ID, "mode": "autonomy",
             "session": {"status": "error"},
             "host": {"last_error": "Chase passiveCaptureError: session moved"},
         }).encode()

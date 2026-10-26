@@ -100,7 +100,7 @@ class CreatedSimulatorTests(unittest.TestCase):
         self.assertEqual((deleted.returncode, deleted.stdout), (0, f"Deleted Simulator (chase-sim) at {self.url}\n"))
         self.assertTrue(_gone(record["pid"]))
         self.assertEqual(self.records(), [])
-        self.assertEqual(len(self.status_blocks()), 2)
+        self.assertEqual(len(self.status_blocks()), 1)
 
     def test_a_launcher_that_exits_before_it_is_ready_records_nothing(self) -> None:
         result = self.automa("simulators", "create", launcher=_launcher(
@@ -131,7 +131,7 @@ class CreatedSimulatorTests(unittest.TestCase):
         os.killpg(record["pid"], signal.SIGKILL)
         os.waitpid(record["pid"], 0)
 
-        self.assertEqual(len(self.status_blocks()), 2)
+        self.assertEqual(len(self.status_blocks()), 1)
         deleted = self.automa("simulators", "delete", "--url", self.url)
         self.assertEqual((deleted.returncode, deleted.stdout),
                          (2, f"No created simulator at {self.url}. None created.\n"))

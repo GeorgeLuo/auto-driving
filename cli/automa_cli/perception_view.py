@@ -12,8 +12,8 @@ from urllib.request import urlopen
 
 from PIL import Image
 
-VIEW_SCHEMA = "automa_perception_view_v1"
-PUBLICATION_SCHEMA = "automa_perception_publication_v2"
+VIEW_SCHEMA = "automa_perception_view_v2"
+PUBLICATION_SCHEMA = "automa_perception_publication_v3"
 VIEW_RECORD_NAME = "perception_view.json"
 VIEW_HTML_PATH = Path(__file__).with_name("perception_view.html")
 MAX_BUFFERED_FRAMES = 8
@@ -23,8 +23,8 @@ NO_FRAME_ERROR = "no camera frame has been published yet"
 class PerceptionView:
     """Own perception publications and buffered camera images."""
 
-    def __init__(self, *, vehicle_id: str) -> None:
-        self.vehicle_id = vehicle_id
+    def __init__(self, *, host_id: str) -> None:
+        self.host_id = host_id
         # Why there is no latest pair; the view's routes answer with it.
         self.unavailable_reason = NO_FRAME_ERROR
         self._lock = threading.RLock()
@@ -135,7 +135,7 @@ class PerceptionView:
             if self._latest_frame is None:
                 return None
             payload = _publication_payload(
-                vehicle_id=self.vehicle_id,
+                host_id=self.host_id,
                 frame=dict(self._latest_frame),
                 perception_record=self._latest_perception_record,
                 generated_at_ms=_timestamp_ms(),
@@ -304,7 +304,7 @@ def _view_generation_error(
 
 def _publication_payload(
     *,
-    vehicle_id: str,
+    host_id: str,
     frame: dict[str, Any],
     perception_record: dict[str, Any] | None,
     generated_at_ms: int,
@@ -319,7 +319,7 @@ def _publication_payload(
     overlay = _overlay_payload(frame=frame, perception_record=perception_record, now_ms=generated_at_ms)
     return {
         "schema": PUBLICATION_SCHEMA,
-        "vehicle_id": vehicle_id,
+        "host_id": host_id,
         "generated_at_ms": generated_at_ms,
         "frame": frame,
         "overlay": overlay,

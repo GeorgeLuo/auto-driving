@@ -89,15 +89,15 @@ class CommandResult:
     message: str
 
 
-def catalog_url(vehicle_id: str) -> str:
+def catalog_url(host_id: str) -> str:
     """The catalog of the vehicle's runtime host; every host serves ``/api/plugins``."""
 
     from .runtime_hosts import runtime_base_url
 
-    return runtime_base_url(vehicle_id)
+    return runtime_base_url(host_id)
 
 
-def upload_plugin(*, url: str | None, vehicle_id: str | None, file: Path, step: str,
+def upload_plugin(*, url: str | None, host_id: str | None, file: Path, step: str,
                   plugin_id: str, entrypoint: str, config: str | None = None, arm: bool = False,
                   json_output: bool = False) -> CommandResult:
     recovery = "Pass --config as a JSON object of the plugin's constructor settings."
@@ -119,8 +119,8 @@ def upload_plugin(*, url: str | None, vehicle_id: str | None, file: Path, step: 
         }
         if settings is not None:
             payload["config"] = settings
-        recovery = _catalog_recovery(url, vehicle_id)
-        endpoint = url or catalog_url(vehicle_id)
+        recovery = _catalog_recovery(url, host_id)
+        endpoint = url or catalog_url(host_id)
         client = PluginCatalogClient(endpoint)
         result = client(payload)
         if not result.get("ok"):
@@ -128,7 +128,7 @@ def upload_plugin(*, url: str | None, vehicle_id: str | None, file: Path, step: 
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
     if result.get("ok"):
-        recovery = f"./cli/automa vehicles plugins status {_target_args(url, vehicle_id)} --step {step}"
+        recovery = f"./cli/automa host plugins status {_target_args(url, host_id)} --step {step}"
         if arm:
             uploaded = result
             try:
@@ -136,7 +136,7 @@ def upload_plugin(*, url: str | None, vehicle_id: str | None, file: Path, step: 
             except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
                 armed = {"ok": False, "status": "failed", "error": str(exc)}
             result = {**uploaded, **armed, "upload": uploaded}
-    return _result(result, operation="upload", url=endpoint, vehicle_id=vehicle_id,
+    return _result(result, operation="upload", url=endpoint, host_id=host_id,
                    step=step, plugin_id=plugin_id, recovery=recovery, json_output=json_output)
 
 
@@ -144,28 +144,28 @@ def _request_arm(client: PluginCatalogClient, selections: dict[str, Any]) -> dic
     return client({"operation": "arm", "selections": selections}, timeout_s=ARM_TIMEOUT_S)
 
 
-def arm_plugins(*, url: str | None, vehicle_id: str | None, step: str | None = None,
+def arm_plugins(*, url: str | None, host_id: str | None, step: str | None = None,
                 plugins: list[str] | None = None, selection: Path | None = None,
                 json_output: bool = False) -> CommandResult:
     endpoint = url
-    recovery = f"Check the selection document: {selection}" if selection else _catalog_recovery(url, vehicle_id)
+    recovery = f"Check the selection document: {selection}" if selection else _catalog_recovery(url, host_id)
     try:
         selections = json.loads(selection.read_text()) if selection else {step: plugins}
-        recovery = _catalog_recovery(url, vehicle_id)
-        endpoint = url or catalog_url(vehicle_id)
+        recovery = _catalog_recovery(url, host_id)
+        endpoint = url or catalog_url(host_id)
         result = _request_arm(PluginCatalogClient(endpoint), selections)
-        recovery = f"./cli/automa vehicles plugins status {_target_args(url, vehicle_id)}"
+        recovery = f"./cli/automa host plugins status {_target_args(url, host_id)}"
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
-    return _result(result, operation="arm", url=endpoint, vehicle_id=vehicle_id, step=step,
+    return _result(result, operation="arm", url=endpoint, host_id=host_id, step=step,
                    recovery=recovery, json_output=json_output)
 
 
-def disarm_plugins(*, url: str | None, vehicle_id: str | None, step: str | None = None,
+def disarm_plugins(*, url: str | None, host_id: str | None, step: str | None = None,
                    plugins: list[str] | None = None, selection: Path | None = None,
                    all_plugins: bool = False, json_output: bool = False) -> CommandResult:
     endpoint = url
-    recovery = f"Check the selection document: {selection}" if selection else _catalog_recovery(url, vehicle_id)
+    recovery = f"Check the selection document: {selection}" if selection else _catalog_recovery(url, host_id)
     try:
         if selection is not None:
             selections = json.loads(selection.read_text())
@@ -173,23 +173,23 @@ def disarm_plugins(*, url: str | None, vehicle_id: str | None, step: str | None 
             selections = {name: [] for name in ((step,) if step else CLEARABLE_STEPS)}
         else:
             selections = {step: plugins}
-        recovery = _catalog_recovery(url, vehicle_id)
-        endpoint = url or catalog_url(vehicle_id)
+        recovery = _catalog_recovery(url, host_id)
+        endpoint = url or catalog_url(host_id)
         result = PluginCatalogClient(endpoint)(
             {"operation": "disarm", "selections": selections, "all": all_plugins}, timeout_s=ARM_TIMEOUT_S,
         )
-        recovery = f"./cli/automa vehicles plugins status {_target_args(url, vehicle_id)}"
+        recovery = f"./cli/automa host plugins status {_target_args(url, host_id)}"
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
-    return _result(result, operation="disarm", url=endpoint, vehicle_id=vehicle_id, step=step,
+    return _result(result, operation="disarm", url=endpoint, host_id=host_id, step=step,
                    recovery=recovery, json_output=json_output)
 
 
-def list_plugins(*, url: str | None, vehicle_id: str | None, step: str | None = None,
+def list_plugins(*, url: str | None, host_id: str | None, step: str | None = None,
                  json_output: bool = False) -> CommandResult:
     endpoint = url
     try:
-        endpoint = url or catalog_url(vehicle_id)
+        endpoint = url or catalog_url(host_id)
         result = PluginCatalogClient(endpoint)()
         if result.get("ok") and step is not None:
             result["plugins"] = [plugin for plugin in result["plugins"] if plugin["step"] == step]
@@ -198,20 +198,20 @@ def list_plugins(*, url: str | None, vehicle_id: str | None, step: str | None = 
                     result["arming"][name] = {step: result["arming"][name].get(step, [])}
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
-    return _result(result, operation="status", url=endpoint, vehicle_id=vehicle_id, step=step,
-                   recovery=None if result.get("ok") else _catalog_recovery(url, vehicle_id),
+    return _result(result, operation="status", url=endpoint, host_id=host_id, step=step,
+                   recovery=None if result.get("ok") else _catalog_recovery(url, host_id),
                    json_output=json_output)
 
 
-def _target_args(url: str | None, vehicle_id: str | None) -> str:
-    return f"--url {shlex.quote(url)}" if url else f"--id {shlex.quote(vehicle_id)}"
+def _target_args(url: str | None, host_id: str | None) -> str:
+    return f"--url {shlex.quote(url)}" if url else f"--id {shlex.quote(host_id)}"
 
 
-def _catalog_recovery(url: str | None, vehicle_id: str | None) -> str | None:
+def _catalog_recovery(url: str | None, host_id: str | None) -> str | None:
     # The error already says why the vehicle's host cannot be reached.
-    if vehicle_id:
+    if host_id:
         return None
-    return f"Check that the catalog host at {url} is running, then retry ./cli/automa vehicles plugins status {_target_args(url, vehicle_id)}"
+    return f"Check that the catalog host at {url} is running, then retry ./cli/automa host plugins status {_target_args(url, host_id)}"
 
 
 def _catalog_version(result: dict[str, Any]) -> str:
@@ -219,7 +219,7 @@ def _catalog_version(result: dict[str, Any]) -> str:
     return f"Catalog version: {result['catalog_version']}" + (f" (host run {host_run})" if host_run else "")
 
 
-def _result(result: dict[str, Any], *, operation: str, url: str | None, vehicle_id: str | None,
+def _result(result: dict[str, Any], *, operation: str, url: str | None, host_id: str | None,
             step: str | None, recovery: str | None, json_output: bool,
             plugin_id: str | None = None) -> CommandResult:
     """Render the same target, outcome and recovery in human and JSON output."""
@@ -246,14 +246,14 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, vehicle_
         message = result.get("error", "Catalog request failed.")
     result = {
         **result,
-        "schema": {"upload": "automa_plugin_upload_v0", "arm": "automa_plugin_arm_v0", "disarm": "automa_plugin_disarm_v0", "status": "automa_plugin_catalog_v0"}[operation],
-        "vehicle_id": vehicle_id, "url": url, "step": step,
+        "schema": {"upload": "automa_plugin_upload_v1", "arm": "automa_plugin_arm_v1", "disarm": "automa_plugin_disarm_v1", "status": "automa_plugin_catalog_status_v1"}[operation],
+        "host_id": host_id, "url": url, "step": step,
         "outcome": {"status": state if operation in ("arm", "disarm") or result.get("upload") else "ok" if ok else state,
                     "message": message, "recovery": recovery},
     }
     if json_output:
         return CommandResult(exit_code, json.dumps(result, indent=2, sort_keys=True))
-    lines = [f"Vehicle: {vehicle_id}"] if vehicle_id else []
+    lines = [f"Host: {host_id}"] if host_id else []
     if url:
         lines.append(f"Endpoint: {url}")
     if step:

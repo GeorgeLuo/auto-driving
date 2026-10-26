@@ -1,7 +1,7 @@
 """A staged step and its runner's ``describe_schema()`` as the info commands report them.
 
-``vehicles info perception``, ``vehicles info memory``, ``vehicles info
-proposal`` and ``vehicles info plan`` read the step's staged activation and load
+``host info perception``, ``host info memory``, ``host info
+proposal`` and ``host info plan`` read the step's staged activation and load
 its runner from the controller bundle with ``staged_step_info``. Their JSON
 carries its ``activation`` and ``controller_bundle`` records and the step's
 schema under ``<step>_schema``, with ``<step>_schema_source`` naming the
@@ -31,7 +31,7 @@ from .step_hosting import load_staged_runner
 
 
 def staged_step_info(
-    bundle: dict[str, str], vehicle_id: str, step: str
+    bundle: dict[str, str], host_id: str, step: str
 ) -> tuple[dict[str, Any] | None, str | None]:
     """The step's staged ``activation``, ``controller_bundle`` and schema entries.
 
@@ -41,14 +41,14 @@ def staged_step_info(
     """
 
     path = bundle_activation_path(bundle, step)
-    restage = f"Run: ./cli/automa vehicles update {step} --id <vehicle_id>"
+    restage = f"Run: ./cli/automa host stage {step} --id <host_id>"
     if not path.exists():
         return None, "\n".join([
-            f"No active {step} activation found for {vehicle_id!r}.",
+            f"No active {step} activation found for {host_id!r}.",
             f"Expected activation: {display_path(path)}",
             restage,
         ])
-    problems = bundle_activation_problems(bundle, vehicle_id, steps=(step,))
+    problems = bundle_activation_problems(bundle, host_id, steps=(step,))
     if problems:
         return None, format_activation_problems(problems)
     try:
@@ -63,13 +63,13 @@ def staged_step_info(
         return None, f"Activation {display_path(path)} does not record its controller bundle."
     if not Path(bundle_root).exists():
         return None, "\n".join([
-            f"Controller bundle is missing for {vehicle_id!r}: {display_path(Path(bundle_root))}",
+            f"Controller bundle is missing for {host_id!r}: {display_path(Path(bundle_root))}",
             restage,
         ])
 
     def failure(verb: str, exc: Exception) -> str:
         return "\n".join([
-            f"Could not {verb} active {step} for {vehicle_id!r}.",
+            f"Could not {verb} active {step} for {host_id!r}.",
             f"Plugins: {', '.join(activation.plugins) or '(none)'}",
             f"Reason: {type(exc).__name__}: {exc}",
         ])
@@ -125,7 +125,7 @@ def format_staged_step(
     bundle = bundle if isinstance(bundle, dict) else {}
     preset = activation.get("preset")
     lines = [
-        f"{step.capitalize()}: {payload['vehicle_id']}" + (f" -> {preset}" if preset else ""),
+        f"{step.capitalize()}: {payload['host_id']}" + (f" -> {preset}" if preset else ""),
         f"Enabled plugins: {', '.join(activation.get('plugins') or []) or 'none'}",
         f"Available plugins: {', '.join(activation.get('available_plugins') or []) or 'none'}",
         *([view] if view else []),
@@ -141,7 +141,7 @@ def format_staged_step(
             lines.append(f"Release manifest: {release['manifest']}")
     else:
         lines.append(
-            f"Release: not recorded; run `vehicles update {step}` "
+            f"Release: not recorded; run `host stage {step}` "
             "to package and attach release metadata"
         )
     schema = payload.get(f"{step}_schema")

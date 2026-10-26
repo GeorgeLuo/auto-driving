@@ -13,7 +13,7 @@ from tests.support.runtime_fixtures import write_host_fixture
 from unittest.mock import patch
 
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
-from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS, bundle_activation_path, vehicle_bundle
+from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS, bundle_activation_path, host_bundle
 from cli.automa_cli.workbench_runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PRESETS,
@@ -40,11 +40,11 @@ class StepSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
-            with patch("cli.automa_cli.app.VEHICLES_RUNTIME_ROOT", root):
+            with patch("cli.automa_cli.app.HOSTS_RUNTIME_ROOT", root):
                 yield root
 
     def _update(self, step: str, *flags: str) -> dict:
-        code, stdout, stderr = _invoke("vehicles", "update", step, "--id", VEHICLE, *flags, "--json")
+        code, stdout, stderr = _invoke("host", "stage", step, "--id", VEHICLE, *flags, "--json")
         self.assertEqual(code, 0, stdout + stderr)
         return json.loads(stdout)
 
@@ -115,7 +115,7 @@ class StepSelectionTests(unittest.TestCase):
             for step, preset, plugin_id, setting, value in cases:
                 with self.subTest(step=step):
                     recipe = self._update(step, "--preset", preset)
-                    path = bundle_activation_path(vehicle_bundle(VEHICLE, root), step)
+                    path = bundle_activation_path(host_bundle(VEHICLE, root), step)
                     tuned = json.loads(path.read_text(encoding="utf-8"))
                     self.assertNotEqual(tuned["plugin_configs"][plugin_id][setting], value)
                     tuned["plugin_configs"][plugin_id][setting] = value
@@ -137,7 +137,7 @@ class StepSelectionTests(unittest.TestCase):
         with self._runtime() as root:
             for step in SELECTABLE_STEPS:
                 with self.subTest(step=step):
-                    update = ("vehicles", "update", step, "--id", VEHICLE)
+                    update = ("host", "stage", step, "--id", VEHICLE)
                     preset = DEFAULT_STEP_PRESETS[step]
                     plugin = STEP_PRESETS[step][preset]["plugins"][0]
                     code, _, stderr = _invoke(*update, "--preset", preset, "--plugin", plugin)
@@ -159,7 +159,7 @@ class StepSelectionTests(unittest.TestCase):
 
         with self._runtime() as root:
             payloads = {step: self._update(step) for step in SELECTABLE_STEPS}
-            bundle = vehicle_bundle(VEHICLE, root)
+            bundle = host_bundle(VEHICLE, root)
             documents = {
                 step: json.loads(bundle_activation_path(bundle, step).read_text(encoding="utf-8"))
                 for step in SELECTABLE_STEPS
@@ -168,7 +168,7 @@ class StepSelectionTests(unittest.TestCase):
         perception = documents["perception"]["metadata"]
         for step in SELECTABLE_STEPS:
             with self.subTest(step=step):
-                self.assertEqual(payloads[step]["schema"], "vehicle_step_update_v0")
+                self.assertEqual(payloads[step]["schema"], "host_step_update_v0")
                 self.assertEqual(set(payloads[step]), set(payloads["perception"]))
                 metadata = documents[step]["metadata"]
                 self.assertEqual(set(metadata), set(perception))
@@ -179,7 +179,7 @@ class StepSelectionTests(unittest.TestCase):
                     metadata["controller_bundle"]["release"]["tree_sha256"],
                     perception["controller_bundle"]["release"]["tree_sha256"],
                 )
-                for key in ("vehicle_id", "provider", "vehicle_kind", "runtime"):
+                for key in ("host_id", "provider", "vehicle_kind", "runtime"):
                     self.assertEqual(metadata[key], perception[key])
                 for key in ("source_dir", "workspace_source_dir", "preset_description"):
                     self.assertNotIn(key, metadata)
@@ -190,7 +190,7 @@ class StepSelectionTests(unittest.TestCase):
         default proposal, while perception and memory replayed empty."""
 
         with image_source(1) as root:
-            code, stdout, stderr = _invoke("vehicles", "proposal", "inspect", str(root), "--json")
+            code, stdout, stderr = _invoke("host", "proposal", "inspect", str(root), "--json")
             self.assertEqual(code, 0, stdout + stderr)
             original = json.loads(stdout)
             for step in SELECTABLE_STEPS:
@@ -203,7 +203,7 @@ class StepSelectionTests(unittest.TestCase):
                             frame["steps"][step]["plugins"] = []
                             frame["steps"][step]["metadata"]["preset"] = "custom"
                     write_manifest(root, recorded)
-                    inspect = ("vehicles", step, "inspect", str(root), "--json")
+                    inspect = ("host", step, "inspect", str(root), "--json")
                     code, stdout, stderr = _invoke(*inspect)
                     self.assertEqual(code, 0, stdout + stderr)
                     if clearable:

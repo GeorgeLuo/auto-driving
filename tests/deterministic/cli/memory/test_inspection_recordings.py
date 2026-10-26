@@ -30,7 +30,7 @@ class InspectionRecordingTests(unittest.TestCase):
 
     def inspect(self, step: str, source: Path, *options: str, exit_code: int = 0) -> dict:
         result = invoke_automa(
-            "vehicles",
+            "host",
             step,
             "inspect",
             str(source),
@@ -105,13 +105,13 @@ class InspectionRecordingTests(unittest.TestCase):
 
     def test_both_inspect_reports_name_the_perception_selection_alike(self) -> None:
         perception = invoke_automa(
-            "vehicles", "perception", "inspect", str(self.frames),
+            "host", "perception", "inspect", str(self.frames),
             "--preset", "obstruction_observer", "--record",
             extra_env=self.env,
         ).stdout.splitlines()
         recorded = Path(perception[-1].removeprefix("Recorded: "))
         memory = invoke_automa(
-            "vehicles", "memory", "inspect", str(recorded), extra_env=self.env
+            "host", "memory", "inspect", str(recorded), extra_env=self.env
         ).stdout.splitlines()
 
         self.assertEqual((perception[0], memory[0]), ("Perception inspect", "Memory inspect"))
@@ -121,7 +121,7 @@ class InspectionRecordingTests(unittest.TestCase):
         self.assertEqual(memory[3], perception[3])
         self.assertEqual(recorded.parent, self.root / "perception")
         report = json.loads((recorded / "report.json").read_text(encoding="utf-8"))
-        self.assertEqual(report["schema"], "perception_inspect_v0")
+        self.assertEqual(report["schema"], "perception_inspect_v1")
         self.assertEqual(sorted(path.name for path in recorded.glob("*.json")), ["report.json"])
 
     def test_recording_preserves_dropout_frames_and_custom_memory_bounds(self) -> None:

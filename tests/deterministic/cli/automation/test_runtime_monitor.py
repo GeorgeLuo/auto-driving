@@ -15,7 +15,7 @@ from cli.automa_cli import runtime_monitor
 from cli.automa_cli.run_record import control_application, control_source
 
 
-VEHICLE_ID = "picar-test"
+HOST_ID = "picar-test"
 SELECTIONS = {
     "perception": {"activation": "perception/active.json", "source": "staged", "preset": "lane-preset", "plugins": ["lanes"]},
     "memory": {"activation": "memory/active.json", "source": "staged", "preset": None, "plugins": ["recent"]},
@@ -120,7 +120,7 @@ class RuntimeMonitorTests(unittest.TestCase):
             mock.patch.object(runtime_monitor, "DecisionViewAdapter", _FakeDecisionView),
         ):
             code, message = runtime_monitor.monitor_runtime(
-                vehicle_id=VEHICLE_ID,
+                host_id=HOST_ID,
                 base_url=client.base_url,
                 automation_dir=automation_dir,
                 selections=copy.deepcopy(SELECTIONS),
@@ -154,7 +154,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(
             [line for line in lines if not line.startswith("Runtime view: ")],
             [
-                f"Run started on host {VEHICLE_ID}.",
+                f"Run started on host {HOST_ID}.",
                 "Perception: lane-preset (lanes)",
                 "Memory: recent",
                 "Proposal: (no plugins)",
@@ -171,7 +171,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(
             message.splitlines()[:6],
             [
-                f"Run completed on host {VEHICLE_ID}.",
+                f"Run completed on host {HOST_ID}.",
                 "Frames received: 3",
                 "Frames dropped before decision: 2",
                 "Decisions completed: 2",
@@ -217,7 +217,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(
             message.splitlines()[:2],
-            [f"The run on host {VEHICLE_ID} failed.", "Reason: RuntimeError: plan failed"],
+            [f"The run on host {HOST_ID} failed.", "Reason: RuntimeError: plan failed"],
         )
         self.assertEqual((state["status"], state["stop_reason"]), ("error", "error"))
         self.assertEqual(state["readiness"]["blocking_layer"], "automation_worker")

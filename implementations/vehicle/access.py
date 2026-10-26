@@ -20,14 +20,14 @@ class VehicleAccess:
 
 
 def create_vehicle_access(vehicle: dict[str, Any], *, timeout_s: float) -> VehicleAccess:
-    vehicle_id = str(vehicle.get("vehicle_id") or "vehicle")
+    vehicle_id = vehicle.get("vehicle_id")
     provider = vehicle.get("provider")
     raw_connection = vehicle.get("connection")
     connection: dict[str, Any] = raw_connection if isinstance(raw_connection, dict) else {}
 
     if provider == "chase-sim":
         ws_url = connection.get("ws_url") if isinstance(connection.get("ws_url"), str) else None
-        car = ChaseSimCar(ws_url=ws_url, timeout_s=timeout_s, vehicle_id=vehicle_id)
+        car = ChaseSimCar(ws_url=ws_url, timeout_s=timeout_s, **({"vehicle_id": vehicle_id} if vehicle_id else {}))
         return VehicleAccess(
             car=car,
             image_extension="png",
@@ -37,7 +37,7 @@ def create_vehicle_access(vehicle: dict[str, Any], *, timeout_s: float) -> Vehic
     if provider == "picar":
         base_url = connection.get("base_url") if isinstance(connection.get("base_url"), str) else None
         if not base_url:
-            raise ValueError(f"Vehicle {vehicle_id!r} has no PiCar base URL.")
+            raise ValueError("PiCar vehicle has no base URL.")
         car = create_picar(base_url=base_url, timeout_s=timeout_s, vehicle_id=vehicle_id)
         return VehicleAccess(
             car=car,
@@ -45,4 +45,4 @@ def create_vehicle_access(vehicle: dict[str, Any], *, timeout_s: float) -> Vehic
             front_camera_endpoint="/frame.jpg",
             control=PiCarHttpControlTarget(car),
         )
-    raise ValueError(f"Vehicle {vehicle_id!r} has unsupported provider {provider!r}.")
+    raise ValueError(f"Vehicle has unsupported provider {provider!r}.")

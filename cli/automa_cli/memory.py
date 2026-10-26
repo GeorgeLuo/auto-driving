@@ -17,7 +17,7 @@ from .paths import ROOT, safe_path_part
 from .step_schema import format_staged_step, staged_step_info
 from .streaming import _format_live_memory_screen, probe_live_memory
 
-RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
+RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))
 
 
 @dataclass(frozen=True)
@@ -28,24 +28,24 @@ class CommandResult:
 
 def get_vehicle_memory_info(
     *,
-    vehicle_id: str,
+    host_id: str,
     json_output: bool = False,
     include_live: bool = True,
     timeout_s: float = 3.0,
 ) -> CommandResult:
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(vehicle_id))
-    staged, error = staged_step_info(bundle, vehicle_id, "memory")
+    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(host_id))
+    staged, error = staged_step_info(bundle, host_id, "memory")
     if error is not None:
         return CommandResult(2, error)
     payload: dict[str, Any] = {
-        "schema": "vehicle_memory_info_v1",
-        "vehicle_id": vehicle_id,
+        "schema": "host_memory_info_v1",
+        "host_id": host_id,
         **staged,
         "live": None,
     }
     if include_live:
         payload["live"] = probe_live_memory(
-            vehicle_id=vehicle_id,
+            host_id=host_id,
             timeout_s=timeout_s,
         )
     if json_output:
@@ -58,6 +58,6 @@ def _format_memory_info(payload: dict[str, Any]) -> str:
     live = payload.get("live")
     if isinstance(live, dict):
         lines.append("")
-        lines.append(_format_live_memory_screen(vehicle_id=payload["vehicle_id"], live=live))
+        lines.append(_format_live_memory_screen(host_id=payload["host_id"], live=live))
     return "\n".join(lines)
 

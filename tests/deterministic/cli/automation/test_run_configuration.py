@@ -11,6 +11,7 @@ from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.app import main
 from cli.automa_cli.automation import (
     CommandResult,
+    _automation_command_matches_host,
     _run_configuration,
     run_vehicle_automation,
     start_vehicle_automation_background,
@@ -28,13 +29,20 @@ class _Host:
 class _HostClient:
     def __init__(self, _url: str, timeout_s: float = 0.1) -> None:
         del timeout_s
-        self.host = _Host({"ok": True, "vehicle_id": "chase-sim-chaser"})
+        self.host = _Host({"ok": True, "host_id": "chase-sim-chaser"})
 
     def host_status(self) -> dict:
         return self.host.host_status()
 
 
 class RunConfigurationTests(unittest.TestCase):
+    def test_process_recognition_requires_top_level_host_run_and_exact_host_id(self):
+        self.assertTrue(_automation_command_matches_host("python /tmp/cli/automa host run --id car", "car"))
+        self.assertTrue(_automation_command_matches_host("/tmp/cli/automa host run --id=car", "car"))
+        self.assertFalse(_automation_command_matches_host("python /tmp/cli/automa vehicles host run --id car", "car"))
+        self.assertFalse(_automation_command_matches_host("python /tmp/cli/automa host run --id car-2", "car"))
+        self.assertFalse(_automation_command_matches_host("python /tmp/other host run --id car", "car"))
+
     def test_unbounded_overrides_counts_in_both_modes(self):
         for take_control in (True, False):
             for count in (0, 3):
@@ -78,7 +86,7 @@ class RunConfigurationTests(unittest.TestCase):
                     patch("cli.automa_cli.app.record_vehicle_automation_terminal_result"),
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
-                    code = main(["vehicles", "host", verb, "--id", "picar-test",
+                    code = main(["host", verb, "--id", "picar-test",
                                  "--num-decisions", "3", *flags, *extra])
                     self.assertEqual(code, 0)
                     self.assertEqual(run.call_args.kwargs["unbounded"], bool(flags))
@@ -98,19 +106,19 @@ class RunConfigurationTests(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 code = main([
-                    "vehicles", "host", "run",
+                    "host", "run",
                     "--host-url", "http://127.0.0.1:54355",
                     "--num-decisions", "1", *extra,
                 ])
                 self.assertEqual(code, 0)
-                self.assertIsNone(run.call_args.kwargs["vehicle_id"])
+                self.assertIsNone(run.call_args.kwargs["host_id"])
                 self.assertEqual(run.call_args.kwargs["host_url"], "http://127.0.0.1:54355")
 
     def test_cli_rejects_both_or_neither_target(self):
         for argv in (
-            ["vehicles", "host", "run", "--num-decisions", "1"],
+            ["host", "run", "--num-decisions", "1"],
             [
-                "vehicles", "host", "run", "--id", "chase-sim-chaser",
+                "host", "run", "--id", "chase-sim-chaser",
                 "--host-url", "http://127.0.0.1:54355", "--num-decisions", "1",
             ],
         ):
@@ -122,7 +130,7 @@ class RunConfigurationTests(unittest.TestCase):
                 main(argv)
             self.assertEqual(raised.exception.code, 2)
 
-    def test_host_url_runs_that_host_and_reads_its_vehicle_id(self):
+    def test_host_url_runs_that_host_and_reads_its_host_id(self):
         with (
             tempfile.TemporaryDirectory() as tmp,
             patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", Path(tmp)),
@@ -135,7 +143,7 @@ class RunConfigurationTests(unittest.TestCase):
             )
         self.assertEqual(result.exit_code, 0, result.message)
         started.assert_not_called()
-        self.assertEqual(monitor.call_args.kwargs["vehicle_id"], "chase-sim-chaser")
+        self.assertEqual(monitor.call_args.kwargs["host_id"], "chase-sim-chaser")
         self.assertEqual(monitor.call_args.kwargs["base_url"], "http://127.0.0.1:54355")
 
     def test_host_url_without_a_host_does_not_start_one(self):

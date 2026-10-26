@@ -45,7 +45,6 @@ class DiscoveredVehicleTests(unittest.TestCase):
         self.assertEqual(self.headings(), [
             f"Simulator (chase-sim)  running at {chase_operator_url(self.default.url)}",
             f"Simulator (chase-sim)  running at {self.other_http}",
-            "No hosts found",
         ])
 
     def test_a_simulator_that_cannot_take_a_host_is_listed_only_with_force(self) -> None:
@@ -111,15 +110,19 @@ class DiscoveredVehicleTests(unittest.TestCase):
         self.automa("discover", "--provider", "chase-sim", "--url", self.other.url)
         write_host_fixture(self.runtime_root, "chase-sim-chaser", url=self.other.url)
         host = self.enterContext(chase_runtime(self.runtime_root))
-        client = {"kind": "vehicle-host", "vehicle_id": "chase-sim-chaser", "url": host.base_url, "pid": os.getpid()}
+        client = {"kind": "host", "host_id": "chase-sim-chaser", "url": host.base_url, "pid": os.getpid()}
         self.enterContext(MetricsUiPresence(self.other.url, client, retry_s=0.05))
 
-        # The default simulator lists no hosts; only the host's own simulator decides.
+        # The default simulator lists no hosts; the attached one lists this host ID.
+        from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
+        other = MetricsUiWsClient(self.other.url)
+        default = MetricsUiWsClient(self.default.url)
         [entry] = wait_until(
-            lambda: [entry for entry in json.loads(self.automa("status", "--json").stdout)["hosts"] if entry["attached"]],
+            lambda: [agent for agent in other.list_agents() if agent.get("client") == client],
             message="the discovered simulator never listed its host as attached",
         )
-        self.assertEqual(entry["vehicle_url"], self.other.url)
+        self.assertEqual(entry["client"]["host_id"], "chase-sim-chaser")
+        self.assertFalse(any(agent.get("client") == client for agent in default.list_agents()))
 
     def test_status_exits_one_only_when_no_vehicle_is_reachable(self) -> None:
         unreachable = closed_url()

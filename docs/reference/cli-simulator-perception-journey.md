@@ -59,17 +59,18 @@ selects one host; `--json` emits `automa_hosts_status` with a `hosts` array
 whose entries carry the host's `run` detail. Host names are chosen at creation
 and do not identify the vehicle environment.
 
-To look through a host, pass the URL on its last status line to `hosts viewer`:
+To look through a host, pass its name to `hosts viewer`:
 
 ```sh
-./cli/automa hosts viewer --host-url http://127.0.0.1:54665
+./cli/automa hosts viewer --name chase-sim-chaser
 ```
 
+`--host-url` with the URL on the host's last status line selects the same host.
 It serves the runtime viewer fed from that host (Perception, Memory, Action and
-Plugins) and opens it in the browser until Ctrl-C. It exits 2 when no host has
-that URL or the host does not answer. While the host is not live, for example
-after its run stopped, it prints `Not live:` with the reason, and the Perception
-and Memory pages show that reason instead of a live frame.
+Plugins) and opens it in the browser until Ctrl-C. It exits 2 when no such host
+exists, it is not running, or it does not answer. While the host is not live,
+for example after its run stopped, it prints `Not live:` with the reason, and
+the Perception and Memory pages show that reason instead of a live frame.
 
 Status always looks at the default simulator: `CHASE_UI_WS_URL` when set,
 otherwise `http://localhost:5050`. To look at another simulator or a PiCar,

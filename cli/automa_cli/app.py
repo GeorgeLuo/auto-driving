@@ -195,12 +195,14 @@ def build_parser() -> argparse.ArgumentParser:
         "viewer",
         help="Open the runtime viewer on a host.",
         description=(
-            "Serve the runtime viewer fed from the host at --host-url, the URL hosts status "
-            "shows under the host, until interrupted. Exits 2 when no host has that URL "
-            "or it does not answer."
+            "Serve the runtime viewer fed from the host named by --name, or at --host-url "
+            "(the URL hosts status shows under the host), until interrupted. Exits 2 when "
+            "no such host exists, it is not running, or it does not answer."
         ),
     )
-    viewer.add_argument("--host-url", required=True, help="The host's URL from hosts status.")
+    viewer_target = viewer.add_mutually_exclusive_group(required=True)
+    viewer_target.add_argument("--name", dest="host_name", help=_STAGING_HOST_NAME_HELP)
+    viewer_target.add_argument("--host-url", help="The host's URL from hosts status.")
     viewer.set_defaults(handler=_handle_hosts_viewer)
 
     host_create = host_commands.add_parser("create", help="Create and start a host.")
@@ -1374,8 +1376,8 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "",
                 "Open the runtime viewer. It does not require a host:",
                 "- ./cli/automa",
-                "Or on a host from hosts status:",
-                "- ./cli/automa hosts viewer --host-url <host URL>",
+                "Or on a host:",
+                "- ./cli/automa hosts viewer --name <host name>",
                 "",
                 "Detailed help:",
                 "- ./cli/automa --help",
@@ -1956,7 +1958,7 @@ def _handle_vehicles_remove(args: argparse.Namespace) -> int:
 
 
 def _handle_hosts_viewer(args: argparse.Namespace) -> int:
-    result = serve_host_viewer(host_url=args.host_url)
+    result = serve_host_viewer(host_name=args.host_name, host_url=args.host_url)
     if result.message:
         print(result.message)
     return result.exit_code

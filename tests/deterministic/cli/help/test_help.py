@@ -16,6 +16,7 @@ class HelpCommandTests(unittest.TestCase):
             ["vehicles", "discover", "--provider", "chase-sim", "--url", "http://localhost:5051"],
             ["vehicles", "remove", "--url", "http://localhost:5051"],
             ["hosts", "viewer", "--host-url", "http://127.0.0.1:54665"],
+            ["hosts", "viewer", "--name", "chase-sim-chaser"],
             [
                 "hosts", "stage",
                 "perception",
@@ -99,6 +100,19 @@ class HelpCommandTests(unittest.TestCase):
                 "chase-sim-chaser",
                 "--prepare-control",
             ],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+
+    def test_the_viewer_takes_one_host_by_name_or_url(self) -> None:
+        parser = build_parser()
+        named = parser.parse_args(["hosts", "viewer", "--name", "chase-sim-chaser"])
+        self.assertEqual((named.host_name, named.host_url), ("chase-sim-chaser", None))
+        for args in (
+            ["hosts", "viewer"],
+            ["hosts", "viewer", "--name", "chase-sim-chaser", "--host-url", "http://127.0.0.1:54665"],
         ):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as caught:

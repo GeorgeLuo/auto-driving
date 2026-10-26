@@ -40,6 +40,9 @@ Include at the end of turn where the change is locally and if relevant to change
 in that they were user facing, include instructions for running in terminal
 for basic expression of feature.
 
+At the end of a turn with changes to the repo regarding interface changes to
+cli open a terminal window based at where manual verification can proceed.
+
 ## Meta
 
 Before commit, verify changes do not introduce new vocabulary for like concepts

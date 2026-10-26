@@ -159,7 +159,7 @@ class RuntimeMonitorTests(unittest.TestCase):
                 "Memory: recent",
                 "Proposal: (no plugins)",
                 "Recording: off; latest frame and perception are overwritten each iteration",
-                "Control source: vehicle runtime host",
+                "Control source: runtime host",
                 "Action policy: autonomy",
                 "Decision generation: gen-1",
                 "Decisions: 2",

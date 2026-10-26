@@ -1,4 +1,4 @@
-"""Run and monitor one session on a vehicle's runtime host.
+"""Run and monitor one session on a runtime host.
 
 Execution belongs to the host at ``base_url`` (a PiCar's Donkey service or a
 local Chase host); both serve ``autonomy.runtime.routes``. This module starts

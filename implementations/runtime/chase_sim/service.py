@@ -225,7 +225,7 @@ def serve(*, host_id: str, ws_url: str | None, runtime_dir: Path, port: int,
         car=car, runtime_dir=runtime_dir, host_id=host_id, port=port,
         on_restart=lambda: (restart.set(), stop.set()),
     )
-    # The simulator lists this socket to `vehicles status` as the attached host.
+    # The simulator lists this socket to `hosts status` as the attached host.
     presence = MetricsUiPresence(car.ws_url, {
         "kind": "host", "host_id": host_id, "url": runtime.base_url, "pid": os.getpid(),
     })

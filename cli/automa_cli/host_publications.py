@@ -1,4 +1,4 @@
-"""What a vehicle's runtime host publishes, read over HTTP.
+"""What a runtime host publishes, read over HTTP.
 
 Its autonomy status, observation and decision publications, frames and host
 telemetry. A PiCar's host and a local Chase host serve the same routes.

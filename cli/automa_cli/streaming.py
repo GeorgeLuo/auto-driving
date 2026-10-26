@@ -1,4 +1,4 @@
-"""Live step streams and probes, read from a vehicle's runtime host.
+"""Live step streams and probes, read from a runtime host.
 
 Every vehicle host serves ``autonomy.runtime.routes``, so a stream resolves
 the host's ``base_url`` (``runtime_hosts``) and reads the same routes for a
@@ -624,7 +624,7 @@ def probe_live_memory(*, host_id: str, timeout_s: float = 3.0) -> dict[str, Any]
 
 
 def probe_live_step(step: str, *, host_id: str, timeout_s: float = 3.0) -> dict[str, Any]:
-    """``step`` as the vehicle's runtime host runs it: its runner's status
+    """``step`` as the host runs it: its runner's status
     under ``/host/status``, not what any view last rendered."""
 
     try:

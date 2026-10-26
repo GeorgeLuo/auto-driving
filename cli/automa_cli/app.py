@@ -79,7 +79,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vehicles_help.set_defaults(handler=_handle_vehicles_help)
 
-    hosts = subcommands.add_parser("hosts", help="Create and manage vehicle controller hosts.")
+    hosts = subcommands.add_parser("hosts", help="Create, configure, and operate vehicle controller hosts.")
     hosts.set_defaults(handler=_handle_hosts_help)
     host_commands = hosts.add_subparsers(dest="host_command")
     host_help = host_commands.add_parser("help", help="Show host-level commands.")
@@ -598,7 +598,7 @@ def build_parser() -> argparse.ArgumentParser:
             step_name,
             help=f"Show the {step_name} record of the latest cycle the host published.",
             description=(
-                f"Read the vehicle runtime host's latest cycle and print its {step_name} record"
+                f"Read the host's latest cycle and print its {step_name} record"
                 + {
                     "proposal": ", with the observation and memory it read and its candidates",
                     "plan": ", with the selected candidate and contributions",
@@ -650,9 +650,9 @@ def build_parser() -> argparse.ArgumentParser:
     memory_help.set_defaults(handler=_handle_hosts_memory_help)
     memory_reset = memory_commands.add_parser(
         "reset",
-        help="Reset live memory to a new empty epoch on the vehicle's runtime host.",
+        help="Reset live memory to a new empty epoch on the host.",
         description=(
-            "POST /host/memory/reset to the vehicle's runtime host. Confirms that every "
+            "POST /host/memory/reset to the host. Confirms that every "
             "applied plugin started a new epoch or holds no records when the host answers. "
             "Does not move the vehicle."
         ),
@@ -759,10 +759,10 @@ def build_parser() -> argparse.ArgumentParser:
         decision_inspects.append(step_inspect)
     memory_viability = memory_commands.add_parser(
         "viability",
-        help="Health-check memory on a vehicle.",
+        help="Health-check memory on a host.",
         description=(
-            "Health-check memory on a vehicle. The live memory step of the vehicle's "
-            "runtime host is polled for a bounded interval (default 60s) to "
+            "Health-check memory on a host. The host's live memory step is polled "
+            "for a bounded interval (default 60s) to "
             "record update cadence, update duration, failures, and each applied "
             "plugin's health and epoch stability. Measurements save report.json under "
             "lab/runs/memory-viability/ unless --no-record."
@@ -1062,13 +1062,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     perception_viability = perception_commands.add_parser(
         "viability",
-        help="Health-check perception on a vehicle.",
+        help="Health-check perception on a host.",
         description=(
-            "Health-check perception on a vehicle. The runtime host's observation "
+            "Health-check perception on a host. The host's observation "
             "publication is polled for a bounded interval (default 60s) to record "
             "cadence, result age, processing duration, cycle period, and that no control "
             "was applied, plus "
-            "host RSS/CPU when the vehicle supplies an ssh_target. Measurements save "
+            "host RSS/CPU when the host's configuration has an ssh_target. Measurements save "
             "report.json and summary.md under lab/runs/perception-viability/ unless --no-record."
         ),
     )
@@ -1286,7 +1286,7 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "- status  show live catalog availability and plugin revisions (list is an alias)",
         "- help    show this summary", "",
         "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; upload, arm and disarm do not start automation.",
-        "Use ./cli/automa hosts status --id <host> to see its host's state.",
+        "Use ./cli/automa hosts status --id <host> to see the host's state.",
         "Use --url <runtime-or-workbench-url> to address an existing catalog directly.", "",
         "Example:",
         "  ./cli/automa hosts plugins upload --id chase-sim-chaser --file ./prototype.py --step perception --plugin-id prototype --entrypoint prototype:Prototype",
@@ -1304,7 +1304,7 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "or --selection for grouped removals. Use disarm --all to clear every step that can run without",
         "plugins, or disarm --step <step> --all to clear one step.",
         "The next cycle resets disarmed instances; catalog entries remain available to arm again.",
-        "Arm and disarm change the current host only; staged selections are restored on hosts restart.",
+        "Arm and disarm change the current host only; staged selections are restored when the host restarts.",
         "Neither changes control mode or starts or stops automation. Workbench catalogs support upload only.", "",
         "Runtime viewer: open Plugins from its home page. Workbench: catalogs refresh in the step panels.", "",
         "Detailed help: ./cli/automa hosts plugins <command> --help",
@@ -1417,7 +1417,6 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- help         show this summary",
                 "",
                 "Detailed help:",
-                "- ./cli/automa vehicles <group> help",
                 "- ./cli/automa vehicles <command> --help",
             ]
         )
@@ -1432,12 +1431,13 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "automa hosts commands",
                 "",
                 "- create    create and start a host",
-                "- update    package staged steps as a release for the host",
+                "- update    package and deploy a host's release",
                 "- delete    stop the host and its run, and remove its local files",
                 "- run       start a run and verify camera + perception + current view",
                 "- stop      stop the run; the host stays attached until hosts delete",
                 "- restart   stop and start the run",
-                "- status    show each host's deployment, run and view state",
+                "- serve     serve a Chase host in the foreground",
+                "- status    show each host's state, attachment and run",
                 "- stage     stage controller selections for a host",
                 "- plugins   manage plugins in a live host catalog",
                 "- operation run bounded vehicle checks through a host",

@@ -90,7 +90,7 @@ class CommandResult:
 
 
 def catalog_url(host_id: str) -> str:
-    """The catalog of the vehicle's runtime host; every host serves ``/api/plugins``."""
+    """The host's catalog; every host serves ``/api/plugins``."""
 
     from .runtime_hosts import runtime_base_url
 

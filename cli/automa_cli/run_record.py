@@ -1,6 +1,6 @@
 """The run record and terminal lines every host's run shares.
 
-Every vehicle's runtime host executes the decision cycle while the CLI
+Every runtime host executes the decision cycle while the CLI
 monitors it (``runtime_monitor``), writing this ``state.json`` record and
 printing these lines. A recording also appends the same ``manifest.json``,
 which replay loads.
@@ -19,8 +19,8 @@ from .step_activations import step_lines
 
 RUN_STATE_SCHEMA = "automa_automation_run_state_v1"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
-# Every vehicle's runtime host owns its wheel commands during a run.
-CONTROL_SOURCE_LABELS = {"runtime_host": "vehicle runtime host"}
+# A run's host owns its wheel commands.
+CONTROL_SOURCE_LABELS = {"runtime_host": "runtime host"}
 
 
 def timestamp_ms() -> int:

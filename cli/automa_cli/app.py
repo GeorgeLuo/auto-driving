@@ -40,7 +40,7 @@ from .viability import (
     run_perception_viability_measurement,
 )
 from .runtime_view import serve_viewer
-from .streaming import stream_vehicle_memory, stream_vehicle_perception
+from .streaming import serve_host_viewer, stream_vehicle_memory, stream_vehicle_perception
 from .vehicles import (
     DEFAULT_READINESS_TIMEOUT_S,
     discover_vehicle,
@@ -194,6 +194,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     remove.add_argument("--url", required=True, help="The URL the vehicle was discovered at, in either form.")
     remove.set_defaults(handler=_handle_vehicles_remove)
+    viewer = vehicle_commands.add_parser(
+        "viewer",
+        help="Open the runtime viewer on a host.",
+        description=(
+            "Serve the runtime viewer fed from the host at --url, the URL vehicles status "
+            "shows under the host, until interrupted. Exits 2 when no host has that URL "
+            "or it does not answer."
+        ),
+    )
+    viewer.add_argument("--url", required=True, help="The host's URL from vehicles status.")
+    viewer.set_defaults(handler=_handle_vehicles_viewer)
 
     automation = vehicle_commands.add_parser(
         "automation",
@@ -1343,6 +1354,8 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "",
                 "Open the runtime viewer. It does not require a host:",
                 "- ./cli/automa",
+                "Or on a host from vehicles status:",
+                "- ./cli/automa vehicles viewer --url <host URL>",
                 "",
                 "Detailed help:",
                 "- ./cli/automa --help",
@@ -1385,6 +1398,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "- delete host  stop and remove a host",
                 "- discover     list a vehicle in status",
                 "- remove       stop listing a discovered vehicle",
+                "- viewer       open the runtime viewer on a host",
                 "- status       show each discovered vehicle and each host's state",
                 "- update       stage controller selections or deploy vehicle code",
                 "- plugins      upload, arm, disarm and inspect plugins in a live catalog",
@@ -1916,6 +1930,13 @@ def _handle_vehicles_discover(args: argparse.Namespace) -> int:
 def _handle_vehicles_remove(args: argparse.Namespace) -> int:
     result = remove_vehicle(url=args.url)
     print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_viewer(args: argparse.Namespace) -> int:
+    result = serve_host_viewer(url=args.url)
+    if result.message:
+        print(result.message)
     return result.exit_code
 
 

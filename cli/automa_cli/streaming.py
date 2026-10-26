@@ -32,8 +32,9 @@ from .host_publications import (
     publication_to_frame_record,
 )
 from .plugin_catalog import PluginCatalogClient
-from .runtime_hosts import RuntimeHostError, runtime_base_url
-from .runtime_view import RuntimeViewServer
+from .runtime_hosts import RuntimeHostError, local_hosts, runtime_base_url
+from .runtime_monitor import PERCEPTION_COPY_INTERVAL_S, _pause_s
+from .runtime_view import RuntimeViewServer, open_view_message
 from .step_activations import absent_step_error
 from .view_discovery import runtime_view_dir
 
@@ -221,6 +222,37 @@ def _poll_stream(
             time.sleep(max(0.1, float(refresh_s)))
     except KeyboardInterrupt:
         return CommandResult(130, "")
+
+
+def serve_host_viewer(*, url: str, timeout_s: float = 3.0) -> CommandResult:
+    """Serve the runtime view fed from the local host at ``url`` until interrupted.
+
+    ``url`` is the host URL ``vehicles status`` shows. The view opens only once
+    the host answers, and refreshes at the cadence of a run's view.
+    """
+
+    hosts = [host for host in local_hosts() if host["url"]]
+    matched = [host for host in hosts if host["url"].rstrip("/") == url.rstrip("/")]
+    if not matched:
+        names = ", ".join(f"{host['vehicle_id']} at {host['url']}" for host in hosts)
+        return CommandResult(2, f"No host at {url}. " + (f"Hosts: {names}." if names else "None is running."))
+    host = matched[0]
+    view = _ViewFeed(host["vehicle_id"], base_url=host["url"], timeout_s=timeout_s)
+    try:
+        publication, error = view.read_observation()
+        if view.url is None or error is not None:
+            return CommandResult(2, f"Cannot view host {host['vehicle_id']} at {host['url']}: {view.error}")
+        view.publish(publication)
+        print(f"Viewing host {host['vehicle_id']} at {host['url']}", flush=True)
+        print(open_view_message(view.url), flush=True)
+        while True:
+            started = time.monotonic()
+            view.publish(view.read_observation()[0])
+            time.sleep(_pause_s(started, PERCEPTION_COPY_INTERVAL_S))
+    except KeyboardInterrupt:
+        return CommandResult(130, "")
+    finally:
+        view.stop()
 
 
 class _ViewFeed:

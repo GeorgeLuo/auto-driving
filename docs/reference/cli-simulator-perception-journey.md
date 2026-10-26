@@ -87,6 +87,16 @@ below. When the simulator cannot list agents, the line `cannot list attached
 hosts` says why and local hosts are still shown. `--id` shows only that
 vehicle's host, or `not found`. The JSON is `automa_simulator_status_v2`.
 
+To look through a host, pass the URL on its last status line to `vehicles viewer`:
+
+```sh
+./cli/automa vehicles viewer --url http://127.0.0.1:54665
+```
+
+It serves the runtime viewer fed from that host (Perception, Memory, Action and
+Plugins) and opens it in the browser until Ctrl-C. It exits 2 when no host has
+that URL or the host does not answer.
+
 Status always looks at the default simulator: `CHASE_UI_WS_URL` when set,
 otherwise `http://localhost:5050`. To look at another simulator or a PiCar,
 list it once:

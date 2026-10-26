@@ -76,7 +76,7 @@ def live_perception_selection(
     )
 
 
-def get_vehicle_perception_info(
+def get_host_perception_info(
     *,
     host_id: str,
     json_output: bool = False,

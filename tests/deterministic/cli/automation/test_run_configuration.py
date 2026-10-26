@@ -13,8 +13,8 @@ from cli.automa_cli.automation import (
     CommandResult,
     _automation_command_matches_host,
     _run_configuration,
-    run_vehicle_automation,
-    start_vehicle_automation_background,
+    run_host_automation,
+    start_host_automation_background,
 )
 
 
@@ -76,15 +76,15 @@ class RunConfigurationTests(unittest.TestCase):
 
     def test_cli_dispatches_opt_in_to_foreground_background_and_restart(self):
         for verb, extra, target in (
-            ("run", [], "start_vehicle_automation_background"),
-            ("run", ["--foreground"], "run_vehicle_automation"),
-            ("restart", [], "restart_vehicle_automation"),
+            ("run", [], "start_host_automation_background"),
+            ("run", ["--foreground"], "run_host_automation"),
+            ("restart", [], "restart_host_automation"),
         ):
             for flags in ([], ["--unbounded"]):
                 with (
                     self.subTest(verb=verb, extra=extra, flags=flags),
                     patch(f"cli.automa_cli.app.{target}", return_value=CommandResult(0, "ok")) as run,
-                    patch("cli.automa_cli.app.record_vehicle_automation_terminal_result"),
+                    patch("cli.automa_cli.app.record_host_automation_terminal_result"),
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
                     code = main(["hosts", verb, "--id", "picar-test",
@@ -92,18 +92,18 @@ class RunConfigurationTests(unittest.TestCase):
                     self.assertEqual(code, 0)
                     self.assertEqual(run.call_args.kwargs["unbounded"], bool(flags))
                     self.assertEqual(run.call_args.kwargs["num_decisions"], 3)
-                    if target != "restart_vehicle_automation":
+                    if target != "restart_host_automation":
                         self.assertIsNone(run.call_args.kwargs["host_url"])
 
     def test_cli_dispatches_host_url_without_an_id(self):
         for extra, target in (
-            ([], "start_vehicle_automation_background"),
-            (["--foreground"], "run_vehicle_automation"),
+            ([], "start_host_automation_background"),
+            (["--foreground"], "run_host_automation"),
         ):
             with (
                 self.subTest(extra=extra),
                 patch(f"cli.automa_cli.app.{target}", return_value=CommandResult(0, "ok")) as run,
-                patch("cli.automa_cli.app.record_vehicle_automation_terminal_result"),
+                patch("cli.automa_cli.app.record_host_automation_terminal_result"),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 code = main([
@@ -139,7 +139,7 @@ class RunConfigurationTests(unittest.TestCase):
             patch("cli.automa_cli.automation.RuntimeClient", _HostClient),
             patch("cli.automa_cli.automation.monitor_runtime", return_value=(0, "ran")) as monitor,
         ):
-            result = run_vehicle_automation(
+            result = run_host_automation(
                 host_url="http://127.0.0.1:54355/", num_decisions=1, take_control=True,
             )
         self.assertEqual(result.exit_code, 0, result.message)
@@ -153,7 +153,7 @@ class RunConfigurationTests(unittest.TestCase):
                 self.subTest(host_url=host_url),
                 patch("cli.automa_cli.automation.runtime_base_url", side_effect=AssertionError("started a host")) as started,
             ):
-                result = run_vehicle_automation(host_url=host_url, num_decisions=1, take_control=True)
+                result = run_host_automation(host_url=host_url, num_decisions=1, take_control=True)
             self.assertEqual(result.exit_code, 2, result.message)
             started.assert_not_called()
 
@@ -178,7 +178,7 @@ class RunConfigurationTests(unittest.TestCase):
                 patch("cli.automa_cli.automation.RuntimeClient", client),
                 patch("cli.automa_cli.automation.runtime_base_url", side_effect=AssertionError("started a host")) as started,
             ):
-                result = run_vehicle_automation(
+                result = run_host_automation(
                     host_url="http://127.0.0.1:54355", num_decisions=1, take_control=True,
                 )
             self.assertEqual(result.exit_code, 2, result.message)
@@ -196,7 +196,7 @@ class RunConfigurationTests(unittest.TestCase):
             ),
         ):
             popen.return_value.pid = 99
-            result = start_vehicle_automation_background(
+            result = start_host_automation_background(
                 host_url="http://127.0.0.1:54355", num_decisions=1, take_control=True,
             )
         self.assertEqual(result.exit_code, 0, result.message)

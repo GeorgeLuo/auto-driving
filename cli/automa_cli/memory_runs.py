@@ -178,13 +178,13 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def reset_vehicle_memory(
+def reset_host_memory(
     *,
     host_id: str,
     timeout_s: float = 3.0,
     json_output: bool = False,
 ) -> CommandResult:
-    """Reset live memory on the vehicle's runtime host.
+    """Reset live memory on the host.
 
     The host answers with the memory step's status under the same lock as
     its cycles, before any later frame refills memory. The reset is confirmed

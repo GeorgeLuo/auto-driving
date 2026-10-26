@@ -61,7 +61,7 @@ class CommandResult:
     message: str
 
 
-def stream_vehicle_perception(
+def stream_host_perception(
     *,
     host_id: str,
     refresh_s: float = 0.5,
@@ -71,7 +71,7 @@ def stream_vehicle_perception(
     json_output: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    """Poll the latest perception the vehicle's runtime host publishes.
+    """Poll the latest perception the host publishes.
 
     JSON mode prints each probe alone, including the unavailable one when no
     host can be addressed. The terminal view renders the same probe verdict
@@ -520,7 +520,7 @@ def _timestamp_ms() -> int:
     return int(time.time() * 1000)
 
 
-def stream_vehicle_memory(
+def stream_host_memory(
     *,
     host_id: str,
     refresh_s: float = 0.5,
@@ -530,7 +530,7 @@ def stream_vehicle_memory(
     json_output: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    """Poll the live memory step the vehicle's runtime host runs.
+    """Poll the live memory step the host runs.
 
     ``live`` means the host runs a memory step; update health stays in the
     plugin diagnostics. Each probe lists every applied plugin's ledger and

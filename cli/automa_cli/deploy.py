@@ -181,7 +181,7 @@ class CommandResult:
 @dataclass(frozen=True)
 class PicarTarget:
     host_id: str
-    vehicle: dict[str, object]
+    configuration: dict[str, object]
     provider: str
     ssh_target: str
     pi_home: str
@@ -248,18 +248,18 @@ def update_host(
     drive_args: str | None = None, json_output: bool = False,
     verbose: bool = False, output: TextIO | None = None,
 ) -> CommandResult:
-    vehicle, error = staging_host(host_id, runtime_root=RUNTIME_ROOT)
+    configuration, error = staging_host(host_id, runtime_root=RUNTIME_ROOT)
     if error:
         return CommandResult(2, error)
     if drive_args is not None and not restart:
         return CommandResult(2, "--drive-args requires --restart so the new arguments take effect.")
-    if vehicle["provider"] == "chase-sim":
+    if configuration["provider"] == "chase-sim":
         if drive_args is not None:
             return CommandResult(2, "--drive-args applies only to a PiCar.")
         return _update_local_autonomy(host_id=host_id, dry_run=dry_run, restart=restart,
                                       json_output=json_output, output=output)
     return _deploy_picar_release(
-        _resolve_picar_target(vehicle), dry_run=dry_run, restart=restart,
+        _resolve_picar_target(configuration), dry_run=dry_run, restart=restart,
         drive_args=drive_args, json_output=json_output, verbose=verbose, output=output,
     )
 
@@ -273,13 +273,13 @@ def _deploy_picar_release(
     _emit(output, "Scope: versioned autonomy controller bundle and activation metadata only.")
     _emit(output, f"Remote home: {target.pi_home}")
 
-    vehicle_runtime_dir = RUNTIME_ROOT / safe_path_part(host_id)
-    bundle = controller_bundle_paths(vehicle_runtime_dir)
+    host_dir = RUNTIME_ROOT / safe_path_part(host_id)
+    bundle = controller_bundle_paths(host_dir)
     source_summary = controller_bundle_source_summary()
 
     if dry_run:
         release_id = f"autonomy-{source_summary['tree_sha256'][:12]}-preview"
-        preview_dir = vehicle_runtime_dir / "deploy" / "donkeycar" / release_id
+        preview_dir = host_dir / "deploy" / "donkeycar" / release_id
         preview_archive = Path(bundle["root_dir"]) / "releases" / f"{release_id}.tar.gz"
         commands = _autonomy_sync_commands(
             target=target,
@@ -316,7 +316,7 @@ def _deploy_picar_release(
 
     release = sync_controller_bundle(bundle, output=output)
     ensure_step_activations(
-        host_id=host_id, bundle=bundle, release=release, vehicle=dict(target.vehicle),
+        host_id=host_id, bundle=bundle, release=release, vehicle=dict(target.configuration),
     )
     activations = {
         step: activation
@@ -326,7 +326,7 @@ def _deploy_picar_release(
     release_id = Path(release["archive"]["path"]).name.removesuffix(".tar.gz")
     deploy_files = _write_remote_activation_files(
         target=target,
-        vehicle_runtime_dir=vehicle_runtime_dir,
+        host_dir=host_dir,
         release=release,
         release_id=release_id,
         activation_paths={step: bundle_activation_path(bundle, step) for step in activations},
@@ -450,9 +450,9 @@ def _update_local_autonomy(
     if problems:
         return CommandResult(2, format_activation_problems(problems))
     try:
-        vehicle = staged_host(host_id)
+        configuration = staged_host(host_id)
         release = sync_controller_bundle(bundle, output=output)
-        ensure_step_activations(host_id=host_id, bundle=bundle, release=release, vehicle=vehicle)
+        ensure_step_activations(host_id=host_id, bundle=bundle, release=release, vehicle=configuration)
         _, summary = release_code_dir(host_id, release["archive"]["sha256"])
     except RuntimeHostError as exc:
         return CommandResult(2, str(exc))
@@ -501,9 +501,9 @@ def _update_local_autonomy(
     ]))
 
 
-def _resolve_picar_target(vehicle: dict[str, Any]) -> PicarTarget:
-    connection = vehicle["connection"]
-    return PicarTarget(vehicle["host_id"], vehicle, "picar", connection["ssh_target"], connection["pi_home"])
+def _resolve_picar_target(configuration: dict[str, Any]) -> PicarTarget:
+    connection = configuration["connection"]
+    return PicarTarget(configuration["host_id"], configuration, "picar", connection["ssh_target"], connection["pi_home"])
 
 
 def create_host(
@@ -529,37 +529,37 @@ def create_host(
         url = normalize_vehicle_url(provider, url)
     except ValueError as exc:
         return CommandResult(2, str(exc))
-    vehicle = {"host_id": host_id, "provider": provider,
+    configuration = {"host_id": host_id, "provider": provider,
                "vehicle_kind": "chase-sim-ws" if chase else "picar-donkey-http"}
     if chase:
-        vehicle["connection"] = {"ws_url": url}
+        configuration["connection"] = {"ws_url": url}
         if not dry_run:
             probe = _probe_chase(Candidate("chase-sim", url, "cli"), timeout_s=5.0)
             if not probe.active:
                 return CommandResult(2, f"No Chase simulator can take a host at {url}: {probe.error}")
     else:
-        vehicle["connection"] = {"base_url": url}
-        vehicle["connection"].update(
-            ssh_target=ssh_target or os.environ.get("PI_HOST") or _ssh_target_from_vehicle(vehicle),
+        configuration["connection"] = {"base_url": url}
+        configuration["connection"].update(
+            ssh_target=ssh_target or os.environ.get("PI_HOST") or _ssh_target_from_vehicle(configuration),
             pi_home=pi_home or os.environ.get("PI_HOME") or DEFAULT_PI_HOME,
         )
     if dry_run:
         if chase:
             return _update_local_autonomy(host_id=host_id, dry_run=True, restart=True,
                                           json_output=json_output, output=output)
-        target = _resolve_picar_target(vehicle)
+        target = _resolve_picar_target(configuration)
         core = _install_picar_core(target, dry_run=True, json_output=json_output)
         release = _deploy_picar_release(target, dry_run=True, restart=True, drive_args=drive_args,
                                        json_output=json_output, verbose=verbose, output=output)
         if json_output:
-            return CommandResult(0, json.dumps({"configuration": vehicle, "dry_run": True,
+            return CommandResult(0, json.dumps({"configuration": configuration, "dry_run": True,
                 "core": json.loads(core.message), "host": json.loads(release.message)}, indent=2))
         return CommandResult(0, core.message + "\n" + release.message)
     made_directory = not directory.exists()
-    write_host_configuration(RUNTIME_ROOT, vehicle)
+    write_host_configuration(RUNTIME_ROOT, configuration)
     try:
         if not chase:
-            core = _install_picar_core(_resolve_picar_target(vehicle), verbose=verbose, output=output)
+            core = _install_picar_core(_resolve_picar_target(configuration), verbose=verbose, output=output)
             if core.exit_code:
                 raise RuntimeError(core.message)
         result = update_host(host_id=host_id, restart=not chase, drive_args=drive_args,
@@ -571,11 +571,11 @@ def create_host(
             base_url = ensure_chase_host(host_id)
             state = host_state(base_url, host_id=host_id, timeout_s=5.0)
         if json_output:
-            return CommandResult(0, json.dumps({"configuration": vehicle, "result": json.loads(result.message),
+            return CommandResult(0, json.dumps({"configuration": configuration, "result": json.loads(result.message),
                                                 "host": state}, indent=2))
         detail = "\n".join(line for line in result.message.splitlines()
                            if not line.startswith(("Host updated:", "Runtime restarted:")))
-        lines = [f"Host {host_id} created for {_vehicle_label(vehicle)}", detail]
+        lines = [f"Host {host_id} created for {_vehicle_label(configuration)}", detail]
         if state:
             lines.append(host_block({**state, "host_id": host_id, "attached": True,
                                      "provider": "chase-sim", "vehicle_url": chase_operator_url(url)}))
@@ -591,17 +591,17 @@ def create_host(
         return CommandResult(2, f"Could not create host {host_id!r}: {exc}{suffix}")
 
 
-def _vehicle_label(vehicle: dict[str, Any]) -> str:
-    connection = vehicle["connection"]
-    return (f"the chaser at {chase_operator_url(connection['ws_url'])}" if vehicle["provider"] == "chase-sim"
+def _vehicle_label(configuration: dict[str, Any]) -> str:
+    connection = configuration["connection"]
+    return (f"the chaser at {chase_operator_url(connection['ws_url'])}" if configuration["provider"] == "chase-sim"
             else f"PiCar at {connection['base_url']}")
 
 
 def delete_host(*, host_id: str, verbose: bool = False, output: TextIO | None = None) -> CommandResult:
-    from .automation import stop_vehicle_automation
+    from .automation import stop_host_automation
     from .runtime_hosts import stop_chase_host
 
-    vehicle, error = staging_host(host_id, runtime_root=RUNTIME_ROOT)
+    configuration, error = staging_host(host_id, runtime_root=RUNTIME_ROOT)
     if error:
         return CommandResult(2, error)
     directory = RUNTIME_ROOT / safe_path_part(host_id)
@@ -616,20 +616,20 @@ def delete_host(*, host_id: str, verbose: bool = False, output: TextIO | None = 
         process_record = {}
     active_run = (isinstance(process_record, dict) and _pid_alive(process_record.get("pid"))) or state.get("state") in {"starting", "running", "stopping"}
     if active_run:
-        result = stop_vehicle_automation(host_id=host_id)
+        result = stop_host_automation(host_id=host_id)
         if result.exit_code:
             return CommandResult(result.exit_code, result.message)
-    if vehicle["provider"] == "chase-sim":
+    if configuration["provider"] == "chase-sim":
         stop_chase_host(host_id)
     else:
-        target = _resolve_picar_target(vehicle)
+        target = _resolve_picar_target(configuration)
         command = _donkey_service_control_command(pi_home=target.pi_home, action="stop", drive_args=None)
         code = _run_step("Stop Donkey runtime service", ["ssh", target.ssh_target, command],
                          env=None, verbose=verbose, output=output)
         if code:
             return CommandResult(code, "Could not stop the PiCar host; its local record was kept.")
     shutil.rmtree(directory)
-    suffix = " Harness files stay in ~/mycar on the PiCar." if vehicle["provider"] == "picar" else ""
+    suffix = " Harness files stay in ~/mycar on the PiCar." if configuration["provider"] == "picar" else ""
     stopped = "Stopped the run. " if active_run else ""
     return CommandResult(0, f"{stopped}Stopped host {host_id}. Removed {display_path(directory)}.{suffix}")
 
@@ -637,14 +637,14 @@ def delete_host(*, host_id: str, verbose: bool = False, output: TextIO | None = 
 def _write_remote_activation_files(
     *,
     target: PicarTarget,
-    vehicle_runtime_dir: Path,
+    host_dir: Path,
     release: dict[str, Any],
     release_id: str,
     activation_paths: dict[str, Path],
 ) -> dict[str, Path]:
     """Write the Pi's copy of each staged activation and the runtime identity."""
 
-    deploy_dir = vehicle_runtime_dir / "deploy" / "donkeycar" / release_id
+    deploy_dir = host_dir / "deploy" / "donkeycar" / release_id
     deploy_dir.mkdir(parents=True, exist_ok=True)
     remote_app_root = f"{target.pi_home}/mycar"
     remote_release_root = f"{remote_app_root}/runtime/controller-releases/{release_id}"
@@ -669,7 +669,7 @@ def _write_remote_activation_files(
             metadata["provider"] = target.provider
             metadata["runtime"] = {
                 "kind": "onboard_controller",
-                "connection": target.vehicle.get("connection"),
+                "connection": target.configuration.get("connection"),
             }
         written[step] = deploy_dir / f"{step}-active.json"
         written[step].write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
@@ -1124,7 +1124,7 @@ def _wait_for_donkey_readiness(
 
 
 def _target_base_url(target: PicarTarget) -> str:
-    connection = target.vehicle.get("connection")
+    connection = target.configuration.get("connection")
     base_url = connection.get("base_url") if isinstance(connection, dict) else None
     if isinstance(base_url, str) and base_url.strip():
         return base_url.strip().rstrip("/")
@@ -1167,8 +1167,8 @@ def _run_step(
     return process.wait()
 
 
-def _ssh_target_from_vehicle(vehicle: dict[str, object]) -> str | None:
-    connection = vehicle.get("connection")
+def _ssh_target_from_vehicle(configuration: dict[str, object]) -> str | None:
+    connection = configuration.get("connection")
     if not isinstance(connection, dict):
         return None
     base_url = connection.get("base_url")

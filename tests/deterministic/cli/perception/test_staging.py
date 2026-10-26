@@ -43,8 +43,8 @@ class PerceptionCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             host_id = "chase-sim-chaser"
-            vehicle_runtime_dir = runtime_root / host_id
-            bundle = controller_bundle_paths(vehicle_runtime_dir)
+            host_dir = runtime_root / host_id
+            bundle = controller_bundle_paths(host_dir)
             release = sync_controller_bundle(bundle, output=None)
 
             bundle_root = Path(bundle["root_dir"])

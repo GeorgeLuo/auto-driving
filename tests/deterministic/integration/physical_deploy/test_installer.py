@@ -20,7 +20,7 @@ from implementations.decision_cycle.catalog import (
 
 TARGET = PicarTarget(
     host_id="piracer",
-    vehicle={
+    configuration={
         "host_id": "piracer",
         "vehicle_kind": "picar",
         "provider": "picar",
@@ -59,7 +59,7 @@ class PhysicalDeployTests(unittest.TestCase):
             bundle = controller_bundle_paths(Path(tmp) / "runtime" / "hosts" / "piracer")
             release = sync_controller_bundle(bundle, output=None)
             ensure = lambda: ensure_step_activations(  # noqa: E731
-                host_id="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.vehicle),
+                host_id="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.configuration),
             )
             paths = ensure()
             self.assertEqual(set(paths), set(STEPS))

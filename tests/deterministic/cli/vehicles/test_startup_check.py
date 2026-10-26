@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.automa_cli.operations import run_vehicle_startup_check
+from cli.automa_cli.operations import run_host_startup_check
 from implementations.vehicle.access import VehicleAccess
 from tests.deterministic.implementations.operations.test_startup_action_check import FakeImageCar
 
@@ -33,7 +33,7 @@ class StartupCheckTests(unittest.TestCase):
             patch("cli.automa_cli.operations.staging_host", return_value=({"host_id": "fake-car"}, None)),
             patch("cli.automa_cli.operations.create_vehicle_access", return_value=access),
         ):
-            result = run_vehicle_startup_check(
+            result = run_host_startup_check(
                 host_id="fake-car", duration_s=0.0, settle_s=0.0, dry_run=dry_run
             )
             report = json.loads(next(Path(tmp).glob("*/report.json")).read_text())

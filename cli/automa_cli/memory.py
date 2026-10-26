@@ -26,7 +26,7 @@ class CommandResult:
     message: str
 
 
-def get_vehicle_memory_info(
+def get_host_memory_info(
     *,
     host_id: str,
     json_output: bool = False,

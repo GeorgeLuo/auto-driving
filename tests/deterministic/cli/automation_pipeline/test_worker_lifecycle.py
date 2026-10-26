@@ -13,9 +13,9 @@ from unittest.mock import patch
 from cli.automa_cli.automation import (
     CommandResult,
     _wait_for_automation_startup,
-    record_vehicle_automation_terminal_result,
-    start_vehicle_automation_background,
-    stop_vehicle_automation,
+    record_host_automation_terminal_result,
+    start_host_automation_background,
+    stop_host_automation,
 )
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     _ExitedProcess,
@@ -110,7 +110,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     return_value=_ExitedProcess(),
                 ),
             ):
-                result = start_vehicle_automation_background(
+                result = start_host_automation_background(
                     host_id="chase-sim-chaser",
                     take_control=False,
                     startup_wait_s=0.1,
@@ -195,7 +195,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     return_value=True,
                 ) as browser_open,
             ):
-                result = start_vehicle_automation_background(
+                result = start_host_automation_background(
                     host_id="chase-sim-chaser",
                     take_control=False,
                     open_view=True,
@@ -266,7 +266,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     return_value=False,
                 ) as browser_open,
             ):
-                result = start_vehicle_automation_background(
+                result = start_host_automation_background(
                     host_id="chase-sim-chaser",
                     take_control=False,
                     open_view=True,
@@ -316,7 +316,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     ),
                 ),
             ):
-                result = start_vehicle_automation_background(
+                result = start_host_automation_background(
                     host_id="chase-sim-chaser",
                     take_control=False,
                     open_view=True,
@@ -343,7 +343,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             with (
                 patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root),
             ):
-                result = stop_vehicle_automation(host_id="chase-sim-chaser")
+                result = stop_host_automation(host_id="chase-sim-chaser")
 
             state = json.loads(
                 (automation_dir / "state.json").read_text(encoding="utf-8")
@@ -372,7 +372,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             with (
                 patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root),
             ):
-                record_vehicle_automation_terminal_result(
+                record_host_automation_terminal_result(
                     host_id="chase-sim-chaser",
                     result=CommandResult(2, "No active Chase frontend was found."),
                 )

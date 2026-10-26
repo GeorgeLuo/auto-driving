@@ -55,7 +55,7 @@ class LiveViewCopyTests(unittest.TestCase):
             patch.object(decision_steps, "fetch_decision_publication", return_value={}),
             patch.object(decision_steps, "accept_decision_publication", return_value=normalized),
         ):
-            result = decision_steps.stream_vehicle_step("plan", host_id="fixture")
+            result = decision_steps.stream_host_step("plan", host_id="fixture")
         self.assertEqual(result.exit_code, 0)
         feed.read_observation.assert_called_once_with()
         feed.publish.assert_called_once_with(publication)

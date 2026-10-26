@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.automation import run_vehicle_automation
+from cli.automa_cli.automation import run_host_automation
 from cli.automa_cli.bundles import controller_bundle_paths
 from cli.automa_cli.step_activations import replace_metadata
 from autonomy.decision_cycle.activation import read_step_activation, write_step_activation
@@ -84,7 +84,7 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 staged_runners(perception=_SlowMapper(), wrap=wrap_memory),
                 chase_runtime(runtime_root),
             ):
-                result = run_vehicle_automation(
+                result = run_host_automation(
                     host_id=HOST_ID, num_decisions=5, take_control=False,
                 )
             self.assertEqual(result.exit_code, 0, result.message)

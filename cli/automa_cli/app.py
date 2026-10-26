@@ -9,23 +9,23 @@ from typing import Any, TextIO
 
 from .automation import (
     get_hosts_status,
-    record_vehicle_automation_terminal_result,
-    restart_vehicle_automation,
-    run_vehicle_automation,
-    start_vehicle_automation_background,
-    stop_vehicle_automation,
+    record_host_automation_terminal_result,
+    restart_host_automation,
+    run_host_automation,
+    start_host_automation_background,
+    stop_host_automation,
 )
 from .deploy import create_host, update_host, delete_host
-from .decision_steps import get_vehicle_step_info, inspect_decision_step, stream_vehicle_step
-from .memory import get_vehicle_memory_info
-from .memory_runs import inspect_memory, reset_vehicle_memory
-from .operations import run_vehicle_startup_check
+from .decision_steps import get_host_step_info, inspect_decision_step, stream_host_step
+from .memory import get_host_memory_info
+from .memory_runs import inspect_memory, reset_host_memory
+from .operations import run_host_startup_check
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, SELECTABLE_STEPS, STEP_PRESETS
 
 from .step_activations import HOST_PROVIDERS, stage_host_step
 from .runtime_hosts import RUNTIME_ROOT as HOSTS_RUNTIME_ROOT
-from .perception import get_vehicle_perception_info
+from .perception import get_host_perception_info
 from .perception_runs import (
     inspect_perception,
 )
@@ -42,7 +42,7 @@ from .viability import (
     run_perception_viability_measurement,
 )
 from .runtime_view import serve_viewer
-from .streaming import serve_host_viewer, stream_vehicle_memory, stream_vehicle_perception
+from .streaming import serve_host_viewer, stream_host_memory, stream_host_perception
 from .vehicles import (
     DEFAULT_READINESS_TIMEOUT_S,
     discover_vehicle,
@@ -80,10 +80,10 @@ def build_parser() -> argparse.ArgumentParser:
     vehicles_help.set_defaults(handler=_handle_vehicles_help)
 
     hosts = subcommands.add_parser("hosts", help="Create and manage vehicle controller hosts.")
-    hosts.set_defaults(handler=_handle_host_help)
+    hosts.set_defaults(handler=_handle_hosts_help)
     host_commands = hosts.add_subparsers(dest="host_command")
     host_help = host_commands.add_parser("help", help="Show host-level commands.")
-    host_help.set_defaults(handler=_handle_host_help)
+    host_help.set_defaults(handler=_handle_hosts_help)
 
     plugins = host_commands.add_parser("plugins", help="Upload, arm, disarm and inspect plugins in a live catalog.")
     plugins.set_defaults(handler=_handle_plugins_help)
@@ -201,7 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     viewer.add_argument("--host-url", required=True, help="The host's URL from hosts status.")
-    viewer.set_defaults(handler=_handle_host_viewer)
+    viewer.set_defaults(handler=_handle_hosts_viewer)
 
     host_create = host_commands.add_parser("create", help="Create and start a host.")
     host_update = host_commands.add_parser("update", help="Package and deploy a host's release.")
@@ -221,9 +221,9 @@ def build_parser() -> argparse.ArgumentParser:
     host_create.add_argument("--ssh-target", help="PiCar SSH target (default: PI_HOST or the URL host).")
     host_create.add_argument("--pi-home", help="PiCar home (default: PI_HOME or /home/piracer).")
     host_update.add_argument("--restart", action="store_true", help="Restart the host onto this release.")
-    host_create.set_defaults(handler=_handle_host_create)
-    host_update.set_defaults(handler=_handle_host_update)
-    host_delete.set_defaults(handler=_handle_host_delete)
+    host_create.set_defaults(handler=_handle_hosts_create)
+    host_update.set_defaults(handler=_handle_hosts_update)
+    host_delete.set_defaults(handler=_handle_hosts_delete)
 
     host_run = host_commands.add_parser(
         "run",
@@ -310,7 +310,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=argparse.SUPPRESS,
     )
-    host_run.set_defaults(handler=_handle_host_run)
+    host_run.set_defaults(handler=_handle_hosts_run)
 
     host_stop = host_commands.add_parser(
         "stop",
@@ -333,7 +333,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=3.0,
         help="Seconds to wait for graceful stop before forcing termination.",
     )
-    host_stop.set_defaults(handler=_handle_host_stop)
+    host_stop.set_defaults(handler=_handle_hosts_stop)
 
     host_status = host_commands.add_parser(
         "status",
@@ -363,7 +363,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print automa_hosts_status JSON.",
     )
-    host_status.set_defaults(handler=_handle_host_status)
+    host_status.set_defaults(handler=_handle_hosts_status)
 
     host_restart = host_commands.add_parser(
         "restart",
@@ -439,7 +439,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=3.0,
         help="Seconds to wait for graceful stop before forcing termination.",
     )
-    host_restart.set_defaults(handler=_handle_host_restart)
+    host_restart.set_defaults(handler=_handle_hosts_restart)
     host_serve = host_commands.add_parser(
         "serve",
         help="Serve a Chase car's runtime host in the foreground (hosts create and hosts run start one).",
@@ -450,16 +450,16 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     host_serve.add_argument("--id", required=True, dest="host_id", help="Chase host name.")
-    host_serve.set_defaults(handler=_handle_host_serve)
+    host_serve.set_defaults(handler=_handle_hosts_serve)
 
     operation = host_commands.add_parser("operation", help="Run bounded vehicle checks and setup tasks.")
-    operation.set_defaults(handler=_handle_host_operation_help)
+    operation.set_defaults(handler=_handle_hosts_operation_help)
     operation_commands = operation.add_subparsers(dest="operation_command")
     operation_help = operation_commands.add_parser(
         "help",
         help="Show operation-level commands.",
     )
-    operation_help.set_defaults(handler=_handle_host_operation_help)
+    operation_help.set_defaults(handler=_handle_hosts_operation_help)
     startup_check = operation_commands.add_parser(
         "startup-check",
         help="Send bounded action pulses and verify camera changes around each command.",
@@ -505,7 +505,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the machine-readable operation result.",
     )
-    startup_check.set_defaults(handler=_handle_host_operation_startup_check)
+    startup_check.set_defaults(handler=_handle_hosts_operation_startup_check)
 
     stream = host_commands.add_parser("stream", help="Read a host's rolling outputs.")
     stream_commands = stream.add_subparsers(dest="stream_command", required=True)
@@ -513,7 +513,7 @@ def build_parser() -> argparse.ArgumentParser:
         "help",
         help="Show stream-level commands.",
     )
-    stream_help.set_defaults(handler=_handle_host_stream_help)
+    stream_help.set_defaults(handler=_handle_hosts_stream_help)
     perception_stream = stream_commands.add_parser(
         "perception",
         help="Show the latest perception output, replacing the terminal view as it updates.",
@@ -551,7 +551,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print one host_perception_live_v0 JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
     )
-    perception_stream.set_defaults(handler=_handle_host_stream_perception)
+    perception_stream.set_defaults(handler=_handle_hosts_stream_perception)
 
     memory_stream = stream_commands.add_parser(
         "memory",
@@ -591,7 +591,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print one host_memory_live_v1 JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
     )
-    memory_stream.set_defaults(handler=_handle_host_stream_memory)
+    memory_stream.set_defaults(handler=_handle_hosts_stream_memory)
 
     for step_name in DECISION_STEPS:
         step_stream = stream_commands.add_parser(
@@ -635,19 +635,19 @@ def build_parser() -> argparse.ArgumentParser:
             action="store_true",
             help=f"Print one host_{step_name}_stream_v1 JSON object per refresh.",
         )
-        step_stream.set_defaults(handler=_handle_host_stream_step, step=step_name)
+        step_stream.set_defaults(handler=_handle_hosts_stream_step, step=step_name)
 
     memory_control = host_commands.add_parser(
         "memory",
         help="Operate host memory (inspect, viability, reset).",
     )
-    memory_control.set_defaults(handler=_handle_host_memory_help)
+    memory_control.set_defaults(handler=_handle_hosts_memory_help)
     memory_commands = memory_control.add_subparsers(dest="memory_command")
     memory_help = memory_commands.add_parser(
         "help",
         help="Show memory-level commands.",
     )
-    memory_help.set_defaults(handler=_handle_host_memory_help)
+    memory_help.set_defaults(handler=_handle_hosts_memory_help)
     memory_reset = memory_commands.add_parser(
         "reset",
         help="Reset live memory to a new empty epoch on the vehicle's runtime host.",
@@ -674,7 +674,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the full machine-readable reset payload.",
     )
-    memory_reset.set_defaults(handler=_handle_host_memory_reset)
+    memory_reset.set_defaults(handler=_handle_hosts_memory_reset)
     memory_inspect = memory_commands.add_parser(
         "inspect",
         help="Show what a memory selection retains, from images or a recorded run.",
@@ -707,7 +707,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the machine-readable report.",
     )
-    memory_inspect.set_defaults(handler=_handle_host_memory_inspect)
+    memory_inspect.set_defaults(handler=_handle_hosts_memory_inspect)
 
     decision_inspects = []
     for step_name in DECISION_STEPS:
@@ -715,11 +715,11 @@ def build_parser() -> argparse.ArgumentParser:
             step_name,
             help=f"Inspect the {step_name} step offline, from images or a recorded run.",
         )
-        step_control.set_defaults(handler=_handle_host_decision_step_help, step=step_name)
+        step_control.set_defaults(handler=_handle_hosts_decision_step_help, step=step_name)
         step_commands = step_control.add_subparsers(dest=f"{step_name}_command")
         step_commands.add_parser(
             "help", help=f"Show {step_name}-level commands.",
-        ).set_defaults(handler=_handle_host_decision_step_help, step=step_name)
+        ).set_defaults(handler=_handle_hosts_decision_step_help, step=step_name)
         step_inspect = step_commands.add_parser(
             "inspect",
             help=f"Show the {step_name} record for every frame of images or a recorded run.",
@@ -755,7 +755,7 @@ def build_parser() -> argparse.ArgumentParser:
             action="store_true",
             help="Print the machine-readable report.",
         )
-        step_inspect.set_defaults(handler=_handle_host_decision_step_inspect, step=step_name)
+        step_inspect.set_defaults(handler=_handle_hosts_decision_step_inspect, step=step_name)
         decision_inspects.append(step_inspect)
     memory_viability = memory_commands.add_parser(
         "viability",
@@ -802,13 +802,13 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the report or preflight error as JSON; the report is also saved unless --no-record.",
     )
-    memory_viability.set_defaults(handler=_handle_host_memory_viability)
+    memory_viability.set_defaults(handler=_handle_hosts_memory_viability)
 
     workbench = host_commands.add_parser(
         "workbench",
         help="Replay images through the decision playback workbench.",
     )
-    workbench.set_defaults(handler=_handle_host_workbench_help)
+    workbench.set_defaults(handler=_handle_hosts_workbench_help)
     workbench_commands = workbench.add_subparsers(
         dest="workbench_command",
         required=True,
@@ -817,7 +817,7 @@ def build_parser() -> argparse.ArgumentParser:
         "help",
         help="Show workbench-level commands.",
     )
-    workbench_help.set_defaults(handler=_handle_host_workbench_help)
+    workbench_help.set_defaults(handler=_handle_hosts_workbench_help)
     workbench_replay = workbench_commands.add_parser(
         "replay",
         help=(
@@ -892,7 +892,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Open the loopback workbench page in a browser and imply --serve.",
     )
-    workbench_replay.set_defaults(handler=_handle_host_workbench_replay)
+    workbench_replay.set_defaults(handler=_handle_hosts_workbench_replay)
 
     info = host_commands.add_parser("info", help="Inspect locally staged controller configuration.")
     info_commands = info.add_subparsers(dest="info_command", required=True)
@@ -900,7 +900,7 @@ def build_parser() -> argparse.ArgumentParser:
         "help",
         help="Show info-level commands.",
     )
-    info_help.set_defaults(handler=_handle_host_info_help)
+    info_help.set_defaults(handler=_handle_hosts_info_help)
     perception_info = info_commands.add_parser(
         "perception",
         help="Show the staged perception preset and plugins, the runner schema and the published view URL.",
@@ -917,7 +917,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the full machine-readable perception info payload.",
     )
-    perception_info.set_defaults(handler=_handle_host_info_perception)
+    perception_info.set_defaults(handler=_handle_hosts_info_perception)
 
     memory_info = info_commands.add_parser(
         "memory",
@@ -935,7 +935,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the full machine-readable memory info payload.",
     )
-    memory_info.set_defaults(handler=_handle_host_info_memory)
+    memory_info.set_defaults(handler=_handle_hosts_info_memory)
 
     for step_name in DECISION_STEPS:
         runner_schema = (
@@ -963,19 +963,19 @@ def build_parser() -> argparse.ArgumentParser:
             action="store_true",
             help=f"Print the full machine-readable {step_name} info payload.",
         )
-        step_info.set_defaults(handler=_handle_host_info_step, step=step_name)
+        step_info.set_defaults(handler=_handle_hosts_info_step, step=step_name)
 
     perception_control = host_commands.add_parser(
         "perception",
         help="Inspect what perception detects and measure its viability.",
     )
-    perception_control.set_defaults(handler=_handle_host_perception_help)
+    perception_control.set_defaults(handler=_handle_hosts_perception_help)
     perception_commands = perception_control.add_subparsers(dest="perception_command")
     perception_help = perception_commands.add_parser(
         "help",
         help="Show perception-level commands.",
     )
-    perception_help.set_defaults(handler=_handle_host_perception_help)
+    perception_help.set_defaults(handler=_handle_hosts_perception_help)
 
     perception_inspect = perception_commands.add_parser(
         "inspect",
@@ -1039,7 +1039,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the machine-readable report.",
     )
-    perception_inspect.set_defaults(handler=_handle_host_perception_inspect)
+    perception_inspect.set_defaults(handler=_handle_hosts_perception_inspect)
 
     for inspection in (perception_inspect, memory_inspect, *decision_inspects):
         inspection.add_argument(
@@ -1106,19 +1106,19 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print the report or preflight error as JSON; the report is also saved unless --no-record.",
     )
-    perception_viability.set_defaults(handler=_handle_host_perception_viability)
+    perception_viability.set_defaults(handler=_handle_hosts_perception_viability)
 
     update = host_commands.add_parser(
         "stage",
         help="Stage controller selections for a host.",
     )
-    update.set_defaults(handler=_handle_host_stage_help)
+    update.set_defaults(handler=_handle_hosts_stage_help)
     update_commands = update.add_subparsers(dest="update_command")
     update_help = update_commands.add_parser(
         "help",
         help="Show update-level commands.",
     )
-    update_help.set_defaults(handler=_handle_host_stage_help)
+    update_help.set_defaults(handler=_handle_hosts_stage_help)
     for step_name in STEPS:
         step_parser = update_commands.add_parser(
             step_name,
@@ -1156,7 +1156,7 @@ def build_parser() -> argparse.ArgumentParser:
             action="store_true",
             help="Print controller release packaging details.",
         )
-        step_parser.set_defaults(handler=_handle_host_stage_step, step=step_name)
+        step_parser.set_defaults(handler=_handle_hosts_stage_step, step=step_name)
 
     simulators = subcommands.add_parser("simulators", help="Create, prepare and inspect simulators.")
     simulators.set_defaults(handler=_handle_simulators_help)
@@ -1425,7 +1425,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_host_help(args: argparse.Namespace) -> int:
+def _handle_hosts_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
@@ -1457,7 +1457,7 @@ def _handle_host_help(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_host_operation_help(args: argparse.Namespace) -> int:
+def _handle_hosts_operation_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
@@ -1474,7 +1474,7 @@ def _handle_host_operation_help(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_host_stage_help(args: argparse.Namespace) -> int:
+def _handle_hosts_stage_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
@@ -1496,7 +1496,7 @@ def _handle_host_stage_help(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_host_info_help(args: argparse.Namespace) -> int:
+def _handle_hosts_info_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
@@ -1517,7 +1517,7 @@ def _handle_host_info_help(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_host_perception_help(args: argparse.Namespace) -> int:
+def _handle_hosts_perception_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
@@ -1535,7 +1535,7 @@ def _handle_host_perception_help(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_host_stream_help(args: argparse.Namespace) -> int:
+def _handle_hosts_stream_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
@@ -1628,7 +1628,7 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_host_run(args: argparse.Namespace) -> int:
+def _handle_hosts_run(args: argparse.Namespace) -> int:
     if not _validate_timeout_input(
         args.timeout_s,
         command="automa hosts run",
@@ -1637,7 +1637,7 @@ def _handle_host_run(args: argparse.Namespace) -> int:
     ):
         return 2
     if args.foreground:
-        result = run_vehicle_automation(
+        result = run_host_automation(
             host_id=args.host_id,
             host_url=args.host_url,
             timeout_s=args.timeout_s,
@@ -1649,7 +1649,7 @@ def _handle_host_run(args: argparse.Namespace) -> int:
             output=sys.stdout,
         )
     else:
-        result = start_vehicle_automation_background(
+        result = start_host_automation_background(
             host_id=args.host_id,
             host_url=args.host_url,
             timeout_s=args.timeout_s,
@@ -1664,15 +1664,15 @@ def _handle_host_run(args: argparse.Namespace) -> int:
     if result.message:
         print(result.message)
     if args.foreground and args.host_id:
-        record_vehicle_automation_terminal_result(
+        record_host_automation_terminal_result(
             host_id=args.host_id,
             result=result,
         )
     return result.exit_code
 
 
-def _handle_host_stop(args: argparse.Namespace) -> int:
-    result = stop_vehicle_automation(
+def _handle_hosts_stop(args: argparse.Namespace) -> int:
+    result = stop_host_automation(
         host_id=args.host_id,
         wait_s=args.wait_s,
     )
@@ -1681,7 +1681,7 @@ def _handle_host_stop(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_status(args: argparse.Namespace) -> int:
+def _handle_hosts_status(args: argparse.Namespace) -> int:
     if not _validate_timeout_input(
         args.timeout_s,
         command="automa hosts status",
@@ -1699,14 +1699,14 @@ def _handle_host_status(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_serve(args: argparse.Namespace) -> int:
+def _handle_hosts_serve(args: argparse.Namespace) -> int:
     from .runtime_hosts import serve_chase_host
 
     return serve_chase_host(args.host_id)
 
 
-def _handle_host_restart(args: argparse.Namespace) -> int:
-    result = restart_vehicle_automation(
+def _handle_hosts_restart(args: argparse.Namespace) -> int:
+    result = restart_host_automation(
         host_id=args.host_id,
         timeout_s=args.timeout_s,
         num_decisions=args.num_decisions,
@@ -1723,8 +1723,8 @@ def _handle_host_restart(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_operation_startup_check(args: argparse.Namespace) -> int:
-    result = run_vehicle_startup_check(
+def _handle_hosts_operation_startup_check(args: argparse.Namespace) -> int:
+    result = run_host_startup_check(
         host_id=args.host_id,
         timeout_s=args.timeout_s,
         throttle=args.throttle,
@@ -1738,8 +1738,8 @@ def _handle_host_operation_startup_check(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_stream_perception(args: argparse.Namespace) -> int:
-    result = stream_vehicle_perception(
+def _handle_hosts_stream_perception(args: argparse.Namespace) -> int:
+    result = stream_host_perception(
         host_id=args.host_id,
         refresh_s=args.refresh_s,
         once=args.once,
@@ -1752,8 +1752,8 @@ def _handle_host_stream_perception(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_stream_memory(args: argparse.Namespace) -> int:
-    result = stream_vehicle_memory(
+def _handle_hosts_stream_memory(args: argparse.Namespace) -> int:
+    result = stream_host_memory(
         host_id=args.host_id,
         refresh_s=args.refresh_s,
         once=args.once,
@@ -1766,8 +1766,8 @@ def _handle_host_stream_memory(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_stream_step(args: argparse.Namespace) -> int:
-    result = stream_vehicle_step(
+def _handle_hosts_stream_step(args: argparse.Namespace) -> int:
+    result = stream_host_step(
         args.step,
         host_id=args.host_id,
         refresh_s=args.refresh_s,
@@ -1781,7 +1781,7 @@ def _handle_host_stream_step(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_decision_step_help(args: argparse.Namespace) -> int:
+def _handle_hosts_decision_step_help(args: argparse.Namespace) -> int:
     step = args.step
     print(
         "\n".join(
@@ -1804,7 +1804,7 @@ def _handle_host_decision_step_help(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_host_decision_step_inspect(args: argparse.Namespace) -> int:
+def _handle_hosts_decision_step_inspect(args: argparse.Namespace) -> int:
     result = inspect_decision_step(
         args.step,
         source=str(args.source),
@@ -1821,7 +1821,7 @@ def _handle_host_decision_step_inspect(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_memory_help(args: argparse.Namespace) -> int:
+def _handle_hosts_memory_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
@@ -1844,8 +1844,8 @@ def _handle_host_memory_help(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_host_memory_reset(args: argparse.Namespace) -> int:
-    result = reset_vehicle_memory(
+def _handle_hosts_memory_reset(args: argparse.Namespace) -> int:
+    result = reset_host_memory(
         host_id=args.host_id,
         timeout_s=args.timeout_s,
         json_output=args.json,
@@ -1855,7 +1855,7 @@ def _handle_host_memory_reset(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_memory_inspect(args: argparse.Namespace) -> int:
+def _handle_hosts_memory_inspect(args: argparse.Namespace) -> int:
     result = inspect_memory(
         str(args.source),
         preset=args.preset,
@@ -1870,7 +1870,7 @@ def _handle_host_memory_inspect(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_memory_viability(args: argparse.Namespace) -> int:
+def _handle_hosts_memory_viability(args: argparse.Namespace) -> int:
     result = run_memory_viability_measurement(
         host_id=args.host_id,
         duration_s=args.duration_s,
@@ -1885,7 +1885,7 @@ def _handle_host_memory_viability(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_workbench_help(args: argparse.Namespace) -> int:
+def _handle_hosts_workbench_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
@@ -1905,7 +1905,7 @@ def _handle_host_workbench_help(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_host_workbench_replay(args: argparse.Namespace) -> int:
+def _handle_hosts_workbench_replay(args: argparse.Namespace) -> int:
     result = run_workbench_replay(
         args.source_dir,
         selections={
@@ -1926,7 +1926,7 @@ def _handle_host_workbench_replay(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_create(args: argparse.Namespace) -> int:
+def _handle_hosts_create(args: argparse.Namespace) -> int:
     result = create_host(
         host_id=args.host_id, provider=args.provider, url=args.url,
         ssh_target=args.ssh_target, pi_home=args.pi_home, drive_args=args.drive_args,
@@ -1949,14 +1949,14 @@ def _handle_vehicles_remove(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_viewer(args: argparse.Namespace) -> int:
+def _handle_hosts_viewer(args: argparse.Namespace) -> int:
     result = serve_host_viewer(host_url=args.host_url)
     if result.message:
         print(result.message)
     return result.exit_code
 
 
-def _handle_host_update(args: argparse.Namespace) -> int:
+def _handle_hosts_update(args: argparse.Namespace) -> int:
     result = update_host(
         host_id=args.host_id, dry_run=args.dry_run, restart=args.restart,
         drive_args=args.drive_args, json_output=args.json, verbose=args.verbose,
@@ -1966,14 +1966,14 @@ def _handle_host_update(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_delete(args: argparse.Namespace) -> int:
+def _handle_hosts_delete(args: argparse.Namespace) -> int:
     result = delete_host(host_id=args.host_id, verbose=args.verbose, output=sys.stdout)
     print(result.message)
     return result.exit_code
 
 
-def _handle_host_info_perception(args: argparse.Namespace) -> int:
-    result = get_vehicle_perception_info(
+def _handle_hosts_info_perception(args: argparse.Namespace) -> int:
+    result = get_host_perception_info(
         host_id=args.host_id,
         json_output=args.json,
     )
@@ -1982,8 +1982,8 @@ def _handle_host_info_perception(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_info_memory(args: argparse.Namespace) -> int:
-    result = get_vehicle_memory_info(
+def _handle_hosts_info_memory(args: argparse.Namespace) -> int:
+    result = get_host_memory_info(
         host_id=args.host_id,
         json_output=args.json,
     )
@@ -1992,8 +1992,8 @@ def _handle_host_info_memory(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_info_step(args: argparse.Namespace) -> int:
-    result = get_vehicle_step_info(
+def _handle_hosts_info_step(args: argparse.Namespace) -> int:
+    result = get_host_step_info(
         args.step,
         host_id=args.host_id,
         json_output=args.json,
@@ -2003,7 +2003,7 @@ def _handle_host_info_step(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_perception_inspect(args: argparse.Namespace) -> int:
+def _handle_hosts_perception_inspect(args: argparse.Namespace) -> int:
     result = inspect_perception(
         args.source,
         host_id=args.host_id,
@@ -2022,7 +2022,7 @@ def _handle_host_perception_inspect(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_perception_viability(args: argparse.Namespace) -> int:
+def _handle_hosts_perception_viability(args: argparse.Namespace) -> int:
     result = run_perception_viability_measurement(
         host_id=args.host_id,
         duration_s=args.duration_s,
@@ -2037,7 +2037,7 @@ def _handle_host_perception_viability(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_host_stage_step(args: argparse.Namespace) -> int:
+def _handle_hosts_stage_step(args: argparse.Namespace) -> int:
     if not _validate_timeout_input(
         args.timeout_s,
         command=f"automa hosts stage {args.step}",

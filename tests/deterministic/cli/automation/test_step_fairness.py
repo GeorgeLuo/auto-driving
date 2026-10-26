@@ -14,7 +14,7 @@ from unittest import mock
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import builtin_activation
-from cli.automa_cli.automation import _collect_automation_status, run_vehicle_automation
+from cli.automa_cli.automation import _collect_automation_status, run_host_automation
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.runtime_fixtures import write_json
 
@@ -67,7 +67,7 @@ class StepFairnessTests(unittest.TestCase):
             ), mock.patch(
                 "cli.automa_cli.automation.monitor_runtime", return_value=(0, "done")
             ) as monitor:
-                result = run_vehicle_automation(
+                result = run_host_automation(
                     host_id=VEHICLE, take_control=False, num_decisions=1, output=io.StringIO()
                 )
                 self.assertEqual((result.exit_code, result.message), (0, "done"))

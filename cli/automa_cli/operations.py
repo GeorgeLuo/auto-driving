@@ -30,7 +30,7 @@ class CommandResult:
     message: str
 
 
-def run_vehicle_startup_check(
+def run_host_startup_check(
     *,
     host_id: str,
     timeout_s: float = 8.0,
@@ -40,13 +40,13 @@ def run_vehicle_startup_check(
     dry_run: bool = False,
     json_output: bool = False,
 ) -> CommandResult:
-    vehicle, error = staging_host(host_id, runtime_root=runtime_hosts.RUNTIME_ROOT)
-    if vehicle is None:
+    configuration, error = staging_host(host_id, runtime_root=runtime_hosts.RUNTIME_ROOT)
+    if configuration is None:
         return CommandResult(2, error)
 
     preparation: dict[str, Any] | None = None
     try:
-        access = create_vehicle_access(vehicle, timeout_s=timeout_s)
+        access = create_vehicle_access(configuration, timeout_s=timeout_s)
     except ValueError as exc:
         return CommandResult(2, str(exc))
     car = access.car

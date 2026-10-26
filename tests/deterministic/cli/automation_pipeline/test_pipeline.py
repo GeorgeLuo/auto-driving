@@ -4,7 +4,7 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from cli.automa_cli.automation import run_vehicle_automation
+from cli.automa_cli.automation import run_host_automation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.step_activations import stage_host_step
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
@@ -52,7 +52,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 staged_runners(wrap=wrap_perception),
                 chase_runtime(runtime_root),
             ):
-                result = run_vehicle_automation(
+                result = run_host_automation(
                     host_id=HOST_ID, num_decisions=3, take_control=False,
                 )
 
@@ -86,7 +86,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 ),
                 patch("cli.automa_cli.decision_view.DecisionView.invalidate_latest", autospec=True) as invalidate,
             ):
-                result = run_vehicle_automation(
+                result = run_host_automation(
                     host_id=HOST_ID, num_decisions=1, take_control=False,
                 )
 

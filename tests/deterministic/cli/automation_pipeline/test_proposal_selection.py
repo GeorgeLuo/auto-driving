@@ -7,7 +7,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.automa_cli.automation import run_vehicle_automation
+from cli.automa_cli.automation import run_host_automation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.step_activations import decision_identity, stage_activation
@@ -67,7 +67,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
             ):
                 if before_run is not None:
                     stage_activation(bundle, before_run, host_id=HOST_ID)
-                result = run_vehicle_automation(
+                result = run_host_automation(
                     host_id=HOST_ID, num_decisions=4, take_control=False,
                 )
             self.assertEqual(result.exit_code, 0, result.message)

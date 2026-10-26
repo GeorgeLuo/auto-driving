@@ -60,7 +60,7 @@ def inspect_root(step: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def get_vehicle_step_info(
+def get_host_step_info(
     step: str,
     *,
     host_id: str,
@@ -159,7 +159,7 @@ def _format_step_info(step: str, payload: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def stream_vehicle_step(
+def stream_host_step(
     step: str,
     *,
     host_id: str,
@@ -170,7 +170,7 @@ def stream_vehicle_step(
     output: TextIO | None = None,
     timeout_s: float = 3.0,
 ) -> CommandResult:
-    """Poll the step's record in the latest cycle the vehicle's runtime host published."""
+    """Poll the step's record in the latest cycle the host published."""
 
     timeout_s = max(0.1, float(timeout_s))
     try:

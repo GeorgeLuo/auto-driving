@@ -248,7 +248,7 @@ def _run_configuration(*, take_control: bool, num_decisions: int,
     )
 
 
-def run_vehicle_automation(
+def run_host_automation(
     *,
     host_id: str | None = None,
     host_url: str | None = None,
@@ -299,7 +299,7 @@ def run_vehicle_automation(
     return CommandResult(code, message)
 
 
-def start_vehicle_automation_background(
+def start_host_automation_background(
     *,
     host_id: str | None = None,
     host_url: str | None = None,
@@ -580,7 +580,7 @@ def start_vehicle_automation_background(
     return CommandResult(exit_code, "\n".join(lines))
 
 
-def record_vehicle_automation_terminal_result(
+def record_host_automation_terminal_result(
     *,
     host_id: str,
     result: CommandResult,
@@ -877,7 +877,7 @@ def get_hosts_status(
     return CommandResult(exit_code, _format_hosts_status(hosts))
 
 
-def stop_vehicle_automation(
+def stop_host_automation(
     *,
     host_id: str,
     wait_s: float = 3.0,
@@ -1011,7 +1011,7 @@ def _replace_unanswering_host(host_id: str, *, wait_s: float) -> CommandResult |
     return None
 
 
-def restart_vehicle_automation(
+def restart_host_automation(
     *,
     host_id: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
@@ -1034,7 +1034,7 @@ def restart_vehicle_automation(
     problems = bundle_activation_problems(bundle, host_id)
     if problems:
         return CommandResult(2, format_activation_problems(problems))
-    stop_result = stop_vehicle_automation(host_id=host_id, wait_s=wait_s)
+    stop_result = stop_host_automation(host_id=host_id, wait_s=wait_s)
     if stop_result.exit_code != 0:
         return stop_result
 
@@ -1047,7 +1047,7 @@ def restart_vehicle_automation(
         except (RuntimeError, TimeoutError) as exc:
             return CommandResult(2, f"Could not restart {host_id}: {exc}")
 
-    start_result = start_vehicle_automation_background(
+    start_result = start_host_automation_background(
         host_id=host_id,
         timeout_s=timeout_s,
         num_decisions=num_decisions,
@@ -1101,10 +1101,10 @@ def _collect_automation_status(
         }
 
     statuses = []
-    for vehicle_runtime_dir in candidates:
-        vehicle_name = vehicle_runtime_dir.name
-        host_url = running_base_url(vehicle_name)
-        bundle = controller_bundle_paths(vehicle_runtime_dir)
+    for host_dir in candidates:
+        name = host_dir.name
+        host_url = running_base_url(name)
+        bundle = controller_bundle_paths(host_dir)
         bundle_root = Path(bundle["root_dir"])
         automation_dir = Path(bundle["runtime_dir"]) / "automation"
         process_path = automation_dir / "process.json"
@@ -1180,7 +1180,7 @@ def _collect_automation_status(
                     )
                     if published_view.get("available"):
                         break
-        activation_problems = bundle_activation_problems(bundle, vehicle_name)
+        activation_problems = bundle_activation_problems(bundle, name)
         last_frame = state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
         completed_at_ms = _int_or_none(last_frame.get("perception_completed_at_ms"))
         generated_at_ms = _timestamp_ms()
@@ -1195,14 +1195,14 @@ def _collect_automation_status(
         except (OSError, TypeError, ValueError):
             decision = {"deployed": False}
         try:
-            runtime_hosts.release_manifest(vehicle_name)
+            runtime_hosts.release_manifest(name)
             released = True
         except RuntimeHostError:
             released = False
 
         statuses.append(
             {
-                "host_id": vehicle_name,
+                "host_id": name,
                 "activation_problems": activation_problems,
                 "deployed": released and decision["deployed"] and not activation_problems,
                 "bundle_root": display_path(bundle_root),
@@ -1276,8 +1276,8 @@ def _collect_automation_status(
         )
         if host_url is not None and not pid_alive:
             host = _host_runtime_status(
-                vehicle_name, host_url, timeout_s=_remaining_view_budget() or 0.5,
-                read=(host_reads or {}).get(vehicle_name),
+                name, host_url, timeout_s=_remaining_view_budget() or 0.5,
+                read=(host_reads or {}).get(name),
             )
             applied = host.pop("applied_decision")
             statuses[-1]["steps"] = _applied_selections(selections, host.pop("steps")) or selections

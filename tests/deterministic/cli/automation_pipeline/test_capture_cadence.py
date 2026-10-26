@@ -8,7 +8,7 @@ import time
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.automation import run_vehicle_automation
+from cli.automa_cli.automation import run_host_automation
 from cli.automa_cli.bundles import controller_bundle_paths
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 from tests.shared.implementations.runtime.wait import wait_until
@@ -24,7 +24,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
         _write_activations(bundle)
         output = io.StringIO()
         with staged_runners(perception=perception), chase_runtime(runtime_root, car=car):
-            result = run_vehicle_automation(
+            result = run_host_automation(
                 host_id=HOST_ID, num_decisions=num_decisions,
                 take_control=False, record=True, verbose=True, output=output,
             )

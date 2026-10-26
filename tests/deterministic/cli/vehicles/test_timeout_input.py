@@ -63,9 +63,9 @@ class TimeoutInputTests(unittest.TestCase):
         for value in INVALID_TIMEOUTS:
             with self.subTest(value=value):
                 with (
-                    patch("cli.automa_cli.app.run_vehicle_automation") as run_automation,
-                    patch("cli.automa_cli.app.start_vehicle_automation_background") as start_automation,
-                    patch("cli.automa_cli.app.record_vehicle_automation_terminal_result") as record_result,
+                    patch("cli.automa_cli.app.run_host_automation") as run_automation,
+                    patch("cli.automa_cli.app.start_host_automation_background") as start_automation,
+                    patch("cli.automa_cli.app.record_host_automation_terminal_result") as record_result,
                 ):
                     code, stdout, stderr = _invoke(
                         "hosts",
@@ -145,10 +145,10 @@ class TimeoutInputTests(unittest.TestCase):
         get_hosts.assert_called_once_with(host_id=None, timeout_s=1.25, json_output=False)
 
         with patch(
-            "cli.automa_cli.app.run_vehicle_automation",
+            "cli.automa_cli.app.run_host_automation",
             return_value=SimpleNamespace(exit_code=0, message="ok"),
         ) as run_automation, patch(
-            "cli.automa_cli.app.record_vehicle_automation_terminal_result"
+            "cli.automa_cli.app.record_host_automation_terminal_result"
         ):
             code, _, _ = _invoke(
                 "hosts",
@@ -174,10 +174,10 @@ class TimeoutInputTests(unittest.TestCase):
             self.assertEqual(get_status.call_args.kwargs["timeout_s"], 5.0)
 
         with patch(
-            "cli.automa_cli.app.run_vehicle_automation",
+            "cli.automa_cli.app.run_host_automation",
             return_value=SimpleNamespace(exit_code=0, message="ok"),
         ) as run_automation, patch(
-            "cli.automa_cli.app.record_vehicle_automation_terminal_result"
+            "cli.automa_cli.app.record_host_automation_terminal_result"
         ):
             code, _, _ = _invoke(
                 "hosts",

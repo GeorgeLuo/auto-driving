@@ -242,7 +242,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         ), patch(
             "cli.automa_cli.decision_live.fetch_host_telemetry_records",
             return_value={
-                "schema": "automa_host_boundary_telemetry_records_v1",
+                "schema": "automa_host_boundary_telemetry_records",
                 "status": "healthy",
                 "records": [matching],
             },
@@ -282,7 +282,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         ), patch(
             "cli.automa_cli.decision_live.fetch_host_telemetry_records",
             return_value={
-                "schema": "automa_host_boundary_telemetry_records_v1",
+                "schema": "automa_host_boundary_telemetry_records",
                 "status": "healthy",
                 "records": [_record(), second],
                 "coverage": {"complete": True},
@@ -317,13 +317,13 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             "cli.automa_cli.decision_live.fetch_host_telemetry_records",
             side_effect=[
                 {
-                    "schema": "automa_host_boundary_telemetry_records_v1",
+                    "schema": "automa_host_boundary_telemetry_records",
                     "status": "healthy",
                     "records": [],
                     "coverage": {"complete": True},
                 },
                 {
-                    "schema": "automa_host_boundary_telemetry_records_v1",
+                    "schema": "automa_host_boundary_telemetry_records",
                     "status": "healthy",
                     "records": [_record()],
                     "coverage": {"complete": True},
@@ -527,7 +527,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             skipped_since_previous=0,
         )
         payload = {
-            "schema": "automa_host_boundary_telemetry_records_v1",
+            "schema": "automa_host_boundary_telemetry_records",
             "status": "healthy",
             "records": [_record(), second],
             "coverage": {"complete": True, "baseline": True},

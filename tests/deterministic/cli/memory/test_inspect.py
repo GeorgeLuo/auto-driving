@@ -117,7 +117,7 @@ class MemoryInspectTests(unittest.TestCase):
         (run / "report.json").write_text(
             json.dumps(
                 {
-                    "schema": "perception_inspect_v1",
+                    "schema": "perception_inspect",
                     "frames": [
                         {"image_path": f"frame_{index}.png", "timestamp_ms": 5000 + 400 * index}
                         for index in range(3)

@@ -24,7 +24,7 @@ class AutomationStatusTests(unittest.TestCase):
         from cli.automa_cli.automation import _collect_automation_status
 
         warming = {
-            "schema": "automa_perception_view_v2",
+            "schema": "automa_perception_view",
             "available": False,
             "status": "warming",
             "url": "http://127.0.0.1:8898/",
@@ -71,7 +71,7 @@ class AutomationStatusTests(unittest.TestCase):
         from cli.automa_cli.automation import _collect_automation_status
 
         warming = {
-            "schema": "automa_perception_view_v2",
+            "schema": "automa_perception_view",
             "available": False,
             "status": "warming",
             "url": "http://127.0.0.1:8898/",

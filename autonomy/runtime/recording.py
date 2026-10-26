@@ -37,7 +37,7 @@ from autonomy.plugins import uploaded_source
 from autonomy.runtime.execution import ControlApplication
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
-RECORDING_MANIFEST_SCHEMA = "automa_recording_manifest_v1"
+RECORDING_MANIFEST_SCHEMA = "automa_recording_manifest"
 RECORDING_MANIFEST_NAME = "manifest.json"
 # Uploaded plugin sources a recording carries, as ``<sha256>.py``.
 UPLOADED_SOURCES_DIR = "plugins"

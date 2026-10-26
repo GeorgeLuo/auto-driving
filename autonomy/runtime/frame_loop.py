@@ -811,7 +811,7 @@ class FrameLoop:
         published_at_ms: int,
         status: str,
     ) -> tuple[dict[str, Any] | None, str | None]:
-        """Capture the shared ``host_report_v0`` for this completed cycle.
+        """Capture the shared ``host_report`` for this completed cycle.
 
         Runtime identity (source, activation, and the capture frame) goes in
         ``values``, with the display freshness limit. A failed cycle that

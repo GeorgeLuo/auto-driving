@@ -246,7 +246,7 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, host_id:
         message = result.get("error", "Catalog request failed.")
     result = {
         **result,
-        "schema": {"upload": "automa_plugin_upload_v1", "arm": "automa_plugin_arm_v1", "disarm": "automa_plugin_disarm_v1", "status": "automa_plugin_catalog_status_v1"}[operation],
+        "schema": {"upload": "automa_plugin_upload", "arm": "automa_plugin_arm", "disarm": "automa_plugin_disarm", "status": "automa_plugin_catalog_status"}[operation],
         "host_id": host_id, "url": url, "step": step,
         "outcome": {"status": state if operation in ("arm", "disarm") or result.get("upload") else "ok" if ok else state,
                     "message": message, "recovery": recovery},

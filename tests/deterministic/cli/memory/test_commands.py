@@ -38,7 +38,7 @@ class MemoryCommandTests(unittest.TestCase):
             )
 
             update_payload = json.loads(update.stdout)
-            self.assertEqual(update_payload["schema"], "host_step_update_v0")
+            self.assertEqual(update_payload["schema"], "host_step_update")
             self.assertEqual(update_payload["plugins"], ["bounded_evidence"])
             self.assertEqual(update_payload["manifest"]["step"], "memory")
             self.assertEqual(
@@ -58,7 +58,7 @@ class MemoryCommandTests(unittest.TestCase):
             self.assertTrue(activation_path.is_file())
 
             info_payload = json.loads(info.stdout)
-            self.assertEqual(info_payload["schema"], "host_memory_info_v1")
+            self.assertEqual(info_payload["schema"], "host_memory_info")
             self.assertNotIn("lifecycle", info_payload)
             self.assertEqual(info_payload["memory_schema"]["schema"], "memory_schema_v1")
             self.assertEqual(

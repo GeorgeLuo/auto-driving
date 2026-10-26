@@ -140,7 +140,7 @@ def vehicle_report_for_records(
     observation: Observation | None = None,
     memory: dict | None = None,
 ) -> dict:
-    """The ``host_report_v0`` both viewers accept for these decision records."""
+    """The ``host_report`` both viewers accept for these decision records."""
 
     report_values = {"stale_after_ms": STALE_AFTER_MS}
     if values:

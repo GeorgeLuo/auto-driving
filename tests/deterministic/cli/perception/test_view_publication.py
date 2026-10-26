@@ -81,7 +81,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
             generated_at_ms=200,
         )
         self.assertEqual(view_payload["schema"], PUBLICATION_SCHEMA)
-        self.assertEqual(PUBLICATION_SCHEMA, "automa_perception_publication_v3")
+        self.assertEqual(PUBLICATION_SCHEMA, "automa_perception_publication")
         self.assertEqual(evidence_publisher(view_payload["memory"]), "bounded_evidence")
         shown = dict(plugin_states(view_payload["memory"]))
         self.assertEqual(shown["bounded_evidence"]["epoch_id"], "epoch-2")

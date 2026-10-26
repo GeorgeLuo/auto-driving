@@ -89,7 +89,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         self.assertEqual(info.exit_code, 0, info.message)
         info_payload = json.loads(info.message)
-        self.assertEqual(info_payload["schema"], "host_proposal_info_v1")
+        self.assertEqual(info_payload["schema"], "host_proposal_info")
         schema = info_payload["proposal_schema"]
         self.assertEqual(
             [item["name"] for item in schema["inputs"]],

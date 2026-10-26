@@ -435,7 +435,7 @@ class PerceptionRunTests(unittest.TestCase):
         self.assertEqual(payload["summary"]["frames"], 2)
         self.assertIsNone(payload["run_dir"])
         self.assertTrue(recorded["run_id"].startswith("inspect-chase-sim-chaser-"))
-        self.assertEqual(saved["schema"], "perception_inspect_v1")
+        self.assertEqual(saved["schema"], "perception_inspect")
         self.assertEqual(saved["perception"]["preset"], "lightweight_observer")
         self.assertEqual(fake_car.read_count, 6)
         self.assertEqual(remembered["source"]["frame_count"], 1)

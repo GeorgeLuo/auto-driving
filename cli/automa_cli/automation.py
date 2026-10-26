@@ -507,7 +507,7 @@ def start_host_automation_background(
             log_handle.close()
 
     process_record = {
-        "schema": "automa_automation_process_v1",
+        "schema": "automa_automation_process",
         "host_id": host_id,
         "pid": process.pid,
         "started_at_ms": started_at_ms,
@@ -641,7 +641,7 @@ def _initialize_automation_startup(
     _write_json(
         automation_dir / "latest_perception.json",
         {
-            "schema": "automa_latest_perception_placeholder_v1",
+            "schema": "automa_latest_perception_placeholder",
             "host_id": host_id,
             "status": "starting",
             "started_at_ms": started_at_ms,
@@ -1090,7 +1090,7 @@ def _collect_automation_status(
 
     def _exhausted_view_status() -> dict[str, Any]:
         return {
-            "schema": "automa_perception_view_v2",
+            "schema": "automa_perception_view",
             "available": False,
             "status": "unavailable",
             "url": None,

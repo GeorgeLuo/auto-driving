@@ -12,8 +12,8 @@ from urllib.request import urlopen
 
 from PIL import Image
 
-VIEW_SCHEMA = "automa_perception_view_v2"
-PUBLICATION_SCHEMA = "automa_perception_publication_v3"
+VIEW_SCHEMA = "automa_perception_view"
+PUBLICATION_SCHEMA = "automa_perception_publication"
 VIEW_RECORD_NAME = "perception_view.json"
 VIEW_HTML_PATH = Path(__file__).with_name("perception_view.html")
 MAX_BUFFERED_FRAMES = 8

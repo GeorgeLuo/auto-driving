@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 # The supervisor starts a fresh host from the current release on this code.
 RESTART_EXIT_CODE = 75
-HOST_RECORD_SCHEMA = "automa_runtime_host_v1"
+HOST_RECORD_SCHEMA = "automa_runtime_host"
 CAPTURE_POLL_S = 0.01
 RECORD_CHECK_S = 1.0
 

@@ -20,7 +20,7 @@ from tests.support.runtime_fixtures import write_json
 
 VEHICLE = "chase-sim-chaser"
 UNSTAGED = {step: "builtin" if builtin_activation(step) else "none" for step in STEPS}
-UNAVAILABLE_VIEW = {"schema": "automa_perception_view_v2", "available": False, "status": "unavailable", "url": None}
+UNAVAILABLE_VIEW = {"schema": "automa_perception_view", "available": False, "status": "unavailable", "url": None}
 
 
 def _invoke(*args: str) -> tuple[int, str]:

@@ -55,7 +55,7 @@ class UpdateVehicleTests(unittest.TestCase):
             code, stdout = _invoke("hosts", "stage", "proposal", "--id", "parity-unknown", "--json")
         self.assertEqual(code, 2)
         payload = json.loads(stdout)
-        self.assertEqual(payload["schema"], "host_step_update_error_v0")
+        self.assertEqual(payload["schema"], "host_step_update_error")
         self.assertEqual(payload["error"], "unknown_host")
         self.assertIn("parity-unknown", payload["message"])
 
@@ -111,7 +111,7 @@ class UpdateVehicleTests(unittest.TestCase):
                 )
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
                 payload = json.loads(result.stdout)
-                self.assertEqual(payload["schema"], "host_step_update_error_v0")
+                self.assertEqual(payload["schema"], "host_step_update_error")
                 self.assertEqual(payload["host_id"], "parity-unknown")
                 self.assertEqual(payload["step"], step)
                 self.assertEqual(payload["error"], "unknown_host")
@@ -133,7 +133,7 @@ class UpdateVehicleTests(unittest.TestCase):
                         "hosts", "stage", step, "--id", "chase-sim-chaser",
                         "--preset", preset, "--dry-run", "--json", runtime_root=root,
                     ).stdout)
-                    self.assertEqual(payload["schema"], "host_step_update_v0")
+                    self.assertEqual(payload["schema"], "host_step_update")
                     self.assertEqual((payload["step"], payload["preset"]), (step, preset))
             self.assertEqual(len(list(root.rglob("host-configuration.json"))), 1)
 

@@ -38,7 +38,7 @@ def get_host_memory_info(
     if error is not None:
         return CommandResult(2, error)
     payload: dict[str, Any] = {
-        "schema": "host_memory_info_v1",
+        "schema": "host_memory_info",
         "host_id": host_id,
         **staged,
         "live": None,

@@ -30,7 +30,7 @@ from implementations.vehicle.picar.defaults import (
 )
 
 DEFAULT_READINESS_TIMEOUT_S = 5.0
-STATUS_SCHEMA = "automa_host_readiness_v1"
+STATUS_SCHEMA = "automa_host_readiness"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
 # Each vehicle's heading names the --provider that discover and hosts create take for it.
 _HEADINGS = {"chase-sim": "Simulator (chase-sim)", "picar": "PiCar (picar)"}

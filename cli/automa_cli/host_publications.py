@@ -34,11 +34,11 @@ STATUS_JSON_PATH = "/host/status"
 HOST_TELEMETRY_LATEST_PATH = "/host/telemetry/latest"
 HOST_TELEMETRY_RECORDS_PATH = "/host/telemetry/records"
 DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
-HOST_TELEMETRY_SCHEMA = "automa_host_boundary_telemetry_v1"
-HOST_TELEMETRY_RECORDS_SCHEMA = "automa_host_boundary_telemetry_records_v1"
-HOST_TELEMETRY_PANEL_SCHEMA = "automa_host_boundary_telemetry_panel_v1"
-HOST_TELEMETRY_NORMALIZED_SCHEMA = "automa_host_boundary_telemetry_normalized_v1"
-HOST_TELEMETRY_RECORDS_NORMALIZED_SCHEMA = "automa_host_boundary_telemetry_records_normalized_v1"
+HOST_TELEMETRY_SCHEMA = "automa_host_boundary_telemetry"
+HOST_TELEMETRY_RECORDS_SCHEMA = "automa_host_boundary_telemetry_records"
+HOST_TELEMETRY_PANEL_SCHEMA = "automa_host_boundary_telemetry_panel"
+HOST_TELEMETRY_NORMALIZED_SCHEMA = "automa_host_boundary_telemetry_normalized"
+HOST_TELEMETRY_RECORDS_NORMALIZED_SCHEMA = "automa_host_boundary_telemetry_records_normalized"
 
 HOST_TELEMETRY_LIMITS: dict[str, int] = {
     "max_source_age_ms": 1_500,

@@ -134,7 +134,7 @@ class VehicleStatusTests(unittest.TestCase):
                 chase_url="http://localhost:5050",
             )
 
-        self.assertEqual(payload["schema"], "automa_host_readiness_v1")
+        self.assertEqual(payload["schema"], "automa_host_readiness")
         self.assertEqual(payload["host_id"], "controller-a")
         self.assertEqual(
             set(payload),

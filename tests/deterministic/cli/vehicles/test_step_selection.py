@@ -168,7 +168,7 @@ class StepSelectionTests(unittest.TestCase):
         perception = documents["perception"]["metadata"]
         for step in SELECTABLE_STEPS:
             with self.subTest(step=step):
-                self.assertEqual(payloads[step]["schema"], "host_step_update_v0")
+                self.assertEqual(payloads[step]["schema"], "host_step_update")
                 self.assertEqual(set(payloads[step]), set(payloads["perception"]))
                 metadata = documents[step]["metadata"]
                 self.assertEqual(set(metadata), set(perception))

@@ -62,7 +62,7 @@ def _resolve_viability_host(
     if json_output:
         message = json.dumps(
             {
-                "schema": "host_step_viability_error_v0",
+                "schema": "host_step_viability_error",
                 "host_id": host_id,
                 "step": step,
                 "error": error,
@@ -209,7 +209,7 @@ def run_perception_viability_measurement(
     )
     gates = _evaluate_perception_gates(metrics)
     report = {
-        "schema": "automa_physical_perception_viability_v1",
+        "schema": "automa_physical_perception_viability",
         "run_id": run_id,
         "host_id": host_id,
         "base_url": base_url,
@@ -634,7 +634,7 @@ def run_memory_viability_measurement(
     metrics = _compute_memory_metrics(samples, elapsed_s=elapsed_s)
     gates = _evaluate_memory_gates(metrics)
     report = {
-        "schema": "automa_physical_memory_viability_v2",
+        "schema": "automa_physical_memory_viability",
         "run_id": run_id,
         "host_id": host_id,
         "duration_s_requested": duration_s,

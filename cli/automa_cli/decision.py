@@ -60,7 +60,7 @@ from .host_publications import (
     normalize_decision_publication,
 )
 
-ERROR_SCHEMA = "host_decision_error_v0"
+ERROR_SCHEMA = "host_decision_error"
 # Typed decision records within the five-record cycle.
 PROPOSAL_RECORD_EXACT_KEYS = frozenset(
     {"schema", "frame_id", "status", "reason", "candidates"}

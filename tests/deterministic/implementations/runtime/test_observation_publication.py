@@ -346,7 +346,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(decision["reason"], "")
         published = decision["decision"]
         assert isinstance(published, dict)
-        self.assertEqual(published["schema"], "host_report_v0")
+        self.assertEqual(published["schema"], "host_report")
         self.assertEqual(published["host_id"], "piracer")
         self.assertNotIn("vehicle_id", published)
         values = published["values"]

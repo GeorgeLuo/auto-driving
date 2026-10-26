@@ -44,7 +44,7 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
             payload = json.loads(result.stdout)
-            self.assertEqual(payload["schema"], "perception_inspect_v1")
+            self.assertEqual(payload["schema"], "perception_inspect")
             self.assertEqual(payload["source"]["kind"], "images")
             self.assertEqual(payload["summary"]["frames"], 2)
             self.assertIsNone(payload["run_dir"])
@@ -70,7 +70,7 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
         payload = json.loads(result.stdout)
-        self.assertEqual(payload["schema"], "host_perception_info_v1")
+        self.assertEqual(payload["schema"], "host_perception_info")
         self.assertEqual(payload["activation"]["preset"], "sim_debug")
         self.assertEqual(
             payload["perception_schema"]["schema"], "perception_schema_v3"

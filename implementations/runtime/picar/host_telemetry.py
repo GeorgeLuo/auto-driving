@@ -17,7 +17,7 @@ from copy import deepcopy
 from typing import Any, Callable, Mapping, cast
 
 
-HOST_TELEMETRY_SCHEMA = "automa_host_boundary_telemetry_v1"
+HOST_TELEMETRY_SCHEMA = "automa_host_boundary_telemetry"
 HOST_TELEMETRY_LATEST_PATH = "/host/telemetry/latest"
 HOST_TELEMETRY_RECORDS_PATH = "/host/telemetry/records"
 HOST_TELEMETRY_LIMITS = {

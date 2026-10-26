@@ -677,7 +677,7 @@ def _write_remote_activation_files(
     identity_path.write_text(
         json.dumps(
             {
-                "schema": "automa_runtime_identity_v1",
+                "schema": "automa_runtime_identity",
                 "host_id": target.host_id,
                 "source_id": f"donkeycar:{target.host_id}",
             },
@@ -690,7 +690,7 @@ def _write_remote_activation_files(
     (deploy_dir / "deployment.json").write_text(
         json.dumps(
             {
-                "schema": "automa_physical_autonomy_deployment_v2",
+                "schema": "automa_physical_autonomy_deployment",
                 "created_at_ms": int(time.time() * 1000),
                 "host_id": target.host_id,
                 "ssh_target": target.ssh_target,
@@ -795,7 +795,7 @@ def _autonomy_update_payload(
             }
         )
     return {
-        "schema": "host_autonomy_update_v0",
+        "schema": "host_autonomy_update",
         "host_id": target.host_id,
         "dry_run": dry_run,
         "scope": {
@@ -858,7 +858,7 @@ def _core_update_payload(
             }
         )
     return {
-        "schema": "host_core_update_v0",
+        "schema": "host_core_update",
         "host_id": target.host_id,
         "dry_run": dry_run,
         "scope": {

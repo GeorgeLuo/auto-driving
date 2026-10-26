@@ -40,7 +40,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                 with patch.object(host.step("proposal"), "_reset_plugin", wraps=host.step("proposal")._reset_plugin) as reset:
                     receipt = json.loads(self.disarm(base, "--step", "proposal", "--plugin", "second",
                                                     "--plugin", "second", "--json").stdout)
-                    self.assertEqual(receipt["schema"], "automa_plugin_disarm_v1")
+                    self.assertEqual(receipt["schema"], "automa_plugin_disarm")
                     self.assertEqual(receipt["outcome"]["status"], "requested")
                     self.assertEqual(selected(receipt, "applied", "proposal"), selected(before, "applied", "proposal"))
                     reset.assert_not_called()

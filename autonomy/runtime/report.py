@@ -1,6 +1,6 @@
 """One frame report for every vehicle the viewer shows.
 
-``host_report_v0`` replaces ``vehicle_decision_stream_frame_v0`` and
+``host_report`` replaces ``vehicle_decision_stream_frame_v0`` and
 ``provider_decision_stream_frame_v0``. Every named field is required. Detail
 that only one vehicle has goes in ``values``. ``report_from_host_result``
 builds that document from a completed host cycle and the control application
@@ -26,7 +26,7 @@ from typing import Any, Mapping
 from autonomy.decision_cycle.action_identifiers import require_ascii_id, require_safe_int
 from autonomy.runtime.execution import require_mode
 
-REPORT_SCHEMA = "host_report_v0"
+REPORT_SCHEMA = "host_report"
 REPORT_EXACT_KEYS = frozenset(
     {
         "schema",

@@ -58,7 +58,7 @@ def write_runtime_fixture(
     write_json(
         automation_process,
         {
-            "schema": "automa_automation_process_v1",
+            "schema": "automa_automation_process",
             "host_id": host_id,
             "pid": pid,
             "log_to_disk": False,
@@ -69,7 +69,7 @@ def write_runtime_fixture(
     write_json(
         automation_state,
         {
-            "schema": "automa_automation_run_state_v1",
+            "schema": "automa_automation_run_state",
             "host_id": host_id,
             "run_id": "test-run",
             "status": "running",

@@ -33,7 +33,7 @@ INSPECT_ROOT = Path(
     os.environ.get("AUTOMA_MEMORY_INSPECT_ROOT", ROOT / "runtime" / "memory-inspections")
 )
 MEMORY_INSPECT_SCHEMA = "memory_inspect_v1"
-MEMORY_RESET_SCHEMA = "host_memory_reset_v1"
+MEMORY_RESET_SCHEMA = "host_memory_reset"
 
 
 @dataclass(frozen=True)

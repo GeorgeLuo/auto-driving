@@ -41,7 +41,7 @@ class HostLifecycleTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, result.message)
         start.assert_called_once_with("test")
         record = json.loads((self.root / "test" / "host-configuration.json").read_text())
-        self.assertEqual((record["schema"], record["host_id"]), ("automa_host_configuration_v1", "test"))
+        self.assertEqual((record["schema"], record["host_id"]), ("automa_host_configuration", "test"))
         self.assertNotIn("vehicle_id", record)
         self.assertEqual(record["connection"]["ws_url"], "ws://localhost:5050/ws/control")
         self.assertTrue((self.root / "test" / "bundle" / "releases" / "latest-controller-bundle.json").exists())

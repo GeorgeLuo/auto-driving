@@ -1,7 +1,7 @@
 """Read-only live projection of accepted vehicle reports.
 
 The runtime server owns this short-lived view. It receives one
-``host_report_v0`` and the already-published capture bytes for that frame,
+``host_report`` and the already-published capture bytes for that frame,
 retaining a small number of immutable transactions. Chase and PiCar use this
 same intake. It never runs a decision step, reads an image path, or follows a
 URL supplied by a client.
@@ -24,7 +24,7 @@ from .host_publications import host_telemetry_failure
 from .memory_report import evidence_records
 
 
-DECISION_VIEW_SCHEMA = "automa_live_decision_view_v2"
+DECISION_VIEW_SCHEMA = "automa_live_decision_view"
 DECISION_VIEW_ID = "decision-combined-v0"
 MAX_RETAINED_TRANSACTIONS = 8
 

@@ -302,7 +302,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 extra_env=env,
             )
             payload = json.loads(json_result.stdout)
-            self.assertEqual(payload["schema"], "host_action_stream_v1")
+            self.assertEqual(payload["schema"], "host_action_stream")
             self.assertEqual(payload["host_id"], host_id)
             self.assertEqual(payload["run_id"], "donkey-run-http-fixture")
             self.assertEqual(payload["plugins"], steps["action"]["plugins"])

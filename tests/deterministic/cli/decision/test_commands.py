@@ -53,12 +53,12 @@ class DecisionCommandTests(unittest.TestCase):
                 info = invoke_automa("hosts", "info", step, *vehicle, runtime_root=runtime_root)
                 self.assertEqual(info.returncode, 0, info.stderr + info.stdout)
                 payload = json.loads(info.stdout)
-                self.assertEqual(payload["schema"], f"host_{step}_info_v1")
+                self.assertEqual(payload["schema"], f"host_{step}_info")
                 self.assertEqual(payload["activation"]["plugins"], plugins)
                 self.assertEqual(payload["decision"]["plugins"]["action"], ["mode"])
                 self.assertEqual(payload["decision"]["authority"]["gate_id"], "mode")
                 # No runtime host runs, so the probe has no step to report.
-                self.assertEqual(payload["live"]["schema"], f"host_{step}_live_v1")
+                self.assertEqual(payload["live"]["schema"], f"host_{step}_live")
                 self.assertEqual(payload["live"]["status"], "unavailable")
                 self.assertEqual(
                     f"{step}_schema" in payload, STEP_RUNNERS[step].schema_name is not None

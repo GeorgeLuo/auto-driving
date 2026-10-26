@@ -38,12 +38,12 @@ from .runtime_view import RuntimeViewServer, open_view_message
 from .step_activations import absent_step_error
 from .view_discovery import runtime_view_dir
 
-PERCEPTION_LIVE_SCHEMA = "host_perception_live_v0"
+PERCEPTION_LIVE_SCHEMA = "host_perception_live"
 # Every step's live probe schema; their probes and live screens are in this module.
-MEMORY_LIVE_SCHEMA = "host_memory_live_v1"
+MEMORY_LIVE_SCHEMA = "host_memory_live"
 LIVE_STEP_SCHEMAS = {
     "memory": MEMORY_LIVE_SCHEMA,
-    **{step: f"host_{step}_live_v1" for step in ("proposal", "plan", "action")},
+    **{step: f"host_{step}_live" for step in ("proposal", "plan", "action")},
 }
 # Observation publication health -> probe status; "healthy" is the only live one.
 _PERCEPTION_STATUS = {

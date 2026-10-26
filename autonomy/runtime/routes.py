@@ -40,7 +40,7 @@ MEMORY_RESET_PATH = "/host/memory/reset"
 TELEMETRY_LATEST_PATH = "/host/telemetry/latest"
 TELEMETRY_RECORDS_PATH = "/host/telemetry/records"
 MEMORY_RESET_SCHEMA = "automa_memory_reset_v0"
-TELEMETRY_SCHEMA = "automa_host_boundary_telemetry_v1"
+TELEMETRY_SCHEMA = "automa_host_boundary_telemetry"
 RESTART_DELAY_S = 0.2
 
 Response = tuple[int, dict[str, str], bytes]

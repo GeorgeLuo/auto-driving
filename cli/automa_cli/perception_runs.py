@@ -52,7 +52,7 @@ from .workbench_source import (
 DEFAULT_FRAME_COUNT = 5
 DEFAULT_INTERVAL_S = 0.25
 INSPECT_ROOT = Path(os.environ.get("AUTOMA_PERCEPTION_INSPECT_ROOT", ROOT / "runtime" / "perception-inspections"))
-PERCEPTION_INSPECT_SCHEMA = "perception_inspect_v1"
+PERCEPTION_INSPECT_SCHEMA = "perception_inspect"
 
 
 @dataclass(frozen=True)

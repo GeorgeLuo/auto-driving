@@ -139,7 +139,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `hosts run\|stop\|restart\|status` | Starts, stops, restarts or inspects a run on the host. Status includes the vehicle endpoint, host URL and simulator attachment. `stop` ends the run; the host stays attached until `hosts delete`. |
 | `hosts stream perception` | Displays rolling latest perception from the runtime host's `/host/observation/latest` and serves a local frame-matched `/perception` view (link to Memory map) whose URL the terminal shows. |
 | `hosts stream memory` | Inspects live memory as a key→value ledger. The terminal shows health and counts and serves a local `/memory` map page whose URL it shows. Keys are `record_id`s; click a key to see the retained value. |
-| `hosts stream proposal\|plan\|action` | Prints that step's record from the latest cycle the vehicle's runtime host published, with its age, generation, plugins, and the step's and each plugin's time; action also shows how the host applied control. `--once` prints one and exits 2 with the reason when none is current; `--json` returns `host_<step>_stream_v1`. A running terminal stream also serves the local action view below. |
+| `hosts stream proposal\|plan\|action` | Prints that step's record from the latest cycle the host published, with its age, generation, plugins, and the step's and each plugin's time; action also shows how the host applied control. `--once` prints one and exits 2 with the reason when none is current; `--json` returns `host_<step>_stream`. A running terminal stream also serves the local action view below. |
 | `hosts memory reset` | Clears live retained evidence on the runtime host and starts a new epoch. Exits 0 once the host's answer shows every plugin on a new epoch or empty, even while a running session refills memory. Does not move the vehicle. |
 | `hosts memory inspect` | Offline: runs an image, a directory of images, or a recorded perception or memory run through perception, observation and memory, and reports each memory plugin's health, record count and epoch after every frame, with the memory step's and each plugin's time. A recording restores the executable step selections and configs it contains; `--preset` or `--plugin` overrides memory. Otherwise each step uses its default. The report prints to the terminal; `--record` also saves the source frames, timing, both step selections and report under `runtime/memory-inspections/`. Record live frames with `hosts perception inspect --record`, then inspect that run. |
 | `hosts memory viability` | Memory health check: 60s poll of the runtime host's live memory step (update cadence, duration, failures, health, epoch stability). Saves `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
@@ -195,7 +195,7 @@ instances, while plugins that remain selected keep their state.
 
 Human output reports `Disarming: requested`, `applied`, or `failed`, followed by
 requested and applied selections and a status command. `--json` returns
-`automa_plugin_disarm_v1`, retaining the shared `arming` selection state.
+`automa_plugin_disarm`, retaining the shared `arming` selection state.
 Exit 0 acknowledges the request; the next cycle applies it. Exit 2 reports a
 failure. When no session is running, changes remain requested until a cycle
 runs; status never presents a pending deselection as applied.
@@ -203,8 +203,8 @@ runs; status never presents a pending deselection as applied.
 `stream perception` and `stream memory` take the same flags. By default each
 refresh redraws the terminal view and updates the local view whose URL it
 shows. `--json` prints one probe per refresh in place of both, for
-scripts: `host_perception_live_v0` for perception and
-`host_memory_live_v1` for memory.
+scripts: `host_perception_live` for perception and
+`host_memory_live` for memory.
 `--once` exits 2 unless the probe's `status` is `live`. Any other status
 (`stopped`, `stale`, `absent`, `error`, `unavailable`) comes with an `error`.
 When no runtime host can be addressed, both emit one `unavailable` JSON probe
@@ -234,7 +234,7 @@ Use the nested perception result and plugin reports to inspect plugin outcomes;
 
 Both viability commands exit 0 for a passed measurement, 1 for failed
 measurement gates, and 2 when no runtime host can be addressed. Under `--json`,
-that failure returns `host_step_viability_error_v0` with `host_id`,
+that failure returns `host_step_viability_error` with `host_id`,
 `step`, `error` (`no_runtime_host`), and the diagnostic in `message`. Reports
 are also saved in JSON mode; use `--json --no-record` for a report printed only
 to stdout. The `control_never_applied` gate fails if any sampled cycle applied
@@ -258,11 +258,11 @@ archive from `runtime/hosts/<id>/bundle/releases/` and ignores whatever is
 staged now. If the archive is gone, replay exits 2 naming the release and
 `hosts update`.
 
-Every step's update returns the same `host_step_update_v0` payload under
+Every step's update returns the same `host_step_update` payload under
 `--json`: `step`, `preset`, `plugins`, the staged `manifest`, and the `apply`
 commands. Staging does not check readiness; `hosts run` does before
 it starts, and `hosts status` reports invalid staged steps. An
-unknown-host failure under `--json` returns `host_step_update_error_v0`
+unknown-host failure under `--json` returns `host_step_update_error`
 with `host_id`, `step`, `error: unknown_host`, and the diagnostic in `message`; the command exits 2 and stages nothing.
 
 Use `help` at a command-group level and `--help` for final command options:
@@ -415,7 +415,7 @@ and a plugin list is recorded as the preset it equals, else `custom`.
 
 `hosts info perception` reports the staged preset, its enabled plugins and
 the available ones, and the staged runner's `perception_schema_v3` contract.
-`--json` returns `host_perception_info_v1` with that contract under
+`--json` returns `host_perception_info` with that contract under
 `perception_schema`. Staging replaces the selection. A running worker applies a
 changed plugin list at its next frame and changed plugin configs when it
 restarts; a stopped one uses the selection the next time it starts:
@@ -559,7 +559,7 @@ and a plugin list is recorded as the preset it equals, else `custom`.
 
 `hosts info memory` reports the staged preset, its enabled plugins and the
 available ones, and the staged runner's `memory_schema_v1` contract.
-`--json` returns `host_memory_info_v1` with that contract under `memory_schema`.
+`--json` returns `host_memory_info` with that contract under `memory_schema`.
 Perception, memory, and proposal (`hosts info proposal`) describe inputs,
 plugins, output, composition and failure policy;
 memory's contract also names the ledger fields the CLI and viewers project from
@@ -634,13 +634,13 @@ Its default business logic is reached through
 
 `hosts info proposal` reports the staged plugins and the available ones,
 the staged runner's `proposal_schema_v1` contract, and the plan and action
-plugins that act on them. `--json` returns `host_proposal_info_v1` with that
+plugins that act on them. `--json` returns `host_proposal_info` with that
 contract under `proposal_schema`, and the decision generation, each decision
 step's plugins and the action authority under `decision`; `hosts info plan`
 and `hosts info action` report the same for their step, plan with its
 `plan_schema_v1` contract under `plan_schema` and action with none. Like memory
 info, it probes the running autonomy engine and reports its proposal step
-under `live` (`host_proposal_live_v1`): the plugins it runs and its run and failure
+under `live` (`host_proposal_live`): the plugins it runs and its run and failure
 counts, from the runtime host's `/host/status`. That is the engine's step, not the proposals any view last
 rendered. A worker loads the staged proposals from the controller bundle when
 it starts, as it loads memory, and reports them under `proposal` in its state

@@ -209,7 +209,7 @@ def normalize_image_directory(
     recorded_root = _recorded_root(manifest)
     recorded_source = (
         _recorded_source_mapping(manifest, source_path, recorded_root)
-        if manifest is not None and manifest.get("schema") == "perception_inspect_v1"
+        if manifest is not None and manifest.get("schema") == "perception_inspect"
         else None
     )
     if (

@@ -214,7 +214,7 @@ def staging_host(
         return None, f"No host {host_id!r}. {known}"
     try:
         configuration = json.loads(path.read_text(encoding="utf-8"))
-        if (not isinstance(configuration, dict) or configuration.get("schema") != "automa_host_configuration_v1"
+        if (not isinstance(configuration, dict) or configuration.get("schema") != "automa_host_configuration"
                 or configuration.get("host_id") != host_id
                 or configuration.get("provider") not in HOST_PROVIDERS
                 or not isinstance(configuration.get("connection"), dict)):
@@ -236,7 +236,7 @@ def write_host_configuration(runtime_root: Path, configuration: dict[str, Any]) 
     path = Path(runtime_root) / host_id / "host-configuration.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as stream:
-        json.dump({**configuration, "schema": "automa_host_configuration_v1"}, stream, indent=2, sort_keys=True)
+        json.dump({**configuration, "schema": "automa_host_configuration"}, stream, indent=2, sort_keys=True)
         stream.write("\n")
     return path
 
@@ -483,7 +483,7 @@ def step_update_error(
         return 2, message
     return 2, json.dumps(
         {
-            "schema": "host_step_update_error_v0",
+            "schema": "host_step_update_error",
             "host_id": host_id,
             "step": step,
             "error": error,
@@ -547,7 +547,7 @@ def stage_host_step(
     if not dry_run:
         write_step_activation(path, staged)
     payload = {
-        "schema": "host_step_update_v0",
+        "schema": "host_step_update",
         "host_id": host_id,
         "step": step,
         "preset": staged.metadata.get("preset"),

@@ -549,7 +549,7 @@ def build_parser() -> argparse.ArgumentParser:
     perception_stream.add_argument(
         "--json",
         action="store_true",
-        help="Print one host_perception_live_v0 JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
+        help="Print one host_perception_live JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
     )
     perception_stream.set_defaults(handler=_handle_hosts_stream_perception)
 
@@ -589,7 +589,7 @@ def build_parser() -> argparse.ArgumentParser:
     memory_stream.add_argument(
         "--json",
         action="store_true",
-        help="Print one host_memory_live_v1 JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
+        help="Print one host_memory_live JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
     )
     memory_stream.set_defaults(handler=_handle_hosts_stream_memory)
 
@@ -633,7 +633,7 @@ def build_parser() -> argparse.ArgumentParser:
         step_stream.add_argument(
             "--json",
             action="store_true",
-            help=f"Print one host_{step_name}_stream_v1 JSON object per refresh.",
+            help=f"Print one host_{step_name}_stream JSON object per refresh.",
         )
         step_stream.set_defaults(handler=_handle_hosts_stream_step, step=step_name)
 

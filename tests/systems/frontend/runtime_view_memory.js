@@ -96,7 +96,7 @@ const RECORDING = {
 
 function publication(plugins, publisher) {
   return {
-    schema: "automa_perception_publication_v3",
+    schema: "automa_perception_publication",
     host_id: "piracer",
     frame: { frame_id: "frame_1" },
     perception: { things: [], plugin_runs: [] },

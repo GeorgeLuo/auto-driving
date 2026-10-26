@@ -17,7 +17,7 @@ from .paths import display_path
 from .runtime_view import RuntimeViewServer
 from .step_activations import step_lines
 
-RUN_STATE_SCHEMA = "automa_automation_run_state_v1"
+RUN_STATE_SCHEMA = "automa_automation_run_state"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
 # A run's host owns its wheel commands.
 CONTROL_SOURCE_LABELS = {"runtime_host": "runtime host"}

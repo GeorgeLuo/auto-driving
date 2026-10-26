@@ -84,7 +84,7 @@ def get_host_step_info(
         for name in DECISION_STEPS
     }
     payload: dict[str, Any] = {
-        "schema": f"host_{step}_info_v1",
+        "schema": f"host_{step}_info",
         "host_id": host_id,
         **staged,
         "decision": {
@@ -206,7 +206,7 @@ def stream_host_step(
         report = normalized["decision"]
         activation = report["values"]["activation"]
         return {
-            "schema": f"host_{step}_stream_v1",
+            "schema": f"host_{step}_stream",
             **{key: report.get(key) for key in (
                 "host_id", "run_id", "generation_id", "frame_id", "frame_index", "timestamp_ms",
             )},

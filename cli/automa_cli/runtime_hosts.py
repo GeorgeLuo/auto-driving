@@ -377,22 +377,29 @@ def local_hosts() -> list[dict[str, Any]]:
     """The host each local vehicle addresses now, by ``running_base_url``.
 
     ``local`` names where the host was found: a Chase car's running host
-    record, or a PiCar's staged connection.
+    record, or a PiCar's staged connection. A host whose configuration cannot
+    be read has only its ``error``, so it does not hide the others.
     """
 
     hosts = []
     for host_id in host_ids(RUNTIME_ROOT):
-        vehicle = staged_host(host_id)
-        connection = vehicle["connection"]
-        chase = vehicle["provider"] == "chase-sim"
+        try:
+            configuration = staged_host(host_id)
+        except RuntimeHostError as exc:
+            hosts.append({"host_id": host_id, "url": None, "pid": None, "local": None, "provider": None,
+                          "vehicle_url": None, "error": str(exc)})
+            continue
+        connection = configuration["connection"]
+        chase = configuration["provider"] == "chase-sim"
         record = host_record(host_id) if chase else None
         hosts.append({
             "host_id": host_id,
             "url": (record["base_url"] if record else None) if chase else connection["base_url"],
             "pid": record.get("pid") if record else None,
             "local": "host record" if chase else "staged connection",
-            "provider": vehicle["provider"],
+            "provider": configuration["provider"],
             "vehicle_url": connection.get("ws_url") if chase else connection.get("base_url"),
+            "error": None,
         })
     return hosts
 

@@ -1103,7 +1103,11 @@ def _collect_automation_status(
     statuses = []
     for host_dir in candidates:
         name = host_dir.name
-        host_url = running_base_url(name)
+        try:
+            host_url = running_base_url(name)
+        except RuntimeHostError:
+            # The host's status says why its configuration cannot be read.
+            continue
         bundle = controller_bundle_paths(host_dir)
         bundle_root = Path(bundle["root_dir"])
         automation_dir = Path(bundle["runtime_dir"]) / "automation"

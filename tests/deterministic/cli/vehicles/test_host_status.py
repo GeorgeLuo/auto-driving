@@ -147,6 +147,29 @@ class HostStatusTests(unittest.TestCase):
         ]])
         self.assertEqual((entry["url"], entry["attached"]), (None, False))
 
+    def test_an_unreadable_host_configuration_does_not_hide_the_others(self) -> None:
+        self.host()
+        path = self.runtime_root / "old-host" / "host-configuration.json"
+        path.parent.mkdir()
+        path.write_text(json.dumps({
+            "schema": "automa_host_configuration_v1", "host_id": "old-host", "provider": "chase-sim",
+            "connection": {"ws_url": self.server.url},
+        }), encoding="utf-8")
+
+        every = self.status()
+        targeted = self.status("--id", "old-host")
+        entry = json.loads(self.status("--id", "old-host", "--json").stdout)["hosts"][0]
+
+        self.assertEqual(every.returncode, 0, every.stderr)
+        self.assertEqual([block[0] for block in _host_blocks(every.stdout)], [
+            "Host chase-sim-chaser  not started", "Host old-host  error",
+        ])
+        self.assertEqual(targeted.returncode, 1, targeted.stderr)
+        self.assertEqual(targeted.stdout.splitlines(), [
+            "Host old-host  error", "  Cannot read host 'old-host': invalid host record",
+        ])
+        self.assertEqual((entry["state"], entry["run"]), ("error", None))
+
     def test_a_host_that_never_answers_does_not_hold_up_the_others(self) -> None:
         hung = self.enterContext(hung_url())
         _record(self.runtime_root, "chase-sim-follower", hung, self.server.url)

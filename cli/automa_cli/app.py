@@ -198,12 +198,12 @@ def build_parser() -> argparse.ArgumentParser:
         "viewer",
         help="Open the runtime viewer on a host.",
         description=(
-            "Serve the runtime viewer fed from the host at --url, the URL vehicles status "
+            "Serve the runtime viewer fed from the host at --host-url, the URL vehicles status "
             "shows under the host, until interrupted. Exits 2 when no host has that URL "
             "or it does not answer."
         ),
     )
-    viewer.add_argument("--url", required=True, help="The host's URL from vehicles status.")
+    viewer.add_argument("--host-url", required=True, help="The host's URL from vehicles status.")
     viewer.set_defaults(handler=_handle_vehicles_viewer)
 
     automation = vehicle_commands.add_parser(
@@ -1355,7 +1355,7 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "Open the runtime viewer. It does not require a host:",
                 "- ./cli/automa",
                 "Or on a host from vehicles status:",
-                "- ./cli/automa vehicles viewer --url <host URL>",
+                "- ./cli/automa vehicles viewer --host-url <host URL>",
                 "",
                 "Detailed help:",
                 "- ./cli/automa --help",
@@ -1934,7 +1934,7 @@ def _handle_vehicles_remove(args: argparse.Namespace) -> int:
 
 
 def _handle_vehicles_viewer(args: argparse.Namespace) -> int:
-    result = serve_host_viewer(url=args.url)
+    result = serve_host_viewer(host_url=args.host_url)
     if result.message:
         print(result.message)
     return result.exit_code

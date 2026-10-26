@@ -77,7 +77,7 @@ class LiveCommandsTests(LiveHostTestCase):
         self.assertIn(f"host: {self.host.base_url}", terminal.stdout)
 
     def viewer(self, url: str):
-        return invoke_automa("vehicles", "viewer", "--url", url, runtime_root=self.runtime_root, check=False)
+        return invoke_automa("vehicles", "viewer", "--host-url", url, runtime_root=self.runtime_root, check=False)
 
     def test_the_viewer_serves_the_host_at_its_status_url(self) -> None:
         self.observe()

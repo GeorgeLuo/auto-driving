@@ -15,7 +15,7 @@ class HelpCommandTests(unittest.TestCase):
             ["vehicles", "status"],
             ["vehicles", "discover", "--provider", "chase-sim", "--url", "http://localhost:5051"],
             ["vehicles", "remove", "--url", "http://localhost:5051"],
-            ["vehicles", "viewer", "--url", "http://127.0.0.1:54665"],
+            ["vehicles", "viewer", "--host-url", "http://127.0.0.1:54665"],
             [
                 "vehicles",
                 "update",

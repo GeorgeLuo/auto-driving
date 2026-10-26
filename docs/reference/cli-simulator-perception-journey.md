@@ -90,7 +90,7 @@ vehicle's host, or `not found`. The JSON is `automa_simulator_status_v2`.
 To look through a host, pass the URL on its last status line to `vehicles viewer`:
 
 ```sh
-./cli/automa vehicles viewer --url http://127.0.0.1:54665
+./cli/automa vehicles viewer --host-url http://127.0.0.1:54665
 ```
 
 It serves the runtime viewer fed from that host (Perception, Memory, Action and

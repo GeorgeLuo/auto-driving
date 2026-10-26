@@ -224,18 +224,18 @@ def _poll_stream(
         return CommandResult(130, "")
 
 
-def serve_host_viewer(*, url: str, timeout_s: float = 3.0) -> CommandResult:
-    """Serve the runtime view fed from the local host at ``url`` until interrupted.
+def serve_host_viewer(*, host_url: str, timeout_s: float = 3.0) -> CommandResult:
+    """Serve the runtime view fed from the local host at ``host_url`` until interrupted.
 
-    ``url`` is the host URL ``vehicles status`` shows. The view opens only once
-    the host answers, and refreshes at the cadence of a run's view.
+    ``host_url`` is the host URL ``vehicles status`` shows. The view opens only
+    once the host answers, and refreshes at the cadence of a run's view.
     """
 
     hosts = [host for host in local_hosts() if host["url"]]
-    matched = [host for host in hosts if host["url"].rstrip("/") == url.rstrip("/")]
+    matched = [host for host in hosts if host["url"].rstrip("/") == host_url.rstrip("/")]
     if not matched:
         names = ", ".join(f"{host['vehicle_id']} at {host['url']}" for host in hosts)
-        return CommandResult(2, f"No host at {url}. " + (f"Hosts: {names}." if names else "None is running."))
+        return CommandResult(2, f"No host at {host_url}. " + (f"Hosts: {names}." if names else "None is running."))
     host = matched[0]
     view = _ViewFeed(host["vehicle_id"], base_url=host["url"], timeout_s=timeout_s)
     try:

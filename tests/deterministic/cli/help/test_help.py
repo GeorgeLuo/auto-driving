@@ -49,6 +49,13 @@ class HelpCommandTests(unittest.TestCase):
                 if "--num-decisions" in args:
                     self.assertEqual(parsed.num_decisions, int(args[args.index("--num-decisions") + 1]))
 
+    def test_simulator_lifecycle_parses(self) -> None:
+        parser = build_parser()
+
+        self.assertEqual(parser.parse_args(["simulators", "create"]).simulator_command, "create")
+        deleted = parser.parse_args(["simulators", "delete", "--url", "http://127.0.0.1:5051/"])
+        self.assertEqual((deleted.simulator_command, deleted.url), ("delete", "http://127.0.0.1:5051/"))
+
     def test_removed_flags_are_rejected_before_execution(self) -> None:
         parser = build_parser()
         for args in (

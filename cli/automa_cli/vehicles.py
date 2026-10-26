@@ -251,15 +251,16 @@ def get_chase_simulator_status(
 ) -> dict[str, Any]:
     """Each listed vehicle, and the state of each vehicle host.
 
-    Status looks at the default simulator, then at each vehicle ``vehicles
-    discover`` listed. A simulator runs when its server answers; its frontend
+    Status looks at the default simulator, each simulator ``simulators
+    create`` started, then each vehicle ``vehicles discover`` listed. A
+    simulator runs when its server answers; its frontend
     is connected when a browser has the page open. Hosts come from explicit
     local records; a Chase host is attached when its simulator lists it. Every
     vehicle and every host's ``/host/status`` is read in parallel within the
     one deadline.
     """
 
-    from .runtime_hosts import local_hosts
+    from .runtime_hosts import created_simulators, local_hosts
 
     deadline = time.monotonic() + _require_positive_timeout(timeout_s)
 
@@ -288,6 +289,11 @@ def get_chase_simulator_status(
                 )
         results = [probe.result() for probe in probes]
         states = {host_id: read.result() for host_id, read in reads.items()}
+
+    created = {simulator["url"]: simulator["pid"] for simulator in created_simulators()}
+    for candidate, (vehicle, _) in zip(candidates, results):
+        if candidate.provider == "chase-sim":
+            vehicle["pid"] = created.get(candidate.url)
 
     agents_by_endpoint = {
         candidate.url: agents for candidate, (_, agents) in zip(candidates, results) if agents is not None
@@ -340,6 +346,7 @@ def _simulator_status(
         "frontend": None,
         "game": None,
         "hosts_error": None,
+        "pid": None,
     }
     failures = (OSError, ValueError, MetricsUiWebSocketError)
     with ThreadPoolExecutor(max_workers=1) as pool:
@@ -396,9 +403,17 @@ def default_chase_url() -> str:
 
 
 def listed_vehicles() -> list[Candidate]:
-    """Where vehicles status looks: the default simulator, then each discovered vehicle."""
+    """Where vehicles status looks: the default simulator, each created simulator, then each discovered vehicle."""
 
-    return _dedupe_candidates([Candidate("chase-sim", default_chase_url(), "default"), *_discovered_candidates()])
+    return _dedupe_candidates([
+        Candidate("chase-sim", default_chase_url(), "default"), *_created_candidates(), *_discovered_candidates(),
+    ])
+
+
+def _created_candidates() -> list[Candidate]:
+    from .runtime_hosts import created_simulators
+
+    return [Candidate("chase-sim", simulator["url"], "created") for simulator in created_simulators()]
 
 
 def _discovered_candidates() -> list[Candidate]:
@@ -518,6 +533,8 @@ def _vehicle_block(vehicle: dict[str, Any]) -> str:
     lines += _indented(vehicle.get("error"))
     if vehicle.get("hosts_error"):
         lines.append(f"  cannot list attached hosts: {vehicle['hosts_error']}")
+    if vehicle.get("pid"):
+        lines.append(f"  created by simulators create, pid {vehicle['pid']}")
     return "\n".join(lines)
 
 

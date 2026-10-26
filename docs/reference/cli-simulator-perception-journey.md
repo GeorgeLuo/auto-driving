@@ -49,8 +49,8 @@ explicitly restaged using the recovery that `vehicles automation status` prints.
 ```
 
 `vehicles status` is read-only and is the one status overview. It prints a
-heading for the default simulator, each discovered vehicle and each vehicle
-host, with details indented below it. A vehicle's heading names the provider
+heading for the default simulator, each created simulator, each discovered
+vehicle and each vehicle host, with details indented below it. A vehicle's heading names the provider
 and URL that `vehicles create host --provider <provider> --url <url>` takes for it:
 
 ```text
@@ -117,6 +117,25 @@ harness answers nothing that names it. `vehicles remove` stops listing a
 discovered vehicle; the default simulator is always listed. An HTTP(S) Metrics
 UI origin is resolved to the same origin at `/ws/control`, and an explicit
 non-root WS(S) path is preserved, so either form names the same simulator.
+
+To run another simulator without opening a browser, create one from a Metrics
+UI checkout whose packages are installed:
+
+```sh
+export AUTOMA_METRICS_UI_DIR=~/path/to/metrics-ui
+./cli/automa simulators create
+./cli/automa simulators delete --url http://127.0.0.1:5051/
+```
+
+`simulators create` runs Metrics UI's headless launcher
+(`scripts/play-chase-headless.mjs`) with its default configuration on the first
+free port from 5051, and prints `Created Simulator (chase-sim) at <URL>` once
+the launcher reports it ready. A launcher that exits or is not ready within
+45 s is ended, and the command exits 2 with the end of its log
+(`runtime/vehicles/simulators/<port>/simulator.log`). The simulator outlives
+the command: status lists it, with `created by simulators create, pid <pid>`,
+until its process ends or `simulators delete` ends it. Delete refuses while a
+host was created at that simulator.
 
 `update memory` stages the memory preset and `update perception` the observer.
 Without them, an otherwise fresh cycle runs no memory or perception plugins,
@@ -254,9 +273,10 @@ The commands keep these layers separate:
 | `perception_view` | `available`, `unavailable`, `stale` | Loopback view belongs to the current worker generation |
 | `evaluator_reference` | `available`, `unavailable`, `invalid` | Optional frame-scoped scoring reference |
 
-`vehicles status` lists the default simulator, each discovered vehicle, and created hosts.
+`vehicles status` lists the default simulator, each created simulator, each discovered vehicle, and created hosts.
 The JSON's `vehicles` list holds each one's `{provider, url, state, error}`, a
-simulator adding `frontend`, `game` and `hosts_error`, and each host has its
+simulator adding `frontend`, `game`, `hosts_error` and `pid` (the process of a
+simulator `simulators create` started, else null), and each host has its
 provider and vehicle URL. It exits 1 when no listed vehicle is reachable, or the
 requested host is missing, not running, not answering, or in error.
 

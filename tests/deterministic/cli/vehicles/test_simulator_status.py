@@ -106,7 +106,7 @@ class SimulatorStatusTests(unittest.TestCase):
         self.assertEqual(machine["schema"], "automa_simulator_status_v2")
         self.assertEqual(machine["vehicles"], [{
             "provider": "chase-sim", "url": chase_operator_url(self.server.url), "state": "running",
-            "error": None, "frontend": "connected", "game": "chase", "hosts_error": None,
+            "error": None, "frontend": "connected", "game": "chase", "hosts_error": None, "pid": None,
         }])
         [entry] = machine["hosts"]
         self.assertEqual(

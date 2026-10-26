@@ -34,7 +34,9 @@ from .plugin_catalog import arm_plugins, disarm_plugins, list_plugins, upload_pl
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS, STEP_RUNNERS
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
-from .simulators import DEFAULT_SCENARIO_ID, ensure_simulator, get_simulator_status
+from .simulators import (
+    DEFAULT_SCENARIO_ID, create_simulator, delete_simulator, ensure_simulator, get_simulator_status,
+)
 from .viability import (
     run_memory_viability_measurement,
     run_perception_viability_measurement,
@@ -1166,7 +1168,7 @@ def build_parser() -> argparse.ArgumentParser:
         )
         step_parser.set_defaults(handler=_handle_vehicles_update_step, step=step_name)
 
-    simulators = subcommands.add_parser("simulators", help="Prepare and inspect simulator environments.")
+    simulators = subcommands.add_parser("simulators", help="Create, prepare and inspect simulators.")
     simulators.set_defaults(handler=_handle_simulators_help)
     simulator_commands = simulators.add_subparsers(dest="simulator_command")
 
@@ -1219,6 +1221,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the full machine-readable simulator ensure payload.",
     )
     simulators_ensure.set_defaults(handler=_handle_simulators_ensure)
+
+    simulators_create = simulator_commands.add_parser(
+        "create",
+        help="Start a headless Chase simulator that vehicles status lists.",
+        description=(
+            "Start a headless Chase simulator with Metrics UI's default headless configuration, "
+            "from the Metrics UI checkout at AUTOMA_METRICS_UI_DIR, on the first free port from 5051. "
+            "It runs until simulators delete. Exits 2 when it is not ready within 45 s."
+        ),
+    )
+    simulators_create.set_defaults(handler=_handle_simulators_create)
+
+    simulators_delete = simulator_commands.add_parser(
+        "delete",
+        help="End a simulator that simulators create started.",
+        description=(
+            "End the simulator simulators create started at --url. Exits 2 when no created "
+            "simulator has that URL or a host was created at it."
+        ),
+    )
+    simulators_delete.add_argument("--url", required=True, help="The simulator's URL from simulators create.")
+    simulators_delete.set_defaults(handler=_handle_simulators_delete)
     return parser
 
 
@@ -1350,7 +1374,7 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "",
                 "- help       Show this command summary.",
                 "- vehicles   Discover vehicles, stage bundles, and inspect each runtime layer.",
-                "- simulators Explicitly prepare or inspect simulator environments.",
+                "- simulators Create headless simulators, or prepare and inspect SimEval environments.",
                 "",
                 "Open the runtime viewer. It does not require a host:",
                 "- ./cli/automa",
@@ -1376,6 +1400,8 @@ def _handle_simulators_help(args: argparse.Namespace) -> int:
             [
                 "automa simulators commands",
                 "",
+                "- create   start a headless Chase simulator that vehicles status lists",
+                "- delete   end a simulator that create started",
                 "- status   show simulator deployment availability",
                 "- ensure   explicitly launch/configure a known Chase environment",
                 "- help     show this summary",
@@ -2054,6 +2080,18 @@ def _handle_simulators_status(args: argparse.Namespace) -> int:
     )
     if result.message:
         print(result.message)
+    return result.exit_code
+
+
+def _handle_simulators_create(args: argparse.Namespace) -> int:
+    result = create_simulator()
+    print(result.message)
+    return result.exit_code
+
+
+def _handle_simulators_delete(args: argparse.Namespace) -> int:
+    result = delete_simulator(url=args.url)
+    print(result.message)
     return result.exit_code
 
 

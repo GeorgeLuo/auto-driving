@@ -120,7 +120,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 
 | Command | Reads or changes |
 |---|---|
-| `vehicles status` | Shows the default Chase simulator and each vehicle `vehicles discover` listed (a simulator: running, its frontend and game; a PiCar: whether it answers), and each created host's state (session, mode, decision and error counts, last frame), whether it is attached to its simulator or only known locally, and its error, without changing anything. |
+| `vehicles status` | Shows the default Chase simulator, each simulator `simulators create` started, and each vehicle `vehicles discover` listed (a simulator: running, its frontend and game; a PiCar: whether it answers), and each created host's state (session, mode, decision and error counts, last frame), whether it is attached to its simulator or only known locally, and its error, without changing anything. |
 | `vehicles discover` | Lists the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url` in `vehicles status` once it can take a host; `--force` lists it regardless. The default simulator (`CHASE_UI_WS_URL`, else `http://localhost:5050`) is always listed. |
 | `vehicles remove` | Stops listing the discovered vehicle at `--url`. The default simulator cannot be removed. |
 | `vehicles viewer` | Serves the runtime viewer (Perception, Memory, Action and Plugins) fed from the host at `--host-url`, the URL `vehicles status` shows under it, and opens it in the browser until interrupted. Exits 2 when no host has that URL or it does not answer. |
@@ -145,6 +145,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles delete host` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. |
 | `vehicles update host` | Packages the staged steps as a versioned release for the vehicle's host: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
+| `simulators create` | Starts a headless Chase simulator from the Metrics UI checkout at `AUTOMA_METRICS_UI_DIR`, with its launcher's default configuration, on the first free port from 5051, and prints its URL. It runs until `simulators delete --url` ends it, which refuses while a host was created at it. |
 | `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
 
 With `--plugin`, each `update` step keeps the staged config of every plugin that stays selected. When a restage changes a plugin's spec or config, the command names those plugins and prints the `--restart` command that applies them, since a running host only adopts a changed plugin list live.

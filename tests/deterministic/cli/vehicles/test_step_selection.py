@@ -44,7 +44,7 @@ class StepSelectionTests(unittest.TestCase):
                 yield root
 
     def _update(self, step: str, *flags: str) -> dict:
-        code, stdout, stderr = _invoke("host", "stage", step, "--id", VEHICLE, *flags, "--json")
+        code, stdout, stderr = _invoke("hosts", "stage", step, "--id", VEHICLE, *flags, "--json")
         self.assertEqual(code, 0, stdout + stderr)
         return json.loads(stdout)
 
@@ -137,7 +137,7 @@ class StepSelectionTests(unittest.TestCase):
         with self._runtime() as root:
             for step in SELECTABLE_STEPS:
                 with self.subTest(step=step):
-                    update = ("host", "stage", step, "--id", VEHICLE)
+                    update = ("hosts", "stage", step, "--id", VEHICLE)
                     preset = DEFAULT_STEP_PRESETS[step]
                     plugin = STEP_PRESETS[step][preset]["plugins"][0]
                     code, _, stderr = _invoke(*update, "--preset", preset, "--plugin", plugin)
@@ -190,7 +190,7 @@ class StepSelectionTests(unittest.TestCase):
         default proposal, while perception and memory replayed empty."""
 
         with image_source(1) as root:
-            code, stdout, stderr = _invoke("host", "proposal", "inspect", str(root), "--json")
+            code, stdout, stderr = _invoke("hosts", "proposal", "inspect", str(root), "--json")
             self.assertEqual(code, 0, stdout + stderr)
             original = json.loads(stdout)
             for step in SELECTABLE_STEPS:
@@ -203,7 +203,7 @@ class StepSelectionTests(unittest.TestCase):
                             frame["steps"][step]["plugins"] = []
                             frame["steps"][step]["metadata"]["preset"] = "custom"
                     write_manifest(root, recorded)
-                    inspect = ("host", step, "inspect", str(root), "--json")
+                    inspect = ("hosts", step, "inspect", str(root), "--json")
                     code, stdout, stderr = _invoke(*inspect)
                     self.assertEqual(code, 0, stdout + stderr)
                     if clearable:

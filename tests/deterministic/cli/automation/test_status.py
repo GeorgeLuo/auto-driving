@@ -117,9 +117,9 @@ class AutomationStatusTests(unittest.TestCase):
     def test_empty_runtime_has_matching_human_and_json_outcome(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            human = invoke_automa("host", "status", runtime_root=runtime_root)
+            human = invoke_automa("hosts", "status", runtime_root=runtime_root)
             machine = invoke_automa(
-                "host",
+                "hosts",
                 "status",
                 "--json",
                 runtime_root=runtime_root,
@@ -139,7 +139,7 @@ class AutomationStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             human = invoke_automa(
-                "host",
+                "hosts",
                 "status",
                 "--id",
                 "missing-car",
@@ -147,7 +147,7 @@ class AutomationStatusTests(unittest.TestCase):
                 check=False,
             )
             machine = invoke_automa(
-                "host",
+                "hosts",
                 "status",
                 "--id",
                 "missing-car",
@@ -175,14 +175,14 @@ class AutomationStatusTests(unittest.TestCase):
             write_runtime_fixture(runtime_root, HOST_ID, pid=os.getpid())
 
             human = invoke_automa(
-                "host",
+                "hosts",
                 "status",
                 "--id",
                 HOST_ID,
                 runtime_root=runtime_root,
             )
             machine = invoke_automa(
-                "host",
+                "hosts",
                 "status",
                 "--id",
                 HOST_ID,
@@ -227,14 +227,14 @@ class AutomationStatusTests(unittest.TestCase):
             write_runtime_fixture(runtime_root, HOST_ID, pid=DEAD_PID)
 
             human = invoke_automa(
-                "host",
+                "hosts",
                 "status",
                 "--id",
                 HOST_ID,
                 runtime_root=runtime_root,
             )
             machine = invoke_automa(
-                "host",
+                "hosts",
                 "status",
                 "--id",
                 HOST_ID,
@@ -268,14 +268,14 @@ class AutomationStatusTests(unittest.TestCase):
             )
 
             human = invoke_automa(
-                "host",
+                "hosts",
                 "status",
                 "--id",
                 HOST_ID,
                 runtime_root=runtime_root,
             )
             machine = invoke_automa(
-                "host",
+                "hosts",
                 "status",
                 "--id",
                 HOST_ID,
@@ -305,14 +305,14 @@ class AutomationStatusTests(unittest.TestCase):
             write_runtime_fixture(runtime_root, HOST_ID, pid=DEAD_PID)
 
             stop = invoke_automa(
-                "host",
+                "hosts",
                 "stop",
                 "--id",
                 HOST_ID,
                 runtime_root=runtime_root,
             )
             status = invoke_automa(
-                "host",
+                "hosts",
                 "status",
                 "--id",
                 HOST_ID,

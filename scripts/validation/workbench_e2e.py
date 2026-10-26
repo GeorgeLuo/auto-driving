@@ -4,13 +4,13 @@
 Serves the workbench on the bright high-rate capture with packaged perception
 plugins that extract signals, and runs it to the end. Every frame is then
 shown by seeking, as the page does, and compared with
-``automa host perception inspect`` over the same directory and plugins: the
+``automa hosts perception inspect`` over the same directory and plugins: the
 workbench must show the frame, status, and per-plugin signal and thing counts
 the CLI reports. Memory and decision state must be present for every frame.
 Both are given the ``multi_obstruction`` perception preset. A second pass
 changes the plugin selection through the API while paused, running, seeking,
 and looping. A third selects the plugins of memory presets and compares them
-with the activation ``automa host stage memory --preset --dry-run`` reports.
+with the activation ``automa hosts stage memory --preset --dry-run`` reports.
 
     scripts/validation/workbench_e2e.py
 """
@@ -34,7 +34,7 @@ RUN_KEYS = ("plugin_id", "status", "error", "signal_count", "thing_count")
 
 
 def automa(*args: str) -> list[str]:
-    return [sys.executable, str(ROOT / "cli/automa"), "host", *args]
+    return [sys.executable, str(ROOT / "cli/automa"), "hosts", *args]
 
 
 def inspect_report() -> dict:

@@ -30,15 +30,15 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     original = json.dumps({"schema": f"automa_{step}_activation_v0"})
                     path.write_text(original, encoding="utf-8")
                     env = {"CHASE_UI_WS_URL": ws_url}
-                    command = f"./cli/automa host stage {step} --id {HOST_ID}"
+                    command = f"./cli/automa hosts stage {step} --id {HOST_ID}"
                     human = invoke_automa(
-                        "host", "status", "--id", HOST_ID,
+                        "hosts", "status", "--id", HOST_ID,
                         runtime_root=runtime_root, extra_env=env,
                     )
                     self.assertIn(f"Invalid {step} activation:", human.stdout)
                     self.assertIn(f"next: {command}", human.stdout)
                     automation = json.loads(invoke_automa(
-                        "host", "status", "--id", HOST_ID, "--json",
+                        "hosts", "status", "--id", HOST_ID, "--json",
                         runtime_root=runtime_root, extra_env=env,
                     ).stdout)
                     self.assertEqual(automation["outcome"]["status"], "degraded")
@@ -46,7 +46,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     self.assertEqual(automation["hosts"][0]["process"]["recovery"], command)
                     for verb in ("run", "restart"):
                         result = invoke_automa(
-                            "host", verb, "--id", HOST_ID,
+                            "hosts", verb, "--id", HOST_ID,
                             "--observe-only", "--num-decisions", "0", "--open-view",
                             runtime_root=runtime_root, extra_env=env, check=False,
                         )
@@ -69,23 +69,23 @@ class StagedActivationRecoveryTests(unittest.TestCase):
             path.write_text(original, encoding="utf-8")
             env = {"CHASE_UI_WS_URL": ws_url}
             invoke_automa(
-                "host", "stage", "perception", "--id", HOST_ID,
+                "hosts", "stage", "perception", "--id", HOST_ID,
                 "--preset", "lightweight_observer", "--json",
                 runtime_root=runtime_root, extra_env=env,
             )
             self.assertEqual(path.read_text(encoding="utf-8"), original)
             automation = json.loads(invoke_automa(
-                "host", "status", "--id", HOST_ID, "--json",
+                "hosts", "status", "--id", HOST_ID, "--json",
                 runtime_root=runtime_root, extra_env=env,
             ).stdout)
             self.assertEqual(automation["outcome"]["status"], "degraded")
             self.assertEqual(automation["hosts"][0]["activation_problems"][0]["step"], "memory")
             invoke_automa(
-                "host", "stage", "memory", "--id", HOST_ID,
+                "hosts", "stage", "memory", "--id", HOST_ID,
                 "--preset", "recency_ledger", runtime_root=runtime_root, extra_env=env,
             )
             restaged = json.loads(invoke_automa(
-                "host", "status", "--id", HOST_ID, "--json",
+                "hosts", "status", "--id", HOST_ID, "--json",
                 runtime_root=runtime_root, extra_env=env,
             ).stdout)["hosts"][0]
             self.assertTrue(restaged["deployed"])
@@ -101,14 +101,14 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     path.parent.mkdir(parents=True)
                     path.write_text(json.dumps({"schema": f"automa_{step}_activation_v0"}), encoding="utf-8")
                     env = {"CHASE_UI_WS_URL": ws_url}
-                    command = f"./cli/automa host stage {step} --id {HOST_ID}"
+                    command = f"./cli/automa hosts stage {step} --id {HOST_ID}"
                     # Each step's info reads its own activation; a decision step's stream reads all three.
                     surfaces = [("info", step)]
                     if step in DECISION_STEPS:
                         surfaces.append(("stream", step, "--once"))
                     for surface in surfaces:
                         result = invoke_automa(
-                            "host", *surface, "--id", HOST_ID,
+                            "hosts", *surface, "--id", HOST_ID,
                             runtime_root=runtime_root, extra_env=env, check=False,
                         )
                         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
@@ -118,7 +118,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     if step not in DECISION_STEPS:
                         continue
                     machine = invoke_automa(
-                        "host", "stream", step, "--once", "--id", HOST_ID, "--json",
+                        "hosts", "stream", step, "--once", "--id", HOST_ID, "--json",
                         runtime_root=runtime_root, extra_env=env, check=False,
                     )
                     payload = json.loads(machine.stdout)
@@ -138,13 +138,13 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                 original = json.dumps({"schema": f"automa_{step}_activation_v0"})
                 path.write_text(original, encoding="utf-8")
                 result = invoke_automa(
-                    "host", "update", "--id", host_id,
+                    "hosts", "update", "--id", host_id,
                     runtime_root=runtime_root, check=False,
                 )
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
                 self.assertEqual(result.stderr, "")
                 self.assertIn(f"Invalid {step} activation:", result.stdout)
-                self.assertIn(f"./cli/automa host stage {step} --id {host_id}", result.stdout)
+                self.assertIn(f"./cli/automa hosts stage {step} --id {host_id}", result.stdout)
                 self.assertEqual(path.read_text(encoding="utf-8"), original)
                 self.assertEqual(list(bundle.iterdir()), [bundle / "runtime"])
                 self.assertEqual(list((bundle / "runtime").iterdir()), [path.parent])

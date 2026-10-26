@@ -35,7 +35,7 @@ def stage_runtime(runtime_root: Path) -> None:
     """Stage the steps that have no built-in.
 
     The bundle is not an extracted release, so plan names the source tree that
-    `host info plan` loads.
+    `hosts info plan` loads.
     """
     bundle = controller_bundle_paths(runtime_root / HOST_ID)
     _write_activations(bundle)

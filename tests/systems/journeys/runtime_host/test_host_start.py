@@ -36,7 +36,7 @@ def _staged_vehicle() -> Iterator[list[subprocess.Popen]]:
         root = Path(tmp) / "vehicles"
         env = {"CHASE_UI_WS_URL": ws_url}
         write_host_fixture(root, "chase-sim-chaser", url=ws_url)
-        invoke_automa("host", "stage", "perception", "--id", HOST_ID, runtime_root=root, extra_env=env)
+        invoke_automa("hosts", "stage", "perception", "--id", HOST_ID, runtime_root=root, extra_env=env)
         try:
             with (
                 mock.patch.dict(os.environ, {"AUTOMA_RUNTIME_ROOT": str(root), **env}),

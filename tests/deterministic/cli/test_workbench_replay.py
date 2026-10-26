@@ -10,7 +10,7 @@ class WorkbenchTests(unittest.TestCase):
     def test_cli_replay_human_output_names_recovery_and_cleanup(self) -> None:
         with image_source(1) as root:
             result = invoke_automa(
-                "host", "workbench",
+                "hosts", "workbench",
                 "replay",
                 str(root),
                 "--cadence-ms",
@@ -37,7 +37,7 @@ class WorkbenchTests(unittest.TestCase):
                     for step, _, _ in cases}
 
         with image_source(1) as root:
-            command = ("host", "workbench", "replay", str(root), "--cadence-ms", "0")
+            command = ("hosts", "workbench", "replay", str(root), "--cadence-ms", "0")
             implicit = selections(invoke_automa(*command).stdout)
             for step, preset, plugins in cases:
                 with self.subTest(step=step):
@@ -67,7 +67,7 @@ class WorkbenchTests(unittest.TestCase):
                 (("--memory-plugin", "missing"), "unknown memory plugin(s) missing"),
             ):
                 result = invoke_automa(
-                    "host", "workbench", "replay", str(root), *args, check=False
+                    "hosts", "workbench", "replay", str(root), *args, check=False
                 )
                 self.assertEqual(result.returncode, 2, args)
                 self.assertIn(message, result.stdout + result.stderr, args)

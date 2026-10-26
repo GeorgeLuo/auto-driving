@@ -19,7 +19,7 @@ class HostLifecycleTests(unittest.TestCase):
         self.enterContext(patch.object(runtime_hosts, "RUNTIME_ROOT", self.root))
 
     def test_create_picar_dry_run_has_core_release_then_restart_without_writes(self):
-        result = invoke_automa("host", "create", "--id", "car", "--provider", "picar",
+        result = invoke_automa("hosts", "create", "--id", "car", "--provider", "picar",
                                "--url", "http://example.local:8887", "--dry-run", "--drive-args=--js", "--json",
                                runtime_root=self.root, check=False)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -72,7 +72,7 @@ class HostLifecycleTests(unittest.TestCase):
     def test_unknown_host_commands_do_not_write(self):
         write_host_fixture(self.root, "test")
         for words in (("update",), ("stage", "perception"), ("run",)):
-            result = invoke_automa("host", *words, "--id", "unknown", runtime_root=self.root, check=False)
+            result = invoke_automa("hosts", *words, "--id", "unknown", runtime_root=self.root, check=False)
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
             self.assertIn("No host 'unknown'. Hosts: test.", result.stdout)
             self.assertFalse((self.root / "unknown").exists())

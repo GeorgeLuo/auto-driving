@@ -49,7 +49,7 @@ class PluginArmingFlows(unittest.TestCase):
                 selection.write_text(json.dumps({step: [f"prototype-{step}"] for step in SELECTABLE_STEPS}))
                 # Through the executable once; the worker journey below covers
                 # upload, status and disarm the same way.
-                receipt = json.loads(run_automa("host", "plugins", "arm", "--url", base,
+                receipt = json.loads(run_automa("hosts", "plugins", "arm", "--url", base,
                                                 "--selection", str(selection), "--json").stdout)
                 self.assertEqual(receipt["status"], "requested")
                 self.assertEqual(receipt["outcome"]["status"], "requested")
@@ -66,7 +66,7 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(proposal(result, "prototype-proposal").metadata["memory"],
                                  {"revision": 1, "perception": 1, "count": 1})
                 self.assertEqual(host.session_status()["status"], "pre_start")
-                human = invoke_automa("host", "plugins", "status", "--url", base).stdout
+                human = invoke_automa("hosts", "plugins", "status", "--url", base).stdout
                 self.assertIn("Arming: applied", human)
                 self.assertIn("Applied proposal: prototype-proposal", human)
 
@@ -78,7 +78,7 @@ class PluginArmingFlows(unittest.TestCase):
             write_host_fixture(runtime, "chase-sim-chaser", url=ws_url)
 
             def cli(*args, check=True):
-                return run_automa("host", *args, runtime_root=runtime, extra_env=env, check=check)
+                return run_automa("hosts", *args, runtime_root=runtime, extra_env=env, check=check)
 
             cli("stage", "perception", "--id", "chase-sim-chaser", "--preset", "lightweight_observer")
             try:

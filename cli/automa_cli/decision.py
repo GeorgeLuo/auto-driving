@@ -226,7 +226,7 @@ def _require_identity_steps(identity: object, *, error: str) -> dict[str, Any]:
         raise DecisionSurfaceError(
             error,
             "The decision identity has no proposal step. "
-            "Run: ./cli/automa host stage proposal --id <host>",
+            "Run: ./cli/automa hosts stage proposal --id <host>",
         )
     try:
         expected = activation_generation_id(activations_from_payloads(steps), prefix="decision")

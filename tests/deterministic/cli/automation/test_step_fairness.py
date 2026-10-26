@@ -43,7 +43,7 @@ class StepFairnessTests(unittest.TestCase):
                 "cli.automa_cli.automation.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
             ):
                 for step in staged:
-                    code, stdout = _invoke("host", "stage", step, "--id", VEHICLE, "--json")
+                    code, stdout = _invoke("hosts", "stage", step, "--id", VEHICLE, "--json")
                     self.assertEqual(code, 0, stdout)
                 (root / VEHICLE / "bundle").mkdir(parents=True, exist_ok=True)
                 if released and not staged:
@@ -85,7 +85,7 @@ class StepFairnessTests(unittest.TestCase):
         for step in STEPS:
             with self.subTest(step=step), self._runtime(step):
                 status = self._status()
-                code, human = _invoke("host", "status", "--id", VEHICLE)
+                code, human = _invoke("hosts", "status", "--id", VEHICLE)
             self.assertEqual(code, 0, human)
             steps = status["steps"]
             self.assertEqual({name: item["source"] for name, item in steps.items()}, {**UNSTAGED, step: "staged"})
@@ -106,7 +106,7 @@ class StepFairnessTests(unittest.TestCase):
             write_json(automation / "process.json", {"pid": os.getpid()})
             write_json(automation / "state.json", {"pid": os.getpid(), "status": "running", "steps": {**applied, "cycle_count": 3}})
             status = self._status()
-            code, human = _invoke("host", "status", "--id", VEHICLE)
+            code, human = _invoke("hosts", "status", "--id", VEHICLE)
 
         self.assertEqual(code, 0, human)
         self.assertEqual(list(status["steps"]), list(STEPS))

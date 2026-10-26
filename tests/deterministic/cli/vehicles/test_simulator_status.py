@@ -100,7 +100,7 @@ class SimulatorStatusTests(unittest.TestCase):
 
     def test_host_status_reports_host_identity_and_vehicle_endpoint(self) -> None:
         write_host_fixture(self.runtime_root, "controller-a", url=self.server.url)
-        result = invoke_automa("host", "status", "--id", "controller-a", "--json",
+        result = invoke_automa("hosts", "status", "--id", "controller-a", "--json",
                                runtime_root=self.runtime_root, extra_env=self.env)
         payload = json.loads(result.stdout)
         self.assertEqual(payload["schema"], "automa_host_status_v1")
@@ -110,13 +110,13 @@ class SimulatorStatusTests(unittest.TestCase):
         self.assertEqual(host["provider"], "chase-sim")
         self.assertEqual(host["vehicle_url"], self.server.url)
         self.assertIsNone(host["url"])
-        human = invoke_automa("host", "status", "--id", "controller-a",
+        human = invoke_automa("hosts", "status", "--id", "controller-a",
                               runtime_root=self.runtime_root, extra_env=self.env)
         self.assertIn(f"vehicle: chase-sim at {self.server.url}", human.stdout)
         self.assertIn("host URL: not running", human.stdout)
 
     def test_unknown_host_is_reported_separately(self) -> None:
-        result = invoke_automa("host", "status", "--id", "missing", "--json",
+        result = invoke_automa("hosts", "status", "--id", "missing", "--json",
                                runtime_root=self.runtime_root, extra_env=self.env, check=False)
         self.assertEqual(result.returncode, 2)
         self.assertEqual(json.loads(result.stdout)["outcome"]["status"], "not_found")
@@ -136,7 +136,7 @@ class SimulatorStatusTests(unittest.TestCase):
         [entry] = status["hosts"]
         self.assertEqual((entry["host_id"], entry["attached"], entry["state"]),
                          ("chase-sim-chaser", True, "pre_start"))
-        result = invoke_automa("host", "status", "--id", "chase-sim-chaser", "--json",
+        result = invoke_automa("hosts", "status", "--id", "chase-sim-chaser", "--json",
                                runtime_root=self.runtime_root, extra_env=self.env)
         [reported] = json.loads(result.stdout)["hosts"]
         self.assertTrue(reported["attached"])
@@ -202,7 +202,7 @@ class EnvironmentStatusTests(unittest.TestCase):
             root = Path(tmp)
             write_host_fixture(root, "free-name", url=simulator.url)
             env = {"CHASE_UI_WS_URL": simulator.url}
-            result = invoke_automa("host", "status", "--json", runtime_root=root, extra_env=env)
+            result = invoke_automa("hosts", "status", "--json", runtime_root=root, extra_env=env)
             [host] = json.loads(result.stdout)["hosts"]
             self.assertIsNone(host["url"])
             self.assertEqual(host["provider"], "chase-sim")

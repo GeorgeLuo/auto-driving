@@ -132,7 +132,7 @@ def _format_published_view(value: Any) -> str:
     reason = view.get("reason") or "no view is running"
     return (
         f"Perception view: unavailable ({reason}); "
-        "`./cli/automa host stream perception --id <host_id>` starts one"
+        "`./cli/automa hosts stream perception --id <host_id>` starts one"
     )
 
 

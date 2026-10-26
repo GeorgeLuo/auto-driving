@@ -127,7 +127,7 @@ def bundle_activation_problems(
                 "step": step,
                 "activation": display_path(bundle_activation_path(bundle, step)),
                 "reason": str(exc),
-                "command": f"./cli/automa host stage {step} --id {shlex.quote(host_id)}",
+                "command": f"./cli/automa hosts stage {step} --id {shlex.quote(host_id)}",
             })
     return problems
 
@@ -147,11 +147,11 @@ def format_activation_problems(problems: list[dict[str, str]]) -> str:
 
 
 def apply_staged(host_id: str, provider: Any, step: str, *, changed: list[str] | None = None) -> dict[str, Any]:
-    """How a vehicle's running autonomy picks up ``step`` as ``host stage`` staged it.
+    """How a vehicle's running autonomy picks up ``step`` as ``hosts stage`` staged it.
 
     Every host selects a restaged step's plugins on its next frame. A Chase
     host reads the local runtime directory, so nothing needs to run
-    (``selection_command`` is ``None``); a PiCar reads the copy ``host update``
+    (``selection_command`` is ``None``); a PiCar reads the copy ``hosts update``
     installs onboard. Changed plugin specs or configs take
     effect after ``restart_command``, the same for every vehicle: package a
     release and restart the host onto it. ``changed`` names the plugins whose
@@ -159,7 +159,7 @@ def apply_staged(host_id: str, provider: Any, step: str, *, changed: list[str] |
     """
 
     live = not changed
-    install = f"./cli/automa host update --id {host_id}"
+    install = f"./cli/automa hosts update --id {host_id}"
     selection = install if provider == "picar" else None
     restart = f"{install} --restart"
     return {
@@ -189,7 +189,7 @@ def absent_step_error(step: str, host_id: str) -> str:
     restart = apply_staged(host_id, None, step)["restart_command"]
     return (
         f"{host_id} runs no {step} step. Stage it with "
-        f"./cli/automa host stage {step} --id {host_id}, then restart: {restart}"
+        f"./cli/automa hosts stage {step} --id {host_id}, then restart: {restart}"
     )
 
 

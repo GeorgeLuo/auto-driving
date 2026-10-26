@@ -63,7 +63,7 @@ def write_runtime_fixture(
             "pid": pid,
             "log_to_disk": False,
             "log_path": None,
-            "command": [str(AUTOMA_PATH), "host", "run", "--id", host_id],
+            "command": [str(AUTOMA_PATH), "hosts", "run", "--id", host_id],
         },
     )
     write_json(

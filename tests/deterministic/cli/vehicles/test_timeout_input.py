@@ -10,7 +10,7 @@ from tests.shared.cli.invoke import invoke_automa
 
 
 INVALID_TIMEOUTS = ("0", "-1", "nan", "-nan", "inf", "+inf", "-inf")
-# Every `host stage <step>` command dispatches to the shared update.
+# Every `hosts stage <step>` command dispatches to the shared update.
 UPDATE_STEP = "cli.automa_cli.app.stage_host_step"
 TIMEOUT_MESSAGE = "--timeout-s must be a finite number greater than zero"
 
@@ -72,7 +72,7 @@ class TimeoutInputTests(unittest.TestCase):
                     patch("cli.automa_cli.app.record_vehicle_automation_terminal_result") as record_result,
                 ):
                     code, stdout, stderr = _invoke(
-                        "host",
+                        "hosts",
                         "run",
                         "--id",
                         "chase-sim-chaser",
@@ -81,7 +81,7 @@ class TimeoutInputTests(unittest.TestCase):
                     )
 
                 self.assertEqual(code, 2)
-                self.assertIn("automa host run", stdout)
+                self.assertIn("automa hosts run", stdout)
                 self.assertIn(TIMEOUT_MESSAGE, stdout)
                 self.assertNotIn("Traceback", stdout)
                 self.assertEqual(stderr, "")
@@ -96,7 +96,7 @@ class TimeoutInputTests(unittest.TestCase):
             for value in INVALID_TIMEOUTS:
                 with self.subTest(step=step, value=value), patch(UPDATE_STEP) as update:
                     code, stdout, stderr = _invoke(
-                        "host", "stage", step, "--id", "chase-sim-chaser",
+                        "hosts", "stage", step, "--id", "chase-sim-chaser",
                         *_timeout_args(value), "--dry-run", "--json",
                     )
 
@@ -106,18 +106,18 @@ class TimeoutInputTests(unittest.TestCase):
                 self.assertEqual(payload["schema"], "automa_cli_error_v1")
                 self.assertEqual(payload["error"], "timeout_invalid")
                 self.assertEqual(payload["exit_code"], 2)
-                self.assertIn(f"automa host stage {step}", payload["message"])
+                self.assertIn(f"automa hosts stage {step}", payload["message"])
                 update.assert_not_called()
 
     def test_invalid_values_use_the_human_output_channel_for_every_step(self) -> None:
         for step in STEPS:
             with self.subTest(step=step), patch(UPDATE_STEP) as update:
                 code, stdout, stderr = _invoke(
-                    "host", "stage", step, "--id", "chase-sim-chaser", "--timeout-s", "0", "--dry-run",
+                    "hosts", "stage", step, "--id", "chase-sim-chaser", "--timeout-s", "0", "--dry-run",
                 )
 
             self.assertEqual(code, 2)
-            self.assertIn(f"automa host stage {step}", stdout)
+            self.assertIn(f"automa hosts stage {step}", stdout)
             self.assertIn(TIMEOUT_MESSAGE, stdout)
             self.assertEqual(stderr, "")
             update.assert_not_called()
@@ -127,7 +127,7 @@ class TimeoutInputTests(unittest.TestCase):
             for args, expected in ((("--timeout-s", "1.25"), 1.25), ((), 5.0)):
                 with self.subTest(step=step, args=args), patch(UPDATE_STEP, return_value=(0, "ok")) as update:
                     code, _, _ = _invoke(
-                        "host", "stage", step, "--id", "chase-sim-chaser", *args, "--dry-run"
+                        "hosts", "stage", step, "--id", "chase-sim-chaser", *args, "--dry-run"
                     )
                 self.assertEqual(code, 0)
                 self.assertEqual(update.call_args.kwargs["timeout_s"], expected)
@@ -149,7 +149,7 @@ class TimeoutInputTests(unittest.TestCase):
             "cli.automa_cli.app.record_vehicle_automation_terminal_result"
         ):
             code, _, _ = _invoke(
-                "host",
+                "hosts",
                 "run",
                 "--id",
                 "chase-sim-chaser",
@@ -176,7 +176,7 @@ class TimeoutInputTests(unittest.TestCase):
             "cli.automa_cli.app.record_vehicle_automation_terminal_result"
         ):
             code, _, _ = _invoke(
-                "host",
+                "hosts",
                 "run",
                 "--id",
                 "chase-sim-chaser",

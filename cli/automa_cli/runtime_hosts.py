@@ -4,7 +4,7 @@ Every vehicle host serves the routes in ``autonomy.runtime.routes``, so the
 CLI addresses a runtime only by ``base_url``. A PiCar's host is its Donkey
 service at the staged connection. A Chase car's host is a local process
 (``implementations.runtime.chase_sim.service``) that runs from the vehicle's
-controller release, as the Pi runs the release ``host update`` installed.
+controller release, as the Pi runs the release ``hosts update`` installed.
 A simulator ``simulators create`` started is a local process too, recorded
 by port so ``vehicles status`` lists it while it runs.
 """
@@ -84,7 +84,7 @@ def staged_host(host_id: str) -> dict[str, Any]:
 # Controller releases -------------------------------------------------------
 
 def update_command(host_id: str) -> str:
-    return f"./cli/automa host update --id {host_id}"
+    return f"./cli/automa hosts update --id {host_id}"
 
 
 def release_manifest(
@@ -208,7 +208,7 @@ def _free_port() -> int:
 def serve_chase_host(host_id: str) -> int:
     """Supervise the Chase host: start it from the latest release, again on restart.
 
-    Runs as the hidden ``host serve`` command. The port stays
+    Runs as the hidden ``hosts serve`` command. The port stays
     the same across restarts so a client's ``base_url`` survives them.
     """
 
@@ -285,7 +285,7 @@ def ensure_chase_host(host_id: str, *, timeout_s: float = HOST_START_TIMEOUT_S) 
         except RuntimeError as exc:
             raise RuntimeHostError(
                 f"The Chase host for {host_id} (pid {record['pid']}) is not answering: {exc}\n"
-                f"Run: ./cli/automa host stop --id {host_id}\n" + host_log_tail(host_id)
+                f"Run: ./cli/automa hosts stop --id {host_id}\n" + host_log_tail(host_id)
             ) from exc
         running = (record.get("release") or {}).get("archive_sha256")
         if running == latest["archive_sha256"]:
@@ -294,7 +294,7 @@ def ensure_chase_host(host_id: str, *, timeout_s: float = HOST_START_TIMEOUT_S) 
             raise RuntimeHostError(
                 f"{host_id} is running release {str(running)[:12]}; the latest is "
                 f"{latest['archive_sha256'][:12]}.\n"
-                f"Stop the run first: ./cli/automa host stop --id {host_id}"
+                f"Stop the run first: ./cli/automa hosts stop --id {host_id}"
             )
         try:
             client.restart(timeout_s=timeout_s)
@@ -308,7 +308,7 @@ def ensure_chase_host(host_id: str, *, timeout_s: float = HOST_START_TIMEOUT_S) 
     (directory / HOST_RECORD).unlink(missing_ok=True)
     with (directory / HOST_LOG).open("a", encoding="utf-8") as log:
         process = subprocess.Popen(
-            [sys.executable, str(AUTOMA_EXECUTABLE), "host", "serve", "--id", host_id],
+            [sys.executable, str(AUTOMA_EXECUTABLE), "hosts", "serve", "--id", host_id],
             cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
             start_new_session=True, env={**os.environ, "PYTHONUNBUFFERED": "1"},
         )
@@ -353,7 +353,7 @@ def stop_chase_host(host_id: str, *, wait_s: float = 3.0) -> bool:
 # Any vehicle ----------------------------------------------------------------
 
 def staged_connection(host_id: str) -> dict[str, Any]:
-    """The connection ``host stage`` staged for the vehicle, without discovery."""
+    """The connection ``hosts stage`` staged for the vehicle, without discovery."""
 
     vehicle = staged_host(host_id)
     connection = vehicle.get("connection")

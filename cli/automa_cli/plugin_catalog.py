@@ -128,7 +128,7 @@ def upload_plugin(*, url: str | None, host_id: str | None, file: Path, step: str
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
     if result.get("ok"):
-        recovery = f"./cli/automa host plugins status {_target_args(url, host_id)} --step {step}"
+        recovery = f"./cli/automa hosts plugins status {_target_args(url, host_id)} --step {step}"
         if arm:
             uploaded = result
             try:
@@ -154,7 +154,7 @@ def arm_plugins(*, url: str | None, host_id: str | None, step: str | None = None
         recovery = _catalog_recovery(url, host_id)
         endpoint = url or catalog_url(host_id)
         result = _request_arm(PluginCatalogClient(endpoint), selections)
-        recovery = f"./cli/automa host plugins status {_target_args(url, host_id)}"
+        recovery = f"./cli/automa hosts plugins status {_target_args(url, host_id)}"
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
     return _result(result, operation="arm", url=endpoint, host_id=host_id, step=step,
@@ -178,7 +178,7 @@ def disarm_plugins(*, url: str | None, host_id: str | None, step: str | None = N
         result = PluginCatalogClient(endpoint)(
             {"operation": "disarm", "selections": selections, "all": all_plugins}, timeout_s=ARM_TIMEOUT_S,
         )
-        recovery = f"./cli/automa host plugins status {_target_args(url, host_id)}"
+        recovery = f"./cli/automa hosts plugins status {_target_args(url, host_id)}"
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
     return _result(result, operation="disarm", url=endpoint, host_id=host_id, step=step,
@@ -211,7 +211,7 @@ def _catalog_recovery(url: str | None, host_id: str | None) -> str | None:
     # The error already says why the vehicle's host cannot be reached.
     if host_id:
         return None
-    return f"Check that the catalog host at {url} is running, then retry ./cli/automa host plugins status {_target_args(url, host_id)}"
+    return f"Check that the catalog host at {url} is running, then retry ./cli/automa hosts plugins status {_target_args(url, host_id)}"
 
 
 def _catalog_version(result: dict[str, Any]) -> str:

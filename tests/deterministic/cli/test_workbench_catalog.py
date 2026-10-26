@@ -399,7 +399,7 @@ class WorkbenchStartingSelectionTests(unittest.TestCase):
     """Each step starts from the activation the CLI resolved for it."""
 
     def test_perception_preset_activation_equals_update_perception_selection(self) -> None:
-        # `host stage perception --preset` stages this same activation.
+        # `hosts stage perception --preset` stages this same activation.
         with image_source(2) as root:
             for preset in PERCEPTION_PRESETS:
                 activation = selection_activation("perception", preset=preset)

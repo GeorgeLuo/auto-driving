@@ -10,8 +10,8 @@ Use `help` to descend through command groups and `--help` for the final command:
 ```sh
 ./cli/automa help
 ./cli/automa vehicles help
-./cli/automa host help
-./cli/automa host run --help
+./cli/automa hosts help
+./cli/automa hosts run --help
 ```
 
 ## Primary Journey
@@ -21,46 +21,46 @@ Run these commands from the repository root with the environment from
 perception and memory presets. For an existing tuned deployment, stage your
 intended selections instead: each update replaces its named step's configs.
 `runtime/` persists across branch changes; incompatible activations must be
-explicitly restaged using the recovery that `host status` prints.
+explicitly restaged using the recovery that `hosts status` prints.
 
 ```sh
 ./cli/automa vehicles status
-./cli/automa host create --id chase-sim-chaser --provider chase-sim --url http://localhost:5050
+./cli/automa hosts create --id chase-sim-chaser --provider chase-sim --url http://localhost:5050
 
-./cli/automa host stage memory \
+./cli/automa hosts stage memory \
   --id chase-sim-chaser \
   --preset recency_ledger
 
-./cli/automa host stage perception \
+./cli/automa hosts stage perception \
   --id chase-sim-chaser \
   --preset lightweight_observer
 
-./cli/automa host run \
+./cli/automa hosts run \
   --id chase-sim-chaser \
   --observe-only \
   --num-decisions 0 \
   --open-view
 
-./cli/automa host status --id chase-sim-chaser
+./cli/automa hosts status --id chase-sim-chaser
 
-./cli/automa host stop --id chase-sim-chaser
+./cli/automa hosts stop --id chase-sim-chaser
 
-./cli/automa host status --id chase-sim-chaser
+./cli/automa hosts status --id chase-sim-chaser
 ```
 
 `vehicles status` is read-only. It lists the default simulator, created
 simulators and discovered vehicles, with each environment's provider, URL and
-reachability. Use the provider and URL with `host create`.
+reachability. Use the provider and URL with `hosts create`.
 
-`host status` lists each created host, its vehicle provider and endpoint, host
+`hosts status` lists each created host, its vehicle provider and endpoint, host
 URL, simulator attachment, deployment, run and view state. `--id` selects one host; `--json` emits
 `automa_host_status_v1` with a `hosts` array and `host_id` for each entry.
 Host names are chosen at creation and do not identify the vehicle environment.
 
-To look through a host, pass the URL on its last status line to `host viewer`:
+To look through a host, pass the URL on its last status line to `hosts viewer`:
 
 ```sh
-./cli/automa host viewer --host-url http://127.0.0.1:54665
+./cli/automa hosts viewer --host-url http://127.0.0.1:54665
 ```
 
 It serves the runtime viewer fed from that host (Perception, Memory, Action and
@@ -109,12 +109,12 @@ host was created at that simulator.
 
 `update memory` stages the memory preset and `update perception` the observer.
 Without them, an otherwise fresh cycle runs no memory or perception plugins,
-and `host run` starts the same way. Each update writes only its own step; absent observation, plan and action activations run
+and `hosts run` starts the same way. Each update writes only its own step; absent observation, plan and action activations run
 their built-in plugins. Neither update command starts a worker, applies
-movement, or requires a live simulator. `host status` reports
-invalid staged steps, and `host run` checks them before it starts.
+movement, or requires a live simulator. `hosts status` reports
+invalid staged steps, and `hosts run` checks them before it starts.
 
-`host run --observe-only` preserves the current scenario, playback
+`hosts run --observe-only` preserves the current scenario, playback
 state, control source, and input. It succeeds only after one camera frame, the
 perception result for that frame, and the loopback view health all agree on the
 same live worker generation. `--open-view` is explicit. A browser-launch
@@ -122,14 +122,14 @@ failure leaves the healthy worker running and prints the URL for manual use.
 
 `--unbounded` starts an unbounded background worker in either mode and overrides
 `--num-decisions`. The launch command returns once the correlated view is ready
-and prints `host stop`, which stops the worker. Without `--unbounded`,
+and prints `hosts stop`, which stops the worker. Without `--unbounded`,
 a movement-enabled run requires a positive `--num-decisions N`.
 Observation-only runs also retain `--num-decisions 0` as an unbounded option.
 Ctrl-C in a terminal stream stops that stream, not the worker. For a passive
 restart, keep `--observe-only` explicit:
 
 ```sh
-./cli/automa host restart --id chase-sim-chaser --observe-only --num-decisions 0 --open-view
+./cli/automa hosts restart --id chase-sim-chaser --observe-only --num-decisions 0 --open-view
 ```
 
 Stopping the worker keeps its local deployment staged and makes its previous
@@ -141,14 +141,14 @@ With a Chase worker and its viewer open, upload a local plugin file separately
 from selecting it:
 
 ```sh
-./cli/automa host plugins upload \
+./cli/automa hosts plugins upload \
   --id chase-sim-chaser \
   --file ./prototype.py \
   --step perception \
   --plugin-id prototype \
   --entrypoint prototype:Prototype
 
-./cli/automa host plugins status --id chase-sim-chaser --step perception
+./cli/automa hosts plugins status --id chase-sim-chaser --step perception
 ```
 
 The command reports success after the source is stored and its revision is
@@ -182,9 +182,9 @@ worker exits. Keeping that host alive between runs is separate work.
 After uploading, request the available revision without restarting the worker:
 
 ```sh
-./cli/automa host plugins arm --id chase-sim-chaser --step perception --plugin prototype
-./cli/automa host plugins status --id chase-sim-chaser --step perception
-./cli/automa host stream perception --id chase-sim-chaser --once
+./cli/automa hosts plugins arm --id chase-sim-chaser --step perception --plugin prototype
+./cli/automa hosts plugins status --id chase-sim-chaser --step perception
+./cli/automa hosts stream perception --id chase-sim-chaser --once
 ```
 
 The host imports and constructs the selection before answering. The receipt
@@ -210,8 +210,8 @@ selection document:
 ```
 
 ```sh
-./cli/automa host plugins arm --id chase-sim-chaser --selection ./selection.json
-./cli/automa host plugins status --id chase-sim-chaser
+./cli/automa hosts plugins arm --id chase-sim-chaser --selection ./selection.json
+./cli/automa hosts plugins status --id chase-sim-chaser
 ```
 
 The host loads every changed step before publishing any of the group. The
@@ -245,7 +245,7 @@ The commands keep these layers separate:
 
 `vehicles status --json` lists vehicle environments in `vehicles`, including
 provider, URL, state and error. Simulator entries also include frontend, game
-and created-process information. `host status --json` reports the associated
+and created-process information. `hosts status --json` reports the associated
 hosts separately, including their host IDs, vehicle URLs and runtime URLs.
 
 An absent or malformed evaluator reference does not block camera perception.
@@ -286,12 +286,12 @@ external change.
 | Wrong game | Preserve it unless you explicitly choose the configuration-changing `simulators ensure --scenario ...` command |
 | Capture identity/image invalid | Repair the exact field named by `capture_identity_invalid` or `capture_image_invalid` |
 | Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it |
-| Deployment absent | Run the printed `host stage perception` command; stage memory separately when you want its ledger |
-| Staged step invalid (including a retired schema) | `host status`, startup, `host info`, and the autonomy update identify its step, activation path, and restage command. Run its `host stage <step>` command with your intended selection, then rerun `host status`. Checking never rewrites configs, and known invalid documents prevent worker startup, restart, and physical deployment |
-| Worker stopped | Run the printed observation-only `host run --open-view` command |
+| Deployment absent | Run the printed `hosts stage perception` command; stage memory separately when you want its ledger |
+| Staged step invalid (including a retired schema) | `hosts status`, startup, `hosts info`, and the autonomy update identify its step, activation path, and restage command. Run its `hosts stage <step>` command with your intended selection, then rerun `hosts status`. Checking never rewrites configs, and known invalid documents prevent worker startup, restart, and physical deployment |
+| Worker stopped | Run the printed observation-only `hosts run --open-view` command |
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 
-`vehicles status` exits 1 when no listed vehicle is reachable. `host status
+`vehicles status` exits 1 when no listed vehicle is reachable. `hosts status
 --id <host>` exits 2 when the host does not exist. Invalid arguments exit 2.
 
 Simulator preparation is deliberately outside passive attachment:

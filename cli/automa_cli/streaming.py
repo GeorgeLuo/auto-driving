@@ -227,7 +227,7 @@ def _poll_stream(
 def serve_host_viewer(*, host_url: str, timeout_s: float = 3.0) -> CommandResult:
     """Serve the runtime view fed from the local host at ``host_url`` until interrupted.
 
-    ``host_url`` is the host URL ``host status`` shows. The view opens only
+    ``host_url`` is the host URL ``hosts status`` shows. The view opens only
     once the host answers, and refreshes at the cadence of a run's view. While
     the host is not live its pages say why.
     """
@@ -262,7 +262,7 @@ def serve_host_viewer(*, host_url: str, timeout_s: float = 3.0) -> CommandResult
 class _ViewFeed:
     """A loopback runtime view a terminal stream feeds from the host's publications.
 
-    As the view of ``host run`` does, its decision page aggregates the
+    As the view of ``hosts run`` does, its decision page aggregates the
     host's latest decision with its matched frame, evidence and candidates, and
     it serves the host's plugin catalog. The perception and memory pages publish
     from the observation even while no matched decision is available.

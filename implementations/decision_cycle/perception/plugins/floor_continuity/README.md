@@ -18,17 +18,17 @@ Run it against an active simulator by enabling it in the staged perception
 selection:
 
 ```sh
-./cli/automa host stage perception --id chase-sim-chaser --plugin frame --plugin floor_continuity
-./cli/automa host perception inspect --id chase-sim-chaser --record
+./cli/automa hosts stage perception --id chase-sim-chaser --plugin frame --plugin floor_continuity
+./cli/automa hosts perception inspect --id chase-sim-chaser --record
 ```
 
 Apply it to one archived image or a whole capture directory locally:
 
 ```sh
-./cli/automa host perception inspect path/to/frame.jpg \
+./cli/automa hosts perception inspect path/to/frame.jpg \
   --plugin frame --plugin floor_continuity --record
 
-./cli/automa host perception inspect path/to/frames \
+./cli/automa hosts perception inspect path/to/frames \
   --plugin frame --plugin floor_continuity --record
 ```
 

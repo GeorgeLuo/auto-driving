@@ -248,7 +248,7 @@ class PerceptionRunTests(unittest.TestCase):
 
         self.assertIn("Invalid perception activation:", str(raised.exception))
         self.assertIn(
-            "Restage with your intended selection: ./cli/automa host stage perception --id chase-sim-test",
+            "Restage with your intended selection: ./cli/automa hosts stage perception --id chase-sim-test",
             str(raised.exception),
         )
 

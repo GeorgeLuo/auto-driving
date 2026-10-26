@@ -485,10 +485,10 @@ def _update_local_autonomy(
     if restarted:
         host_line = "Runtime restarted: yes"
     elif record is None:
-        host_line = "Runtime restarted: no host running; the next host run starts on this release"
+        host_line = "Runtime restarted: no host running; the next run starts on this release"
     else:
         host_line = (
-            "Runtime restarted: no; an idle host moves onto this release at the next host run"
+            "Runtime restarted: no; an idle host moves onto this release at the next run"
         )
     return CommandResult(0, "\n".join([
         f"Host updated: {host_id} (local host)",
@@ -1016,7 +1016,7 @@ def _verify_picar_autonomy_runtime(
             host_id = target.host_id
             raise RuntimeError(
                 f"{status_url} has no live {step} step, but {plugins!r} was deployed. "
-                "The step loader lives in the Donkey manage.py harness, which host create installs; "
+                "The step loader lives in the Donkey manage.py harness, which hosts create installs; "
                 f"{host_id}'s harness does not load steps."
             )
         if list(actual) != list(plugins):

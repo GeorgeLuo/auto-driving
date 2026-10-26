@@ -65,7 +65,7 @@ def plugin_host(root, vehicle="chase", activations=None):
 
 
 def upload(base, file, step, plugin_id, *, arm=False, check=True):
-    command = ["host", "plugins", "upload", "--url", base, "--file", str(file),
+    command = ["hosts", "plugins", "upload", "--url", base, "--file", str(file),
                "--step", step, "--plugin-id", plugin_id, "--entrypoint", "prototype:Prototype", "--json"]
     if arm:
         command.append("--arm")
@@ -74,11 +74,11 @@ def upload(base, file, step, plugin_id, *, arm=False, check=True):
 
 
 def catalog(base):
-    return json.loads(invoke_automa("host", "plugins", "status", "--url", base, "--json").stdout)
+    return json.loads(invoke_automa("hosts", "plugins", "status", "--url", base, "--json").stdout)
 
 
 def arm_step(base, step, *ids):
-    command = ["host", "plugins", "arm", "--url", base, "--step", step, "--json"]
+    command = ["hosts", "plugins", "arm", "--url", base, "--step", step, "--json"]
     for plugin_id in ids:
         command.extend(["--plugin", plugin_id])
     return json.loads(invoke_automa(*command).stdout)

@@ -86,7 +86,7 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
             json_result = invoke_automa(
-                "host", "info",
+                "hosts", "info",
                 "perception",
                 "--id",
                 host_id,
@@ -94,7 +94,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 runtime_root=runtime_root,
             )
             text_result = invoke_automa(
-                "host", "info",
+                "hosts", "info",
                 "perception",
                 "--id",
                 host_id,
@@ -159,7 +159,7 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
             result = invoke_automa(
-                "host", "stage",
+                "hosts", "stage",
                 "perception",
                 "--id",
                 "piracer",

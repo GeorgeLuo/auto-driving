@@ -22,7 +22,7 @@ in what order. The default selection is a preset too.
 with `preset_activation("memory", name)`, and from a preset or a plugin list
 with `selection_activation("memory", ...)`. The activation records the preset
 name in its `preset` metadata key; a plugin list is labeled with the preset it
-equals, else `custom`. `automa host stage memory --preset NAME` stages one.
+equals, else `custom`. `automa hosts stage memory --preset NAME` stages one.
 
 | Preset | Plugins |
 |---|---|

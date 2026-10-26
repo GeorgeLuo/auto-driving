@@ -37,7 +37,7 @@ def _discovered(*vehicles: dict) -> dict:
 
 
 class UpdateVehicleTests(unittest.TestCase):
-    """Every `host stage <step>` stages only for a vehicle it can name."""
+    """Every `hosts stage <step>` stages only for a vehicle it can name."""
 
     @contextlib.contextmanager
     def _runtime(self) -> Iterator[Path]:
@@ -52,7 +52,7 @@ class UpdateVehicleTests(unittest.TestCase):
 
     def test_generic_step_reports_an_unknown_host_in_its_json_error(self) -> None:
         with self._runtime(), patch(DISCOVERY, return_value=_discovered()):
-            code, stdout = _invoke("host", "stage", "proposal", "--id", "parity-unknown", "--json")
+            code, stdout = _invoke("hosts", "stage", "proposal", "--id", "parity-unknown", "--json")
         self.assertEqual(code, 2)
         payload = json.loads(stdout)
         self.assertEqual(payload["schema"], "host_step_update_error_v0")
@@ -65,7 +65,7 @@ class UpdateVehicleTests(unittest.TestCase):
         plugins = ("frame", "floor_plane", "multi_obstruction_tracks", "motion_tracks")
         with self._runtime() as root, patch(DISCOVERY, return_value=_discovered(PICAR)):
             def update(*args: str) -> str:
-                code, stdout = _invoke("host", "stage", "perception", "--id", "piracer-test", *args)
+                code, stdout = _invoke("hosts", "stage", "perception", "--id", "piracer-test", *args)
                 self.assertEqual(code, 0, stdout)
                 return stdout
 
@@ -76,11 +76,11 @@ class UpdateVehicleTests(unittest.TestCase):
             self.assertEqual(added["manifest"]["plugin_configs"], tuned)
             self.assertEqual(added["apply"]["changed_plugins"], [])
             self.assertEqual(added["apply"]["selection_command"],
-                             "./cli/automa host update --id piracer-test")
+                             "./cli/automa hosts update --id piracer-test")
 
             switched = update("--preset", "visual_observer")
             self.assertIn(
-                "Apply: ./cli/automa host update --id piracer-test --restart "
+                "Apply: ./cli/automa hosts update --id piracer-test --restart "
                 "(specs or configs changed: multi_obstruction_tracks)",
                 switched,
             )
@@ -89,15 +89,15 @@ class UpdateVehicleTests(unittest.TestCase):
     def test_a_one_plugin_step_restaged_to_another_packaged_plugin_applies_live(self) -> None:
         with self._runtime(), patch(DISCOVERY, return_value=_discovered(PICAR)):
             def update(*args: str) -> str:
-                code, stdout = _invoke("host", "stage", "action", "--id", "piracer-test", *args)
+                code, stdout = _invoke("hosts", "stage", "action", "--id", "piracer-test", *args)
                 self.assertEqual(code, 0, stdout)
                 return stdout
 
             update()
             apply = json.loads(update("--plugin", "hold", "--json"))["apply"]
             self.assertEqual((apply["live_selection"], apply["changed_plugins"]), (True, []))
-            self.assertEqual(apply["selection_command"], "./cli/automa host update --id piracer-test")
-            self.assertIn("Apply selection: ./cli/automa host update --id piracer-test\n",
+            self.assertEqual(apply["selection_command"], "./cli/automa hosts update --id piracer-test")
+            self.assertIn("Apply selection: ./cli/automa hosts update --id piracer-test\n",
                           update("--plugin", "selected"))
 
 
@@ -106,7 +106,7 @@ class UpdateVehicleTests(unittest.TestCase):
             with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:
                 root = Path(tmp)
                 result = invoke_automa(
-                    "host", "stage", step, "--id", "parity-unknown",
+                    "hosts", "stage", step, "--id", "parity-unknown",
                     "--timeout-s", "0.05", "--json", runtime_root=root, check=False,
                 )
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
@@ -130,7 +130,7 @@ class UpdateVehicleTests(unittest.TestCase):
                 preset = sorted(STEP_PRESETS[step])[-1]
                 with self.subTest(step=step):
                     payload = json.loads(invoke_automa(
-                        "host", "stage", step, "--id", "chase-sim-chaser",
+                        "hosts", "stage", step, "--id", "chase-sim-chaser",
                         "--preset", preset, "--dry-run", "--json", runtime_root=root,
                     ).stdout)
                     self.assertEqual(payload["schema"], "host_step_update_v0")
@@ -157,7 +157,7 @@ if __name__ == "__main__":
             self.assertIsNone(error)
             self.assertEqual(vehicle["connection"], PICAR["connection"])
             for step in STEPS:
-                code, message = _invoke("host", "stage", step, "--id", "unknown")
+                code, message = _invoke("hosts", "stage", step, "--id", "unknown")
                 self.assertEqual(code, 2)
                 self.assertEqual(message.strip(), "No host 'unknown'. Hosts: piracer-test.")
             self.assertFalse((root / "unknown").exists())

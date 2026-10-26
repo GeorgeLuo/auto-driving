@@ -37,11 +37,12 @@ class _HostClient:
 
 class RunConfigurationTests(unittest.TestCase):
     def test_process_recognition_requires_top_level_host_run_and_exact_host_id(self):
-        self.assertTrue(_automation_command_matches_host("python /tmp/cli/automa host run --id car", "car"))
-        self.assertTrue(_automation_command_matches_host("/tmp/cli/automa host run --id=car", "car"))
+        self.assertTrue(_automation_command_matches_host("python /tmp/cli/automa hosts run --id car", "car"))
+        self.assertTrue(_automation_command_matches_host("/tmp/cli/automa hosts run --id=car", "car"))
+        self.assertFalse(_automation_command_matches_host("python /tmp/cli/automa host run --id car", "car"))
         self.assertFalse(_automation_command_matches_host("python /tmp/cli/automa vehicles host run --id car", "car"))
-        self.assertFalse(_automation_command_matches_host("python /tmp/cli/automa host run --id car-2", "car"))
-        self.assertFalse(_automation_command_matches_host("python /tmp/other host run --id car", "car"))
+        self.assertFalse(_automation_command_matches_host("python /tmp/cli/automa hosts run --id car-2", "car"))
+        self.assertFalse(_automation_command_matches_host("python /tmp/other hosts run --id car", "car"))
 
     def test_unbounded_overrides_counts_in_both_modes(self):
         for take_control in (True, False):
@@ -86,7 +87,7 @@ class RunConfigurationTests(unittest.TestCase):
                     patch("cli.automa_cli.app.record_vehicle_automation_terminal_result"),
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
-                    code = main(["host", verb, "--id", "picar-test",
+                    code = main(["hosts", verb, "--id", "picar-test",
                                  "--num-decisions", "3", *flags, *extra])
                     self.assertEqual(code, 0)
                     self.assertEqual(run.call_args.kwargs["unbounded"], bool(flags))
@@ -106,7 +107,7 @@ class RunConfigurationTests(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 code = main([
-                    "host", "run",
+                    "hosts", "run",
                     "--host-url", "http://127.0.0.1:54355",
                     "--num-decisions", "1", *extra,
                 ])
@@ -116,9 +117,9 @@ class RunConfigurationTests(unittest.TestCase):
 
     def test_cli_rejects_both_or_neither_target(self):
         for argv in (
-            ["host", "run", "--num-decisions", "1"],
+            ["hosts", "run", "--num-decisions", "1"],
             [
-                "host", "run", "--id", "chase-sim-chaser",
+                "hosts", "run", "--id", "chase-sim-chaser",
                 "--host-url", "http://127.0.0.1:54355", "--num-decisions", "1",
             ],
         ):

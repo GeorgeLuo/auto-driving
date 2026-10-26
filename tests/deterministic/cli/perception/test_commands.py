@@ -17,7 +17,7 @@ from tests.support.runtime_fixtures import write_runtime_fixture
 class PerceptionCommandTests(unittest.TestCase):
     def test_perception_replay_is_not_retained_as_an_alias(self) -> None:
         result = invoke_automa(
-            "host", "perception",
+            "hosts", "perception",
             "replay",
             check=False,
         )
@@ -36,7 +36,7 @@ class PerceptionCommandTests(unittest.TestCase):
             Image.new("RGB", (32, 24), (50, 40, 30)).save(frames / "001.png")
             inspect_root = root / "applies"
             result = invoke_automa(
-                "host", "perception",
+                "hosts", "perception",
                 "inspect",
                 str(frames),
                 "--json",
@@ -61,7 +61,7 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
             result = invoke_automa(
-                "host", "info",
+                "hosts", "info",
                 "perception",
                 "--id",
                 "chase-sim-chaser",
@@ -122,14 +122,14 @@ class PerceptionCommandTests(unittest.TestCase):
             expected_url = server.url
             try:
                 text_result = invoke_automa(
-                    "host", "info",
+                    "hosts", "info",
                     "perception",
                     "--id",
                     host_id,
                     runtime_root=runtime_root,
                 )
                 json_result = invoke_automa(
-                    "host", "info",
+                    "hosts", "info",
                     "perception",
                     "--id",
                     host_id,

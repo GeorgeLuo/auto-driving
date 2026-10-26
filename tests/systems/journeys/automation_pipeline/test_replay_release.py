@@ -60,7 +60,7 @@ class ReplayByReleaseTests(unittest.TestCase):
             def automa(*args: str, check: bool = True):
                 # Only the run needs its own process; it starts the worker.
                 run = run_automa if args[:1] == ("run",) else invoke_automa
-                return run("host", *args, runtime_root=runtime_root, extra_env=env, check=check)
+                return run("hosts", *args, runtime_root=runtime_root, extra_env=env, check=check)
 
             automa("stage", "perception", "--id", HOST_ID, "--plugin", "frame")
             release = _package_release_with_frame_label(runtime_root, Path(tmp) / "source", "release camera frame")
@@ -85,7 +85,7 @@ class ReplayByReleaseTests(unittest.TestCase):
             missing = automa("perception", "inspect", str(recording), "--json", check=False)
             self.assertEqual(missing.returncode, 2, missing.stdout)
             self.assertIn(f"Controller release {release['tree_sha256'][:12]} is not in", missing.stdout)
-            self.assertIn(f"Run: ./cli/automa host update --id {HOST_ID}", missing.stdout)
+            self.assertIn(f"Run: ./cli/automa hosts update --id {HOST_ID}", missing.stdout)
 
     def test_a_recording_replays_the_plugin_uploaded_to_its_host(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
@@ -98,7 +98,7 @@ class ReplayByReleaseTests(unittest.TestCase):
                 # module it imports, so replays also get their own process.
                 own_process = args[:1] == ("run",) or args[0] == "perception"
                 run = run_automa if own_process else invoke_automa
-                return run("host", *args, runtime_root=runtime_root, extra_env=env, check=check)
+                return run("hosts", *args, runtime_root=runtime_root, extra_env=env, check=check)
 
             automa("stage", "perception", "--id", HOST_ID, "--plugin", "frame")
             bundles.package_controller_bundle(bundles.controller_bundle_paths(runtime_root / HOST_ID))

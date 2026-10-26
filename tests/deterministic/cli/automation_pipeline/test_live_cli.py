@@ -55,7 +55,7 @@ class LiveCommandsTests(LiveHostTestCase):
             self.assertEqual(response.read(), jpeg)
 
     def automa(self, *args: str):
-        return invoke_automa("host", *args, "--id", HOST_ID, runtime_root=self.runtime_root, check=False)
+        return invoke_automa("hosts", *args, "--id", HOST_ID, runtime_root=self.runtime_root, check=False)
 
     def test_streams_are_live_only_while_a_session_runs(self) -> None:
         idle = self.automa("stream", "perception", "--once", "--json")
@@ -78,7 +78,7 @@ class LiveCommandsTests(LiveHostTestCase):
         self.assertIn(f"host: {self.host.base_url}", terminal.stdout)
 
     def viewer(self, url: str):
-        return invoke_automa("host", "viewer", "--host-url", url, runtime_root=self.runtime_root, check=False)
+        return invoke_automa("hosts", "viewer", "--host-url", url, runtime_root=self.runtime_root, check=False)
 
     def view_once(self, url: str):
         """The viewer's result, its view's URL, and the view's /api/latest status and body
@@ -195,7 +195,7 @@ class NoRuntimeHostTests(unittest.TestCase):
             ):
                 with self.subTest(args=args):
                     result = invoke_automa(
-                        "host", *args, "--id", HOST_ID, runtime_root=runtime_root, check=False
+                        "hosts", *args, "--id", HOST_ID, runtime_root=runtime_root, check=False
                     )
                     self.assertEqual(result.returncode, 2)
                     self.assertIn(START_HOST, result.stdout + result.stderr)

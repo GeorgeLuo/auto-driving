@@ -216,7 +216,7 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         for step in ("perception", "memory", "proposal", "plan", "action"):
             with self.subTest(step=step):
                 args = parser.parse_args([
-                    "host", step, "inspect", str(self.image),
+                    "hosts", step, "inspect", str(self.image),
                     "--shared-memory", str(self.seed_file),
                 ])
                 self.assertEqual(args.shared_memory_file, self.seed_file)

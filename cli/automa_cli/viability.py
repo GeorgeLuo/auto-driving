@@ -100,7 +100,7 @@ def _stalled_frames_message(host_id: str, base_url: str) -> str | None:
         + (error or f"its latest frame stayed {first or 'none'} for {FRESH_FRAME_WAIT_S:g} s")
         + f" (session: {session.get('status', 'unknown')}).",
         "Viability measures a host that is processing frames; start a run if none is active.",
-        f"Run: ./cli/automa host run --id {host_id} --observe-only",
+        f"Run: ./cli/automa hosts run --id {host_id} --observe-only",
     ])
 
 

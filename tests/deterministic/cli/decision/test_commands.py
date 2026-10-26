@@ -19,7 +19,7 @@ class DecisionCommandTests(unittest.TestCase):
             runtime = runtime_root / "chase-sim-chaser" / "bundle" / "runtime"
 
             dry_run = invoke_automa(
-                "host", "stage", "action", *vehicle, "--plugin", "mode", "--dry-run",
+                "hosts", "stage", "action", *vehicle, "--plugin", "mode", "--dry-run",
                 runtime_root=runtime_root,
             )
             self.assertEqual(dry_run.returncode, 0, dry_run.stderr + dry_run.stdout)
@@ -27,7 +27,7 @@ class DecisionCommandTests(unittest.TestCase):
 
             for step, plugins in (("proposal", ()), ("action", ("--plugin", "mode"))):
                 update = invoke_automa(
-                    "host", "stage", step, *vehicle, *plugins,
+                    "hosts", "stage", step, *vehicle, *plugins,
                     runtime_root=runtime_root,
                 )
                 self.assertEqual(update.returncode, 0, update.stderr + update.stdout)
@@ -44,13 +44,13 @@ class DecisionCommandTests(unittest.TestCase):
 
             before_info = snapshot_files()
             unstaged = invoke_automa(
-                "host", "info", "plan", *vehicle, runtime_root=runtime_root, check=False,
+                "hosts", "info", "plan", *vehicle, runtime_root=runtime_root, check=False,
             )
             self.assertEqual(unstaged.returncode, 2, unstaged.stdout)
-            self.assertIn("./cli/automa host stage plan --id", unstaged.stdout)
+            self.assertIn("./cli/automa hosts stage plan --id", unstaged.stdout)
 
             for step, plugins in (("proposal", ["avoid_recent_obstruction"]), ("action", ["mode"])):
-                info = invoke_automa("host", "info", step, *vehicle, runtime_root=runtime_root)
+                info = invoke_automa("hosts", "info", step, *vehicle, runtime_root=runtime_root)
                 self.assertEqual(info.returncode, 0, info.stderr + info.stdout)
                 payload = json.loads(info.stdout)
                 self.assertEqual(payload["schema"], f"host_{step}_info_v1")

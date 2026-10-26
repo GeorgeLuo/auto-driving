@@ -243,7 +243,7 @@ class SelectionRebuildTests(unittest.TestCase):
 
     def test_cli_help_describes_selection_replay_for_every_step(self) -> None:
         help_text = " ".join(
-            invoke_automa("host", "workbench", "replay", "--help").stdout.split()
+            invoke_automa("hosts", "workbench", "replay", "--help").stdout.split()
         )
         self.assertIn("Changing a step's plugins", help_text)
         self.assertIn("rebuilds every step's pipeline", help_text)

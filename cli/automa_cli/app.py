@@ -79,9 +79,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vehicles_help.set_defaults(handler=_handle_vehicles_help)
 
-    host = subcommands.add_parser("host", help="Create and manage vehicle controller hosts.")
-    host.set_defaults(handler=_handle_host_help)
-    host_commands = host.add_subparsers(dest="host_command")
+    hosts = subcommands.add_parser("hosts", help="Create and manage vehicle controller hosts.")
+    hosts.set_defaults(handler=_handle_host_help)
+    host_commands = hosts.add_subparsers(dest="host_command")
     host_help = host_commands.add_parser("help", help="Show host-level commands.")
     host_help.set_defaults(handler=_handle_host_help)
 
@@ -100,7 +100,7 @@ def build_parser() -> argparse.ArgumentParser:
     upload = plugin_commands.add_parser(
         "upload", help="Register a plugin file; optionally arm it on a runtime host.",
         description="Store a file in an existing live catalog. Upload success means available; source that does not compile is refused. Selection stays unchanged unless --arm, which loads it on the host and fails with its import or construction error.",
-        epilog="Verify registration with: ./cli/automa host plugins status --id <host> --step <step>. Use --url for an existing workbench catalog.",
+        epilog="Verify registration with: ./cli/automa hosts plugins status --id <host> --step <step>. Use --url for an existing workbench catalog.",
     )
     target = upload.add_mutually_exclusive_group(required=True)
     target.add_argument("--id", dest="host_id", help="Host whose catalog receives the upload.")
@@ -195,12 +195,12 @@ def build_parser() -> argparse.ArgumentParser:
         "viewer",
         help="Open the runtime viewer on a host.",
         description=(
-            "Serve the runtime viewer fed from the host at --host-url, the URL host status "
+            "Serve the runtime viewer fed from the host at --host-url, the URL hosts status "
             "shows under the host, until interrupted. Exits 2 when no host has that URL "
             "or it does not answer."
         ),
     )
-    viewer.add_argument("--host-url", required=True, help="The host's URL from host status.")
+    viewer.add_argument("--host-url", required=True, help="The host's URL from hosts status.")
     viewer.set_defaults(handler=_handle_host_viewer)
 
     host_create = host_commands.add_parser("create", help="Create and start a host.")
@@ -271,7 +271,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Run until stopped, overriding --num-decisions. "
-            "Stop with host stop."
+            "Stop with hosts stop."
         ),
     )
     host_run.add_argument(
@@ -314,10 +314,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     host_stop = host_commands.add_parser(
         "stop",
-        help="Stop the host's run; the host stays attached until host delete.",
+        help="Stop the host's run; the host stays attached until hosts delete.",
         description=(
             "Stop autonomous movement and its publication monitor. The host stays attached, with its "
-            "deployment staged, until host delete; its former view is no longer current-generation "
+            "deployment staged, until hosts delete; its former view is no longer current-generation "
             "available."
         ),
     )
@@ -387,7 +387,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help=(
             "Run until stopped, overriding --num-decisions. "
-            "Stop with host stop."
+            "Stop with hosts stop."
         ),
     )
     host_restart.add_argument(
@@ -430,10 +430,10 @@ def build_parser() -> argparse.ArgumentParser:
     host_restart.set_defaults(handler=_handle_host_restart)
     host_serve = host_commands.add_parser(
         "serve",
-        help="Serve a Chase car's runtime host in the foreground (host create and host run start one).",
+        help="Serve a Chase car's runtime host in the foreground (hosts create and hosts run start one).",
         description=(
             "Serve the runtime routes for a Chase car from its latest controller release, "
-            "and relaunch on a restart command. `host create` and `host run` start this in the background; "
+            "and relaunch on a restart command. `hosts create` and `hosts run` start this in the background; "
             "its log is runtime/hosts/<id>/bundle/runtime/automation/host.log."
         ),
     )
@@ -457,7 +457,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="host_id",
-        help="Host name from `automa host status`.",
+        help="Host name from `automa hosts status`.",
     )
     startup_check.add_argument(
         "--timeout-s",
@@ -516,7 +516,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="host_id",
-        help="Host name from `automa host status`.",
+        help="Host name from `automa hosts status`.",
     )
     perception_stream.add_argument(
         "--refresh-s",
@@ -556,7 +556,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="host_id",
-        help="Host name from `automa host status`.",
+        help="Host name from `automa hosts status`.",
     )
     memory_stream.add_argument(
         "--refresh-s",
@@ -600,7 +600,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--id",
             required=True,
             dest="host_id",
-            help="Host name from `automa host status`.",
+            help="Host name from `automa hosts status`.",
         )
         step_stream.add_argument(
             "--refresh-s",
@@ -649,7 +649,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="host_id",
-        help="Host name from `automa host status`.",
+        help="Host name from `automa hosts status`.",
     )
     memory_reset.add_argument(
         "--timeout-s",
@@ -760,7 +760,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="host_id",
-        help="Host name from `automa host status`.",
+        help="Host name from `automa hosts status`.",
     )
     memory_viability.add_argument(
         "--duration-s",
@@ -898,7 +898,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="host_id",
-        help="Host name from `automa host status`.",
+        help="Host name from `automa hosts status`.",
     )
     perception_info.add_argument(
         "--json",
@@ -916,7 +916,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="host_id",
-        help="Host name from `automa host status`.",
+        help="Host name from `automa hosts status`.",
     )
     memory_info.add_argument(
         "--json",
@@ -944,7 +944,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--id",
             required=True,
             dest="host_id",
-            help="Host name from `automa host status`.",
+            help="Host name from `automa hosts status`.",
         )
         step_info.add_argument(
             "--json",
@@ -1064,7 +1064,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="host_id",
-        help="Host name from `automa host status`.",
+        help="Host name from `automa hosts status`.",
     )
     perception_viability.add_argument(
         "--duration-s",
@@ -1267,18 +1267,18 @@ def _add_selection_args(
 
 def _handle_plugins_help(args: argparse.Namespace) -> int:
     print("\n".join([
-        "automa host plugins commands", "",
+        "automa hosts plugins commands", "",
         "- upload  store a file and register an available plugin revision",
         "- arm     add/update named plugins together on a runtime host",
         "- disarm  deselect named plugins or clear steps on a runtime host",
         "- status  show live catalog availability and plugin revisions (list is an alias)",
         "- help    show this summary", "",
         "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; upload, arm and disarm do not start automation.",
-        "Use ./cli/automa host status --id <host> to see its host's state.",
+        "Use ./cli/automa hosts status --id <host> to see its host's state.",
         "Use --url <runtime-or-workbench-url> to address an existing catalog directly.", "",
         "Example:",
-        "  ./cli/automa host plugins upload --id chase-sim-chaser --file ./prototype.py --step perception --plugin-id prototype --entrypoint prototype:Prototype",
-        "  ./cli/automa host plugins status --id chase-sim-chaser --step perception", "",
+        "  ./cli/automa hosts plugins upload --id chase-sim-chaser --file ./prototype.py --step perception --plugin-id prototype --entrypoint prototype:Prototype",
+        "  ./cli/automa hosts plugins status --id chase-sim-chaser --step perception", "",
         "Upload refuses source that does not compile; imports and dependencies load when armed.",
         "Re-uploading an ID leaves the running revision unchanged. Restart restoration is not guaranteed.",
         "Use upload --config '<JSON object>' to store constructor settings with the revision; arming uses them.", "",
@@ -1292,10 +1292,10 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "or --selection for grouped removals. Use disarm --all to clear every step that can run without",
         "plugins, or disarm --step <step> --all to clear one step.",
         "The next cycle resets disarmed instances; catalog entries remain available to arm again.",
-        "Arm and disarm change the current host only; staged selections are restored on host restart.",
+        "Arm and disarm change the current host only; staged selections are restored on hosts restart.",
         "Neither changes control mode or starts or stops automation. Workbench catalogs support upload only.", "",
         "Runtime viewer: open Plugins from its home page. Workbench: catalogs refresh in the step panels.", "",
-        "Detailed help: ./cli/automa host plugins <command> --help",
+        "Detailed help: ./cli/automa hosts plugins <command> --help",
     ]))
     return 0
 
@@ -1352,13 +1352,13 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "",
                 "- help       Show this command summary.",
                 "- vehicles   Discover and inspect vehicle environments.",
-                "- host       Create, configure, and operate vehicle controller hosts.",
+                "- hosts      Create, configure, and operate vehicle controller hosts.",
                 "- simulators Create headless simulators, or prepare and inspect SimEval environments.",
                 "",
                 "Open the runtime viewer. It does not require a host:",
                 "- ./cli/automa",
-                "Or on a host from host status:",
-                "- ./cli/automa host viewer --host-url <host URL>",
+                "Or on a host from hosts status:",
+                "- ./cli/automa hosts viewer --host-url <host URL>",
                 "",
                 "Detailed help:",
                 "- ./cli/automa --help",
@@ -1417,13 +1417,13 @@ def _handle_host_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
-                "automa host commands",
+                "automa hosts commands",
                 "",
                 "- create    create and start a host",
                 "- update    package staged steps as a release for the host",
                 "- delete    stop the host and its run, and remove its local files",
                 "- run       start a run and verify camera + perception + current view",
-                "- stop      stop the run; the host stays attached until host delete",
+                "- stop      stop the run; the host stays attached until hosts delete",
                 "- restart   stop and start the run",
                 "- status    show each host's deployment, run and view state",
                 "- stage     stage controller selections for a host",
@@ -1438,7 +1438,7 @@ def _handle_host_help(args: argparse.Namespace) -> int:
                 "- help      show this summary",
                 "",
                 "Detailed help:",
-                "- ./cli/automa host <command> --help",
+                "- ./cli/automa hosts <command> --help",
             ]
         )
     )
@@ -1449,13 +1449,13 @@ def _handle_host_operation_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
-                "automa host operation commands",
+                "automa hosts operation commands",
                 "",
                 "- startup-check  send bounded pulses and verify camera changes",
                 "- help           show this summary",
                 "",
                 "Detailed help:",
-                "- ./cli/automa host operation <command> --help",
+                "- ./cli/automa hosts operation <command> --help",
             ]
         )
     )
@@ -1466,7 +1466,7 @@ def _handle_host_stage_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
-                "automa host stage commands",
+                "automa hosts stage commands",
                 "",
                 "- perception   stage a perception preset or plugin selection",
                 "- observation  stage observation plugins",
@@ -1477,7 +1477,7 @@ def _handle_host_stage_help(args: argparse.Namespace) -> int:
                 "- help         show this summary",
                 "",
                 "Detailed help:",
-                "- ./cli/automa host stage <command> --help",
+                "- ./cli/automa hosts stage <command> --help",
             ]
         )
     )
@@ -1488,7 +1488,7 @@ def _handle_host_info_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
-                "automa host info commands",
+                "automa hosts info commands",
                 "",
                 "- perception  show staged perception schema and live view",
                 "- memory      show staged memory schema and live memory",
@@ -1498,7 +1498,7 @@ def _handle_host_info_help(args: argparse.Namespace) -> int:
                 "- help        show this summary",
                 "",
                 "Detailed help:",
-                "- ./cli/automa host info <command> --help",
+                "- ./cli/automa hosts info <command> --help",
             ]
         )
     )
@@ -1509,14 +1509,14 @@ def _handle_host_perception_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
-                "automa host perception commands",
+                "automa hosts perception commands",
                 "",
                 "- inspect    show what a selection detects, from images or a live vehicle",
                 "- viability  health-check perception cadence and freshness",
                 "- help       show this summary",
                 "",
                 "Detailed help:",
-                "- ./cli/automa host perception <command> --help",
+                "- ./cli/automa hosts perception <command> --help",
             ]
         )
     )
@@ -1527,7 +1527,7 @@ def _handle_host_stream_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
-                "automa host stream commands",
+                "automa hosts stream commands",
                 "",
                 "- perception  show latest local automation perception output",
                 "- memory      show live memory lifecycle health",
@@ -1537,7 +1537,7 @@ def _handle_host_stream_help(args: argparse.Namespace) -> int:
                 "- help        show this summary",
                 "",
                 "Detailed help:",
-                "- ./cli/automa host stream <command> --help",
+                "- ./cli/automa hosts stream <command> --help",
             ]
         )
     )
@@ -1547,9 +1547,9 @@ def _handle_host_stream_help(args: argparse.Namespace) -> int:
 _TIMEOUT_INPUT_ERROR = "timeout_invalid"
 _TIMEOUT_INPUT_CONSTRAINT = "finite number greater than zero"
 _TIMEOUT_INPUT_RECOVERY = "Provide a finite --timeout-s greater than zero."
-# Every `host stage <step>` resolves its host configuration with `staging_host`.
+# Every `hosts stage <step>` resolves its host configuration with `staging_host`.
 _STAGING_HOST_ID_HELP = (
-    "Name of a host created with host create."
+    "Name of a host created with hosts create."
 )
 _STAGING_DISCOVERY_TIMEOUT_HELP = (
     "Request timeout in seconds; local staging reads the host record without probing "
@@ -1619,7 +1619,7 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
 def _handle_host_run(args: argparse.Namespace) -> int:
     if not _validate_timeout_input(
         args.timeout_s,
-        command="automa host run",
+        command="automa hosts run",
         json_output=False,
         human_stream=sys.stdout,
     ):
@@ -1766,18 +1766,18 @@ def _handle_host_decision_step_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
-                f"automa host {step} commands",
+                f"automa hosts {step} commands",
                 "",
                 f"- inspect  the {step} record for every frame of images or a recorded run; optional --frame, --record",
                 "- help     show this summary",
                 "",
-                f"Stage plugins with:              ./cli/automa host stage {step} --id <host>",
-                f"Inspect staged config with:      ./cli/automa host info {step} --id <host>",
-                f"Stream the latest cycle:         ./cli/automa host stream {step} --id <host>",
-                "Act on proposals in live modes:  ./cli/automa host stage action --id <host> --plugin mode",
+                f"Stage plugins with:              ./cli/automa hosts stage {step} --id <host>",
+                f"Inspect staged config with:      ./cli/automa hosts info {step} --id <host>",
+                f"Stream the latest cycle:         ./cli/automa hosts stream {step} --id <host>",
+                "Act on proposals in live modes:  ./cli/automa hosts stage action --id <host> --plugin mode",
                 "",
                 "Detailed help:",
-                f"- ./cli/automa host {step} inspect --help",
+                f"- ./cli/automa hosts {step} inspect --help",
             ]
         )
     )
@@ -1805,19 +1805,19 @@ def _handle_host_memory_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
-                "automa host memory commands",
+                "automa hosts memory commands",
                 "",
                 "- inspect what a memory selection retains for an image source, frame by frame; optional --record",
                 "- viability  health-check memory update cadence, failures, and epoch",
                 "- reset   clear live retained evidence; start a new empty epoch",
                 "- help    show this summary",
                 "",
-                "Stage an implementation with: ./cli/automa host stage memory --id <host>",
-                "Inspect staged config with:   ./cli/automa host info memory --id <host>",
-                "Stream live state with:       ./cli/automa host stream memory --id <host>",
+                "Stage an implementation with: ./cli/automa hosts stage memory --id <host>",
+                "Inspect staged config with:   ./cli/automa hosts info memory --id <host>",
+                "Stream live state with:       ./cli/automa hosts stream memory --id <host>",
                 "",
                 "Detailed help:",
-                "- ./cli/automa host memory <command> --help",
+                "- ./cli/automa hosts memory <command> --help",
             ]
         )
     )
@@ -1869,7 +1869,7 @@ def _handle_host_workbench_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
-                "automa host workbench commands",
+                "automa hosts workbench commands",
                 "",
                 (
                     "- replay  replay an ordered image directory through perception, "
@@ -1878,7 +1878,7 @@ def _handle_host_workbench_help(args: argparse.Namespace) -> int:
                 "- help    show this summary",
                 "",
                 "Detailed help:",
-                "- ./cli/automa host workbench replay --help",
+                "- ./cli/automa hosts workbench replay --help",
             ]
         )
     )
@@ -2020,7 +2020,7 @@ def _handle_host_perception_viability(args: argparse.Namespace) -> int:
 def _handle_host_stage_step(args: argparse.Namespace) -> int:
     if not _validate_timeout_input(
         args.timeout_s,
-        command=f"automa host stage {args.step}",
+        command=f"automa hosts stage {args.step}",
         json_output=args.json,
         human_stream=sys.stdout,
     ):

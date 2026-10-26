@@ -80,7 +80,7 @@ def _host_runtime_status(
 
     While a monitor runs, its state record holds these rows; otherwise the
     host reports the same cycle counters from its observation status
-    provider. The local view is the one a terminal ``host stream`` hosts.
+    provider. The local view is the one a terminal ``hosts stream`` hosts.
     """
 
     endpoint = f"{base_url}/host/status"
@@ -105,7 +105,7 @@ def _host_runtime_status(
     if not view.get("available"):
         view = {
             **view,
-            "reason": f"start `./cli/automa host stream perception --id {host_id}` to host it",
+            "reason": f"start `./cli/automa hosts stream perception --id {host_id}` to host it",
         }
     return {
         "process": {
@@ -116,7 +116,7 @@ def _host_runtime_status(
             "generation_matches": True,
             "reason": error,
             "recovery": (
-                f"./cli/automa host update --id {host_id} --restart"
+                f"./cli/automa hosts update --id {host_id} --restart"
                 if error is not None
                 else None
             ),
@@ -404,7 +404,7 @@ def start_vehicle_automation_background(
                             f"control={actual_authority['control_application'] or 'unknown'}"
                         ),
                         (
-                            "Recovery: ./cli/automa host stop "
+                            "Recovery: ./cli/automa hosts stop "
                             f"--id {host_id}"
                         ),
                     ]
@@ -438,7 +438,7 @@ def start_vehicle_automation_background(
                     *([browser_line] if browser_line else []),
                     f"State: {display_path(automation_dir / 'state.json')}",
                     _log_status_line(existing, log_path),
-                    f"Stream: ./cli/automa host stream perception --id {host_id}",
+                    f"Stream: ./cli/automa hosts stream perception --id {host_id}",
                 ]
             ),
         )
@@ -446,7 +446,7 @@ def start_vehicle_automation_background(
     command = [
         sys.executable,
         str(AUTOMA_EXECUTABLE),
-        "host",
+        "hosts",
         "run",
         *(["--host-url", host_url] if host_url is not None else ["--id", host_id]),
         "--timeout-s",
@@ -520,7 +520,7 @@ def start_vehicle_automation_background(
         "log_path": display_path(log_path) if log_to_disk else None,
         "state_path": display_path(automation_dir / "state.json"),
         "latest_perception_text": display_path(automation_dir / "latest_perception.txt"),
-        "stream_command": f"./cli/automa host stream perception --id {host_id}",
+        "stream_command": f"./cli/automa hosts stream perception --id {host_id}",
     }
     _write_json(process_path, process_record)
     startup = _wait_for_automation_startup(
@@ -556,7 +556,7 @@ def start_vehicle_automation_background(
         capture_lag = startup.get("capture_lag")
         if isinstance(capture_lag, int) and capture_lag > 0:
             lines.append(f"Capture lag: {capture_lag} frames")
-        lines.append(f"Stop: ./cli/automa host stop --id {host_id}")
+        lines.append(f"Stop: ./cli/automa hosts stop --id {host_id}")
         if open_view:
             lines.append(open_view_message(str(startup.get("view_url"))))
         exit_code = 0
@@ -577,8 +577,8 @@ def start_vehicle_automation_background(
         [
             f"State: {display_path(automation_dir / 'state.json')}",
             _log_status_line(process_record, log_path),
-            f"Stream: ./cli/automa host stream perception --id {host_id}",
-            f"View: ./cli/automa host info perception --id {host_id}",
+            f"Stream: ./cli/automa hosts stream perception --id {host_id}",
+            f"View: ./cli/automa hosts info perception --id {host_id}",
         ]
     )
     return CommandResult(exit_code, "\n".join(lines))
@@ -1236,7 +1236,7 @@ def _collect_automation_status(
                         break
         activation_problems = bundle_activation_problems(bundle, vehicle_name)
         worker_recovery = activation_problems[0]["command"] if activation_problems else (
-            f"./cli/automa host restart --id {vehicle_name}"
+            f"./cli/automa hosts restart --id {vehicle_name}"
             if worker_status in {"error", "stale"}
             else None
         )
@@ -1362,7 +1362,7 @@ def _format_automation_status(payload: dict[str, Any]) -> str:
     vehicles = payload.get("hosts") if isinstance(payload.get("hosts"), list) else []
     outcome = payload.get("outcome") if isinstance(payload.get("outcome"), dict) else {}
     lines = [
-        "automa host status",
+        "automa hosts status",
         "",
         f"runtime: {payload.get('runtime_root', 'unknown')}",
         f"hosts: {len(vehicles)}",
@@ -1570,7 +1570,7 @@ def _pid_matches_automation(pid: int, host_id: str) -> bool:
 def _automation_command_matches_host(command: str, host_id: str) -> bool:
     """Pure check: command is a host run for exactly *host_id*.
 
-    Requires the contiguous launcher subcommand ``host run`` and
+    Requires the contiguous launcher subcommand ``hosts run`` and
     an exact ``--id <host_id>`` argument pair (token equality, not substring).
     """
 
@@ -1584,7 +1584,7 @@ def _automation_command_matches_host(command: str, host_id: str) -> bool:
     if not tokens:
         return False
     # Match the subcommand immediately after the actual CLI executable.
-    if not any(Path(tokens[index]).name == "automa" and tokens[index + 1:index + 3] == ["host", "run"]
+    if not any(Path(tokens[index]).name == "automa" and tokens[index + 1:index + 3] == ["hosts", "run"]
                for index in range(len(tokens) - 2)):
         return False
     for index, token in enumerate(tokens):

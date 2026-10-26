@@ -2,7 +2,7 @@
 
 ``perception_runs`` holds perception inspect and the sensor-frame run.
 Memory inspect is that inspect. Memory has no separate run entry. Reset is
-the other ``host memory`` command, and perception has no reset command,
+the other ``hosts memory`` command, and perception has no reset command,
 so reset lives here.
 """
 

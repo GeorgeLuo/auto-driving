@@ -3,7 +3,7 @@
 A PiCar's Donkey process feeds camera frames to the shared frame loop and
 serves ``RuntimeRoutes`` from Tornado. This host feeds simulator captures to
 the same loop and serves the same routes from a stdlib server. It runs from
-the vehicle's controller release; ``automa host serve``
+the vehicle's controller release; ``automa hosts serve``
 supervises it and replaces it on a restart command.
 """
 from __future__ import annotations

@@ -297,7 +297,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         try:
             env = {}
             json_result = invoke_automa(
-                "host", "stream", "action", "--id", host_id, "--once", "--json",
+                "hosts", "stream", "action", "--id", host_id, "--once", "--json",
                 runtime_root=self.runtime_root,
                 extra_env=env,
             )
@@ -314,7 +314,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             self.assertEqual([entry["step"] for entry in payload["timing"]["steps"]], list(STEPS))
 
             text_result = invoke_automa(
-                "host", "stream", "action", "--id", host_id, "--once",
+                "hosts", "stream", "action", "--id", host_id, "--once",
                 runtime_root=self.runtime_root,
                 extra_env=env,
             )
@@ -324,7 +324,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
 
             fixture_state["force_expired"] = True
             expired = invoke_automa(
-                "host", "stream", "action", "--id", host_id, "--once", "--json",
+                "hosts", "stream", "action", "--id", host_id, "--once", "--json",
                 runtime_root=self.runtime_root,
                 extra_env=env,
                 check=False,

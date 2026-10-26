@@ -36,7 +36,7 @@ DEFAULT_READINESS_TIMEOUT_S = 5.0
 STATUS_SCHEMA = "automa_host_readiness_v1"
 SIMULATOR_STATUS_SCHEMA = "automa_simulator_status_v2"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
-# Each vehicle's heading names the --provider that discover and host create take for it.
+# Each vehicle's heading names the --provider that discover and hosts create take for it.
 _HEADINGS = {"chase-sim": "Simulator (chase-sim)", "picar": "PiCar (picar)"}
 
 
@@ -456,7 +456,7 @@ def discover_vehicle(*, provider: str, url: str, force: bool = False) -> Command
     if entry in listed or (provider == "chase-sim" and url == default_chase_url()):
         return CommandResult(0, f"Already listed: {heading}")
     probe = _probe_candidate(Candidate(provider, url, "discovered"), timeout_s=DEFAULT_READINESS_TIMEOUT_S)
-    # A simulator takes a host as host create requires; a PiCar once its machine answers.
+    # A simulator takes a host as hosts create requires; a PiCar once its machine answers.
     ready = probe.active if provider == "chase-sim" else _picar_state(probe) != "unreachable"
     if not ready and not force:
         name = "Chase simulator" if provider == "chase-sim" else "PiCar"
@@ -950,7 +950,7 @@ def _vehicle_next_action(
         return (
             action(
                 "automation_not_deployed",
-                command=f"./cli/automa host update --id {host_id}",
+                command=f"./cli/automa hosts update --id {host_id}",
                 expected_state="automation_deployment=deployed",
             ),
             "automation_deployment",
@@ -961,7 +961,7 @@ def _vehicle_next_action(
             action(
                 "worker_start_failed",
                 command=(
-                    "./cli/automa host run "
+                    "./cli/automa hosts run "
                     f"--id {host_id} --observe-only --num-decisions 0 --open-view --log"
                 ),
                 expected_state="automation_worker=running",
@@ -974,7 +974,7 @@ def _vehicle_next_action(
             action(
                 "worker_stopped",
                 command=(
-                    "./cli/automa host run "
+                    "./cli/automa hosts run "
                     f"--id {host_id} --observe-only --num-decisions 0 --open-view"
                 ),
                 expected_state="automation_worker=running, perception_view=available",
@@ -1004,7 +1004,7 @@ def _vehicle_next_action(
                 if layers["perception_view"]["state"] == "stale"
                 else "view_unavailable",
                 command=(
-                    "./cli/automa host restart "
+                    "./cli/automa hosts restart "
                     f"--id {host_id} --observe-only --num-decisions 0"
                 ),
                 expected_state="perception_view=available",

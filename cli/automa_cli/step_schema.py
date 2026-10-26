@@ -1,7 +1,7 @@
 """A staged step and its runner's ``describe_schema()`` as the info commands report them.
 
-``host info perception``, ``host info memory``, ``host info
-proposal`` and ``host info plan`` read the step's staged activation and load
+``hosts info perception``, ``hosts info memory``, ``hosts info
+proposal`` and ``hosts info plan`` read the step's staged activation and load
 its runner from the controller bundle with ``staged_step_info``. Their JSON
 carries its ``activation`` and ``controller_bundle`` records and the step's
 schema under ``<step>_schema``, with ``<step>_schema_source`` naming the
@@ -41,7 +41,7 @@ def staged_step_info(
     """
 
     path = bundle_activation_path(bundle, step)
-    restage = f"Run: ./cli/automa host stage {step} --id <host_id>"
+    restage = f"Run: ./cli/automa hosts stage {step} --id <host_id>"
     if not path.exists():
         return None, "\n".join([
             f"No active {step} activation found for {host_id!r}.",
@@ -141,7 +141,7 @@ def format_staged_step(
             lines.append(f"Release manifest: {release['manifest']}")
     else:
         lines.append(
-            f"Release: not recorded; run `host stage {step}` "
+            f"Release: not recorded; run `hosts stage {step}` "
             "to package and attach release metadata"
         )
     schema = payload.get(f"{step}_schema")

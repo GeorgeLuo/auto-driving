@@ -22,7 +22,7 @@ memory.
 with `preset_activation("proposal", name)`, and from a preset or a plugin list
 with `selection_activation("proposal", ...)`. The activation records the preset
 name in its `preset` metadata key; a plugin list is labeled with the preset it
-equals, else `custom`. `automa host stage proposal --preset NAME` stages one.
+equals, else `custom`. `automa hosts stage proposal --preset NAME` stages one.
 
 | Preset | Plugins |
 |---|---|

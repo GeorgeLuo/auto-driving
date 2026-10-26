@@ -41,7 +41,7 @@ class InspectionSourceTests(unittest.TestCase):
 
     def inspect(self, step: str, source: Path, *flags: str, exit_code: int = 0) -> dict:
         result = invoke_automa(
-            "host",
+            "hosts",
             step,
             "inspect",
             str(source),
@@ -182,7 +182,7 @@ class InspectionSourceTests(unittest.TestCase):
         for step in ("perception", "memory"):
             with self.subTest(step=step):
                 result = invoke_automa(
-                    "host",
+                    "hosts",
                     step,
                     "inspect",
                     str(self.source),
@@ -196,7 +196,7 @@ class InspectionSourceTests(unittest.TestCase):
                 self.assertFalse((self.root / step).exists())
                 report = self.inspect(step, self.source, "--max-frames", str(count))
                 self.assertEqual(len(report["frames"]), count)
-                help_text = invoke_automa("host", step, "inspect", "--help").stdout
+                help_text = invoke_automa("hosts", step, "inspect", "--help").stdout
                 self.assertIn("--max-frames", help_text)
 
     def test_operation_captures_keep_before_after_order_for_all_consumers(self) -> None:
@@ -231,7 +231,7 @@ class InspectionSourceTests(unittest.TestCase):
         for step in ("perception", "memory"):
             with self.subTest(step=step):
                 result = invoke_automa(
-                    "host",
+                    "hosts",
                     step,
                     "inspect",
                     str(self.source),

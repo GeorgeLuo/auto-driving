@@ -54,3 +54,7 @@ A more concrete point is if questions are for clarification or hypothesizing upo
 
 * response before contains pseudocode, do not switch to abstract description
 * Add another column to table, do not change the wording of the other columns
+
+# Plan
+
+Planning should take into consideration broader meta-decisions found in the engineer role.

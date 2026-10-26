@@ -83,7 +83,7 @@ class PluginArmingFlows(unittest.TestCase):
             cli("stage", "perception", "--id", "chase-sim-chaser", "--preset", "lightweight_observer")
             try:
                 cli("run", "--id", "chase-sim-chaser", "--observe-only", "--num-decisions", "0", "--record")
-                original = json.loads(cli("status", "--id", "chase-sim-chaser", "--json").stdout)["hosts"][0]
+                original = json.loads(cli("status", "--id", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                 before = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
                 file = root / "proposal.py"
                 for revision in (1, 2):
@@ -119,7 +119,7 @@ class PluginArmingFlows(unittest.TestCase):
                         viewed = json.load(response)
                     self.assertEqual(viewed["decision"]["generation_id"], streamed["generation_id"])
                     self.assertEqual(viewed["decision"]["cycle"]["proposal"]["candidates"][0]["metadata"]["revision"], revision)
-                    current = json.loads(cli("status", "--id", "chase-sim-chaser", "--json").stdout)["hosts"][0]
+                    current = json.loads(cli("status", "--id", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                     self.assertEqual(current["state"]["run_id"], original["state"]["run_id"])
                     self.assertEqual(current["state"]["pid"], original["state"]["pid"])
                     self.assertEqual(current["state"]["action_policy"], "observe_only")
@@ -151,7 +151,7 @@ class PluginArmingFlows(unittest.TestCase):
                 with urlopen(view_url + "/api/decision/latest?generation=" + health["generation_id"], timeout=3) as response:
                     viewed = json.load(response)
                 self.assertEqual(viewed["decision"]["cycle"]["proposal"]["candidates"], [])
-                current = json.loads(cli("status", "--id", "chase-sim-chaser", "--json").stdout)["hosts"][0]
+                current = json.loads(cli("status", "--id", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                 self.assertEqual(current["state"]["run_id"], original["state"]["run_id"])
                 self.assertEqual(current["state"]["pid"], original["state"]["pid"])
                 self.assertEqual(current["state"]["action_policy"], "observe_only")

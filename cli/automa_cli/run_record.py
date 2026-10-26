@@ -284,7 +284,6 @@ def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
                 f"Automation failed for {vehicle_id}.",
                 f"Reason: {state['error']}",
                 f"State: {display_path(state_path)}",
-                "Not ready for: inspect perception",
             ]
         )
     if status == "completed":
@@ -302,7 +301,6 @@ def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
                 *([f"Decisions recorded: {state['recorded_count']}"] if state["recording"] else []),
                 f"State: {display_path(state_path)}",
                 f"Latest perception: {state['latest']['perception_text']}",
-                "Ready for: inspect stopped deployment",
             ]
         )
     code = 130 if state.get("stop_reason") == "keyboard_interrupt" else 0
@@ -310,6 +308,5 @@ def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
         [
             f"Automation stopped: {vehicle_id}",
             f"State: {display_path(state_path)}",
-            "Ready for: inspect stopped deployment",
         ]
     )

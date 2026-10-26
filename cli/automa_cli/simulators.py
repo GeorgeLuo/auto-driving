@@ -1053,16 +1053,9 @@ def _format_ensure(payload: dict[str, Any]) -> str:
         ]
     )
     readiness = _dict_field(payload, "readiness")
-    ready_for = readiness.get(
-        "ready_for",
-        "inspect vehicle status and stage perception",
-    )
-    if readiness.get("status") == "ready":
-        lines.append(f"Ready for: {ready_for}")
-    else:
-        blocking_layer = readiness.get("blocking_layer")
-        suffix = f" (blocking layer: {blocking_layer})" if blocking_layer else ""
-        lines.append(f"Not ready for: {ready_for}{suffix}")
+    blocking_layer = readiness.get("blocking_layer")
+    if readiness.get("status") != "ready" and blocking_layer:
+        lines.append(f"blocking layer: {blocking_layer}")
     _append_result_details(lines, result)
     return "\n".join(lines)
 

@@ -148,10 +148,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                         extra_env=env,
                     )
                     self.assertIn("Automation ready", run.stdout)
-                    self.assertIn(
-                        "Ready for: inspect perception and stop automation",
-                        run.stdout,
-                    )
+                    self.assertNotIn("ready for:", run.stdout.lower())
 
                     for step in ("perception", "memory"):
                         probe = json.loads(invoke_automa(
@@ -207,10 +204,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     )
 
                 self.assertEqual(stopped.returncode, 0, stopped.stdout + stopped.stderr)
-                self.assertIn(
-                    "Ready for: inspect stopped deployment",
-                    stopped.stdout,
-                )
+                self.assertNotIn("ready for:", stopped.stdout.lower())
 
                 final = json.loads(invoke_automa(
                     "vehicles", "automation", "status", "--id", "chase-sim-chaser",

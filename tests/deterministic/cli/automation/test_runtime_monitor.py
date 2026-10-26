@@ -179,7 +179,7 @@ class RuntimeMonitorTests(unittest.TestCase):
                 "Action policy: autonomy",
             ],
         )
-        self.assertEqual(message.splitlines()[-1], "Ready for: inspect stopped deployment")
+        self.assertNotIn("ready for:", message.lower())
         self.assertEqual(
             (state["status"], state["stop_reason"], state["run_id"]),
             ("completed", "completed", "host-1"),

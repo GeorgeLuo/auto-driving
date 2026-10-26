@@ -204,10 +204,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
             self.assertEqual(result.exit_code, 0, result.message)
             self.assertIn("Automation ready", result.message)
-            self.assertIn(
-                "Ready for: inspect perception and stop automation",
-                result.message,
-            )
+            self.assertNotIn("ready for:", result.message.lower())
             self.assertIn("frame_000000", result.message)
             self.assertIn("http://127.0.0.1:8555/", result.message)
             self.assertIn("Browser opened", result.message)
@@ -277,10 +274,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
         self.assertEqual(result.exit_code, 0, result.message)
         self.assertIn("Automation already running", result.message)
-        self.assertIn(
-            "Ready for: inspect perception and stop automation",
-            result.message,
-        )
+        self.assertNotIn("ready for:", result.message.lower())
         self.assertIn("Warning: could not open the browser", result.message)
         self.assertIn("Open manually: http://127.0.0.1:8666/", result.message)
         browser_open.assert_called_once_with("http://127.0.0.1:8666/", new=2)
@@ -331,7 +325,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 2)
         self.assertIn("authority does not match", result.message)
         self.assertIn("action=observe_only, control=not_applied", result.message)
-        self.assertIn("Not ready for: inspect perception", result.message)
+        self.assertNotIn("ready for:", result.message.lower())
 
     def test_stop_without_pid_records_stopped_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -356,7 +350,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
 
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("Ready for: inspect stopped deployment", result.message)
+        self.assertNotIn("ready for:", result.message.lower())
         self.assertEqual(state["status"], "stopped")
         self.assertEqual(state["readiness"]["status"], "ready")
         self.assertEqual(

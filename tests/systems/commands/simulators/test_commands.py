@@ -142,10 +142,7 @@ class SimulatorEnsureTests(unittest.TestCase):
         self.assertIn("usable: yes", human.stdout)
         self.assertIn("shared Chase environment gate: yes", human.stdout)
         self.assertIn("atomic passive capture: available", human.stdout)
-        self.assertIn(
-            "Ready for: inspect vehicle status and stage perception",
-            human.stdout,
-        )
+        self.assertNotIn("ready for:", human.stdout.lower())
         self.assertNotIn("Commands:", human.stdout)
         self.assertNotIn("processAlive", human.stdout)
 

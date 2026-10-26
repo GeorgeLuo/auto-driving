@@ -349,7 +349,6 @@ def start_vehicle_automation_background(
                         f"Automation is still starting for {vehicle_id}.",
                         f"PID: {existing_pid}",
                         f"State: {display_path(automation_dir / 'state.json')}",
-                        "Not ready for: inspect perception",
                     ]
                 ),
             )
@@ -374,7 +373,6 @@ def start_vehicle_automation_background(
                         f"Process PID: {existing_pid}",
                         f"State PID: {existing_state_pid}",
                         "Reason: worker generation is stale; no duplicate worker was started.",
-                        "Not ready for: inspect perception",
                     ]
                 ),
             )
@@ -407,7 +405,6 @@ def start_vehicle_automation_background(
                             "Recovery: ./cli/automa vehicles automation stop "
                             f"--id {vehicle_id}"
                         ),
-                        "Not ready for: inspect perception",
                     ]
                 ),
             )
@@ -425,7 +422,6 @@ def start_vehicle_automation_background(
                         f"PID: {existing_pid}",
                         f"Reason: {view.get('reason') or 'no correlated publication'}",
                         f"State: {display_path(automation_dir / 'state.json')}",
-                        "Not ready for: inspect perception",
                     ]
                 ),
             )
@@ -438,7 +434,6 @@ def start_vehicle_automation_background(
                     f"PID: {existing_pid}",
                     f"Runtime view: {view['url']}",
                     *([browser_line] if browser_line else []),
-                    "Ready for: inspect perception and stop automation",
                     f"State: {display_path(automation_dir / 'state.json')}",
                     _log_status_line(existing, log_path),
                     f"Stream: ./cli/automa vehicles stream perception --id {vehicle_id}",
@@ -507,7 +502,6 @@ def start_vehicle_automation_background(
                 "\n".join(
                     [
                         f"Could not launch automation for {vehicle_id}: {type(exc).__name__}: {exc}",
-                        "Not ready for: inspect perception",
                     ]
                 ),
             )
@@ -561,7 +555,6 @@ def start_vehicle_automation_background(
         capture_lag = startup.get("capture_lag")
         if isinstance(capture_lag, int) and capture_lag > 0:
             lines.append(f"Capture lag: {capture_lag} frames")
-        lines.append("Ready for: inspect perception and stop automation")
         lines.append(f"Stop: ./cli/automa vehicles automation stop --id {vehicle_id}")
         if open_view:
             lines.append(open_view_message(str(startup.get("view_url"))))
@@ -570,7 +563,6 @@ def start_vehicle_automation_background(
         lines = [
             f"Automation completed for {vehicle_id} during startup verification.",
             f"PID: {process.pid}",
-            "Ready for: inspect stopped deployment",
         ]
         exit_code = 0
     else:
@@ -578,7 +570,6 @@ def start_vehicle_automation_background(
             f"Automation did not become ready for {vehicle_id}.",
             f"PID: {process.pid}",
             f"Reason: {startup.get('reason', 'unknown startup failure')}",
-            "Not ready for: inspect perception",
         ]
         exit_code = 2
     lines.extend(
@@ -944,7 +935,6 @@ def stop_vehicle_automation(
                 [
                     f"No automation PID is recorded for {vehicle_id}.",
                     f"State: {display_path(state_path)}",
-                    "Ready for: inspect stopped deployment",
                 ]
             ),
         )
@@ -959,7 +949,6 @@ def stop_vehicle_automation(
                     f"Automation is not running for {vehicle_id}.",
                     f"Recorded PID: {pid}",
                     f"State: {display_path(state_path)}",
-                    "Ready for: inspect stopped deployment",
                 ]
             ),
         )
@@ -974,7 +963,6 @@ def stop_vehicle_automation(
                     f"PID: {pid}",
                     "The PID record was marked stale; no process was terminated.",
                     f"Process: {_process_command(pid) or 'unknown'}",
-                    "Ready for: inspect stopped deployment",
                 ]
             ),
         )
@@ -992,7 +980,6 @@ def stop_vehicle_automation(
                         f"Automation stopped for {vehicle_id}.",
                         f"PID: {pid}",
                         f"State: {display_path(state_path)}",
-                        "Ready for: inspect stopped deployment",
                     ]
                 ),
             )
@@ -1011,7 +998,6 @@ def stop_vehicle_automation(
                         f"Automation force-stopped for {vehicle_id}.",
                         f"PID: {pid}",
                         f"State: {display_path(state_path)}",
-                        "Ready for: inspect stopped deployment",
                     ]
                 ),
             )
@@ -1024,7 +1010,6 @@ def stop_vehicle_automation(
                 f"Automation did not stop for {vehicle_id}.",
                 f"PID: {pid}",
                 f"State: {display_path(state_path)}",
-                "Not ready for: inspect stopped deployment",
             ]
         ),
     )

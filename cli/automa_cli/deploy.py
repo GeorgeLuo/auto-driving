@@ -45,7 +45,8 @@ from .step_activations import (
     write_host_configuration,
 )
 from .host_publications import host_state
-from .vehicles import Candidate, _host_block, _probe_chase, normalize_vehicle_url
+from .host_status import host_block
+from .vehicles import Candidate, _probe_chase, chase_operator_url, normalize_vehicle_url
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -576,8 +577,8 @@ def create_host(
                            if not line.startswith(("Host updated:", "Runtime restarted:")))
         lines = [f"Host {host_id} created for {_vehicle_label(vehicle)}", detail]
         if state:
-            lines.append(_host_block({**state, "host_id": host_id, "attached": True,
-                                      "provider": "chase-sim", "vehicle_url": url}))
+            lines.append(host_block({**state, "host_id": host_id, "attached": True,
+                                     "provider": "chase-sim", "vehicle_url": chase_operator_url(url)}))
         return CommandResult(0, "\n".join(lines))
     except (OSError, RuntimeError, ValueError) as exc:
         if chase:
@@ -592,7 +593,7 @@ def create_host(
 
 def _vehicle_label(vehicle: dict[str, Any]) -> str:
     connection = vehicle["connection"]
-    return (f"the chaser at {connection['ws_url']}" if vehicle["provider"] == "chase-sim"
+    return (f"the chaser at {chase_operator_url(connection['ws_url'])}" if vehicle["provider"] == "chase-sim"
             else f"PiCar at {connection['base_url']}")
 
 

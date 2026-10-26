@@ -32,18 +32,17 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     env = {"CHASE_UI_WS_URL": ws_url}
                     command = f"./cli/automa hosts stage {step} --id {HOST_ID}"
                     human = invoke_automa(
-                        "hosts", "status", "--id", HOST_ID,
-                        runtime_root=runtime_root, extra_env=env,
+                        "hosts", "status", runtime_root=runtime_root, extra_env=env,
                     )
                     self.assertIn(f"Invalid {step} activation:", human.stdout)
-                    self.assertIn(f"next: {command}", human.stdout)
-                    automation = json.loads(invoke_automa(
-                        "hosts", "status", "--id", HOST_ID, "--json",
-                        runtime_root=runtime_root, extra_env=env,
-                    ).stdout)
-                    self.assertEqual(automation["outcome"]["status"], "degraded")
-                    self.assertEqual(automation["hosts"][0]["activation_problems"][0]["step"], step)
-                    self.assertEqual(automation["hosts"][0]["process"]["recovery"], command)
+                    self.assertIn(f"Restage with your intended selection: {command}", human.stdout)
+                    self.assertNotIn("next:", human.stdout)
+                    run = json.loads(invoke_automa(
+                        "hosts", "status", "--json", runtime_root=runtime_root, extra_env=env,
+                    ).stdout)["hosts"][0]["run"]
+                    self.assertEqual(run["activation_problems"][0]["step"], step)
+                    self.assertEqual(run["activation_problems"][0]["command"], command)
+                    self.assertNotIn("recovery", run["process"])
                     for verb in ("run", "restart"):
                         result = invoke_automa(
                             "hosts", verb, "--id", HOST_ID,
@@ -74,20 +73,17 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                 runtime_root=runtime_root, extra_env=env,
             )
             self.assertEqual(path.read_text(encoding="utf-8"), original)
-            automation = json.loads(invoke_automa(
-                "hosts", "status", "--id", HOST_ID, "--json",
-                runtime_root=runtime_root, extra_env=env,
-            ).stdout)
-            self.assertEqual(automation["outcome"]["status"], "degraded")
-            self.assertEqual(automation["hosts"][0]["activation_problems"][0]["step"], "memory")
+            run = json.loads(invoke_automa(
+                "hosts", "status", "--json", runtime_root=runtime_root, extra_env=env,
+            ).stdout)["hosts"][0]["run"]
+            self.assertEqual(run["activation_problems"][0]["step"], "memory")
             invoke_automa(
                 "hosts", "stage", "memory", "--id", HOST_ID,
                 "--preset", "recency_ledger", runtime_root=runtime_root, extra_env=env,
             )
             restaged = json.loads(invoke_automa(
-                "hosts", "status", "--id", HOST_ID, "--json",
-                runtime_root=runtime_root, extra_env=env,
-            ).stdout)["hosts"][0]
+                "hosts", "status", "--json", runtime_root=runtime_root, extra_env=env,
+            ).stdout)["hosts"][0]["run"]
             self.assertTrue(restaged["deployed"])
             self.assertFalse(restaged["process"]["running"])
 

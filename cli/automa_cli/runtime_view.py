@@ -34,7 +34,7 @@ from .loopback_http import (
     validate_loopback_host,
 )
 from .plugin_catalog import serve_plugin_catalog
-from .vehicles import get_chase_simulator_status, host_state_text
+from .host_status import host_state_text, host_statuses
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
@@ -340,7 +340,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
                 {
                     "hosts": [
                         {"host_id": host["host_id"], "state": host_state_text(host)}
-                        for host in get_chase_simulator_status()["hosts"]
+                        for host in host_statuses()
                     ]
                 },
                 include_body=include_body,

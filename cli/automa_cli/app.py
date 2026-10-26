@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from .automation import (
-    get_vehicle_automation_status,
+    get_hosts_status,
     record_vehicle_automation_terminal_result,
     restart_vehicle_automation,
     run_vehicle_automation,
@@ -46,8 +46,8 @@ from .streaming import serve_host_viewer, stream_vehicle_memory, stream_vehicle_
 from .vehicles import (
     DEFAULT_READINESS_TIMEOUT_S,
     discover_vehicle,
-    format_chase_simulator_status,
-    get_chase_simulator_status,
+    format_vehicles_status,
+    get_vehicles_status,
     remove_vehicle,
 )
 
@@ -165,7 +165,7 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument(
         "--json",
         action="store_true",
-        help="Print automa_vehicle_environments_status_v1 JSON.",
+        help="Print automa_vehicles_status JSON.",
     )
     status.set_defaults(handler=_handle_vehicles_status)
 
@@ -337,8 +337,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     host_status = host_commands.add_parser(
         "status",
-        help="Show each host's deployment, run and view state.",
-        description="Show each host's deployment, run and view state.",
+        help="Show each host's state, attachment and run.",
+        description=(
+            "Show each host's state and whether its simulator lists it, then its "
+            "deployment, run and view. Exits 1 when --id names a missing, "
+            "stopped, unanswering, or errored host."
+        ),
     )
     host_status.add_argument(
         "--id",
@@ -347,9 +351,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Host name. Omit to list every host.",
     )
     host_status.add_argument(
+        "--timeout-s",
+        type=float,
+        default=DEFAULT_READINESS_TIMEOUT_S,
+        help=(
+            f"One wall-clock deadline for host and simulator reads (default: {DEFAULT_READINESS_TIMEOUT_S:g}s)."
+        ),
+    )
+    host_status.add_argument(
         "--json",
         action="store_true",
-        help="Print the full machine-readable host status payload.",
+        help="Print automa_hosts_status JSON.",
     )
     host_status.set_defaults(handler=_handle_host_status)
 
@@ -1603,14 +1615,14 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
     ):
         return 2
     try:
-        payload = get_chase_simulator_status(timeout_s=args.timeout_s, include_hosts=False)
+        payload = get_vehicles_status(timeout_s=args.timeout_s)
     except ValueError as exc:
         print(f"automa vehicles status: {exc}", file=sys.stderr)
         return 2
     if args.json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
-        print(format_chase_simulator_status(payload))
+        print(format_vehicles_status(payload))
     if all(vehicle["state"] == "unreachable" for vehicle in payload["vehicles"]):
         return 1
     return 0
@@ -1670,8 +1682,16 @@ def _handle_host_stop(args: argparse.Namespace) -> int:
 
 
 def _handle_host_status(args: argparse.Namespace) -> int:
-    result = get_vehicle_automation_status(
+    if not _validate_timeout_input(
+        args.timeout_s,
+        command="automa hosts status",
+        json_output=args.json,
+        human_stream=sys.stderr,
+    ):
+        return 2
+    result = get_hosts_status(
         host_id=args.host_id,
+        timeout_s=args.timeout_s,
         json_output=args.json,
     )
     if result.message:

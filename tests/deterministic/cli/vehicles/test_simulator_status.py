@@ -1,83 +1,25 @@
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import tempfile
 import time
 import unittest
-from contextlib import contextmanager
 from pathlib import Path
-from typing import Iterator
 
-from autonomy.decision_cycle.activation import step_activation
-from cli.automa_cli.bundles import controller_bundle_paths
 from cli.automa_cli.host_publications import host_state
-from cli.automa_cli.runtime_hosts import HOST_RECORD
 from cli.automa_cli.vehicles import chase_operator_url
-from implementations.decision_cycle.catalog import preset_activation
-from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, write_host_record
-from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
-from implementations.vehicle.chase_sim.presence import MetricsUiPresence
+from tests.deterministic.cli.vehicles.test_host_status import _record
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.shared.cli.invoke import invoke_automa
-from tests.shared.implementations.runtime.wait import wait_until
-from tests.support.runtime_fixtures import write_host_fixture
 from tests.support.fake_hosts import answering, closed_url, hung_url
 from tests.support.fake_metrics_ui import fake_metrics_ui
-
-
-def _blocks(stdout: str) -> list[list[str]]:
-    """Each vehicle block and each host block of ``vehicles status``, as lines."""
-
-    return [[line for line in block.splitlines() if not line.startswith(("  chaser at", "  PiCar at"))]
-            for block in stdout.strip("\n").split("\n\n")]
-
-
-def _record(runtime_root: Path, host_id: str, url: str, simulator: str | None = None) -> None:
-    """A running host record for ``host_id`` at ``url``, held by this process."""
-
-    write_host_fixture(runtime_root, host_id, url=simulator)
-    bundle = controller_bundle_paths(runtime_root / host_id)
-    write_host_record(Path(bundle["runtime_dir"]) / "automation" / HOST_RECORD, {
-        "schema": HOST_RECORD_SCHEMA, "host_id": host_id, "pid": os.getpid(), "base_url": url,
-    })
-
-
-def _stage_picar(runtime_root: Path, host_id: str, url: str) -> None:
-    """A PiCar's staged perception step, which records its connection at ``url``."""
-
-    write_host_fixture(runtime_root, host_id, provider="picar", url=url)
-    bundle = controller_bundle_paths(runtime_root / host_id)
-    packaged = preset_activation("perception", "lightweight_observer")
-    activation = step_activation(
-        "perception", packaged.plugins, packaged.plugin_specs, packaged.plugin_configs,
-        metadata={**packaged.metadata, "host_id": host_id, "provider": "picar",
-                  "runtime": {"connection": {"base_url": url}}},
-    )
-    path = Path(bundle["perception_runtime_dir"]) / "active.json"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(activation.to_payload()), encoding="utf-8")
-
-
-@contextmanager
-def _attached(server, host_id: str, url: str) -> Iterator[None]:
-    """``host_id``'s host at ``url``, listed by ``server`` as an attached agent."""
-
-    client = {"kind": "host", "host_id": host_id, "url": url, "pid": os.getpid()}
-    with MetricsUiPresence(server.url, client, retry_s=0.05):
-        wait_until(
-            lambda: any(agent.get("client") == client for agent in MetricsUiWsClient(server.url).list_agents()),
-            message=f"{host_id}'s host never attached",
-        )
-        yield
 
 
 class SimulatorStatusTests(unittest.TestCase):
     def setUp(self) -> None:
         self.runtime_root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.server = self.enterContext(fake_metrics_ui())
-        self.env = {"CHASE_UI_WS_URL": self.server.url}
 
     def status(self, *args: str, chase_url: str | None = None) -> subprocess.CompletedProcess[str]:
         return invoke_automa("vehicles", "status", *args, runtime_root=self.runtime_root,
@@ -92,55 +34,14 @@ class SimulatorStatusTests(unittest.TestCase):
         self.assertLess(time.monotonic() - started, 1.5)
         self.assertEqual(result.returncode, 0, result.stderr)
         payload = json.loads(result.stdout)
-        self.assertEqual(payload["schema"], "automa_vehicle_environments_status_v1")
-        self.assertNotIn("hosts", payload)
-        self.assertEqual(payload["vehicles"][0]["url"], chase_operator_url(self.server.url))
-        self.assertEqual(payload["vehicles"][0]["state"], "running")
-        self.assertNotIn("Host controller-a", self.status().stdout)
-
-    def test_host_status_reports_host_identity_and_vehicle_endpoint(self) -> None:
-        write_host_fixture(self.runtime_root, "controller-a", url=self.server.url)
-        result = invoke_automa("hosts", "status", "--id", "controller-a", "--json",
-                               runtime_root=self.runtime_root, extra_env=self.env)
-        payload = json.loads(result.stdout)
-        self.assertEqual(payload["schema"], "automa_host_status_v1")
-        self.assertNotIn("vehicles", payload)
-        [host] = payload["hosts"]
-        self.assertEqual(host["host_id"], "controller-a")
-        self.assertEqual(host["provider"], "chase-sim")
-        self.assertEqual(host["vehicle_url"], self.server.url)
-        self.assertIsNone(host["url"])
-        human = invoke_automa("hosts", "status", "--id", "controller-a",
-                              runtime_root=self.runtime_root, extra_env=self.env)
-        self.assertIn(f"vehicle: chase-sim at {self.server.url}", human.stdout)
-        self.assertIn("host URL: not running", human.stdout)
-
-    def test_unknown_host_is_reported_separately(self) -> None:
-        result = invoke_automa("hosts", "status", "--id", "missing", "--json",
-                               runtime_root=self.runtime_root, extra_env=self.env, check=False)
-        self.assertEqual(result.returncode, 2)
-        self.assertEqual(json.loads(result.stdout)["outcome"]["status"], "not_found")
-        self.assertEqual(self.status().returncode, 0)
-
-    def test_internal_host_discovery_matches_the_attached_host_id(self) -> None:
-        from unittest.mock import patch
-        from cli.automa_cli import runtime_hosts
-        from cli.automa_cli.vehicles import get_chase_simulator_status
-
-        write_host_fixture(self.runtime_root, "chase-sim-chaser", url=self.server.url)
-        host = self.enterContext(chase_runtime(self.runtime_root))
-        self.enterContext(_attached(self.server, "chase-sim-chaser", host.base_url))
-        with patch.object(runtime_hosts, "RUNTIME_ROOT", self.runtime_root), \
-             patch.dict(os.environ, self.env):
-            status = get_chase_simulator_status()
-        [entry] = status["hosts"]
-        self.assertEqual((entry["host_id"], entry["attached"], entry["state"]),
-                         ("chase-sim-chaser", True, "pre_start"))
-        result = invoke_automa("hosts", "status", "--id", "chase-sim-chaser", "--json",
-                               runtime_root=self.runtime_root, extra_env=self.env)
-        [reported] = json.loads(result.stdout)["hosts"]
-        self.assertTrue(reported["attached"])
-        self.assertIsNotNone(reported["attached_since"])
+        self.assertEqual(payload, {"schema": "automa_vehicles_status", "vehicles": [{
+            "provider": "chase-sim", "url": chase_operator_url(self.server.url), "state": "running",
+            "error": None, "frontend": "connected", "game": "chase", "pid": None,
+        }]})
+        self.assertEqual(self.status().stdout, (
+            f"Simulator (chase-sim)  running at {chase_operator_url(self.server.url)}\n"
+            "  frontend connected, game chase\n"
+        ))
 
     def test_unreachable_or_frontend_disconnected_simulator(self) -> None:
         unavailable = self.status(chase_url=closed_url())
@@ -192,22 +93,7 @@ class HostStateTests(unittest.TestCase):
                 self.assertEqual((state["state"], state["error"]), ("error", error.format(url=url)))
 
 
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-
-
 class EnvironmentStatusTests(unittest.TestCase):
-    def test_created_host_without_a_process_is_listed(self):
-        with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui() as simulator:
-            root = Path(tmp)
-            write_host_fixture(root, "free-name", url=simulator.url)
-            env = {"CHASE_UI_WS_URL": simulator.url}
-            result = invoke_automa("hosts", "status", "--json", runtime_root=root, extra_env=env)
-            [host] = json.loads(result.stdout)["hosts"]
-            self.assertIsNone(host["url"])
-            self.assertEqual(host["provider"], "chase-sim")
-            self.assertEqual(host["vehicle_url"], simulator.url)
-
     def test_picar_states_and_picar_only_exit(self):
         from unittest.mock import patch
         from cli.automa_cli.vehicles import Candidate, ProbeResult
@@ -231,3 +117,7 @@ class EnvironmentStatusTests(unittest.TestCase):
                 self.assertEqual(json.loads(result.stdout)["vehicles"][1],
                                  {"provider": "picar", "url": url, "state": expected, "error": probe.error})
                 self.assertIn(f"PiCar (picar)  {expected} at {url}", text.stdout)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

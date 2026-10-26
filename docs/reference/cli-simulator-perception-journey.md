@@ -52,10 +52,12 @@ explicitly restaged using the recovery that `hosts status` prints.
 simulators and discovered vehicles, with each environment's provider, URL and
 reachability. Use the provider and URL with `hosts create`.
 
-`hosts status` lists each created host, its vehicle provider and endpoint, host
-URL, simulator attachment, deployment, run and view state. `--id` selects one host; `--json` emits
-`automa_host_status_v1` with a `hosts` array and `host_id` for each entry.
-Host names are chosen at creation and do not identify the vehicle environment.
+`hosts status` prints a block for each created host: its state, its vehicle
+and that vehicle's URL, whether its simulator lists it, and the host URL and
+pid, then its deployment, run and view. `--id` selects one host; `--json` emits
+`automa_hosts_status` with a `hosts` array whose entries carry the host's
+`run` detail. Host names are chosen at creation and do not identify the
+vehicle environment.
 
 To look through a host, pass the URL on its last status line to `hosts viewer`:
 
@@ -243,10 +245,11 @@ The commands keep these layers separate:
 | `perception_view` | `available`, `unavailable`, `stale` | Loopback view belongs to the current worker generation |
 | `evaluator_reference` | `available`, `unavailable`, `invalid` | Optional frame-scoped scoring reference |
 
-`vehicles status --json` lists vehicle environments in `vehicles`, including
-provider, URL, state and error. Simulator entries also include frontend, game
-and created-process information. `hosts status --json` reports the associated
-hosts separately, including their host IDs, vehicle URLs and runtime URLs.
+`vehicles status --json` emits `automa_vehicles_status`, which lists vehicle
+environments in `vehicles` with provider, URL, state and error. Simulator
+entries also include frontend, game and created-process information.
+`hosts status --json` reports hosts separately, with their host IDs, the http
+URLs of their vehicles, their runtime URLs and their simulator attachment.
 
 An absent or malformed evaluator reference does not block camera perception.
 It is excluded from perception, observation, memory, and decision inputs.
@@ -292,7 +295,8 @@ external change.
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 
 `vehicles status` exits 1 when no listed vehicle is reachable. `hosts status
---id <host>` exits 2 when the host does not exist. Invalid arguments exit 2.
+--id <host>` exits 1 when that host is not found, not running, not answering,
+or in error. Invalid arguments exit 2.
 
 Simulator preparation is deliberately outside passive attachment:
 

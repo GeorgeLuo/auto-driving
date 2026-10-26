@@ -7,7 +7,6 @@ import signal
 import subprocess
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
@@ -17,7 +16,6 @@ from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
-from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
 
 from .vehicle_access import create_vehicle_access
 from .staged_bundle import write_json_atomically
@@ -34,6 +32,7 @@ from .runtime_hosts import (
     stop_chase_host,
 )
 from .host_publications import host_state
+from .host_status import host_block, read_hosts
 from .runtime_monitor import monitor_runtime
 from .step_activations import (
     bundle_activation_problems,
@@ -75,16 +74,18 @@ def _host_runtime_status(
     base_url: str,
     *,
     timeout_s: float,
+    read: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """A runtime host's ``/host/status`` in the worker status rows.
 
     While a monitor runs, its state record holds these rows; otherwise the
     host reports the same cycle counters from its observation status
-    provider. The local view is the one a terminal ``hosts stream`` hosts.
+    provider. ``read`` is the host's ``host_state`` when the caller already
+    has it. The local view is the one a terminal ``hosts stream`` hosts.
     """
 
     endpoint = f"{base_url}/host/status"
-    host = host_state(base_url, host_id=host_id, timeout_s=max(0.1, timeout_s))
+    host = read or host_state(base_url, host_id=host_id, timeout_s=max(0.1, timeout_s))
     status = host["reply"] or {}
     error = host["error"] if host["state"] in {"not answering", "error"} else None
     worker_status = "error" if error is not None else host["state"]
@@ -115,11 +116,6 @@ def _host_runtime_status(
             "status": worker_status,
             "generation_matches": True,
             "reason": error,
-            "recovery": (
-                f"./cli/automa hosts update --id {host_id} --restart"
-                if error is not None
-                else None
-            ),
             "log_to_disk": False,
             "log_path": None,
             "command": None,
@@ -852,82 +848,33 @@ def _mark_automation_startup_error(
     )
 
 
-def get_vehicle_automation_status(
+def get_hosts_status(
     *,
     host_id: str | None = None,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     json_output: bool = False,
 ) -> CommandResult:
-    vehicles = _collect_automation_status(host_id=host_id)
-    # Simulator presence is a property of each host, so keep it with host
-    # status after separating it from the vehicle environment listing.
-    with ThreadPoolExecutor() as pool:
-        attachments = list(pool.map(_host_attachment, vehicles))
-    for host, attachment in zip(vehicles, attachments):
-        host.update(attachment)
-    payload = {
-        "schema": "automa_host_status_v1",
-        "generated_at_ms": _timestamp_ms(),
-        "runtime_root": display_path(runtime_hosts.RUNTIME_ROOT),
-        "requested_host_id": host_id,
-        "hosts": vehicles,
+    """Each host's state and attachment, then its deployment, run and view.
+
+    With ``host_id``, exits 1 when that host is missing, stopped, not
+    answering, or reports an error. Without it, no host's state changes the exit.
+    """
+
+    reads = read_hosts(host_id=host_id, timeout_s=timeout_s)
+    runs = {
+        run["host_id"]: run
+        for run in _collect_automation_status(
+            host_id=host_id,
+            host_reads={host["host_id"]: read for host, read in reads if read is not None},
+        )
     }
-    exit_code = 0
-    if host_id is not None and not vehicles:
-        exit_code = 2
-        payload["outcome"] = {
-            "status": "not_found",
-            "message": f"No host named {host_id!r}.",
-            "expected_bundle": display_path(
-                runtime_hosts.RUNTIME_ROOT / safe_path_part(host_id) / "bundle"
-            ),
-            "recovery": runtime_hosts.update_command(host_id),
-        }
-    elif not vehicles:
-        payload["outcome"] = {
-            "status": "empty",
-            "message": "No hosts found.",
-            "expected_bundle": None,
-            "recovery": runtime_hosts.update_command("<host_id>"),
-        }
-    elif any(_automation_status_needs_attention(vehicle) for vehicle in vehicles):
-        payload["outcome"] = {
-            "status": "degraded",
-            "message": "One or more hosts require attention.",
-            "expected_bundle": None,
-            "recovery": None,
-        }
-    else:
-        payload["outcome"] = {
-            "status": "ok",
-            "message": f"Found {len(vehicles)} host(s).",
-            "expected_bundle": None,
-            "recovery": None,
-        }
+    hosts = [{**host, "run": runs.get(host["host_id"])} for host, _ in reads]
+    failed = {"not found", "not running", "not answering", "error"}
+    exit_code = 1 if host_id is not None and any(host["state"] in failed for host in hosts) else 0
     if json_output:
+        payload = {"schema": "automa_hosts_status", "host_id": host_id, "hosts": hosts}
         return CommandResult(exit_code, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(exit_code, _format_automation_status(payload))
-
-
-def _host_attachment(host: dict[str, Any]) -> dict[str, Any]:
-    result: dict[str, Any] = {"attached": None, "attached_since": None, "attachment_error": None}
-    endpoint, url = host.get("vehicle_url"), host.get("url")
-    if host.get("provider") != "chase-sim" or not isinstance(endpoint, str) or not isinstance(url, str):
-        return result
-    try:
-        agents = MetricsUiWsClient(endpoint, timeout_s=0.5).list_agents(timeout_s=0.5)
-    except (OSError, ValueError, MetricsUiWebSocketError) as exc:
-        result["attachment_error"] = str(exc)
-        return result
-    result["attached"] = False
-    for agent in agents:
-        client = agent.get("client")
-        if (isinstance(client, dict) and client.get("kind") == "host"
-                and client.get("host_id") == host.get("host_id")
-                and isinstance(client.get("url"), str)
-                and client["url"].rstrip("/") == url.rstrip("/")):
-            result.update(attached=True, attached_since=agent.get("connectedAt"))
-            break
-    return result
+    return CommandResult(exit_code, _format_hosts_status(hosts))
 
 
 def stop_vehicle_automation(
@@ -1119,7 +1066,9 @@ def _collect_automation_status(
     *,
     host_id: str | None,
     view_timeout_s: float | None = None,
+    host_reads: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
+    # ``host_reads`` holds each host's ``host_state`` the caller already read.
     if host_id is not None:
         candidate = runtime_hosts.RUNTIME_ROOT / safe_path_part(host_id)
         candidates = [candidate] if (candidate / "host-configuration.json").is_file() else []
@@ -1155,9 +1104,6 @@ def _collect_automation_status(
     for vehicle_runtime_dir in candidates:
         vehicle_name = vehicle_runtime_dir.name
         host_url = running_base_url(vehicle_name)
-        host_config = runtime_hosts.staged_host(vehicle_name)
-        connection = host_config["connection"]
-        vehicle_url = connection.get("ws_url") or connection.get("base_url")
         bundle = controller_bundle_paths(vehicle_runtime_dir)
         bundle_root = Path(bundle["root_dir"])
         automation_dir = Path(bundle["runtime_dir"]) / "automation"
@@ -1235,11 +1181,6 @@ def _collect_automation_status(
                     if published_view.get("available"):
                         break
         activation_problems = bundle_activation_problems(bundle, vehicle_name)
-        worker_recovery = activation_problems[0]["command"] if activation_problems else (
-            f"./cli/automa hosts restart --id {vehicle_name}"
-            if worker_status in {"error", "stale"}
-            else None
-        )
         last_frame = state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
         completed_at_ms = _int_or_none(last_frame.get("perception_completed_at_ms"))
         generated_at_ms = _timestamp_ms()
@@ -1262,9 +1203,6 @@ def _collect_automation_status(
         statuses.append(
             {
                 "host_id": vehicle_name,
-                "provider": host_config["provider"],
-                "vehicle_url": vehicle_url,
-                "url": host_url,
                 "activation_problems": activation_problems,
                 "deployed": released and decision["deployed"] and not activation_problems,
                 "bundle_root": display_path(bundle_root),
@@ -1283,7 +1221,6 @@ def _collect_automation_status(
                     "status": worker_status,
                     "generation_matches": generation_matches,
                     "reason": worker_reason,
-                    "recovery": worker_recovery,
                     "log_to_disk": bool(process.get("log_to_disk")),
                     "log_path": process.get("log_path") if isinstance(process.get("log_path"), str) else None,
                     "command": process.get("command") if isinstance(process.get("command"), list) else None,
@@ -1339,87 +1276,56 @@ def _collect_automation_status(
         )
         if host_url is not None and not pid_alive:
             host = _host_runtime_status(
-                vehicle_name, host_url, timeout_s=_remaining_view_budget() or 0.5
+                vehicle_name, host_url, timeout_s=_remaining_view_budget() or 0.5,
+                read=(host_reads or {}).get(vehicle_name),
             )
             applied = host.pop("applied_decision")
             statuses[-1]["steps"] = _applied_selections(selections, host.pop("steps")) or selections
             statuses[-1].update(host)
             if applied:
                 statuses[-1]["decision"].update(_decision_summary(applied))
-            if activation_problems:
-                statuses[-1]["process"]["recovery"] = activation_problems[0]["command"]
     return statuses
 
 
-def _automation_status_needs_attention(vehicle: dict[str, Any]) -> bool:
-    if not vehicle.get("deployed"):
-        return True
-    process = vehicle.get("process")
-    return isinstance(process, dict) and process.get("status") in {"error", "stale"}
+def _format_hosts_status(hosts: list[dict[str, Any]]) -> str:
+    if not hosts:
+        return "No hosts found"
+    return "\n\n".join("\n".join([host_block(host), *_run_lines(host["run"])]) for host in hosts)
 
 
-def _format_automation_status(payload: dict[str, Any]) -> str:
-    vehicles = payload.get("hosts") if isinstance(payload.get("hosts"), list) else []
-    outcome = payload.get("outcome") if isinstance(payload.get("outcome"), dict) else {}
+def _run_lines(item: dict[str, Any] | None) -> list[str]:
+    """A host's deployment, steps, worker, run and view, under its host block."""
+
+    if not isinstance(item, dict):
+        return []
+    decision = item.get("decision") if isinstance(item.get("decision"), dict) else {}
+    process = item.get("process") if isinstance(item.get("process"), dict) else {}
+    state = item.get("state") if isinstance(item.get("state"), dict) else {}
+    published_view = item.get("published_view") if isinstance(item.get("published_view"), dict) else {}
+    last_frame = state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
     lines = [
-        "automa hosts status",
-        "",
-        f"runtime: {payload.get('runtime_root', 'unknown')}",
-        f"hosts: {len(vehicles)}",
+        f"  deployment: {'deployed' if item.get('deployed') else 'not deployed'}",
+        *_selection_lines(item.get("steps")),
+        f"  decision: {_decision_label(decision)}",
+        f"  worker: {_worker_label(process, state)}",
+        f"  run: {_run_label(state)}",
+        f"  latest: {_latest_status_label(state, last_frame)}",
+        f"  view: {_published_view_label(published_view)}",
+        f"  state: {state.get('state_record', 'unknown')}",
+        f"  log: {_status_log_label(process)}",
     ]
-    if not vehicles:
-        lines.extend(["", str(outcome.get("message") or "No hosts found.")])
-        expected_bundle = outcome.get("expected_bundle")
-        if isinstance(expected_bundle, str) and expected_bundle:
-            lines.append(f"Expected bundle: {expected_bundle}")
-        recovery = outcome.get("recovery")
-        if isinstance(recovery, str) and recovery:
-            lines.append(f"Next: {recovery}")
-        return "\n".join(lines)
-
-    for item in vehicles:
-        if not isinstance(item, dict):
-            continue
-        decision = item.get("decision") if isinstance(item.get("decision"), dict) else {}
-        process = item.get("process") if isinstance(item.get("process"), dict) else {}
-        state = item.get("state") if isinstance(item.get("state"), dict) else {}
-        published_view = item.get("published_view") if isinstance(item.get("published_view"), dict) else {}
-        last_frame = state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
-        lines.extend(
-            [
-                "",
-                str(item.get("host_id", "unknown")),
-                f"  vehicle: {item.get('provider')} at {item.get('vehicle_url')}",
-                f"  host URL: {item.get('url') or 'not running'}",
-                *([f"  attached: {'yes' if item.get('attached') else 'no' if item.get('attached') is False else 'unknown'}"]
-                  if item.get("provider") == "chase-sim" else []),
-                *([f"  attachment error: {item['attachment_error']}"] if item.get("attachment_error") else []),
-                f"  deployment: {'deployed' if item.get('deployed') else 'not deployed'}",
-                *_selection_lines(item.get("steps")),
-                f"  decision: {_decision_label(decision)}",
-                f"  worker: {_worker_label(process, state)}",
-                f"  run: {_run_label(state)}",
-                f"  latest: {_latest_status_label(state, last_frame)}",
-                f"  view: {_published_view_label(published_view)}",
-                f"  state: {state.get('state_record', 'unknown')}",
-                f"  log: {_status_log_label(process)}",
-            ]
-        )
-        arming = state.get("arming")
-        if isinstance(arming, dict) and arming.get("request_id"):
-            lines.append(f"  arming: {arming['status']} (request {arming['request_id']})")
-            if arming.get("error"):
-                lines.append(f"  problem: {arming['error']}")
-        problems = item.get("activation_problems")
-        if isinstance(problems, list) and problems:
-            lines.extend(f"  {line}" for line in format_activation_problems(problems).splitlines())
-        reason = process.get("reason")
-        if isinstance(reason, str) and reason:
-            lines.append(f"  problem: {reason}")
-        recovery = process.get("recovery")
-        if isinstance(recovery, str) and recovery:
-            lines.append(f"  next: {recovery}")
-    return "\n".join(lines)
+    arming = state.get("arming")
+    if isinstance(arming, dict) and arming.get("request_id"):
+        lines.append(f"  arming: {arming['status']} (request {arming['request_id']})")
+        if arming.get("error"):
+            lines.append(f"  problem: {arming['error']}")
+    problems = item.get("activation_problems")
+    if isinstance(problems, list) and problems:
+        lines.extend(f"  {line}" for line in format_activation_problems(problems).splitlines())
+    reason = process.get("reason")
+    if isinstance(reason, str) and reason:
+        lines.append(f"  problem: {reason}")
+    return lines
 
 
 def _selection_lines(selections: Any) -> list[str]:

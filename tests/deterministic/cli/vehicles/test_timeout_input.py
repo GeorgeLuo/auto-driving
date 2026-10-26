@@ -13,6 +13,11 @@ INVALID_TIMEOUTS = ("0", "-1", "nan", "-nan", "inf", "+inf", "-inf")
 # Every `hosts stage <step>` command dispatches to the shared update.
 UPDATE_STEP = "cli.automa_cli.app.stage_host_step"
 TIMEOUT_MESSAGE = "--timeout-s must be a finite number greater than zero"
+# Each status command and the function its timeout reaches.
+STATUS_COMMANDS = {
+    ("vehicles", "status"): "cli.automa_cli.app.get_vehicles_status",
+    ("hosts", "status"): "cli.automa_cli.app.get_hosts_status",
+}
 
 
 def _invoke(*args: str) -> tuple[int, str, str]:
@@ -28,14 +33,9 @@ def _timeout_args(value: str) -> tuple[str, ...]:
 
 class TimeoutInputTests(unittest.TestCase):
     def test_invalid_status_values_use_one_json_error_envelope_before_status_work(self) -> None:
-        for value in INVALID_TIMEOUTS:
-            with self.subTest(value=value), patch("cli.automa_cli.app.get_chase_simulator_status") as get_status:
-                code, stdout, stderr = _invoke(
-                    "vehicles",
-                    "status",
-                    *_timeout_args(value),
-                    "--json",
-                )
+        for (command, target), value in ((item, value) for item in STATUS_COMMANDS.items() for value in INVALID_TIMEOUTS):
+            with self.subTest(command=command, value=value), patch(target) as get_status:
+                code, stdout, stderr = _invoke(*command, *_timeout_args(value), "--json")
 
             self.assertEqual(code, 2)
             self.assertEqual(stderr, "")
@@ -50,17 +50,13 @@ class TimeoutInputTests(unittest.TestCase):
             get_status.assert_not_called()
 
     def test_invalid_status_values_use_the_existing_human_error_channel(self) -> None:
-        for value in INVALID_TIMEOUTS:
-            with self.subTest(value=value), patch("cli.automa_cli.app.get_chase_simulator_status") as get_status:
-                code, stdout, stderr = _invoke(
-                    "vehicles",
-                    "status",
-                    *_timeout_args(value),
-                )
+        for (command, target), value in ((item, value) for item in STATUS_COMMANDS.items() for value in INVALID_TIMEOUTS):
+            with self.subTest(command=command, value=value), patch(target) as get_status:
+                code, stdout, stderr = _invoke(*command, *_timeout_args(value))
 
             self.assertEqual(code, 2)
             self.assertEqual(stdout, "")
-            self.assertEqual(stderr, f"automa vehicles status: {TIMEOUT_MESSAGE}\n")
+            self.assertEqual(stderr, f"automa {' '.join(command)}: {TIMEOUT_MESSAGE}\n")
             get_status.assert_not_called()
 
     def test_invalid_automation_values_stop_before_worker_dispatch(self) -> None:
@@ -134,13 +130,19 @@ class TimeoutInputTests(unittest.TestCase):
 
     def test_valid_positive_timeout_reaches_each_consumer_unchanged(self) -> None:
         with patch(
-            "cli.automa_cli.app.get_chase_simulator_status",
-            return_value={"vehicles": [{"provider": "chase-sim", "url": "http://localhost:5050/", "state": "running"}],
-                          "hosts": []},
+            "cli.automa_cli.app.get_vehicles_status",
+            return_value={"vehicles": [{"provider": "chase-sim", "url": "http://localhost:5050/", "state": "running"}]},
         ) as get_status:
             code, _, _ = _invoke("vehicles", "status", "--timeout-s", "1.25")
         self.assertEqual(code, 0)
-        get_status.assert_called_once_with(timeout_s=1.25, include_hosts=False)
+        get_status.assert_called_once_with(timeout_s=1.25)
+
+        with patch(
+            "cli.automa_cli.app.get_hosts_status", return_value=SimpleNamespace(exit_code=0, message="ok"),
+        ) as get_hosts:
+            code, _, _ = _invoke("hosts", "status", "--timeout-s", "1.25")
+        self.assertEqual(code, 0)
+        get_hosts.assert_called_once_with(host_id=None, timeout_s=1.25, json_output=False)
 
         with patch(
             "cli.automa_cli.app.run_vehicle_automation",
@@ -160,14 +162,16 @@ class TimeoutInputTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(run_automation.call_args.kwargs["timeout_s"], 1.25)
 
-        with patch(
-            "cli.automa_cli.app.get_chase_simulator_status",
-            return_value={"vehicles": [{"provider": "chase-sim", "url": "http://localhost:5050/", "state": "running"}],
-                          "hosts": []},
-        ) as get_status:
-            code, _, _ = _invoke("vehicles", "status")
-        self.assertEqual(code, 0)
-        self.assertEqual(get_status.call_args.kwargs["timeout_s"], 5.0)
+        for command, target in STATUS_COMMANDS.items():
+            with self.subTest(command=command), patch(
+                target,
+                return_value=SimpleNamespace(exit_code=0, message="ok")
+                if command[0] == "hosts"
+                else {"vehicles": [{"provider": "chase-sim", "url": "http://localhost:5050/", "state": "running"}]},
+            ) as get_status:
+                code, _, _ = _invoke(*command)
+            self.assertEqual(code, 0)
+            self.assertEqual(get_status.call_args.kwargs["timeout_s"], 5.0)
 
         with patch(
             "cli.automa_cli.app.run_vehicle_automation",

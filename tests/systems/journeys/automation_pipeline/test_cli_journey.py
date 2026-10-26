@@ -77,12 +77,12 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                         if stream.poll() is None:
                             stream.terminate()
                             stream.wait(timeout=5)
-                status = json.loads(invoke_automa(
+                run = json.loads(invoke_automa(
                     "hosts", "status", "--id", "chase-sim-chaser", "--json",
                     runtime_root=runtime_root, extra_env=env,
-                ).stdout)
-                self.assertTrue(status["hosts"][0]["process"]["running"])
-                self.assertEqual(status["hosts"][0]["activation_problems"], [])
+                ).stdout)["hosts"][0]["run"]
+                self.assertTrue(run["process"]["running"])
+                self.assertEqual(run["activation_problems"], [])
                 self.assertFalse((runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json").exists())
             finally:
                 invoke_automa(
@@ -129,7 +129,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 staged = json.loads(invoke_automa(
                     "hosts", "status", "--id", "chase-sim-chaser", "--json",
                     runtime_root=runtime_root, extra_env=env,
-                ).stdout)["hosts"][0]
+                ).stdout)["hosts"][0]["run"]
                 self.assertTrue(staged["deployed"])
                 self.assertFalse(staged["process"]["running"])
 
@@ -159,7 +159,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     old_run = json.loads(invoke_automa(
                         "hosts", "status", "--id", "chase-sim-chaser",
                         "--json", runtime_root=runtime_root, extra_env=env,
-                    ).stdout)["hosts"][0]["state"]["run_id"]
+                    ).stdout)["hosts"][0]["run"]["state"]["run_id"]
                     restarted = run_automa(
                         "hosts", "restart", "--id", "chase-sim-chaser",
                         "--observe-only", "--num-decisions", "0", "--open-view",
@@ -170,7 +170,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     new_run = json.loads(invoke_automa(
                         "hosts", "status", "--id", "chase-sim-chaser",
                         "--json", runtime_root=runtime_root, extra_env=env,
-                    ).stdout)["hosts"][0]["state"]["run_id"]
+                    ).stdout)["hosts"][0]["run"]["state"]["run_id"]
                     self.assertNotEqual(new_run, old_run)
 
                     # The runtime announces its host identity to the simulator.
@@ -184,7 +184,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     running = json.loads(invoke_automa(
                         "hosts", "status", "--id", "chase-sim-chaser",
                         "--json", runtime_root=runtime_root, extra_env=env,
-                    ).stdout)["hosts"][0]
+                    ).stdout)["hosts"][0]["run"]
                     self.assertTrue(running["process"]["running"])
                     self.assertEqual(running["state"]["action_policy"], "observe_only")
                     self.assertEqual(running["state"]["control_application"], "not_applied")
@@ -206,7 +206,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 final = json.loads(invoke_automa(
                     "hosts", "status", "--id", "chase-sim-chaser",
                     "--json", runtime_root=runtime_root, extra_env=env,
-                ).stdout)["hosts"][0]
+                ).stdout)["hosts"][0]["run"]
                 self.assertTrue(final["deployed"])
                 self.assertFalse(final["process"]["running"])
                 self.assertEqual(_session_fingerprint(ws_url), initial_fingerprint)

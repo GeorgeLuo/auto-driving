@@ -45,7 +45,7 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
                     self.assertIn("Run started on host", run.stdout)
                     self.assertIn("Runtime view: http://127.0.0.1:", run.stdout)
 
-                    [host] = json.loads(cli("hosts", "status", "--id", "chase-sim-chaser", "--json").stdout)["hosts"]
+                    host = json.loads(cli("hosts", "status", "--id", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                     self.assertTrue(host["process"]["running"])
                     self.assertTrue(host["published_view"]["available"])
                     self.assertEqual(host["state"]["action_policy"], "observe_only")
@@ -54,7 +54,7 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
                 finally:
                     cli("hosts", "stop", "--id", "chase-sim-chaser")
 
-                [host] = json.loads(cli("hosts", "status", "--id", "chase-sim-chaser", "--json").stdout)["hosts"]
+                host = json.loads(cli("hosts", "status", "--id", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                 self.assertFalse(host["process"]["running"])
                 self.assertFalse(host["published_view"]["available"])
                 _assert_passive_preserved()

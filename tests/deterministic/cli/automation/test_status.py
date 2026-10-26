@@ -114,90 +114,50 @@ class AutomationStatusTests(unittest.TestCase):
         self.assertTrue(probe_calls)
         self.assertTrue(all(timeout <= 0.2 + 1e-9 for timeout in probe_calls))
 
-    def test_empty_runtime_has_matching_human_and_json_outcome(self) -> None:
+    def test_no_hosts_are_found_in_human_and_json_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             human = invoke_automa("hosts", "status", runtime_root=runtime_root)
-            machine = invoke_automa(
-                "hosts",
-                "status",
-                "--json",
-                runtime_root=runtime_root,
-            )
+            machine = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)
 
-        payload = json.loads(machine.stdout)
-        self.assertEqual(payload["schema"], "automa_host_status_v1")
-        self.assertEqual(payload["outcome"]["status"], "empty")
-        self.assertEqual(payload["hosts"], [])
-        self.assertIn("hosts: 0", human.stdout)
-        self.assertIn(payload["outcome"]["message"], human.stdout)
-        self.assertIn(payload["outcome"]["recovery"], human.stdout)
+        self.assertEqual(json.loads(machine.stdout), {"schema": "automa_hosts_status", "host_id": None, "hosts": []})
+        self.assertEqual(human.stdout, "No hosts found\n")
         self.assertEqual(human.stderr, "")
         self.assertEqual(machine.stderr, "")
 
-    def test_unknown_runtime_is_actionable_in_human_and_json_output(self) -> None:
+    def test_an_unknown_id_is_not_found_and_exits_one(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            human = invoke_automa(
-                "hosts",
-                "status",
-                "--id",
-                "missing-car",
-                runtime_root=runtime_root,
-                check=False,
-            )
+            human = invoke_automa("hosts", "status", "--id", "missing-car", runtime_root=runtime_root, check=False)
             machine = invoke_automa(
-                "hosts",
-                "status",
-                "--id",
-                "missing-car",
-                "--json",
-                runtime_root=runtime_root,
-                check=False,
+                "hosts", "status", "--id", "missing-car", "--json", runtime_root=runtime_root, check=False,
             )
 
         payload = json.loads(machine.stdout)
-        self.assertEqual(human.returncode, 2)
-        self.assertEqual(machine.returncode, 2)
-        self.assertEqual(payload["outcome"]["status"], "not_found")
-        self.assertEqual(payload["requested_host_id"], "missing-car")
-        self.assertEqual(payload["hosts"], [])
-        self.assertIn(payload["outcome"]["message"], human.stdout)
-        self.assertIn(payload["outcome"]["expected_bundle"], human.stdout)
-        self.assertIn(payload["outcome"]["recovery"], human.stdout)
-        self.assertNotIn("Traceback", human.stdout)
+        self.assertEqual((human.returncode, machine.returncode), (1, 1))
+        self.assertEqual(payload["host_id"], "missing-car")
+        [host] = payload["hosts"]
+        self.assertEqual((host["host_id"], host["state"], host["run"]), ("missing-car", "not found", None))
+        self.assertEqual(human.stdout, "Host missing-car  not found\n")
         self.assertEqual(human.stderr, "")
         self.assertEqual(machine.stderr, "")
 
-    def test_running_runtime_has_matching_human_and_json_state(self) -> None:
+    def test_a_running_worker_has_matching_human_and_json_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             write_runtime_fixture(runtime_root, HOST_ID, pid=os.getpid())
 
-            human = invoke_automa(
-                "hosts",
-                "status",
-                "--id",
-                HOST_ID,
-                runtime_root=runtime_root,
-            )
-            machine = invoke_automa(
-                "hosts",
-                "status",
-                "--id",
-                HOST_ID,
-                "--json",
-                runtime_root=runtime_root,
-            )
+            human = invoke_automa("hosts", "status", runtime_root=runtime_root)
+            machine = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)
 
         payload = json.loads(machine.stdout)
-        self.assertEqual(payload["schema"], "automa_host_status_v1")
-        self.assertEqual(payload["outcome"]["status"], "ok")
-        self.assertEqual(len(payload["hosts"]), 1)
-        vehicle = payload["hosts"][0]
-        self.assertEqual(vehicle["host_id"], HOST_ID)
-        self.assertTrue(vehicle["deployed"])
-        steps = vehicle["steps"]
+        self.assertEqual(payload["schema"], "automa_hosts_status")
+        [host] = payload["hosts"]
+        self.assertEqual(host["host_id"], HOST_ID)
+        self.assertEqual(host["state"], "not running")
+        run = host["run"]
+        self.assertTrue(run["deployed"])
+        steps = run["steps"]
         self.assertEqual(
             {step: item["source"] for step, item in steps.items()},
             {"observation": "builtin", "perception": "staged", "memory": "none",
@@ -205,57 +165,48 @@ class AutomationStatusTests(unittest.TestCase):
         )
         self.assertEqual(steps["perception"]["preset"], "sim_debug")
         self.assertEqual(steps["action"]["plugins"], ["selected"])
-        self.assertEqual(vehicle["process"]["status"], "running")
-        self.assertTrue(vehicle["process"]["running"])
+        self.assertEqual(run["process"]["status"], "running")
+        self.assertTrue(run["process"]["running"])
 
-        self.assertIn("hosts: 1", human.stdout)
-        self.assertIn(vehicle["host_id"], human.stdout)
-        self.assertIn("  steps: staged\n", human.stdout)
+        # The host block comes first, then the host's run.
+        self.assertTrue(human.stdout.startswith(
+            f"Host {HOST_ID}  not running\n"
+            "  chaser at http://localhost:5050/\n"
+            "  local host record\n"
+            "  deployment: deployed\n"
+            "  steps: staged\n"
+        ), human.stdout)
         self.assertIn(f"    perception: {steps['perception']['preset']} (", human.stdout)
         self.assertIn("    memory: (no plugins)\n", human.stdout)
         self.assertIn("    plan: (no plugins)\n", human.stdout)
         self.assertIn("    action: selected\n", human.stdout)
-        self.assertIn(f"  decision: {vehicle['decision']['generation_id']}\n", human.stdout)
-        self.assertIn(f"worker: {vehicle['process']['status']}", human.stdout)
+        self.assertIn(f"  decision: {run['decision']['generation_id']}\n", human.stdout)
+        self.assertIn(f"worker: {run['process']['status']}", human.stdout)
         self.assertIn("log: disabled", human.stdout)
         self.assertNotIn("plugin_configs", human.stdout)
         self.assertNotIn("Traceback", human.stdout)
 
-    def test_stale_worker_is_explicit_and_actionable_in_both_outputs(self) -> None:
+    def test_a_stale_worker_says_why_without_next_steps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             write_runtime_fixture(runtime_root, HOST_ID, pid=DEAD_PID)
 
-            human = invoke_automa(
-                "hosts",
-                "status",
-                "--id",
-                HOST_ID,
-                runtime_root=runtime_root,
-            )
-            machine = invoke_automa(
-                "hosts",
-                "status",
-                "--id",
-                HOST_ID,
-                "--json",
-                runtime_root=runtime_root,
-            )
+            human = invoke_automa("hosts", "status", runtime_root=runtime_root)
+            machine = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)
 
-        payload = json.loads(machine.stdout)
-        self.assertEqual(payload["outcome"]["status"], "degraded")
-        process = payload["hosts"][0]["process"]
+        process = json.loads(machine.stdout)["hosts"][0]["run"]["process"]
         self.assertFalse(process["running"])
         self.assertEqual(process["pid_state"], "not_running")
         self.assertEqual(process["status"], "stale")
         self.assertIn(str(DEAD_PID), process["reason"])
-        self.assertIn(HOST_ID, process["recovery"])
+        self.assertNotIn("recovery", process)
         self.assertIn("worker: stale", human.stdout)
-        self.assertIn(process["reason"], human.stdout)
-        self.assertIn(process["recovery"], human.stdout)
+        self.assertIn(f"  problem: {process['reason']}\n", human.stdout)
         self.assertNotIn("worker: running", human.stdout)
+        for hint in ("next:", "Next:", "Expected bundle:"):
+            self.assertNotIn(hint, human.stdout)
 
-    def test_error_state_is_actionable_without_human_traceback_noise(self) -> None:
+    def test_an_error_state_says_why_without_human_traceback_noise(self) -> None:
         full_error = "camera capture failed\nTraceback (most recent call last): internal detail"
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
@@ -267,34 +218,18 @@ class AutomationStatusTests(unittest.TestCase):
                 exit_code=2,
             )
 
-            human = invoke_automa(
-                "hosts",
-                "status",
-                "--id",
-                HOST_ID,
-                runtime_root=runtime_root,
-            )
-            machine = invoke_automa(
-                "hosts",
-                "status",
-                "--id",
-                HOST_ID,
-                "--json",
-                runtime_root=runtime_root,
-            )
+            human = invoke_automa("hosts", "status", runtime_root=runtime_root)
+            machine = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)
 
-        payload = json.loads(machine.stdout)
-        self.assertEqual(payload["outcome"]["status"], "degraded")
-        vehicle = payload["hosts"][0]
-        process = vehicle["process"]
+        run = json.loads(machine.stdout)["hosts"][0]["run"]
+        process = run["process"]
         self.assertEqual(process["status"], "error")
         self.assertEqual(process["reason"], "camera capture failed")
-        self.assertIn(HOST_ID, process["recovery"])
-        self.assertEqual(vehicle["state"]["error"], full_error)
-        self.assertEqual(vehicle["state"]["exit_code"], 2)
+        self.assertEqual(run["state"]["error"], full_error)
+        self.assertEqual(run["state"]["exit_code"], 2)
         self.assertIn("worker: error", human.stdout)
         self.assertIn("problem: camera capture failed", human.stdout)
-        self.assertIn(process["recovery"], human.stdout)
+        self.assertNotIn("next:", human.stdout)
         self.assertNotIn("Traceback", human.stdout)
         self.assertEqual(human.stderr, "")
         self.assertEqual(machine.stderr, "")
@@ -311,20 +246,12 @@ class AutomationStatusTests(unittest.TestCase):
                 HOST_ID,
                 runtime_root=runtime_root,
             )
-            status = invoke_automa(
-                "hosts",
-                "status",
-                "--id",
-                HOST_ID,
-                "--json",
-                runtime_root=runtime_root,
-            )
+            status = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)
 
         self.assertIn("has no run", stop.stdout)
-        payload = json.loads(status.stdout)
-        state = payload["hosts"][0]["state"]
-        self.assertEqual(state["status"], "stopped")
-        self.assertEqual(payload["hosts"][0]["process"]["status"], "stopped")
+        run = json.loads(status.stdout)["hosts"][0]["run"]
+        self.assertEqual(run["state"]["status"], "stopped")
+        self.assertEqual(run["process"]["status"], "stopped")
 
 
 def _set_runtime_state(path: Path, **changes: object) -> None:

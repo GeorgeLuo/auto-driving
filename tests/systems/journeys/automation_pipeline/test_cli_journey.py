@@ -110,8 +110,8 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 initial = simulator()
                 self.assertEqual((initial["state"], initial["hosts"]), ("running", []))
                 initial_fingerprint = _session_fingerprint(ws_url)
-                invoke_automa("vehicles", "create", "host", "--id", "chase-sim-chaser",
-                              "--chase-url", ws_url, runtime_root=runtime_root, extra_env=env)
+                invoke_automa("vehicles", "create", "host", "--id", "chase-sim-chaser", "--provider", "chase-sim",
+                              "--url", ws_url, runtime_root=runtime_root, extra_env=env)
 
                 invoke_automa(
                     "vehicles", "update", "memory", "--id", "chase-sim-chaser",

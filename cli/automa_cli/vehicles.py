@@ -403,21 +403,22 @@ def host_state_text(host: dict[str, Any]) -> str:
 
 def format_chase_simulator_status(status: dict[str, Any]) -> str:
     url = status.get("operator_url", "unknown")
+    # Each environment's heading names the --provider that create host takes for it.
     if status.get("state") == "running":
-        simulator = [f"Simulator  running at {url}"]
+        simulator = [f"Simulator (chase-sim)  running at {url}"]
         if status.get("frontend") == "connected" and status.get("game"):
             simulator.append(f"  frontend connected, game {status['game']}")
         elif status.get("frontend"):
             simulator.append(f"  frontend {status['frontend']}")
     else:
-        simulator = [f"Simulator  unreachable at {url}"]
+        simulator = [f"Simulator (chase-sim)  unreachable at {url}"]
     simulator += _indented(status.get("error"))
     if status.get("hosts_error"):
         simulator.append(f"  cannot list attached hosts: {status['hosts_error']}")
     blocks = ["\n".join(simulator)]
     picar = status.get("picar")
     if picar:
-        blocks.append(f"PiCar  {picar['state']} at {picar['url']}" +
+        blocks.append(f"PiCar (picar)  {picar['state']} at {picar['url']}" +
                       (f": {picar['error']}" if picar.get("error") else ""))
     hosts = status.get("hosts") or []
     if not hosts:

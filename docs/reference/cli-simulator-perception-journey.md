@@ -25,7 +25,7 @@ explicitly restaged using the recovery that `vehicles automation status` prints.
 
 ```sh
 ./cli/automa vehicles status --chase-url http://localhost:5050
-./cli/automa vehicles create host --id chase-sim-chaser --chase-url http://localhost:5050
+./cli/automa vehicles create host --id chase-sim-chaser --provider chase-sim --url http://localhost:5050
 
 ./cli/automa vehicles update memory \
   --id chase-sim-chaser \
@@ -49,12 +49,15 @@ explicitly restaged using the recovery that `vehicles automation status` prints.
 ```
 
 `vehicles status` is read-only and is the one status overview. It prints a
-heading for the simulator and for each vehicle host, with details indented
-below it:
+heading for the simulator, the PiCar and each vehicle host, with details
+indented below it. An environment's heading names the provider and URL that
+`vehicles create host --provider <provider> --url <url>` takes for it:
 
 ```text
-Simulator  running at http://localhost:5050/
+Simulator (chase-sim)  running at http://localhost:5050/
   frontend connected, game chase
+
+PiCar (picar)  unreachable at http://piracer.local:8887: GET http://piracer.local:8887/host/status failed: [Errno 8] nodename nor servname provided, or not known
 
 Host chase-sim-chaser  running, observe only
   120 decisions, 0 errors, last frame 0.3s ago

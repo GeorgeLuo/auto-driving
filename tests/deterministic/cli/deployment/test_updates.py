@@ -19,10 +19,12 @@ class HostLifecycleTests(unittest.TestCase):
         self.enterContext(patch.object(runtime_hosts, "RUNTIME_ROOT", self.root))
 
     def test_create_picar_dry_run_has_core_release_then_restart_without_writes(self):
-        result = deploy.create_host(vehicle_id="car", picar_url="http://example.local:8887",
-                                    dry_run=True, drive_args="--js", json_output=True)
-        self.assertEqual(result.exit_code, 0, result.message)
-        payload = json.loads(result.message)
+        result = invoke_automa("vehicles", "create", "host", "--id", "car", "--provider", "picar",
+                               "--url", "http://example.local:8887", "--dry-run", "--drive-args=--js", "--json",
+                               runtime_root=self.root, check=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["vehicle"]["provider"], "picar")
         self.assertEqual(payload["vehicle"]["connection"]["ssh_target"], "piracer@example.local")
         commands = payload["core"]["commands"] + payload["host"]["commands"]
         self.assertEqual(commands[0]["step"], "Prepare remote directories")
@@ -35,20 +37,20 @@ class HostLifecycleTests(unittest.TestCase):
         with patch.object(deploy, "_probe_chase", return_value=probe), \
              patch.object(runtime_hosts, "ensure_chase_host", return_value="http://localhost:9999") as start, \
              patch.object(deploy, "host_state", return_value={"state": "idle"}):
-            result = deploy.create_host(vehicle_id="test", chase_url="http://localhost:5050")
+            result = deploy.create_host(vehicle_id="test", provider="chase-sim", url="http://localhost:5050")
         self.assertEqual(result.exit_code, 0, result.message)
         start.assert_called_once_with("test")
         record = json.loads((self.root / "test" / "vehicle.json").read_text())
         self.assertEqual(record["connection"]["ws_url"], "ws://localhost:5050/ws/control")
         self.assertTrue((self.root / "test" / "bundle" / "releases" / "latest-controller-bundle.json").exists())
-        again = deploy.create_host(vehicle_id="test", chase_url="http://localhost:5050")
+        again = deploy.create_host(vehicle_id="test", provider="chase-sim", url="http://localhost:5050")
         self.assertEqual(again.exit_code, 2)
         self.assertIn("already exists: the chaser", again.message)
 
     def test_unreachable_simulator_leaves_no_directory(self):
         probe = ProbeResult(active=False, candidate=Candidate("chase-sim", "ws://example/ws/control", "cli"), error="no frontend")
         with patch.object(deploy, "_probe_chase", return_value=probe):
-            result = deploy.create_host(vehicle_id="test", chase_url="http://example")
+            result = deploy.create_host(vehicle_id="test", provider="chase-sim", url="http://example")
         self.assertEqual(result.exit_code, 2)
         self.assertIn("no frontend", result.message)
         self.assertFalse(self.root.exists())
@@ -59,7 +61,7 @@ class HostLifecycleTests(unittest.TestCase):
         staged = directory / "keep.json"
         staged.write_text("{}")
         with patch.object(deploy, "_install_picar_core", return_value=deploy.CommandResult(2, "ssh failed")):
-            result = deploy.create_host(vehicle_id="test", picar_url="http://example:8887")
+            result = deploy.create_host(vehicle_id="test", provider="picar", url="http://example:8887")
         self.assertEqual(result.exit_code, 2)
         self.assertTrue(staged.exists())
         self.assertFalse((directory / "vehicle.json").exists())
@@ -105,7 +107,7 @@ class HostLifecycleTests(unittest.TestCase):
 
     def test_failed_new_creation_removes_the_directory(self):
         with patch.object(deploy, "_install_picar_core", return_value=deploy.CommandResult(2, "sync failed")):
-            result = deploy.create_host(vehicle_id="car", picar_url="http://example:8887")
+            result = deploy.create_host(vehicle_id="car", provider="picar", url="http://example:8887")
         self.assertEqual(result.exit_code, 2)
         self.assertFalse((self.root / "car").exists())
 
@@ -123,6 +125,6 @@ class HostLifecycleTests(unittest.TestCase):
     def test_host_name_cannot_escape_runtime_root(self):
         for name in ("..", ".", "../car", "car/name"):
             with self.subTest(name=name):
-                result = deploy.create_host(vehicle_id=name, picar_url="http://example:8887")
+                result = deploy.create_host(vehicle_id=name, provider="picar", url="http://example:8887")
                 self.assertEqual(result.exit_code, 2)
         self.assertFalse(self.root.exists())

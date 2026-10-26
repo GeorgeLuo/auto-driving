@@ -23,7 +23,7 @@ from .operations import run_vehicle_startup_check
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, SELECTABLE_STEPS, STEP_PRESETS
 
-from .step_activations import update_vehicle_step
+from .step_activations import HOST_PROVIDERS, update_vehicle_step
 from .runtime_hosts import RUNTIME_ROOT as VEHICLES_RUNTIME_ROOT
 from .perception import get_vehicle_perception_info
 from .perception_runs import (
@@ -1095,9 +1095,11 @@ def build_parser() -> argparse.ArgumentParser:
         command.add_argument("--dry-run", action="store_true", help="Print the deployment plan without writing or connecting.")
         command.add_argument("--json", action="store_true")
         command.add_argument("--drive-args", help="Persist PiCar drive arguments; update requires --restart.")
-    urls = host_create.add_mutually_exclusive_group(required=True)
-    urls.add_argument("--chase-url", help="Chase HTTP(S) origin or WS(S) control URL.")
-    urls.add_argument("--picar-url", help="PiCar HTTP(S) URL.")
+    host_create.add_argument("--provider", required=True, choices=HOST_PROVIDERS,
+                             help="What the host controls: the simulator's chaser (chase-sim) or a PiCar (picar).")
+    host_create.add_argument("--url", required=True,
+                             help="The vehicle's URL: the simulator's HTTP(S) origin or WS(S) control URL, "
+                                  "or the PiCar's HTTP(S) URL. vehicles status lists both.")
     host_create.add_argument("--ssh-target", help="PiCar SSH target (default: PI_HOST or the URL host).")
     host_create.add_argument("--pi-home", help="PiCar home (default: PI_HOME or /home/piracer).")
     host_update.add_argument("--restart", action="store_true", help="Restart the host onto this release.")
@@ -1897,7 +1899,7 @@ def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
 
 def _handle_vehicles_create_host(args: argparse.Namespace) -> int:
     result = create_host(
-        vehicle_id=args.vehicle_id, chase_url=args.chase_url, picar_url=args.picar_url,
+        vehicle_id=args.vehicle_id, provider=args.provider, url=args.url,
         ssh_target=args.ssh_target, pi_home=args.pi_home, drive_args=args.drive_args,
         dry_run=args.dry_run, json_output=args.json, verbose=args.verbose,
         output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),

@@ -193,6 +193,9 @@ def absent_step_error(step: str, vehicle_id: str) -> str:
     )
 
 
+HOST_PROVIDERS = ("chase-sim", "picar")
+
+
 def staging_vehicle(
     vehicle_id: str,
     *,
@@ -213,7 +216,7 @@ def staging_vehicle(
         vehicle = json.loads(path.read_text(encoding="utf-8"))
         if (not isinstance(vehicle, dict) or vehicle.get("schema") != "automa_host_vehicle_v0"
                 or vehicle.get("vehicle_id") != vehicle_id
-                or vehicle.get("provider") not in {"chase-sim", "picar"}
+                or vehicle.get("provider") not in HOST_PROVIDERS
                 or not isinstance(vehicle.get("connection"), dict)):
             raise ValueError("invalid host record")
     except (OSError, ValueError) as exc:

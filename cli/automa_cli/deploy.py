@@ -33,6 +33,7 @@ from .donkeycar_vendor import (
 from .paths import display_path, safe_path_part
 from .step_activations import (
     CONTROLLER_BUNDLE_KEYS,
+    HOST_PROVIDERS,
     bundle_activation_path,
     bundle_activation_problems,
     decision_generation_id,
@@ -505,7 +506,7 @@ def _resolve_picar_target(vehicle: dict[str, Any]) -> PicarTarget:
 
 
 def create_host(
-    *, vehicle_id: str, chase_url: str | None = None, picar_url: str | None = None,
+    *, vehicle_id: str, provider: str, url: str,
     ssh_target: str | None = None, pi_home: str | None = None,
     drive_args: str | None = None, dry_run: bool = False, json_output: bool = False,
     verbose: bool = False, output: TextIO | None = None,
@@ -514,19 +515,20 @@ def create_host(
 
     if vehicle_id in {".", ".."} or safe_path_part(vehicle_id) != vehicle_id or not vehicle_id:
         return CommandResult(2, "Host names may contain letters, digits, dots, underscores and hyphens, excluding . and ..")
-    if bool(chase_url) == bool(picar_url):
-        return CommandResult(2, "Pass exactly one of --chase-url and --picar-url.")
+    if provider not in HOST_PROVIDERS:
+        return CommandResult(2, f"Provider must be one of {', '.join(HOST_PROVIDERS)} (got {provider!r}).")
+    chase = provider == "chase-sim"
     directory = RUNTIME_ROOT / safe_path_part(vehicle_id)
     if (directory / "vehicle.json").exists():
         existing, error = staging_vehicle(vehicle_id, runtime_root=RUNTIME_ROOT)
         return CommandResult(2, error or f"Host {vehicle_id!r} already exists: {_vehicle_label(existing)}.")
-    if chase_url and any(value is not None for value in (ssh_target, pi_home, drive_args)):
+    if chase and any(value is not None for value in (ssh_target, pi_home, drive_args)):
         return CommandResult(2, "--ssh-target, --pi-home and --drive-args apply only to a PiCar.")
-    vehicle = {"vehicle_id": vehicle_id, "provider": "chase-sim" if chase_url else "picar",
-               "vehicle_kind": "chase-sim-ws" if chase_url else "picar-donkey-http"}
-    if chase_url:
+    vehicle = {"vehicle_id": vehicle_id, "provider": provider,
+               "vehicle_kind": "chase-sim-ws" if chase else "picar-donkey-http"}
+    if chase:
         try:
-            url = normalize_chase_url(chase_url)
+            url = normalize_chase_url(url)
         except ValueError as exc:
             return CommandResult(2, str(exc))
         vehicle["connection"] = {"ws_url": url}
@@ -535,16 +537,16 @@ def create_host(
             if not probe.active:
                 return CommandResult(2, f"No Chase simulator can take a host at {url}: {probe.error}")
     else:
-        url = picar_url.rstrip("/")
+        url = url.rstrip("/")
         if urlparse(url).scheme not in {"http", "https"} or not urlparse(url).hostname:
-            return CommandResult(2, "--picar-url must be an HTTP(S) URL.")
+            return CommandResult(2, "A PiCar --url must be an HTTP(S) URL.")
         vehicle["connection"] = {"base_url": url}
         vehicle["connection"].update(
             ssh_target=ssh_target or os.environ.get("PI_HOST") or _ssh_target_from_vehicle(vehicle),
             pi_home=pi_home or os.environ.get("PI_HOME") or DEFAULT_PI_HOME,
         )
     if dry_run:
-        if chase_url:
+        if chase:
             return _update_local_autonomy(vehicle_id=vehicle_id, dry_run=True, restart=True,
                                           json_output=json_output, output=output)
         target = _resolve_picar_target(vehicle)
@@ -558,16 +560,16 @@ def create_host(
     made_directory = not directory.exists()
     write_host_vehicle(RUNTIME_ROOT, vehicle)
     try:
-        if not chase_url:
+        if not chase:
             core = _install_picar_core(_resolve_picar_target(vehicle), verbose=verbose, output=output)
             if core.exit_code:
                 raise RuntimeError(core.message)
-        result = update_host(vehicle_id=vehicle_id, restart=not bool(chase_url), drive_args=drive_args,
+        result = update_host(vehicle_id=vehicle_id, restart=not chase, drive_args=drive_args,
                              json_output=json_output, verbose=verbose, output=output)
         if result.exit_code:
             raise RuntimeError(result.message)
         state = None
-        if chase_url:
+        if chase:
             base_url = ensure_chase_host(vehicle_id)
             state = host_state(base_url, vehicle_id=vehicle_id, timeout_s=5.0)
         if json_output:
@@ -581,13 +583,13 @@ def create_host(
                                       "provider": "chase-sim", "vehicle_url": url}))
         return CommandResult(0, "\n".join(lines))
     except (OSError, RuntimeError, ValueError) as exc:
-        if chase_url:
+        if chase:
             stop_chase_host(vehicle_id)
         if made_directory:
             shutil.rmtree(directory)
         else:
             (directory / "vehicle.json").unlink(missing_ok=True)
-        suffix = " The Pi keeps files already synced." if picar_url else ""
+        suffix = "" if chase else " The Pi keeps files already synced."
         return CommandResult(2, f"Could not create host {vehicle_id!r}: {exc}{suffix}")
 
 
@@ -1017,9 +1019,8 @@ def _verify_picar_autonomy_runtime(
             vehicle_id = target.vehicle_id
             raise RuntimeError(
                 f"{status_url} has no live {step} step, but {plugins!r} was deployed. "
-                "The step loader lives in the Donkey manage.py harness from core. "
-                f"Run: ./cli/automa vehicles create host --id {vehicle_id} --restart "
-                f"then ./cli/automa vehicles update host --id {vehicle_id} --restart"
+                "The step loader lives in the Donkey manage.py harness, which create host installs; "
+                f"{vehicle_id}'s harness does not load steps."
             )
         if list(actual) != list(plugins):
             raise RuntimeError(

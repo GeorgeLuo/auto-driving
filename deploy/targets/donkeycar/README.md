@@ -12,7 +12,7 @@ Use the CLI for deployment:
 
 ```sh
 ./cli/automa vehicles status
-./cli/automa vehicles create host --id piracer --picar-url http://piracer.local:8887
+./cli/automa vehicles create host --id piracer --provider picar --url http://piracer.local:8887
 ./cli/automa vehicles update host --id piracer --restart
 ```
 

@@ -31,7 +31,7 @@ def _blocks(stdout: str) -> list[list[str]]:
     """The simulator block and each host block of ``vehicles status``, as lines."""
 
     return [[line for line in block.splitlines() if not line.startswith(("  chaser at", "  PiCar at"))]
-            for block in stdout.strip("\n").split("\n\n") if not block.startswith("PiCar  ")]
+            for block in stdout.strip("\n").split("\n\n") if not block.startswith("PiCar (picar)  ")]
 
 
 def _record(runtime_root: Path, vehicle_id: str, url: str) -> None:
@@ -77,7 +77,7 @@ class SimulatorStatusTests(unittest.TestCase):
     def setUp(self) -> None:
         self.runtime_root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.server = self.enterContext(fake_metrics_ui())
-        self.simulator = [f"Simulator  running at {chase_operator_url(self.server.url)}",
+        self.simulator = [f"Simulator (chase-sim)  running at {chase_operator_url(self.server.url)}",
                           "  frontend connected, game chase"]
 
     def status(self, *args: str, chase_url: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -224,7 +224,7 @@ class SimulatorStatusTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 1, result.stderr)
         [heading, reason], host = _blocks(result.stdout)
-        self.assertEqual(heading, f"Simulator  unreachable at {chase_operator_url(normalize_chase_url(simulator))}")
+        self.assertEqual(heading, f"Simulator (chase-sim)  unreachable at {chase_operator_url(normalize_chase_url(simulator))}")
         self.assertIn("refused", reason)
         self.assertEqual(host, [
             "Host chase-sim-chaser  not answering",
@@ -244,7 +244,7 @@ class SimulatorStatusTests(unittest.TestCase):
 
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(_blocks(result.stdout), [
-                    [f"Simulator  running at {chase_operator_url(server.url)}", "  frontend not connected"],
+                    [f"Simulator (chase-sim)  running at {chase_operator_url(server.url)}", "  frontend not connected"],
                     ["No hosts found"],
                 ])
 
@@ -343,6 +343,9 @@ class EnvironmentStatusTests(unittest.TestCase):
                 with patch("cli.automa_cli.vehicles._probe_picar", return_value=probe):
                     result = invoke_automa("vehicles", "status", "--chase-url", closed_url(),
                                            "--picar-url", url, "--json", runtime_root=Path(tmp), check=False)
+                    text = invoke_automa("vehicles", "status", "--chase-url", closed_url(),
+                                         "--picar-url", url, runtime_root=Path(tmp), check=False)
                 self.assertEqual(result.returncode, code, result.stderr)
                 self.assertEqual(json.loads(result.stdout)["picar"],
                                  {"url": url, "state": expected, "error": probe.error})
+                self.assertIn(f"PiCar (picar)  {expected} at {url}", text.stdout)

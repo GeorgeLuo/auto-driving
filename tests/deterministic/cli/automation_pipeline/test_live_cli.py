@@ -104,7 +104,7 @@ class LiveCommandsTests(LiveHostTestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload["error"], "no_fresh_frames")
         self.assertIn("is not processing frames", payload["message"])
-        self.assertIn(START_HOST, payload["message"])
+        self.assertIn("start a run if none is active", payload["message"])
 
     def test_memory_reset_is_confirmed_while_the_session_refills_memory(self) -> None:
         self.observe()
@@ -117,7 +117,7 @@ class LiveCommandsTests(LiveHostTestCase):
         self.assertNotEqual(*epochs)
 
 
-START_HOST = f"Run: ./cli/automa vehicles automation run --id {VEHICLE_ID} --observe-only"
+START_HOST = "Host 'chase-sim-chaser' is not running."
 
 
 class NoRuntimeHostTests(unittest.TestCase):

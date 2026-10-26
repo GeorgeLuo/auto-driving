@@ -8,6 +8,7 @@ import tempfile
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
+from tests.support.runtime_fixtures import write_host_fixture
 from typing import Iterator
 from unittest import mock
 
@@ -34,6 +35,7 @@ def _staged_vehicle() -> Iterator[list[subprocess.Popen]]:
     with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
         root = Path(tmp) / "vehicles"
         env = {"CHASE_UI_WS_URL": ws_url}
+        write_host_fixture(root, "chase-sim-chaser", url=ws_url)
         invoke_automa("vehicles", "update", "perception", "--id", VEHICLE_ID, runtime_root=root, extra_env=env)
         try:
             with (

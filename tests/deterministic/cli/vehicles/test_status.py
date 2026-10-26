@@ -171,7 +171,7 @@ class VehicleStatusTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["next_action"]["command"],
-            "./cli/automa vehicles update autonomy --id chase-sim-chaser",
+            "./cli/automa vehicles update host --id chase-sim-chaser",
         )
         self.assertIsNone(payload["next_action"]["external_change"])
 
@@ -243,54 +243,6 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertEqual(
             payload["layers"]["perception_view"]["state"],
             "available",
-        )
-
-    def test_aggregate_separates_non_chase_local_deployments(self) -> None:
-        candidate = Candidate(
-            "chase-sim",
-            "ws://localhost:5050/ws/control",
-            "cli",
-        )
-        probe = ProbeResult(
-            active=True,
-            candidate=candidate,
-            vehicle=_passive_vehicle(),
-        )
-        deployments = [
-            {
-                "vehicle_id": "chase-sim-chaser",
-                "deployed": True,
-                "bundle_root": "runtime/vehicles/chase-sim-chaser/bundle",
-            },
-            {
-                "vehicle_id": "piracer",
-                "deployed": True,
-                "bundle_root": "runtime/vehicles/piracer/bundle",
-            },
-        ]
-        with patch(
-            "cli.automa_cli.vehicles._probe_chase",
-            return_value=probe,
-        ), patch(
-            "cli.automa_cli.automation._collect_automation_status",
-            return_value=deployments,
-        ):
-            payload = get_vehicle_status()
-
-        self.assertEqual(
-            [card["vehicle_id"] for card in payload["vehicles"]],
-            ["chase-sim-chaser"],
-        )
-        self.assertEqual(
-            payload["other_local_deployments"],
-            [
-                {
-                    "vehicle_id": "piracer",
-                    "inspection_command": (
-                        "./cli/automa vehicles automation status --id piracer"
-                    ),
-                }
-            ],
         )
 
     def test_mid_capture_frontend_delivery_failure_recovers_with_browser_reload(
@@ -374,26 +326,9 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertEqual(result.stdout, "")
         self.assertIn("cannot be used together", result.stderr)
 
-    def test_active_json_schema_remains_compatible_while_human_copy_is_narrower(self) -> None:
-        result = invoke_automa(
-            "vehicles",
-            "active",
-            "--no-picar",
-            "--no-sim",
-            "--json",
-        )
-        self.assertEqual(
-            json.loads(result.stdout)["schema"],
-            "automa_vehicle_discovery_v0",
-        )
-        human = invoke_automa(
-            "vehicles",
-            "active",
-            "--no-picar",
-            "--no-sim",
-        )
-        self.assertIn("Discoverable vehicles: 0", human.stdout)
-        self.assertNotIn("Active vehicles:", human.stdout)
+    def test_retired_discovery_command_is_unavailable(self):
+        result = invoke_automa("vehicles", "active", check=False)
+        self.assertEqual(result.returncode, 2)
 
 
 if __name__ == "__main__":

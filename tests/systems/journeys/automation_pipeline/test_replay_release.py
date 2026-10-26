@@ -14,6 +14,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from tests.support.runtime_fixtures import write_host_fixture
 from unittest import mock
 
 from cli.automa_cli import bundles
@@ -54,6 +55,7 @@ class ReplayByReleaseTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
             runtime_root = Path(tmp) / "vehicles"
             env = {"CHASE_UI_WS_URL": ws_url}
+            write_host_fixture(runtime_root, "chase-sim-chaser", url=ws_url)
 
             def automa(*args: str, check: bool = True):
                 # Only the run needs its own process; it starts the worker.
@@ -83,12 +85,13 @@ class ReplayByReleaseTests(unittest.TestCase):
             missing = automa("perception", "inspect", str(recording), "--json", check=False)
             self.assertEqual(missing.returncode, 2, missing.stdout)
             self.assertIn(f"Controller release {release['tree_sha256'][:12]} is not in", missing.stdout)
-            self.assertIn(f"Run: ./cli/automa vehicles update autonomy --id {VEHICLE_ID}", missing.stdout)
+            self.assertIn(f"Run: ./cli/automa vehicles update host --id {VEHICLE_ID}", missing.stdout)
 
     def test_a_recording_replays_the_plugin_uploaded_to_its_host(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
             runtime_root = Path(tmp) / "vehicles"
             env = {"CHASE_UI_WS_URL": ws_url}
+            write_host_fixture(runtime_root, "chase-sim-chaser", url=ws_url)
 
             def automa(*args: str, check: bool = True):
                 # The run starts the worker. A process keeps each uploaded

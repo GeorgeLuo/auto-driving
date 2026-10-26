@@ -144,6 +144,7 @@ class TimeoutInputTests(unittest.TestCase):
             vehicle_id=None,
             chase_url=None,
             chase_ws_url=None,
+            picar_url=None,
             timeout_s=1.25,
         )
 

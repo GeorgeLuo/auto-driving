@@ -145,6 +145,8 @@ class PerceptionCommandTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
+            from tests.support.runtime_fixtures import write_host_fixture
+            write_host_fixture(runtime_root, "piracer", provider="picar")
             bundle = controller_bundle_paths(runtime_root / "piracer")
             sync_controller_bundle(bundle, output=None)
             write_json(

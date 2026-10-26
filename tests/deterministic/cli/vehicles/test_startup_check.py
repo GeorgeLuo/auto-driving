@@ -30,7 +30,7 @@ class StartupCheckTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as tmp,
             patch("cli.automa_cli.operations.OPERATION_OUTPUT_ROOT", Path(tmp)),
-            patch("cli.automa_cli.operations.discover_vehicle", return_value=({"vehicle_id": "fake-car"}, None)),
+            patch("cli.automa_cli.operations.staging_vehicle", return_value=({"vehicle_id": "fake-car"}, None)),
             patch("cli.automa_cli.operations.create_vehicle_access", return_value=access),
         ):
             result = run_vehicle_startup_check(

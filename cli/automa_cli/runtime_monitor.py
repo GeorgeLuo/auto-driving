@@ -57,7 +57,7 @@ def _frames_received(host: dict[str, Any]) -> int:
     observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
     count = observation.get("frames_received")
     if type(count) is not int or count < 0:
-        raise RuntimeError("The runtime host does not report a received-frame counter; update core and autonomy.")
+        raise RuntimeError("The runtime host does not report a received-frame counter; update the host.")
     return count
 
 
@@ -66,7 +66,7 @@ def _frames_dropped(host: dict[str, Any]) -> int:
     observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
     count = observation.get("frames_dropped")
     if type(count) is not int or count < 0:
-        raise RuntimeError("The runtime host does not report a dropped-frame counter; update core and autonomy.")
+        raise RuntimeError("The runtime host does not report a dropped-frame counter; update the host.")
     return count
 
 
@@ -190,7 +190,7 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
         run_id = str(response["host_run_id"])
         recording = response.get("session", {}).get("recording")
         if record and recording is None:
-            raise RuntimeError("the runtime host does not support complete recordings; update core and autonomy")
+            raise RuntimeError("the runtime host does not support complete recordings; update the host")
         recording_id = recording["run_id"] if record else None
         run_dir = automation_dir / "runs" / recording_id if record else None
         frames_dir = automation_dir / "latest" / "frames"

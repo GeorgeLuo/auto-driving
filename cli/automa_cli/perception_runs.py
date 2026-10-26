@@ -39,7 +39,6 @@ from .step_hosting import load_staged_runner
 from .vehicle_access import create_vehicle_access
 from .vehicles import (
     discover_active_vehicles,
-    find_vehicle_by_id,
     format_active_vehicles,
 )
 from .workbench_source import (
@@ -138,7 +137,7 @@ def _inspect_vehicle(
     plugins: list[str] | None,
     seed: SharedMemorySeed | None,
 ) -> CommandResult:
-    discovery = discover_active_vehicles(
+    discovery = {} if vehicle_id is not None else discover_active_vehicles(
         timeout_s=timeout_s,
         include_picar=True,
         include_chase_sim=True,
@@ -390,7 +389,9 @@ def _select_vehicle(
     requested_id: str | None,
 ) -> tuple[dict[str, Any] | None, str | None, str | None]:
     if requested_id:
-        vehicle, error = find_vehicle_by_id(discovery, requested_id)
+        from .step_activations import staging_vehicle
+        from .runtime_hosts import RUNTIME_ROOT
+        vehicle, error = staging_vehicle(requested_id, runtime_root=RUNTIME_ROOT)
         return vehicle, "explicit id", error
 
     vehicles = [item for item in discovery.get("vehicles", []) if isinstance(item, dict)]

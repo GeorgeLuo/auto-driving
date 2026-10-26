@@ -283,6 +283,8 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         thread.start()
         base_url = f"http://127.0.0.1:{server.server_port}"
+        from tests.support.runtime_fixtures import write_host_fixture
+        write_host_fixture(self.runtime_root, vehicle_id, provider="picar", url=base_url)
         # The CLI addresses a PiCar by the connection its staging recorded.
         proposal = packaged_activation("proposal")
         write_step_activation(

@@ -25,6 +25,7 @@ explicitly restaged using the recovery that `vehicles automation status` prints.
 
 ```sh
 ./cli/automa vehicles status --chase-url http://localhost:5050
+./cli/automa vehicles create host --id chase-sim-chaser --chase-url http://localhost:5050
 
 ./cli/automa vehicles update memory \
   --id chase-sim-chaser \
@@ -69,9 +70,9 @@ Host chase-sim-follower  not answering
 The simulator is running when its Metrics UI server answers, whether or not a
 browser has it open; `frontend not connected` (or `not answering`) says no
 browser is serving it.
-When it is unreachable, the next line says why. The hosts are those Metrics UI
-lists as attached agents (`list_agents`), every local host record whose process
-is alive, and each staged PiCar connection. Status reads every host's
+When it is unreachable, the next line says why. Hosts are the names created with `vehicles create host`. A created Chase host
+without a live process appears as `not running`. Metrics UI attachment is shown
+for those hosts; ID prefixes have no meaning. Status reads every host's
 `/host/status` in parallel, within the one `--timeout-s` deadline, so a
 host that never answers does not hold up the others. A host's state is its
 session state (`not started`, `starting`, `running`, `stopping`, `finished run`,
@@ -225,9 +226,10 @@ The commands keep these layers separate:
 | `perception_view` | `available`, `unavailable`, `stale` | Loopback view belongs to the current worker generation |
 | `evaluator_reference` | `available`, `unavailable`, `invalid` | Optional frame-scoped scoring reference |
 
-The compatibility command `vehicles active` means only “discoverable vehicle.”
-It does not imply a deployed bundle, running worker, or healthy browser view.
-Its JSON remains `automa_vehicle_discovery_v0`.
+`vehicles status` lists the simulator, PiCar reachability, and created hosts.
+The JSON includes `picar: {url, state, error}` and each host's provider and vehicle URL.
+It exits 1 when neither environment is reachable, or the requested host is missing,
+not running, not answering, or in error.
 
 An absent or malformed evaluator reference does not block camera perception.
 It is excluded from perception, observation, memory, and decision inputs.

@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from collections.abc import Iterator
 from pathlib import Path
+from tests.support.runtime_fixtures import write_host_fixture
 from unittest.mock import patch
 
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
@@ -38,6 +39,7 @@ class StepSelectionTests(unittest.TestCase):
     def _runtime(self) -> Iterator[Path]:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            write_host_fixture(root, VEHICLE)
             with patch("cli.automa_cli.app.VEHICLES_RUNTIME_ROOT", root):
                 yield root
 
@@ -64,7 +66,7 @@ class StepSelectionTests(unittest.TestCase):
                     self.assertTrue(
                         implicit["activation"].endswith(f"{VEHICLE}/bundle/runtime/{step}/active.json")
                     )
-            self.assertEqual(list(root.iterdir()), [])
+            self.assertFalse((root / VEHICLE / "bundle").exists())
 
     def test_every_named_preset_stages_what_it_names(self) -> None:
         """Regression: only memory's update checked that a staged preset
@@ -149,7 +151,7 @@ class StepSelectionTests(unittest.TestCase):
                     code, stdout, _ = _invoke(*update, "--plugin", "no_such_plugin")
                     self.assertEqual(code, 2)
                     self.assertIn(f"unknown {step} plugin(s) no_such_plugin", stdout)
-            self.assertEqual(list(root.iterdir()), [])
+            self.assertFalse((root / VEHICLE / "bundle").exists())
 
     def test_every_step_returns_one_payload_and_records_the_same_provenance(self) -> None:
         """Regression: perception returned ``vehicle_perception_update_v0`` and

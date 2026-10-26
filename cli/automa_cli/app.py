@@ -15,7 +15,7 @@ from .automation import (
     start_vehicle_automation_background,
     stop_vehicle_automation,
 )
-from .deploy import update_vehicle_autonomy, update_vehicle_core
+from .deploy import create_host, update_host, delete_host
 from .decision_steps import get_vehicle_step_info, inspect_decision_step, stream_vehicle_step
 from .memory import get_vehicle_memory_info
 from .memory_runs import inspect_memory, reset_vehicle_memory
@@ -43,8 +43,6 @@ from .runtime_view import serve_viewer
 from .streaming import stream_vehicle_memory, stream_vehicle_perception
 from .vehicles import (
     DEFAULT_READINESS_TIMEOUT_S,
-    discover_active_vehicles,
-    format_active_vehicles,
     format_chase_simulator_status,
     get_chase_simulator_status,
 )
@@ -137,66 +135,13 @@ def build_parser() -> argparse.ArgumentParser:
     disarm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
     disarm.set_defaults(handler=_handle_plugin_disarm)
 
-    active = vehicle_commands.add_parser(
-        "active",
-        help="Discover vehicle endpoints; this does not imply deployment or a running worker.",
-        description=(
-            "Discover front-camera-capable vehicle endpoints. Discoverable does not "
-            "mean automation is deployed, running, or publishing a view."
-        ),
-    )
-    active.add_argument(
-        "--timeout-s",
-        type=float,
-        default=DEFAULT_READINESS_TIMEOUT_S,
-        help=(
-            "One wall-clock readiness deadline per candidate in seconds "
-            f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
-        ),
-    )
-    active.add_argument(
-        "--picar-url",
-        action="append",
-        default=[],
-        help="Additional PiCar Donkey HTTP base URL to probe. May be repeated.",
-    )
-    active.add_argument(
-        "--chase-ws-url",
-        action="append",
-        default=[],
-        help="Additional Chase simulator Metrics UI WS URL to probe. May be repeated.",
-    )
-    active.add_argument(
-        "--no-picar",
-        action="store_true",
-        help="Skip PiCar Donkey HTTP discovery.",
-    )
-    active.add_argument(
-        "--no-sim",
-        action="store_true",
-        help="Skip Chase simulator WS discovery.",
-    )
-    active.add_argument(
-        "--active-only",
-        action="store_true",
-        help="Hide undiscoverable candidates and readiness diagnostics.",
-    )
-    active.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable discovery payload.",
-    )
-    active.set_defaults(handler=_handle_vehicles_active)
-
     status = vehicle_commands.add_parser(
         "status",
-        help="Show the Chase simulator and the state of each vehicle host.",
+        help="Show simulator and PiCar availability and each created host.",
         description=(
-            "Report whether the Chase simulator is running and its frontend connected, "
-            "and the state of each vehicle host the simulator lists or that has a local "
-            "host record or staged connection, with the host's error. Exits 1 when the "
-            "simulator is unreachable, or when --id names a host that is not found, not "
-            "answering, or in error."
+            "Show simulator and PiCar availability and the state of created hosts. "
+            "Exits 1 when no environment is reachable, or --id names a missing, "
+            "stopped, unanswering, or errored host."
         ),
     )
     status.add_argument(
@@ -238,6 +183,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Print automa_simulator_status_v1 JSON.",
     )
+    status.add_argument("--picar-url", default=None, help="PiCar HTTP(S) URL to probe.")
     status.set_defaults(handler=_handle_vehicles_status)
 
     automation = vehicle_commands.add_parser(
@@ -267,7 +213,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_target.add_argument(
         "--id",
         dest="vehicle_id",
-        help="Discoverable vehicle id from `automa vehicles active`.",
+        help="Discoverable vehicle id from `automa vehicles status`.",
     )
     run_target.add_argument(
         "--host-url",
@@ -372,7 +318,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         dest="vehicle_id",
         default=None,
-        help="Vehicle id from `automa vehicles active`. Omit to list locally deployed automation runtimes.",
+        help="Vehicle id from `automa vehicles status`. Omit to list locally deployed automation runtimes.",
     )
     automation_status.add_argument(
         "--json",
@@ -390,7 +336,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
+        help="Vehicle id from `automa vehicles status`.",
     )
     automation_restart.add_argument(
         "--timeout-s",
@@ -458,10 +404,10 @@ def build_parser() -> argparse.ArgumentParser:
     automation_restart.set_defaults(handler=_handle_vehicles_automation_restart)
     automation_host = automation_commands.add_parser(
         "host",
-        help="Serve a Chase car's runtime host in the foreground (automation run starts one).",
+        help="Serve a Chase car's runtime host in the foreground (create host and automation run start one).",
         description=(
             "Serve the runtime routes for a Chase car from its latest controller release, "
-            "and relaunch on a restart command. `automation run` starts this in the background; "
+            "and relaunch on a restart command. `create host` and `automation run` start this in the background; "
             "its log is runtime/vehicles/<id>/bundle/runtime/automation/host.log."
         ),
     )
@@ -485,7 +431,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
+        help="Vehicle id from `automa vehicles status`.",
     )
     startup_check.add_argument(
         "--timeout-s",
@@ -544,7 +490,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
+        help="Vehicle id from `automa vehicles status`.",
     )
     perception_stream.add_argument(
         "--refresh-s",
@@ -584,7 +530,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
+        help="Vehicle id from `automa vehicles status`.",
     )
     memory_stream.add_argument(
         "--refresh-s",
@@ -628,7 +574,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--id",
             required=True,
             dest="vehicle_id",
-            help="Vehicle id from `automa vehicles active`.",
+            help="Vehicle id from `automa vehicles status`.",
         )
         step_stream.add_argument(
             "--refresh-s",
@@ -677,7 +623,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
+        help="Vehicle id from `automa vehicles status`.",
     )
     memory_reset.add_argument(
         "--timeout-s",
@@ -788,7 +734,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
+        help="Vehicle id from `automa vehicles status`.",
     )
     memory_viability.add_argument(
         "--duration-s",
@@ -926,7 +872,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
+        help="Vehicle id from `automa vehicles status`.",
     )
     perception_info.add_argument(
         "--json",
@@ -944,7 +890,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
+        help="Vehicle id from `automa vehicles status`.",
     )
     memory_info.add_argument(
         "--json",
@@ -972,7 +918,7 @@ def build_parser() -> argparse.ArgumentParser:
             "--id",
             required=True,
             dest="vehicle_id",
-            help="Vehicle id from `automa vehicles active`.",
+            help="Vehicle id from `automa vehicles status`.",
         )
         step_info.add_argument(
             "--json",
@@ -1092,7 +1038,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
+        help="Vehicle id from `automa vehicles status`.",
     )
     perception_viability.add_argument(
         "--duration-s",
@@ -1135,137 +1081,29 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show update-level commands.",
     )
     update_help.set_defaults(handler=_handle_vehicles_update_help)
-    core = update_commands.add_parser(
-        "core",
-        help="Sync the Donkey harness and install its boot-enabled runtime service.",
-        description=(
-            "Sync the DonkeyCar core harness and install its supervised, boot-enabled "
-            "runtime service on a PiCar."
-        ),
-    )
-    core.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
-    )
-    core.add_argument(
-        "--timeout-s",
-        type=float,
-        default=1.0,
-        help="Vehicle discovery timeout in seconds.",
-    )
-    core.add_argument(
-        "--ssh-target",
-        default=None,
-        help="Override SSH target, for example piracer@piracer.local.",
-    )
-    core.add_argument(
-        "--skip-discovery",
-        action="store_true",
-        help="Deploy over SSH without requiring the Donkey HTTP endpoint to be discoverable.",
-    )
-    core.add_argument(
-        "--pi-home",
-        default=None,
-        help="Override remote home directory. Defaults to PI_HOME or /home/piracer.",
-    )
-    core.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Print the sync commands without executing them.",
-    )
-    core.add_argument(
-        "--restart",
-        action="store_true",
-        help="Restart an already-running Donkey runtime after syncing; inactive service starts automatically.",
-    )
-    core.add_argument(
-        "--drive-args",
-        default=None,
-        help="Persist arguments for `manage.py drive` when --restart is used, for example --js.",
-    )
-    core.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the machine-readable core update result.",
-    )
-    core.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print each sync command before it runs.",
-    )
-    core.set_defaults(handler=_handle_vehicles_update_core)
-
-    autonomy = update_commands.add_parser(
-        "autonomy",
-        help="Package the staged steps as a controller release for the vehicle's host.",
-        description=(
-            "Package the staged steps as a versioned controller release: a PiCar receives it "
-            "over SSH, a simulator vehicle keeps it locally. "
-            "With --restart, the host restarts onto it and verifies every step runs its staged plugins. "
-            "Memory activation ships here; manage.py load path ships with core—if "
-            "verification reports no memory step, update core then re-run autonomy."
-        ),
-    )
-    autonomy.add_argument(
-        "--id",
-        required=True,
-        dest="vehicle_id",
-        help="Vehicle id from `automa vehicles active`.",
-    )
-    autonomy.add_argument(
-        "--timeout-s",
-        type=float,
-        default=1.0,
-        help="Vehicle discovery timeout in seconds.",
-    )
-    autonomy.add_argument(
-        "--ssh-target",
-        default=None,
-        help="Override SSH target, for example piracer@piracer.local.",
-    )
-    autonomy.add_argument(
-        "--skip-discovery",
-        action="store_true",
-        help="Deploy over SSH without requiring the Donkey HTTP endpoint to be discoverable.",
-    )
-    autonomy.add_argument(
-        "--pi-home",
-        default=None,
-        help="Override remote home directory. Defaults to PI_HOME or /home/piracer.",
-    )
-    autonomy.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Describe the release and transfer commands without writing or connecting.",
-    )
-    autonomy.add_argument(
-        "--restart",
-        action="store_true",
-        help=(
-            "Restart the vehicle's host (the PiCar's Donkey service or the simulator worker) "
-            "onto the release. Without it, "
-            "a running runtime selects restaged plugins on its next frame; changed plugin "
-            "specs or configs need a restart."
-        ),
-    )
-    autonomy.add_argument(
-        "--drive-args",
-        default=None,
-        help="Persist arguments for `manage.py drive` when --restart is used, for example --js.",
-    )
-    autonomy.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the machine-readable deployment result.",
-    )
-    autonomy.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print each transfer command before it runs.",
-    )
-    autonomy.set_defaults(handler=_handle_vehicles_update_autonomy)
+    host_update = update_commands.add_parser("host", help="Package and deploy a created host's release.")
+    create = vehicle_commands.add_parser("create", help="Create a named host for a vehicle.")
+    create_commands = create.add_subparsers(dest="create_command", required=True)
+    host_create = create_commands.add_parser("host", help="Create and start a host.")
+    delete = vehicle_commands.add_parser("delete", help="Stop and remove a host.")
+    delete_commands = delete.add_subparsers(dest="delete_command", required=True)
+    host_delete = delete_commands.add_parser("host", help="Stop the host and remove its local files.")
+    for command in (host_create, host_update, host_delete):
+        command.add_argument("--id", dest="vehicle_id", required=True, help="Host name.")
+        command.add_argument("--verbose", action="store_true")
+    for command in (host_create, host_update):
+        command.add_argument("--dry-run", action="store_true", help="Print the deployment plan without writing or connecting.")
+        command.add_argument("--json", action="store_true")
+        command.add_argument("--drive-args", help="Persist PiCar drive arguments; update requires --restart.")
+    urls = host_create.add_mutually_exclusive_group(required=True)
+    urls.add_argument("--chase-url", help="Chase HTTP(S) origin or WS(S) control URL.")
+    urls.add_argument("--picar-url", help="PiCar HTTP(S) URL.")
+    host_create.add_argument("--ssh-target", help="PiCar SSH target (default: PI_HOST or the URL host).")
+    host_create.add_argument("--pi-home", help="PiCar home (default: PI_HOME or /home/piracer).")
+    host_update.add_argument("--restart", action="store_true", help="Restart the host onto this release.")
+    host_create.set_defaults(handler=_handle_vehicles_create_host)
+    host_update.set_defaults(handler=_handle_vehicles_update_host)
+    host_delete.set_defaults(handler=_handle_vehicles_delete_host)
 
     for step_name in STEPS:
         step_parser = update_commands.add_parser(
@@ -1532,7 +1370,8 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles commands",
                 "",
-                "- active       discover vehicle endpoints (not worker/deployment state)",
+                "- create host  create and start a named host",
+                "- delete host  stop and remove a host",
                 "- status       show the simulator, its frontend, and each vehicle host's state",
                 "- update       stage controller selections or deploy vehicle code",
                 "- plugins      upload, arm, disarm and inspect plugins in a live catalog",
@@ -1601,8 +1440,7 @@ def _handle_vehicles_update_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles update commands",
                 "",
-                "- core         deploy the DonkeyCar harness to a PiCar",
-                "- autonomy     package staged steps as a release for the vehicle's host",
+                "- host         package staged steps as a release for the host",
                 "- perception   stage a perception preset or plugin selection",
                 "- observation  stage observation plugins",
                 "- memory       stage a memory preset or plugin selection",
@@ -1684,11 +1522,10 @@ _TIMEOUT_INPUT_CONSTRAINT = "finite number greater than zero"
 _TIMEOUT_INPUT_RECOVERY = "Provide a finite --timeout-s greater than zero."
 # Every `vehicles update <step>` resolves its vehicle with `staging_vehicle`.
 _STAGING_VEHICLE_ID_HELP = (
-    "Vehicle id from `automa vehicles active`. A chase-sim-* id, or a vehicle with "
-    "matching identity metadata in any staged step, is known without discovery."
+    "Name of a host created with vehicles create host."
 )
 _STAGING_DISCOVERY_TIMEOUT_HELP = (
-    "Timeout in seconds for each vehicle discovery probe when local identity is unavailable "
+    "Request timeout in seconds; local staging reads the host record without probing "
     f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
 )
 
@@ -1730,32 +1567,6 @@ def _validate_timeout_input(
     return False
 
 
-def _handle_vehicles_active(args: argparse.Namespace) -> int:
-    if not _validate_timeout_input(
-        args.timeout_s,
-        command="automa vehicles active",
-        json_output=args.json,
-        human_stream=sys.stderr,
-    ):
-        return 2
-    include_inactive = not args.active_only
-    payload = discover_active_vehicles(
-        timeout_s=args.timeout_s,
-        picar_urls=tuple(args.picar_url),
-        chase_ws_urls=tuple(args.chase_ws_url),
-        include_picar=not args.no_picar,
-        include_chase_sim=not args.no_sim,
-        include_inactive=include_inactive,
-    )
-    if args.json:
-        import json
-
-        print(json.dumps(payload, indent=2, sort_keys=True))
-    else:
-        print(format_active_vehicles(payload, include_inactive=include_inactive))
-    return 0
-
-
 def _handle_vehicles_status(args: argparse.Namespace) -> int:
     if not _validate_timeout_input(
         args.timeout_s,
@@ -1775,6 +1586,7 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
             vehicle_id=args.vehicle_id,
             chase_url=args.chase_url,
             chase_ws_url=args.chase_ws_url,
+            picar_url=args.picar_url,
             timeout_s=args.timeout_s,
         )
     except ValueError as exc:
@@ -1784,10 +1596,10 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         print(format_chase_simulator_status(payload))
-    if payload["state"] != "running":
+    if payload["state"] != "running" and payload["picar"]["state"] == "unreachable":
         return 1
     # Without --id, no host's state changes the exit.
-    failed = {"not found", "not answering", "error"}
+    failed = {"not found", "not running", "not answering", "error"}
     if args.vehicle_id is not None and any(host["state"] in failed for host in payload["hosts"]):
         return 1
     return 0
@@ -2083,41 +1895,30 @@ def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_update_core(args: argparse.Namespace) -> int:
-    result = update_vehicle_core(
-        vehicle_id=args.vehicle_id,
-        timeout_s=args.timeout_s,
-        ssh_target=args.ssh_target,
-        pi_home=args.pi_home,
-        skip_discovery=args.skip_discovery,
-        dry_run=args.dry_run,
-        restart=args.restart,
-        drive_args=args.drive_args,
-        json_output=args.json,
-        verbose=args.verbose,
+def _handle_vehicles_create_host(args: argparse.Namespace) -> int:
+    result = create_host(
+        vehicle_id=args.vehicle_id, chase_url=args.chase_url, picar_url=args.picar_url,
+        ssh_target=args.ssh_target, pi_home=args.pi_home, drive_args=args.drive_args,
+        dry_run=args.dry_run, json_output=args.json, verbose=args.verbose,
         output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
     )
-    if result.message:
-        print(result.message)
+    print(result.message)
     return result.exit_code
 
 
-def _handle_vehicles_update_autonomy(args: argparse.Namespace) -> int:
-    result = update_vehicle_autonomy(
-        vehicle_id=args.vehicle_id,
-        timeout_s=args.timeout_s,
-        ssh_target=args.ssh_target,
-        pi_home=args.pi_home,
-        skip_discovery=args.skip_discovery,
-        dry_run=args.dry_run,
-        restart=args.restart,
-        drive_args=args.drive_args,
-        json_output=args.json,
-        verbose=args.verbose,
+def _handle_vehicles_update_host(args: argparse.Namespace) -> int:
+    result = update_host(
+        vehicle_id=args.vehicle_id, dry_run=args.dry_run, restart=args.restart,
+        drive_args=args.drive_args, json_output=args.json, verbose=args.verbose,
         output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
     )
-    if result.message:
-        print(result.message)
+    print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_delete_host(args: argparse.Namespace) -> int:
+    result = delete_host(vehicle_id=args.vehicle_id, verbose=args.verbose, output=sys.stdout)
+    print(result.message)
     return result.exit_code
 
 

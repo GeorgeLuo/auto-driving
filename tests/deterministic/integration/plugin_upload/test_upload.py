@@ -136,6 +136,8 @@ class PluginUploadFlows(unittest.TestCase):
 
     def test_catalog_updates_and_reselection_preserve_configs_and_report_matching_presets(self):
         with image_source(3) as root:
+            from tests.support.runtime_fixtures import write_host_fixture
+            write_host_fixture(root / "vehicles", "chase-sim-chaser")
             staged = {}
             for step, preset in (("perception", "obstruction_observer"), ("memory", "recency_ledger")):
                 staged[step] = json.loads(invoke_automa(

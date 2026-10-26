@@ -120,8 +120,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 
 | Command | Reads or changes |
 |---|---|
-| `vehicles active` | Probes discoverable PiCar and Chase endpoints; does not imply deployment, worker, or view state. |
-| `vehicles status` | Shows the Chase simulator (running, its frontend and game) and each vehicle host's state (session, mode, decision and error counts, last frame), whether it is attached to the simulator or only known locally, and its error, without changing anything. |
+| `vehicles status` | Shows the Chase simulator (running, its frontend and game), PiCar availability, and each created host's state (session, mode, decision and error counts, last frame), whether it is attached to the simulator or only known locally, and its error, without changing anything. |
 | `vehicles update perception\|memory\|proposal\|plan` | Packages code and stages that step's preset or plugin selection locally (`--preset`, or repeatable `--plugin`; default presets `lightweight_observer`, `recency_ledger`, `obstruction_avoidance` and `most_confident`). |
 | `vehicles update observation\|action` | Packages code and stages that step's plugins locally (repeatable `--plugin`; without it, the step's default plugins and configs). |
 | `vehicles plugins upload` | Stores a local file in an existing live catalog, refusing source that does not compile; `--arm` also arms it through the same operation as `plugins arm`. |
@@ -139,8 +138,9 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles memory inspect` | Offline: runs an image, a directory of images, or a recorded perception or memory run through perception, observation and memory, and reports each memory plugin's health, record count and epoch after every frame, with the memory step's and each plugin's time. A recording restores the executable step selections and configs it contains; `--preset` or `--plugin` overrides memory. Otherwise each step uses its default. The report prints to the terminal; `--record` also saves the source frames, timing, both step selections and report under `runtime/memory-inspections/`. Record live frames with `vehicles perception inspect --record`, then inspect that run. |
 | `vehicles memory viability` | Memory health check: 60s poll of the runtime host's live memory step (update cadence, duration, failures, health, epoch stability). Saves `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
 | `vehicles perception viability` | Perception health check: 60s cadence/freshness measurement of the runtime host's observation publication that also requires that no cycle's control was applied (host RSS/CPU when the vehicle supplies an `ssh_target`). Saves `report.json` and `summary.md` under `lab/runs/perception-viability/` unless `--no-record`. |
-| `vehicles update core` | Deploys DonkeyCar framework and physical harness code to the Pi. |
-| `vehicles update autonomy` | Packages the staged steps as a versioned release for the vehicle's host: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins; if a PiCar step is missing, update core (manage.py harness) then re-run autonomy. |
+| `vehicles create host` | Creates a named host using `--chase-url` or `--picar-url`, installs its release, and starts it. |
+| `vehicles delete host` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. |
+| `vehicles update host` | Packages the staged steps as a versioned release for the vehicle's host: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
 | `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
 
@@ -164,7 +164,7 @@ refreshes with the table, dims with it on a polling failure, and shows
 
 Uploaded plugins stay in the host's catalog until that host restarts; `plugins
 upload` and `plugins status` print the host run beside the catalog version. A
-restart onto a new release clears them: `update autonomy --restart` on a PiCar,
+restart onto a new release clears them: `update host --restart` on a PiCar,
 and on a simulator vehicle the next `automation run` after a restage, which
 moves an idle host onto the latest release. Upload them again after either.
 
@@ -260,7 +260,7 @@ Replay (`workbench` and every step's `inspect` on a recording)
 runs each recorded selection on the release its frames name. It extracts that
 archive from `runtime/vehicles/<id>/bundle/releases/` and ignores whatever is
 staged now. If the archive is gone, replay exits 2 naming the release and
-`vehicles update autonomy`.
+`vehicles update host`.
 
 Every step's update returns the same `vehicle_step_update_v0` payload under
 `--json`: `step`, `preset`, `plugins`, the staged `manifest`, and the `apply`
@@ -274,16 +274,19 @@ Use `help` at a command-group level and `--help` for final command options:
 
 ```sh
 ./cli/automa vehicles update help
-./cli/automa vehicles update autonomy --help
+./cli/automa vehicles update host --help
 ```
 
 ## Chase Simulator Workflow
 
-The supported passive path starts from the Metrics UI URL and preserves the
-operator's current simulator session:
+A host exists only after `vehicles create host` writes its `vehicle.json` record.
+Choose any name; every later `--id` refers to that name. Existing directories
+without a record can be adopted, preserving staged steps. The passive path
+preserves the operator's simulator session:
 
 ```sh
 ./cli/automa vehicles status --chase-url http://localhost:5050
+./cli/automa vehicles create host --id chase-sim-chaser --chase-url http://localhost:5050
 ./cli/automa vehicles update memory \
   --id chase-sim-chaser \
   --preset recency_ledger
@@ -313,7 +316,7 @@ invalid deployment and the affected step's `vehicles update <step>` command.
 Restage that step with your intended selection, then check it again. Every command that reads
 staged documents checks them first and prints the same step, path, reason, and
 restage command: startup and restart before launching or stopping a worker,
-`vehicles update autonomy` before packaging or writing, and `vehicles info`, `vehicles stream proposal|plan|action`, and
+`vehicles update host` before packaging or writing, and `vehicles info`, `vehicles stream proposal|plan|action`, and
 `vehicles perception inspect` before reporting. An invalid optional step blocks startup;
 an absent optional step keeps its built-in or empty behavior.
 
@@ -725,66 +728,38 @@ and may be empty. Include the current state's `run_id` during playback:
 The default target is `piracer@piracer.local`, with the Donkey server at
 `http://piracer.local:8887`.
 
-For a previously prepared Pi, power it on and probe the supervised runtime:
+Create the host once; its name is independent of the Pi's hostname:
 
 ```sh
-./cli/automa vehicles active
+./cli/automa vehicles status
+./cli/automa vehicles create host --id piracer --picar-url http://piracer.local:8887
+./cli/automa vehicles update perception --id piracer --preset lightweight_observer
+./cli/automa vehicles update host --id piracer --restart
+./cli/automa vehicles automation run --id piracer --observe-only --num-decisions 10
 ```
 
-For a fresh setup, install the core harness and boot service, then deploy and
-restart the autonomy release:
+Creation syncs the DonkeyCar harness, installs and enables `automa-donkey.service`,
+deploys every step's activation, and restarts and verifies the host in manual mode.
+Later boots start that service automatically. `update host` packages and deploys a
+new controller release; add `--restart` to load changed plugin specs or configs.
+Use `--dry-run` on create or update to inspect the commands without writing or connecting.
+
+Creation records the SSH target from `--ssh-target`, `PI_HOST`, or the URL hostname
+(with user `piracer`), and the home from `--pi-home`, `PI_HOME`, or `/home/piracer`.
+Updates and deletion use that recorded connection. If creation fails after syncing,
+the Pi keeps the files already transferred.
+
+The handheld controller is disabled by default. Persist its drive arguments at
+creation with `--drive-args=--js`, or on a later update:
 
 ```sh
-./cli/automa vehicles update core --id piracer
-./cli/automa vehicles active
-./cli/automa vehicles update autonomy --id piracer --restart
+./cli/automa vehicles update host --id piracer --restart --drive-args=--js
 ```
 
-`update core` installs and enables `automa-donkey.service`. The first install
-starts it automatically and waits for `/host/status` to report manual
-`user` mode. Later Pi boots start the same service without another CLI command,
-and systemd restarts the runtime if its process exits. If HTTP discovery is
-down, core update falls back to the configured `piracer` SSH target and reports
-that fallback before connecting.
-
-`update autonomy` packages `autonomy/` and `implementations/`, verifies the
-archive hash on the Pi, installs a versioned release, transfers every staged
-step activation and the runtime identity, and restarts the supervised service
-only when requested. Post-restart verification requires every deployed step to
-run its staged plugins while Donkey drive mode remains `user`; the deployment
-check does not command movement.
-
-Use the deploy commands according to what changed:
-
-- DonkeyCar vendor patch or `deploy/targets/donkeycar/app/`: `update core`.
-- `autonomy/`, `implementations/`, or staged activations: `update autonomy`.
-- Run both commands for a fresh Pi or when both layers changed.
-
-Core deployment preserves remote autonomy releases and runtime activation
-state. It installs the boot service on every update but does not restart an
-already-running service unless `--restart` is present. To inspect planned
-writes, add `--dry-run`.
-
-For a non-default physical id or SSH target, bypass discovery explicitly when
-the HTTP server is down:
-
-```sh
-./cli/automa vehicles update core --id piracer \
-  --skip-discovery --ssh-target piracer@piracer.local
-./cli/automa vehicles update autonomy --id piracer \
-  --skip-discovery --ssh-target piracer@piracer.local --restart
-```
-
-The handheld controller is not enabled by default. Enable it only when it
-should become an active command source. Drive arguments persist across service
-restarts and Pi boots:
-
-```sh
-./cli/automa vehicles update core --id piracer --restart --drive-args=--js
-```
-
-Pass `--drive-args=` with `--restart` to return to the default controller-free
-startup.
+Pass `--drive-args=` with `--restart` to restore controller-free startup.
+`vehicles delete host --id piracer` stops and disables the service and removes the
+local host directory. Harness files stay in `~/mycar` on the Pi. A failed SSH stop
+keeps the local record so deletion can be retried.
 
 ### Physical Activation State
 
@@ -818,7 +793,7 @@ Step selections are local until the next autonomy deployment:
 ./cli/automa vehicles update proposal --id piracer
 ./cli/automa vehicles update action --id piracer --plugin selected
 ./cli/automa vehicles update memory --id piracer
-./cli/automa vehicles update autonomy --id piracer --restart
+./cli/automa vehicles update host --id piracer --restart
 ```
 
 `vehicles info perception|memory|proposal --id piracer` inspects staged
@@ -870,8 +845,8 @@ This change updates the physical harness and vendor HTTP API. Install both
 layers before using the shared commands on PiCar:
 
 ```sh
-./cli/automa vehicles update core --id piracer
-./cli/automa vehicles update autonomy --id piracer --restart
+./cli/automa vehicles create host --id piracer --picar-url http://piracer.local:8887
+./cli/automa vehicles update host --id piracer --restart
 ```
 
 ### Control Ownership and API

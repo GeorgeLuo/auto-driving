@@ -6,6 +6,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from tests.support.runtime_fixtures import write_host_fixture
 from unittest.mock import patch
 
 from autonomy.runtime.client import RuntimeClient
@@ -41,6 +42,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
             root = Path(tmp)
             env = {"CHASE_UI_WS_URL": ws_url}
+            write_host_fixture(root, "chase-sim-chaser", url=ws_url)
             # Staging builds the controller release the car's runtime host runs.
             invoke_automa(
                 "vehicles", "update", "perception", "--id", "chase-sim-chaser",
@@ -70,6 +72,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             root = Path(tmp)
             vehicle = "chase-sim-chaser"
             env = {"CHASE_UI_WS_URL": ws_url}
+            write_host_fixture(root, "chase-sim-chaser", url=ws_url)
             run_automa("vehicles", "update", "perception", "--id", vehicle,
                        "--plugin", "frame", runtime_root=root, extra_env=env)
             automation = root / vehicle / "bundle/runtime/automation"

@@ -37,6 +37,8 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
             runtime_root = Path(tmp) / "vehicles"
             env = {"CHASE_UI_WS_URL": ws_url}
+            from tests.support.runtime_fixtures import write_host_fixture
+            write_host_fixture(runtime_root, "chase-sim-chaser", url=ws_url)
             invoke_automa(
                 "vehicles", "update", "perception", "--id", "chase-sim-chaser",
                 runtime_root=runtime_root, extra_env=env,
@@ -108,6 +110,8 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 initial = simulator()
                 self.assertEqual((initial["state"], initial["hosts"]), ("running", []))
                 initial_fingerprint = _session_fingerprint(ws_url)
+                invoke_automa("vehicles", "create", "host", "--id", "chase-sim-chaser",
+                              "--chase-url", ws_url, runtime_root=runtime_root, extra_env=env)
 
                 invoke_automa(
                     "vehicles", "update", "memory", "--id", "chase-sim-chaser",
@@ -218,6 +222,13 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 self.assertTrue(final["deployed"])
                 self.assertFalse(final["process"]["running"])
                 self.assertEqual(_session_fingerprint(ws_url), initial_fingerprint)
+                deleted = invoke_automa(
+                    "vehicles", "delete", "host", "--id", "chase-sim-chaser",
+                    runtime_root=runtime_root, extra_env=env,
+                )
+                self.assertIn("Stopped host chase-sim-chaser", deleted.stdout)
+                self.assertFalse((runtime_root / "chase-sim-chaser").exists())
+                self.assertEqual(simulator()["hosts"], [])
 
 
 if __name__ == "__main__":

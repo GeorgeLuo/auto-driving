@@ -4,7 +4,7 @@ Every vehicle host serves the routes in ``autonomy.runtime.routes``, so the
 CLI addresses a runtime only by ``base_url``. A PiCar's host is its Donkey
 service at the staged connection. A Chase car's host is a local process
 (``implementations.runtime.chase_sim.service``) that runs from the vehicle's
-controller release, as the Pi runs the release ``update autonomy`` installed.
+controller release, as the Pi runs the release ``update host`` installed.
 """
 from __future__ import annotations
 
@@ -26,8 +26,7 @@ from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, RESTAR
 
 from .bundles import controller_bundle_paths
 from .paths import ROOT, display_path, safe_path_part
-from .step_activations import _offline_staged_vehicle, staging_vehicle
-from .vehicles import is_chase_vehicle_id
+from .step_activations import host_ids, staging_vehicle
 
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "vehicles"))
 AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
@@ -72,7 +71,7 @@ def staged_vehicle(vehicle_id: str) -> dict[str, Any]:
 # Controller releases -------------------------------------------------------
 
 def update_command(vehicle_id: str) -> str:
-    return f"./cli/automa vehicles update autonomy --id {vehicle_id}"
+    return f"./cli/automa vehicles update host --id {vehicle_id}"
 
 
 def release_manifest(
@@ -340,7 +339,7 @@ def stop_chase_host(vehicle_id: str, *, wait_s: float = 3.0) -> bool:
 def staged_connection(vehicle_id: str) -> dict[str, Any]:
     """The connection ``vehicles update`` staged for the vehicle, without discovery."""
 
-    vehicle = _offline_staged_vehicle(bundle_paths(vehicle_id), vehicle_id) or {}
+    vehicle = staged_vehicle(vehicle_id)
     connection = vehicle.get("connection")
     return connection if isinstance(connection, dict) else {}
 
@@ -351,7 +350,7 @@ def running_base_url(vehicle_id: str) -> str | None:
     A PiCar's is its staged connection; a Chase car's is its running host.
     """
 
-    if is_chase_vehicle_id(vehicle_id):
+    if staged_vehicle(vehicle_id)["provider"] == "chase-sim":
         record = host_record(vehicle_id)
         return None if record is None else record["base_url"]
     base_url = staged_connection(vehicle_id).get("base_url")
@@ -365,18 +364,20 @@ def local_hosts() -> list[dict[str, Any]]:
     record, or a PiCar's staged connection.
     """
 
-    if not RUNTIME_ROOT.is_dir():
-        return []
     hosts = []
-    for path in sorted(path for path in RUNTIME_ROOT.iterdir() if path.is_dir()):
-        if is_chase_vehicle_id(path.name):
-            record = host_record(path.name)
-            if record is not None:
-                hosts.append({"vehicle_id": path.name, "url": record["base_url"],
-                              "pid": record.get("pid"), "local": "host record"})
-        elif (base_url := running_base_url(path.name)) is not None:
-            hosts.append({"vehicle_id": path.name, "url": base_url, "pid": None,
-                          "local": "staged connection"})
+    for vehicle_id in host_ids(RUNTIME_ROOT):
+        vehicle = staged_vehicle(vehicle_id)
+        connection = vehicle["connection"]
+        chase = vehicle["provider"] == "chase-sim"
+        record = host_record(vehicle_id) if chase else None
+        hosts.append({
+            "vehicle_id": vehicle_id,
+            "url": (record["base_url"] if record else None) if chase else connection["base_url"],
+            "pid": record.get("pid") if record else None,
+            "local": "host record" if chase else "staged connection",
+            "provider": vehicle["provider"],
+            "vehicle_url": connection.get("ws_url") if chase else connection.get("base_url"),
+        })
     return hosts
 
 
@@ -386,17 +387,9 @@ def runtime_base_url(vehicle_id: str, *, start: bool = False, timeout_s: float =
     ``start`` starts (or moves onto the latest release) a local Chase host.
     """
 
-    if start and is_chase_vehicle_id(vehicle_id):
+    if start and staged_vehicle(vehicle_id)["provider"] == "chase-sim":
         return ensure_chase_host(vehicle_id, timeout_s=timeout_s)
     base_url = running_base_url(vehicle_id)
     if base_url is not None:
         return base_url
-    if is_chase_vehicle_id(vehicle_id):
-        raise RuntimeHostError(
-            f"No Chase host is running for {vehicle_id}.\n"
-            f"Run: ./cli/automa vehicles automation run --id {vehicle_id} --observe-only"
-        )
-    raise RuntimeHostError(
-        f"Vehicle {vehicle_id!r} has no staged runtime base URL.\n"
-        f"Run: ./cli/automa vehicles update autonomy --id {vehicle_id}"
-    )
+    raise RuntimeHostError(f"Host {vehicle_id!r} is not running.")

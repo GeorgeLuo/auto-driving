@@ -33,6 +33,8 @@ class LiveRuntimeDecisionViewFixture:
         self.addCleanup(self._temporary.cleanup)
         self.runtime_root = Path(self._temporary.name) / "vehicles"
         self.runtime_root.mkdir()
+        from tests.support.runtime_fixtures import write_host_fixture
+        write_host_fixture(self.runtime_root, "chase-sim-chaser")
         for step in ("proposal", "action"):
             code, message = update_vehicle_step(
                 vehicle_id="chase-sim-chaser",

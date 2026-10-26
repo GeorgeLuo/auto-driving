@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from tests.support.runtime_fixtures import write_host_fixture
 
 from autonomy.decision_cycle.steps import STEP_RUNNERS
 from tests.shared.cli.invoke import invoke_automa
@@ -13,6 +14,7 @@ class DecisionCommandTests(unittest.TestCase):
     def test_update_steps_then_info_is_read_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
+            write_host_fixture(runtime_root, "chase-sim-chaser")
             vehicle = ("--id", "chase-sim-chaser", "--json")
             runtime = runtime_root / "chase-sim-chaser" / "bundle" / "runtime"
 

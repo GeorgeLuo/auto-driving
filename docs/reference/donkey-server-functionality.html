@@ -680,7 +680,7 @@ Content-Type: application/json
       </p>
       <ul>
         <li>API/web control is now the default restart mode.</li>
-        <li>Use <code>./cli/automa vehicles update core --id piracer --restart --drive-args=--js</code> when you want the handheld controller to be active.</li>
+        <li>Use <code>./cli/automa vehicles create host --id piracer --picar-url http://piracer.local:8887 --drive-args=--js</code> when you want the handheld controller to be active.</li>
         <li>Changing the action plugin does not change the drive mode; movement authority requires an explicit autonomy-mode request.</li>
         <li>For autonomous experiments, choose one command source at a time and record which one is active.</li>
       </ul>

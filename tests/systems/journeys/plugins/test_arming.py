@@ -7,6 +7,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from tests.support.runtime_fixtures import write_host_fixture
 from unittest.mock import patch
 from urllib.request import urlopen
 
@@ -74,6 +75,7 @@ class PluginArmingFlows(unittest.TestCase):
             root = Path(directory)
             runtime = root / "vehicles"
             env = {"CHASE_UI_WS_URL": ws_url, "BROWSER": "true"}
+            write_host_fixture(runtime, "chase-sim-chaser", url=ws_url)
 
             def cli(*args, check=True):
                 return run_automa("vehicles", *args, runtime_root=runtime, extra_env=env, check=check)

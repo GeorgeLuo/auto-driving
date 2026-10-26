@@ -15,7 +15,8 @@ from implementations.operations import (
 from implementations.operations.artifact_writers import write_json
 from .paths import ROOT, display_path
 from .vehicle_access import create_vehicle_access
-from .vehicles import discover_vehicle
+from .step_activations import staging_vehicle
+from . import runtime_hosts
 
 
 OPERATION_OUTPUT_ROOT = Path(
@@ -39,7 +40,7 @@ def run_vehicle_startup_check(
     dry_run: bool = False,
     json_output: bool = False,
 ) -> CommandResult:
-    vehicle, error = discover_vehicle(vehicle_id, timeout_s=timeout_s)
+    vehicle, error = staging_vehicle(vehicle_id, runtime_root=runtime_hosts.RUNTIME_ROOT)
     if vehicle is None:
         return CommandResult(2, error)
 

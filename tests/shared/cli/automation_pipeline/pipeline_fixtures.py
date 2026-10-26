@@ -22,6 +22,8 @@ from implementations.vehicle.chase_sim import ChaseCameraCapture
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.bundles import controller_bundle_paths
 
+from tests.support.runtime_fixtures import write_host_fixture
+
 VEHICLE_ID = "chase-sim-chaser"
 
 
@@ -197,6 +199,8 @@ def _write_activations(
 ) -> None:
     """Stage perception and the packaged proposals. Plan has no built-in and stays unstaged."""
 
+    root = Path(bundle["root_dir"]).parent
+    write_host_fixture(root.parent, root.name)
     packaged = preset_activation("perception", preset)
     activation = step_activation(
         "perception",
@@ -248,6 +252,7 @@ def chase_runtime(runtime_root: Path, *, car=None, vehicle_id: str = VEHICLE_ID)
     )
     from cli.automa_cli.runtime_hosts import HOST_RECORD
 
+    write_host_fixture(runtime_root, vehicle_id)
     bundle = controller_bundle_paths(runtime_root / vehicle_id)
     with ExitStack() as stack:
         stack.enter_context(patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root))

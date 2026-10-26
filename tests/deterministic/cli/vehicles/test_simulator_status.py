@@ -22,6 +22,7 @@ from implementations.vehicle.chase_sim.presence import MetricsUiPresence
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.implementations.runtime.wait import wait_until
+from tests.support.runtime_fixtures import write_host_fixture
 from tests.support.fake_hosts import answering, closed_url, hung_url
 from tests.support.fake_metrics_ui import fake_metrics_ui
 
@@ -29,12 +30,14 @@ from tests.support.fake_metrics_ui import fake_metrics_ui
 def _blocks(stdout: str) -> list[list[str]]:
     """The simulator block and each host block of ``vehicles status``, as lines."""
 
-    return [block.splitlines() for block in stdout.strip("\n").split("\n\n")]
+    return [[line for line in block.splitlines() if not line.startswith(("  chaser at", "  PiCar at"))]
+            for block in stdout.strip("\n").split("\n\n") if not block.startswith("PiCar  ")]
 
 
 def _record(runtime_root: Path, vehicle_id: str, url: str) -> None:
     """A running host record for ``vehicle_id`` at ``url``, held by this process."""
 
+    write_host_fixture(runtime_root, vehicle_id)
     bundle = controller_bundle_paths(runtime_root / vehicle_id)
     write_host_record(Path(bundle["runtime_dir"]) / "automation" / HOST_RECORD, {
         "schema": HOST_RECORD_SCHEMA, "vehicle_id": vehicle_id, "pid": os.getpid(), "base_url": url,
@@ -44,6 +47,7 @@ def _record(runtime_root: Path, vehicle_id: str, url: str) -> None:
 def _stage_picar(runtime_root: Path, vehicle_id: str, url: str) -> None:
     """A PiCar's staged perception step, which records its connection at ``url``."""
 
+    write_host_fixture(runtime_root, vehicle_id, provider="picar", url=url)
     bundle = controller_bundle_paths(runtime_root / vehicle_id)
     packaged = preset_activation("perception", "lightweight_observer")
     activation = step_activation(
@@ -306,3 +310,39 @@ class HostStateTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class EnvironmentStatusTests(unittest.TestCase):
+    def test_created_host_without_a_process_is_listed(self):
+        with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui() as simulator:
+            root = Path(tmp)
+            write_host_fixture(root, "free-name", url=simulator.url)
+            result = invoke_automa("vehicles", "status", "--chase-url", simulator.url,
+                                   "--json", runtime_root=root)
+            [host] = json.loads(result.stdout)["hosts"]
+            self.assertEqual(host["state"], "not running")
+            self.assertEqual(host["provider"], "chase-sim")
+            self.assertEqual(host["vehicle_url"], simulator.url)
+            failed = invoke_automa("vehicles", "status", "--id", "free-name", "--chase-url", simulator.url,
+                                   runtime_root=root, check=False)
+            self.assertEqual(failed.returncode, 1)
+            self.assertIn("chaser at", failed.stdout)
+
+    def test_picar_states_and_picar_only_exit(self):
+        from unittest.mock import patch
+        from cli.automa_cli.vehicles import Candidate, ProbeResult
+        url = "http://example:8887"
+        for active, diagnostics, expected, code in (
+            (True, {}, "answering", 0),
+            (False, {"runtime_state": "server_not_listening"}, "reachable, no host listening", 0),
+            (False, {"runtime_state": "endpoint_unreachable"}, "unreachable", 1),
+        ):
+            with self.subTest(expected=expected), tempfile.TemporaryDirectory() as tmp:
+                probe = ProbeResult(active=active, candidate=Candidate("picar", url, "cli"),
+                                    diagnostics=diagnostics, error=None if active else "probe detail")
+                with patch("cli.automa_cli.vehicles._probe_picar", return_value=probe):
+                    result = invoke_automa("vehicles", "status", "--chase-url", closed_url(),
+                                           "--picar-url", url, "--json", runtime_root=Path(tmp), check=False)
+                self.assertEqual(result.returncode, code, result.stderr)
+                self.assertEqual(json.loads(result.stdout)["picar"],
+                                 {"url": url, "state": expected, "error": probe.error})

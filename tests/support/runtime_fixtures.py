@@ -29,6 +29,7 @@ def write_runtime_fixture(
     manifest_bundle_root: Path | None = None,
 ) -> RuntimeFixturePaths:
     """Write one explicit staged-runtime fixture and return its document paths."""
+    write_host_fixture(runtime_root, vehicle_id)
     bundle_root = runtime_root / vehicle_id / "bundle"
     activation_bundle_root = manifest_bundle_root or bundle_root
     perception_activation = bundle_root / "runtime" / "perception" / "active.json"
@@ -94,6 +95,20 @@ def write_runtime_fixture(
         automation_process=automation_process,
         automation_state=automation_state,
     )
+
+
+def write_host_fixture(runtime_root: Path, vehicle_id: str, *, provider: str = "chase-sim",
+                       url: str | None = None) -> None:
+    from cli.automa_cli.step_activations import write_host_vehicle
+
+    if (runtime_root / vehicle_id / "vehicle.json").exists():
+        return
+    connection = ({"ws_url": url or "ws://localhost:5050/ws/control"} if provider == "chase-sim" else
+                  {"base_url": url or "http://piracer.local:8887", "ssh_target": "piracer@piracer.local",
+                   "pi_home": "/home/piracer"})
+    write_host_vehicle(runtime_root, {"vehicle_id": vehicle_id, "provider": provider,
+        "vehicle_kind": "chase-sim-ws" if provider == "chase-sim" else "picar-donkey-http",
+        "connection": connection})
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:

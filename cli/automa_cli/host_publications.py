@@ -184,12 +184,12 @@ def _get_transaction(base_url: str, path: str, *, timeout_s: float,
             read_at = response_headers.get("X-Read-At-Ms")
             return _cached_transaction(cache, int(read_at) if read_at is not None else None)
         if status_code == 404:
-            raise ConnectionError(f"Incompatible host: GET {url} is missing; update core and autonomy.")
+            raise ConnectionError(f"Incompatible host: GET {url} is missing; update the host.")
         if status_code not in {200, 503}:
             raise ConnectionError(f"GET {url} failed with HTTP {status_code}")
         etag = response_headers.get("ETag")
         if status_code == 200 and not etag:
-            raise ConnectionError(f"Incompatible host: GET {url} returned no ETag; update core and autonomy.")
+            raise ConnectionError(f"Incompatible host: GET {url} returned no ETag; update the host.")
         payload = _json_object(body, url, status_code)
     except Exception:
         if cache is not None:

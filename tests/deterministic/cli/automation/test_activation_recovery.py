@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from tests.support.runtime_fixtures import write_host_fixture
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from tests.shared.cli.invoke import invoke_automa
@@ -20,6 +21,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
             for step in STEPS:
                 with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:
                     runtime_root = Path(tmp) / "vehicles"
+                    write_host_fixture(runtime_root, VEHICLE_ID)
                     paths = write_runtime_fixture(runtime_root, VEHICLE_ID, pid=999_999_999)
                     paths.automation_process.unlink()
                     paths.automation_state.unlink()
@@ -60,6 +62,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
             runtime_root = Path(tmp) / "vehicles"
+            write_host_fixture(runtime_root, VEHICLE_ID)
             path = runtime_root / VEHICLE_ID / "bundle/runtime/memory/active.json"
             path.parent.mkdir(parents=True)
             original = json.dumps({"schema": "automa_memory_activation_v0"})
@@ -93,6 +96,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
             for step in ("perception", "memory", *DECISION_STEPS):
                 with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:
                     runtime_root = Path(tmp) / "vehicles"
+                    write_host_fixture(runtime_root, VEHICLE_ID)
                     path = runtime_root / VEHICLE_ID / "bundle/runtime" / step / "active.json"
                     path.parent.mkdir(parents=True)
                     path.write_text(json.dumps({"schema": f"automa_{step}_activation_v0"}), encoding="utf-8")
@@ -126,14 +130,15 @@ class StagedActivationRecoveryTests(unittest.TestCase):
         for step in STEPS:
             with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:
                 runtime_root = Path(tmp) / "vehicles"
+                write_host_fixture(runtime_root, VEHICLE_ID)
+                write_host_fixture(runtime_root, vehicle_id, provider="picar")
                 bundle = runtime_root / vehicle_id / "bundle"
                 path = bundle / "runtime" / step / "active.json"
                 path.parent.mkdir(parents=True)
                 original = json.dumps({"schema": f"automa_{step}_activation_v0"})
                 path.write_text(original, encoding="utf-8")
                 result = invoke_automa(
-                    "vehicles", "update", "autonomy", "--id", vehicle_id,
-                    "--skip-discovery", "--ssh-target", "pi@127.0.0.1",
+                    "vehicles", "update", "host", "--id", vehicle_id,
                     runtime_root=runtime_root, check=False,
                 )
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)

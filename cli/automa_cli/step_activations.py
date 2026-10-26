@@ -36,7 +36,6 @@ from implementations.decision_cycle.catalog import (
     selection_activation,
     step_plugins,
 )
-from implementations.vehicle.chase_sim import ChaseSimCar
 
 from .bundles import (
     controller_bundle_paths,
@@ -44,7 +43,7 @@ from .bundles import (
     sync_controller_bundle,
 )
 from .paths import display_path, safe_path_part
-from .vehicles import DEFAULT_READINESS_TIMEOUT_S, discover_vehicle
+from .vehicles import DEFAULT_READINESS_TIMEOUT_S
 
 def vehicle_bundle(vehicle_id: str, runtime_root: Path) -> dict[str, str]:
     return controller_bundle_paths(Path(runtime_root) / safe_path_part(vehicle_id))
@@ -153,14 +152,14 @@ def apply_staged(vehicle_id: str, provider: Any, step: str, *, changed: list[str
     Every host selects a restaged step's plugins on its next frame. A Chase
     host reads the local runtime directory, so nothing needs to run
     (``selection_command`` is ``None``); a PiCar reads the copy ``vehicles
-    update autonomy`` installs onboard. Changed plugin specs or configs take
+    update host`` installs onboard. Changed plugin specs or configs take
     effect after ``restart_command``, the same for every vehicle: package a
     release and restart the host onto it. ``changed`` names the plugins whose
     spec or config this restage changed.
     """
 
     live = not changed
-    install = f"./cli/automa vehicles update autonomy --id {vehicle_id}"
+    install = f"./cli/automa vehicles update host --id {vehicle_id}"
     selection = install if provider == "picar" else None
     restart = f"{install} --restart"
     return {
@@ -201,87 +200,42 @@ def staging_vehicle(
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     output: TextIO | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """The vehicle every ``vehicles update <step>`` stages for, or why it is unknown.
+    """Read the explicit host record; directory names and activations are not identity."""
 
-    A Chase sim id and a vehicle whose identity was recorded by any staged
-    step are known without discovery. Identity must match the requested id;
-    directory names alone do not establish it. The newest valid matching
-    record supplies the connection. Any other id must be discoverable.
-    ``timeout_s`` bounds each discovery probe, not the whole update command.
-    """
-
-    vehicle = _offline_sim_vehicle(vehicle_id) or _offline_staged_vehicle(
-        vehicle_bundle(vehicle_id, runtime_root), vehicle_id
-    )
-    if vehicle is not None:
-        _emit(output, "Using local vehicle metadata; network liveness is not required for local staging.")
-        return vehicle, None
-
-    _emit(output, f"Discovering active vehicles for id {vehicle_id!r}...")
-    return discover_vehicle(vehicle_id, timeout_s=timeout_s)
-
-
-def _offline_sim_vehicle(vehicle_id: str) -> dict[str, Any] | None:
-    if vehicle_id != "chase-sim-chaser" and not vehicle_id.startswith("chase-sim-"):
-        return None
-    car = ChaseSimCar(vehicle_id=vehicle_id)
-    return {
-        "vehicle_id": vehicle_id,
-        "vehicle_kind": car.capabilities.vehicle_kind,
-        "provider": "chase-sim",
-        "connection": {
-            "ws_url": car.ws_url,
-            "source": "offline-default",
-        },
-        "capabilities": car.capabilities.to_dict(),
-        "status": {
-            "ok": None,
-            "note": "offline simulator metadata; WS/frontend liveness was not required for staging",
-        },
-    }
+    if vehicle_id in {".", ".."} or safe_path_part(vehicle_id) != vehicle_id or not vehicle_id:
+        return None, "Host names may contain letters, digits, dots, underscores and hyphens, excluding . and .."
+    path = Path(runtime_root) / vehicle_id / "vehicle.json"
+    if not path.is_file():
+        names = host_ids(runtime_root)
+        known = f"Hosts: {', '.join(names)}." if names else "No hosts exist."
+        return None, f"No host {vehicle_id!r}. {known}"
+    try:
+        vehicle = json.loads(path.read_text(encoding="utf-8"))
+        if (not isinstance(vehicle, dict) or vehicle.get("schema") != "automa_host_vehicle_v0"
+                or vehicle.get("vehicle_id") != vehicle_id
+                or vehicle.get("provider") not in {"chase-sim", "picar"}
+                or not isinstance(vehicle.get("connection"), dict)):
+            raise ValueError("invalid host record")
+    except (OSError, ValueError) as exc:
+        return None, f"Cannot read host {vehicle_id!r}: {exc}"
+    return vehicle, None
 
 
-def _offline_staged_vehicle(bundle: dict[str, str], vehicle_id: str) -> dict[str, Any] | None:
-    """The newest matching vehicle identity recorded by any valid staged step."""
-
-    records: list[dict[str, Any]] = []
-    for step in STEPS:
-        try:
-            activation = read_bundle_activation(bundle, step)
-        except (OSError, ValueError):
-            continue
-        metadata = dict(activation.metadata) if activation is not None else {}
-        if metadata.get("vehicle_id") != vehicle_id:
-            continue
-        provider = metadata.get("provider")
-        if isinstance(provider, str) and provider:
-            records.append(metadata)
-    if not records:
-        return None
-    # Historical perception records already carry this timestamp. Records
-    # without one remain usable, behind identities written by current staging.
-    metadata = max(
-        records,
-        key=lambda item: item["activated_at_ms"] if isinstance(item.get("activated_at_ms"), int) else 0,
-    )
-    provider = metadata["provider"]
-    runtime = metadata.get("runtime")
-    connection = runtime.get("connection") if isinstance(runtime, dict) else None
-    return {
-        "vehicle_id": vehicle_id,
-        "vehicle_kind": metadata.get("vehicle_kind") or provider,
-        "provider": provider,
-        "connection": connection if isinstance(connection, dict) else {},
-        "status": {
-            "ok": None,
-            "note": "offline local staging metadata; vehicle liveness was not checked",
-        },
-    }
+def host_ids(runtime_root: Path) -> list[str]:
+    return sorted(path.parent.name for path in Path(runtime_root).glob("*/vehicle.json") if path.is_file())
 
 
-def _emit(output: TextIO | None, message: str) -> None:
-    if output is not None:
-        print(message, file=output, flush=True)
+def write_host_vehicle(runtime_root: Path, vehicle: dict[str, Any]) -> Path:
+    """Create a host identity without overwriting an existing host."""
+    vehicle_id = vehicle["vehicle_id"]
+    if vehicle_id in {".", ".."} or safe_path_part(vehicle_id) != vehicle_id or not vehicle_id:
+        raise ValueError("Invalid host name")
+    path = Path(runtime_root) / vehicle_id / "vehicle.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("x", encoding="utf-8") as stream:
+        json.dump({**vehicle, "schema": "automa_host_vehicle_v0"}, stream, indent=2, sort_keys=True)
+        stream.write("\n")
+    return path
 
 
 # Keys of ``metadata.controller_bundle`` on every staged step.
@@ -635,6 +589,8 @@ __all__ = [
     "staged_activation",
     "staging_metadata",
     "staging_vehicle",
+    "host_ids",
+    "write_host_vehicle",
     "step_update_error",
     "update_vehicle_step",
     "vehicle_bundle",

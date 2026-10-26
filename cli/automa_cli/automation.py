@@ -54,7 +54,7 @@ from .perception_view import (
     get_perception_view_status,
     perception_view_ready,
 )
-from .vehicles import DEFAULT_READINESS_TIMEOUT_S, is_chase_vehicle_id
+from .vehicles import DEFAULT_READINESS_TIMEOUT_S
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -114,7 +114,7 @@ def _host_runtime_status(
             "generation_matches": True,
             "reason": error,
             "recovery": (
-                f"./cli/automa vehicles update autonomy --id {vehicle_id} --restart"
+                f"./cli/automa vehicles update host --id {vehicle_id} --restart"
                 if error is not None
                 else None
             ),
@@ -263,6 +263,8 @@ def run_vehicle_automation(
     output: TextIO | None = None,
 ) -> CommandResult:
     try:
+        if vehicle_id is not None:
+            staged_vehicle(vehicle_id)
         configuration = _run_configuration(
             take_control=take_control, num_decisions=num_decisions, unbounded=unbounded,
         )
@@ -314,6 +316,8 @@ def start_vehicle_automation_background(
     startup_wait_s: float = 20.0,
 ) -> CommandResult:
     try:
+        if vehicle_id is not None:
+            staged_vehicle(vehicle_id)
         configuration = _run_configuration(
             take_control=take_control, num_decisions=num_decisions, unbounded=unbounded,
         )
@@ -913,12 +917,15 @@ def stop_vehicle_automation(
 ) -> CommandResult:
     # The host ends the session and releases control; the monitor then
     # finishes the run record.
-    base_url = running_base_url(vehicle_id)
+    try:
+        base_url = running_base_url(vehicle_id)
+    except RuntimeHostError as exc:
+        return CommandResult(2, str(exc))
     if base_url is not None:
         try:
             RuntimeClient(base_url, timeout_s=max(1.0, wait_s)).stop()
         except RuntimeError as exc:
-            if not is_chase_vehicle_id(vehicle_id):
+            if staged_vehicle(vehicle_id)["provider"] != "chase-sim":
                 return CommandResult(2, f"Could not stop {vehicle_id}: {exc}")
             forced = _replace_unanswering_host(vehicle_id, wait_s=wait_s)
             if forced is not None:
@@ -1101,9 +1108,9 @@ def _collect_automation_status(
 ) -> list[dict[str, Any]]:
     if vehicle_id is not None:
         candidate = runtime_hosts.RUNTIME_ROOT / safe_path_part(vehicle_id)
-        candidates = [candidate] if candidate.is_dir() else []
+        candidates = [candidate] if (candidate / "vehicle.json").is_file() else []
     elif runtime_hosts.RUNTIME_ROOT.exists():
-        candidates = sorted(path for path in runtime_hosts.RUNTIME_ROOT.iterdir() if path.is_dir())
+        candidates = sorted(path.parent for path in runtime_hosts.RUNTIME_ROOT.glob("*/vehicle.json"))
     else:
         candidates = []
 

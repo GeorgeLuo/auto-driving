@@ -73,7 +73,7 @@ class ViewerWithoutHostTests(unittest.TestCase):
             urlopen(f"{self.server.url}static/shared/missing.js", timeout=1.0)
         self.assertEqual(caught.exception.code, 404)
 
-    def test_hosts_are_listed_with_their_status_state(self) -> None:
+    def test_only_created_hosts_are_listed_with_their_status_state(self) -> None:
         runner = {"kind": "vehicle-host", "vehicle_id": "chase-sim-runner", "url": closed_url(), "pid": os.getpid()}
         with (
             tempfile.TemporaryDirectory() as tmp,
@@ -87,7 +87,6 @@ class ViewerWithoutHostTests(unittest.TestCase):
 
         self.assertEqual(payload["hosts"], [
             {"vehicle_id": "chase-sim-chaser", "state": "not started"},
-            {"vehicle_id": "chase-sim-runner", "state": "not answering"},
         ])
 
     def test_viewer_publishes_no_discovery_record(self) -> None:

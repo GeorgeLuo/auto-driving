@@ -370,6 +370,11 @@
         <code>mode</code> action provides the first bounded live-control path.
       </p>
       <p class="source-line">
+        Create a named host with <code>vehicles create host --id car --picar-url http://piracer.local:8887</code>
+        after checking <code>vehicles status</code>. Stage selections with <code>vehicles update &lt;step&gt;</code>,
+        deploy with <code>vehicles update host --id car --restart</code>, then use <code>vehicles automation run</code>.
+        <code>vehicles delete host --id car</code> stops the service and removes its local record.
+        <br>
         Source points: <code>autonomy/decision_cycle/cycle.py</code>,
         <code>autonomy/runtime/cycle_host.py</code>,
         <code>cli/automa_cli/automation.py</code>, and

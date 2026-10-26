@@ -5,6 +5,7 @@ import copy
 import json
 import os
 import shlex
+import shutil
 import subprocess
 import time
 from dataclasses import dataclass
@@ -17,10 +18,6 @@ from urllib.parse import urlparse
 from autonomy.decision_cycle.activation import STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
 from implementations.decision_cycle.catalog import selection_activation
-from implementations.vehicle.picar.defaults import (
-    get_default_picar_base_url,
-    get_default_picar_id,
-)
 
 from .bundles import (
     controller_bundle_paths,
@@ -43,8 +40,11 @@ from .step_activations import (
     format_activation_problems,
     read_bundle_activation,
     step_lines,
+    staging_vehicle,
+    write_host_vehicle,
 )
-from .vehicles import discover_vehicle, is_chase_vehicle_id
+from .host_publications import host_state
+from .vehicles import Candidate, _host_block, _probe_chase, normalize_chase_url
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -185,37 +185,12 @@ class PicarTarget:
     pi_home: str
 
 
-def update_vehicle_core(
-    *,
-    vehicle_id: str,
-    timeout_s: float = 1.0,
-    ssh_target: str | None = None,
-    pi_home: str | None = None,
-    skip_discovery: bool = False,
-    dry_run: bool = False,
-    restart: bool = False,
-    drive_args: str | None = None,
-    json_output: bool = False,
-    verbose: bool = False,
-    output: TextIO | None = None,
+def _install_picar_core(
+    target: PicarTarget, *, dry_run: bool = False, json_output: bool = False,
+    verbose: bool = False, output: TextIO | None = None,
 ) -> CommandResult:
     stream = output
-    if drive_args is not None and not restart:
-        return CommandResult(2, "--drive-args requires --restart so the new arguments take effect.")
-    target, error = _resolve_picar_target(
-        vehicle_id=vehicle_id,
-        timeout_s=timeout_s,
-        ssh_target=ssh_target,
-        pi_home=pi_home,
-        skip_discovery=skip_discovery,
-        output=stream,
-        operation="core deploy",
-        allow_offline_default=True,
-    )
-    if error is not None:
-        return error
-    assert target is not None
-
+    vehicle_id = target.vehicle_id
     _emit(stream, f"Selected {vehicle_id} ({target.provider}) at {target.ssh_target}.")
     _emit(stream, "Scope: core Donkey/harness bundle only.")
     _emit(stream, f"Remote home: {target.pi_home}")
@@ -235,8 +210,8 @@ def update_vehicle_core(
             vendor_manifest=vendor_manifest,
             vendor_source_dir=vendor_source_dir,
             commands=commands,
-            restart=restart,
-            drive_args=drive_args,
+            restart=False,
+            drive_args=None,
             runtime_readiness=None,
         )
         if json_output:
@@ -263,103 +238,35 @@ def update_vehicle_core(
 
     _emit(stream, "Core deploy bundle synced.")
 
-    if restart:
-        code = _restart_drive_service(
-            target=target,
-            drive_args=drive_args,
-            verbose=verbose,
-            output=stream,
-        )
-        if code != 0:
-            return CommandResult(code, f"Restart failed with exit code {code}.")
-        _emit(stream, "Donkey runtime service restarted.")
-        readiness = {
-            "ok": True,
-            "status_url": f"{_target_base_url(target)}/host/status",
-            "mode": "manual",
-        }
-    else:
-        try:
-            readiness = _wait_for_donkey_readiness(
-                target=target,
-                timeout_s=DONKEY_READY_TIMEOUT_S,
-            )
-        except RuntimeError as exc:
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"{DONKEY_SERVICE_NAME} was installed and enabled, but HTTP readiness failed: {exc}",
-                        (
-                            f"Inspect it with: ssh {target.ssh_target} "
-                            f"sudo systemctl status {DONKEY_SERVICE_NAME}"
-                        ),
-                    ]
-                ),
-            )
-    _emit(stream, f"Donkey runtime ready: {readiness['status_url']}")
-
-    if json_output:
-        payload = _core_update_payload(
-            target=target,
-            dry_run=False,
-            vendor_manifest=vendor_manifest,
-            vendor_source_dir=vendor_source_dir,
-            commands=commands,
-            restart=restart,
-            drive_args=drive_args,
-            runtime_readiness=readiness,
-        )
-        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(
-        0,
-        "\n".join(
-            [
-                f"Core updated: {vehicle_id} -> {target.ssh_target}",
-                f"Service: {DONKEY_SERVICE_NAME} (enabled and active)",
-                f"Readiness: {readiness['status_url']}",
-                f"Runtime restarted: {'yes' if restart else 'only if it was not already active'}",
-            ]
-        ),
-    )
+    return CommandResult(0, "Core deploy bundle synced.")
 
 
-def update_vehicle_autonomy(
-    *,
-    vehicle_id: str,
-    timeout_s: float = 1.0,
-    ssh_target: str | None = None,
-    pi_home: str | None = None,
-    skip_discovery: bool = False,
-    dry_run: bool = False,
-    restart: bool = False,
-    drive_args: str | None = None,
-    json_output: bool = False,
-    verbose: bool = False,
-    output: TextIO | None = None,
+def update_host(
+    *, vehicle_id: str, dry_run: bool = False, restart: bool = False,
+    drive_args: str | None = None, json_output: bool = False,
+    verbose: bool = False, output: TextIO | None = None,
 ) -> CommandResult:
+    vehicle, error = staging_vehicle(vehicle_id, runtime_root=RUNTIME_ROOT)
+    if error:
+        return CommandResult(2, error)
     if drive_args is not None and not restart:
         return CommandResult(2, "--drive-args requires --restart so the new arguments take effect.")
-    if is_chase_vehicle_id(vehicle_id):
-        if drive_args is not None or ssh_target is not None or pi_home is not None:
-            return CommandResult(2, "--drive-args, --ssh-target and --pi-home apply only to a PiCar.")
-        return _update_local_autonomy(
-            vehicle_id=vehicle_id, dry_run=dry_run, restart=restart,
-            json_output=json_output, output=output,
-        )
-    target, error = _resolve_picar_target(
-        vehicle_id=vehicle_id,
-        timeout_s=timeout_s,
-        ssh_target=ssh_target,
-        pi_home=pi_home,
-        skip_discovery=skip_discovery,
-        output=output,
-        operation="autonomy deploy",
+    if vehicle["provider"] == "chase-sim":
+        if drive_args is not None:
+            return CommandResult(2, "--drive-args applies only to a PiCar.")
+        return _update_local_autonomy(vehicle_id=vehicle_id, dry_run=dry_run, restart=restart,
+                                      json_output=json_output, output=output)
+    return _deploy_picar_release(
+        _resolve_picar_target(vehicle), dry_run=dry_run, restart=restart,
+        drive_args=drive_args, json_output=json_output, verbose=verbose, output=output,
     )
-    if error is not None:
-        return error
-    assert target is not None
 
+
+def _deploy_picar_release(
+    target: PicarTarget, *, dry_run: bool, restart: bool, drive_args: str | None,
+    json_output: bool, verbose: bool, output: TextIO | None,
+) -> CommandResult:
+    vehicle_id = target.vehicle_id
     _emit(output, f"Selected {vehicle_id} ({target.provider}) at {target.ssh_target}.")
     _emit(output, "Scope: versioned autonomy controller bundle and activation metadata only.")
     _emit(output, f"Remote home: {target.pi_home}")
@@ -455,7 +362,7 @@ def update_vehicle_autonomy(
             runtime_verification = _verify_picar_autonomy_runtime(
                 target=target,
                 expected_steps=deployed_steps,
-                timeout_s=max(3.0, timeout_s),
+                timeout_s=DONKEY_READY_TIMEOUT_S,
             )
         except RuntimeError as exc:
             return CommandResult(
@@ -493,7 +400,7 @@ def update_vehicle_autonomy(
         0,
         "\n".join(
             [
-                f"Autonomy updated: {vehicle_id} -> {target.ssh_target}",
+                f"Host updated: {vehicle_id} -> {target.ssh_target}",
                 f"Release: {release_id}",
                 f"Tree SHA-256: {release['tree_sha256']}",
                 *step_lines(payload["activation"]["steps"], payload["activation"]["presets"]),
@@ -580,11 +487,10 @@ def _update_local_autonomy(
         host_line = "Runtime restarted: no host running; the next automation run starts on this release"
     else:
         host_line = (
-            "Runtime restarted: no; an idle host moves onto this release at the next automation run, "
-            f"or now with: ./cli/automa vehicles update autonomy --id {vehicle_id} --restart"
+            "Runtime restarted: no; an idle host moves onto this release at the next automation run"
         )
     return CommandResult(0, "\n".join([
-        f"Autonomy updated: {vehicle_id} (local host)",
+        f"Host updated: {vehicle_id} (local host)",
         f"Release: {summary['archive']}",
         f"Archive SHA-256: {summary['archive_sha256']}",
         *step_lines(steps, payload["presets"]),
@@ -593,80 +499,139 @@ def _update_local_autonomy(
     ]))
 
 
-def _resolve_picar_target(
-    *,
-    vehicle_id: str,
-    timeout_s: float,
-    ssh_target: str | None,
-    pi_home: str | None,
-    skip_discovery: bool,
-    output: TextIO | None,
-    operation: str,
-    allow_offline_default: bool = False,
-) -> tuple[PicarTarget | None, CommandResult | None]:
-    vehicle: dict[str, object] = {
-        "vehicle_id": vehicle_id,
-        "vehicle_kind": "picar",
-        "provider": "picar",
-        "connection": {},
-    }
+def _resolve_picar_target(vehicle: dict[str, Any]) -> PicarTarget:
+    connection = vehicle["connection"]
+    return PicarTarget(vehicle["vehicle_id"], vehicle, "picar", connection["ssh_target"], connection["pi_home"])
 
-    if skip_discovery:
-        _emit(output, f"Skipping active vehicle discovery for id {vehicle_id!r}.")
+
+def create_host(
+    *, vehicle_id: str, chase_url: str | None = None, picar_url: str | None = None,
+    ssh_target: str | None = None, pi_home: str | None = None,
+    drive_args: str | None = None, dry_run: bool = False, json_output: bool = False,
+    verbose: bool = False, output: TextIO | None = None,
+) -> CommandResult:
+    from .runtime_hosts import ensure_chase_host, stop_chase_host
+
+    if vehicle_id in {".", ".."} or safe_path_part(vehicle_id) != vehicle_id or not vehicle_id:
+        return CommandResult(2, "Host names may contain letters, digits, dots, underscores and hyphens, excluding . and ..")
+    if bool(chase_url) == bool(picar_url):
+        return CommandResult(2, "Pass exactly one of --chase-url and --picar-url.")
+    directory = RUNTIME_ROOT / safe_path_part(vehicle_id)
+    if (directory / "vehicle.json").exists():
+        existing, error = staging_vehicle(vehicle_id, runtime_root=RUNTIME_ROOT)
+        return CommandResult(2, error or f"Host {vehicle_id!r} already exists: {_vehicle_label(existing)}.")
+    if chase_url and any(value is not None for value in (ssh_target, pi_home, drive_args)):
+        return CommandResult(2, "--ssh-target, --pi-home and --drive-args apply only to a PiCar.")
+    vehicle = {"vehicle_id": vehicle_id, "provider": "chase-sim" if chase_url else "picar",
+               "vehicle_kind": "chase-sim-ws" if chase_url else "picar-donkey-http"}
+    if chase_url:
+        try:
+            url = normalize_chase_url(chase_url)
+        except ValueError as exc:
+            return CommandResult(2, str(exc))
+        vehicle["connection"] = {"ws_url": url}
+        if not dry_run:
+            probe = _probe_chase(Candidate("chase-sim", url, "cli"), timeout_s=5.0)
+            if not probe.active:
+                return CommandResult(2, f"No Chase simulator can take a host at {url}: {probe.error}")
     else:
-        _emit(output, f"Discovering active vehicles for id {vehicle_id!r}...")
-        found_vehicle, error = discover_vehicle(
-            vehicle_id, timeout_s=timeout_s, include_chase_sim=False
+        url = picar_url.rstrip("/")
+        if urlparse(url).scheme not in {"http", "https"} or not urlparse(url).hostname:
+            return CommandResult(2, "--picar-url must be an HTTP(S) URL.")
+        vehicle["connection"] = {"base_url": url}
+        vehicle["connection"].update(
+            ssh_target=ssh_target or os.environ.get("PI_HOST") or _ssh_target_from_vehicle(vehicle),
+            pi_home=pi_home or os.environ.get("PI_HOME") or DEFAULT_PI_HOME,
         )
-        if found_vehicle is None:
-            if allow_offline_default and vehicle_id == get_default_picar_id():
-                default_base_url = get_default_picar_base_url()
-                vehicle = {
-                    "vehicle_id": vehicle_id,
-                    "vehicle_kind": "picar",
-                    "provider": "picar",
-                    "connection": {
-                        "base_url": default_base_url,
-                        "source": "configured-default",
-                    },
-                }
-                _emit(
-                    output,
-                    (
-                        "Donkey HTTP readiness is unavailable; using the configured PiCar "
-                        f"target {default_base_url}. SSH will determine deploy reachability."
-                    ),
-                )
-            else:
-                return None, CommandResult(2, error)
+    if dry_run:
+        if chase_url:
+            return _update_local_autonomy(vehicle_id=vehicle_id, dry_run=True, restart=True,
+                                          json_output=json_output, output=output)
+        target = _resolve_picar_target(vehicle)
+        core = _install_picar_core(target, dry_run=True, json_output=json_output)
+        release = _deploy_picar_release(target, dry_run=True, restart=True, drive_args=drive_args,
+                                       json_output=json_output, verbose=verbose, output=output)
+        if json_output:
+            return CommandResult(0, json.dumps({"vehicle": vehicle, "dry_run": True,
+                "core": json.loads(core.message), "host": json.loads(release.message)}, indent=2))
+        return CommandResult(0, core.message + "\n" + release.message)
+    made_directory = not directory.exists()
+    write_host_vehicle(RUNTIME_ROOT, vehicle)
+    try:
+        if not chase_url:
+            core = _install_picar_core(_resolve_picar_target(vehicle), verbose=verbose, output=output)
+            if core.exit_code:
+                raise RuntimeError(core.message)
+        result = update_host(vehicle_id=vehicle_id, restart=not bool(chase_url), drive_args=drive_args,
+                             json_output=json_output, verbose=verbose, output=output)
+        if result.exit_code:
+            raise RuntimeError(result.message)
+        state = None
+        if chase_url:
+            base_url = ensure_chase_host(vehicle_id)
+            state = host_state(base_url, vehicle_id=vehicle_id, timeout_s=5.0)
+        if json_output:
+            return CommandResult(0, json.dumps({"vehicle": vehicle, "result": json.loads(result.message),
+                                                "host": state}, indent=2))
+        detail = "\n".join(line for line in result.message.splitlines()
+                           if not line.startswith(("Host updated:", "Runtime restarted:")))
+        lines = [f"Host {vehicle_id} created for {_vehicle_label(vehicle)}", detail]
+        if state:
+            lines.append(_host_block({**state, "vehicle_id": vehicle_id, "attached": True,
+                                      "provider": "chase-sim", "vehicle_url": url}))
+        return CommandResult(0, "\n".join(lines))
+    except (OSError, RuntimeError, ValueError) as exc:
+        if chase_url:
+            stop_chase_host(vehicle_id)
+        if made_directory:
+            shutil.rmtree(directory)
         else:
-            vehicle = found_vehicle
+            (directory / "vehicle.json").unlink(missing_ok=True)
+        suffix = " The Pi keeps files already synced." if picar_url else ""
+        return CommandResult(2, f"Could not create host {vehicle_id!r}: {exc}{suffix}")
 
-    provider = str(vehicle.get("provider"))
-    if provider != "picar":
-        return None, CommandResult(
-            2,
-            f"Vehicle {vehicle_id!r} is provider {provider!r}; {operation} is only supported for PiCar targets.",
-        )
 
-    resolved_home = pi_home or os.environ.get("PI_HOME") or DEFAULT_PI_HOME
-    resolved_ssh_target = ssh_target or os.environ.get("PI_HOST") or _ssh_target_from_vehicle(vehicle)
-    if not resolved_ssh_target:
-        return None, CommandResult(
-            2,
-            f"Could not derive SSH target for vehicle {vehicle_id!r}; pass --ssh-target or set PI_HOST.",
-        )
+def _vehicle_label(vehicle: dict[str, Any]) -> str:
+    connection = vehicle["connection"]
+    return (f"the chaser at {connection['ws_url']}" if vehicle["provider"] == "chase-sim"
+            else f"PiCar at {connection['base_url']}")
 
-    return (
-        PicarTarget(
-            vehicle_id=vehicle_id,
-            vehicle=vehicle,
-            provider=provider,
-            ssh_target=resolved_ssh_target,
-            pi_home=resolved_home,
-        ),
-        None,
-    )
+
+def delete_host(*, vehicle_id: str, verbose: bool = False, output: TextIO | None = None) -> CommandResult:
+    from .automation import stop_vehicle_automation
+    from .runtime_hosts import stop_chase_host
+
+    vehicle, error = staging_vehicle(vehicle_id, runtime_root=RUNTIME_ROOT)
+    if error:
+        return CommandResult(2, error)
+    directory = RUNTIME_ROOT / safe_path_part(vehicle_id)
+    # Stop an active local run before stopping its host. An idle Pi may have no HTTP listener.
+    from .runtime_hosts import _pid_alive, automation_dir, running_base_url
+    process = automation_dir(vehicle_id) / "process.json"
+    base_url = running_base_url(vehicle_id)
+    state = host_state(base_url, vehicle_id=vehicle_id, timeout_s=1.0) if base_url else {}
+    try:
+        process_record = json.loads(process.read_text())
+    except (OSError, ValueError):
+        process_record = {}
+    active_run = (isinstance(process_record, dict) and _pid_alive(process_record.get("pid"))) or state.get("state") in {"starting", "running", "stopping"}
+    if active_run:
+        result = stop_vehicle_automation(vehicle_id=vehicle_id)
+        if result.exit_code:
+            return CommandResult(result.exit_code, result.message)
+    if vehicle["provider"] == "chase-sim":
+        stop_chase_host(vehicle_id)
+    else:
+        target = _resolve_picar_target(vehicle)
+        command = _donkey_service_control_command(pi_home=target.pi_home, action="stop", drive_args=None)
+        code = _run_step("Stop Donkey runtime service", ["ssh", target.ssh_target, command],
+                         env=None, verbose=verbose, output=output)
+        if code:
+            return CommandResult(code, "Could not stop the PiCar host; its local record was kept.")
+    shutil.rmtree(directory)
+    suffix = " Harness files stay in ~/mycar on the PiCar." if vehicle["provider"] == "picar" else ""
+    stopped = "Stopped automation run. " if active_run else ""
+    return CommandResult(0, f"{stopped}Stopped host {vehicle_id}. Removed {display_path(directory)}.{suffix}")
 
 
 def _write_remote_activation_files(
@@ -1053,8 +1018,8 @@ def _verify_picar_autonomy_runtime(
             raise RuntimeError(
                 f"{status_url} has no live {step} step, but {plugins!r} was deployed. "
                 "The step loader lives in the Donkey manage.py harness from core. "
-                f"Run: ./cli/automa vehicles update core --id {vehicle_id} --restart "
-                f"then ./cli/automa vehicles update autonomy --id {vehicle_id} --restart"
+                f"Run: ./cli/automa vehicles create host --id {vehicle_id} --restart "
+                f"then ./cli/automa vehicles update host --id {vehicle_id} --restart"
             )
         if list(actual) != list(plugins):
             raise RuntimeError(

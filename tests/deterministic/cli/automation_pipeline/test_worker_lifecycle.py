@@ -23,6 +23,8 @@ from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
 )
 
 
+from tests.support.runtime_fixtures import write_host_fixture
+
 class AutomationLivePipelineTests(unittest.TestCase):
     def test_picar_stale_decoder_cannot_stop_restart_or_overwrite_its_drive_mode(self):
         controller = SimpleNamespace(mode="user", angle=0., throttle=0., mode_latch=None)
@@ -100,6 +102,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
     def test_background_start_fails_when_child_exits_before_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
+            write_host_fixture(runtime_root, "chase-sim-chaser")
             with (
                 patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root),
                 patch(
@@ -130,6 +133,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
     def test_background_start_returns_only_after_first_frame_and_view(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
+            write_host_fixture(runtime_root, "chase-sim-chaser")
             automation_dir = (
                 runtime_root / "chase-sim-chaser" / "bundle" / "runtime" / "automation"
             )
@@ -217,6 +221,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
+            write_host_fixture(runtime_root, "chase-sim-chaser")
             automation_dir = (
                 runtime_root / "chase-sim-chaser" / "bundle" / "runtime" / "automation"
             )
@@ -285,6 +290,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
     ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
+            write_host_fixture(runtime_root, "chase-sim-chaser")
             automation_dir = (
                 runtime_root / "chase-sim-chaser" / "bundle" / "runtime" / "automation"
             )
@@ -330,6 +336,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
     def test_stop_without_pid_records_stopped_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
+            write_host_fixture(runtime_root, "chase-sim-chaser")
             automation_dir = (
                 runtime_root / "chase-sim-chaser" / "bundle" / "runtime" / "automation"
             )
@@ -359,6 +366,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
     def test_foreground_early_failure_replaces_starting_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
+            write_host_fixture(runtime_root, "chase-sim-chaser")
             automation_dir = (
                 runtime_root / "chase-sim-chaser" / "bundle" / "runtime" / "automation"
             )

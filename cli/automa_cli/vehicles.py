@@ -26,6 +26,7 @@ from implementations.vehicle.chase_sim.defaults import (
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
 from implementations.vehicle.picar import create_picar
 from implementations.vehicle.picar.defaults import (
+    get_default_picar_base_url,
     DEFAULT_LOCAL_CAR_BASE_URL,
     LOCAL_CAR_BASE_URL_ENV,
 )
@@ -153,72 +154,9 @@ def format_active_vehicles(
     return "\n".join(lines)
 
 
-def find_vehicle_by_id(
-    payload: dict[str, Any],
-    vehicle_id: str,
-) -> tuple[dict[str, Any] | None, str | None]:
-    vehicles = payload.get("vehicles")
-    if not isinstance(vehicles, list):
-        return None, "Discovery payload does not contain a vehicle list."
-
-    matches = [
-        vehicle
-        for vehicle in vehicles
-        if isinstance(vehicle, dict) and vehicle.get("vehicle_id") == vehicle_id
-    ]
-    if not matches:
-        active_ids = [
-            str(vehicle.get("vehicle_id"))
-            for vehicle in vehicles
-            if isinstance(vehicle, dict) and vehicle.get("vehicle_id") is not None
-        ]
-        suffix = (
-            f" Discoverable ids: {', '.join(active_ids)}."
-            if active_ids
-            else ""
-        )
-        return None, f"Vehicle {vehicle_id!r} was not found among discoverable vehicles.{suffix}"
-
-    providers = sorted({str(match.get("provider")) for match in matches})
-    if len(matches) > 1 and len(providers) > 1:
-        return None, (
-            f"Vehicle id {vehicle_id!r} matched multiple providers: {', '.join(providers)}. "
-            "Use a unique vehicle id before updating."
-        )
-
-    return matches[0], None
-
-
-def discover_vehicle(
-    vehicle_id: str,
-    *,
-    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    include_picar: bool = True,
-    include_chase_sim: bool = True,
-) -> tuple[dict[str, Any] | None, str | None]:
-    """Discover ``vehicle_id``, or say what discovery saw and why each other candidate did not answer."""
-
-    payload = discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=include_picar,
-        include_chase_sim=include_chase_sim,
-        include_inactive=True,
-    )
-    vehicle, error = find_vehicle_by_id(payload, vehicle_id)
-    if vehicle is not None:
-        return vehicle, None
-    return None, "\n\n".join(
-        [
-            error or f"Vehicle {vehicle_id!r} was not found.",
-            "Discovery:",
-            format_active_vehicles(payload, include_inactive=True),
-        ]
-    )
-
-
 def get_vehicle_status(
     *,
-    vehicle_id: str | None = None,
+    vehicle_id: str,
     chase_url: str | None = None,
     chase_ws_url: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
@@ -264,40 +202,13 @@ def get_vehicle_status(
         for item in automation
         if isinstance(item, dict) and item.get("vehicle_id")
     }
-    deployed_by_id = {
-        deployed_id: item
-        for deployed_id, item in all_deployed_by_id.items()
-        if is_chase_vehicle_id(deployed_id)
-    }
-    other_local_deployments = [
-        {
-            "vehicle_id": deployed_id,
-            "inspection_command": (
-                "./cli/automa vehicles automation status "
-                f"--id {deployed_id}"
-            ),
-        }
-        for deployed_id in sorted(set(all_deployed_by_id) - set(deployed_by_id))
-    ]
+    deployed_by_id = all_deployed_by_id
     discoverable_by_id = {
         str(item.get("vehicle_id")): item
         for item in discovery.get("vehicles", [])
         if isinstance(item, dict) and item.get("vehicle_id")
     }
-    if (
-        vehicle_id is not None
-        and vehicle_id in all_deployed_by_id
-        and vehicle_id not in deployed_by_id
-    ):
-        raise ValueError(
-            f"{vehicle_id!r} is a non-Chase local deployment; inspect it with "
-            f"`./cli/automa vehicles automation status --id {vehicle_id}`"
-        )
-    known_ids = set(discoverable_by_id) | set(deployed_by_id)
-    if vehicle_id is not None:
-        known_ids = {vehicle_id}
-    elif not known_ids:
-        known_ids = {"chase-sim-chaser"}
+    known_ids = {vehicle_id}
 
     inactive = next(
         (
@@ -323,47 +234,7 @@ def get_vehicle_status(
         )
         for known_id in sorted(known_ids)
     ]
-    checked_at_ms = int(time.time() * 1000)
-    if vehicle_id is not None:
-        return cards[0]
-    return {
-        "schema": STATUS_SCHEMA,
-        "vehicle_id": None,
-        "endpoint": {
-            "operator_url": display_url,
-            "resolved_ws_url": endpoint,
-        },
-        "layers": None,
-        "capture": None,
-        "readiness": {
-            "schema": READINESS_SCHEMA,
-            "status": (
-                "ready"
-                if cards and all(card["readiness"]["status"] == "ready" for card in cards)
-                else "blocked"
-            ),
-            "ready_for": "inspect known vehicles",
-            "checked_at_ms": checked_at_ms,
-            "gates": {
-                str(card["vehicle_id"]): card["readiness"]
-                for card in cards
-            },
-            "blocking_layer": next(
-                (
-                    card["readiness"]["blocking_layer"]
-                    for card in cards
-                    if card["readiness"]["blocking_layer"] is not None
-                ),
-                None,
-            ),
-        },
-        "next_action": None,
-        "checked_at_ms": checked_at_ms,
-        "timeout_s": operation_timeout,
-        "elapsed_ms": int((time.monotonic() - started) * 1000),
-        "vehicles": cards,
-        "other_local_deployments": other_local_deployments,
-    }
+    return cards[0]
 
 
 def get_chase_simulator_status(
@@ -371,13 +242,14 @@ def get_chase_simulator_status(
     vehicle_id: str | None = None,
     chase_url: str | None = None,
     chase_ws_url: str | None = None,
+    picar_url: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
 ) -> dict[str, Any]:
     """The Chase simulator, and the state of each vehicle host.
 
     The simulator runs when its server answers; its frontend is connected when
-    a browser has the page open. The hosts are the ones the simulator lists as
-    attached agents plus each local vehicle's host (``local_hosts``). Every
+    a browser has the page open. Hosts come from explicit local records; the
+    simulator reports which of those hosts are attached. Every
     host's ``/host/status`` is read in parallel within the one deadline.
     """
 
@@ -412,12 +284,18 @@ def get_chase_simulator_status(
     reads: dict[str, Any] = {}
 
     with ThreadPoolExecutor() as pool:
+        picar_endpoint = (picar_url or get_default_picar_base_url()).rstrip("/")
+        picar_probe = pool.submit(_probe_picar, Candidate("picar", picar_endpoint, "cli"), timeout_s=remaining())
 
         def add(host: dict[str, Any]) -> dict[str, Any]:
-            hosts[host["url"]] = host
-            reads[host["url"]] = pool.submit(
-                host_state, host["url"], vehicle_id=host["vehicle_id"], timeout_s=remaining()
-            )
+            key = host["vehicle_id"]
+            hosts[key] = host
+            if host["url"] is None:
+                host["state"] = "not running"
+            else:
+                reads[key] = pool.submit(
+                    host_state, host["url"], vehicle_id=host["vehicle_id"], timeout_s=remaining()
+                )
             return host
 
         for local in local_hosts():
@@ -456,9 +334,9 @@ def get_chase_simulator_status(
                 ):
                     continue
                 url = client_info["url"].rstrip("/")
-                host = hosts.get(url) or add(
-                    _host_entry(client_info.get("vehicle_id"), url, client_info.get("pid"))
-                )
+                host = hosts.get(client_info.get("vehicle_id"))
+                if host is None or host["url"] != url:
+                    continue
                 host.update(attached=True, attached_since=agent.get("connectedAt"))
                 if host["pid"] is None:
                     host["pid"] = client_info.get("pid")
@@ -475,13 +353,17 @@ def get_chase_simulator_status(
             if code is None:
                 status["error"] = status["error"] or str(frontend_error)
 
-    for url, read in reads.items():
+    probe = picar_probe.result()
+    reachable = probe.diagnostics.get("runtime_state") in {"server_not_listening", "http_unhealthy"}
+    status["picar"] = {"url": picar_endpoint, "state": "answering" if probe.active else
+                       "reachable, no host listening" if reachable else "unreachable", "error": probe.error}
+    for host_id, read in reads.items():
         state = read.result()
         state.pop("reply")
         # A bounded run ends "completed", but the CLI's closing stop leaves it "stopped".
         if state["state"] in {"stopped", "completed"}:
             state["state"] = "finished_run"
-        hosts[url].update(state)
+        hosts[host_id].update(state)
     status["hosts"] = sorted(hosts.values(), key=lambda host: (str(host["vehicle_id"]), host["url"]))
     if vehicle_id is not None and not status["hosts"]:
         status["hosts"].append({
@@ -499,9 +381,11 @@ def _frontend_code(exc: BaseException | None) -> str | None:
     return code if code in FRONTEND_DELIVERY_PROTOCOL_CODES else None
 
 
-def _host_entry(vehicle_id: Any, url: str | None, pid: Any = None, local: str | None = None) -> dict[str, Any]:
+def _host_entry(vehicle_id: Any, url: str | None, pid: Any = None, local: str | None = None,
+                provider: str | None = None, vehicle_url: str | None = None) -> dict[str, Any]:
     return {
         "vehicle_id": vehicle_id, "url": url, "pid": pid, "attached": None, "attached_since": None,
+        "provider": provider, "vehicle_url": vehicle_url,
         "local": local, "state": None, "mode": None, "decision_count": None, "error_count": None,
         "last_frame_at_ms": None, "error": None,
     }
@@ -531,6 +415,10 @@ def format_chase_simulator_status(status: dict[str, Any]) -> str:
     if status.get("hosts_error"):
         simulator.append(f"  cannot list attached hosts: {status['hosts_error']}")
     blocks = ["\n".join(simulator)]
+    picar = status.get("picar")
+    if picar:
+        blocks.append(f"PiCar  {picar['state']} at {picar['url']}" +
+                      (f": {picar['error']}" if picar.get("error") else ""))
     hosts = status.get("hosts") or []
     if not hosts:
         blocks.append("No hosts found")
@@ -540,6 +428,9 @@ def format_chase_simulator_status(status: dict[str, Any]) -> str:
 
 def _host_block(host: dict[str, Any]) -> str:
     lines = [f"Host {host.get('vehicle_id')}  {host_state_text(host)}"]
+    if host.get("vehicle_url"):
+        kind = "chaser" if host.get("provider") == "chase-sim" else "PiCar"
+        lines.append(f"  {kind} at {host['vehicle_url']}")
     activity = [
         _count(host.get("decision_count"), "decision"),
         _count(host.get("error_count"), "error"),
@@ -594,10 +485,6 @@ def _local_time(value: Any) -> str:
         return datetime.fromisoformat(str(value)).astimezone().strftime("%Y-%m-%d %H:%M:%S")
     except ValueError:
         return str(value)
-
-
-def is_chase_vehicle_id(vehicle_id: str) -> bool:
-    return vehicle_id == "chase-sim-chaser" or vehicle_id.startswith("chase-sim-")
 
 
 def _build_vehicle_status_card(
@@ -946,7 +833,7 @@ def _vehicle_next_action(
         return (
             action(
                 "automation_not_deployed",
-                command=f"./cli/automa vehicles update autonomy --id {vehicle_id}",
+                command=f"./cli/automa vehicles update host --id {vehicle_id}",
                 expected_state="automation_deployment=deployed",
             ),
             "automation_deployment",
@@ -1235,6 +1122,7 @@ def chase_operator_url(ws_url: str) -> str:
 
 
 def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
+    deadline = time.monotonic() + timeout_s
     base_url = candidate.url.rstrip("/")
     car = create_picar(base_url=base_url, timeout_s=timeout_s)
     capabilities = car.capabilities.to_dict()
@@ -1266,7 +1154,7 @@ def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
             diagnostics={"runtime_state": "ready", "tcp_listener": True, "http_ready": True},
         )
 
-    diagnostics = _probe_tcp_endpoint(base_url, timeout_s=timeout_s)
+    diagnostics = _probe_tcp_endpoint(base_url, timeout_s=max(0.001, deadline - time.monotonic()))
     runtime_state = diagnostics.get("runtime_state")
     if runtime_state == "server_not_listening":
         probe_error = (
@@ -1443,6 +1331,7 @@ def _inactive_detail(diagnostics: dict[str, Any]) -> str:
 
 
 def _probe_tcp_endpoint(base_url: str, *, timeout_s: float) -> dict[str, Any]:
+    deadline = time.monotonic() + timeout_s
     parsed = urlparse(base_url)
     host = parsed.hostname
     port = parsed.port or (443 if parsed.scheme == "https" else 80)
@@ -1471,7 +1360,7 @@ def _probe_tcp_endpoint(base_url: str, *, timeout_s: float) -> dict[str, Any]:
         seen.add(key)
         try:
             with socket.socket(family, socktype, protocol) as connection:
-                connection.settimeout(max(0.1, float(timeout_s)))
+                connection.settimeout(max(0.001, deadline - time.monotonic()))
                 connection.connect(sockaddr)
             diagnostics.update(
                 {

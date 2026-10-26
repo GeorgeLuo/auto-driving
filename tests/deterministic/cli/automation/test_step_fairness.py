@@ -9,6 +9,7 @@ import tempfile
 import unittest
 from collections.abc import Iterator
 from pathlib import Path
+from tests.support.runtime_fixtures import write_host_fixture
 from unittest import mock
 
 from autonomy.decision_cycle.activation import STEPS
@@ -35,6 +36,7 @@ class StepFairnessTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
+            write_host_fixture(root, VEHICLE)
             with mock.patch("cli.automa_cli.app.VEHICLES_RUNTIME_ROOT", root), mock.patch(
                 "cli.automa_cli.runtime_hosts.RUNTIME_ROOT", root
             ), mock.patch(

@@ -1,247 +1,128 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import tempfile
 import unittest
-from io import StringIO
 from pathlib import Path
 from unittest.mock import patch
 
-from autonomy.decision_cycle.activation import STEPS
-from cli.automa_cli.deploy import _resolve_picar_target
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PRESETS, selection_activation
+from cli.automa_cli import deploy, runtime_hosts
+from cli.automa_cli.vehicles import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
+from tests.support.runtime_fixtures import write_host_fixture
 
 
-class DeploymentUpdateTests(unittest.TestCase):
+class HostLifecycleTests(unittest.TestCase):
+    def setUp(self):
+        self.root = Path(self.enterContext(tempfile.TemporaryDirectory())) / "vehicles"
+        self.enterContext(patch.object(deploy, "RUNTIME_ROOT", self.root))
+        self.enterContext(patch.object(runtime_hosts, "RUNTIME_ROOT", self.root))
 
-    def test_core_can_bootstrap_the_configured_picar_when_http_is_down(self) -> None:
-        output = StringIO()
-        with patch(
-            "cli.automa_cli.vehicles.discover_active_vehicles",
-            return_value={"vehicles": []},
-        ) as discover:
-            target, error = _resolve_picar_target(
-                vehicle_id="piracer",
-                timeout_s=0.1,
-                ssh_target=None,
-                pi_home=None,
-                skip_discovery=False,
-                output=output,
-                operation="core deploy",
-                allow_offline_default=True,
-            )
+    def test_create_picar_dry_run_has_core_release_then_restart_without_writes(self):
+        result = deploy.create_host(vehicle_id="car", picar_url="http://example.local:8887",
+                                    dry_run=True, drive_args="--js", json_output=True)
+        self.assertEqual(result.exit_code, 0, result.message)
+        payload = json.loads(result.message)
+        self.assertEqual(payload["vehicle"]["connection"]["ssh_target"], "piracer@example.local")
+        commands = payload["core"]["commands"] + payload["host"]["commands"]
+        self.assertEqual(commands[0]["step"], "Prepare remote directories")
+        self.assertEqual(commands[-1]["step"], "Restart Donkey runtime service")
+        self.assertIn("b64:LS1qcw==", commands[-1]["command"])
+        self.assertFalse(self.root.exists())
 
-        self.assertIsNone(error)
-        self.assertIsNotNone(target)
-        assert target is not None
-        self.assertEqual(target.ssh_target, "piracer@piracer.local")
-        self.assertFalse(discover.call_args.kwargs["include_chase_sim"])
-        self.assertIn("HTTP readiness is unavailable", output.getvalue())
-        self.assertIn("SSH will determine deploy reachability", output.getvalue())
+    def test_create_chase_packages_starts_and_records_a_free_name(self):
+        probe = ProbeResult(active=True, candidate=Candidate("chase-sim", "ws://localhost:5050/ws/control", "cli"))
+        with patch.object(deploy, "_probe_chase", return_value=probe), \
+             patch.object(runtime_hosts, "ensure_chase_host", return_value="http://localhost:9999") as start, \
+             patch.object(deploy, "host_state", return_value={"state": "idle"}):
+            result = deploy.create_host(vehicle_id="test", chase_url="http://localhost:5050")
+        self.assertEqual(result.exit_code, 0, result.message)
+        start.assert_called_once_with("test")
+        record = json.loads((self.root / "test" / "vehicle.json").read_text())
+        self.assertEqual(record["connection"]["ws_url"], "ws://localhost:5050/ws/control")
+        self.assertTrue((self.root / "test" / "bundle" / "releases" / "latest-controller-bundle.json").exists())
+        again = deploy.create_host(vehicle_id="test", chase_url="http://localhost:5050")
+        self.assertEqual(again.exit_code, 2)
+        self.assertIn("already exists: the chaser", again.message)
 
-    def assert_dry_run_contract(
-        self,
-        *,
-        root: Path,
-        component: str,
-        human: subprocess.CompletedProcess[str],
-        machine: subprocess.CompletedProcess[str],
-        payload: dict,
-    ) -> None:
-        self.assertEqual(payload["scope"]["id"], component)
-        self.assertEqual(payload["vehicle_id"], "piracer")
-        self.assertTrue(payload["dry_run"])
-        self.assertEqual(payload["target"]["provider"], "picar")
-        self.assertEqual(payload["target"]["ssh_target"], "piracer@example.local")
-        self.assertEqual(payload["target"]["pi_home"], "/home/piracer")
-        self.assertEqual(
-            payload["result"],
-            {
-                "local_writes_performed": False,
-                "remote_connection_attempted": False,
-                "remote_writes_performed": False,
-                "status": "planned",
-            },
-        )
-        self.assertGreaterEqual(len(payload["commands"]), 3)
-        self.assertTrue(
-            all(entry["status"] == "planned" for entry in payload["commands"])
-        )
+    def test_unreachable_simulator_leaves_no_directory(self):
+        probe = ProbeResult(active=False, candidate=Candidate("chase-sim", "ws://example/ws/control", "cli"), error="no frontend")
+        with patch.object(deploy, "_probe_chase", return_value=probe):
+            result = deploy.create_host(vehicle_id="test", chase_url="http://example")
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn("no frontend", result.message)
+        self.assertFalse(self.root.exists())
 
-        self.assertIn(payload["scope"]["description"], human.stdout)
-        self.assertIn(payload["target"]["provider"], human.stdout)
-        self.assertIn(payload["target"]["ssh_target"], human.stdout)
-        self.assertIn(payload["target"]["pi_home"], human.stdout)
-        self.assertIn(
-            "outcome: plan only; no files written and no remote connection attempted",
-            human.stdout,
-        )
-        for entry in payload["commands"]:
-            self.assertIn(entry["step"], human.stdout)
-            self.assertIn(entry["command"], human.stdout)
+    def test_creation_failure_preserves_adopted_steps_but_removes_identity(self):
+        directory = self.root / "test"
+        directory.mkdir(parents=True)
+        staged = directory / "keep.json"
+        staged.write_text("{}")
+        with patch.object(deploy, "_install_picar_core", return_value=deploy.CommandResult(2, "ssh failed")):
+            result = deploy.create_host(vehicle_id="test", picar_url="http://example:8887")
+        self.assertEqual(result.exit_code, 2)
+        self.assertTrue(staged.exists())
+        self.assertFalse((directory / "vehicle.json").exists())
+        self.assertIn("Pi keeps", result.message)
 
-        self.assertEqual(human.stderr, "")
-        self.assertEqual(machine.stderr, "")
-        self.assertFalse((root / "runtime").exists())
+    def test_unknown_host_commands_do_not_write(self):
+        write_host_fixture(self.root, "test")
+        for words in (("update", "host"), ("update", "perception"), ("automation", "run")):
+            result = invoke_automa("vehicles", *words, "--id", "unknown", runtime_root=self.root, check=False)
+            self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+            self.assertIn("No host 'unknown'. Hosts: test.", result.stdout)
+            self.assertFalse((self.root / "unknown").exists())
 
-    def test_core_dry_run_has_matching_human_and_json_plan_without_side_effects(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            human, machine, payload = _run_dry_run_forms(root, "core", restart=True)
-            self.assert_dry_run_contract(
-                root=root,
-                component="core",
-                human=human,
-                machine=machine,
-                payload=payload,
-            )
+    def test_update_uses_record_and_requires_restart_for_drive_args(self):
+        write_host_fixture(self.root, "car", provider="picar")
+        result = deploy.update_host(vehicle_id="car", drive_args="--js", dry_run=True)
+        self.assertEqual(result.exit_code, 2)
+        self.assertIn("requires --restart", result.message)
+        result = deploy.update_host(vehicle_id="car", dry_run=True, json_output=True)
+        self.assertEqual(result.exit_code, 0)
+        self.assertFalse(json.loads(result.message)["restart_requested"])
 
-        self.assertEqual(payload["schema"], "vehicle_core_update_v0")
-        self.assertEqual(
-            payload["scope"]["excluded"],
-            ["autonomy", "implementations", "runtime"],
-        )
-        self.assertEqual(
-            payload["source"]["vendor"]["checkout"],
-            "deploy/targets/donkeycar/vendor/donkeycar",
-        )
-        self.assertEqual(payload["source"]["harness"], "deploy/targets/donkeycar/app")
-        self.assertEqual(payload["source"]["service"]["name"], "automa-donkey.service")
-        self.assertEqual(
-            payload["source"]["service"]["source"],
-            "deploy/targets/donkeycar/systemd",
-        )
-        self.assertTrue(payload["source"]["service"]["boot_enabled"])
-        self.assertIsNone(payload["runtime_readiness"])
-        self.assertTrue(payload["restart_requested"])
-        self.assertEqual(payload["commands"][-1]["step"], "Restart Donkey runtime service")
-        self.assertIn("systemd/control.sh", payload["commands"][-1]["command"])
-        self.assertIn("b64:LS1qcw==", payload["commands"][-1]["command"])
-        self.assertIn(
-            "Install and enable Donkey runtime service",
-            [entry["step"] for entry in payload["commands"]],
-        )
-        self.assertIn("--exclude=autonomy", payload["commands"][2]["command"])
-        self.assertIn("automa-donkey.service", human.stdout)
-        self.assertIn("enabled at boot", human.stdout)
-        self.assertIn("restart requested: yes", human.stdout)
+    def test_delete_chase_stops_host_and_removes_directory(self):
+        write_host_fixture(self.root, "test")
+        with patch.object(runtime_hosts, "stop_chase_host") as stop:
+            result = deploy.delete_host(vehicle_id="test")
+        self.assertEqual(result.exit_code, 0)
+        stop.assert_called_once_with("test")
+        self.assertFalse((self.root / "test").exists())
 
-    def test_autonomy_dry_run_has_matching_human_and_json_plan_without_side_effects(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            human, machine, payload = _run_dry_run_forms(root, "autonomy", restart=True)
-            self.assert_dry_run_contract(
-                root=root,
-                component="autonomy",
-                human=human,
-                machine=machine,
-                payload=payload,
-            )
+    def test_delete_picar_keeps_record_on_ssh_failure_then_removes_on_success(self):
+        write_host_fixture(self.root, "car", provider="picar")
+        with patch.object(deploy, "_run_step", return_value=1) as run:
+            result = deploy.delete_host(vehicle_id="car")
+        self.assertEqual(result.exit_code, 1)
+        self.assertTrue((self.root / "car" / "vehicle.json").exists())
+        self.assertIn("control.sh /home/piracer stop", run.call_args.args[1][-1])
+        with patch.object(deploy, "_run_step", return_value=0):
+            result = deploy.delete_host(vehicle_id="car")
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("~/mycar", result.message)
+        self.assertFalse((self.root / "car").exists())
 
-        self.assertEqual(payload["schema"], "vehicle_autonomy_update_v0")
-        self.assertTrue(payload["release_id"].endswith("-preview"))
-        self.assertTrue(payload["source"]["tree_sha256"])
-        # The plan shows what deploy stages on a fresh vehicle: every step's default.
-        self.assertEqual(payload["activation"]["presets"], DEFAULT_STEP_PRESETS)
-        self.assertEqual(
-            payload["activation"]["steps"],
-            {step: list(selection_activation(step).plugins) for step in STEPS},
-        )
-        self.assertTrue(payload["restart_requested"])
-        self.assertEqual(payload["commands"][-1]["step"], "Restart Donkey runtime service")
-        self.assertIn("systemd/control.sh", payload["commands"][-1]["command"])
-        self.assertIn("restart requested: yes", human.stdout)
+    def test_failed_new_creation_removes_the_directory(self):
+        with patch.object(deploy, "_install_picar_core", return_value=deploy.CommandResult(2, "sync failed")):
+            result = deploy.create_host(vehicle_id="car", picar_url="http://example:8887")
+        self.assertEqual(result.exit_code, 2)
+        self.assertFalse((self.root / "car").exists())
 
-    def test_restart_is_absent_from_both_plans_when_not_requested(self) -> None:
-        for component in ("core", "autonomy"):
-            with self.subTest(component=component), tempfile.TemporaryDirectory() as tmp:
-                root = Path(tmp)
-                human, machine, payload = _run_dry_run_forms(
-                    root,
-                    component,
-                    restart=False,
-                )
-                self.assert_dry_run_contract(
-                    root=root,
-                    component=component,
-                    human=human,
-                    machine=machine,
-                    payload=payload,
-                )
+    def test_delete_aborts_when_an_active_run_cannot_stop(self):
+        write_host_fixture(self.root, "car", provider="picar")
+        with patch.object(deploy, "host_state", return_value={"state": "running"}), \
+             patch("cli.automa_cli.automation.stop_vehicle_automation",
+                   return_value=deploy.CommandResult(2, "could not release control")), \
+             patch.object(deploy, "_run_step") as remote:
+            result = deploy.delete_host(vehicle_id="car")
+        self.assertEqual(result.exit_code, 2)
+        self.assertTrue((self.root / "car" / "vehicle.json").exists())
+        remote.assert_not_called()
 
-                self.assertFalse(payload["restart_requested"])
-                self.assertNotIn(
-                    "Restart Donkey runtime service",
-                    [entry["step"] for entry in payload["commands"]],
-                )
-                self.assertIn("restart requested: no", human.stdout)
-
-    def test_drive_arguments_require_an_explicit_restart(self) -> None:
-        for component in ("core", "autonomy"):
-            with self.subTest(component=component), tempfile.TemporaryDirectory() as tmp:
-                result = invoke_automa(
-                    "vehicles",
-                    "update",
-                    component,
-                    "--id",
-                    "piracer",
-                    "--skip-discovery",
-                    "--ssh-target",
-                    "piracer@example.local",
-                    "--dry-run",
-                    "--drive-args=--js",
-                    runtime_root=Path(tmp) / "runtime",
-                    extra_env={"PATH": ""},
-                    check=False,
-                )
-
-                self.assertEqual(result.returncode, 2)
-                self.assertIn("--drive-args requires --restart", result.stdout)
-                self.assertEqual(result.stderr, "")
-
-
-def _run_dry_run_forms(
-    root: Path,
-    component: str,
-    *,
-    restart: bool,
-) -> tuple[
-    subprocess.CompletedProcess[str],
-    subprocess.CompletedProcess[str],
-    dict,
-]:
-    options = [
-        "--id",
-        "piracer",
-        "--skip-discovery",
-        "--ssh-target",
-        "piracer@example.local",
-        "--dry-run",
-    ]
-    if restart:
-        options.extend(["--restart", "--drive-args=--js"])
-
-    human = invoke_automa(
-        "vehicles",
-        "update",
-        component,
-        *options,
-        runtime_root=root / "runtime",
-        extra_env={"PATH": ""},
-    )
-    machine = invoke_automa(
-        "vehicles",
-        "update",
-        component,
-        *options,
-        "--json",
-        runtime_root=root / "runtime",
-        extra_env={"PATH": ""},
-    )
-    return human, machine, json.loads(machine.stdout)
-
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
+    def test_host_name_cannot_escape_runtime_root(self):
+        for name in ("..", ".", "../car", "car/name"):
+            with self.subTest(name=name):
+                result = deploy.create_host(vehicle_id=name, picar_url="http://example:8887")
+                self.assertEqual(result.exit_code, 2)
+        self.assertFalse(self.root.exists())

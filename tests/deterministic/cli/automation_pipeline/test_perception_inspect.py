@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from tests.support.runtime_fixtures import write_host_fixture
 
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
@@ -13,6 +14,7 @@ class PerceptionInspectBundleTests(unittest.TestCase):
     def test_live_selection_overrides_run_bundle_code_without_restaging(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
             runtime_root = Path(tmp) / "vehicles"
+            write_host_fixture(runtime_root, "chase-sim-chaser", url=ws_url)
             env = {"CHASE_UI_WS_URL": ws_url}
             invoke_automa(
                 "vehicles", "update", "perception", "--id", "chase-sim-chaser",

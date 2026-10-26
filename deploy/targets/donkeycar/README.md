@@ -11,25 +11,20 @@ This directory contains source that is synced to the physical PiRacer runtime.
 Use the CLI for deployment:
 
 ```sh
-./cli/automa vehicles update core --id piracer
-./cli/automa vehicles update autonomy --id piracer --restart
+./cli/automa vehicles status
+./cli/automa vehicles create host --id piracer --picar-url http://piracer.local:8887
+./cli/automa vehicles update host --id piracer --restart
 ```
 
-The controller host package is `implementations.runtime.picar`. When upgrading
-an already-running Pi from the previous package name, update core without
-`--restart`, then update autonomy with `--restart`, so the harness, vendor patch,
-and controller release use the same package at restart.
-
-Core update installs the systemd service, starts it when inactive, and waits for
-the read-only autonomy status endpoint in manual mode. Once installed, powering
-on the Pi is sufficient to start the Donkey runtime. The service restarts an
-unexpectedly exited process and sends output to the system journal rather than
-an accumulating project log file.
+Creation installs the core harness and boot service, deploys the controller
+release, restarts it and verifies every step in manual mode. Later updates use
+the recorded SSH connection. `vehicles delete host --id piracer` disables and
+stops the service and removes local host data; the harness stays on the Pi.
 
 Movement uses the same commands as Chase after deployment:
 
 ```sh
-./cli/automa vehicles automation run --id piracer
+./cli/automa vehicles automation run --id piracer --num-decisions 10
 ./cli/automa vehicles automation stop --id piracer
 ./cli/automa vehicles automation restart --id piracer --observe-only
 ```
@@ -54,7 +49,7 @@ They are changed only by an explicit `--restart --drive-args=...` update and are
 not part of the app sync.
 
 Core sync also preserves `autonomy/`, `implementations/`, and `runtime/` in the
-remote app. `vehicles update autonomy` installs those packages as a hashed,
+remote app. `vehicles update host` installs those packages as a hashed,
 versioned controller release and writes explicit perception/decision activation
 manifests under `/home/piracer/mycar/runtime/`.
 
@@ -70,4 +65,4 @@ The DonkeyCar framework source is generated locally:
 - local patch: `deploy/targets/donkeycar/patches/waveshare-donkeycar-local.patch`
 - generated checkout: `deploy/targets/donkeycar/vendor/donkeycar/`
 
-`vehicles update core` creates or verifies that checkout automatically.
+`vehicles create host` creates or verifies that checkout automatically.

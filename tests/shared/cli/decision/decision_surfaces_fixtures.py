@@ -207,6 +207,8 @@ class DecisionSurfaceFixture:
     ) -> dict:
         """Stage the packaged proposals (unless ``proposal`` is False) and ``action``."""
 
+        from tests.support.runtime_fixtures import write_host_fixture
+        write_host_fixture(self.runtime_root, vehicle_id)
         steps = [("action", [action])]
         if proposal:
             steps.insert(0, ("proposal", None))

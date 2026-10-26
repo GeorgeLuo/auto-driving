@@ -4,6 +4,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from tests.support.runtime_fixtures import write_host_fixture
 
 from autonomy.decision_cycle.activation import read_step_activation
 from cli.automa_cli.workbench_runner import ImageReplayRunner
@@ -16,6 +17,7 @@ class MemoryCommandTests(unittest.TestCase):
     def test_memory_update_and_info_use_catalog_defaults(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
+            write_host_fixture(runtime_root, "chase-sim-chaser")
             update = invoke_automa(
                 "vehicles",
                 "update",
@@ -74,6 +76,7 @@ class MemoryCommandTests(unittest.TestCase):
     def test_info_lists_staged_plugins_without_loading_unselected_ones(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
+            write_host_fixture(runtime_root, "chase-sim-chaser")
             invoke_automa("vehicles", "update", "memory", "--id", "chase-sim-chaser", runtime_root=runtime_root)
             path = runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json"
             activation = json.loads(path.read_text())
@@ -89,6 +92,7 @@ class MemoryCommandTests(unittest.TestCase):
     def test_info_names_the_staged_preset_and_plugins_as_perception_info_does(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
+            write_host_fixture(runtime_root, "chase-sim-chaser")
             staged = {}
             presets = {}
             for step in SELECTABLE_STEPS:
@@ -144,6 +148,7 @@ class MemoryCommandTests(unittest.TestCase):
     def test_memory_info_missing_activation_is_actionable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
+            write_host_fixture(runtime_root, "chase-sim-chaser")
             result = invoke_automa(
                 "vehicles",
                 "info",

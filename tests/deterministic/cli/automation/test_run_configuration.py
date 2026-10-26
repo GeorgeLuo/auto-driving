@@ -78,7 +78,7 @@ class RunConfigurationTests(unittest.TestCase):
                     patch("cli.automa_cli.app.record_vehicle_automation_terminal_result"),
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
-                    code = main(["vehicles", "automation", verb, "--id", "picar-test",
+                    code = main(["vehicles", "host", verb, "--id", "picar-test",
                                  "--num-decisions", "3", *flags, *extra])
                     self.assertEqual(code, 0)
                     self.assertEqual(run.call_args.kwargs["unbounded"], bool(flags))
@@ -98,7 +98,7 @@ class RunConfigurationTests(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 code = main([
-                    "vehicles", "automation", "run",
+                    "vehicles", "host", "run",
                     "--host-url", "http://127.0.0.1:54355",
                     "--num-decisions", "1", *extra,
                 ])
@@ -108,9 +108,9 @@ class RunConfigurationTests(unittest.TestCase):
 
     def test_cli_rejects_both_or_neither_target(self):
         for argv in (
-            ["vehicles", "automation", "run", "--num-decisions", "1"],
+            ["vehicles", "host", "run", "--num-decisions", "1"],
             [
-                "vehicles", "automation", "run", "--id", "chase-sim-chaser",
+                "vehicles", "host", "run", "--id", "chase-sim-chaser",
                 "--host-url", "http://127.0.0.1:54355", "--num-decisions", "1",
             ],
         ):

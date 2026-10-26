@@ -4,7 +4,7 @@ Every vehicle host serves the routes in ``autonomy.runtime.routes``, so the
 CLI addresses a runtime only by ``base_url``. A PiCar's host is its Donkey
 service at the staged connection. A Chase car's host is a local process
 (``implementations.runtime.chase_sim.service``) that runs from the vehicle's
-controller release, as the Pi runs the release ``update host`` installed.
+controller release, as the Pi runs the release ``host update`` installed.
 A simulator ``simulators create`` started is a local process too, recorded
 by port so ``vehicles status`` lists it while it runs.
 """
@@ -84,7 +84,7 @@ def staged_vehicle(vehicle_id: str) -> dict[str, Any]:
 # Controller releases -------------------------------------------------------
 
 def update_command(vehicle_id: str) -> str:
-    return f"./cli/automa vehicles update host --id {vehicle_id}"
+    return f"./cli/automa vehicles host update --id {vehicle_id}"
 
 
 def release_manifest(
@@ -208,7 +208,7 @@ def _free_port() -> int:
 def serve_chase_host(vehicle_id: str) -> int:
     """Supervise the Chase host: start it from the latest release, again on restart.
 
-    Runs as the hidden ``vehicles automation host`` command. The port stays
+    Runs as the hidden ``vehicles host serve`` command. The port stays
     the same across restarts so a client's ``base_url`` survives them.
     """
 
@@ -285,7 +285,7 @@ def ensure_chase_host(vehicle_id: str, *, timeout_s: float = HOST_START_TIMEOUT_
         except RuntimeError as exc:
             raise RuntimeHostError(
                 f"The Chase host for {vehicle_id} (pid {record['pid']}) is not answering: {exc}\n"
-                f"Run: ./cli/automa vehicles automation stop --id {vehicle_id}\n" + host_log_tail(vehicle_id)
+                f"Run: ./cli/automa vehicles host stop --id {vehicle_id}\n" + host_log_tail(vehicle_id)
             ) from exc
         running = (record.get("release") or {}).get("archive_sha256")
         if running == latest["archive_sha256"]:
@@ -294,7 +294,7 @@ def ensure_chase_host(vehicle_id: str, *, timeout_s: float = HOST_START_TIMEOUT_
             raise RuntimeHostError(
                 f"{vehicle_id} is running release {str(running)[:12]}; the latest is "
                 f"{latest['archive_sha256'][:12]}.\n"
-                f"Stop the run first: ./cli/automa vehicles automation stop --id {vehicle_id}"
+                f"Stop the run first: ./cli/automa vehicles host stop --id {vehicle_id}"
             )
         try:
             client.restart(timeout_s=timeout_s)
@@ -308,7 +308,7 @@ def ensure_chase_host(vehicle_id: str, *, timeout_s: float = HOST_START_TIMEOUT_
     (directory / HOST_RECORD).unlink(missing_ok=True)
     with (directory / HOST_LOG).open("a", encoding="utf-8") as log:
         process = subprocess.Popen(
-            [sys.executable, str(AUTOMA_EXECUTABLE), "vehicles", "automation", "host", "--id", vehicle_id],
+            [sys.executable, str(AUTOMA_EXECUTABLE), "vehicles", "host", "serve", "--id", vehicle_id],
             cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
             start_new_session=True, env={**os.environ, "PYTHONUNBUFFERED": "1"},
         )

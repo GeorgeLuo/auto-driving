@@ -27,7 +27,7 @@ class HelpCommandTests(unittest.TestCase):
             ],
             [
                 "vehicles",
-                "automation",
+                "host",
                 "run",
                 "--id",
                 "chase-sim-chaser",
@@ -37,17 +37,43 @@ class HelpCommandTests(unittest.TestCase):
                 "--open-view",
             ],
             [
-                "vehicles", "automation", "restart", "--id", "piracer",
+                "vehicles", "host", "restart", "--id", "piracer",
                 "--num-decisions", "7",
             ],
             ["vehicles", "status", "--id", "chase-sim-chaser"],
-            ["vehicles", "automation", "stop", "--id", "chase-sim-chaser"],
+            ["vehicles", "host", "stop", "--id", "chase-sim-chaser"],
         ):
             with self.subTest(args=args):
                 parsed = parser.parse_args(args)
                 self.assertEqual(parsed.command, "vehicles")
                 if "--num-decisions" in args:
                     self.assertEqual(parsed.num_decisions, int(args[args.index("--num-decisions") + 1]))
+
+    def test_host_lifecycle_parses_under_one_group(self) -> None:
+        parser = build_parser()
+        for args in (
+            ["create", "--id", "demo", "--provider", "chase-sim", "--url", "http://localhost:5050"],
+            ["update", "--id", "demo", "--restart"],
+            ["run", "--id", "demo"],
+            ["stop", "--id", "demo"],
+            ["restart", "--id", "demo"],
+            ["status", "--id", "demo"],
+            ["serve", "--id", "demo"],
+            ["delete", "--id", "demo"],
+        ):
+            with self.subTest(args=args):
+                parsed = parser.parse_args(["vehicles", "host", *args])
+                self.assertEqual((parsed.host_command, parsed.vehicle_id), (args[0], "demo"))
+        for args in (
+            ["vehicles", "automation", "run", "--id", "demo"],
+            ["vehicles", "create", "host", "--id", "demo", "--provider", "chase-sim", "--url", "http://localhost:5050"],
+            ["vehicles", "update", "host", "--id", "demo"],
+            ["vehicles", "delete", "host", "--id", "demo"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
 
     def test_simulator_lifecycle_parses(self) -> None:
         parser = build_parser()
@@ -61,11 +87,11 @@ class HelpCommandTests(unittest.TestCase):
         for args in (
             ["vehicles", "active", "--verbose"],
             ["vehicles", "active", "--include-inactive"],
-            ["vehicles", "automation", "run", "--id", "chase-sim-chaser", "--frames", "3"],
-            ["vehicles", "automation", "restart", "--id", "piracer", "--frames", "3"],
+            ["vehicles", "host", "run", "--id", "chase-sim-chaser", "--frames", "3"],
+            ["vehicles", "host", "restart", "--id", "piracer", "--frames", "3"],
             [
                 "vehicles",
-                "automation",
+                "host",
                 "run",
                 "--id",
                 "chase-sim-chaser",

@@ -262,7 +262,7 @@ def serve_host_viewer(*, host_url: str, timeout_s: float = 3.0) -> CommandResult
 class _ViewFeed:
     """A loopback runtime view a terminal stream feeds from the host's publications.
 
-    As the view of ``automation run`` does, its decision page aggregates the
+    As the view of ``host run`` does, its decision page aggregates the
     host's latest decision with its matched frame, evidence and candidates, and
     it serves the host's plugin catalog. The perception and memory pages publish
     from the observation even while no matched decision is available.

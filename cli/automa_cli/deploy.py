@@ -485,10 +485,10 @@ def _update_local_autonomy(
     if restarted:
         host_line = "Runtime restarted: yes"
     elif record is None:
-        host_line = "Runtime restarted: no host running; the next automation run starts on this release"
+        host_line = "Runtime restarted: no host running; the next host run starts on this release"
     else:
         host_line = (
-            "Runtime restarted: no; an idle host moves onto this release at the next automation run"
+            "Runtime restarted: no; an idle host moves onto this release at the next host run"
         )
     return CommandResult(0, "\n".join([
         f"Host updated: {vehicle_id} (local host)",
@@ -629,7 +629,7 @@ def delete_host(*, vehicle_id: str, verbose: bool = False, output: TextIO | None
             return CommandResult(code, "Could not stop the PiCar host; its local record was kept.")
     shutil.rmtree(directory)
     suffix = " Harness files stay in ~/mycar on the PiCar." if vehicle["provider"] == "picar" else ""
-    stopped = "Stopped automation run. " if active_run else ""
+    stopped = "Stopped the run. " if active_run else ""
     return CommandResult(0, f"{stopped}Stopped host {vehicle_id}. Removed {display_path(directory)}.{suffix}")
 
 
@@ -1016,7 +1016,7 @@ def _verify_picar_autonomy_runtime(
             vehicle_id = target.vehicle_id
             raise RuntimeError(
                 f"{status_url} has no live {step} step, but {plugins!r} was deployed. "
-                "The step loader lives in the Donkey manage.py harness, which create host installs; "
+                "The step loader lives in the Donkey manage.py harness, which host create installs; "
                 f"{vehicle_id}'s harness does not load steps."
             )
         if list(actual) != list(plugins):

@@ -171,7 +171,7 @@ class VehicleStatusTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["next_action"]["command"],
-            "./cli/automa vehicles update host --id chase-sim-chaser",
+            "./cli/automa vehicles host update --id chase-sim-chaser",
         )
         self.assertIsNone(payload["next_action"]["external_change"])
 

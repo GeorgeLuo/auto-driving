@@ -50,7 +50,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             )
             try:
                 run = run_automa(
-                    "vehicles", "automation", "run", "--id", "chase-sim-chaser",
+                    "vehicles", "host", "run", "--id", "chase-sim-chaser",
                     "--observe-only", "--num-decisions", "3",
                     "--foreground", runtime_root=root, extra_env=env,
                 )
@@ -79,7 +79,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             try:
                 for verb in ("run", "restart"):
                     run = run_automa(
-                        "vehicles", "automation", verb, "--id", vehicle,
+                        "vehicles", "host", verb, "--id", vehicle,
                         "--unbounded", "--num-decisions", "1",
                         runtime_root=root, extra_env=env,
                     )
@@ -100,7 +100,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
                     state = json.loads((automation / "state.json").read_text())
                     self.assertEqual(state["num_decisions"], 0)
                     self.assertEqual(state["action_policy"], "autonomy")
-                run_automa("vehicles", "automation", "stop", "--id", vehicle,
+                run_automa("vehicles", "host", "stop", "--id", vehicle,
                            runtime_root=root, extra_env=env)
                 session = client.status()["session"]
                 self.assertEqual(session["status"], "stopped")
@@ -110,7 +110,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
                 self.assertEqual(state["status"], "stopped")
                 self.assertGreaterEqual(state["processed_count"], 3)
             finally:
-                run_automa("vehicles", "automation", "stop", "--id", vehicle,
+                run_automa("vehicles", "host", "stop", "--id", vehicle,
                            runtime_root=root, extra_env=env, check=False)
                 with patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", root):
                     stop_chase_host(vehicle)

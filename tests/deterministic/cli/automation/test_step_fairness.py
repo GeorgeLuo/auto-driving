@@ -1,4 +1,4 @@
-"""Automation run and status treat every decision-cycle step by one rule."""
+"""Host run and status treat every decision-cycle step by one rule."""
 
 from __future__ import annotations
 
@@ -85,7 +85,7 @@ class StepFairnessTests(unittest.TestCase):
         for step in STEPS:
             with self.subTest(step=step), self._runtime(step):
                 status = self._status()
-                code, human = _invoke("vehicles", "automation", "status", "--id", VEHICLE)
+                code, human = _invoke("vehicles", "host", "status", "--id", VEHICLE)
             self.assertEqual(code, 0, human)
             steps = status["steps"]
             self.assertEqual({name: item["source"] for name, item in steps.items()}, {**UNSTAGED, step: "staged"})
@@ -106,7 +106,7 @@ class StepFairnessTests(unittest.TestCase):
             write_json(automation / "process.json", {"pid": os.getpid()})
             write_json(automation / "state.json", {"pid": os.getpid(), "status": "running", "steps": {**applied, "cycle_count": 3}})
             status = self._status()
-            code, human = _invoke("vehicles", "automation", "status", "--id", VEHICLE)
+            code, human = _invoke("vehicles", "host", "status", "--id", VEHICLE)
 
         self.assertEqual(code, 0, human)
         self.assertEqual(list(status["steps"]), list(STEPS))

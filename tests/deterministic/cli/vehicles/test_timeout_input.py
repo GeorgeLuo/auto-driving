@@ -73,7 +73,7 @@ class TimeoutInputTests(unittest.TestCase):
                 ):
                     code, stdout, stderr = _invoke(
                         "vehicles",
-                        "automation",
+                        "host",
                         "run",
                         "--id",
                         "chase-sim-chaser",
@@ -82,7 +82,7 @@ class TimeoutInputTests(unittest.TestCase):
                     )
 
                 self.assertEqual(code, 2)
-                self.assertIn("automa vehicles automation run", stdout)
+                self.assertIn("automa vehicles host run", stdout)
                 self.assertIn(TIMEOUT_MESSAGE, stdout)
                 self.assertNotIn("Traceback", stdout)
                 self.assertEqual(stderr, "")
@@ -151,7 +151,7 @@ class TimeoutInputTests(unittest.TestCase):
         ):
             code, _, _ = _invoke(
                 "vehicles",
-                "automation",
+                "host",
                 "run",
                 "--id",
                 "chase-sim-chaser",
@@ -179,7 +179,7 @@ class TimeoutInputTests(unittest.TestCase):
         ):
             code, _, _ = _invoke(
                 "vehicles",
-                "automation",
+                "host",
                 "run",
                 "--id",
                 "chase-sim-chaser",

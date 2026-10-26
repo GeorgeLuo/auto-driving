@@ -82,8 +82,8 @@ class PluginArmingFlows(unittest.TestCase):
 
             cli("update", "perception", "--id", "chase-sim-chaser", "--preset", "lightweight_observer")
             try:
-                cli("automation", "run", "--id", "chase-sim-chaser", "--observe-only", "--num-decisions", "0", "--record")
-                original = json.loads(cli("automation", "status", "--id", "chase-sim-chaser", "--json").stdout)["vehicles"][0]
+                cli("host", "run", "--id", "chase-sim-chaser", "--observe-only", "--num-decisions", "0", "--record")
+                original = json.loads(cli("host", "status", "--id", "chase-sim-chaser", "--json").stdout)["vehicles"][0]
                 before = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
                 file = root / "proposal.py"
                 for revision in (1, 2):
@@ -119,7 +119,7 @@ class PluginArmingFlows(unittest.TestCase):
                         viewed = json.load(response)
                     self.assertEqual(viewed["decision"]["generation_id"], streamed["generation_id"])
                     self.assertEqual(viewed["decision"]["cycle"]["proposal"]["candidates"][0]["metadata"]["revision"], revision)
-                    current = json.loads(cli("automation", "status", "--id", "chase-sim-chaser", "--json").stdout)["vehicles"][0]
+                    current = json.loads(cli("host", "status", "--id", "chase-sim-chaser", "--json").stdout)["vehicles"][0]
                     self.assertEqual(current["state"]["run_id"], original["state"]["run_id"])
                     self.assertEqual(current["state"]["pid"], original["state"]["pid"])
                     self.assertEqual(current["state"]["action_policy"], "observe_only")
@@ -151,13 +151,13 @@ class PluginArmingFlows(unittest.TestCase):
                 with urlopen(view_url + "/api/decision/latest?generation=" + health["generation_id"], timeout=3) as response:
                     viewed = json.load(response)
                 self.assertEqual(viewed["decision"]["cycle"]["proposal"]["candidates"], [])
-                current = json.loads(cli("automation", "status", "--id", "chase-sim-chaser", "--json").stdout)["vehicles"][0]
+                current = json.loads(cli("host", "status", "--id", "chase-sim-chaser", "--json").stdout)["vehicles"][0]
                 self.assertEqual(current["state"]["run_id"], original["state"]["run_id"])
                 self.assertEqual(current["state"]["pid"], original["state"]["pid"])
                 self.assertEqual(current["state"]["action_policy"], "observe_only")
                 # The 30 Hz stream records throughout all of the CLI calls.
                 # Allow its final export to drain before forced termination.
-                cli("automation", "stop", "--id", "chase-sim-chaser", "--wait-s", "10")
+                cli("host", "stop", "--id", "chase-sim-chaser", "--wait-s", "10")
                 automation_dir = runtime / "chase-sim-chaser" / "bundle/runtime/automation"
                 state = json.loads((automation_dir / "state.json").read_text())
                 self.assertEqual(state["status"], "stopped", state.get("error"))
@@ -174,7 +174,7 @@ class PluginArmingFlows(unittest.TestCase):
                 after = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
                 self.assertEqual(selected(after, "applied", "proposal"), [])
             finally:
-                cli("automation", "stop", "--id", "chase-sim-chaser", check=False)
+                cli("host", "stop", "--id", "chase-sim-chaser", check=False)
                 with patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime):
                     stop_chase_host("chase-sim-chaser")
 

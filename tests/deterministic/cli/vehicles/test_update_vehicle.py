@@ -76,11 +76,11 @@ class UpdateVehicleTests(unittest.TestCase):
             self.assertEqual(added["manifest"]["plugin_configs"], tuned)
             self.assertEqual(added["apply"]["changed_plugins"], [])
             self.assertEqual(added["apply"]["selection_command"],
-                             "./cli/automa vehicles update host --id piracer-test")
+                             "./cli/automa vehicles host update --id piracer-test")
 
             switched = update("--preset", "visual_observer")
             self.assertIn(
-                "Apply: ./cli/automa vehicles update host --id piracer-test --restart "
+                "Apply: ./cli/automa vehicles host update --id piracer-test --restart "
                 "(specs or configs changed: multi_obstruction_tracks)",
                 switched,
             )
@@ -96,8 +96,8 @@ class UpdateVehicleTests(unittest.TestCase):
             update()
             apply = json.loads(update("--plugin", "hold", "--json"))["apply"]
             self.assertEqual((apply["live_selection"], apply["changed_plugins"]), (True, []))
-            self.assertEqual(apply["selection_command"], "./cli/automa vehicles update host --id piracer-test")
-            self.assertIn("Apply selection: ./cli/automa vehicles update host --id piracer-test\n",
+            self.assertEqual(apply["selection_command"], "./cli/automa vehicles host update --id piracer-test")
+            self.assertIn("Apply selection: ./cli/automa vehicles host update --id piracer-test\n",
                           update("--plugin", "selected"))
 
 

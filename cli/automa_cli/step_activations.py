@@ -152,14 +152,14 @@ def apply_staged(vehicle_id: str, provider: Any, step: str, *, changed: list[str
     Every host selects a restaged step's plugins on its next frame. A Chase
     host reads the local runtime directory, so nothing needs to run
     (``selection_command`` is ``None``); a PiCar reads the copy ``vehicles
-    update host`` installs onboard. Changed plugin specs or configs take
+    host update`` installs onboard. Changed plugin specs or configs take
     effect after ``restart_command``, the same for every vehicle: package a
     release and restart the host onto it. ``changed`` names the plugins whose
     spec or config this restage changed.
     """
 
     live = not changed
-    install = f"./cli/automa vehicles update host --id {vehicle_id}"
+    install = f"./cli/automa vehicles host update --id {vehicle_id}"
     selection = install if provider == "picar" else None
     restart = f"{install} --restart"
     return {

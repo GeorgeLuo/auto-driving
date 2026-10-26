@@ -203,7 +203,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)
-            self.assertIn("Automation ready", result.message)
+            self.assertIn("Run started on host", result.message)
             self.assertNotIn("ready for:", result.message.lower())
             self.assertIn("frame_000000", result.message)
             self.assertIn("http://127.0.0.1:8555/", result.message)
@@ -273,7 +273,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 )
 
         self.assertEqual(result.exit_code, 0, result.message)
-        self.assertIn("Automation already running", result.message)
+        self.assertIn("already has a run", result.message)
         self.assertNotIn("ready for:", result.message.lower())
         self.assertIn("Warning: could not open the browser", result.message)
         self.assertIn("Open manually: http://127.0.0.1:8666/", result.message)

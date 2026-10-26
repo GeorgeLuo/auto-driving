@@ -7,7 +7,7 @@ plan, and action. Every step runs the plugins selected for it in its own
 activation (`runtime/<step>/active.json`). The default action plugin, `selected`,
 authorizes the plan's selected command. A shared execution runtime owns movement
 mode, delivery, freshness, and stopping on both Chase and PiCar. Starting
-`vehicles automation run --id <vehicle>` enables autonomous movement;
+`vehicles host run --id <vehicle>` enables autonomous movement;
 `--observe-only` runs the same plugins without delivering their output.
 `--host-url <host>` runs that existing host instead of starting one, and the host reports its vehicle id.
 Without a proposal, the cycle produces idle control.
@@ -133,7 +133,10 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles info perception\|memory\|proposal\|plan\|action` | Reads that step's staged activation, enabled and available plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception, memory, proposal and plan also show their preset. Each reports its view; memory, proposal, plan and action include live runner status. Proposal, plan and action also show the decision generation, each decision step's plugins, and the action authority. |
 | `vehicles proposal\|plan\|action inspect` | Offline: replays an image, a directory of images, or a recorded automation or inspect run through perception, observation, memory and the decision steps, and prints that step's record for every frame, with that step's and each of its plugins' time and the cycle's (`--json` carries every step's in `timing`). A recording restores the selections it recorded for each frame; `--plugin` replaces the inspected step's; proposal and plan also accept `--preset`. `--frame N` reports one 0-based frame after replaying the ones before it. `--record` also saves the report and source frames under `runtime/<step>-inspections/`; that run replays as a source. |
 | `vehicles perception ...` | Inspects packaged perception plugins and measures their viability. |
-| `vehicles automation ...` | Starts, stops or inspects a run on the vehicle's runtime host. |
+| `vehicles host create` | Creates a named host for the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url`, installs its release, and starts it. `vehicles status` names each vehicle's provider and URL. |
+| `vehicles host delete` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. |
+| `vehicles host update` | Packages the staged steps as a versioned release for the vehicle's host: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
+| `vehicles host run\|stop\|restart\|status` | Starts, stops, restarts or inspects a run on the host. `stop` ends the run; the host stays attached until `host delete`. |
 | `vehicles stream perception` | Displays rolling latest perception from the runtime host's `/host/observation/latest` and serves a local frame-matched `/perception` view (link to Memory map) whose URL the terminal shows. |
 | `vehicles stream memory` | Inspects live memory as a key→value ledger. The terminal shows health and counts and serves a local `/memory` map page whose URL it shows. Keys are `record_id`s; click a key to see the retained value. |
 | `vehicles stream proposal\|plan\|action` | Prints that step's record from the latest cycle the vehicle's runtime host published, with its age, generation, plugins, and the step's and each plugin's time; action also shows how the host applied control. `--once` prints one and exits 2 with the reason when none is current; `--json` returns `vehicle_<step>_stream_v1`. A running terminal stream also serves the local action view below. |
@@ -141,9 +144,6 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles memory inspect` | Offline: runs an image, a directory of images, or a recorded perception or memory run through perception, observation and memory, and reports each memory plugin's health, record count and epoch after every frame, with the memory step's and each plugin's time. A recording restores the executable step selections and configs it contains; `--preset` or `--plugin` overrides memory. Otherwise each step uses its default. The report prints to the terminal; `--record` also saves the source frames, timing, both step selections and report under `runtime/memory-inspections/`. Record live frames with `vehicles perception inspect --record`, then inspect that run. |
 | `vehicles memory viability` | Memory health check: 60s poll of the runtime host's live memory step (update cadence, duration, failures, health, epoch stability). Saves `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
 | `vehicles perception viability` | Perception health check: 60s cadence/freshness measurement of the runtime host's observation publication that also requires that no cycle's control was applied (host RSS/CPU when the vehicle supplies an `ssh_target`). Saves `report.json` and `summary.md` under `lab/runs/perception-viability/` unless `--no-record`. |
-| `vehicles create host` | Creates a named host for the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url`, installs its release, and starts it. `vehicles status` names each vehicle's provider and URL. |
-| `vehicles delete host` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. |
-| `vehicles update host` | Packages the staged steps as a versioned release for the vehicle's host: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
 | `simulators create` | Starts a headless Chase simulator from the Metrics UI checkout at `AUTOMA_METRICS_UI_DIR`, with its launcher's default configuration, on the first free port from 5051, and prints its URL. It runs until `simulators delete --url` ends it, which refuses while a host was created at it. |
 | `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
@@ -168,8 +168,8 @@ refreshes with the table, dims with it on a polling failure, and shows
 
 Uploaded plugins stay in the host's catalog until that host restarts; `plugins
 upload` and `plugins status` print the host run beside the catalog version. A
-restart onto a new release clears them: `update host --restart` on a PiCar,
-and on a simulator vehicle the next `automation run` after a restage, which
+restart onto a new release clears them: `host update --restart` on a PiCar,
+and on a simulator vehicle the next `host run` after a restage, which
 moves an idle host onto the latest release. Upload them again after either.
 
 `plugins arm` and `plugins disarm` change the existing host's selections without
@@ -264,12 +264,12 @@ Replay (`workbench` and every step's `inspect` on a recording)
 runs each recorded selection on the release its frames name. It extracts that
 archive from `runtime/vehicles/<id>/bundle/releases/` and ignores whatever is
 staged now. If the archive is gone, replay exits 2 naming the release and
-`vehicles update host`.
+`vehicles host update`.
 
 Every step's update returns the same `vehicle_step_update_v0` payload under
 `--json`: `step`, `preset`, `plugins`, the staged `manifest`, and the `apply`
-commands. Staging does not check readiness; `vehicles automation run` does before
-it starts, and `vehicles automation status` reports invalid staged steps. An
+commands. Staging does not check readiness; `vehicles host run` does before
+it starts, and `vehicles host status` reports invalid staged steps. An
 unknown-vehicle failure under `--json` returns `vehicle_step_update_error_v0`
 with `vehicle_id`, `step`, `error: unknown_vehicle`, and the discovery
 diagnostic in `message`; the command exits 2 and stages nothing.
@@ -278,33 +278,33 @@ Use `help` at a command-group level and `--help` for final command options:
 
 ```sh
 ./cli/automa vehicles update help
-./cli/automa vehicles update host --help
+./cli/automa vehicles host update --help
 ```
 
 ## Chase Simulator Workflow
 
-A host exists only after `vehicles create host` writes its `vehicle.json` record.
+A host exists only after `vehicles host create` writes its `vehicle.json` record.
 Choose any name; every later `--id` refers to that name. Existing directories
 without a record can be adopted, preserving staged steps. The passive path
 preserves the operator's simulator session:
 
 ```sh
 ./cli/automa vehicles status
-./cli/automa vehicles create host --id chase-sim-chaser --provider chase-sim --url http://localhost:5050
+./cli/automa vehicles host create --id chase-sim-chaser --provider chase-sim --url http://localhost:5050
 ./cli/automa vehicles update memory \
   --id chase-sim-chaser \
   --preset recency_ledger
 ./cli/automa vehicles update perception \
   --id chase-sim-chaser \
   --preset lightweight_observer
-./cli/automa vehicles automation run \
+./cli/automa vehicles host run \
   --id chase-sim-chaser \
   --observe-only \
   --num-decisions 0 \
   --open-view
-./cli/automa vehicles automation status --id chase-sim-chaser
-./cli/automa vehicles automation stop --id chase-sim-chaser
-./cli/automa vehicles automation status --id chase-sim-chaser
+./cli/automa vehicles host status --id chase-sim-chaser
+./cli/automa vehicles host stop --id chase-sim-chaser
+./cli/automa vehicles host status --id chase-sim-chaser
 ```
 
 The memory update stages the Memory view's ledger; without a memory or
@@ -315,12 +315,12 @@ uses its packaged configs.
 
 `runtime/` survives Git branch changes. Old per-step schemas, including
 `automa_memory_activation_v0`, are incompatible with the shared
-`automa_step_activation_v0` documents. `vehicles automation status` reports an
+`automa_step_activation_v0` documents. `vehicles host status` reports an
 invalid deployment and the affected step's `vehicles update <step>` command.
 Restage that step with your intended selection, then check it again. Every command that reads
 staged documents checks them first and prints the same step, path, reason, and
 restage command: startup and restart before launching or stopping a worker,
-`vehicles update host` before packaging or writing, and `vehicles info`, `vehicles stream proposal|plan|action`, and
+`vehicles host update` before packaging or writing, and `vehicles info`, `vehicles stream proposal|plan|action`, and
 `vehicles perception inspect` before reporting. An invalid optional step blocks startup;
 an absent optional step keeps its built-in or empty behavior.
 
@@ -347,19 +347,19 @@ Inspect the machine-readable contracts declared by the staged code:
 Run the same staged plugins with movement enabled:
 
 ```sh
-./cli/automa vehicles automation run --id chase-sim-chaser
-./cli/automa vehicles automation status --id chase-sim-chaser
+./cli/automa vehicles host run --id chase-sim-chaser
+./cli/automa vehicles host status --id chase-sim-chaser
 ./cli/automa vehicles info perception --id chase-sim-chaser
 ./cli/automa vehicles stream perception --id chase-sim-chaser
 ./cli/automa vehicles stream perception --id piracer
 ```
 
-`automation run` waits for a camera frame, the completed perception result for
+`host run` waits for a camera frame, the completed perception result for
 that frame, and a healthy view belonging to the same worker generation. It
 returns a nonzero result and preserves the exact capture code/path when those
 gates fail; a spawned PID alone is not reported as success.
 
-While the automation worker is running, `vehicles info perception` reports a
+While a host's run is active, `vehicles info perception` reports a
 loopback URL for a live frame-and-data view. The page polls the worker's
 in-memory publication. Camera capture runs independently from perception, so a
 slow plugin consumes the newest available frame instead of accumulating a
@@ -372,8 +372,8 @@ remain available in the data panel.
 Stop or restart the worker:
 
 ```sh
-./cli/automa vehicles automation stop --id chase-sim-chaser
-./cli/automa vehicles automation restart --id chase-sim-chaser --observe-only --num-decisions 0 --open-view
+./cli/automa vehicles host stop --id chase-sim-chaser
+./cli/automa vehicles host restart --id chase-sim-chaser --observe-only --num-decisions 0 --open-view
 ```
 
 Useful run options:
@@ -383,9 +383,9 @@ Useful run options:
   count unless `--unbounded` is set. Observation-only runs still accept zero.
 - `--unbounded` runs until stopped, overriding `--num-decisions` on either
   vehicle and in either mode. For example:
-  `./cli/automa vehicles automation run --id chase-sim-chaser --unbounded --open-view`.
+  `./cli/automa vehicles host run --id chase-sim-chaser --unbounded --open-view`.
   The launch command returns after readiness and prints
-  `vehicles automation stop`. Ctrl-C in a terminal stream stops that stream,
+  `vehicles host stop`. Ctrl-C in a terminal stream stops that stream,
   not the worker.
 - The next capture starts as soon as the previous cycle finishes: the loop is
   not shut down, no decision is in flight, and no frame is pending. There is no
@@ -411,7 +411,7 @@ restarting the worker:
 
 ```sh
 ./cli/automa vehicles update perception --id chase-sim-chaser --preset sim_debug
-./cli/automa vehicles automation restart --id chase-sim-chaser --observe-only --num-decisions 0 --open-view
+./cli/automa vehicles host restart --id chase-sim-chaser --observe-only --num-decisions 0 --open-view
 ```
 
 ### Perception Plugins
@@ -737,15 +737,15 @@ Create the host once; its name is independent of the Pi's hostname:
 ```sh
 ./cli/automa vehicles discover --provider picar --url http://piracer.local:8887
 ./cli/automa vehicles status
-./cli/automa vehicles create host --id piracer --provider picar --url http://piracer.local:8887
+./cli/automa vehicles host create --id piracer --provider picar --url http://piracer.local:8887
 ./cli/automa vehicles update perception --id piracer --preset lightweight_observer
-./cli/automa vehicles update host --id piracer --restart
-./cli/automa vehicles automation run --id piracer --observe-only --num-decisions 10
+./cli/automa vehicles host update --id piracer --restart
+./cli/automa vehicles host run --id piracer --observe-only --num-decisions 10
 ```
 
 Creation syncs the DonkeyCar harness, installs and enables `automa-donkey.service`,
 deploys every step's activation, and restarts and verifies the host in manual mode.
-Later boots start that service automatically. `update host` packages and deploys a
+Later boots start that service automatically. `host update` packages and deploys a
 new controller release; add `--restart` to load changed plugin specs or configs.
 Use `--dry-run` on create or update to inspect the commands without writing or connecting.
 
@@ -758,11 +758,11 @@ The handheld controller is disabled by default. Persist its drive arguments at
 creation with `--drive-args=--js`, or on a later update:
 
 ```sh
-./cli/automa vehicles update host --id piracer --restart --drive-args=--js
+./cli/automa vehicles host update --id piracer --restart --drive-args=--js
 ```
 
 Pass `--drive-args=` with `--restart` to restore controller-free startup.
-`vehicles delete host --id piracer` stops and disables the service and removes the
+`vehicles host delete --id piracer` stops and disables the service and removes the
 local host directory. Harness files stay in `~/mycar` on the Pi. A failed SSH stop
 keeps the local record so deletion can be retried.
 
@@ -798,7 +798,7 @@ Step selections are local until the next autonomy deployment:
 ./cli/automa vehicles update proposal --id piracer
 ./cli/automa vehicles update action --id piracer --plugin selected
 ./cli/automa vehicles update memory --id piracer
-./cli/automa vehicles update host --id piracer --restart
+./cli/automa vehicles host update --id piracer --restart
 ```
 
 `vehicles info perception|memory|proposal --id piracer` inspects staged
@@ -811,13 +811,13 @@ Once the selected plugins are staged (and deployed for PiCar), the same commands
 control both vehicles. Change only the vehicle ID:
 
 ```sh
-./cli/automa vehicles automation run --id chase-sim-chaser --open-view
-./cli/automa vehicles automation stop --id chase-sim-chaser
-./cli/automa vehicles automation run --id piracer --open-view
-./cli/automa vehicles automation stop --id piracer
+./cli/automa vehicles host run --id chase-sim-chaser --open-view
+./cli/automa vehicles host stop --id chase-sim-chaser
+./cli/automa vehicles host run --id piracer --open-view
+./cli/automa vehicles host stop --id piracer
 ```
 
-`automation restart --id <vehicle>` stops movement, recreates the host, and
+`host restart --id <vehicle>` stops movement, recreates the host, and
 starts it with the requested options. `--observe-only` and `--num-decisions`
 have the same control semantics on both vehicles. The simulator
 acquires WS input automatically; the onboard host acquires its drivetrain
@@ -842,7 +842,7 @@ runtime ingress; dropped frames are received captures replaced before processing
 Counters accumulate for the host process; run summaries show deltas. Intentional
 halt/stop discards and uncaptured simulator frame-index gaps are excluded.
 Automation `run` and `restart` use `--num-decisions` in place of `--frames`.
-Run configuration and automation status use `num_decisions` (zero means
+Run configuration and `host status` use `num_decisions` (zero means
 unbounded, explicitly requested with `--unbounded` for movement-enabled runs); host session status
 reports `processed_decisions`.
 
@@ -850,8 +850,8 @@ This change updates the physical harness and vendor HTTP API. Install both
 layers before using the shared commands on PiCar:
 
 ```sh
-./cli/automa vehicles create host --id piracer --provider picar --url http://piracer.local:8887
-./cli/automa vehicles update host --id piracer --restart
+./cli/automa vehicles host create --id piracer --provider picar --url http://piracer.local:8887
+./cli/automa vehicles host update --id piracer --restart
 ```
 
 ### Control Ownership and API

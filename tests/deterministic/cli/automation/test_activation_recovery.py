@@ -32,13 +32,13 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     env = {"CHASE_UI_WS_URL": ws_url}
                     command = f"./cli/automa vehicles update {step} --id {VEHICLE_ID}"
                     human = invoke_automa(
-                        "vehicles", "automation", "status", "--id", VEHICLE_ID,
+                        "vehicles", "host", "status", "--id", VEHICLE_ID,
                         runtime_root=runtime_root, extra_env=env,
                     )
                     self.assertIn(f"Invalid {step} activation:", human.stdout)
                     self.assertIn(f"next: {command}", human.stdout)
                     automation = json.loads(invoke_automa(
-                        "vehicles", "automation", "status", "--id", VEHICLE_ID, "--json",
+                        "vehicles", "host", "status", "--id", VEHICLE_ID, "--json",
                         runtime_root=runtime_root, extra_env=env,
                     ).stdout)
                     self.assertEqual(automation["outcome"]["status"], "degraded")
@@ -46,7 +46,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     self.assertEqual(automation["vehicles"][0]["process"]["recovery"], command)
                     for verb in ("run", "restart"):
                         result = invoke_automa(
-                            "vehicles", "automation", verb, "--id", VEHICLE_ID,
+                            "vehicles", "host", verb, "--id", VEHICLE_ID,
                             "--observe-only", "--num-decisions", "0", "--open-view",
                             runtime_root=runtime_root, extra_env=env, check=False,
                         )
@@ -75,7 +75,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
             )
             self.assertEqual(path.read_text(encoding="utf-8"), original)
             automation = json.loads(invoke_automa(
-                "vehicles", "automation", "status", "--id", VEHICLE_ID, "--json",
+                "vehicles", "host", "status", "--id", VEHICLE_ID, "--json",
                 runtime_root=runtime_root, extra_env=env,
             ).stdout)
             self.assertEqual(automation["outcome"]["status"], "degraded")
@@ -85,7 +85,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                 "--preset", "recency_ledger", runtime_root=runtime_root, extra_env=env,
             )
             restaged = json.loads(invoke_automa(
-                "vehicles", "automation", "status", "--id", VEHICLE_ID, "--json",
+                "vehicles", "host", "status", "--id", VEHICLE_ID, "--json",
                 runtime_root=runtime_root, extra_env=env,
             ).stdout)["vehicles"][0]
             self.assertTrue(restaged["deployed"])
@@ -138,7 +138,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                 original = json.dumps({"schema": f"automa_{step}_activation_v0"})
                 path.write_text(original, encoding="utf-8")
                 result = invoke_automa(
-                    "vehicles", "update", "host", "--id", vehicle_id,
+                    "vehicles", "host", "update", "--id", vehicle_id,
                     runtime_root=runtime_root, check=False,
                 )
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)

@@ -114,7 +114,7 @@ def _host_runtime_status(
             "generation_matches": True,
             "reason": error,
             "recovery": (
-                f"./cli/automa vehicles update host --id {vehicle_id} --restart"
+                f"./cli/automa vehicles host update --id {vehicle_id} --restart"
                 if error is not None
                 else None
             ),
@@ -346,7 +346,7 @@ def start_vehicle_automation_background(
                 2,
                 "\n".join(
                     [
-                        f"Automation is still starting for {vehicle_id}.",
+                        f"The run on host {vehicle_id} is still starting.",
                         f"PID: {existing_pid}",
                         f"State: {display_path(automation_dir / 'state.json')}",
                     ]
@@ -369,7 +369,7 @@ def start_vehicle_automation_background(
                 2,
                 "\n".join(
                     [
-                        f"Automation records disagree for {vehicle_id}.",
+                        f"The run records for host {vehicle_id} disagree.",
                         f"Process PID: {existing_pid}",
                         f"State PID: {existing_state_pid}",
                         "Reason: worker generation is stale; no duplicate worker was started.",
@@ -389,7 +389,7 @@ def start_vehicle_automation_background(
                 2,
                 "\n".join(
                     [
-                        f"Automation is already running for {vehicle_id}, but its authority does not match this command.",
+                        f"Host {vehicle_id} already has a run, but its authority does not match this command.",
                         f"PID: {existing_pid}",
                         (
                             "Expected authority: "
@@ -402,7 +402,7 @@ def start_vehicle_automation_background(
                             f"control={actual_authority['control_application'] or 'unknown'}"
                         ),
                         (
-                            "Recovery: ./cli/automa vehicles automation stop "
+                            "Recovery: ./cli/automa vehicles host stop "
                             f"--id {vehicle_id}"
                         ),
                     ]
@@ -418,7 +418,7 @@ def start_vehicle_automation_background(
                 2,
                 "\n".join(
                     [
-                        f"Automation is running for {vehicle_id}, but its perception view is not ready.",
+                        f"Host {vehicle_id} has a run, but its perception view is not ready.",
                         f"PID: {existing_pid}",
                         f"Reason: {view.get('reason') or 'no correlated publication'}",
                         f"State: {display_path(automation_dir / 'state.json')}",
@@ -430,7 +430,7 @@ def start_vehicle_automation_background(
             0,
             "\n".join(
                 [
-                    f"Automation already running for {vehicle_id}.",
+                    f"Host {vehicle_id} already has a run.",
                     f"PID: {existing_pid}",
                     f"Runtime view: {view['url']}",
                     *([browser_line] if browser_line else []),
@@ -445,7 +445,7 @@ def start_vehicle_automation_background(
         sys.executable,
         str(AUTOMA_EXECUTABLE),
         "vehicles",
-        "automation",
+        "host",
         "run",
         *(["--host-url", host_url] if host_url is not None else ["--id", vehicle_id]),
         "--timeout-s",
@@ -501,7 +501,7 @@ def start_vehicle_automation_background(
                 2,
                 "\n".join(
                     [
-                        f"Could not launch automation for {vehicle_id}: {type(exc).__name__}: {exc}",
+                        f"Could not start a run on host {vehicle_id}: {type(exc).__name__}: {exc}",
                     ]
                 ),
             )
@@ -541,7 +541,7 @@ def start_vehicle_automation_background(
             else {}
         )
         lines = [
-            f"Automation ready for {vehicle_id}.",
+            f"Run started on host {vehicle_id}.",
             f"PID: {process.pid}",
             f"First frame: {startup.get('frame_id', 'captured')}",
             (
@@ -555,19 +555,19 @@ def start_vehicle_automation_background(
         capture_lag = startup.get("capture_lag")
         if isinstance(capture_lag, int) and capture_lag > 0:
             lines.append(f"Capture lag: {capture_lag} frames")
-        lines.append(f"Stop: ./cli/automa vehicles automation stop --id {vehicle_id}")
+        lines.append(f"Stop: ./cli/automa vehicles host stop --id {vehicle_id}")
         if open_view:
             lines.append(open_view_message(str(startup.get("view_url"))))
         exit_code = 0
     elif startup_status == "completed":
         lines = [
-            f"Automation completed for {vehicle_id} during startup verification.",
+            f"The run on host {vehicle_id} completed during startup verification.",
             f"PID: {process.pid}",
         ]
         exit_code = 0
     else:
         lines = [
-            f"Automation did not become ready for {vehicle_id}.",
+            f"The run on host {vehicle_id} did not become ready.",
             f"PID: {process.pid}",
             f"Reason: {startup.get('reason', 'unknown startup failure')}",
         ]
@@ -671,7 +671,7 @@ def _initialize_automation_startup(
                 "status": "starting",
                 "available": False,
                 "url": None,
-                "reason": "automation run is starting",
+                "reason": "the run is starting",
             },
             started_at_ms=started_at_ms,
         ),
@@ -869,7 +869,7 @@ def get_vehicle_automation_status(
         exit_code = 2
         payload["outcome"] = {
             "status": "not_found",
-            "message": f"No deployed automation runtime found for {vehicle_id!r}.",
+            "message": f"No host named {vehicle_id!r}.",
             "expected_bundle": display_path(
                 runtime_hosts.RUNTIME_ROOT / safe_path_part(vehicle_id) / "bundle"
             ),
@@ -878,21 +878,21 @@ def get_vehicle_automation_status(
     elif not vehicles:
         payload["outcome"] = {
             "status": "empty",
-            "message": "No deployed automation runtimes found.",
+            "message": "No hosts found.",
             "expected_bundle": None,
             "recovery": runtime_hosts.update_command("<vehicle_id>"),
         }
     elif any(_automation_status_needs_attention(vehicle) for vehicle in vehicles):
         payload["outcome"] = {
             "status": "degraded",
-            "message": "One or more automation runtimes require attention.",
+            "message": "One or more hosts require attention.",
             "expected_bundle": None,
             "recovery": None,
         }
     else:
         payload["outcome"] = {
             "status": "ok",
-            "message": f"Found {len(vehicles)} locally deployed automation runtime(s).",
+            "message": f"Found {len(vehicles)} host(s).",
             "expected_bundle": None,
             "recovery": None,
         }
@@ -933,7 +933,7 @@ def stop_vehicle_automation(
             0,
             "\n".join(
                 [
-                    f"No automation PID is recorded for {vehicle_id}.",
+                    f"No run PID is recorded for host {vehicle_id}.",
                     f"State: {display_path(state_path)}",
                 ]
             ),
@@ -946,7 +946,7 @@ def stop_vehicle_automation(
             0,
             "\n".join(
                 [
-                    f"Automation is not running for {vehicle_id}.",
+                    f"Host {vehicle_id} has no run.",
                     f"Recorded PID: {pid}",
                     f"State: {display_path(state_path)}",
                 ]
@@ -959,7 +959,7 @@ def stop_vehicle_automation(
             0,
             "\n".join(
                 [
-                    f"Recorded automation PID for {vehicle_id} is alive but does not match this automation command.",
+                    f"The recorded run PID for host {vehicle_id} is alive but is not this host's run.",
                     f"PID: {pid}",
                     "The PID record was marked stale; no process was terminated.",
                     f"Process: {_process_command(pid) or 'unknown'}",
@@ -977,7 +977,7 @@ def stop_vehicle_automation(
                 0,
                 "\n".join(
                     [
-                        f"Automation stopped for {vehicle_id}.",
+                        f"Stopped the run on host {vehicle_id}.",
                         f"PID: {pid}",
                         f"State: {display_path(state_path)}",
                     ]
@@ -995,7 +995,7 @@ def stop_vehicle_automation(
                 0,
                 "\n".join(
                     [
-                        f"Automation force-stopped for {vehicle_id}.",
+                        f"Force-stopped the run on host {vehicle_id}.",
                         f"PID: {pid}",
                         f"State: {display_path(state_path)}",
                     ]
@@ -1007,7 +1007,7 @@ def stop_vehicle_automation(
         2,
         "\n".join(
             [
-                f"Automation did not stop for {vehicle_id}.",
+                f"The run on host {vehicle_id} did not stop.",
                 f"PID: {pid}",
                 f"State: {display_path(state_path)}",
             ]
@@ -1204,7 +1204,7 @@ def _collect_automation_status(
                         break
         activation_problems = bundle_activation_problems(bundle, vehicle_name)
         worker_recovery = activation_problems[0]["command"] if activation_problems else (
-            f"./cli/automa vehicles automation restart --id {vehicle_name}"
+            f"./cli/automa vehicles host restart --id {vehicle_name}"
             if worker_status in {"error", "stale"}
             else None
         )
@@ -1327,13 +1327,13 @@ def _format_automation_status(payload: dict[str, Any]) -> str:
     vehicles = payload.get("vehicles") if isinstance(payload.get("vehicles"), list) else []
     outcome = payload.get("outcome") if isinstance(payload.get("outcome"), dict) else {}
     lines = [
-        "automa automation status",
+        "automa vehicles host status",
         "",
         f"runtime: {payload.get('runtime_root', 'unknown')}",
-        f"deployed automations: {sum(1 for item in vehicles if isinstance(item, dict) and item.get('deployed'))}",
+        f"hosts: {sum(1 for item in vehicles if isinstance(item, dict) and item.get('deployed'))}",
     ]
     if not vehicles:
-        lines.extend(["", str(outcome.get("message") or "No deployed automation runtimes found.")])
+        lines.extend(["", str(outcome.get("message") or "No hosts found.")])
         expected_bundle = outcome.get("expected_bundle")
         if isinstance(expected_bundle, str) and expected_bundle:
             lines.append(f"Expected bundle: {expected_bundle}")
@@ -1528,9 +1528,9 @@ def _pid_matches_automation(pid: int, vehicle_id: str) -> bool:
 
 
 def _automation_command_matches_vehicle(command: str, vehicle_id: str) -> bool:
-    """Pure check: command is an automation run for exactly *vehicle_id*.
+    """Pure check: command is a host run for exactly *vehicle_id*.
 
-    Requires the contiguous launcher subcommand ``vehicles automation run`` and
+    Requires the contiguous launcher subcommand ``vehicles host run`` and
     an exact ``--id <vehicle_id>`` argument pair (token equality, not substring).
     """
 
@@ -1546,7 +1546,7 @@ def _automation_command_matches_vehicle(command: str, vehicle_id: str) -> bool:
     # Contiguous launcher subcommand as emitted by start_automation.
     matched_run = False
     for index in range(len(tokens) - 2):
-        if tokens[index : index + 3] == ["vehicles", "automation", "run"]:
+        if tokens[index : index + 3] == ["vehicles", "host", "run"]:
             matched_run = True
             break
     if not matched_run:

@@ -59,18 +59,18 @@ class ReplayByReleaseTests(unittest.TestCase):
 
             def automa(*args: str, check: bool = True):
                 # Only the run needs its own process; it starts the worker.
-                run = run_automa if args[:2] == ("automation", "run") else invoke_automa
+                run = run_automa if args[:2] == ("host", "run") else invoke_automa
                 return run("vehicles", *args, runtime_root=runtime_root, extra_env=env, check=check)
 
             automa("update", "perception", "--id", VEHICLE_ID, "--plugin", "frame")
             release = _package_release_with_frame_label(runtime_root, Path(tmp) / "source", "release camera frame")
             try:
                 automa(
-                    "automation", "run", "--id", VEHICLE_ID, "--observe-only",
+                    "host", "run", "--id", VEHICLE_ID, "--observe-only",
                     "--num-decisions", "2", "--record",
                 )
             finally:
-                automa("automation", "stop", "--id", VEHICLE_ID, check=False)
+                automa("host", "stop", "--id", VEHICLE_ID, check=False)
             runs = runtime_root / VEHICLE_ID / "bundle/runtime/automation/runs"
             (recording,) = [path for path in runs.iterdir() if (path / "manifest.json").is_file()]
 
@@ -85,7 +85,7 @@ class ReplayByReleaseTests(unittest.TestCase):
             missing = automa("perception", "inspect", str(recording), "--json", check=False)
             self.assertEqual(missing.returncode, 2, missing.stdout)
             self.assertIn(f"Controller release {release['tree_sha256'][:12]} is not in", missing.stdout)
-            self.assertIn(f"Run: ./cli/automa vehicles update host --id {VEHICLE_ID}", missing.stdout)
+            self.assertIn(f"Run: ./cli/automa vehicles host update --id {VEHICLE_ID}", missing.stdout)
 
     def test_a_recording_replays_the_plugin_uploaded_to_its_host(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
@@ -96,7 +96,7 @@ class ReplayByReleaseTests(unittest.TestCase):
             def automa(*args: str, check: bool = True):
                 # The run starts the worker. A process keeps each uploaded
                 # module it imports, so replays also get their own process.
-                own_process = args[:2] == ("automation", "run") or args[0] == "perception"
+                own_process = args[:2] == ("host", "run") or args[0] == "perception"
                 run = run_automa if own_process else invoke_automa
                 return run("vehicles", *args, runtime_root=runtime_root, extra_env=env, check=check)
 
@@ -115,14 +115,14 @@ class ReplayByReleaseTests(unittest.TestCase):
             )
             source = f"{hashlib.sha256(plugin.read_bytes()).hexdigest()}.py"
             try:
-                automa("automation", "run", "--id", VEHICLE_ID, "--observe-only",
+                automa("host", "run", "--id", VEHICLE_ID, "--observe-only",
                        "--num-decisions", "1")
                 automa("plugins", "upload", "--id", VEHICLE_ID, "--file", str(plugin), "--step", "perception",
                        "--plugin-id", "uploaded", "--entrypoint", "prototype:Prototype", "--arm")
-                automa("automation", "run", "--id", VEHICLE_ID, "--observe-only",
+                automa("host", "run", "--id", VEHICLE_ID, "--observe-only",
                        "--num-decisions", "2", "--record")
             finally:
-                automa("automation", "stop", "--id", VEHICLE_ID, check=False)
+                automa("host", "stop", "--id", VEHICLE_ID, check=False)
             runs = runtime_root / VEHICLE_ID / "bundle/runtime/automation/runs"
             (recording,) = [path for path in runs.iterdir() if (path / "manifest.json").is_file()]
             self.assertEqual((recording / "plugins" / source).read_bytes(), plugin.read_bytes())

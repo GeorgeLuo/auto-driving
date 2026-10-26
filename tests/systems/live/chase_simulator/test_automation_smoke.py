@@ -47,7 +47,7 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
         try:
             run = run_automa(
                 "vehicles",
-                "automation",
+                "host",
                 "run",
                 "--id",
                 "chase-sim-chaser",
@@ -58,7 +58,7 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
                 "--timeout-s",
                 "6",
             )
-            self.assertIn("Automation ready", run.stdout)
+            self.assertIn("Run started on host", run.stdout)
             self.assertIn("Runtime view: http://127.0.0.1:", run.stdout)
 
             status = run_automa(
@@ -84,7 +84,7 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
         finally:
             run_automa(
                 "vehicles",
-                "automation",
+                "host",
                 "stop",
                 "--id",
                 "chase-sim-chaser",

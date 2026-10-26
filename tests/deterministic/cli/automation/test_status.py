@@ -117,10 +117,10 @@ class AutomationStatusTests(unittest.TestCase):
     def test_empty_runtime_has_matching_human_and_json_outcome(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            human = invoke_automa("vehicles", "automation", "status", runtime_root=runtime_root)
+            human = invoke_automa("vehicles", "host", "status", runtime_root=runtime_root)
             machine = invoke_automa(
                 "vehicles",
-                "automation",
+                "host",
                 "status",
                 "--json",
                 runtime_root=runtime_root,
@@ -130,7 +130,7 @@ class AutomationStatusTests(unittest.TestCase):
         self.assertEqual(payload["schema"], "automa_automation_status_v0")
         self.assertEqual(payload["outcome"]["status"], "empty")
         self.assertEqual(payload["vehicles"], [])
-        self.assertIn("deployed automations: 0", human.stdout)
+        self.assertIn("hosts: 0", human.stdout)
         self.assertIn(payload["outcome"]["message"], human.stdout)
         self.assertIn(payload["outcome"]["recovery"], human.stdout)
         self.assertEqual(human.stderr, "")
@@ -141,7 +141,7 @@ class AutomationStatusTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             human = invoke_automa(
                 "vehicles",
-                "automation",
+                "host",
                 "status",
                 "--id",
                 "missing-car",
@@ -150,7 +150,7 @@ class AutomationStatusTests(unittest.TestCase):
             )
             machine = invoke_automa(
                 "vehicles",
-                "automation",
+                "host",
                 "status",
                 "--id",
                 "missing-car",
@@ -179,7 +179,7 @@ class AutomationStatusTests(unittest.TestCase):
 
             human = invoke_automa(
                 "vehicles",
-                "automation",
+                "host",
                 "status",
                 "--id",
                 VEHICLE_ID,
@@ -187,7 +187,7 @@ class AutomationStatusTests(unittest.TestCase):
             )
             machine = invoke_automa(
                 "vehicles",
-                "automation",
+                "host",
                 "status",
                 "--id",
                 VEHICLE_ID,
@@ -213,7 +213,7 @@ class AutomationStatusTests(unittest.TestCase):
         self.assertEqual(vehicle["process"]["status"], "running")
         self.assertTrue(vehicle["process"]["running"])
 
-        self.assertIn("deployed automations: 1", human.stdout)
+        self.assertIn("hosts: 1", human.stdout)
         self.assertIn(vehicle["vehicle_id"], human.stdout)
         self.assertIn("  steps: staged\n", human.stdout)
         self.assertIn(f"    perception: {steps['perception']['preset']} (", human.stdout)
@@ -233,7 +233,7 @@ class AutomationStatusTests(unittest.TestCase):
 
             human = invoke_automa(
                 "vehicles",
-                "automation",
+                "host",
                 "status",
                 "--id",
                 VEHICLE_ID,
@@ -241,7 +241,7 @@ class AutomationStatusTests(unittest.TestCase):
             )
             machine = invoke_automa(
                 "vehicles",
-                "automation",
+                "host",
                 "status",
                 "--id",
                 VEHICLE_ID,
@@ -276,7 +276,7 @@ class AutomationStatusTests(unittest.TestCase):
 
             human = invoke_automa(
                 "vehicles",
-                "automation",
+                "host",
                 "status",
                 "--id",
                 VEHICLE_ID,
@@ -284,7 +284,7 @@ class AutomationStatusTests(unittest.TestCase):
             )
             machine = invoke_automa(
                 "vehicles",
-                "automation",
+                "host",
                 "status",
                 "--id",
                 VEHICLE_ID,
@@ -315,7 +315,7 @@ class AutomationStatusTests(unittest.TestCase):
 
             stop = invoke_automa(
                 "vehicles",
-                "automation",
+                "host",
                 "stop",
                 "--id",
                 VEHICLE_ID,
@@ -323,7 +323,7 @@ class AutomationStatusTests(unittest.TestCase):
             )
             status = invoke_automa(
                 "vehicles",
-                "automation",
+                "host",
                 "status",
                 "--id",
                 VEHICLE_ID,
@@ -331,7 +331,7 @@ class AutomationStatusTests(unittest.TestCase):
                 runtime_root=runtime_root,
             )
 
-        self.assertIn("Automation is not running", stop.stdout)
+        self.assertIn("has no run", stop.stdout)
         payload = json.loads(status.stdout)
         state = payload["vehicles"][0]["state"]
         self.assertEqual(state["status"], "stopped")

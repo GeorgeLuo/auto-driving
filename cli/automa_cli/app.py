@@ -208,34 +208,47 @@ def build_parser() -> argparse.ArgumentParser:
     viewer.add_argument("--host-url", required=True, help="The host's URL from vehicles status.")
     viewer.set_defaults(handler=_handle_vehicles_viewer)
 
-    automation = vehicle_commands.add_parser(
-        "automation",
-        help=(
-            "Run the shared decision and movement runtime on a vehicle. "
-            "The vehicle ID selects local or onboard hosting."
-        ),
-    )
-    automation.set_defaults(handler=_handle_vehicles_automation_help)
-    automation_commands = automation.add_subparsers(dest="automation_command")
-    automation_help = automation_commands.add_parser(
-        "help",
-        help="Show automation-level commands.",
-    )
-    automation_help.set_defaults(handler=_handle_vehicles_automation_help)
-    automation_run = automation_commands.add_parser(
+    host = vehicle_commands.add_parser("host", help="Create, update, run, stop and delete hosts.")
+    host.set_defaults(handler=_handle_vehicles_host_help)
+    host_commands = host.add_subparsers(dest="host_command")
+    host_help = host_commands.add_parser("help", help="Show host-level commands.")
+    host_help.set_defaults(handler=_handle_vehicles_host_help)
+    host_create = host_commands.add_parser("create", help="Create and start a host.")
+    host_update = host_commands.add_parser("update", help="Package and deploy a host's release.")
+    host_delete = host_commands.add_parser("delete", help="Stop the host and its run, and remove its local files.")
+    for command in (host_create, host_update, host_delete):
+        command.add_argument("--id", dest="vehicle_id", required=True, help="Host name.")
+        command.add_argument("--verbose", action="store_true")
+    for command in (host_create, host_update):
+        command.add_argument("--dry-run", action="store_true", help="Print the deployment plan without writing or connecting.")
+        command.add_argument("--json", action="store_true")
+        command.add_argument("--drive-args", help="Persist PiCar drive arguments; update requires --restart.")
+    host_create.add_argument("--provider", required=True, choices=HOST_PROVIDERS,
+                             help="What the host controls: the simulator's chaser (chase-sim) or a PiCar (picar).")
+    host_create.add_argument("--url", required=True,
+                             help="The vehicle's URL: the simulator's HTTP(S) origin or WS(S) control URL, "
+                                  "or the PiCar's HTTP(S) URL. vehicles status lists both.")
+    host_create.add_argument("--ssh-target", help="PiCar SSH target (default: PI_HOST or the URL host).")
+    host_create.add_argument("--pi-home", help="PiCar home (default: PI_HOME or /home/piracer).")
+    host_update.add_argument("--restart", action="store_true", help="Restart the host onto this release.")
+    host_create.set_defaults(handler=_handle_vehicles_host_create)
+    host_update.set_defaults(handler=_handle_vehicles_host_update)
+    host_delete.set_defaults(handler=_handle_vehicles_host_delete)
+
+    host_run = host_commands.add_parser(
         "run",
-        help="Start an automation run and verify one correlated camera/perception publication.",
+        help="Start a run on a host and verify one correlated camera/perception publication.",
         description=(
             "Start autonomous movement using the staged plugins. Success requires one camera frame, its "
             "completed perception result, and a healthy current-generation loopback view. "
             "--host-url runs an existing host instead of starting one; that host reports its vehicle id."
         ),
     )
-    run_target = automation_run.add_mutually_exclusive_group(required=True)
+    run_target = host_run.add_mutually_exclusive_group(required=True)
     run_target.add_argument(
         "--id",
         dest="vehicle_id",
-        help="Discoverable vehicle id from `automa vehicles status`.",
+        help=_STAGING_VEHICLE_ID_HELP,
     )
     run_target.add_argument(
         "--host-url",
@@ -245,7 +258,7 @@ def build_parser() -> argparse.ArgumentParser:
             "Run that host instead of starting one. The host reports its vehicle id."
         ),
     )
-    automation_run.add_argument(
+    host_run.add_argument(
         "--timeout-s",
         type=float,
         default=DEFAULT_READINESS_TIMEOUT_S,
@@ -254,7 +267,7 @@ def build_parser() -> argparse.ArgumentParser:
             f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
     )
-    automation_run.add_argument(
+    host_run.add_argument(
         "--num-decisions",
         type=int,
         default=0,
@@ -263,22 +276,22 @@ def build_parser() -> argparse.ArgumentParser:
             "unless --unbounded is set; 0 remains unbounded with --observe-only."
         ),
     )
-    automation_run.add_argument(
+    host_run.add_argument(
         "--unbounded",
         action="store_true",
         help=(
             "Run until stopped, overriding --num-decisions. "
-            "Stop with vehicles automation stop."
+            "Stop with vehicles host stop."
         ),
     )
-    automation_run.add_argument(
+    host_run.add_argument(
         "--observe-only",
         action="store_true",
         help=(
             "Run plugins without applying their output. The same mode works on every vehicle."
         ),
     )
-    automation_run.add_argument(
+    host_run.add_argument(
         "--open-view",
         action="store_true",
         help=(
@@ -286,81 +299,82 @@ def build_parser() -> argparse.ArgumentParser:
             "camera/perception publication is healthy."
         ),
     )
-    automation_run.add_argument(
+    host_run.add_argument(
         "--record",
         action="store_true",
         help="Save per-frame images and perception artifacts under a timestamped run directory.",
     )
-    automation_run.add_argument(
+    host_run.add_argument(
         "--verbose",
         action="store_true",
         help="Print every frame's detail when output is connected.",
     )
-    automation_run.add_argument(
+    host_run.add_argument(
         "--log",
         action="store_true",
         dest="log_to_disk",
         help="Persist background run output to automation.log.",
     )
-    automation_run.add_argument(
+    host_run.add_argument(
         "--foreground",
         action="store_true",
         help=argparse.SUPPRESS,
     )
-    automation_run.set_defaults(handler=_handle_vehicles_automation_run)
+    host_run.set_defaults(handler=_handle_vehicles_host_run)
 
-    automation_stop = automation_commands.add_parser(
+    host_stop = host_commands.add_parser(
         "stop",
-        help="Stop the background automation loop for a vehicle.",
+        help="Stop the host's run; the host stays attached until host delete.",
         description=(
-            "Stop autonomous movement and its publication monitor. The deployment remains staged and "
-            "its former view is no longer current-generation available."
+            "Stop autonomous movement and its publication monitor. The host stays attached, with its "
+            "deployment staged, until vehicles host delete; its former view is no longer current-generation "
+            "available."
         ),
     )
-    automation_stop.add_argument(
+    host_stop.add_argument(
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Locally deployed vehicle id from `automa vehicles automation status`.",
+        help=_STAGING_VEHICLE_ID_HELP,
     )
-    automation_stop.add_argument(
+    host_stop.add_argument(
         "--wait-s",
         type=float,
         default=3.0,
         help="Seconds to wait for graceful stop before forcing termination.",
     )
-    automation_stop.set_defaults(handler=_handle_vehicles_automation_stop)
+    host_stop.set_defaults(handler=_handle_vehicles_host_stop)
 
-    automation_status = automation_commands.add_parser(
+    host_status = host_commands.add_parser(
         "status",
-        help="Show locally deployed automation runtimes and run status.",
-        description="Show locally deployed automation runtimes and run status.",
+        help="Show each host's deployment, run and view state.",
+        description="Show each host's deployment, run and view state.",
     )
-    automation_status.add_argument(
+    host_status.add_argument(
         "--id",
         dest="vehicle_id",
         default=None,
-        help="Vehicle id from `automa vehicles status`. Omit to list locally deployed automation runtimes.",
+        help="Host name. Omit to list every host.",
     )
-    automation_status.add_argument(
+    host_status.add_argument(
         "--json",
         action="store_true",
-        help="Print the full machine-readable automation status payload.",
+        help="Print the full machine-readable host status payload.",
     )
-    automation_status.set_defaults(handler=_handle_vehicles_automation_status)
+    host_status.set_defaults(handler=_handle_vehicles_host_status)
 
-    automation_restart = automation_commands.add_parser(
+    host_restart = host_commands.add_parser(
         "restart",
-        help="Restart the automation run and verify its correlated runtime view.",
-        description="Restart the automation run and verify its correlated runtime view.",
+        help="Restart the host's run and verify its correlated runtime view.",
+        description="Restart the host's run and verify its correlated runtime view.",
     )
-    automation_restart.add_argument(
+    host_restart.add_argument(
         "--id",
         required=True,
         dest="vehicle_id",
-        help="Vehicle id from `automa vehicles status`.",
+        help=_STAGING_VEHICLE_ID_HELP,
     )
-    automation_restart.add_argument(
+    host_restart.add_argument(
         "--timeout-s",
         type=float,
         default=DEFAULT_READINESS_TIMEOUT_S,
@@ -369,7 +383,7 @@ def build_parser() -> argparse.ArgumentParser:
             f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
     )
-    automation_restart.add_argument(
+    host_restart.add_argument(
         "--num-decisions",
         type=int,
         default=0,
@@ -378,22 +392,22 @@ def build_parser() -> argparse.ArgumentParser:
             "unless --unbounded is set; 0 remains unbounded with --observe-only."
         ),
     )
-    automation_restart.add_argument(
+    host_restart.add_argument(
         "--unbounded",
         action="store_true",
         help=(
             "Run until stopped, overriding --num-decisions. "
-            "Stop with vehicles automation stop."
+            "Stop with vehicles host stop."
         ),
     )
-    automation_restart.add_argument(
+    host_restart.add_argument(
         "--observe-only",
         action="store_true",
         help=(
             "Run plugins without applying their output. The same mode works on every vehicle."
         ),
     )
-    automation_restart.add_argument(
+    host_restart.add_argument(
         "--open-view",
         action="store_true",
         help=(
@@ -401,40 +415,40 @@ def build_parser() -> argparse.ArgumentParser:
             "camera/perception publication is healthy."
         ),
     )
-    automation_restart.add_argument(
+    host_restart.add_argument(
         "--record",
         action="store_true",
         help="Save per-frame images and perception artifacts under a timestamped run directory.",
     )
-    automation_restart.add_argument(
+    host_restart.add_argument(
         "--verbose",
         action="store_true",
         help="Print every frame's detail when output is connected.",
     )
-    automation_restart.add_argument(
+    host_restart.add_argument(
         "--log",
         action="store_true",
         dest="log_to_disk",
         help="Persist background run output to automation.log.",
     )
-    automation_restart.add_argument(
+    host_restart.add_argument(
         "--wait-s",
         type=float,
         default=3.0,
         help="Seconds to wait for graceful stop before forcing termination.",
     )
-    automation_restart.set_defaults(handler=_handle_vehicles_automation_restart)
-    automation_host = automation_commands.add_parser(
-        "host",
-        help="Serve a Chase car's runtime host in the foreground (create host and automation run start one).",
+    host_restart.set_defaults(handler=_handle_vehicles_host_restart)
+    host_serve = host_commands.add_parser(
+        "serve",
+        help="Serve a Chase car's runtime host in the foreground (host create and host run start one).",
         description=(
             "Serve the runtime routes for a Chase car from its latest controller release, "
-            "and relaunch on a restart command. `create host` and `automation run` start this in the background; "
+            "and relaunch on a restart command. `host create` and `host run` start this in the background; "
             "its log is runtime/vehicles/<id>/bundle/runtime/automation/host.log."
         ),
     )
-    automation_host.add_argument("--id", required=True, dest="vehicle_id", help="Chase vehicle id.")
-    automation_host.set_defaults(handler=_handle_vehicles_automation_host)
+    host_serve.add_argument("--id", required=True, dest="vehicle_id", help="Chase host name.")
+    host_serve.set_defaults(handler=_handle_vehicles_host_serve)
 
     operation = vehicle_commands.add_parser("operation", help="Run bounded vehicle checks and setup tasks.")
     operation.set_defaults(handler=_handle_vehicles_operation_help)
@@ -491,7 +505,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     startup_check.set_defaults(handler=_handle_vehicles_operation_startup_check)
 
-    stream = vehicle_commands.add_parser("stream", help="Read rolling local automation output.")
+    stream = vehicle_commands.add_parser("stream", help="Read a host's rolling outputs.")
     stream_commands = stream.add_subparsers(dest="stream_command", required=True)
     stream_help = stream_commands.add_parser(
         "help",
@@ -1103,32 +1117,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show update-level commands.",
     )
     update_help.set_defaults(handler=_handle_vehicles_update_help)
-    host_update = update_commands.add_parser("host", help="Package and deploy a created host's release.")
-    create = vehicle_commands.add_parser("create", help="Create a named host for a vehicle.")
-    create_commands = create.add_subparsers(dest="create_command", required=True)
-    host_create = create_commands.add_parser("host", help="Create and start a host.")
-    delete = vehicle_commands.add_parser("delete", help="Stop and remove a host.")
-    delete_commands = delete.add_subparsers(dest="delete_command", required=True)
-    host_delete = delete_commands.add_parser("host", help="Stop the host and remove its local files.")
-    for command in (host_create, host_update, host_delete):
-        command.add_argument("--id", dest="vehicle_id", required=True, help="Host name.")
-        command.add_argument("--verbose", action="store_true")
-    for command in (host_create, host_update):
-        command.add_argument("--dry-run", action="store_true", help="Print the deployment plan without writing or connecting.")
-        command.add_argument("--json", action="store_true")
-        command.add_argument("--drive-args", help="Persist PiCar drive arguments; update requires --restart.")
-    host_create.add_argument("--provider", required=True, choices=HOST_PROVIDERS,
-                             help="What the host controls: the simulator's chaser (chase-sim) or a PiCar (picar).")
-    host_create.add_argument("--url", required=True,
-                             help="The vehicle's URL: the simulator's HTTP(S) origin or WS(S) control URL, "
-                                  "or the PiCar's HTTP(S) URL. vehicles status lists both.")
-    host_create.add_argument("--ssh-target", help="PiCar SSH target (default: PI_HOST or the URL host).")
-    host_create.add_argument("--pi-home", help="PiCar home (default: PI_HOME or /home/piracer).")
-    host_update.add_argument("--restart", action="store_true", help="Restart the host onto this release.")
-    host_create.set_defaults(handler=_handle_vehicles_create_host)
-    host_update.set_defaults(handler=_handle_vehicles_update_host)
-    host_delete.set_defaults(handler=_handle_vehicles_delete_host)
-
     for step_name in STEPS:
         step_parser = update_commands.add_parser(
             step_name,
@@ -1367,7 +1355,7 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
             [
                 "Automa is the control desk for the vehicles and simulators in this workspace.",
                 "It helps you find what is reachable, stage controller choices locally, and deploy code to a PiCar.",
-                "It can start and stop automation runs without making you remember where the runtime files live.",
+                "It can create hosts and start and stop their runs without making you remember where the runtime files live.",
                 "It also gives you one place to inspect the latest perception output and the controller behavior staged for each vehicle.",
                 "Use it when you want to move from editing local code to running that code against a real or simulated vehicle.",
                 "The sections below only show the next command level; each command has its own help for details.",
@@ -1420,15 +1408,13 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles commands",
                 "",
-                "- create host  create and start a named host",
-                "- delete host  stop and remove a host",
+                "- host         create, update, run, stop and delete hosts",
                 "- discover     list a vehicle in status",
                 "- remove       stop listing a discovered vehicle",
                 "- viewer       open the runtime viewer on a host",
                 "- status       show each discovered vehicle and each host's state",
                 "- update       stage controller selections or deploy vehicle code",
                 "- plugins      upload, arm, disarm and inspect plugins in a live catalog",
-                "- automation   manage locally deployed automation workers",
                 "- operation    run bounded vehicle checks and setup tasks",
                 "- info         inspect locally staged controller configuration",
                 "- memory       operate memory (inspect, viability, reset)",
@@ -1438,7 +1424,7 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                     "and decisions"
                 ),
                 "- perception   run and configure vehicle perception",
-                "- stream       read rolling local automation outputs",
+                "- stream       read a host's rolling outputs",
                 "- help         show this summary",
                 "",
                 "Detailed help:",
@@ -1450,20 +1436,23 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_vehicles_automation_help(args: argparse.Namespace) -> int:
+def _handle_vehicles_host_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
-                "automa vehicles automation commands",
+                "automa vehicles host commands",
                 "",
+                "- create    create and start a host",
+                "- update    package staged steps as a release for the host",
+                "- delete    stop the host and its run, and remove its local files",
                 "- run       start a run and verify camera + perception + current view",
-                "- status    show locally deployed run and view state",
-                "- restart   stop and start the automation run",
-                "- stop      stop the run; keep its deployment staged",
+                "- stop      stop the run; the host stays attached until host delete",
+                "- restart   stop and start the run",
+                "- status    show each host's deployment, run and view state",
                 "- help      show this summary",
                 "",
                 "Detailed help:",
-                "- ./cli/automa vehicles automation <command> --help",
+                "- ./cli/automa vehicles host <command> --help",
             ]
         )
     )
@@ -1493,7 +1482,6 @@ def _handle_vehicles_update_help(args: argparse.Namespace) -> int:
             [
                 "automa vehicles update commands",
                 "",
-                "- host         package staged steps as a release for the host",
                 "- perception   stage a perception preset or plugin selection",
                 "- observation  stage observation plugins",
                 "- memory       stage a memory preset or plugin selection",
@@ -1575,7 +1563,7 @@ _TIMEOUT_INPUT_CONSTRAINT = "finite number greater than zero"
 _TIMEOUT_INPUT_RECOVERY = "Provide a finite --timeout-s greater than zero."
 # Every `vehicles update <step>` resolves its vehicle with `staging_vehicle`.
 _STAGING_VEHICLE_ID_HELP = (
-    "Name of a host created with vehicles create host."
+    "Name of a host created with vehicles host create."
 )
 _STAGING_DISCOVERY_TIMEOUT_HELP = (
     "Request timeout in seconds; local staging reads the host record without probing "
@@ -1646,10 +1634,10 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
+def _handle_vehicles_host_run(args: argparse.Namespace) -> int:
     if not _validate_timeout_input(
         args.timeout_s,
-        command="automa vehicles automation run",
+        command="automa vehicles host run",
         json_output=False,
         human_stream=sys.stdout,
     ):
@@ -1689,7 +1677,7 @@ def _handle_vehicles_automation_run(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_automation_stop(args: argparse.Namespace) -> int:
+def _handle_vehicles_host_stop(args: argparse.Namespace) -> int:
     result = stop_vehicle_automation(
         vehicle_id=args.vehicle_id,
         wait_s=args.wait_s,
@@ -1699,7 +1687,7 @@ def _handle_vehicles_automation_stop(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_automation_status(args: argparse.Namespace) -> int:
+def _handle_vehicles_host_status(args: argparse.Namespace) -> int:
     result = get_vehicle_automation_status(
         vehicle_id=args.vehicle_id,
         json_output=args.json,
@@ -1709,13 +1697,13 @@ def _handle_vehicles_automation_status(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_automation_host(args: argparse.Namespace) -> int:
+def _handle_vehicles_host_serve(args: argparse.Namespace) -> int:
     from .runtime_hosts import serve_chase_host
 
     return serve_chase_host(args.vehicle_id)
 
 
-def _handle_vehicles_automation_restart(args: argparse.Namespace) -> int:
+def _handle_vehicles_host_restart(args: argparse.Namespace) -> int:
     result = restart_vehicle_automation(
         vehicle_id=args.vehicle_id,
         timeout_s=args.timeout_s,
@@ -1936,7 +1924,7 @@ def _handle_vehicles_workbench_replay(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_create_host(args: argparse.Namespace) -> int:
+def _handle_vehicles_host_create(args: argparse.Namespace) -> int:
     result = create_host(
         vehicle_id=args.vehicle_id, provider=args.provider, url=args.url,
         ssh_target=args.ssh_target, pi_home=args.pi_home, drive_args=args.drive_args,
@@ -1966,7 +1954,7 @@ def _handle_vehicles_viewer(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_update_host(args: argparse.Namespace) -> int:
+def _handle_vehicles_host_update(args: argparse.Namespace) -> int:
     result = update_host(
         vehicle_id=args.vehicle_id, dry_run=args.dry_run, restart=args.restart,
         drive_args=args.drive_args, json_output=args.json, verbose=args.verbose,
@@ -1976,7 +1964,7 @@ def _handle_vehicles_update_host(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_vehicles_delete_host(args: argparse.Namespace) -> int:
+def _handle_vehicles_host_delete(args: argparse.Namespace) -> int:
     result = delete_host(vehicle_id=args.vehicle_id, verbose=args.verbose, output=sys.stdout)
     print(result.message)
     return result.exit_code

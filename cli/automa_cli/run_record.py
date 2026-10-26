@@ -1,4 +1,4 @@
-"""The run record and terminal lines every vehicle's automation run shares.
+"""The run record and terminal lines every host's run shares.
 
 Every vehicle's runtime host executes the decision cycle while the CLI
 monitors it (``runtime_monitor``), writing this ``state.json`` record and
@@ -189,7 +189,7 @@ def startup_lines(state: dict[str, Any]) -> list[str]:
     view = state["published_view"]
     source = state["control_source"]
     return [
-        f"Automation running: {state['vehicle_id']}",
+        f"Run started on host {state['vehicle_id']}.",
         *step_lines(
             {step: selection["plugins"] for step, selection in selections.items()},
             {step: selection["preset"] for step, selection in selections.items() if selection["preset"]},
@@ -281,7 +281,7 @@ def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
     if status == "error":
         return 2, "\n".join(
             [
-                f"Automation failed for {vehicle_id}.",
+                f"The run on host {vehicle_id} failed.",
                 f"Reason: {state['error']}",
                 f"State: {display_path(state_path)}",
             ]
@@ -291,7 +291,7 @@ def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
         dropped = "unavailable" if dropped is None else dropped
         return 0, "\n".join(
             [
-                f"Automation completed: {vehicle_id}",
+                f"Run completed on host {vehicle_id}.",
                 f"Frames received: {state.get('frames_received', 0)}",
                 f"Frames dropped before decision: {dropped}",
                 f"Decisions completed: {state['processed_count']}",
@@ -306,7 +306,7 @@ def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
     code = 130 if state.get("stop_reason") == "keyboard_interrupt" else 0
     return code, "\n".join(
         [
-            f"Automation stopped: {vehicle_id}",
+            f"Run stopped on host {vehicle_id}.",
             f"State: {display_path(state_path)}",
         ]
     )

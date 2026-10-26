@@ -45,7 +45,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
             )
             try:
                 run_automa(
-                    "vehicles", "automation", "run", "--id", "chase-sim-chaser",
+                    "vehicles", "host", "run", "--id", "chase-sim-chaser",
                     "--observe-only", "--num-decisions", "0", runtime_root=runtime_root, extra_env=env,
                 )
                 stream_env = {
@@ -77,7 +77,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                             stream.terminate()
                             stream.wait(timeout=5)
                 status = json.loads(invoke_automa(
-                    "vehicles", "automation", "status", "--id", "chase-sim-chaser", "--json",
+                    "vehicles", "host", "status", "--id", "chase-sim-chaser", "--json",
                     runtime_root=runtime_root, extra_env=env,
                 ).stdout)
                 self.assertTrue(status["vehicles"][0]["process"]["running"])
@@ -85,7 +85,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 self.assertFalse((runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json").exists())
             finally:
                 invoke_automa(
-                    "vehicles", "automation", "stop", "--id", "chase-sim-chaser",
+                    "vehicles", "host", "stop", "--id", "chase-sim-chaser",
                     runtime_root=runtime_root, extra_env=env, check=False,
                 )
 
@@ -107,7 +107,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 self.assertEqual(([vehicle["state"] for vehicle in initial["vehicles"]], initial["hosts"]),
                                  (["running"], []))
                 initial_fingerprint = _session_fingerprint(ws_url)
-                invoke_automa("vehicles", "create", "host", "--id", "chase-sim-chaser", "--provider", "chase-sim",
+                invoke_automa("vehicles", "host", "create", "--id", "chase-sim-chaser", "--provider", "chase-sim",
                               "--url", ws_url, runtime_root=runtime_root, extra_env=env)
 
                 invoke_automa(
@@ -127,7 +127,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     extra_env=env,
                 )
                 staged = json.loads(invoke_automa(
-                    "vehicles", "automation", "status", "--id", "chase-sim-chaser", "--json",
+                    "vehicles", "host", "status", "--id", "chase-sim-chaser", "--json",
                     runtime_root=runtime_root, extra_env=env,
                 ).stdout)["vehicles"][0]
                 self.assertTrue(staged["deployed"])
@@ -136,7 +136,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 try:
                     run = run_automa(
                         "vehicles",
-                        "automation",
+                        "host",
                         "run",
                         "--id",
                         "chase-sim-chaser",
@@ -147,7 +147,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                         runtime_root=runtime_root,
                         extra_env=env,
                     )
-                    self.assertIn("Automation ready", run.stdout)
+                    self.assertIn("Run started on host", run.stdout)
                     self.assertNotIn("ready for:", run.stdout.lower())
 
                     for step in ("perception", "memory"):
@@ -158,18 +158,18 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                         self.assertEqual(probe["status"], "live")
 
                     old_run = json.loads(invoke_automa(
-                        "vehicles", "automation", "status", "--id", "chase-sim-chaser",
+                        "vehicles", "host", "status", "--id", "chase-sim-chaser",
                         "--json", runtime_root=runtime_root, extra_env=env,
                     ).stdout)["vehicles"][0]["state"]["run_id"]
                     restarted = run_automa(
-                        "vehicles", "automation", "restart", "--id", "chase-sim-chaser",
+                        "vehicles", "host", "restart", "--id", "chase-sim-chaser",
                         "--observe-only", "--num-decisions", "0", "--open-view",
                         runtime_root=runtime_root, extra_env=env,
                     )
-                    self.assertIn("Automation ready", restarted.stdout)
+                    self.assertIn("Run started on host", restarted.stdout)
                     self.assertIn("Browser opened:", restarted.stdout)
                     new_run = json.loads(invoke_automa(
-                        "vehicles", "automation", "status", "--id", "chase-sim-chaser",
+                        "vehicles", "host", "status", "--id", "chase-sim-chaser",
                         "--json", runtime_root=runtime_root, extra_env=env,
                     ).stdout)["vehicles"][0]["state"]["run_id"]
                     self.assertNotEqual(new_run, old_run)
@@ -184,7 +184,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     )
                     self.assertEqual((host["state"], host["mode"], host["error"]), ("running", "observe_only", None))
                     running = json.loads(invoke_automa(
-                        "vehicles", "automation", "status", "--id", "chase-sim-chaser",
+                        "vehicles", "host", "status", "--id", "chase-sim-chaser",
                         "--json", runtime_root=runtime_root, extra_env=env,
                     ).stdout)["vehicles"][0]
                     self.assertTrue(running["process"]["running"])
@@ -194,7 +194,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 finally:
                     stopped = invoke_automa(
                         "vehicles",
-                        "automation",
+                        "host",
                         "stop",
                         "--id",
                         "chase-sim-chaser",
@@ -207,14 +207,14 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 self.assertNotIn("ready for:", stopped.stdout.lower())
 
                 final = json.loads(invoke_automa(
-                    "vehicles", "automation", "status", "--id", "chase-sim-chaser",
+                    "vehicles", "host", "status", "--id", "chase-sim-chaser",
                     "--json", runtime_root=runtime_root, extra_env=env,
                 ).stdout)["vehicles"][0]
                 self.assertTrue(final["deployed"])
                 self.assertFalse(final["process"]["running"])
                 self.assertEqual(_session_fingerprint(ws_url), initial_fingerprint)
                 deleted = invoke_automa(
-                    "vehicles", "delete", "host", "--id", "chase-sim-chaser",
+                    "vehicles", "host", "delete", "--id", "chase-sim-chaser",
                     runtime_root=runtime_root, extra_env=env,
                 )
                 self.assertIn("Stopped host chase-sim-chaser", deleted.stdout)

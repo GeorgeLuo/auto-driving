@@ -25,7 +25,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                 process = paths.automation_process.read_bytes()
                 state = paths.automation_state.read_bytes()
                 result = invoke_automa(
-                    "vehicles", "automation", "restart", "--id", VEHICLE_ID,
+                    "vehicles", "host", "restart", "--id", VEHICLE_ID,
                     "--observe-only", runtime_root=runtime_root, check=False,
                 )
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
@@ -47,7 +47,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                 for command in ("run", "restart"):
                     with self.subTest(command=command):
                         result = invoke_automa(
-                            "vehicles", "automation", command, "--id", VEHICLE_ID,
+                            "vehicles", "host", command, "--id", VEHICLE_ID,
                             runtime_root=runtime_root, check=False,
                         )
                         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)

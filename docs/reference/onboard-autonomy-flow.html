@@ -370,11 +370,11 @@
         <code>mode</code> action provides the first bounded live-control path.
       </p>
       <p class="source-line">
-        Create a named host with <code>vehicles create host --id car --provider picar --url http://piracer.local:8887</code>
+        Create a named host with <code>vehicles host create --id car --provider picar --url http://piracer.local:8887</code>
         after <code>vehicles discover --provider picar --url http://piracer.local:8887</code> lists it in
         <code>vehicles status</code>. Stage selections with <code>vehicles update &lt;step&gt;</code>,
-        deploy with <code>vehicles update host --id car --restart</code>, then use <code>vehicles automation run</code>.
-        <code>vehicles delete host --id car</code> stops the service and removes its local record.
+        deploy with <code>vehicles host update --id car --restart</code>, then use <code>vehicles host run</code>.
+        <code>vehicles host delete --id car</code> stops the service and removes its local record.
         <br>
         Source points: <code>autonomy/decision_cycle/cycle.py</code>,
         <code>autonomy/runtime/cycle_host.py</code>,
@@ -602,7 +602,7 @@
         <div>
           <h3>Recorded Cycle</h3>
           <p>Opt into a bounded recording when the full perception, observation, control, and cycle result need inspection.</p>
-          <p><code>./cli/automa vehicles automation run --id chase-sim-chaser --num-decisions 5 --record</code></p>
+          <p><code>./cli/automa vehicles host run --id chase-sim-chaser --num-decisions 5 --record</code></p>
           <p>Recorded cycle JSON reflects the actual runtime; unimplemented state steps remain <code>null</code>.</p>
         </div>
       </div>

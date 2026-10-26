@@ -154,7 +154,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(
             [line for line in lines if not line.startswith("Runtime view: ")],
             [
-                f"Automation running: {VEHICLE_ID}",
+                f"Run started on host {VEHICLE_ID}.",
                 "Perception: lane-preset (lanes)",
                 "Memory: recent",
                 "Proposal: (no plugins)",
@@ -171,7 +171,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(
             message.splitlines()[:6],
             [
-                f"Automation completed: {VEHICLE_ID}",
+                f"Run completed on host {VEHICLE_ID}.",
                 "Frames received: 3",
                 "Frames dropped before decision: 2",
                 "Decisions completed: 2",
@@ -217,7 +217,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(
             message.splitlines()[:2],
-            [f"Automation failed for {VEHICLE_ID}.", "Reason: RuntimeError: plan failed"],
+            [f"The run on host {VEHICLE_ID} failed.", "Reason: RuntimeError: plan failed"],
         )
         self.assertEqual((state["status"], state["stop_reason"]), ("error", "error"))
         self.assertEqual(state["readiness"]["blocking_layer"], "automation_worker")

@@ -22,7 +22,7 @@ class _Response(io.BytesIO):
 
 
 def _publication(frame_id="first"):
-    return {"frame": {"frame_id": frame_id, "has_image": True}}
+    return {"health": "healthy", "frame": {"frame_id": frame_id, "has_image": True}}
 
 
 def _transaction():

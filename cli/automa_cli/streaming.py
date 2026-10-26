@@ -228,7 +228,8 @@ def serve_host_viewer(*, host_url: str, timeout_s: float = 3.0) -> CommandResult
     """Serve the runtime view fed from the local host at ``host_url`` until interrupted.
 
     ``host_url`` is the host URL ``vehicles status`` shows. The view opens only
-    once the host answers, and refreshes at the cadence of a run's view.
+    once the host answers, and refreshes at the cadence of a run's view. While
+    the host is not live its pages say why.
     """
 
     hosts = [host for host in local_hosts() if host["url"]]
@@ -244,6 +245,9 @@ def serve_host_viewer(*, host_url: str, timeout_s: float = 3.0) -> CommandResult
             return CommandResult(2, f"Cannot view host {host['vehicle_id']} at {host['url']}: {view.error}")
         view.publish(publication)
         print(f"Viewing host {host['vehicle_id']} at {host['url']}", flush=True)
+        not_live = _health_error(publication)
+        if not_live is not None:
+            print(f"Not live: {not_live}", flush=True)
         print(open_view_message(view.url), flush=True)
         while True:
             started = time.monotonic()
@@ -311,7 +315,7 @@ class _ViewFeed:
             self._observation = None
             self.error = f"{type(exc).__name__}: {exc}"
             if self.server is not None:
-                self.server.perception.invalidate_latest()
+                self.server.perception.invalidate_latest(self.error)
             return None, self.error
 
     def publish(self, publication: dict[str, Any] | None) -> None:
@@ -334,8 +338,10 @@ class _ViewFeed:
                     return
                 pair = self._observation
             publication, jpeg = pair
-            if jpeg is None:
-                self.server.perception.invalidate_latest()
+            # A host whose run stopped still serves its last frame, as stale.
+            not_live = _health_error(publication)
+            if jpeg is None or not_live is not None:
+                self.server.perception.invalidate_latest(not_live)
                 self._last_capture = None
                 return
             frame = publication_to_frame_record(publication)
@@ -347,9 +353,9 @@ class _ViewFeed:
                 self._last_capture = capture
             self.error = None
         except (ConnectionError, OSError, TypeError, ValueError) as exc:
-            self.server.perception.invalidate_latest()
-            self._last_capture = None
             self.error = f"{type(exc).__name__}: {exc}"
+            self.server.perception.invalidate_latest(self.error)
+            self._last_capture = None
 
     def stop(self) -> None:
         if self.server is not None:
@@ -360,6 +366,15 @@ def _view_line(label: str, url: str | None, error: str | None, route: str = "") 
     if url:
         return f"{label}: {url.rstrip('/') + route if route else url}"
     return f"{label}: unavailable ({error})" if error else f"{label}: unavailable"
+
+
+def _health_error(publication: dict[str, Any]) -> str | None:
+    """Why the host's observation ``publication`` is not live; None while it is healthy."""
+
+    health = str(publication.get("health") or "unknown")
+    if health == "healthy":
+        return None
+    return publication.get("error") or f"The observation publication health is {health!r}."
 
 
 def _read_publication(base_url: str, *, timeout_s: float) -> tuple[dict[str, Any] | None, str | None]:
@@ -394,13 +409,9 @@ def _probe_perception(
         frames_dropped=publication.get("frames_dropped"),
         processed_count=publication.get("processed_count"),
     )
-    if health != "healthy":
-        return {
-            **probe,
-            "status": _PERCEPTION_STATUS.get(health, "error"),
-            "error": publication.get("error")
-            or f"The observation publication health is {health!r}.",
-        }
+    error = _health_error(publication)
+    if error is not None:
+        return {**probe, "status": _PERCEPTION_STATUS.get(health, "error"), "error": error}
     # The host computes the result age on its own clock.
     return _probe_latest_perception(
         probe,

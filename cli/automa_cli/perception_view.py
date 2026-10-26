@@ -17,6 +17,7 @@ PUBLICATION_SCHEMA = "automa_perception_publication_v2"
 VIEW_RECORD_NAME = "perception_view.json"
 VIEW_HTML_PATH = Path(__file__).with_name("perception_view.html")
 MAX_BUFFERED_FRAMES = 8
+NO_FRAME_ERROR = "no camera frame has been published yet"
 
 
 class PerceptionView:
@@ -24,6 +25,8 @@ class PerceptionView:
 
     def __init__(self, *, vehicle_id: str) -> None:
         self.vehicle_id = vehicle_id
+        # Why there is no latest pair; the view's routes answer with it.
+        self.unavailable_reason = NO_FRAME_ERROR
         self._lock = threading.RLock()
         self._frame_bytes: bytes | None = None
         self._frame_content_type = "application/octet-stream"
@@ -85,9 +88,10 @@ class PerceptionView:
             self.publish_frame(frame_path=frame_path, frame_record=frame_record)
             self.publish_perception(frame_record=frame_record)
 
-    def invalidate_latest(self) -> None:
-        """An unavailable publication must not leave a usable latest pair."""
+    def invalidate_latest(self, reason: str | None = None) -> None:
+        """An unavailable publication must not leave a usable latest pair; ``reason`` says why."""
         with self._lock:
+            self.unavailable_reason = reason or NO_FRAME_ERROR
             self._latest_frame = None
             self._latest_frame_id = None
             self._frame_bytes = None

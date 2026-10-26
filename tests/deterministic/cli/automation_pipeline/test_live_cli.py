@@ -12,13 +12,14 @@ import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
+from urllib.error import HTTPError
 from urllib.request import urlopen
 
 from cli.automa_cli.host_publications import fetch_observation_sample
 from cli.automa_cli.streaming import _ViewFeed, _read_publication
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import VEHICLE_ID
 from tests.shared.cli.invoke import invoke_automa
-from tests.shared.integration.live_host import LiveHostTestCase, stage_runtime as _stage
+from tests.shared.integration.live_host import LiveHostTestCase, stage_runtime as _stage, wait_until
 from tests.support.fake_hosts import closed_url
 from tests.support.runtime_fixtures import write_host_fixture
 
@@ -79,27 +80,47 @@ class LiveCommandsTests(LiveHostTestCase):
     def viewer(self, url: str):
         return invoke_automa("vehicles", "viewer", "--host-url", url, runtime_root=self.runtime_root, check=False)
 
-    def test_the_viewer_serves_the_host_at_its_status_url(self) -> None:
-        self.observe()
+    def view_once(self, url: str):
+        """The viewer's result, its view's URL, and the view's /api/latest status and body
+        after one refresh from the host, when Ctrl-C stops it."""
         opened, served = [], []
 
         def interrupt(*args):
-            # Ctrl-C after the view has refreshed from the host once.
-            with urlopen(f"{opened[0].rstrip('/')}/api/latest", timeout=5) as response:
-                served.append(json.load(response))
+            try:
+                with urlopen(f"{opened[0].rstrip('/')}/api/latest", timeout=5) as response:
+                    served.append((response.status, json.load(response)))
+            except HTTPError as exc:
+                served.append((exc.code, json.load(exc)))
             raise KeyboardInterrupt
 
         with patch("cli.automa_cli.streaming.open_view_message",
                    side_effect=lambda url: opened.append(url) or f"Browser opened: {url}"), \
              patch("cli.automa_cli.streaming._pause_s", side_effect=interrupt):
-            result = self.viewer(self.host.base_url + "/")
-
+            result = self.viewer(url)
         self.assertEqual(result.returncode, 130, result.stdout + result.stderr)
+        return result, opened[0], served[0]
+
+    def test_the_viewer_serves_the_host_at_its_status_url(self) -> None:
+        self.observe()
+        result, view_url, (status, latest) = self.view_once(self.host.base_url + "/")
+
         self.assertEqual(result.stdout,
-                         f"Viewing host {VEHICLE_ID} at {self.host.base_url}\nBrowser opened: {opened[0]}\n")
-        self.assertEqual(served[0]["overlay"]["status"], "current")
+                         f"Viewing host {VEHICLE_ID} at {self.host.base_url}\nBrowser opened: {view_url}\n")
+        self.assertEqual((status, latest["overlay"]["status"]), (200, "current"))
         with self.assertRaises(OSError):
-            urlopen(opened[0], timeout=1)
+            urlopen(view_url, timeout=1)
+
+    def test_the_viewer_says_why_a_host_whose_run_stopped_is_not_live(self) -> None:
+        self.observe()
+        self.client.stop()
+        wait_until(lambda: _read_publication(self.host.base_url, timeout_s=3.0)[0]["health"] == "stale",
+                   message="the stopped host's last frame never went stale")
+        result, view_url, served = self.view_once(self.host.base_url)
+
+        reason = "The observation publication health is 'stale'."
+        self.assertEqual(result.stdout, f"Viewing host {VEHICLE_ID} at {self.host.base_url}\n"
+                                        f"Not live: {reason}\nBrowser opened: {view_url}\n")
+        self.assertEqual(served, (503, {"error": reason}))
 
     def test_the_viewer_refuses_a_url_without_an_answering_host(self) -> None:
         unknown = self.viewer("http://localhost:5050")

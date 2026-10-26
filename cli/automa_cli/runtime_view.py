@@ -351,7 +351,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             if body is None:
                 self._send_json(
                     503,
-                    {"error": "no camera frame has been published yet"},
+                    {"error": self.server.publisher.perception.unavailable_reason},
                     include_body=include_body,
                 )
                 return
@@ -375,7 +375,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
                     return
                 self._send_json(
                     503,
-                    {"error": "no camera frame has been published yet"},
+                    {"error": self.server.publisher.perception.unavailable_reason},
                     include_body=include_body,
                 )
                 return

@@ -95,7 +95,9 @@ To look through a host, pass the URL on its last status line to `vehicles viewer
 
 It serves the runtime viewer fed from that host (Perception, Memory, Action and
 Plugins) and opens it in the browser until Ctrl-C. It exits 2 when no host has
-that URL or the host does not answer.
+that URL or the host does not answer. While the host is not live, for example
+after its run stopped, it prints `Not live:` with the reason, and the Perception
+and Memory pages show that reason instead of a live frame.
 
 Status always looks at the default simulator: `CHASE_UI_WS_URL` when set,
 otherwise `http://localhost:5050`. To look at another simulator or a PiCar,

@@ -113,7 +113,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
             def start(self, configuration, *, record=False):
                 if record:
                     part.recording_root = root / "host-runs"
-                    part.vehicle_id = "picar-test"
+                    part.host_name = "picar-test"
                     part.recording_root.mkdir(parents=True, exist_ok=True)
                 # A bound of 3 would end the session inside the start, and a
                 # recorded terminal session is drained before the monitor reads
@@ -164,7 +164,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 ):
                     started = time.monotonic()
                     code, message = runtime_monitor.monitor_runtime(
-                        vehicle_id="picar-test", base_url="http://picar.invalid", automation_dir=root,
+                        host_name="picar-test", base_url="http://picar.invalid", automation_dir=root,
                         selections={"perception": {"preset": "gated", "plugins": [], "activation": "perception/active.json"}},
                         decision={"generation_id": "test", "steps": {}, "published": False},
                         configuration=RunConfiguration(mode="observe_only", num_decisions=3),

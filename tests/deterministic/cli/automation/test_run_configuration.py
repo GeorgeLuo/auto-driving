@@ -11,9 +11,10 @@ from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.app import main
 from cli.automa_cli.automation import (
     CommandResult,
+    _automation_command_matches_host,
     _run_configuration,
-    run_vehicle_automation,
-    start_vehicle_automation_background,
+    run_host_automation,
+    start_host_automation_background,
 )
 
 
@@ -28,13 +29,21 @@ class _Host:
 class _HostClient:
     def __init__(self, _url: str, timeout_s: float = 0.1) -> None:
         del timeout_s
-        self.host = _Host({"ok": True, "vehicle_id": "chase-sim-chaser"})
+        self.host = _Host({"ok": True, "host_name": "chase-sim-chaser"})
 
     def host_status(self) -> dict:
         return self.host.host_status()
 
 
 class RunConfigurationTests(unittest.TestCase):
+    def test_process_recognition_requires_top_level_host_run_and_exact_host_name(self):
+        self.assertTrue(_automation_command_matches_host("python /tmp/cli/automa hosts run --name car", "car"))
+        self.assertTrue(_automation_command_matches_host("/tmp/cli/automa hosts run --name=car", "car"))
+        self.assertFalse(_automation_command_matches_host("python /tmp/cli/automa host run --name car", "car"))
+        self.assertFalse(_automation_command_matches_host("python /tmp/cli/automa vehicles host run --name car", "car"))
+        self.assertFalse(_automation_command_matches_host("python /tmp/cli/automa hosts run --name car-2", "car"))
+        self.assertFalse(_automation_command_matches_host("python /tmp/other hosts run --name car", "car"))
+
     def test_unbounded_overrides_counts_in_both_modes(self):
         for take_control in (True, False):
             for count in (0, 3):
@@ -67,50 +76,50 @@ class RunConfigurationTests(unittest.TestCase):
 
     def test_cli_dispatches_opt_in_to_foreground_background_and_restart(self):
         for verb, extra, target in (
-            ("run", [], "start_vehicle_automation_background"),
-            ("run", ["--foreground"], "run_vehicle_automation"),
-            ("restart", [], "restart_vehicle_automation"),
+            ("run", [], "start_host_automation_background"),
+            ("run", ["--foreground"], "run_host_automation"),
+            ("restart", [], "restart_host_automation"),
         ):
             for flags in ([], ["--unbounded"]):
                 with (
                     self.subTest(verb=verb, extra=extra, flags=flags),
                     patch(f"cli.automa_cli.app.{target}", return_value=CommandResult(0, "ok")) as run,
-                    patch("cli.automa_cli.app.record_vehicle_automation_terminal_result"),
+                    patch("cli.automa_cli.app.record_host_automation_terminal_result"),
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
-                    code = main(["vehicles", "host", verb, "--id", "picar-test",
+                    code = main(["hosts", verb, "--name", "picar-test",
                                  "--num-decisions", "3", *flags, *extra])
                     self.assertEqual(code, 0)
                     self.assertEqual(run.call_args.kwargs["unbounded"], bool(flags))
                     self.assertEqual(run.call_args.kwargs["num_decisions"], 3)
-                    if target != "restart_vehicle_automation":
+                    if target != "restart_host_automation":
                         self.assertIsNone(run.call_args.kwargs["host_url"])
 
     def test_cli_dispatches_host_url_without_an_id(self):
         for extra, target in (
-            ([], "start_vehicle_automation_background"),
-            (["--foreground"], "run_vehicle_automation"),
+            ([], "start_host_automation_background"),
+            (["--foreground"], "run_host_automation"),
         ):
             with (
                 self.subTest(extra=extra),
                 patch(f"cli.automa_cli.app.{target}", return_value=CommandResult(0, "ok")) as run,
-                patch("cli.automa_cli.app.record_vehicle_automation_terminal_result"),
+                patch("cli.automa_cli.app.record_host_automation_terminal_result"),
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 code = main([
-                    "vehicles", "host", "run",
+                    "hosts", "run",
                     "--host-url", "http://127.0.0.1:54355",
                     "--num-decisions", "1", *extra,
                 ])
                 self.assertEqual(code, 0)
-                self.assertIsNone(run.call_args.kwargs["vehicle_id"])
+                self.assertIsNone(run.call_args.kwargs["host_name"])
                 self.assertEqual(run.call_args.kwargs["host_url"], "http://127.0.0.1:54355")
 
     def test_cli_rejects_both_or_neither_target(self):
         for argv in (
-            ["vehicles", "host", "run", "--num-decisions", "1"],
+            ["hosts", "run", "--num-decisions", "1"],
             [
-                "vehicles", "host", "run", "--id", "chase-sim-chaser",
+                "hosts", "run", "--name", "chase-sim-chaser",
                 "--host-url", "http://127.0.0.1:54355", "--num-decisions", "1",
             ],
         ):
@@ -122,7 +131,7 @@ class RunConfigurationTests(unittest.TestCase):
                 main(argv)
             self.assertEqual(raised.exception.code, 2)
 
-    def test_host_url_runs_that_host_and_reads_its_vehicle_id(self):
+    def test_host_url_runs_that_host_and_reads_its_host_name(self):
         with (
             tempfile.TemporaryDirectory() as tmp,
             patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", Path(tmp)),
@@ -130,12 +139,12 @@ class RunConfigurationTests(unittest.TestCase):
             patch("cli.automa_cli.automation.RuntimeClient", _HostClient),
             patch("cli.automa_cli.automation.monitor_runtime", return_value=(0, "ran")) as monitor,
         ):
-            result = run_vehicle_automation(
+            result = run_host_automation(
                 host_url="http://127.0.0.1:54355/", num_decisions=1, take_control=True,
             )
         self.assertEqual(result.exit_code, 0, result.message)
         started.assert_not_called()
-        self.assertEqual(monitor.call_args.kwargs["vehicle_id"], "chase-sim-chaser")
+        self.assertEqual(monitor.call_args.kwargs["host_name"], "chase-sim-chaser")
         self.assertEqual(monitor.call_args.kwargs["base_url"], "http://127.0.0.1:54355")
 
     def test_host_url_without_a_host_does_not_start_one(self):
@@ -144,7 +153,7 @@ class RunConfigurationTests(unittest.TestCase):
                 self.subTest(host_url=host_url),
                 patch("cli.automa_cli.automation.runtime_base_url", side_effect=AssertionError("started a host")) as started,
             ):
-                result = run_vehicle_automation(host_url=host_url, num_decisions=1, take_control=True)
+                result = run_host_automation(host_url=host_url, num_decisions=1, take_control=True)
             self.assertEqual(result.exit_code, 2, result.message)
             started.assert_not_called()
 
@@ -169,7 +178,7 @@ class RunConfigurationTests(unittest.TestCase):
                 patch("cli.automa_cli.automation.RuntimeClient", client),
                 patch("cli.automa_cli.automation.runtime_base_url", side_effect=AssertionError("started a host")) as started,
             ):
-                result = run_vehicle_automation(
+                result = run_host_automation(
                     host_url="http://127.0.0.1:54355", num_decisions=1, take_control=True,
                 )
             self.assertEqual(result.exit_code, 2, result.message)
@@ -187,11 +196,11 @@ class RunConfigurationTests(unittest.TestCase):
             ),
         ):
             popen.return_value.pid = 99
-            result = start_vehicle_automation_background(
+            result = start_host_automation_background(
                 host_url="http://127.0.0.1:54355", num_decisions=1, take_control=True,
             )
         self.assertEqual(result.exit_code, 0, result.message)
         command = popen.call_args.args[0]
         self.assertIn("--host-url", command)
         self.assertIn("http://127.0.0.1:54355", command)
-        self.assertNotIn("--id", command)
+        self.assertNotIn("--name", command)

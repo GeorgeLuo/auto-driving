@@ -27,7 +27,7 @@ from tests.support.fake_metrics_ui import fake_metrics_ui
 class ViewerWithoutHostTests(unittest.TestCase):
     def setUp(self) -> None:
         self.server = RuntimeViewServer(
-            vehicle_id="viewer",
+            host_name="viewer",
             automation_dir=None,
             port=0,
             connected=False,
@@ -74,7 +74,7 @@ class ViewerWithoutHostTests(unittest.TestCase):
         self.assertEqual(caught.exception.code, 404)
 
     def test_only_created_hosts_are_listed_with_their_status_state(self) -> None:
-        runner = {"kind": "vehicle-host", "vehicle_id": "chase-sim-runner", "url": closed_url(), "pid": os.getpid()}
+        runner = {"kind": "host", "host_name": "chase-sim-runner", "url": closed_url(), "pid": os.getpid()}
         with (
             tempfile.TemporaryDirectory() as tmp,
             fake_metrics_ui() as simulator,
@@ -86,7 +86,7 @@ class ViewerWithoutHostTests(unittest.TestCase):
             payload = json.loads(_read_text(f"{self.server.url}api/hosts"))
 
         self.assertEqual(payload["hosts"], [
-            {"vehicle_id": "chase-sim-chaser", "state": "not started"},
+            {"host_name": "chase-sim-chaser", "state": "not started"},
         ])
 
     def test_viewer_publishes_no_discovery_record(self) -> None:
@@ -105,7 +105,7 @@ class ViewerWithoutHostTests(unittest.TestCase):
 
 class ConnectedSplashTests(unittest.TestCase):
     def test_splash_links_runtime_pages_while_connected(self) -> None:
-        server = RuntimeViewServer(vehicle_id="test-vehicle", automation_dir=None, port=0).start()
+        server = RuntimeViewServer(host_name="test-vehicle", automation_dir=None, port=0).start()
         self.addCleanup(server.stop)
 
         html = _read_text(server.url)

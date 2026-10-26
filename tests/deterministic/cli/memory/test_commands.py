@@ -19,10 +19,9 @@ class MemoryCommandTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")
             update = invoke_automa(
-                "vehicles",
-                "update",
+                "hosts", "stage",
                 "memory",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 "--plugin",
                 "bounded_evidence",
@@ -30,17 +29,16 @@ class MemoryCommandTests(unittest.TestCase):
                 runtime_root=runtime_root,
             )
             info = invoke_automa(
-                "vehicles",
-                "info",
+                "hosts", "info",
                 "memory",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 "--json",
                 runtime_root=runtime_root,
             )
 
             update_payload = json.loads(update.stdout)
-            self.assertEqual(update_payload["schema"], "vehicle_step_update_v0")
+            self.assertEqual(update_payload["schema"], "host_step_update")
             self.assertEqual(update_payload["plugins"], ["bounded_evidence"])
             self.assertEqual(update_payload["manifest"]["step"], "memory")
             self.assertEqual(
@@ -60,7 +58,7 @@ class MemoryCommandTests(unittest.TestCase):
             self.assertTrue(activation_path.is_file())
 
             info_payload = json.loads(info.stdout)
-            self.assertEqual(info_payload["schema"], "vehicle_memory_info_v1")
+            self.assertEqual(info_payload["schema"], "host_memory_info")
             self.assertNotIn("lifecycle", info_payload)
             self.assertEqual(info_payload["memory_schema"]["schema"], "memory_schema_v1")
             self.assertEqual(
@@ -77,13 +75,13 @@ class MemoryCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")
-            invoke_automa("vehicles", "update", "memory", "--id", "chase-sim-chaser", runtime_root=runtime_root)
+            invoke_automa("hosts", "stage", "memory", "--name", "chase-sim-chaser", runtime_root=runtime_root)
             path = runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json"
             activation = json.loads(path.read_text())
             activation["plugin_specs"]["missing"] = "implementations.memory.not_installed:Plugin"
             path.write_text(json.dumps(activation))
             info = invoke_automa(
-                "vehicles", "info", "memory", "--id", "chase-sim-chaser", "--json",
+                "hosts", "info", "memory", "--name", "chase-sim-chaser", "--json",
                 runtime_root=runtime_root,
             )
             expected = ["bounded_evidence", "missing"]
@@ -97,16 +95,15 @@ class MemoryCommandTests(unittest.TestCase):
             presets = {}
             for step in SELECTABLE_STEPS:
                 updated = invoke_automa(
-                    "vehicles",
-                    "update",
+                    "hosts", "stage",
                     step,
-                    "--id",
+                    "--name",
                     "chase-sim-chaser",
                     runtime_root=runtime_root,
                     check=False,
                 )
                 self.assertIn(f"Staged {step}: chase-sim-chaser", updated.stdout)
-                info = ("vehicles", "info", step, "--id", "chase-sim-chaser")
+                info = ("hosts", "info", step, "--name", "chase-sim-chaser")
                 payload = json.loads(
                     invoke_automa(*info, "--json", runtime_root=runtime_root).stdout
                 )
@@ -150,17 +147,16 @@ class MemoryCommandTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")
             result = invoke_automa(
-                "vehicles",
-                "info",
+                "hosts", "info",
                 "memory",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 runtime_root=runtime_root,
                 check=False,
             )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("No active memory activation found", result.stdout)
-        self.assertIn("vehicles update memory", result.stdout)
+        self.assertIn("hosts stage memory", result.stdout)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,7 @@
 
 ``perception_runs`` holds perception inspect and the sensor-frame run.
 Memory inspect is that inspect. Memory has no separate run entry. Reset is
-the other ``vehicles memory`` command, and perception has no reset command,
+the other ``hosts memory`` command, and perception has no reset command,
 so reset lives here.
 """
 
@@ -33,7 +33,7 @@ INSPECT_ROOT = Path(
     os.environ.get("AUTOMA_MEMORY_INSPECT_ROOT", ROOT / "runtime" / "memory-inspections")
 )
 MEMORY_INSPECT_SCHEMA = "memory_inspect_v1"
-MEMORY_RESET_SCHEMA = "vehicle_memory_reset_v1"
+MEMORY_RESET_SCHEMA = "host_memory_reset"
 
 
 @dataclass(frozen=True)
@@ -178,13 +178,13 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def reset_vehicle_memory(
+def reset_host_memory(
     *,
-    vehicle_id: str,
+    host_name: str,
     timeout_s: float = 3.0,
     json_output: bool = False,
 ) -> CommandResult:
-    """Reset live memory on the vehicle's runtime host.
+    """Reset live memory on the host.
 
     The host answers with the memory step's status under the same lock as
     its cycles, before any later frame refills memory. The reset is confirmed
@@ -194,27 +194,27 @@ def reset_vehicle_memory(
     Memory map.
     """
 
-    before = probe_live_memory(vehicle_id=vehicle_id, timeout_s=timeout_s)
+    before = probe_live_memory(host_name=host_name, timeout_s=timeout_s)
     if before.get("status") != "live":
         return CommandResult(
             2,
             "\n".join(
                 [
-                    f"Cannot reset memory for {vehicle_id!r}: live memory is {before.get('status')!r}.",
+                    f"Cannot reset memory for {host_name!r}: live memory is {before.get('status')!r}.",
                     str(before.get("error") or "The runtime host reported no memory step."),
                 ]
             ),
         )
 
     try:
-        base_url = runtime_base_url(vehicle_id)
+        base_url = runtime_base_url(host_name)
         reset_payload = RuntimeClient(base_url, timeout_s=timeout_s).reset_memory()
     except RuntimeError as exc:
-        return CommandResult(2, f"Memory reset failed for {vehicle_id}: {exc}")
+        return CommandResult(2, f"Memory reset failed for {host_name}: {exc}")
 
     payload: dict[str, Any] = {
         "schema": MEMORY_RESET_SCHEMA,
-        "vehicle_id": vehicle_id,
+        "host_name": host_name,
         "ok": bool(reset_payload.get("ok")),
         "reset": reset_payload,
         "before": before,
@@ -226,7 +226,7 @@ def reset_vehicle_memory(
             2,
             "\n".join(
                 [
-                    f"Memory reset failed: {vehicle_id}",
+                    f"Memory reset failed: {host_name}",
                     str(reset_payload.get("error") or reset_payload.get("status") or "unknown error"),
                 ]
             ),
@@ -249,7 +249,7 @@ def reset_vehicle_memory(
     if json_output:
         return CommandResult(0 if confirmed else 2, json.dumps(payload, indent=2, sort_keys=True))
     lines = [
-        f"Reset memory: {vehicle_id}",
+        f"Reset memory: {host_name}",
         f"Plugins: {', '.join(after.get('plugin_ids') or before.get('plugin_ids') or []) or '—'}",
     ]
     for plugin_id in [*after_plugins, *(key for key in before_plugins if key not in after_plugins)]:

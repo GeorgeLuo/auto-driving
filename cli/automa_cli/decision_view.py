@@ -1,7 +1,7 @@
 """Read-only live projection of accepted vehicle reports.
 
 The runtime server owns this short-lived view. It receives one
-``vehicle_report_v0`` and the already-published capture bytes for that frame,
+``host_report`` and the already-published capture bytes for that frame,
 retaining a small number of immutable transactions. Chase and PiCar use this
 same intake. It never runs a decision step, reads an image path, or follows a
 URL supplied by a client.
@@ -19,12 +19,12 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qs, urlencode
 
-from autonomy.runtime.report import VehicleReport, diagnostic_ceiling
+from autonomy.runtime.report import HostReport, diagnostic_ceiling
 from .host_publications import host_telemetry_failure
 from .memory_report import evidence_records
 
 
-DECISION_VIEW_SCHEMA = "automa_live_decision_view_v1"
+DECISION_VIEW_SCHEMA = "automa_live_decision_view"
 DECISION_VIEW_ID = "decision-combined-v0"
 MAX_RETAINED_TRANSACTIONS = 8
 
@@ -199,7 +199,7 @@ def _evidence_projection(
 
 def decision_view_identity(
     *,
-    vehicle_id: str,
+    host_name: str,
     source_id: str,
     run_id: str,
     producer_generation_id: str,
@@ -207,7 +207,7 @@ def decision_view_identity(
     """Identify one runtime host session's decision producer."""
 
     for field, value in (
-        ("vehicle_id", vehicle_id),
+        ("host_name", host_name),
         ("source_id", source_id),
         ("run_id", run_id),
         ("producer_generation_id", producer_generation_id),
@@ -215,7 +215,7 @@ def decision_view_identity(
         if type(value) is not str or not value:
             raise ValueError(f"decision view {field} is invalid")
     return {
-        "vehicle_id": vehicle_id,
+        "host_name": host_name,
         "source_id": source_id,
         "run_id": run_id,
         "producer_generation_id": producer_generation_id,
@@ -223,7 +223,7 @@ def decision_view_identity(
 
 
 def generation_id(identity: dict[str, Any]) -> str:
-    if set(identity) != {"vehicle_id", "source_id", "run_id", "producer_generation_id"}:
+    if set(identity) != {"host_name", "source_id", "run_id", "producer_generation_id"}:
         raise ValueError("decision view identity has an unexpected key set")
     return _sha256_json(identity)
 
@@ -266,8 +266,8 @@ def parse_image_query(query: str) -> tuple[str, str]:
 class DecisionView:
     """One runtime generation's bounded decision/image transactions."""
 
-    def __init__(self, *, vehicle_id: str, identity: dict[str, Any] | None = None) -> None:
-        self._vehicle_id = vehicle_id
+    def __init__(self, *, host_name: str, identity: dict[str, Any] | None = None) -> None:
+        self._host_name = host_name
         self.identity: dict[str, Any] | None = None
         self.generation_id: str | None = None
         self._lock = threading.Lock()
@@ -343,11 +343,11 @@ class DecisionView:
             self.invalidate_latest()
             return False
         try:
-            parsed = VehicleReport.from_dict(report)
+            parsed = HostReport.from_dict(report)
             diagnostic_ceiling(parsed.values)
             identity = self.identity
             if (
-                parsed.vehicle_id != identity["vehicle_id"]
+                parsed.host_name != identity["host_name"]
                 or parsed.run_id != identity["run_id"]
                 or parsed.generation_id != identity["producer_generation_id"]
                 or parsed.values.get("source_id") != identity["source_id"]

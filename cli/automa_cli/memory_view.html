@@ -511,7 +511,7 @@
       const steps = latest?.cycle?.timing?.steps;
       const memoryTiming = Array.isArray(steps) ? steps.find((step) => step?.step === "memory") : null;
       const fingerprint = [
-        latest?.vehicle_id || "",
+        latest?.host_name || "",
         latest?.memory ? "report" : "absent",
         plugin?.plugin_id || "",
         publisher || "",
@@ -525,7 +525,7 @@
       if (fingerprint === lastMetricsFingerprint) return;
       lastMetricsFingerprint = fingerprint;
 
-      vehicleEl.textContent = latest?.vehicle_id || "unknown vehicle";
+      vehicleEl.textContent = latest?.host_name || "unknown host";
       ledgerMetrics.replaceChildren();
       appendMetric(ledgerMetrics, "Plugin", plugin?.plugin_id || (latest?.memory ? "pick a plugin" : "—"));
       appendMetric(ledgerMetrics, "Health", state?.health || (plugin ? "no health" : "absent"));

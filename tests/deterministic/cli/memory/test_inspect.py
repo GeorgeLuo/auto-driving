@@ -117,7 +117,7 @@ class MemoryInspectTests(unittest.TestCase):
         (run / "report.json").write_text(
             json.dumps(
                 {
-                    "schema": "perception_inspect_v0",
+                    "schema": "perception_inspect",
                     "frames": [
                         {"image_path": f"frame_{index}.png", "timestamp_ms": 5000 + 400 * index}
                         for index in range(3)
@@ -195,14 +195,14 @@ class MemoryInspectTests(unittest.TestCase):
         self.assertFalse(self.root.exists())
 
     def test_help_lists_inspect_and_not_replay(self) -> None:
-        listing = invoke_automa("vehicles", "memory", "help").stdout
+        listing = invoke_automa("hosts", "memory", "help").stdout
         self.assertIn("inspect", listing)
         for removed in ("replay", "enable", "disable"):
             self.assertNotIn(removed, listing)
-        flags = invoke_automa("vehicles", "memory", "inspect", "--help").stdout
+        flags = invoke_automa("hosts", "memory", "inspect", "--help").stdout
         for flag in ("--preset", "--plugin", "--record", "--json"):
             self.assertIn(flag, flags)
-        for live in ("--id", "--frames", "--interval-s", "--timeout-s"):
+        for live in ("--name", "--frames", "--interval-s", "--timeout-s"):
             self.assertNotIn(live, flags)
 
 

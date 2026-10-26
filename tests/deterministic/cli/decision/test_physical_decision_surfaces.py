@@ -36,14 +36,14 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
     def test_decision_adapter_never_writes_perception(self) -> None:
         now_ms = int(time.time() * 1000)
         normalized = accept_decision_publication(
-            self._physical_publication(published_at_ms=now_ms), vehicle_id="piracer", now_ms=now_ms,
+            self._physical_publication(published_at_ms=now_ms), host_name="piracer", now_ms=now_ms,
         )
         server = RuntimeViewServer(
-            vehicle_id="piracer", automation_dir=self.runtime_root / "view",
+            host_name="piracer", automation_dir=self.runtime_root / "view",
             run_id=normalized["run_id"], decision_identity=_provider_identity(normalized),
         )
         adapter = DecisionViewAdapter(
-            vehicle_id="piracer", base_url="http://host.invalid", view_server=server,
+            host_name="piracer", base_url="http://host.invalid", view_server=server,
             timeout_s=0.1,
         )
         with patch("cli.automa_cli.decision_live.read_host_telemetry_panel", return_value={}), \
@@ -61,7 +61,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         publication = self._physical_publication(published_at_ms=now_ms)
         accepted = accept_decision_publication(
             publication,
-            vehicle_id="piracer",
+            host_name="piracer",
             now_ms=now_ms,
         )
         self.assertEqual(accepted["source_id"], "donkeycar:piracer")
@@ -77,7 +77,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                     **deepcopy(publication),
                     "decision": {
                         **deepcopy(publication["decision"]),
-                        "vehicle_id": "other-vehicle",
+                        "host_name": "other-vehicle",
                     },
                 },
             ),
@@ -110,7 +110,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             ) as raised:
                 accept_decision_publication(
                     candidate,
-                    vehicle_id="piracer",
+                    host_name="piracer",
                     now_ms=now_ms,
                 )
             self.assertEqual(raised.exception.error, "decision_publication_unavailable")
@@ -120,11 +120,11 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         now_ms = int(time.time() * 1000)
         normalized = accept_decision_publication(
             self._physical_publication(published_at_ms=now_ms),
-            vehicle_id="piracer",
+            host_name="piracer",
             now_ms=now_ms,
         )
         server = RuntimeViewServer(
-            vehicle_id="piracer",
+            host_name="piracer",
             automation_dir=self.runtime_root / "piracer" / "runtime_view",
             port=0,
             run_id=normalized["run_id"],
@@ -172,11 +172,11 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         now_ms = int(time.time() * 1000)
         normalized = accept_decision_publication(
             self._physical_publication(published_at_ms=now_ms),
-            vehicle_id="piracer",
+            host_name="piracer",
             now_ms=now_ms,
         )
         server = RuntimeViewServer(
-            vehicle_id="piracer",
+            host_name="piracer",
             automation_dir=self.runtime_root / "piracer" / "runtime_view",
             port=0,
             run_id=normalized["run_id"],
@@ -191,7 +191,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             return_value=(normalized, (image_buffer.getvalue(), "image/jpeg")),
         ):
             adapter = DecisionViewAdapter(
-                vehicle_id="piracer",
+                host_name="piracer",
                 base_url="http://piracer.invalid:8887",
                 view_server=server,
                 timeout_s=0.1,
@@ -215,12 +215,12 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertIn(f'href="{decision_link}"', memory_page)
 
     def test_physical_source_to_public_cli_http_fixture_and_expiry(self) -> None:
-        vehicle_id = "piracer-fixture"
+        host_name = "piracer-fixture"
         steps = packaged_decision_steps()
         part = AutonomyPilotPart(
             host=create_host(steps=decision_steps(activations_from_payloads(steps))),
-            vehicle_id=vehicle_id,
-            source_id=f"donkeycar:{vehicle_id}",
+            host_name=host_name,
+            source_id=f"donkeycar:{host_name}",
             decision_activations=steps,
             generation_id=packaged_identity()["generation_id"],
             run_id="donkey-run-http-fixture",
@@ -284,26 +284,26 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         thread.start()
         base_url = f"http://127.0.0.1:{server.server_port}"
         from tests.support.runtime_fixtures import write_host_fixture
-        write_host_fixture(self.runtime_root, vehicle_id, provider="picar", url=base_url)
+        write_host_fixture(self.runtime_root, host_name, provider="picar", url=base_url)
         # The CLI addresses a PiCar by the connection its staging recorded.
         proposal = packaged_activation("proposal")
         write_step_activation(
-            step_activation_path(controller_bundle_paths(self.runtime_root / vehicle_id)["runtime_dir"], "proposal"),
+            step_activation_path(controller_bundle_paths(self.runtime_root / host_name)["runtime_dir"], "proposal"),
             replace_metadata(proposal, {
-                **proposal.metadata, "vehicle_id": vehicle_id, "provider": "picar",
+                **proposal.metadata, "host_name": host_name, "provider": "picar",
                 "runtime": {"connection": {"base_url": base_url}},
             }),
         )
         try:
             env = {}
             json_result = invoke_automa(
-                "vehicles", "stream", "action", "--id", vehicle_id, "--once", "--json",
+                "hosts", "stream", "action", "--name", host_name, "--once", "--json",
                 runtime_root=self.runtime_root,
                 extra_env=env,
             )
             payload = json.loads(json_result.stdout)
-            self.assertEqual(payload["schema"], "vehicle_action_stream_v1")
-            self.assertEqual(payload["vehicle_id"], vehicle_id)
+            self.assertEqual(payload["schema"], "host_action_stream")
+            self.assertEqual(payload["host_name"], host_name)
             self.assertEqual(payload["run_id"], "donkey-run-http-fixture")
             self.assertEqual(payload["plugins"], steps["action"]["plugins"])
             authority = payload["record"]["authority"]
@@ -314,17 +314,17 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             self.assertEqual([entry["step"] for entry in payload["timing"]["steps"]], list(STEPS))
 
             text_result = invoke_automa(
-                "vehicles", "stream", "action", "--id", vehicle_id, "--once",
+                "hosts", "stream", "action", "--name", host_name, "--once",
                 runtime_root=self.runtime_root,
                 extra_env=env,
             )
-            self.assertIn(f"Action stream: {vehicle_id}", text_result.stdout)
+            self.assertIn(f"Action stream: {host_name}", text_result.stdout)
             self.assertIn("Authorized as proposed: false", text_result.stdout)
             self.assertRegex(text_result.stdout, r"Timing: action \d+\.\d{3} ms \(.+\); cycle \d+\.\d{3} ms")
 
             fixture_state["force_expired"] = True
             expired = invoke_automa(
-                "vehicles", "stream", "action", "--id", vehicle_id, "--once", "--json",
+                "hosts", "stream", "action", "--name", host_name, "--once", "--json",
                 runtime_root=self.runtime_root,
                 extra_env=env,
                 check=False,

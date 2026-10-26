@@ -45,12 +45,12 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             write_host_fixture(root, "chase-sim-chaser", url=ws_url)
             # Staging builds the controller release the car's runtime host runs.
             invoke_automa(
-                "vehicles", "update", "perception", "--id", "chase-sim-chaser",
+                "hosts", "stage", "perception", "--name", "chase-sim-chaser",
                 "--plugin", "frame", runtime_root=root, extra_env=env,
             )
             try:
                 run = run_automa(
-                    "vehicles", "host", "run", "--id", "chase-sim-chaser",
+                    "hosts", "run", "--name", "chase-sim-chaser",
                     "--observe-only", "--num-decisions", "3",
                     "--foreground", runtime_root=root, extra_env=env,
                 )
@@ -73,13 +73,13 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             vehicle = "chase-sim-chaser"
             env = {"CHASE_UI_WS_URL": ws_url}
             write_host_fixture(root, "chase-sim-chaser", url=ws_url)
-            run_automa("vehicles", "update", "perception", "--id", vehicle,
+            run_automa("hosts", "stage", "perception", "--name", vehicle,
                        "--plugin", "frame", runtime_root=root, extra_env=env)
             automation = root / vehicle / "bundle/runtime/automation"
             try:
                 for verb in ("run", "restart"):
                     run = run_automa(
-                        "vehicles", "host", verb, "--id", vehicle,
+                        "hosts", verb, "--name", vehicle,
                         "--unbounded", "--num-decisions", "1",
                         runtime_root=root, extra_env=env,
                     )
@@ -100,7 +100,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
                     state = json.loads((automation / "state.json").read_text())
                     self.assertEqual(state["num_decisions"], 0)
                     self.assertEqual(state["action_policy"], "autonomy")
-                run_automa("vehicles", "host", "stop", "--id", vehicle,
+                run_automa("hosts", "stop", "--name", vehicle,
                            runtime_root=root, extra_env=env)
                 session = client.status()["session"]
                 self.assertEqual(session["status"], "stopped")
@@ -110,7 +110,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
                 self.assertEqual(state["status"], "stopped")
                 self.assertGreaterEqual(state["processed_count"], 3)
             finally:
-                run_automa("vehicles", "host", "stop", "--id", vehicle,
+                run_automa("hosts", "stop", "--name", vehicle,
                            runtime_root=root, extra_env=env, check=False)
                 with patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", root):
                     stop_chase_host(vehicle)

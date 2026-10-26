@@ -30,7 +30,7 @@ from tests.support.offline.sitecustomize import offline_getaddrinfo
 # run in this process sees a test's value only if the name is rebound.
 IMPORT_TIME_ENV = {
     "AUTOMA_RUNTIME_ROOT": (
-        (app, "VEHICLES_RUNTIME_ROOT"),
+        (app, "HOSTS_RUNTIME_ROOT"),
         (deploy, "RUNTIME_ROOT"),
         (memory, "RUNTIME_ROOT"),
         (perception, "RUNTIME_ROOT"),

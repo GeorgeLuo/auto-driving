@@ -90,9 +90,9 @@ def recorded_release(activation: StepActivation) -> tuple[str, str] | None:
     bundle = metadata.get("controller_bundle")
     release = bundle.get("release") if isinstance(bundle, dict) else None
     tree_sha256 = release.get("tree_sha256") if isinstance(release, dict) else None
-    vehicle_id = metadata.get("vehicle_id")
-    if isinstance(tree_sha256, str) and isinstance(vehicle_id, str):
-        return vehicle_id, tree_sha256
+    host_name = metadata.get("host_name")
+    if isinstance(tree_sha256, str) and isinstance(host_name, str):
+        return host_name, tree_sha256
     return None
 
 
@@ -107,8 +107,8 @@ def recorded_runner(activation: StepActivation) -> Any:
     release = recorded_release(activation)
     if release is None:
         return load_runner(activation)
-    vehicle_id, tree_sha256 = release
-    code_dir, _ = release_code_dir(vehicle_id, tree_sha256=tree_sha256)
+    host_name, tree_sha256 = release
+    code_dir, _ = release_code_dir(host_name, tree_sha256=tree_sha256)
     return load_runner(activation, source=replace(code_source_from_activation(activation), bundle_root=code_dir))
 
 

@@ -60,22 +60,22 @@ def inspect_root(step: str) -> Path:
 # ---------------------------------------------------------------------------
 
 
-def get_vehicle_step_info(
+def get_host_step_info(
     step: str,
     *,
-    vehicle_id: str,
+    host_name: str,
     json_output: bool = False,
     include_live: bool = True,
     timeout_s: float = 3.0,
 ) -> CommandResult:
     """The step's staged plugins and schema, the decision it belongs to, and its live runner."""
 
-    bundle = bundle_paths(vehicle_id)
-    staged, error = staged_step_info(bundle, vehicle_id, step)
+    bundle = bundle_paths(host_name)
+    staged, error = staged_step_info(bundle, host_name, step)
     if error is not None:
         return CommandResult(2, error)
     try:
-        _require_valid_activations(bundle, vehicle_id=vehicle_id, steps=DECISION_STEPS)
+        _require_valid_activations(bundle, host_name=host_name, steps=DECISION_STEPS)
     except DecisionSurfaceError as exc:
         return CommandResult(exc.exit_code, exc.message_text)
     identity = decision_identity(bundle)
@@ -84,8 +84,8 @@ def get_vehicle_step_info(
         for name in DECISION_STEPS
     }
     payload: dict[str, Any] = {
-        "schema": f"vehicle_{step}_info_v1",
-        "vehicle_id": vehicle_id,
+        "schema": f"host_{step}_info",
+        "host_name": host_name,
         **staged,
         "decision": {
             "generation_id": identity["generation_id"],
@@ -99,7 +99,7 @@ def get_vehicle_step_info(
     if include_live:
         from .streaming import probe_live_step
 
-        payload["live"] = probe_live_step(step, vehicle_id=vehicle_id, timeout_s=timeout_s)
+        payload["live"] = probe_live_step(step, host_name=host_name, timeout_s=timeout_s)
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
     return CommandResult(0, _format_step_info(step, payload))
@@ -150,7 +150,7 @@ def _format_step_info(step: str, payload: dict[str, Any]) -> str:
     if isinstance(live, dict):
         from .streaming import format_live_step_screen
 
-        lines.extend(["", format_live_step_screen(step, vehicle_id=payload["vehicle_id"], live=live)])
+        lines.extend(["", format_live_step_screen(step, host_name=payload["host_name"], live=live)])
     return "\n".join(lines)
 
 
@@ -159,10 +159,10 @@ def _format_step_info(step: str, payload: dict[str, Any]) -> str:
 # ---------------------------------------------------------------------------
 
 
-def stream_vehicle_step(
+def stream_host_step(
     step: str,
     *,
-    vehicle_id: str,
+    host_name: str,
     refresh_s: float = 0.5,
     once: bool = False,
     no_clear: bool = False,
@@ -170,23 +170,23 @@ def stream_vehicle_step(
     output: TextIO | None = None,
     timeout_s: float = 3.0,
 ) -> CommandResult:
-    """Poll the step's record in the latest cycle the vehicle's runtime host published."""
+    """Poll the step's record in the latest cycle the host published."""
 
     timeout_s = max(0.1, float(timeout_s))
     try:
         # Broken staging is the first thing to fix; it names its restage command.
-        _require_valid_activations(bundle_paths(vehicle_id), vehicle_id=vehicle_id, steps=DECISION_STEPS)
-        base_url = runtime_base_url(vehicle_id)
+        _require_valid_activations(bundle_paths(host_name), host_name=host_name, steps=DECISION_STEPS)
+        base_url = runtime_base_url(host_name)
     except DecisionSurfaceError as exc:
         return _error_result(exc, json_output=json_output)
     except RuntimeHostError as exc:
         return _error_result(DecisionSurfaceError(
-            "runtime_unavailable", str(exc), vehicle_id=vehicle_id, details={"reason": "missing"},
+            "runtime_unavailable", str(exc), host_name=host_name, details={"reason": "missing"},
         ), json_output=json_output)
 
     # A running terminal stream hosts the runtime view; its decision page shows
     # the evidence, candidates and selection behind each record.
-    view = None if json_output or once else _ViewFeed(vehicle_id, base_url=base_url, timeout_s=timeout_s)
+    view = None if json_output or once else _ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
 
     def accept() -> dict[str, Any]:
         if view is not None:
@@ -197,18 +197,18 @@ def stream_vehicle_step(
             raise DecisionSurfaceError(
                 "runtime_decision_unavailable",
                 f"Could not read the decision publication at {base_url}: {exc}",
-                vehicle_id=vehicle_id,
+                host_name=host_name,
                 details={"reason": "missing", "transport": str(exc)},
             ) from exc
         normalized = accept_decision_publication(
-            publication, vehicle_id=vehicle_id, now_ms=int(time.time() * 1000),
+            publication, host_name=host_name, now_ms=int(time.time() * 1000),
         )
         report = normalized["decision"]
         activation = report["values"]["activation"]
         return {
-            "schema": f"vehicle_{step}_stream_v1",
+            "schema": f"host_{step}_stream",
             **{key: report.get(key) for key in (
-                "vehicle_id", "run_id", "generation_id", "frame_id", "frame_index", "timestamp_ms",
+                "host_name", "run_id", "generation_id", "frame_id", "frame_index", "timestamp_ms",
             )},
             # The host computes the result age on its own clock.
             "freshness": {"age_ms": normalized["result_age_ms"], "max_age_ms": normalized["max_age_ms"]},
@@ -223,7 +223,7 @@ def stream_vehicle_step(
 
     try:
         return _poll(
-            vehicle_id=vehicle_id,
+            host_name=host_name,
             accept=accept,
             render=lambda frame: _format_stream_frame(step, frame),
             footer=(lambda: [
@@ -242,7 +242,7 @@ def stream_vehicle_step(
 
 def _poll(
     *,
-    vehicle_id: str,
+    host_name: str,
     accept: Callable[[], dict[str, Any]],
     render: Callable[[dict[str, Any]], str],
     footer: Callable[[], list[str]] | None = None,
@@ -275,7 +275,7 @@ def _poll(
             except DecisionSurfaceError as exc:
                 last_error = exc.message_text
                 text = json.dumps(decision_error_payload(
-                    error=exc.error, message=exc.message_text, vehicle_id=vehicle_id, details=exc.details,
+                    error=exc.error, message=exc.message_text, host_name=host_name, details=exc.details,
                 ), sort_keys=True) if json_output else last_error
             if footer is not None and not json_output:
                 text = "\n".join([text, "", *footer()])
@@ -292,7 +292,7 @@ def _poll(
 def _format_stream_frame(step: str, frame: dict[str, Any]) -> str:
     freshness = frame["freshness"]
     lines = [
-        f"{step.capitalize()} stream: {frame['vehicle_id']} frame={frame['frame_id']} "
+        f"{step.capitalize()} stream: {frame['host_name']} frame={frame['frame_id']} "
         f"run={frame['run_id']} age_ms={freshness['age_ms']} max_age_ms={freshness['max_age_ms']}",
         f"Generation: {frame['generation_id']}",
         f"Plugins: {', '.join(frame['plugins']) or 'none'}",

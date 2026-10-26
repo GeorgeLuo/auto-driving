@@ -72,7 +72,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             with self.subTest(host=host):
                 with self.assertRaisesRegex(ValueError, "loopback"):
                     RuntimeViewServer(
-                        vehicle_id="chase-sim-chaser",
+                        host_name="chase-sim-chaser",
                         automation_dir=automation_dir,
                         host=host,
                         port=0,

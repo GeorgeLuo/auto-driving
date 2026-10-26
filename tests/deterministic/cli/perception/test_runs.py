@@ -59,6 +59,18 @@ class FakeFrameCar:
 
 
 class PerceptionRunTests(unittest.TestCase):
+    def test_discovered_vehicle_does_not_use_an_unrelated_hosts_staged_selection(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp)
+            activation = runtime_root / "vehicle" / "bundle" / "runtime" / "perception" / "active.json"
+            activation.parent.mkdir(parents=True)
+            activation.write_text('{"invalid": true}', encoding="utf-8")
+            with patch.object(perception_module, "RUNTIME_ROOT", runtime_root):
+                selected = perception_module.live_perception_selection(
+                    {"vehicle_id": "vehicle", "provider": "chase-sim"}
+                )
+        self.assertEqual(selected.plugins, selection_activation("perception").plugins)
+
     def test_inspect_runs_selected_catalog_plugins_on_one_image(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "single.jpg"
@@ -81,12 +93,12 @@ class PerceptionRunTests(unittest.TestCase):
             image = Path(tmp) / "single.jpg"
             Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
             both = inspect_perception(image, preset="visual_observer", plugins=["frame"])
-            live_option = inspect_perception(image, frames=3, vehicle_id="piracer")
+            live_option = inspect_perception(image, frames=3, host_name="piracer")
 
         self.assertEqual(both.exit_code, 2)
         self.assertIn("preset or plugins, not both", both.message)
         self.assertEqual(live_option.exit_code, 2)
-        self.assertIn("--id, --frames", live_option.message)
+        self.assertIn("--name, --frames", live_option.message)
 
     def test_inspect_reports_the_preset_or_custom_selection_it_applied(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -178,7 +190,7 @@ class PerceptionRunTests(unittest.TestCase):
         one and synced the bundle, so inspecting a vehicle changed what it runs."""
 
         vehicle = {
-            "vehicle_id": "chase-sim-test",
+            "host_name": "chase-sim-test",
             "vehicle_kind": "chase-sim-ws",
             "provider": "chase-sim",
             "connection": {"ws_url": "ws://example.invalid/ws"},
@@ -196,7 +208,7 @@ class PerceptionRunTests(unittest.TestCase):
                     "perception", listed.plugins, listed.plugin_specs, listed.plugin_configs,
                     metadata={"preset": "visual_observer"},
                 )
-                stage_activation(bundle, stale, vehicle_id="chase-sim-test")
+                stage_activation(bundle, stale, host_name="chase-sim-test")
                 staged_bytes = path.read_bytes()
                 staged = perception_module.live_perception_selection(vehicle)
                 for directory in ("autonomy_dir", "implementations_dir"):
@@ -220,7 +232,7 @@ class PerceptionRunTests(unittest.TestCase):
         activation without naming the command that restages it."""
 
         vehicle = {
-            "vehicle_id": "chase-sim-test",
+            "host_name": "chase-sim-test",
             "vehicle_kind": "chase-sim-ws",
             "provider": "chase-sim",
             "connection": {"ws_url": "ws://example.invalid/ws"},
@@ -236,7 +248,7 @@ class PerceptionRunTests(unittest.TestCase):
 
         self.assertIn("Invalid perception activation:", str(raised.exception))
         self.assertIn(
-            "Restage with your intended selection: ./cli/automa vehicles update perception --id chase-sim-test",
+            "Restage with your intended selection: ./cli/automa hosts stage perception --name chase-sim-test",
             str(raised.exception),
         )
 
@@ -417,12 +429,13 @@ class PerceptionRunTests(unittest.TestCase):
 
         payload = json.loads(result.message)
         self.assertEqual(result.exit_code, 0)
+        self.assertIsNone(payload["source"]["host_name"])
         self.assertEqual(payload["source"]["vehicle_id"], "chase-sim-chaser")
         self.assertIn("simulator preferred", payload["source"]["selection"])
         self.assertEqual(payload["summary"]["frames"], 2)
         self.assertIsNone(payload["run_dir"])
         self.assertTrue(recorded["run_id"].startswith("inspect-chase-sim-chaser-"))
-        self.assertEqual(saved["schema"], "perception_inspect_v0")
+        self.assertEqual(saved["schema"], "perception_inspect")
         self.assertEqual(saved["perception"]["preset"], "lightweight_observer")
         self.assertEqual(fake_car.read_count, 6)
         self.assertEqual(remembered["source"]["frame_count"], 1)

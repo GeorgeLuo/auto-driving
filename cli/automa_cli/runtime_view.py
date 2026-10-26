@@ -34,13 +34,13 @@ from .loopback_http import (
     validate_loopback_host,
 )
 from .plugin_catalog import serve_plugin_catalog
-from .vehicles import get_chase_simulator_status, host_state_text
+from .host_status import host_state_text, host_statuses
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
 VIEW_HOST = "127.0.0.1"
-# Vehicle views take 8500–8999. This port is the viewer opened with no host.
+# Host views take 8500–8999. This port is the viewer opened with no host.
 VIEWER_PORT = 8473
 NOT_CONNECTED_ERROR = "not connected to a host"
 # Routes answered from a runtime host; a viewer that is not connected refuses them.
@@ -62,7 +62,7 @@ class RuntimeViewServer:
     def __init__(
         self,
         *,
-        vehicle_id: str,
+        host_name: str,
         automation_dir: Path | None,
         host: str = VIEW_HOST,
         port: int | None = None,
@@ -73,18 +73,18 @@ class RuntimeViewServer:
         connected: bool = True,
     ) -> None:
         validate_loopback_host(host, owner="runtime view")
-        self.vehicle_id = vehicle_id
+        self.host_name = host_name
         self.connected = connected
         self.plugin_catalog = plugin_catalog
         self.automation_dir = automation_dir
         self.host = host
-        self.preferred_port = _vehicle_view_port(vehicle_id) if port is None else int(port)
+        self.preferred_port = _host_view_port(host_name) if port is None else int(port)
         self.run_id = run_id
         self.worker_pid = int(worker_pid) if isinstance(worker_pid, int) else os.getpid()
         # Without an automation dir the server publishes no discovery record.
         self.record_path = None if automation_dir is None else automation_dir / VIEW_RECORD_NAME
-        self.perception = PerceptionView(vehicle_id=vehicle_id)
-        self.decision = DecisionView(vehicle_id=vehicle_id, identity=decision_identity)
+        self.perception = PerceptionView(host_name=host_name)
+        self.decision = DecisionView(host_name=host_name, identity=decision_identity)
         self._httpd: _RuntimeHttpServer | None = None
         self._thread: threading.Thread | None = None
         self._started_at_ms: int | None = None
@@ -108,7 +108,7 @@ class RuntimeViewServer:
         self._started_at_ms = _timestamp_ms()
         self._thread = start_server_thread(
             httpd,
-            name=f"automa-runtime-view-{self.vehicle_id}",
+            name=f"automa-runtime-view-{self.host_name}",
         )
         self._write_record("running")
         return self
@@ -117,7 +117,7 @@ class RuntimeViewServer:
         # Keep the established discovery record/schema for existing CLI readers.
         return {
             "schema": VIEW_SCHEMA,
-            "vehicle_id": self.vehicle_id,
+            "host_name": self.host_name,
             "run_id": self.run_id,
             "worker_pid": self.worker_pid,
             "status": status,
@@ -339,8 +339,8 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
                 200,
                 {
                     "hosts": [
-                        {"vehicle_id": host["vehicle_id"], "state": host_state_text(host)}
-                        for host in get_chase_simulator_status()["hosts"]
+                        {"host_name": host["host_name"], "state": host_state_text(host)}
+                        for host in host_statuses()
                     ]
                 },
                 include_body=include_body,
@@ -401,7 +401,7 @@ def serve_viewer() -> int:
     """Serve the runtime pages with no runtime host until interrupted."""
 
     server = RuntimeViewServer(
-        vehicle_id="viewer",
+        host_name="viewer",
         automation_dir=None,
         port=VIEWER_PORT,
         connected=False,
@@ -442,8 +442,8 @@ def _unavailable_nav(label: str, reason: str) -> str:
     return f'<span class="nav unavailable" title="{reason}">{label}</span>'
 
 
-def _vehicle_view_port(vehicle_id: str) -> int:
-    return 8500 + (zlib.crc32(vehicle_id.encode("utf-8")) % 500)
+def _host_view_port(host_name: str) -> int:
+    return 8500 + (zlib.crc32(host_name.encode("utf-8")) % 500)
 
 
 def _timestamp_ms() -> int:

@@ -243,7 +243,7 @@ def ensure_simulator(
         )
 
         chase_status = get_vehicle_status(
-            vehicle_id="chase-sim-chaser",
+            host_name="chase-sim-chaser",
             chase_ws_url=get_default_chase_ui_ws_url(),
             timeout_s=DEFAULT_READINESS_TIMEOUT_S,
         )
@@ -459,7 +459,7 @@ def delete_simulator(*, url: str) -> CommandResult:
     if record is None:
         names = ", ".join(chase_operator_url(simulator["url"]) for simulator in created)
         return CommandResult(2, f"No created simulator at {url}. " + (f"Created: {names}." if names else "None created."))
-    hosts = [host["vehicle_id"] for host in local_hosts()
+    hosts = [host["host_name"] for host in local_hosts()
              if host["provider"] == "chase-sim" and host["vehicle_url"] == ws_url]
     if hosts:
         subject = f"Host {hosts[0]} uses" if len(hosts) == 1 else f"Hosts {', '.join(hosts)} use"

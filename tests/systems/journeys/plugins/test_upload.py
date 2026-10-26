@@ -26,7 +26,7 @@ from tests.support.cli_runner import AUTOMA_PATH
 
 def upload(base: str, file: Path, plugin_id: str, *, step: str = "perception", check=True):
     result = invoke_automa(
-        "vehicles", "plugins", "upload", "--url", base, "--file", str(file),
+        "hosts", "plugins", "upload", "--url", base, "--file", str(file),
         "--step", step, "--plugin-id", plugin_id, "--entrypoint", "prototype:Prototype", "--json",
         check=check,
     )
@@ -59,7 +59,7 @@ class PluginUploadFlows(unittest.TestCase):
                 self.addCleanup(host.close)
                 host.follow_activations({}, root / "runtime")
                 identity = host.applied_decision()
-                view = RuntimeViewServer(vehicle_id="chase-sim-chaser", automation_dir=root / "automation",
+                view = RuntimeViewServer(host_name="chase-sim-chaser", automation_dir=root / "automation",
                                          port=0, plugin_catalog=PluginCatalogAPI(host.catalog)).start()
                 self.addCleanup(view.stop)
                 file = root / "prototype.py"

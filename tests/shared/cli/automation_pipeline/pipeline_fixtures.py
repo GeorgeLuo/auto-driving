@@ -24,7 +24,7 @@ from cli.automa_cli.bundles import controller_bundle_paths
 
 from tests.support.runtime_fixtures import write_host_fixture
 
-VEHICLE_ID = "chase-sim-chaser"
+HOST_NAME = "chase-sim-chaser"
 
 
 class _SlowMapper:
@@ -236,10 +236,10 @@ def staged_runners(*, perception=None, wrap=None):
 
 
 @contextmanager
-def chase_runtime(runtime_root: Path, *, car=None, vehicle_id: str = VEHICLE_ID):
+def chase_runtime(runtime_root: Path, *, car=None, host_name: str = HOST_NAME):
     """Serve the vehicle's staged runtime from an in-process Chase host.
 
-    The host writes the record a started ``host serve`` writes, so the
+    The host writes the record a started ``hosts serve`` writes, so the
     CLI (in process or as a subprocess under ``runtime_root``) finds it by
     ``base_url``. Enter it inside ``staged_runners``: the host loads its steps
     when constructed.
@@ -252,17 +252,17 @@ def chase_runtime(runtime_root: Path, *, car=None, vehicle_id: str = VEHICLE_ID)
     )
     from cli.automa_cli.runtime_hosts import HOST_RECORD
 
-    write_host_fixture(runtime_root, vehicle_id)
-    bundle = controller_bundle_paths(runtime_root / vehicle_id)
+    write_host_fixture(runtime_root, host_name)
+    bundle = controller_bundle_paths(runtime_root / host_name)
     with ExitStack() as stack:
         stack.enter_context(patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root))
         host = stack.enter_context(ChaseRuntimeHost(
             car=_FakeCar() if car is None else car,
-            runtime_dir=Path(bundle["runtime_dir"]), vehicle_id=vehicle_id,
+            runtime_dir=Path(bundle["runtime_dir"]), host_name=host_name,
         ))
         record = Path(bundle["runtime_dir"]) / "automation" / HOST_RECORD
         write_host_record(record, {
-            "schema": HOST_RECORD_SCHEMA, "vehicle_id": vehicle_id,
+            "schema": HOST_RECORD_SCHEMA, "host_name": host_name,
             "pid": os.getpid(), "base_url": host.base_url,
         })
         stack.callback(record.unlink, missing_ok=True)

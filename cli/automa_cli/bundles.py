@@ -18,8 +18,8 @@ AUTONOMY_DIR = ROOT / "autonomy"
 IMPLEMENTATIONS_DIR = ROOT / "implementations"
 
 
-def controller_bundle_paths(vehicle_runtime_dir: Path) -> dict[str, str]:
-    return RuntimeLayout(vehicle_runtime_dir / "bundle").bundle_paths()
+def controller_bundle_paths(host_dir: Path) -> dict[str, str]:
+    return RuntimeLayout(host_dir / "bundle").bundle_paths()
 
 
 def sync_controller_bundle(bundle: dict[str, str], *, output: TextIO | None) -> dict[str, Any]:

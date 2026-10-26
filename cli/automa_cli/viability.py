@@ -39,7 +39,7 @@ class CommandResult:
 def _resolve_viability_host(
     *,
     step: str,
-    vehicle_id: str,
+    host_name: str,
     json_output: bool,
 ) -> tuple[str | None, CommandResult | None]:
     """The runtime host's base URL, resolved before creating a report directory or sampling.
@@ -51,19 +51,19 @@ def _resolve_viability_host(
     """
 
     try:
-        base_url = runtime_base_url(vehicle_id)
+        base_url = runtime_base_url(host_name)
     except RuntimeHostError as exc:
         error, message = "no_runtime_host", str(exc)
     else:
-        message = _stalled_frames_message(vehicle_id, base_url)
+        message = _stalled_frames_message(host_name, base_url)
         if message is None:
             return base_url, None
         error = "no_fresh_frames"
     if json_output:
         message = json.dumps(
             {
-                "schema": "vehicle_step_viability_error_v0",
-                "vehicle_id": vehicle_id,
+                "schema": "host_step_viability_error",
+                "host_name": host_name,
                 "step": step,
                 "error": error,
                 "message": message,
@@ -74,7 +74,7 @@ def _resolve_viability_host(
     return None, CommandResult(2, message)
 
 
-def _stalled_frames_message(vehicle_id: str, base_url: str) -> str | None:
+def _stalled_frames_message(host_name: str, base_url: str) -> str | None:
     """Why the host is not processing frames, or None once its latest frame advances."""
 
     def latest() -> tuple[str | None, str | None]:
@@ -96,17 +96,17 @@ def _stalled_frames_message(vehicle_id: str, base_url: str) -> str | None:
     except Exception:  # noqa: BLE001 - the session status only adds context
         session = {}
     return "\n".join([
-        f"{vehicle_id}'s host at {base_url} is not processing frames: "
+        f"{host_name}'s host at {base_url} is not processing frames: "
         + (error or f"its latest frame stayed {first or 'none'} for {FRESH_FRAME_WAIT_S:g} s")
         + f" (session: {session.get('status', 'unknown')}).",
         "Viability measures a host that is processing frames; start a run if none is active.",
-        f"Run: ./cli/automa vehicles host run --id {vehicle_id} --observe-only",
+        f"Run: ./cli/automa hosts run --name {host_name} --observe-only",
     ])
 
 
 def run_perception_viability_measurement(
     *,
-    vehicle_id: str,
+    host_name: str,
     duration_s: float = DEFAULT_DURATION_S,
     sample_period_s: float = DEFAULT_SAMPLE_PERIOD_S,
     timeout_s: float = 3.0,
@@ -122,24 +122,24 @@ def run_perception_viability_measurement(
     """
     base_url, failure = _resolve_viability_host(
         step="perception",
-        vehicle_id=vehicle_id,
+        host_name=host_name,
         json_output=json_output,
     )
     if failure is not None:
         return failure
     assert base_url is not None
     endpoint = base_url
-    host_sampler = _ssh_host_sampler(vehicle_id)
+    host_sampler = _ssh_host_sampler(host_name)
 
     duration_s = max(1.0, float(duration_s))
     sample_period_s = max(0.05, float(sample_period_s))
-    run_id = f"{vehicle_id}-{time.strftime('%Y%m%d-%H%M%S')}"
+    run_id = f"{host_name}-{time.strftime('%Y%m%d-%H%M%S')}"
     out_dir = PERCEPTION_VIABILITY_OUTPUT_ROOT / run_id if record else None
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
 
     _emit(output, "Perception viability measurement")
-    _emit(output, f"vehicle: {vehicle_id}")
+    _emit(output, f"host: {host_name}")
     _emit(output, f"endpoint: {endpoint}")
     _emit(output, f"duration_s: {duration_s}")
     _emit(output, f"sample_period_s: {sample_period_s}")
@@ -209,9 +209,9 @@ def run_perception_viability_measurement(
     )
     gates = _evaluate_perception_gates(metrics)
     report = {
-        "schema": "automa_physical_perception_viability_v0",
+        "schema": "automa_physical_perception_viability",
         "run_id": run_id,
-        "vehicle_id": vehicle_id,
+        "host_name": host_name,
         "base_url": base_url,
         "endpoint": endpoint,
         "duration_s_requested": duration_s,
@@ -255,8 +255,8 @@ def run_perception_viability_measurement(
     return CommandResult(exit_code, _format_perception_report(report))
 
 
-def _ssh_host_sampler(vehicle_id: str) -> Callable[[], dict[str, Any]] | None:
-    target = staged_connection(vehicle_id).get("ssh_target")
+def _ssh_host_sampler(host_name: str) -> Callable[[], dict[str, Any]] | None:
+    target = staged_connection(host_name).get("ssh_target")
     if not target:
         return None
     return lambda: _sample_pi_process_metrics(ssh_target=str(target))
@@ -481,7 +481,7 @@ def _format_perception_report(report: dict[str, Any]) -> str:
     metrics = report["metrics"]
     lines = [
         f"Perception viability: {'PASS' if report['passed'] else 'FAIL'}",
-        f"vehicle: {report['vehicle_id']}",
+        f"host: {report['host_name']}",
         f"endpoint: {report['endpoint']}",
         f"elapsed_s: {metrics.get('elapsed_s')}",
         f"fresh_results_per_s: {metrics.get('fresh_results_per_s')}",
@@ -512,7 +512,7 @@ def _format_perception_markdown(report: dict[str, Any]) -> str:
         "# Perception viability",
         "",
         f"- result: `{'PASS' if report['passed'] else 'FAIL'}`",
-        f"- vehicle: `{report['vehicle_id']}`",
+        f"- host: `{report['host_name']}`",
         f"- endpoint: `{report['endpoint']}`",
         f"- elapsed_s: {metrics.get('elapsed_s')}",
         "",
@@ -564,7 +564,7 @@ MEMORY_HEALTH_VALUES = {"empty", "healthy"}
 
 def run_memory_viability_measurement(
     *,
-    vehicle_id: str,
+    host_name: str,
     duration_s: float = DEFAULT_DURATION_S,
     sample_period_s: float = DEFAULT_SAMPLE_PERIOD_S,
     timeout_s: float = 3.0,
@@ -581,7 +581,7 @@ def run_memory_viability_measurement(
     """
     base_url, failure = _resolve_viability_host(
         step="memory",
-        vehicle_id=vehicle_id,
+        host_name=host_name,
         json_output=json_output,
     )
     if failure is not None:
@@ -590,13 +590,13 @@ def run_memory_viability_measurement(
 
     duration_s = max(1.0, float(duration_s))
     sample_period_s = max(0.05, float(sample_period_s))
-    run_id = f"{vehicle_id}-{time.strftime('%Y%m%d-%H%M%S')}"
+    run_id = f"{host_name}-{time.strftime('%Y%m%d-%H%M%S')}"
     out_dir = MEMORY_VIABILITY_OUTPUT_ROOT / run_id if record else None
     if out_dir is not None:
         out_dir.mkdir(parents=True, exist_ok=True)
 
     _emit(output, "Memory viability measurement")
-    _emit(output, f"vehicle: {vehicle_id}")
+    _emit(output, f"host: {host_name}")
     _emit(output, f"duration_s: {duration_s}")
     _emit(output, f"sample_period_s: {sample_period_s}")
     if out_dir is not None:
@@ -612,7 +612,7 @@ def run_memory_viability_measurement(
         try:
             samples.append(
                 _extract_memory_sample(
-                    probe_live_memory(vehicle_id=vehicle_id, timeout_s=timeout_s),
+                    probe_live_memory(host_name=host_name, timeout_s=timeout_s),
                     wall_ms=wall_ms,
                     mono_s=now - started,
                 )
@@ -634,9 +634,9 @@ def run_memory_viability_measurement(
     metrics = _compute_memory_metrics(samples, elapsed_s=elapsed_s)
     gates = _evaluate_memory_gates(metrics)
     report = {
-        "schema": "automa_physical_memory_viability_v1",
+        "schema": "automa_physical_memory_viability",
         "run_id": run_id,
-        "vehicle_id": vehicle_id,
+        "host_name": host_name,
         "duration_s_requested": duration_s,
         "duration_s_elapsed": round(elapsed_s, 3),
         "sample_period_s": sample_period_s,
@@ -811,7 +811,7 @@ def _format_memory_report(report: dict[str, Any]) -> str:
     metrics = report["metrics"]
     lines = [
         f"Memory viability: {'PASS' if report['passed'] else 'FAIL'}",
-        f"vehicle: {report['vehicle_id']}",
+        f"host: {report['host_name']}",
         f"elapsed_s: {metrics.get('elapsed_s')}",
         f"updates_per_s: {metrics.get('updates_per_s')}",
         f"update_duration_ms p50/p95: {_dist_pair(metrics.get('update_duration_ms'))}",

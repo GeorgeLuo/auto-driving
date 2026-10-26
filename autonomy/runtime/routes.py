@@ -40,7 +40,7 @@ MEMORY_RESET_PATH = "/host/memory/reset"
 TELEMETRY_LATEST_PATH = "/host/telemetry/latest"
 TELEMETRY_RECORDS_PATH = "/host/telemetry/records"
 MEMORY_RESET_SCHEMA = "automa_memory_reset_v0"
-TELEMETRY_SCHEMA = "automa_host_boundary_telemetry_v0"
+TELEMETRY_SCHEMA = "automa_host_boundary_telemetry"
 RESTART_DELAY_S = 0.2
 
 Response = tuple[int, dict[str, str], bytes]
@@ -122,7 +122,7 @@ class RuntimeRoutes:
             "ok": True,
             "host_run_id": self.loop.run_id,
             "runtime": self.loop.runtime,
-            "vehicle_id": self.loop.vehicle_id,
+            "host_name": self.loop.host_name,
             "mode": session["execution"]["mode"],
             "session": session,
             "host": self.host.status(),

@@ -25,13 +25,14 @@ from . import runtime_hosts
 from .runtime_hosts import (
     bundle_paths,
     RuntimeHostError,
-    automation_dir as vehicle_automation_dir,
+    automation_dir as host_automation_dir,
     running_base_url,
     runtime_base_url,
-    staged_vehicle,
+    staged_host,
     stop_chase_host,
 )
 from .host_publications import host_state
+from .host_status import host_block, read_hosts
 from .runtime_monitor import monitor_runtime
 from .step_activations import (
     bundle_activation_problems,
@@ -69,20 +70,22 @@ class CommandResult:
 
 
 def _host_runtime_status(
-    vehicle_id: str,
+    host_name: str,
     base_url: str,
     *,
     timeout_s: float,
+    read: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """A runtime host's ``/host/status`` in the worker status rows.
 
     While a monitor runs, its state record holds these rows; otherwise the
     host reports the same cycle counters from its observation status
-    provider. The local view is the one a terminal ``vehicles stream`` hosts.
+    provider. ``read`` is the host's ``host_state`` when the caller already
+    has it. The local view is the one a terminal ``hosts stream`` hosts.
     """
 
     endpoint = f"{base_url}/host/status"
-    host = host_state(base_url, vehicle_id=vehicle_id, timeout_s=max(0.1, timeout_s))
+    host = read or host_state(base_url, host_name=host_name, timeout_s=max(0.1, timeout_s))
     status = host["reply"] or {}
     error = host["error"] if host["state"] in {"not answering", "error"} else None
     worker_status = "error" if error is not None else host["state"]
@@ -94,7 +97,7 @@ def _host_runtime_status(
     latest = observation.get("latest") if isinstance(observation.get("latest"), dict) else {}
     completed_at_ms = _int_or_none(latest.get("completed_at_ms"))
     view = discover_runtime_view(
-        vehicle_id,
+        host_name,
         lambda directory: get_perception_view_status(
             directory, timeout_s=min(0.25, max(0.0, timeout_s)),
         ),
@@ -103,7 +106,7 @@ def _host_runtime_status(
     if not view.get("available"):
         view = {
             **view,
-            "reason": f"start `./cli/automa vehicles stream perception --id {vehicle_id}` to host it",
+            "reason": f"start `./cli/automa hosts stream perception --name {host_name}` to host it",
         }
     return {
         "process": {
@@ -113,11 +116,6 @@ def _host_runtime_status(
             "status": worker_status,
             "generation_matches": True,
             "reason": error,
-            "recovery": (
-                f"./cli/automa vehicles host update --id {vehicle_id} --restart"
-                if error is not None
-                else None
-            ),
             "log_to_disk": False,
             "log_path": None,
             "command": None,
@@ -198,35 +196,35 @@ def _normalize_host_url(value: str) -> str:
     return text.rstrip("/")
 
 
-def _vehicle_id_at_host(host_url: str, *, timeout_s: float) -> str:
-    """The one vehicle id that host was started with."""
+def _host_name_at_host(host_url: str, *, timeout_s: float) -> str:
+    """The host name reported by the runtime."""
 
     try:
         status = RuntimeClient(host_url, timeout_s=max(0.1, timeout_s)).host_status()
     except RuntimeError as exc:
         raise RuntimeHostError(f"Could not read the host at {host_url}: {exc}") from exc
-    vehicle_id = status.get("vehicle_id") if isinstance(status, dict) else None
-    if not isinstance(vehicle_id, str) or not vehicle_id.strip():
-        raise RuntimeHostError(f"The host at {host_url} did not report a vehicle id.")
-    return vehicle_id
+    host_name = status.get("host_name") if isinstance(status, dict) else None
+    if not isinstance(host_name, str) or not host_name.strip():
+        raise RuntimeHostError(f"The host at {host_url} did not report a host name.")
+    return host_name
 
 
 def _resolve_run_target(
-    vehicle_id: str | None, host_url: str | None, *, timeout_s: float,
+    host_name: str | None, host_url: str | None, *, timeout_s: float,
 ) -> tuple[str, str | None]:
-    """The vehicle id to record, and the existing host URL when one was named.
+    """The host name to record, and the existing host URL when one was named.
 
-    ``--id`` finds or starts the checkout's host later. ``--host-url`` is that
-    host, and its status reports the vehicle id. Passing both or neither is refused.
+    ``--name`` finds or starts the checkout's host later. ``--host-url`` is that
+    host, and its status reports the host name. Passing both or neither is refused.
     """
 
-    if (vehicle_id is None) == (host_url is None):
-        raise ValueError("Pass either --id or --host-url.")
+    if (host_name is None) == (host_url is None):
+        raise ValueError("Pass either --name or --host-url.")
     if host_url is None:
-        assert vehicle_id is not None
-        return vehicle_id, None
+        assert host_name is not None
+        return host_name, None
     normalized = _normalize_host_url(host_url)
-    return _vehicle_id_at_host(normalized, timeout_s=timeout_s), normalized
+    return _host_name_at_host(normalized, timeout_s=timeout_s), normalized
 
 
 def _run_configuration(*, take_control: bool, num_decisions: int,
@@ -250,9 +248,9 @@ def _run_configuration(*, take_control: bool, num_decisions: int,
     )
 
 
-def run_vehicle_automation(
+def run_host_automation(
     *,
-    vehicle_id: str | None = None,
+    host_name: str | None = None,
     host_url: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     num_decisions: int = 0,
@@ -263,35 +261,35 @@ def run_vehicle_automation(
     output: TextIO | None = None,
 ) -> CommandResult:
     try:
-        if vehicle_id is not None:
-            staged_vehicle(vehicle_id)
+        if host_name is not None:
+            staged_host(host_name)
         configuration = _run_configuration(
             take_control=take_control, num_decisions=num_decisions, unbounded=unbounded,
         )
-        vehicle_id, host_url = _resolve_run_target(vehicle_id, host_url, timeout_s=timeout_s)
+        host_name, host_url = _resolve_run_target(host_name, host_url, timeout_s=timeout_s)
     except (TypeError, ValueError, RuntimeHostError) as exc:
         return CommandResult(2, str(exc))
     # Every vehicle runs its staged steps on its runtime host: a PiCar's Donkey
     # service or a local Chase host, each from its controller release.
     # Each step runs its staged selection, else its built-in, else nothing.
-    bundle = bundle_paths(vehicle_id)
-    problems = bundle_activation_problems(bundle, vehicle_id)
+    bundle = bundle_paths(host_name)
+    problems = bundle_activation_problems(bundle, host_name)
     if problems:
         return CommandResult(2, format_activation_problems(problems))
     try:
         selections = staged_selections(bundle)
         identity = decision_identity(bundle)
     except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
-        return CommandResult(2, f"Could not read staged step activations for {vehicle_id}: {exc}")
+        return CommandResult(2, f"Could not read staged step activations for {host_name}: {exc}")
     if host_url is None:
         try:
-            base_url = runtime_base_url(vehicle_id, start=True)
+            base_url = runtime_base_url(host_name, start=True)
         except RuntimeHostError as exc:
             return CommandResult(2, str(exc))
     else:
         base_url = host_url
     code, message = monitor_runtime(
-        vehicle_id=vehicle_id, base_url=base_url,
+        host_name=host_name, base_url=base_url,
         automation_dir=Path(bundle["runtime_dir"]) / "automation",
         selections=selections,
         decision=decision_record(identity),
@@ -301,9 +299,9 @@ def run_vehicle_automation(
     return CommandResult(code, message)
 
 
-def start_vehicle_automation_background(
+def start_host_automation_background(
     *,
-    vehicle_id: str | None = None,
+    host_name: str | None = None,
     host_url: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     num_decisions: int = 0,
@@ -316,21 +314,21 @@ def start_vehicle_automation_background(
     startup_wait_s: float = 20.0,
 ) -> CommandResult:
     try:
-        if vehicle_id is not None:
-            staged_vehicle(vehicle_id)
+        if host_name is not None:
+            staged_host(host_name)
         configuration = _run_configuration(
             take_control=take_control, num_decisions=num_decisions, unbounded=unbounded,
         )
-        vehicle_id, host_url = _resolve_run_target(vehicle_id, host_url, timeout_s=timeout_s)
+        host_name, host_url = _resolve_run_target(host_name, host_url, timeout_s=timeout_s)
     except (TypeError, ValueError, RuntimeHostError) as exc:
         return CommandResult(2, str(exc))
-    automation_dir = vehicle_automation_dir(vehicle_id)
+    automation_dir = host_automation_dir(host_name)
     automation_dir.mkdir(parents=True, exist_ok=True)
     process_path = automation_dir / "process.json"
     log_path = automation_dir / "automation.log"
 
-    bundle = bundle_paths(vehicle_id)
-    problems = bundle_activation_problems(bundle, vehicle_id)
+    bundle = bundle_paths(host_name)
+    problems = bundle_activation_problems(bundle, host_name)
     if problems:
         return CommandResult(2, format_activation_problems(problems))
 
@@ -346,7 +344,7 @@ def start_vehicle_automation_background(
                 2,
                 "\n".join(
                     [
-                        f"The run on host {vehicle_id} is still starting.",
+                        f"The run on host {host_name} is still starting.",
                         f"PID: {existing_pid}",
                         f"State: {display_path(automation_dir / 'state.json')}",
                     ]
@@ -369,7 +367,7 @@ def start_vehicle_automation_background(
                 2,
                 "\n".join(
                     [
-                        f"The run records for host {vehicle_id} disagree.",
+                        f"The run records for host {host_name} disagree.",
                         f"Process PID: {existing_pid}",
                         f"State PID: {existing_state_pid}",
                         "Reason: worker generation is stale; no duplicate worker was started.",
@@ -389,7 +387,7 @@ def start_vehicle_automation_background(
                 2,
                 "\n".join(
                     [
-                        f"Host {vehicle_id} already has a run, but its authority does not match this command.",
+                        f"Host {host_name} already has a run, but its authority does not match this command.",
                         f"PID: {existing_pid}",
                         (
                             "Expected authority: "
@@ -402,8 +400,8 @@ def start_vehicle_automation_background(
                             f"control={actual_authority['control_application'] or 'unknown'}"
                         ),
                         (
-                            "Recovery: ./cli/automa vehicles host stop "
-                            f"--id {vehicle_id}"
+                            "Recovery: ./cli/automa hosts stop "
+                            f"--name {host_name}"
                         ),
                     ]
                 ),
@@ -418,7 +416,7 @@ def start_vehicle_automation_background(
                 2,
                 "\n".join(
                     [
-                        f"Host {vehicle_id} has a run, but its perception view is not ready.",
+                        f"Host {host_name} has a run, but its perception view is not ready.",
                         f"PID: {existing_pid}",
                         f"Reason: {view.get('reason') or 'no correlated publication'}",
                         f"State: {display_path(automation_dir / 'state.json')}",
@@ -430,13 +428,13 @@ def start_vehicle_automation_background(
             0,
             "\n".join(
                 [
-                    f"Host {vehicle_id} already has a run.",
+                    f"Host {host_name} already has a run.",
                     f"PID: {existing_pid}",
                     f"Runtime view: {view['url']}",
                     *([browser_line] if browser_line else []),
                     f"State: {display_path(automation_dir / 'state.json')}",
                     _log_status_line(existing, log_path),
-                    f"Stream: ./cli/automa vehicles stream perception --id {vehicle_id}",
+                    f"Stream: ./cli/automa hosts stream perception --name {host_name}",
                 ]
             ),
         )
@@ -444,10 +442,9 @@ def start_vehicle_automation_background(
     command = [
         sys.executable,
         str(AUTOMA_EXECUTABLE),
-        "vehicles",
-        "host",
+        "hosts",
         "run",
-        *(["--host-url", host_url] if host_url is not None else ["--id", vehicle_id]),
+        *(["--host-url", host_url] if host_url is not None else ["--name", host_name]),
         "--timeout-s",
         str(timeout_s),
         "--num-decisions",
@@ -466,7 +463,7 @@ def start_vehicle_automation_background(
     started_at_ms = _timestamp_ms()
     _initialize_automation_startup(
         automation_dir=automation_dir,
-        vehicle_id=vehicle_id,
+        host_name=host_name,
         started_at_ms=started_at_ms,
         configuration=configuration,
         record=record,
@@ -501,7 +498,7 @@ def start_vehicle_automation_background(
                 2,
                 "\n".join(
                     [
-                        f"Could not start a run on host {vehicle_id}: {type(exc).__name__}: {exc}",
+                        f"Could not start a run on host {host_name}: {type(exc).__name__}: {exc}",
                     ]
                 ),
             )
@@ -510,8 +507,8 @@ def start_vehicle_automation_background(
             log_handle.close()
 
     process_record = {
-        "schema": "automa_automation_process_v0",
-        "vehicle_id": vehicle_id,
+        "schema": "automa_automation_process",
+        "host_name": host_name,
         "pid": process.pid,
         "started_at_ms": started_at_ms,
         "command": command,
@@ -519,7 +516,7 @@ def start_vehicle_automation_background(
         "log_path": display_path(log_path) if log_to_disk else None,
         "state_path": display_path(automation_dir / "state.json"),
         "latest_perception_text": display_path(automation_dir / "latest_perception.txt"),
-        "stream_command": f"./cli/automa vehicles stream perception --id {vehicle_id}",
+        "stream_command": f"./cli/automa hosts stream perception --name {host_name}",
     }
     _write_json(process_path, process_record)
     startup = _wait_for_automation_startup(
@@ -541,7 +538,7 @@ def start_vehicle_automation_background(
             else {}
         )
         lines = [
-            f"Run started on host {vehicle_id}.",
+            f"Run started on host {host_name}.",
             f"PID: {process.pid}",
             f"First frame: {startup.get('frame_id', 'captured')}",
             (
@@ -555,19 +552,19 @@ def start_vehicle_automation_background(
         capture_lag = startup.get("capture_lag")
         if isinstance(capture_lag, int) and capture_lag > 0:
             lines.append(f"Capture lag: {capture_lag} frames")
-        lines.append(f"Stop: ./cli/automa vehicles host stop --id {vehicle_id}")
+        lines.append(f"Stop: ./cli/automa hosts stop --name {host_name}")
         if open_view:
             lines.append(open_view_message(str(startup.get("view_url"))))
         exit_code = 0
     elif startup_status == "completed":
         lines = [
-            f"The run on host {vehicle_id} completed during startup verification.",
+            f"The run on host {host_name} completed during startup verification.",
             f"PID: {process.pid}",
         ]
         exit_code = 0
     else:
         lines = [
-            f"The run on host {vehicle_id} did not become ready.",
+            f"The run on host {host_name} did not become ready.",
             f"PID: {process.pid}",
             f"Reason: {startup.get('reason', 'unknown startup failure')}",
         ]
@@ -576,23 +573,23 @@ def start_vehicle_automation_background(
         [
             f"State: {display_path(automation_dir / 'state.json')}",
             _log_status_line(process_record, log_path),
-            f"Stream: ./cli/automa vehicles stream perception --id {vehicle_id}",
-            f"View: ./cli/automa vehicles info perception --id {vehicle_id}",
+            f"Stream: ./cli/automa hosts stream perception --name {host_name}",
+            f"View: ./cli/automa hosts info perception --name {host_name}",
         ]
     )
     return CommandResult(exit_code, "\n".join(lines))
 
 
-def record_vehicle_automation_terminal_result(
+def record_host_automation_terminal_result(
     *,
-    vehicle_id: str,
+    host_name: str,
     result: CommandResult,
 ) -> None:
     """Persist failures that occur before the worker creates its normal run state."""
 
     if result.exit_code == 0:
         return
-    automation_dir = vehicle_automation_dir(vehicle_id)
+    automation_dir = host_automation_dir(host_name)
     state_path = automation_dir / "state.json"
     state = _read_json(state_path)
     if not isinstance(state, dict) or state.get("status") not in {"launching", "starting"}:
@@ -622,7 +619,7 @@ def record_vehicle_automation_terminal_result(
 def _initialize_automation_startup(
     *,
     automation_dir: Path,
-    vehicle_id: str,
+    host_name: str,
     started_at_ms: int,
     configuration: RunConfiguration,
     record: bool,
@@ -633,7 +630,7 @@ def _initialize_automation_startup(
         [
             f"schema={PERCEPTION_TEXT_SCHEMA}",
             "plugin=automation-worker",
-            f"status=starting vehicle_id={vehicle_id}",
+            f"status=starting host_name={host_name}",
             "signal id=perception_ready value=false confidence=1.000 reason=worker_starting",
         ]
     )
@@ -644,8 +641,8 @@ def _initialize_automation_startup(
     _write_json(
         automation_dir / "latest_perception.json",
         {
-            "schema": "automa_latest_perception_placeholder_v0",
-            "vehicle_id": vehicle_id,
+            "schema": "automa_latest_perception_placeholder",
+            "host_name": host_name,
             "status": "starting",
             "started_at_ms": started_at_ms,
             "text": starting_text,
@@ -655,7 +652,7 @@ def _initialize_automation_startup(
     _write_json(
         automation_dir / "state.json",
         new_run_state(
-            vehicle_id=vehicle_id,
+            host_name=host_name,
             run_id="starting",
             status="starting",
             pid=None,
@@ -851,77 +848,61 @@ def _mark_automation_startup_error(
     )
 
 
-def get_vehicle_automation_status(
+def get_hosts_status(
     *,
-    vehicle_id: str | None = None,
+    host_name: str | None = None,
+    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
+    long: bool = False,
     json_output: bool = False,
 ) -> CommandResult:
-    vehicles = _collect_automation_status(vehicle_id=vehicle_id)
-    payload = {
-        "schema": "automa_automation_status_v0",
-        "generated_at_ms": _timestamp_ms(),
-        "runtime_root": display_path(runtime_hosts.RUNTIME_ROOT),
-        "requested_vehicle_id": vehicle_id,
-        "vehicles": vehicles,
-    }
-    exit_code = 0
-    if vehicle_id is not None and not vehicles:
-        exit_code = 2
-        payload["outcome"] = {
-            "status": "not_found",
-            "message": f"No host named {vehicle_id!r}.",
-            "expected_bundle": display_path(
-                runtime_hosts.RUNTIME_ROOT / safe_path_part(vehicle_id) / "bundle"
-            ),
-            "recovery": runtime_hosts.update_command(vehicle_id),
+    """Each host's state and attachment; ``long`` adds its deployment, run and view.
+
+    The JSON carries every host's run. With ``host_name``, exits 1 when that host
+    is missing, stopped, not answering, or reports an error. Without it, no
+    host's state changes the exit.
+    """
+
+    reads = read_hosts(host_name=host_name, timeout_s=timeout_s)
+    hosts = [host for host, _ in reads]
+    failed = {"not found", "not running", "not answering", "error"}
+    exit_code = 1 if host_name is not None and any(host["state"] in failed for host in hosts) else 0
+    if long or json_output:
+        runs = {
+            run["host_name"]: run
+            for run in _collect_automation_status(
+                host_name=host_name,
+                host_reads={host["host_name"]: read for host, read in reads if read is not None},
+            )
         }
-    elif not vehicles:
-        payload["outcome"] = {
-            "status": "empty",
-            "message": "No hosts found.",
-            "expected_bundle": None,
-            "recovery": runtime_hosts.update_command("<vehicle_id>"),
-        }
-    elif any(_automation_status_needs_attention(vehicle) for vehicle in vehicles):
-        payload["outcome"] = {
-            "status": "degraded",
-            "message": "One or more hosts require attention.",
-            "expected_bundle": None,
-            "recovery": None,
-        }
-    else:
-        payload["outcome"] = {
-            "status": "ok",
-            "message": f"Found {len(vehicles)} host(s).",
-            "expected_bundle": None,
-            "recovery": None,
-        }
+        for host in hosts:
+            host["run"] = runs.get(host["host_name"])
     if json_output:
+        payload = {"schema": "automa_hosts_status", "host_name": host_name, "hosts": hosts}
         return CommandResult(exit_code, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(exit_code, _format_automation_status(payload))
+    return CommandResult(exit_code, _format_hosts_status(hosts, long=long))
 
 
-def stop_vehicle_automation(
+def stop_host_automation(
     *,
-    vehicle_id: str,
+    host_name: str,
     wait_s: float = 3.0,
 ) -> CommandResult:
     # The host ends the session and releases control; the monitor then
     # finishes the run record.
     try:
-        base_url = running_base_url(vehicle_id)
+        base_url = running_base_url(host_name)
     except RuntimeHostError as exc:
         return CommandResult(2, str(exc))
     if base_url is not None:
         try:
             RuntimeClient(base_url, timeout_s=max(1.0, wait_s)).stop()
         except RuntimeError as exc:
-            if staged_vehicle(vehicle_id)["provider"] != "chase-sim":
-                return CommandResult(2, f"Could not stop {vehicle_id}: {exc}")
-            forced = _replace_unanswering_host(vehicle_id, wait_s=wait_s)
+            if staged_host(host_name)["provider"] != "chase-sim":
+                return CommandResult(2, f"Could not stop {host_name}: {exc}")
+            forced = _replace_unanswering_host(host_name, wait_s=wait_s)
             if forced is not None:
                 return forced
-    automation_dir = vehicle_automation_dir(vehicle_id)
+    automation_dir = host_automation_dir(host_name)
     process_path = automation_dir / "process.json"
     state_path = automation_dir / "state.json"
     process = _read_json(process_path)
@@ -933,7 +914,7 @@ def stop_vehicle_automation(
             0,
             "\n".join(
                 [
-                    f"No run PID is recorded for host {vehicle_id}.",
+                    f"No run PID is recorded for host {host_name}.",
                     f"State: {display_path(state_path)}",
                 ]
             ),
@@ -946,20 +927,20 @@ def stop_vehicle_automation(
             0,
             "\n".join(
                 [
-                    f"Host {vehicle_id} has no run.",
+                    f"Host {host_name} has no run.",
                     f"Recorded PID: {pid}",
                     f"State: {display_path(state_path)}",
                 ]
             ),
         )
-    if not _pid_matches_automation(pid, vehicle_id):
+    if not _pid_matches_automation(pid, host_name):
         _mark_process_stopped(process_path, process, stopped_by="stop_command_stale_pid")
         _mark_state_stopped(state_path, stopped_by="stop_command_stale_pid")
         return CommandResult(
             0,
             "\n".join(
                 [
-                    f"The recorded run PID for host {vehicle_id} is alive but is not this host's run.",
+                    f"The recorded run PID for host {host_name} is alive but is not this host's run.",
                     f"PID: {pid}",
                     "The PID record was marked stale; no process was terminated.",
                     f"Process: {_process_command(pid) or 'unknown'}",
@@ -977,7 +958,7 @@ def stop_vehicle_automation(
                 0,
                 "\n".join(
                     [
-                        f"Stopped the run on host {vehicle_id}.",
+                        f"Stopped the run on host {host_name}.",
                         f"PID: {pid}",
                         f"State: {display_path(state_path)}",
                     ]
@@ -995,7 +976,7 @@ def stop_vehicle_automation(
                 0,
                 "\n".join(
                     [
-                        f"Force-stopped the run on host {vehicle_id}.",
+                        f"Force-stopped the run on host {host_name}.",
                         f"PID: {pid}",
                         f"State: {display_path(state_path)}",
                     ]
@@ -1007,7 +988,7 @@ def stop_vehicle_automation(
         2,
         "\n".join(
             [
-                f"The run on host {vehicle_id} did not stop.",
+                f"The run on host {host_name} did not stop.",
                 f"PID: {pid}",
                 f"State: {display_path(state_path)}",
             ]
@@ -1015,29 +996,29 @@ def stop_vehicle_automation(
     )
 
 
-def _replace_unanswering_host(vehicle_id: str, *, wait_s: float) -> CommandResult | None:
+def _replace_unanswering_host(host_name: str, *, wait_s: float) -> CommandResult | None:
     """End a Chase host that does not answer; a killed one cannot release control.
 
     ``None`` once the host is gone with control released.
     """
 
-    killed = stop_chase_host(vehicle_id, wait_s=wait_s)
+    killed = stop_chase_host(host_name, wait_s=wait_s)
     if not killed:
         return None
     try:
-        create_vehicle_access(staged_vehicle(vehicle_id), timeout_s=max(1.0, wait_s)).car.stop()
+        create_vehicle_access(staged_host(host_name), timeout_s=max(1.0, wait_s)).car.stop()
     except Exception as exc:  # noqa: BLE001 - reported with the recovery
         return CommandResult(2, "\n".join([
-            f"The Chase host for {vehicle_id} did not answer and was killed; "
+            f"The Chase host for {host_name} did not answer and was killed; "
             f"stopping the car failed: {type(exc).__name__}: {exc}",
             "Stop the chaser in the simulator before the next run.",
         ]))
     return None
 
 
-def restart_vehicle_automation(
+def restart_host_automation(
     *,
-    vehicle_id: str,
+    host_name: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     num_decisions: int = 0,
     unbounded: bool = False,
@@ -1054,25 +1035,25 @@ def restart_vehicle_automation(
         )
     except (TypeError, ValueError) as exc:
         return CommandResult(2, str(exc))
-    bundle = bundle_paths(vehicle_id)
-    problems = bundle_activation_problems(bundle, vehicle_id)
+    bundle = bundle_paths(host_name)
+    problems = bundle_activation_problems(bundle, host_name)
     if problems:
         return CommandResult(2, format_activation_problems(problems))
-    stop_result = stop_vehicle_automation(vehicle_id=vehicle_id, wait_s=wait_s)
+    stop_result = stop_host_automation(host_name=host_name, wait_s=wait_s)
     if stop_result.exit_code != 0:
         return stop_result
 
     # A fresh host process loads the staged specs and configs; a Chase host
     # with none running starts on the latest release with the run.
-    base_url = running_base_url(vehicle_id)
+    base_url = running_base_url(host_name)
     if base_url is not None:
         try:
             RuntimeClient(base_url, timeout_s=timeout_s).restart(timeout_s=max(30.0, timeout_s))
         except (RuntimeError, TimeoutError) as exc:
-            return CommandResult(2, f"Could not restart {vehicle_id}: {exc}")
+            return CommandResult(2, f"Could not restart {host_name}: {exc}")
 
-    start_result = start_vehicle_automation_background(
-        vehicle_id=vehicle_id,
+    start_result = start_host_automation_background(
+        host_name=host_name,
         timeout_s=timeout_s,
         num_decisions=num_decisions,
         unbounded=unbounded,
@@ -1088,19 +1069,21 @@ def restart_vehicle_automation(
 
 def _collect_automation_status(
     *,
-    vehicle_id: str | None,
+    host_name: str | None,
     view_timeout_s: float | None = None,
+    host_reads: dict[str, dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    if vehicle_id is not None:
-        candidate = runtime_hosts.RUNTIME_ROOT / safe_path_part(vehicle_id)
-        candidates = [candidate] if (candidate / "vehicle.json").is_file() else []
+    # ``host_reads`` holds each host's ``host_state`` the caller already read.
+    if host_name is not None:
+        candidate = runtime_hosts.RUNTIME_ROOT / safe_path_part(host_name)
+        candidates = [candidate] if (candidate / "host-configuration.json").is_file() else []
     elif runtime_hosts.RUNTIME_ROOT.exists():
-        candidates = sorted(path.parent for path in runtime_hosts.RUNTIME_ROOT.glob("*/vehicle.json"))
+        candidates = sorted(path.parent for path in runtime_hosts.RUNTIME_ROOT.glob("*/host-configuration.json"))
     else:
         candidates = []
 
     # One wall-clock budget for every runtime's view probes and warm-up sleeps.
-    # Aggregate status without --id must not restart the full timeout per card.
+    # Aggregate status without --name must not restart the full timeout per card.
     if view_timeout_s is None:
         view_budget_s = 1.0
     else:
@@ -1112,7 +1095,7 @@ def _collect_automation_status(
 
     def _exhausted_view_status() -> dict[str, Any]:
         return {
-            "schema": "automa_perception_view_v1",
+            "schema": "automa_perception_view",
             "available": False,
             "status": "unavailable",
             "url": None,
@@ -1123,10 +1106,14 @@ def _collect_automation_status(
         }
 
     statuses = []
-    for vehicle_runtime_dir in candidates:
-        vehicle_name = vehicle_runtime_dir.name
-        host_url = running_base_url(vehicle_name)
-        bundle = controller_bundle_paths(vehicle_runtime_dir)
+    for host_dir in candidates:
+        name = host_dir.name
+        try:
+            host_url = running_base_url(name)
+        except RuntimeHostError:
+            # The host's status says why its configuration cannot be read.
+            continue
+        bundle = controller_bundle_paths(host_dir)
         bundle_root = Path(bundle["root_dir"])
         automation_dir = Path(bundle["runtime_dir"]) / "automation"
         process_path = automation_dir / "process.json"
@@ -1202,12 +1189,7 @@ def _collect_automation_status(
                     )
                     if published_view.get("available"):
                         break
-        activation_problems = bundle_activation_problems(bundle, vehicle_name)
-        worker_recovery = activation_problems[0]["command"] if activation_problems else (
-            f"./cli/automa vehicles host restart --id {vehicle_name}"
-            if worker_status in {"error", "stale"}
-            else None
-        )
+        activation_problems = bundle_activation_problems(bundle, name)
         last_frame = state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
         completed_at_ms = _int_or_none(last_frame.get("perception_completed_at_ms"))
         generated_at_ms = _timestamp_ms()
@@ -1222,14 +1204,14 @@ def _collect_automation_status(
         except (OSError, TypeError, ValueError):
             decision = {"deployed": False}
         try:
-            runtime_hosts.release_manifest(vehicle_name)
+            runtime_hosts.release_manifest(name)
             released = True
         except RuntimeHostError:
             released = False
 
         statuses.append(
             {
-                "vehicle_id": vehicle_name,
+                "host_name": name,
                 "activation_problems": activation_problems,
                 "deployed": released and decision["deployed"] and not activation_problems,
                 "bundle_root": display_path(bundle_root),
@@ -1248,7 +1230,6 @@ def _collect_automation_status(
                     "status": worker_status,
                     "generation_matches": generation_matches,
                     "reason": worker_reason,
-                    "recovery": worker_recovery,
                     "log_to_disk": bool(process.get("log_to_disk")),
                     "log_path": process.get("log_path") if isinstance(process.get("log_path"), str) else None,
                     "command": process.get("command") if isinstance(process.get("command"), list) else None,
@@ -1304,82 +1285,58 @@ def _collect_automation_status(
         )
         if host_url is not None and not pid_alive:
             host = _host_runtime_status(
-                vehicle_name, host_url, timeout_s=_remaining_view_budget() or 0.5
+                name, host_url, timeout_s=_remaining_view_budget() or 0.5,
+                read=(host_reads or {}).get(name),
             )
             applied = host.pop("applied_decision")
             statuses[-1]["steps"] = _applied_selections(selections, host.pop("steps")) or selections
             statuses[-1].update(host)
             if applied:
                 statuses[-1]["decision"].update(_decision_summary(applied))
-            if activation_problems:
-                statuses[-1]["process"]["recovery"] = activation_problems[0]["command"]
     return statuses
 
 
-def _automation_status_needs_attention(vehicle: dict[str, Any]) -> bool:
-    if not vehicle.get("deployed"):
-        return True
-    process = vehicle.get("process")
-    return isinstance(process, dict) and process.get("status") in {"error", "stale"}
+def _format_hosts_status(hosts: list[dict[str, Any]], *, long: bool) -> str:
+    if not hosts:
+        return "No hosts found"
+    return "\n\n".join(
+        "\n".join([host_block(host), *(_run_lines(host["run"]) if long else [])]) for host in hosts
+    )
 
 
-def _format_automation_status(payload: dict[str, Any]) -> str:
-    vehicles = payload.get("vehicles") if isinstance(payload.get("vehicles"), list) else []
-    outcome = payload.get("outcome") if isinstance(payload.get("outcome"), dict) else {}
+def _run_lines(item: dict[str, Any] | None) -> list[str]:
+    """A host's deployment, steps, worker, run and view, under its host block."""
+
+    if not isinstance(item, dict):
+        return []
+    decision = item.get("decision") if isinstance(item.get("decision"), dict) else {}
+    process = item.get("process") if isinstance(item.get("process"), dict) else {}
+    state = item.get("state") if isinstance(item.get("state"), dict) else {}
+    published_view = item.get("published_view") if isinstance(item.get("published_view"), dict) else {}
+    last_frame = state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
     lines = [
-        "automa vehicles host status",
-        "",
-        f"runtime: {payload.get('runtime_root', 'unknown')}",
-        f"hosts: {sum(1 for item in vehicles if isinstance(item, dict) and item.get('deployed'))}",
+        f"  deployment: {'deployed' if item.get('deployed') else 'not deployed'}",
+        *_selection_lines(item.get("steps")),
+        f"  decision: {_decision_label(decision)}",
+        f"  worker: {_worker_label(process, state)}",
+        f"  run: {_run_label(state)}",
+        f"  latest: {_latest_status_label(state, last_frame)}",
+        f"  view: {_published_view_label(published_view)}",
+        f"  state: {state.get('state_record', 'unknown')}",
+        f"  log: {_status_log_label(process)}",
     ]
-    if not vehicles:
-        lines.extend(["", str(outcome.get("message") or "No hosts found.")])
-        expected_bundle = outcome.get("expected_bundle")
-        if isinstance(expected_bundle, str) and expected_bundle:
-            lines.append(f"Expected bundle: {expected_bundle}")
-        recovery = outcome.get("recovery")
-        if isinstance(recovery, str) and recovery:
-            lines.append(f"Next: {recovery}")
-        return "\n".join(lines)
-
-    for item in vehicles:
-        if not isinstance(item, dict):
-            continue
-        decision = item.get("decision") if isinstance(item.get("decision"), dict) else {}
-        process = item.get("process") if isinstance(item.get("process"), dict) else {}
-        state = item.get("state") if isinstance(item.get("state"), dict) else {}
-        published_view = item.get("published_view") if isinstance(item.get("published_view"), dict) else {}
-        last_frame = state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
-        lines.extend(
-            [
-                "",
-                str(item.get("vehicle_id", "unknown")),
-                f"  deployment: {'deployed' if item.get('deployed') else 'not deployed'}",
-                *_selection_lines(item.get("steps")),
-                f"  decision: {_decision_label(decision)}",
-                f"  worker: {_worker_label(process, state)}",
-                f"  run: {_run_label(state)}",
-                f"  latest: {_latest_status_label(state, last_frame)}",
-                f"  view: {_published_view_label(published_view)}",
-                f"  state: {state.get('state_record', 'unknown')}",
-                f"  log: {_status_log_label(process)}",
-            ]
-        )
-        arming = state.get("arming")
-        if isinstance(arming, dict) and arming.get("request_id"):
-            lines.append(f"  arming: {arming['status']} (request {arming['request_id']})")
-            if arming.get("error"):
-                lines.append(f"  problem: {arming['error']}")
-        problems = item.get("activation_problems")
-        if isinstance(problems, list) and problems:
-            lines.extend(f"  {line}" for line in format_activation_problems(problems).splitlines())
-        reason = process.get("reason")
-        if isinstance(reason, str) and reason:
-            lines.append(f"  problem: {reason}")
-        recovery = process.get("recovery")
-        if isinstance(recovery, str) and recovery:
-            lines.append(f"  next: {recovery}")
-    return "\n".join(lines)
+    arming = state.get("arming")
+    if isinstance(arming, dict) and arming.get("request_id"):
+        lines.append(f"  arming: {arming['status']} (request {arming['request_id']})")
+        if arming.get("error"):
+            lines.append(f"  problem: {arming['error']}")
+    problems = item.get("activation_problems")
+    if isinstance(problems, list) and problems:
+        lines.extend(f"  {line}" for line in format_activation_problems(problems).splitlines())
+    reason = process.get("reason")
+    if isinstance(reason, str) and reason:
+        lines.append(f"  problem: {reason}")
+    return lines
 
 
 def _selection_lines(selections: Any) -> list[str]:
@@ -1513,50 +1470,46 @@ def _pid_alive(pid: int) -> bool:
     return True
 
 
-def _pid_matches_automation(pid: int, vehicle_id: str) -> bool:
-    """Return whether *pid* looks like this vehicle's automation monitor.
+def _pid_matches_automation(pid: int, host_name: str) -> bool:
+    """Return whether *pid* looks like this host's automation monitor.
 
     When the process command cannot be read, returns True (stop path stays
     permissive). Callers that must fail closed should read the command first
-    and use :func:`_automation_command_matches_vehicle` directly.
+    and use :func:`_automation_command_matches_host` directly.
     """
 
     command = _process_command(pid)
     if command is None:
         return True
-    return _automation_command_matches_vehicle(command, vehicle_id)
+    return _automation_command_matches_host(command, host_name)
 
 
-def _automation_command_matches_vehicle(command: str, vehicle_id: str) -> bool:
-    """Pure check: command is a host run for exactly *vehicle_id*.
+def _automation_command_matches_host(command: str, host_name: str) -> bool:
+    """Pure check: command is a host run for exactly *host_name*.
 
-    Requires the contiguous launcher subcommand ``vehicles host run`` and
-    an exact ``--id <vehicle_id>`` argument pair (token equality, not substring).
+    Requires the contiguous launcher subcommand ``hosts run`` and
+    an exact ``--name <host_name>`` argument pair (token equality, not substring).
     """
 
-    if not vehicle_id or not str(vehicle_id).strip():
+    if not host_name or not str(host_name).strip():
         return False
-    vehicle_key = str(vehicle_id).strip()
+    host_key = str(host_name).strip()
     try:
         tokens = shlex.split(command)
     except ValueError:
         return False
     if not tokens:
         return False
-    # Contiguous launcher subcommand as emitted by start_automation.
-    matched_run = False
-    for index in range(len(tokens) - 2):
-        if tokens[index : index + 3] == ["vehicles", "host", "run"]:
-            matched_run = True
-            break
-    if not matched_run:
+    # Match the subcommand immediately after the actual CLI executable.
+    if not any(Path(tokens[index]).name == "automa" and tokens[index + 1:index + 3] == ["hosts", "run"]
+               for index in range(len(tokens) - 2)):
         return False
     for index, token in enumerate(tokens):
-        if token == "--id":
-            if index + 1 < len(tokens) and tokens[index + 1] == vehicle_key:
+        if token == "--name":
+            if index + 1 < len(tokens) and tokens[index + 1] == host_key:
                 return True
-        elif token.startswith("--id="):
-            if token[len("--id=") :] == vehicle_key:
+        elif token.startswith("--name="):
+            if token[len("--name=") :] == host_key:
                 return True
     return False
 

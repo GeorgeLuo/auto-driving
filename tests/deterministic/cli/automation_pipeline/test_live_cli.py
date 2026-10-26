@@ -17,7 +17,7 @@ from urllib.request import urlopen
 
 from cli.automa_cli.host_publications import fetch_observation_sample
 from cli.automa_cli.streaming import _ViewFeed, _read_publication
-from tests.shared.cli.automation_pipeline.pipeline_fixtures import VEHICLE_ID
+from tests.shared.cli.automation_pipeline.pipeline_fixtures import HOST_NAME
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.integration.live_host import LiveHostTestCase, stage_runtime as _stage, wait_until
 from tests.support.fake_hosts import closed_url
@@ -29,7 +29,7 @@ class LiveCommandsTests(LiveHostTestCase):
     def test_the_perception_view_stays_live_while_the_decision_is_unavailable(self) -> None:
         self.observe()
         with patch("cli.automa_cli.streaming.runtime_view_dir", return_value=self.runtime_root / "view"):
-            feed = _ViewFeed(VEHICLE_ID, base_url=self.host.base_url, timeout_s=3.0)
+            feed = _ViewFeed(HOST_NAME, base_url=self.host.base_url, timeout_s=3.0)
         self.addCleanup(feed.stop)
         feed.decision.refresh = Mock(side_effect=ConnectionError("decision route down"))
         publication = _read_publication(self.host.base_url, timeout_s=3.0)[0]
@@ -55,7 +55,7 @@ class LiveCommandsTests(LiveHostTestCase):
             self.assertEqual(response.read(), jpeg)
 
     def automa(self, *args: str):
-        return invoke_automa("vehicles", *args, "--id", VEHICLE_ID, runtime_root=self.runtime_root, check=False)
+        return invoke_automa("hosts", *args, "--name", HOST_NAME, runtime_root=self.runtime_root, check=False)
 
     def test_streams_are_live_only_while_a_session_runs(self) -> None:
         idle = self.automa("stream", "perception", "--once", "--json")
@@ -77,10 +77,10 @@ class LiveCommandsTests(LiveHostTestCase):
         self.assertEqual(terminal.returncode, 0, terminal.stdout + terminal.stderr)
         self.assertIn(f"host: {self.host.base_url}", terminal.stdout)
 
-    def viewer(self, url: str):
-        return invoke_automa("vehicles", "viewer", "--host-url", url, runtime_root=self.runtime_root, check=False)
+    def viewer(self, *target: str):
+        return invoke_automa("hosts", "viewer", *target, runtime_root=self.runtime_root, check=False)
 
-    def view_once(self, url: str):
+    def view_once(self, *target: str):
         """The viewer's result, its view's URL, and the view's /api/latest status and body
         after one refresh from the host, when Ctrl-C stops it."""
         opened, served = [], []
@@ -96,44 +96,55 @@ class LiveCommandsTests(LiveHostTestCase):
         with patch("cli.automa_cli.streaming.open_view_message",
                    side_effect=lambda url: opened.append(url) or f"Browser opened: {url}"), \
              patch("cli.automa_cli.streaming._pause_s", side_effect=interrupt):
-            result = self.viewer(url)
+            result = self.viewer(*target)
         self.assertEqual(result.returncode, 130, result.stdout + result.stderr)
         return result, opened[0], served[0]
 
     def test_the_viewer_serves_the_host_at_its_status_url(self) -> None:
         self.observe()
-        result, view_url, (status, latest) = self.view_once(self.host.base_url + "/")
+        result, view_url, (status, latest) = self.view_once("--host-url", self.host.base_url + "/")
 
         self.assertEqual(result.stdout,
-                         f"Viewing host {VEHICLE_ID} at {self.host.base_url}\nBrowser opened: {view_url}\n")
+                         f"Viewing host {HOST_NAME} at {self.host.base_url}\nBrowser opened: {view_url}\n")
         self.assertEqual((status, latest["overlay"]["status"]), (200, "current"))
         with self.assertRaises(OSError):
             urlopen(view_url, timeout=1)
+
+    def test_the_viewer_serves_the_host_by_name(self) -> None:
+        self.observe()
+        result, view_url, (status, latest) = self.view_once("--name", HOST_NAME)
+
+        self.assertEqual(result.stdout,
+                         f"Viewing host {HOST_NAME} at {self.host.base_url}\nBrowser opened: {view_url}\n")
+        self.assertEqual((status, latest["overlay"]["status"]), (200, "current"))
 
     def test_the_viewer_says_why_a_host_whose_run_stopped_is_not_live(self) -> None:
         self.observe()
         self.client.stop()
         wait_until(lambda: _read_publication(self.host.base_url, timeout_s=3.0)[0]["health"] == "stale",
                    message="the stopped host's last frame never went stale")
-        result, view_url, served = self.view_once(self.host.base_url)
+        result, view_url, served = self.view_once("--host-url", self.host.base_url)
 
         reason = "The observation publication health is 'stale'."
-        self.assertEqual(result.stdout, f"Viewing host {VEHICLE_ID} at {self.host.base_url}\n"
+        self.assertEqual(result.stdout, f"Viewing host {HOST_NAME} at {self.host.base_url}\n"
                                         f"Not live: {reason}\nBrowser opened: {view_url}\n")
         self.assertEqual(served, (503, {"error": reason}))
 
-    def test_the_viewer_refuses_a_url_without_an_answering_host(self) -> None:
-        unknown = self.viewer("http://localhost:5050")
+    def test_the_viewer_refuses_a_missing_or_silent_host(self) -> None:
+        unknown = self.viewer("--host-url", "http://localhost:5050")
         self.assertEqual((unknown.returncode, unknown.stdout),
-                         (2, f"No host at http://localhost:5050. Hosts: {VEHICLE_ID} at {self.host.base_url}.\n"))
+                         (2, f"No host at http://localhost:5050. Hosts: {HOST_NAME} at {self.host.base_url}.\n"))
+        unnamed = self.viewer("--name", "nope")
+        self.assertEqual((unnamed.returncode, unnamed.stdout), (2, f"No host 'nope'. Hosts: {HOST_NAME}.\n"))
 
         url = closed_url()
         write_host_fixture(self.runtime_root, "piracer", provider="picar", url=url)
-        with patch("cli.automa_cli.streaming.open_view_message") as open_view:
-            silent = self.viewer(url)
-        self.assertEqual(silent.returncode, 2, silent.stdout + silent.stderr)
-        self.assertTrue(silent.stdout.startswith(f"Cannot view host piracer at {url}: "), silent.stdout)
-        open_view.assert_not_called()
+        for target in (("--host-url", url), ("--name", "piracer")):
+            with self.subTest(target=target), patch("cli.automa_cli.streaming.open_view_message") as open_view:
+                silent = self.viewer(*target)
+                self.assertEqual(silent.returncode, 2, silent.stdout + silent.stderr)
+                self.assertTrue(silent.stdout.startswith(f"Cannot view host piracer at {url}: "), silent.stdout)
+                open_view.assert_not_called()
 
     def test_info_reports_the_hosts_live_state(self) -> None:
         self.observe()
@@ -192,10 +203,11 @@ class NoRuntimeHostTests(unittest.TestCase):
                 ("perception", "viability", "--no-record", "--json"),
                 ("memory", "viability", "--no-record"),
                 ("memory", "reset"),
+                ("viewer",),
             ):
                 with self.subTest(args=args):
                     result = invoke_automa(
-                        "vehicles", *args, "--id", VEHICLE_ID, runtime_root=runtime_root, check=False
+                        "hosts", *args, "--name", HOST_NAME, runtime_root=runtime_root, check=False
                     )
                     self.assertEqual(result.returncode, 2)
                     self.assertIn(START_HOST, result.stdout + result.stderr)

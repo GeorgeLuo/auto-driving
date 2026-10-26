@@ -39,7 +39,7 @@ class RecordedPluginFlows(unittest.TestCase):
         with image_source(1) as root:
             host = create_picar_host(steps=decision_steps())
             self.addCleanup(host.close)
-            recording = RunRecording(root / "runs", vehicle_id="picar")
+            recording = RunRecording(root / "runs", host_name="picar")
             host.start(RunConfiguration(mode="observe_only", num_decisions=1), recording=recording)
             file = root / "prototype.py"
             write_plugin(file, "proposal", "prototype", 1)
@@ -57,7 +57,7 @@ class RecordedPluginFlows(unittest.TestCase):
         with image_source(1) as root:
             host = create_picar_host(steps=decision_steps())
             self.addCleanup(host.close)
-            recording = RunRecording(root / "runs", vehicle_id="picar")
+            recording = RunRecording(root / "runs", host_name="picar")
             host.start(RunConfiguration(mode="observe_only", num_decisions=3), recording=recording)
             for index, module in enumerate(("implementations.bundle_only", "implementations.bundle_only", "implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin")):
                 bundle = root / f"bundle-{index}"
@@ -93,10 +93,10 @@ class RecordedPluginFlows(unittest.TestCase):
                         else create_picar_host(steps=decision_steps()))
                 self.addCleanup(host.close)
                 host.follow_activations({}, root / "runtime")
-                view = RuntimeViewServer(vehicle_id=vehicle, automation_dir=root / "automation",
+                view = RuntimeViewServer(host_name=vehicle, automation_dir=root / "automation",
                                          port=0, plugin_catalog=host.plugin_catalog).start()
                 self.addCleanup(view.stop)
-                recording = RunRecording(root / "runs", vehicle_id=vehicle)
+                recording = RunRecording(root / "runs", host_name=vehicle)
                 host.start(RunConfiguration(mode="observe_only", num_decisions=3), recording=recording)
                 host.run(frame(root, 0))
                 originals = set()
@@ -139,7 +139,7 @@ class RecordedPluginFlows(unittest.TestCase):
                 moved = root / "moved"
                 shutil.move(recording.root, moved)
                 self.assertEqual(json.loads((moved / "manifest.json").read_text()), before)
-                cli = invoke_automa("vehicles", "workbench", "replay", str(moved), "--cadence-ms", "0")
+                cli = invoke_automa("hosts", "workbench", "replay", str(moved), "--cadence-ms", "0")
                 self.assertIn("phase: completed", cli.stdout)
                 base, run_id = replay(self, moved)
                 for position, revision in ((1, 1), (2, 2)):

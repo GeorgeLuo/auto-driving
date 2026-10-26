@@ -15,21 +15,20 @@ class HelpCommandTests(unittest.TestCase):
             ["vehicles", "status"],
             ["vehicles", "discover", "--provider", "chase-sim", "--url", "http://localhost:5051"],
             ["vehicles", "remove", "--url", "http://localhost:5051"],
-            ["vehicles", "viewer", "--host-url", "http://127.0.0.1:54665"],
+            ["hosts", "viewer", "--host-url", "http://127.0.0.1:54665"],
+            ["hosts", "viewer", "--name", "chase-sim-chaser"],
             [
-                "vehicles",
-                "update",
+                "hosts", "stage",
                 "perception",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 "--preset",
                 "lightweight_observer",
             ],
             [
-                "vehicles",
-                "host",
+                "hosts",
                 "run",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 "--observe-only",
                 "--num-decisions",
@@ -37,38 +36,43 @@ class HelpCommandTests(unittest.TestCase):
                 "--open-view",
             ],
             [
-                "vehicles", "host", "restart", "--id", "piracer",
+                "hosts", "restart", "--name", "piracer",
                 "--num-decisions", "7",
             ],
-            ["vehicles", "status", "--id", "chase-sim-chaser"],
-            ["vehicles", "host", "stop", "--id", "chase-sim-chaser"],
+            ["vehicles", "status"],
+            ["hosts", "stop", "--name", "chase-sim-chaser"],
         ):
             with self.subTest(args=args):
                 parsed = parser.parse_args(args)
-                self.assertEqual(parsed.command, "vehicles")
+                self.assertEqual(parsed.command, args[0])
                 if "--num-decisions" in args:
                     self.assertEqual(parsed.num_decisions, int(args[args.index("--num-decisions") + 1]))
 
     def test_host_lifecycle_parses_under_one_group(self) -> None:
         parser = build_parser()
         for args in (
-            ["create", "--id", "demo", "--provider", "chase-sim", "--url", "http://localhost:5050"],
-            ["update", "--id", "demo", "--restart"],
-            ["run", "--id", "demo"],
-            ["stop", "--id", "demo"],
-            ["restart", "--id", "demo"],
-            ["status", "--id", "demo"],
-            ["serve", "--id", "demo"],
-            ["delete", "--id", "demo"],
+            ["create", "--name", "demo", "--provider", "chase-sim", "--url", "http://localhost:5050"],
+            ["update", "--name", "demo", "--restart"],
+            ["run", "--name", "demo"],
+            ["stop", "--name", "demo"],
+            ["restart", "--name", "demo"],
+            ["status", "--name", "demo"],
+            ["serve", "--name", "demo"],
+            ["delete", "--name", "demo"],
         ):
             with self.subTest(args=args):
-                parsed = parser.parse_args(["vehicles", "host", *args])
-                self.assertEqual((parsed.host_command, parsed.vehicle_id), (args[0], "demo"))
+                parsed = parser.parse_args(["hosts", *args])
+                self.assertEqual((parsed.host_command, parsed.host_name), (args[0], "demo"))
         for args in (
-            ["vehicles", "automation", "run", "--id", "demo"],
-            ["vehicles", "create", "host", "--id", "demo", "--provider", "chase-sim", "--url", "http://localhost:5050"],
-            ["vehicles", "update", "host", "--id", "demo"],
-            ["vehicles", "delete", "host", "--id", "demo"],
+            ["host", "status"],
+            ["host", "run", "--name", "demo"],
+            ["vehicles", "host", "status"],
+            ["vehicles", "plugins", "status", "--name", "demo"],
+            ["vehicles", "update", "perception", "--name", "demo"],
+            ["vehicles", "automation", "run", "--name", "demo"],
+            ["vehicles", "create", "host", "--name", "demo", "--provider", "chase-sim", "--url", "http://localhost:5050"],
+            ["hosts", "stage", "host", "--name", "demo"],
+            ["vehicles", "delete", "host", "--name", "demo"],
         ):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as caught:
@@ -87,16 +91,28 @@ class HelpCommandTests(unittest.TestCase):
         for args in (
             ["vehicles", "active", "--verbose"],
             ["vehicles", "active", "--include-inactive"],
-            ["vehicles", "host", "run", "--id", "chase-sim-chaser", "--frames", "3"],
-            ["vehicles", "host", "restart", "--id", "piracer", "--frames", "3"],
+            ["hosts", "run", "--name", "chase-sim-chaser", "--frames", "3"],
+            ["hosts", "restart", "--name", "piracer", "--frames", "3"],
             [
-                "vehicles",
-                "host",
+                "hosts",
                 "run",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 "--prepare-control",
             ],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+
+    def test_the_viewer_takes_one_host_by_name_or_url(self) -> None:
+        parser = build_parser()
+        named = parser.parse_args(["hosts", "viewer", "--name", "chase-sim-chaser"])
+        self.assertEqual((named.host_name, named.host_url), ("chase-sim-chaser", None))
+        for args in (
+            ["hosts", "viewer"],
+            ["hosts", "viewer", "--name", "chase-sim-chaser", "--host-url", "http://127.0.0.1:54665"],
         ):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as caught:

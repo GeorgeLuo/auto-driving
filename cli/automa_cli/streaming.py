@@ -1,4 +1,4 @@
-"""Live step streams and probes, read from a vehicle's runtime host.
+"""Live step streams and probes, read from a runtime host.
 
 Every vehicle host serves ``autonomy.runtime.routes``, so a stream resolves
 the host's ``base_url`` (``runtime_hosts``) and reads the same routes for a
@@ -38,12 +38,12 @@ from .runtime_view import RuntimeViewServer, open_view_message
 from .step_activations import absent_step_error
 from .view_discovery import runtime_view_dir
 
-PERCEPTION_LIVE_SCHEMA = "vehicle_perception_live_v0"
+PERCEPTION_LIVE_SCHEMA = "host_perception_live"
 # Every step's live probe schema; their probes and live screens are in this module.
-MEMORY_LIVE_SCHEMA = "vehicle_memory_live_v1"
+MEMORY_LIVE_SCHEMA = "host_memory_live"
 LIVE_STEP_SCHEMAS = {
     "memory": MEMORY_LIVE_SCHEMA,
-    **{step: f"vehicle_{step}_live_v1" for step in ("proposal", "plan", "action")},
+    **{step: f"host_{step}_live" for step in ("proposal", "plan", "action")},
 }
 # Observation publication health -> probe status; "healthy" is the only live one.
 _PERCEPTION_STATUS = {
@@ -61,9 +61,9 @@ class CommandResult:
     message: str
 
 
-def stream_vehicle_perception(
+def stream_host_perception(
     *,
-    vehicle_id: str,
+    host_name: str,
     refresh_s: float = 0.5,
     once: bool = False,
     no_clear: bool = False,
@@ -71,7 +71,7 @@ def stream_vehicle_perception(
     json_output: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    """Poll the latest perception the vehicle's runtime host publishes.
+    """Poll the latest perception the host publishes.
 
     JSON mode prints each probe alone, including the unavailable one when no
     host can be addressed. The terminal view renders the same probe verdict
@@ -79,25 +79,25 @@ def stream_vehicle_perception(
     """
 
     try:
-        base_url = runtime_base_url(vehicle_id)
+        base_url = runtime_base_url(host_name)
     except RuntimeHostError as exc:
         return CommandResult(
             *unavailable_stream_outcome(
                 step="perception",
                 schema=PERCEPTION_LIVE_SCHEMA,
-                vehicle_id=vehicle_id,
+                host_name=host_name,
                 message=str(exc),
                 json_output=json_output,
                 stream=output,
             )
         )
-    view = None if json_output else _ViewFeed(vehicle_id, base_url=base_url, timeout_s=timeout_s)
+    view = None if json_output else _ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
 
     def probe() -> tuple[dict[str, Any], Any]:
         publication, fetch_error = (view.read_observation() if view is not None
                                     else _read_publication(base_url, timeout_s=timeout_s))
         live = _probe_perception(
-            vehicle_id=vehicle_id,
+            host_name=host_name,
             base_url=base_url,
             publication=publication,
             fetch_error=fetch_error,
@@ -108,7 +108,7 @@ def stream_vehicle_perception(
         assert view is not None
         view.publish(publication)
         return _perception_screen(
-            vehicle_id=vehicle_id,
+            host_name=host_name,
             live=live,
             base_url=base_url,
             publication=publication,
@@ -131,10 +131,10 @@ def stream_vehicle_perception(
             view.stop()
 
 
-def _unavailable_probe(schema: str, vehicle_id: str, error: str) -> dict[str, Any]:
+def _unavailable_probe(schema: str, host_name: str, error: str) -> dict[str, Any]:
     return {
         "schema": schema,
-        "vehicle_id": vehicle_id,
+        "host_name": host_name,
         "status": "unavailable",
         "error": error,
         "probed_at_ms": _timestamp_ms(),
@@ -145,7 +145,7 @@ def unavailable_stream_outcome(
     *,
     step: str,
     schema: str,
-    vehicle_id: str,
+    host_name: str,
     message: str,
     json_output: bool,
     stream: TextIO | None,
@@ -160,7 +160,7 @@ def unavailable_stream_outcome(
 
     if not json_output:
         return 2, message
-    live = _unavailable_probe(schema, vehicle_id, message)
+    live = _unavailable_probe(schema, host_name, message)
     line = json.dumps(live, sort_keys=True)
     if stream is not None:
         print(line, file=stream, flush=True)
@@ -224,27 +224,36 @@ def _poll_stream(
         return CommandResult(130, "")
 
 
-def serve_host_viewer(*, host_url: str, timeout_s: float = 3.0) -> CommandResult:
-    """Serve the runtime view fed from the local host at ``host_url`` until interrupted.
+def serve_host_viewer(
+    *, host_name: str | None = None, host_url: str | None = None, timeout_s: float = 3.0,
+) -> CommandResult:
+    """Serve the runtime view fed from a local host until interrupted.
 
-    ``host_url`` is the host URL ``vehicles status`` shows. The view opens only
-    once the host answers, and refreshes at the cadence of a run's view. While
-    the host is not live its pages say why.
+    The host is ``host_name``, or the one at ``host_url``, the host URL
+    ``hosts status`` shows. The view opens only once the host answers, and
+    refreshes at the cadence of a run's view. While the host is not live its
+    pages say why.
     """
 
-    hosts = [host for host in local_hosts() if host["url"]]
-    matched = [host for host in hosts if host["url"].rstrip("/") == host_url.rstrip("/")]
-    if not matched:
-        names = ", ".join(f"{host['vehicle_id']} at {host['url']}" for host in hosts)
-        return CommandResult(2, f"No host at {host_url}. " + (f"Hosts: {names}." if names else "None is running."))
-    host = matched[0]
-    view = _ViewFeed(host["vehicle_id"], base_url=host["url"], timeout_s=timeout_s)
+    if host_name is not None:
+        try:
+            base_url = runtime_base_url(host_name)
+        except RuntimeHostError as exc:
+            return CommandResult(2, str(exc))
+    else:
+        hosts = [host for host in local_hosts() if host["url"]]
+        matched = [host for host in hosts if host["url"].rstrip("/") == host_url.rstrip("/")]
+        if not matched:
+            names = ", ".join(f"{host['host_name']} at {host['url']}" for host in hosts)
+            return CommandResult(2, f"No host at {host_url}. " + (f"Hosts: {names}." if names else "None is running."))
+        host_name, base_url = matched[0]["host_name"], matched[0]["url"]
+    view = _ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
     try:
         publication, error = view.read_observation()
         if view.url is None or error is not None:
-            return CommandResult(2, f"Cannot view host {host['vehicle_id']} at {host['url']}: {view.error}")
+            return CommandResult(2, f"Cannot view host {host_name} at {base_url}: {view.error}")
         view.publish(publication)
-        print(f"Viewing host {host['vehicle_id']} at {host['url']}", flush=True)
+        print(f"Viewing host {host_name} at {base_url}", flush=True)
         not_live = _health_error(publication)
         if not_live is not None:
             print(f"Not live: {not_live}", flush=True)
@@ -262,14 +271,14 @@ def serve_host_viewer(*, host_url: str, timeout_s: float = 3.0) -> CommandResult
 class _ViewFeed:
     """A loopback runtime view a terminal stream feeds from the host's publications.
 
-    As the view of ``host run`` does, its decision page aggregates the
+    As the view of ``hosts run`` does, its decision page aggregates the
     host's latest decision with its matched frame, evidence and candidates, and
     it serves the host's plugin catalog. The perception and memory pages publish
     from the observation even while no matched decision is available.
     """
 
-    def __init__(self, vehicle_id: str, *, base_url: str, timeout_s: float) -> None:
-        runtime_dir = runtime_view_dir(vehicle_id)
+    def __init__(self, host_name: str, *, base_url: str, timeout_s: float) -> None:
+        runtime_dir = runtime_view_dir(host_name)
         runtime_dir.mkdir(parents=True, exist_ok=True)
         self.base_url = base_url
         self.timeout_s = timeout_s
@@ -283,12 +292,12 @@ class _ViewFeed:
         self._last_capture: tuple[Any, ...] | None = None
         try:
             self.server = RuntimeViewServer(
-                vehicle_id=vehicle_id,
+                host_name=host_name,
                 automation_dir=runtime_dir,
                 plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
             ).start()
             self.decision = DecisionViewAdapter(
-                vehicle_id=vehicle_id, base_url=base_url, view_server=self.server, timeout_s=timeout_s,
+                host_name=host_name, base_url=base_url, view_server=self.server, timeout_s=timeout_s,
             )
         except OSError as exc:
             self.error = f"{type(exc).__name__}: {exc}"
@@ -386,14 +395,14 @@ def _read_publication(base_url: str, *, timeout_s: float) -> tuple[dict[str, Any
 
 def _probe_perception(
     *,
-    vehicle_id: str,
+    host_name: str,
     base_url: str,
     publication: dict[str, Any] | None,
     fetch_error: str | None,
 ) -> dict[str, Any]:
     probe: dict[str, Any] = {
         "schema": PERCEPTION_LIVE_SCHEMA,
-        "vehicle_id": vehicle_id,
+        "host_name": host_name,
         "endpoint": f"{base_url}{LATEST_JSON_PATH}",
         "probed_at_ms": _timestamp_ms(),
     }
@@ -458,7 +467,7 @@ def _probe_latest_perception(
 
 def _perception_screen(
     *,
-    vehicle_id: str,
+    host_name: str,
     live: dict[str, Any],
     base_url: str,
     publication: dict[str, Any] | None,
@@ -482,7 +491,7 @@ def _perception_screen(
     lines = [
         "automa perception stream",
         "",
-        f"vehicle: {vehicle_id}",
+        f"host: {host_name}",
         f"host: {base_url}",
         f"status: {live.get('status', 'unknown')}",
         *([f"error: {live['error']}"] if live.get("error") else []),
@@ -520,9 +529,9 @@ def _timestamp_ms() -> int:
     return int(time.time() * 1000)
 
 
-def stream_vehicle_memory(
+def stream_host_memory(
     *,
-    vehicle_id: str,
+    host_name: str,
     refresh_s: float = 0.5,
     once: bool = False,
     no_clear: bool = False,
@@ -530,7 +539,7 @@ def stream_vehicle_memory(
     json_output: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    """Poll the live memory step the vehicle's runtime host runs.
+    """Poll the live memory step the host runs.
 
     ``live`` means the host runs a memory step; update health stays in the
     plugin diagnostics. Each probe lists every applied plugin's ledger and
@@ -540,26 +549,26 @@ def stream_vehicle_memory(
     """
 
     try:
-        base_url = runtime_base_url(vehicle_id)
+        base_url = runtime_base_url(host_name)
     except RuntimeHostError as exc:
         return CommandResult(
             *unavailable_stream_outcome(
                 step="memory",
                 schema=MEMORY_LIVE_SCHEMA,
-                vehicle_id=vehicle_id,
+                host_name=host_name,
                 message=str(exc),
                 json_output=json_output,
                 stream=output,
             )
         )
-    view = None if json_output else _ViewFeed(vehicle_id, base_url=base_url, timeout_s=timeout_s)
+    view = None if json_output else _ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
 
     def render(live: dict[str, Any], _source: Any) -> str:
         assert view is not None
         publication, fetch_error = view.read_observation()
         view.publish(publication)
         return _memory_screen(
-            vehicle_id=vehicle_id,
+            host_name=host_name,
             live=live,
             view_url=view.url,
             view_error=view.error,
@@ -572,7 +581,7 @@ def stream_vehicle_memory(
         return _poll_stream(
             step="memory",
             probe=lambda: (
-                _probe_step("memory", vehicle_id=vehicle_id, base_url=base_url, timeout_s=timeout_s),
+                _probe_step("memory", host_name=host_name, base_url=base_url, timeout_s=timeout_s),
                 None,
             ),
             render=render,
@@ -589,7 +598,7 @@ def stream_vehicle_memory(
 
 def _memory_screen(
     *,
-    vehicle_id: str,
+    host_name: str,
     live: dict[str, Any],
     view_url: str | None,
     view_error: str | None,
@@ -601,7 +610,7 @@ def _memory_screen(
     report its latest cycle published."""
 
     lines = [
-        _format_live_memory_screen(vehicle_id=vehicle_id, live=live),
+        _format_live_memory_screen(host_name=host_name, live=live),
         "",
         _view_line("memory map", view_url, view_error, "/memory"),
         _view_line("perception view", view_url, view_error, "/perception"),
@@ -617,27 +626,27 @@ def _memory_screen(
     return "\n".join(lines)
 
 
-def probe_live_memory(*, vehicle_id: str, timeout_s: float = 3.0) -> dict[str, Any]:
+def probe_live_memory(*, host_name: str, timeout_s: float = 3.0) -> dict[str, Any]:
     """Return a normalized live-memory probe without requiring stream mode."""
 
-    return probe_live_step("memory", vehicle_id=vehicle_id, timeout_s=timeout_s)
+    return probe_live_step("memory", host_name=host_name, timeout_s=timeout_s)
 
 
-def probe_live_step(step: str, *, vehicle_id: str, timeout_s: float = 3.0) -> dict[str, Any]:
-    """``step`` as the vehicle's runtime host runs it: its runner's status
+def probe_live_step(step: str, *, host_name: str, timeout_s: float = 3.0) -> dict[str, Any]:
+    """``step`` as the host runs it: its runner's status
     under ``/host/status``, not what any view last rendered."""
 
     try:
-        base_url = runtime_base_url(vehicle_id)
+        base_url = runtime_base_url(host_name)
     except RuntimeHostError as exc:
-        return _unavailable_probe(LIVE_STEP_SCHEMAS[step], vehicle_id, str(exc))
-    return _probe_step(step, vehicle_id=vehicle_id, base_url=base_url, timeout_s=timeout_s)
+        return _unavailable_probe(LIVE_STEP_SCHEMAS[step], host_name, str(exc))
+    return _probe_step(step, host_name=host_name, base_url=base_url, timeout_s=timeout_s)
 
 
-def _probe_step(step: str, *, vehicle_id: str, base_url: str, timeout_s: float) -> dict[str, Any]:
+def _probe_step(step: str, *, host_name: str, base_url: str, timeout_s: float) -> dict[str, Any]:
     probe: dict[str, Any] = {
         "schema": LIVE_STEP_SCHEMAS[step],
-        "vehicle_id": vehicle_id,
+        "host_name": host_name,
         "endpoint": f"{base_url}/host/status",
         "probed_at_ms": _timestamp_ms(),
     }
@@ -652,7 +661,7 @@ def _probe_step(step: str, *, vehicle_id: str, base_url: str, timeout_s: float) 
     steps = autonomy.get("steps") if isinstance(autonomy.get("steps"), dict) else {}
     runner = steps.get(step) if isinstance(steps.get(step), dict) else None
     if runner is None:
-        return {**probe, "status": "absent", "error": absent_step_error(step, vehicle_id)}
+        return {**probe, "status": "absent", "error": absent_step_error(step, host_name)}
     fields = _live_step_fields(step, runner)
     # The host's cycle times each step call; the runner keeps only its
     # plugins' times.
@@ -716,14 +725,14 @@ def _live_plugins(live: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def _format_live_memory_screen(*, vehicle_id: str, live: dict[str, Any]) -> str:
-    return format_live_step_screen("memory", vehicle_id=vehicle_id, live=live)
+def _format_live_memory_screen(*, host_name: str, live: dict[str, Any]) -> str:
+    return format_live_step_screen("memory", host_name=host_name, live=live)
 
 
-def format_live_step_screen(step: str, *, vehicle_id: str, live: dict[str, Any]) -> str:
+def format_live_step_screen(step: str, *, host_name: str, live: dict[str, Any]) -> str:
     status = str(live.get("status") or "unknown")
     lines = [
-        f"Live {step}: {vehicle_id} [{status}]",
+        f"Live {step}: {host_name} [{status}]",
     ]
     if live.get("endpoint"):
         lines.append(f"Endpoint: {live.get('endpoint')}")

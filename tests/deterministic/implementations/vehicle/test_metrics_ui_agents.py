@@ -12,7 +12,7 @@ from implementations.vehicle.chase_sim.presence import MetricsUiPresence
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_metrics_ui import fake_metrics_ui
 
-HOST = {"kind": "vehicle-host", "vehicle_id": "chase-sim-chaser", "url": "http://127.0.0.1:8123", "pid": 4321}
+HOST = {"kind": "host", "host_name": "chase-sim-chaser", "url": "http://127.0.0.1:8123", "pid": 4321}
 
 
 class CloseReasonTests(unittest.TestCase):

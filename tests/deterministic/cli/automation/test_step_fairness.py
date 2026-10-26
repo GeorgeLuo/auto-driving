@@ -43,7 +43,7 @@ class StepFairnessTests(unittest.TestCase):
                 "cli.automa_cli.automation.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
             ):
                 for step in staged:
-                    code, stdout = _invoke("hosts", "stage", step, "--id", VEHICLE, "--json")
+                    code, stdout = _invoke("hosts", "stage", step, "--name", VEHICLE, "--json")
                     self.assertEqual(code, 0, stdout)
                 (root / VEHICLE / "bundle").mkdir(parents=True, exist_ok=True)
                 if released and not staged:
@@ -54,7 +54,7 @@ class StepFairnessTests(unittest.TestCase):
                 yield root
 
     def _status(self) -> dict:
-        (status,) = _collect_automation_status(host_id=VEHICLE, view_timeout_s=0)
+        (status,) = _collect_automation_status(host_name=VEHICLE, view_timeout_s=0)
         return status
 
     def test_a_run_starts_with_any_single_step_staged(self) -> None:
@@ -68,7 +68,7 @@ class StepFairnessTests(unittest.TestCase):
                 "cli.automa_cli.automation.monitor_runtime", return_value=(0, "done")
             ) as monitor:
                 result = run_host_automation(
-                    host_id=VEHICLE, take_control=False, num_decisions=1, output=io.StringIO()
+                    host_name=VEHICLE, take_control=False, num_decisions=1, output=io.StringIO()
                 )
                 self.assertEqual((result.exit_code, result.message), (0, "done"))
                 selections = monitor.call_args.kwargs["selections"]

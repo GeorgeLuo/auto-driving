@@ -19,9 +19,9 @@ from implementations.decision_cycle.catalog import (
 )
 
 TARGET = PicarTarget(
-    host_id="piracer",
+    host_name="piracer",
     configuration={
-        "host_id": "piracer",
+        "host_name": "piracer",
         "vehicle_kind": "picar",
         "provider": "picar",
         "connection": {"base_url": "http://piracer.local:8887"},
@@ -59,7 +59,7 @@ class PhysicalDeployTests(unittest.TestCase):
             bundle = controller_bundle_paths(Path(tmp) / "runtime" / "hosts" / "piracer")
             release = sync_controller_bundle(bundle, output=None)
             ensure = lambda: ensure_step_activations(  # noqa: E731
-                host_id="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.configuration),
+                host_name="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.configuration),
             )
             paths = ensure()
             self.assertEqual(set(paths), set(STEPS))
@@ -74,7 +74,7 @@ class PhysicalDeployTests(unittest.TestCase):
                 stale = staged(paths, step)
                 stale["plugins"] = []
                 paths[step].write_text(json.dumps(stale), encoding="utf-8")
-            stage_activation(bundle, selection_activation("action", plugins=["hold"]), host_id="piracer")
+            stage_activation(bundle, selection_activation("action", plugins=["hold"]), host_name="piracer")
             paths = ensure()
             for step in SELECTABLE_STEPS:
                 with self.subTest(step=step, staged="named preset"):
@@ -85,7 +85,7 @@ class PhysicalDeployTests(unittest.TestCase):
 
             custom = selection_activation("proposal", plugins=[])
             self.assertEqual(custom.metadata["preset"], "custom")
-            stage_activation(bundle, custom, host_id="piracer")
+            stage_activation(bundle, custom, host_name="piracer")
             paths = ensure()
             self.assertEqual(staged(paths, "proposal")["plugins"], [])
             self.assertEqual(staged(paths, "action")["plugins"], ["hold"])

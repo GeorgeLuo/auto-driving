@@ -37,7 +37,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             root = Path(tmp)
             camera = root / "camera.png"
             Image.new("RGB", (2, 2)).save(camera)
-            recording = RunRecording(root, host_id="picar", run_id="test-run")
+            recording = RunRecording(root, host_name="picar", run_id="test-run")
             host = AutonomyCycleHost(steps=DecisionSteps(), target=DonkeyControlTarget())
             self.addCleanup(host.close)
             expected = []
@@ -116,7 +116,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             Image.new("RGB", (2, 2)).save(camera)
             host = AutonomyCycleHost(steps=DecisionSteps())
             self.addCleanup(host.close)
-            recording = RunRecording(root, host_id="picar", run_id="windows")
+            recording = RunRecording(root, host_name="picar", run_id="windows")
             for index, window in enumerate(windows):
                 sensors = SensorFrame(
                     read_id=f"f{index}", readings={FRONT_CAMERA_SENSOR_ID: SensorReading(

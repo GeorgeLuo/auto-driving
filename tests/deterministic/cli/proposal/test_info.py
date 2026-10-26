@@ -56,7 +56,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         ))
 
         info = get_host_step_info(
-            "proposal", host_id="chase-sim-chaser", json_output=True, include_live=False,
+            "proposal", host_name="chase-sim-chaser", json_output=True, include_live=False,
         )
         self.assertEqual(info.exit_code, 0, info.message)
         payload = json.loads(info.message)
@@ -71,7 +71,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         action["metadata"]["controller_bundle"]["root_dir"] = str(self.runtime_root / "missing")
         action_path.write_text(json.dumps(action), encoding="utf-8")
         missing = get_host_step_info(
-            "action", host_id="chase-sim-chaser", json_output=True, include_live=False,
+            "action", host_name="chase-sim-chaser", json_output=True, include_live=False,
         )
         self.assertEqual(missing.exit_code, 2)
         self.assertIn("Controller bundle is missing", missing.message)
@@ -82,10 +82,10 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         expected = packaged_decision_steps()["proposal"]
         for key in ("plugins", "plugin_specs", "plugin_configs"):
             self.assertEqual(staged[key], expected[key])
-        self.assertEqual(staged["metadata"]["host_id"], "chase-sim-chaser")
+        self.assertEqual(staged["metadata"]["host_name"], "chase-sim-chaser")
 
         info = get_host_step_info(
-            "proposal", host_id="chase-sim-chaser", json_output=True, include_live=False
+            "proposal", host_name="chase-sim-chaser", json_output=True, include_live=False
         )
         self.assertEqual(info.exit_code, 0, info.message)
         info_payload = json.loads(info.message)
@@ -113,7 +113,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
             },
         )
 
-        human = get_host_step_info("proposal", host_id="chase-sim-chaser", include_live=False).message
+        human = get_host_step_info("proposal", host_name="chase-sim-chaser", include_live=False).message
         for expected in (
             "avoid_recent_obstruction",
             HOLD_IDLE_REASON,
@@ -123,7 +123,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
 
     def test_stage_unknown_plugin_and_invalid_config(self) -> None:
         code, message = stage_host_step(
-            host_id="chase-sim-chaser",
+            host_name="chase-sim-chaser",
             step="action",
             plugins=["ghost"],
             runtime_root=self.runtime_root,
@@ -139,7 +139,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         bad_config = {**entry["default_config"], "steer_magnitude": 0.0}
         with patch.dict(entry, {"default_config": bad_config}):
             code, message = stage_host_step(
-                host_id="chase-sim-chaser",
+                host_name="chase-sim-chaser",
                 step="proposal",
                 runtime_root=self.runtime_root,
                 json_output=True,
@@ -157,7 +157,7 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertFalse(activation.exists())
 
     def test_info_missing_activation(self) -> None:
-        result = get_host_step_info("proposal", host_id="missing", json_output=True)
+        result = get_host_step_info("proposal", host_name="missing", json_output=True)
         self.assertEqual(result.exit_code, 2)
         self.assertIn("No active proposal activation found", result.message)
 

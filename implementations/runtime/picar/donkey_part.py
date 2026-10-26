@@ -30,7 +30,7 @@ class AutonomyPilotPart(FrameLoop):
         *,
         host: AutonomyCycleHost,
         presets: dict[str, str] | None = None,
-        host_id: str | None = None,
+        host_name: str | None = None,
         source_id: str | None = None,
         decision_activations: dict[str, dict[str, Any] | None] | None = None,
         generation_id: str | None = None,
@@ -48,7 +48,7 @@ class AutonomyPilotPart(FrameLoop):
         self.host_telemetry = host_telemetry
         super().__init__(
             host=host, presets=presets,
-            host_id=host_id, source_id=source_id,
+            host_name=host_name, source_id=source_id,
             decision_activations=decision_activations, generation_id=generation_id,
             run_id=run_id or f"donkey-run-{secrets.token_hex(12)}",
             recording_root=recording_root,

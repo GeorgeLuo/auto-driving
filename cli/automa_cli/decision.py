@@ -137,14 +137,14 @@ class DecisionSurfaceError(Exception):
         error: str,
         message: str,
         *,
-        host_id: str | None = None,
+        host_name: str | None = None,
         details: dict[str, Any] | None = None,
         exit_code: int = 2,
     ) -> None:
         super().__init__(message)
         self.error = error
         self.message_text = message
-        self.host_id = host_id
+        self.host_name = host_name
         self.details = details or {}
         self.exit_code = exit_code
 
@@ -154,7 +154,7 @@ def decision_error_payload(
     error: str,
     message: str,
     exit_code: int = 2,
-    host_id: str | None = None,
+    host_name: str | None = None,
     details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     return {
@@ -162,7 +162,7 @@ def decision_error_payload(
         "exit_code": exit_code,
         "error": error,
         "message": message,
-        "host_id": host_id,
+        "host_name": host_name,
         "details": details or {},
     }
 
@@ -180,7 +180,7 @@ def _error_result(
                     error=exc.error,
                     message=exc.message_text,
                     exit_code=exc.exit_code,
-                    host_id=exc.host_id,
+                    host_name=exc.host_name,
                     details=exc.details,
                 ),
                 indent=2,
@@ -193,17 +193,17 @@ def _error_result(
 def _require_valid_activations(
     bundle: dict[str, str],
     *,
-    host_id: str,
+    host_name: str,
     steps: tuple[str, ...],
 ) -> None:
     """Refuse invalid staged documents with each owning step's restage command."""
 
-    problems = bundle_activation_problems(bundle, host_id, steps=steps)
+    problems = bundle_activation_problems(bundle, host_name, steps=steps)
     if problems:
         raise DecisionSurfaceError(
             "activation_invalid",
             format_activation_problems(problems),
-            host_id=host_id,
+            host_name=host_name,
             details={"activation_problems": problems},
         )
 
@@ -226,7 +226,7 @@ def _require_identity_steps(identity: object, *, error: str) -> dict[str, Any]:
         raise DecisionSurfaceError(
             error,
             "The decision identity has no proposal step. "
-            "Run: ./cli/automa hosts stage proposal --id <host>",
+            "Run: ./cli/automa hosts stage proposal --name <host>",
         )
     try:
         expected = activation_generation_id(activations_from_payloads(steps), prefix="decision")
@@ -263,7 +263,7 @@ def _require_report_cycle_alignment(
 def accept_decision_publication(
     publication: object,
     *,
-    host_id: str,
+    host_name: str,
     now_ms: int,
     max_age_ms: int | None = None,
 ) -> dict[str, Any]:
@@ -272,7 +272,7 @@ def accept_decision_publication(
     try:
         normalized = normalize_decision_publication(
             publication,
-            host_id=host_id,
+            host_name=host_name,
             now_ms=now_ms,
             max_age_ms=max_age_ms,
         )
@@ -280,14 +280,14 @@ def accept_decision_publication(
         raise DecisionSurfaceError(
             "decision_publication_unavailable",
             exc.message_text,
-            host_id=host_id,
+            host_name=host_name,
             details={"reason": exc.reason, **exc.details},
         ) from exc
     except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError(
             "decision_publication_unavailable",
             f"Decision publication is invalid: {exc}",
-            host_id=host_id,
+            host_name=host_name,
             details={"reason": "incomplete"},
         ) from exc
 
@@ -298,7 +298,7 @@ def accept_decision_publication(
         raise DecisionSurfaceError(
             "decision_publication_unavailable",
             f"Decision publication is invalid: {exc.message_text}",
-            host_id=host_id,
+            host_name=host_name,
             details={"reason": "mismatched", "source_error": exc.error, **exc.details},
         ) from exc
     return normalized

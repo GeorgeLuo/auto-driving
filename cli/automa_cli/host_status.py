@@ -20,15 +20,15 @@ from .vehicles import DEFAULT_READINESS_TIMEOUT_S, _indented, _require_positive_
 
 
 def host_statuses(
-    *, host_id: str | None = None, timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
+    *, host_name: str | None = None, timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
 ) -> list[dict[str, Any]]:
-    """Each local host's state, or a "not found" entry for an unknown ``host_id``."""
+    """Each local host's state, or a "not found" entry for an unknown ``host_name``."""
 
-    return [host for host, _ in read_hosts(host_id=host_id, timeout_s=timeout_s)]
+    return [host for host, _ in read_hosts(host_name=host_name, timeout_s=timeout_s)]
 
 
 def read_hosts(
-    *, host_id: str | None = None, timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
+    *, host_name: str | None = None, timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
 ) -> list[tuple[dict[str, Any], dict[str, Any] | None]]:
     """Each host's status, with the ``host_state`` read it came from.
 
@@ -45,9 +45,9 @@ def read_hosts(
         return max(deadline - time.monotonic(), 1e-3)
 
     hosts = {
-        local["host_id"]: _host_entry(**local)
+        local["host_name"]: _host_entry(**local)
         for local in local_hosts()
-        if host_id in (None, local["host_id"])
+        if host_name in (None, local["host_name"])
     }
     simulators = {host["vehicle_url"] for host in hosts.values() if host["provider"] == "chase-sim" and host["vehicle_url"]}
     with ThreadPoolExecutor() as pool:
@@ -58,8 +58,8 @@ def read_hosts(
             elif host["url"] is None:
                 host["state"] = "not running"
             else:
-                reads[host["host_id"]] = pool.submit(
-                    host_state, host["url"], host_id=host["host_id"], timeout_s=remaining()
+                reads[host["host_name"]] = pool.submit(
+                    host_state, host["url"], host_name=host["host_name"], timeout_s=remaining()
                 )
         # One agent list per simulator, however many of its hosts are listed.
         listings = {endpoint: pool.submit(_listed_agents, endpoint, remaining) for endpoint in simulators}
@@ -80,7 +80,7 @@ def read_hosts(
             if (
                 isinstance(client_info, dict)
                 and client_info.get("kind") == "host"
-                and client_info.get("host_id") == host["host_id"]
+                and client_info.get("host_name") == host["host_name"]
                 and isinstance(client_info.get("url"), str)
                 and client_info["url"].rstrip("/") == host["url"]
             ):
@@ -92,10 +92,10 @@ def read_hosts(
         # A bounded run ends "completed", but the CLI's closing stop leaves it "stopped".
         if hosts[name]["state"] in {"stopped", "completed"}:
             hosts[name]["state"] = "finished_run"
-    ordered = sorted(hosts.values(), key=lambda host: (str(host["host_id"]), host["url"] or ""))
-    if host_id is not None and not ordered:
-        ordered.append({**_host_entry(host_id, None), "state": "not found"})
-    return [(host, states.get(host["host_id"])) for host in ordered]
+    ordered = sorted(hosts.values(), key=lambda host: (str(host["host_name"]), host["url"] or ""))
+    if host_name is not None and not ordered:
+        ordered.append({**_host_entry(host_name, None), "state": "not found"})
+    return [(host, states.get(host["host_name"])) for host in ordered]
 
 
 def _listed_agents(endpoint: str, remaining: Callable[[], float]) -> list[dict[str, Any]] | None:
@@ -107,10 +107,10 @@ def _listed_agents(endpoint: str, remaining: Callable[[], float]) -> list[dict[s
         return None
 
 
-def _host_entry(host_id: Any, url: str | None, pid: Any = None, local: str | None = None,
+def _host_entry(host_name: Any, url: str | None, pid: Any = None, local: str | None = None,
                 provider: str | None = None, vehicle_url: str | None = None, error: str | None = None) -> dict[str, Any]:
     return {
-        "host_id": host_id, "url": url, "pid": pid, "attached": None, "attached_since": None,
+        "host_name": host_name, "url": url, "pid": pid, "attached": None, "attached_since": None,
         "provider": provider, "vehicle_url": vehicle_url,
         "local": local, "state": None, "mode": None, "decision_count": None, "error_count": None,
         "last_frame_at_ms": None, "error": error,
@@ -128,7 +128,7 @@ def host_state_text(host: dict[str, Any]) -> str:
 
 
 def host_block(host: dict[str, Any]) -> str:
-    lines = [f"Host {host.get('host_id')}  {host_state_text(host)}"]
+    lines = [f"Host {host.get('host_name')}  {host_state_text(host)}"]
     if host.get("vehicle_url"):
         kind = "chaser" if host.get("provider") == "chase-sim" else "PiCar"
         lines.append(f"  {kind} at {host['vehicle_url']}")

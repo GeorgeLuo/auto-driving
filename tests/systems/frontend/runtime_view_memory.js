@@ -97,7 +97,7 @@ const RECORDING = {
 function publication(plugins, publisher) {
   return {
     schema: "automa_perception_publication",
-    host_id: "piracer",
+    host_name: "piracer",
     frame: { frame_id: "frame_1" },
     perception: { things: [], plugin_runs: [] },
     memory: { schema: "memory_report_v1", plugins, evidence_publisher: publisher }

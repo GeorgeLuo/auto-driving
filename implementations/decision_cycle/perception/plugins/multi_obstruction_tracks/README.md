@@ -29,7 +29,7 @@ IDs and entrypoints; the preset name in metadata does not rewrite them. To
 restage the preset:
 
 ```sh
-./cli/automa hosts stage perception --id VEHICLE --preset obstruction_observer
+./cli/automa hosts stage perception --name VEHICLE --preset obstruction_observer
 ```
 
 The preset keeps its name and tuning and now selects `multi_obstruction_tracks`.

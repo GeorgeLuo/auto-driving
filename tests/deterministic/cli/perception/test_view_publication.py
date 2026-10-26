@@ -68,7 +68,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
         self.assertEqual(recorded["bounded_evidence"]["records"][0]["kind"], "floor_boundary")
 
         view_payload = _publication_payload(
-            host_id="piracer",
+            host_name="piracer",
             frame={
                 "frame_id": "donkey_frame_1",
                 "frame_index": 1,
@@ -104,7 +104,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
             }
         )
         view_payload = _publication_payload(
-            host_id="piracer",
+            host_name="piracer",
             frame={"frame_id": "donkey_frame_1", "frame_index": 1},
             perception_record=frame_record,
             generated_at_ms=200,

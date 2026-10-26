@@ -45,8 +45,8 @@ from .bundles import (
 from .paths import display_path, safe_path_part
 from .vehicles import DEFAULT_READINESS_TIMEOUT_S
 
-def host_bundle(host_id: str, runtime_root: Path) -> dict[str, str]:
-    return controller_bundle_paths(Path(runtime_root) / safe_path_part(host_id))
+def host_bundle(host_name: str, runtime_root: Path) -> dict[str, str]:
+    return controller_bundle_paths(Path(runtime_root) / safe_path_part(host_name))
 
 
 def bundle_activation_path(bundle: dict[str, str], step: str) -> Path:
@@ -108,7 +108,7 @@ def changed_plugins(previous: StepActivation | None, staged: StepActivation) -> 
 
 
 def bundle_activation_problems(
-    bundle: dict[str, str], host_id: str, *, steps: tuple[str, ...] = STEPS,
+    bundle: dict[str, str], host_name: str, *, steps: tuple[str, ...] = STEPS,
 ) -> list[dict[str, str]]:
     """Diagnose existing staged documents using the core's common step reader.
 
@@ -127,7 +127,7 @@ def bundle_activation_problems(
                 "step": step,
                 "activation": display_path(bundle_activation_path(bundle, step)),
                 "reason": str(exc),
-                "command": f"./cli/automa hosts stage {step} --id {shlex.quote(host_id)}",
+                "command": f"./cli/automa hosts stage {step} --name {shlex.quote(host_name)}",
             })
     return problems
 
@@ -146,7 +146,7 @@ def format_activation_problems(problems: list[dict[str, str]]) -> str:
     )
 
 
-def apply_staged(host_id: str, provider: Any, step: str, *, changed: list[str] | None = None) -> dict[str, Any]:
+def apply_staged(host_name: str, provider: Any, step: str, *, changed: list[str] | None = None) -> dict[str, Any]:
     """How a vehicle's running autonomy picks up ``step`` as ``hosts stage`` staged it.
 
     Every host selects a restaged step's plugins on its next frame. A Chase
@@ -159,7 +159,7 @@ def apply_staged(host_id: str, provider: Any, step: str, *, changed: list[str] |
     """
 
     live = not changed
-    install = f"./cli/automa hosts update --id {host_id}"
+    install = f"./cli/automa hosts update --name {host_name}"
     selection = install if provider == "picar" else None
     restart = f"{install} --restart"
     return {
@@ -183,13 +183,13 @@ def format_apply_staged(apply: dict[str, Any]) -> list[str]:
     ]
 
 
-def absent_step_error(step: str, host_id: str) -> str:
+def absent_step_error(step: str, host_name: str) -> str:
     """The same guidance for every vehicle whose running autonomy lacks ``step``."""
 
-    restart = apply_staged(host_id, None, step)["restart_command"]
+    restart = apply_staged(host_name, None, step)["restart_command"]
     return (
-        f"{host_id} runs no {step} step. Stage it with "
-        f"./cli/automa hosts stage {step} --id {host_id}, then restart: {restart}"
+        f"{host_name} runs no {step} step. Stage it with "
+        f"./cli/automa hosts stage {step} --name {host_name}, then restart: {restart}"
     )
 
 
@@ -197,7 +197,7 @@ HOST_PROVIDERS = ("chase-sim", "picar")
 
 
 def staging_host(
-    host_id: str,
+    host_name: str,
     *,
     runtime_root: Path,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
@@ -205,35 +205,35 @@ def staging_host(
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Read the explicit host record; directory names and activations are not identity."""
 
-    if host_id in {".", ".."} or safe_path_part(host_id) != host_id or not host_id:
+    if host_name in {".", ".."} or safe_path_part(host_name) != host_name or not host_name:
         return None, "Host names may contain letters, digits, dots, underscores and hyphens, excluding . and .."
-    path = Path(runtime_root) / host_id / "host-configuration.json"
+    path = Path(runtime_root) / host_name / "host-configuration.json"
     if not path.is_file():
-        names = host_ids(runtime_root)
+        names = host_names(runtime_root)
         known = f"Hosts: {', '.join(names)}." if names else "No hosts exist."
-        return None, f"No host {host_id!r}. {known}"
+        return None, f"No host {host_name!r}. {known}"
     try:
         configuration = json.loads(path.read_text(encoding="utf-8"))
         if (not isinstance(configuration, dict) or configuration.get("schema") != "automa_host_configuration"
-                or configuration.get("host_id") != host_id
+                or configuration.get("host_name") != host_name
                 or configuration.get("provider") not in HOST_PROVIDERS
                 or not isinstance(configuration.get("connection"), dict)):
             raise ValueError("invalid host record")
     except (OSError, ValueError) as exc:
-        return None, f"Cannot read host {host_id!r}: {exc}"
+        return None, f"Cannot read host {host_name!r}: {exc}"
     return configuration, None
 
 
-def host_ids(runtime_root: Path) -> list[str]:
+def host_names(runtime_root: Path) -> list[str]:
     return sorted(path.parent.name for path in Path(runtime_root).glob("*/host-configuration.json") if path.is_file())
 
 
 def write_host_configuration(runtime_root: Path, configuration: dict[str, Any]) -> Path:
     """Create a host identity without overwriting an existing host."""
-    host_id = configuration["host_id"]
-    if host_id in {".", ".."} or safe_path_part(host_id) != host_id or not host_id:
+    host_name = configuration["host_name"]
+    if host_name in {".", ".."} or safe_path_part(host_name) != host_name or not host_name:
         raise ValueError("Invalid host name")
-    path = Path(runtime_root) / host_id / "host-configuration.json"
+    path = Path(runtime_root) / host_name / "host-configuration.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as stream:
         json.dump({**configuration, "schema": "automa_host_configuration"}, stream, indent=2, sort_keys=True)
@@ -253,7 +253,7 @@ CONTROLLER_BUNDLE_KEYS = (
 
 def staging_metadata(
     *,
-    host_id: str | None,
+    host_name: str | None,
     bundle: dict[str, str],
     release: dict[str, Any] | None = None,
     vehicle: dict[str, Any] | None = None,
@@ -268,7 +268,7 @@ def staging_metadata(
     """
 
     metadata: dict[str, Any] = {
-        "host_id": host_id,
+        "host_name": host_name,
         "activated_at_ms": int(time.time() * 1000),
         "controller_bundle": {
             "root_dir": bundle["root_dir"],
@@ -294,7 +294,7 @@ def staged_activation(
     bundle: dict[str, str],
     activation: StepActivation,
     *,
-    host_id: str | None,
+    host_name: str | None,
     release: dict[str, Any] | None = None,
     vehicle: dict[str, Any] | None = None,
     release_summary: dict[str, Any] | None = None,
@@ -307,7 +307,7 @@ def staged_activation(
     """
 
     metadata = {**dict(activation.metadata), **staging_metadata(
-        host_id=host_id, bundle=bundle, release=release, vehicle=vehicle,
+        host_name=host_name, bundle=bundle, release=release, vehicle=vehicle,
     )}
     if release is None and release_summary is not None:
         controller_bundle = dict(metadata.get("controller_bundle") or {})
@@ -320,7 +320,7 @@ def stage_activation(
     bundle: dict[str, str],
     activation: StepActivation,
     *,
-    host_id: str | None,
+    host_name: str | None,
     release: dict[str, Any] | None = None,
     vehicle: dict[str, Any] | None = None,
     release_summary: dict[str, Any] | None = None,
@@ -332,7 +332,7 @@ def stage_activation(
         staged_activation(
             bundle,
             activation,
-            host_id=host_id,
+            host_name=host_name,
             release=release,
             vehicle=vehicle,
             release_summary=release_summary,
@@ -368,7 +368,7 @@ def refresh_release(bundle: dict[str, str], step: str, release: dict[str, Any]) 
 
 def ensure_step_activations(
     *,
-    host_id: str,
+    host_name: str,
     bundle: dict[str, str],
     release: dict[str, Any],
     vehicle: dict[str, Any] | None = None,
@@ -393,7 +393,7 @@ def ensure_step_activations(
         paths[step] = stage_activation(
             bundle,
             selection_activation(step, preset=preset),
-            host_id=host_id,
+            host_name=host_name,
             release=release,
             vehicle=vehicle,
         )
@@ -474,7 +474,7 @@ def proposal_plugin_ids(steps: dict[str, Any]) -> list[str]:
 
 
 def step_update_error(
-    host_id: str, step: str, error: str, message: str,
+    host_name: str, step: str, error: str, message: str,
     *, json_output: bool, **details: Any,
 ) -> tuple[int, str]:
     """One staging error envelope; vehicle resolution failures use it for every step."""
@@ -484,7 +484,7 @@ def step_update_error(
     return 2, json.dumps(
         {
             "schema": "host_step_update_error",
-            "host_id": host_id,
+            "host_name": host_name,
             "step": step,
             "error": error,
             "message": message,
@@ -497,7 +497,7 @@ def step_update_error(
 
 def stage_host_step(
     *,
-    host_id: str,
+    host_name: str,
     step: str,
     plugins: list[str] | None = None,
     preset: str | None = None,
@@ -521,7 +521,7 @@ def stage_host_step(
         raise
     except (TypeError, ValueError) as exc:
         return step_update_error(
-            host_id, step,
+            host_name, step,
             "invalid_selection",
             f"Cannot stage {step} plugins: {exc}",
             json_output=json_output,
@@ -529,12 +529,12 @@ def stage_host_step(
         )
 
     vehicle, unknown = staging_host(
-        host_id, runtime_root=runtime_root, timeout_s=timeout_s, output=output if verbose else None
+        host_name, runtime_root=runtime_root, timeout_s=timeout_s, output=output if verbose else None
     )
     if unknown is not None:
-        return step_update_error(host_id, step, "unknown_host", unknown, json_output=json_output)
+        return step_update_error(host_name, step, "unknown_host", unknown, json_output=json_output)
 
-    bundle = host_bundle(host_id, runtime_root)
+    bundle = host_bundle(host_name, runtime_root)
     previous = valid_bundle_activation(bundle, step)
     if plugins is not None:
         activation = keep_staged_configs(bundle, activation)
@@ -543,12 +543,12 @@ def stage_host_step(
     if not dry_run:
         release = sync_controller_bundle(bundle, output=output if verbose else None)
     # A dry run reports the document it would write, provenance included.
-    staged = staged_activation(bundle, activation, host_id=host_id, release=release, vehicle=vehicle)
+    staged = staged_activation(bundle, activation, host_name=host_name, release=release, vehicle=vehicle)
     if not dry_run:
         write_step_activation(path, staged)
     payload = {
         "schema": "host_step_update",
-        "host_id": host_id,
+        "host_name": host_name,
         "step": step,
         "preset": staged.metadata.get("preset"),
         "plugins": list(staged.plugins),
@@ -556,7 +556,7 @@ def stage_host_step(
         "activation": display_path(path),
         "manifest": staged.to_payload(),
         "release": release_activation_summary(release) if release is not None else None,
-        "apply": apply_staged(host_id, vehicle.get("provider"), step,
+        "apply": apply_staged(host_name, vehicle.get("provider"), step,
                               changed=changed_plugins(previous, staged)),
     }
     if json_output:
@@ -564,7 +564,7 @@ def stage_host_step(
     verb = "Would stage" if dry_run else "Staged"
     return 0, "\n".join(
         [
-            f"{verb} {step}: {host_id} -> {', '.join(staged.plugins) or '(no plugins)'}",
+            f"{verb} {step}: {host_name} -> {', '.join(staged.plugins) or '(no plugins)'}",
             *([f"Preset: {payload['preset']}"] if payload["preset"] is not None else []),
             f"Activation: {display_path(path)}",
             *format_apply_staged(payload["apply"]),
@@ -592,7 +592,7 @@ __all__ = [
     "staged_activation",
     "staging_metadata",
     "staging_host",
-    "host_ids",
+    "host_names",
     "write_host_configuration",
     "step_update_error",
     "stage_host_step",

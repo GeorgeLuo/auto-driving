@@ -56,14 +56,14 @@ class SimulatorStatusTests(unittest.TestCase):
 class HostStateTests(unittest.TestCase):
     def test_a_host_that_answers_reports_its_session(self) -> None:
         with tempfile.TemporaryDirectory() as directory, chase_runtime(Path(directory)) as host:
-            state = host_state(host.base_url, host_id="chase-sim-chaser", timeout_s=2.0)
-            other = host_state(host.base_url, host_id="chase-sim-follower", timeout_s=2.0)
+            state = host_state(host.base_url, host_name="chase-sim-chaser", timeout_s=2.0)
+            other = host_state(host.base_url, host_name="chase-sim-follower", timeout_s=2.0)
 
         self.assertEqual(
             {key: state[key] for key in ("state", "mode", "decision_count", "error_count", "error")},
             {"state": "pre_start", "mode": "manual", "decision_count": 0, "error_count": 0, "error": None},
         )
-        self.assertEqual(state["reply"]["host_id"], "chase-sim-chaser")
+        self.assertEqual(state["reply"]["host_name"], "chase-sim-chaser")
         self.assertEqual((other["state"], other["error"]), ("error", f"{host.base_url} answers as chase-sim-chaser"))
 
     def test_a_host_that_does_not_answer_says_why_in_plain_words(self) -> None:

@@ -128,7 +128,7 @@ def host_result_for_records(
 def vehicle_report_for_records(
     records: DecisionRecords,
     *,
-    host_id: str,
+    host_name: str,
     run_id: str,
     generation_id: str,
     frame_id: str,
@@ -155,7 +155,7 @@ def vehicle_report_for_records(
             observation=observation,
             memory=memory,
         ),
-        host_id=host_id,
+        host_name=host_name,
         run_id=run_id,
         generation_id=generation_id,
         published_at_ms=timestamp_ms if published_at_ms is None else published_at_ms,
@@ -203,28 +203,28 @@ class DecisionSurfaceFixture:
         *,
         action: str = "hold",
         proposal: bool = True,
-        host_id: str = "chase-sim-chaser",
+        host_name: str = "chase-sim-chaser",
     ) -> dict:
         """Stage the packaged proposals (unless ``proposal`` is False) and ``action``."""
 
         from tests.support.runtime_fixtures import write_host_fixture
-        write_host_fixture(self.runtime_root, host_id)
+        write_host_fixture(self.runtime_root, host_name)
         steps = [("action", [action])]
         if proposal:
             steps.insert(0, ("proposal", None))
         for step, plugins in steps:
             code, message = stage_host_step(
-                host_id=host_id,
+                host_name=host_name,
                 step=step,
                 plugins=plugins,
                 runtime_root=self.runtime_root,
                 json_output=True,
             )
             self.assertEqual(code, 0, message)
-        return self._identity(host_id)
+        return self._identity(host_name)
 
-    def _identity(self, host_id: str = "chase-sim-chaser") -> dict:
-        return decision_identity(host_bundle(host_id, self.runtime_root))
+    def _identity(self, host_name: str = "chase-sim-chaser") -> dict:
+        return decision_identity(host_bundle(host_name, self.runtime_root))
 
     def _sample_cycle(self, action: str = "hold") -> DecisionRecords:
         cycle = sample_records(action)
@@ -243,7 +243,7 @@ class DecisionSurfaceFixture:
         observation, memory = published_cycle(left_obstruction_frame())
         report = vehicle_report_for_records(
             records,
-            host_id="piracer",
+            host_name="piracer",
             run_id="donkey-run-fixture",
             generation_id=identity["generation_id"],
             frame_id="frame_001",

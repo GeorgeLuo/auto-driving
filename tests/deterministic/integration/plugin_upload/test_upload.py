@@ -141,7 +141,7 @@ class PluginUploadFlows(unittest.TestCase):
             staged = {}
             for step, preset in (("perception", "obstruction_observer"), ("memory", "recency_ledger")):
                 staged[step] = json.loads(invoke_automa(
-                    "hosts", "stage", step, "--id", "chase-sim-chaser", "--preset", preset,
+                    "hosts", "stage", step, "--name", "chase-sim-chaser", "--preset", preset,
                     "--dry-run", "--json", runtime_root=root / "vehicles",
                 ).stdout)["manifest"]
             # A locally customized staged config must survive an unchanged selection.
@@ -271,34 +271,34 @@ class PluginUploadFlows(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             runtime_root = root / "vehicles"
-            unavailable = invoke_automa("hosts", "plugins", "status", "--id", "chase-sim-chaser",
+            unavailable = invoke_automa("hosts", "plugins", "status", "--name", "chase-sim-chaser",
                                      "--json", runtime_root=runtime_root, check=False)
             missing = json.loads(unavailable.stdout)
             self.assertNotEqual(unavailable.returncode, 0)
-            self.assertEqual(missing["host_id"], "chase-sim-chaser")
+            self.assertEqual(missing["host_name"], "chase-sim-chaser")
             self.assertEqual(missing["outcome"]["status"], "unavailable")
             self.assertIsNone(missing["outcome"]["recovery"])
             bundle = controller_bundle_paths(runtime_root / "chase-sim-chaser")
             chase = self.enterContext(chase_runtime(runtime_root))
-            viewer = RuntimeViewServer(host_id="chase-sim-chaser", automation_dir=Path(bundle["runtime_dir"]) / "automation",
+            viewer = RuntimeViewServer(host_name="chase-sim-chaser", automation_dir=Path(bundle["runtime_dir"]) / "automation",
                                        port=0, plugin_catalog=PluginCatalogClient(chase.base_url)).start()
             self.addCleanup(viewer.stop)
             file = root / "prototype.py"
             file.write_text("from dependency_can_arrive_later import Prototype\n")
-            result = invoke_automa("hosts", "plugins", "upload", "--id", "chase-sim-chaser",
+            result = invoke_automa("hosts", "plugins", "upload", "--name", "chase-sim-chaser",
                                 "--file", str(file), "--step", "memory", "--plugin-id", "prototype",
                                 "--entrypoint", "prototype:Prototype", runtime_root=runtime_root)
             self.assertIn("Upload: uploaded", result.stdout)
             self.assertIn("Plugin: prototype", result.stdout)
             self.assertIn("Selection: unchanged", result.stdout)
-            self.assertIn("Next: ./cli/automa hosts plugins status --id chase-sim-chaser --step memory", result.stdout)
+            self.assertIn("Next: ./cli/automa hosts plugins status --name chase-sim-chaser --step memory", result.stdout)
             listed = json.loads(invoke_automa(
-                "hosts", "plugins", "list", "--id", "chase-sim-chaser", "--step", "memory", "--json",
+                "hosts", "plugins", "list", "--name", "chase-sim-chaser", "--step", "memory", "--json",
                 runtime_root=runtime_root,
             ).stdout)
             self.assertTrue(listed["ok"])
             status = json.loads(invoke_automa(
-                "hosts", "plugins", "status", "--id", "chase-sim-chaser", "--step", "memory", "--json",
+                "hosts", "plugins", "status", "--name", "chase-sim-chaser", "--step", "memory", "--json",
                 runtime_root=runtime_root,
             ).stdout)
             self.assertEqual(listed, status)
@@ -316,13 +316,13 @@ class PluginUploadFlows(unittest.TestCase):
             file.write_text("from dependency_can_arrive_later import Prototype\n")
 
             def status(host_run_id: str) -> str:
-                result = invoke_automa("hosts", "plugins", "status", "--id", "chase-sim-chaser",
+                result = invoke_automa("hosts", "plugins", "status", "--name", "chase-sim-chaser",
                                     "--step", "memory", runtime_root=runtime_root)
                 self.assertIn(f"(host run {host_run_id})", result.stdout)
                 return result.stdout
 
             with chase_runtime(runtime_root) as first:
-                uploaded = invoke_automa("hosts", "plugins", "upload", "--id", "chase-sim-chaser",
+                uploaded = invoke_automa("hosts", "plugins", "upload", "--name", "chase-sim-chaser",
                                       "--file", str(file), "--step", "memory", "--plugin-id", "prototype",
                                       "--entrypoint", "prototype:Prototype", runtime_root=runtime_root)
                 self.assertIn(f"(host run {first.loop.run_id})", uploaded.stdout)

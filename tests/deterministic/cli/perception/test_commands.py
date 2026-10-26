@@ -63,7 +63,7 @@ class PerceptionCommandTests(unittest.TestCase):
             result = invoke_automa(
                 "hosts", "info",
                 "perception",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 "--json",
                 runtime_root=runtime_root,
@@ -83,18 +83,18 @@ class PerceptionCommandTests(unittest.TestCase):
     def test_perception_info_reports_running_view_url(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            host_id = "chase-sim-chaser"
+            host_name = "chase-sim-chaser"
             write_runtime_fixture(
                 runtime_root,
-                host_id,
+                host_name,
                 pid=os.getpid(),
                 manifest_bundle_root=ROOT,
             )
             automation_dir = (
-                runtime_root / host_id / "bundle" / "runtime" / "automation"
+                runtime_root / host_name / "bundle" / "runtime" / "automation"
             )
             server = RuntimeViewServer(
-                host_id=host_id,
+                host_name=host_name,
                 automation_dir=automation_dir,
                 port=0,
                 run_id="test-run",
@@ -124,15 +124,15 @@ class PerceptionCommandTests(unittest.TestCase):
                 text_result = invoke_automa(
                     "hosts", "info",
                     "perception",
-                    "--id",
-                    host_id,
+                    "--name",
+                    host_name,
                     runtime_root=runtime_root,
                 )
                 json_result = invoke_automa(
                     "hosts", "info",
                     "perception",
-                    "--id",
-                    host_id,
+                    "--name",
+                    host_name,
                     "--json",
                     runtime_root=runtime_root,
                 )

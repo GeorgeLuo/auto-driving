@@ -217,7 +217,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
 
         self.server.stop()
         replacement = RuntimeViewServer(
-            host_id="chase-sim-chaser",
+            host_name="chase-sim-chaser",
             automation_dir=self.automation_dir,
             port=old_port,
             run_id="run-replacement",

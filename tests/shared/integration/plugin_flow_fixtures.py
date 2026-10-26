@@ -55,7 +55,7 @@ def plugin_host(root, vehicle="chase", activations=None):
     host = (create_chase_host(ChaseSimCar(), steps=steps) if vehicle == "chase"
             else create_picar_host(steps=steps))
     host.follow_activations(selected, root / "runtime")
-    view = RuntimeViewServer(host_id=vehicle, automation_dir=root / "automation",
+    view = RuntimeViewServer(host_name=vehicle, automation_dir=root / "automation",
                              port=0, plugin_catalog=host.plugin_catalog).start()
     try:
         yield host, view.url

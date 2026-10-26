@@ -215,7 +215,7 @@ class FrameLoop:
         *,
         host: AutonomyCycleHost,
         presets: dict[str, str] | None = None,
-        host_id: str | None = None,
+        host_name: str | None = None,
         source_id: str | None = None,
         decision_activations: dict[str, dict[str, Any] | None] | None = None,
         generation_id: str | None = None,
@@ -262,9 +262,9 @@ class FrameLoop:
         self._session_frame_id: str | None = None
         self._last_control = AutonomyControl(reason="observation-warming").to_dict()
         self._last_cycle: dict[str, Any] | None = None
-        self.host_id = host_id
+        self.host_name = host_name
         self.source_id = source_id or (
-            f"{runtime}:{host_id}" if isinstance(host_id, str) and host_id else None
+            f"{runtime}:{host_name}" if isinstance(host_name, str) and host_name else None
         )
         self.decision_activations = (
             deepcopy(dict(decision_activations))
@@ -464,10 +464,10 @@ class FrameLoop:
 
     def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
         with self._lifecycle_lock:
-            if record and (self.recording_root is None or self.host_id is None):
+            if record and (self.recording_root is None or self.host_name is None):
                 raise RuntimeError("recording requires a runtime directory and host identity")
             recording = RunRecording(
-                self.recording_root, host_id=self.host_id, encode_image=self._recording_jpeg,
+                self.recording_root, host_name=self.host_name, encode_image=self._recording_jpeg,
             ) if record else None
             with self._lock:
                 self._session_frame_id = None
@@ -742,9 +742,9 @@ class FrameLoop:
         """Validate runtime-owned identity supplied to the publication owner."""
 
         try:
-            if self.host_id is None:
-                return "host_id_missing"
-            require_ascii_id(self.host_id, field_name="host_id")
+            if self.host_name is None:
+                return "host_name_missing"
+            require_ascii_id(self.host_name, field_name="host_name")
             if self.source_id is None:
                 return "source_id_missing"
             require_ascii_id(self.source_id, field_name="source_id")
@@ -838,7 +838,7 @@ class FrameLoop:
         try:
             report = report_from_host_result(
                 records,
-                host_id=self.host_id,
+                host_name=self.host_name,
                 run_id=self.run_id,
                 generation_id=self.generation_id,
                 published_at_ms=published_at_ms,

@@ -15,7 +15,7 @@ class DecisionCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")
-            vehicle = ("--id", "chase-sim-chaser", "--json")
+            vehicle = ("--name", "chase-sim-chaser", "--json")
             runtime = runtime_root / "chase-sim-chaser" / "bundle" / "runtime"
 
             dry_run = invoke_automa(
@@ -47,7 +47,7 @@ class DecisionCommandTests(unittest.TestCase):
                 "hosts", "info", "plan", *vehicle, runtime_root=runtime_root, check=False,
             )
             self.assertEqual(unstaged.returncode, 2, unstaged.stdout)
-            self.assertIn("./cli/automa hosts stage plan --id", unstaged.stdout)
+            self.assertIn("./cli/automa hosts stage plan --name", unstaged.stdout)
 
             for step, plugins in (("proposal", ["avoid_recent_obstruction"]), ("action", ["mode"])):
                 info = invoke_automa("hosts", "info", step, *vehicle, runtime_root=runtime_root)

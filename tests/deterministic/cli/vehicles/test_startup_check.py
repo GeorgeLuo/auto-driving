@@ -30,11 +30,11 @@ class StartupCheckTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as tmp,
             patch("cli.automa_cli.operations.OPERATION_OUTPUT_ROOT", Path(tmp)),
-            patch("cli.automa_cli.operations.staging_host", return_value=({"host_id": "fake-car"}, None)),
+            patch("cli.automa_cli.operations.staging_host", return_value=({"host_name": "fake-car"}, None)),
             patch("cli.automa_cli.operations.create_vehicle_access", return_value=access),
         ):
             result = run_host_startup_check(
-                host_id="fake-car", duration_s=0.0, settle_s=0.0, dry_run=dry_run
+                host_name="fake-car", duration_s=0.0, settle_s=0.0, dry_run=dry_run
             )
             report = json.loads(next(Path(tmp).glob("*/report.json")).read_text())
         return result.exit_code, result.message, report, car, control

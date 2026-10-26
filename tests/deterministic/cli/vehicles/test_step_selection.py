@@ -44,7 +44,7 @@ class StepSelectionTests(unittest.TestCase):
                 yield root
 
     def _update(self, step: str, *flags: str) -> dict:
-        code, stdout, stderr = _invoke("hosts", "stage", step, "--id", VEHICLE, *flags, "--json")
+        code, stdout, stderr = _invoke("hosts", "stage", step, "--name", VEHICLE, *flags, "--json")
         self.assertEqual(code, 0, stdout + stderr)
         return json.loads(stdout)
 
@@ -137,7 +137,7 @@ class StepSelectionTests(unittest.TestCase):
         with self._runtime() as root:
             for step in SELECTABLE_STEPS:
                 with self.subTest(step=step):
-                    update = ("hosts", "stage", step, "--id", VEHICLE)
+                    update = ("hosts", "stage", step, "--name", VEHICLE)
                     preset = DEFAULT_STEP_PRESETS[step]
                     plugin = STEP_PRESETS[step][preset]["plugins"][0]
                     code, _, stderr = _invoke(*update, "--preset", preset, "--plugin", plugin)
@@ -179,7 +179,7 @@ class StepSelectionTests(unittest.TestCase):
                     metadata["controller_bundle"]["release"]["tree_sha256"],
                     perception["controller_bundle"]["release"]["tree_sha256"],
                 )
-                for key in ("host_id", "provider", "vehicle_kind", "runtime"):
+                for key in ("host_name", "provider", "vehicle_kind", "runtime"):
                     self.assertEqual(metadata[key], perception[key])
                 for key in ("source_dir", "workspace_source_dir", "preset_description"):
                     self.assertNotIn(key, metadata)

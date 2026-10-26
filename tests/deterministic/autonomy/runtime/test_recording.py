@@ -37,7 +37,7 @@ class RecordedSourceTests(unittest.TestCase):
 
         def frame(index: int) -> dict:
             return {
-                "host_id": "picar", "run_id": "run-1", "generation_id": _generation(steps),
+                "host_name": "picar", "run_id": "run-1", "generation_id": _generation(steps),
                 "frame_id": f"frame-{index}", "frame_index": index, "captured_at_ms": index,
                 "step_activations": steps, "context": {"mode": "observe_only"}, "perception": None,
             }

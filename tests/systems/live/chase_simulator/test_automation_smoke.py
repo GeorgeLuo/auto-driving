@@ -34,32 +34,32 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
             simulator = next(vehicle for vehicle in vehicles
                              if vehicle["provider"] == "chase-sim" and vehicle["state"] == "running")
             _assert_passive_preserved()
-            cli("hosts", "create", "--id", "chase-sim-chaser", "--provider", "chase-sim",
+            cli("hosts", "create", "--name", "chase-sim-chaser", "--provider", "chase-sim",
                 "--url", simulator["url"])
             try:
-                cli("hosts", "stage", "perception", "--id", "chase-sim-chaser",
+                cli("hosts", "stage", "perception", "--name", "chase-sim-chaser",
                     "--preset", "lightweight_observer", "--timeout-s", "6")
                 try:
-                    run = cli("hosts", "run", "--id", "chase-sim-chaser", "--observe-only",
+                    run = cli("hosts", "run", "--name", "chase-sim-chaser", "--observe-only",
                               "--num-decisions", "0", "--open-view", "--timeout-s", "6")
                     self.assertIn("Run started on host", run.stdout)
                     self.assertIn("Runtime view: http://127.0.0.1:", run.stdout)
 
-                    host = json.loads(cli("hosts", "status", "--id", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
+                    host = json.loads(cli("hosts", "status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                     self.assertTrue(host["process"]["running"])
                     self.assertTrue(host["published_view"]["available"])
                     self.assertEqual(host["state"]["action_policy"], "observe_only")
                     self.assertEqual(host["state"]["control_application"], "not_applied")
                     _assert_passive_preserved()
                 finally:
-                    cli("hosts", "stop", "--id", "chase-sim-chaser")
+                    cli("hosts", "stop", "--name", "chase-sim-chaser")
 
-                host = json.loads(cli("hosts", "status", "--id", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
+                host = json.loads(cli("hosts", "status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                 self.assertFalse(host["process"]["running"])
                 self.assertFalse(host["published_view"]["available"])
                 _assert_passive_preserved()
             finally:
-                cli("hosts", "delete", "--id", "chase-sim-chaser", check=False)
+                cli("hosts", "delete", "--name", "chase-sim-chaser", check=False)
 
 
 

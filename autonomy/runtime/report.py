@@ -30,7 +30,7 @@ REPORT_SCHEMA = "host_report"
 REPORT_EXACT_KEYS = frozenset(
     {
         "schema",
-        "host_id",
+        "host_name",
         "run_id",
         "generation_id",
         "frame_id",
@@ -147,7 +147,7 @@ class ReportApplication:
 class HostReport:
     """The frame document both vehicles give the viewer."""
 
-    host_id: str
+    host_name: str
     run_id: str
     generation_id: str
     frame_id: str
@@ -163,7 +163,7 @@ class HostReport:
         if self.schema != REPORT_SCHEMA:
             raise ValueError(f"schema must be {REPORT_SCHEMA!r}")
         object.__setattr__(
-            self, "host_id", require_ascii_id(self.host_id, field_name="host_id")
+            self, "host_name", require_ascii_id(self.host_name, field_name="host_name")
         )
         object.__setattr__(self, "run_id", require_ascii_id(self.run_id, field_name="run_id"))
         object.__setattr__(
@@ -204,7 +204,7 @@ class HostReport:
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": self.schema,
-            "host_id": self.host_id,
+            "host_name": self.host_name,
             "run_id": self.run_id,
             "generation_id": self.generation_id,
             "frame_id": self.frame_id,
@@ -223,7 +223,7 @@ class HostReport:
         _exact_keys(payload, REPORT_EXACT_KEYS, field="report")
         return cls(
             schema=payload["schema"],
-            host_id=payload["host_id"],
+            host_name=payload["host_name"],
             run_id=payload["run_id"],
             generation_id=payload["generation_id"],
             frame_id=payload["frame_id"],
@@ -284,7 +284,7 @@ def _export_record(record: Any, *, field: str) -> dict[str, Any]:
 def report_from_host_result(
     result: Any,
     *,
-    host_id: str,
+    host_name: str,
     run_id: str,
     generation_id: str,
     published_at_ms: int | None = None,
@@ -315,7 +315,7 @@ def report_from_host_result(
     if timing is not None:
         values["timing"] = timing
     return HostReport(
-        host_id=host_id,
+        host_name=host_name,
         run_id=run_id,
         generation_id=generation_id,
         frame_id=context.frame_id,

@@ -13,19 +13,19 @@ from cli.automa_cli.bundles import controller_bundle_paths
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
-    HOST_ID, _FakeCar, _write_activations, chase_runtime, staged_runners,
+    HOST_NAME, _FakeCar, _write_activations, chase_runtime, staged_runners,
 )
 
 
 class ChaseCaptureCadenceTests(unittest.TestCase):
     def _run(self, runtime_root: Path, car: _FakeCar, perception: GatedPerception,
              *, num_decisions: int):
-        bundle = controller_bundle_paths(runtime_root / HOST_ID)
+        bundle = controller_bundle_paths(runtime_root / HOST_NAME)
         _write_activations(bundle)
         output = io.StringIO()
         with staged_runners(perception=perception), chase_runtime(runtime_root, car=car):
             result = run_host_automation(
-                host_id=HOST_ID, num_decisions=num_decisions,
+                host_name=HOST_NAME, num_decisions=num_decisions,
                 take_control=False, record=True, verbose=True, output=output,
             )
         state = json.loads((Path(bundle["runtime_dir"]) / "automation" / "state.json").read_text())

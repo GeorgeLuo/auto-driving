@@ -62,7 +62,7 @@ class RuntimeViewServer:
     def __init__(
         self,
         *,
-        host_id: str,
+        host_name: str,
         automation_dir: Path | None,
         host: str = VIEW_HOST,
         port: int | None = None,
@@ -73,18 +73,18 @@ class RuntimeViewServer:
         connected: bool = True,
     ) -> None:
         validate_loopback_host(host, owner="runtime view")
-        self.host_id = host_id
+        self.host_name = host_name
         self.connected = connected
         self.plugin_catalog = plugin_catalog
         self.automation_dir = automation_dir
         self.host = host
-        self.preferred_port = _host_view_port(host_id) if port is None else int(port)
+        self.preferred_port = _host_view_port(host_name) if port is None else int(port)
         self.run_id = run_id
         self.worker_pid = int(worker_pid) if isinstance(worker_pid, int) else os.getpid()
         # Without an automation dir the server publishes no discovery record.
         self.record_path = None if automation_dir is None else automation_dir / VIEW_RECORD_NAME
-        self.perception = PerceptionView(host_id=host_id)
-        self.decision = DecisionView(host_id=host_id, identity=decision_identity)
+        self.perception = PerceptionView(host_name=host_name)
+        self.decision = DecisionView(host_name=host_name, identity=decision_identity)
         self._httpd: _RuntimeHttpServer | None = None
         self._thread: threading.Thread | None = None
         self._started_at_ms: int | None = None
@@ -108,7 +108,7 @@ class RuntimeViewServer:
         self._started_at_ms = _timestamp_ms()
         self._thread = start_server_thread(
             httpd,
-            name=f"automa-runtime-view-{self.host_id}",
+            name=f"automa-runtime-view-{self.host_name}",
         )
         self._write_record("running")
         return self
@@ -117,7 +117,7 @@ class RuntimeViewServer:
         # Keep the established discovery record/schema for existing CLI readers.
         return {
             "schema": VIEW_SCHEMA,
-            "host_id": self.host_id,
+            "host_name": self.host_name,
             "run_id": self.run_id,
             "worker_pid": self.worker_pid,
             "status": status,
@@ -339,7 +339,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
                 200,
                 {
                     "hosts": [
-                        {"host_id": host["host_id"], "state": host_state_text(host)}
+                        {"host_name": host["host_name"], "state": host_state_text(host)}
                         for host in host_statuses()
                     ]
                 },
@@ -401,7 +401,7 @@ def serve_viewer() -> int:
     """Serve the runtime pages with no runtime host until interrupted."""
 
     server = RuntimeViewServer(
-        host_id="viewer",
+        host_name="viewer",
         automation_dir=None,
         port=VIEWER_PORT,
         connected=False,
@@ -442,8 +442,8 @@ def _unavailable_nav(label: str, reason: str) -> str:
     return f'<span class="nav unavailable" title="{reason}">{label}</span>'
 
 
-def _host_view_port(host_id: str) -> int:
-    return 8500 + (zlib.crc32(host_id.encode("utf-8")) % 500)
+def _host_view_port(host_name: str) -> int:
+    return 8500 + (zlib.crc32(host_name.encode("utf-8")) % 500)
 
 
 def _timestamp_ms() -> int:

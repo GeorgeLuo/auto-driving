@@ -92,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     plugins_help.set_defaults(handler=_handle_plugins_help)
     listing = plugin_commands.add_parser("status", aliases=["list"], help="Show live catalog availability and plugin revisions (list is an alias).")
     listing_target = listing.add_mutually_exclusive_group(required=True)
-    listing_target.add_argument("--id", dest="host_id", help="Host whose live catalog to read.")
+    listing_target.add_argument("--name", dest="host_name", help="Host whose live catalog to read.")
     listing_target.add_argument("--url", help="Runtime or workbench URL; bypass host lookup.")
     listing.add_argument("--step", choices=STEPS, help="Show only this cycle step.")
     listing.add_argument("--json", dest="json_output", action="store_true", help="Print the catalog snapshot as JSON.")
@@ -100,10 +100,10 @@ def build_parser() -> argparse.ArgumentParser:
     upload = plugin_commands.add_parser(
         "upload", help="Register a plugin file; optionally arm it on a runtime host.",
         description="Store a file in an existing live catalog. Upload success means available; source that does not compile is refused. Selection stays unchanged unless --arm, which loads it on the host and fails with its import or construction error.",
-        epilog="Verify registration with: ./cli/automa hosts plugins status --id <host> --step <step>. Use --url for an existing workbench catalog.",
+        epilog="Verify registration with: ./cli/automa hosts plugins status --name <host> --step <step>. Use --url for an existing workbench catalog.",
     )
     target = upload.add_mutually_exclusive_group(required=True)
-    target.add_argument("--id", dest="host_id", help="Host whose catalog receives the upload.")
+    target.add_argument("--name", dest="host_name", help="Host whose catalog receives the upload.")
     target.add_argument("--url", help="Runtime or workbench URL; bypass host lookup.")
     upload.add_argument("--file", type=Path, required=True, help="Local source file to upload; it must compile but is not imported until armed.")
     upload.add_argument("--step", choices=STEPS, required=True, help="Cycle step whose catalog receives the file.")
@@ -120,7 +120,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="With --selection, use a JSON map such as {\"perception\": [\"prototype\"], \"memory\": [\"helper\"]}. Arming never starts automation or changes its control mode.",
     )
     arm_target = arm.add_mutually_exclusive_group(required=True)
-    arm_target.add_argument("--id", dest="host_id", help="Host receiving the request.")
+    arm_target.add_argument("--name", dest="host_name", help="Host receiving the request.")
     arm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
     arm_input = arm.add_mutually_exclusive_group(required=True)
     arm_input.add_argument("--step", choices=STEPS, help="Step receiving the ordered --plugin IDs.")
@@ -135,7 +135,7 @@ def build_parser() -> argparse.ArgumentParser:
         epilog="Use --step with repeatable --plugin IDs, --selection with a JSON step-to-ID-list map, or --all to clear one step (with --step) or every step that can run without plugins. Empty batch lists remove nothing. Disarming does not start or stop automation, change control mode, or edit staged activations.",
     )
     disarm_target = disarm.add_mutually_exclusive_group(required=True)
-    disarm_target.add_argument("--id", dest="host_id", help="Host receiving the request.")
+    disarm_target.add_argument("--name", dest="host_name", help="Host receiving the request.")
     disarm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
     disarm_input = disarm.add_mutually_exclusive_group()
     disarm.add_argument("--step", choices=STEPS, help="Step whose plugins to disarm; combine with --plugin or --all.")
@@ -207,7 +207,7 @@ def build_parser() -> argparse.ArgumentParser:
     host_update = host_commands.add_parser("update", help="Package and deploy a host's release.")
     host_delete = host_commands.add_parser("delete", help="Stop the host and its run, and remove its local files.")
     for command in (host_create, host_update, host_delete):
-        command.add_argument("--id", dest="host_id", required=True, help="Host name.")
+        command.add_argument("--name", dest="host_name", required=True, help="Host name.")
         command.add_argument("--verbose", action="store_true")
     for command in (host_create, host_update):
         command.add_argument("--dry-run", action="store_true", help="Print the deployment plan without writing or connecting.")
@@ -231,21 +231,21 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Start autonomous movement using the staged plugins. Success requires one camera frame, its "
             "completed perception result, and a healthy current-generation loopback view. "
-            "--host-url runs an existing host instead of starting one; that host reports its host ID."
+            "--host-url runs an existing host instead of starting one; that host reports its host name."
         ),
     )
     run_target = host_run.add_mutually_exclusive_group(required=True)
     run_target.add_argument(
-        "--id",
-        dest="host_id",
-        help=_STAGING_HOST_ID_HELP,
+        "--name",
+        dest="host_name",
+        help=_STAGING_HOST_NAME_HELP,
     )
     run_target.add_argument(
         "--host-url",
         dest="host_url",
         help=(
             "Base URL of a runtime host that is already running. "
-            "Run that host instead of starting one. The host reports its host ID."
+            "Run that host instead of starting one. The host reports its host name."
         ),
     )
     host_run.add_argument(
@@ -322,10 +322,10 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     host_stop.add_argument(
-        "--id",
+        "--name",
         required=True,
-        dest="host_id",
-        help=_STAGING_HOST_ID_HELP,
+        dest="host_name",
+        help=_STAGING_HOST_NAME_HELP,
     )
     host_stop.add_argument(
         "--wait-s",
@@ -340,13 +340,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show each host's state and attachment.",
         description=(
             "Show each host's state and whether its simulator lists it; --long adds "
-            "its deployment, run and view. Exits 1 when --id names a missing, "
-            "stopped, unanswering, or errored host."
+            "its deployment, run and view. Exits 1 when the --name host is missing, "
+            "stopped, unanswering, or errored."
         ),
     )
     host_status.add_argument(
-        "--id",
-        dest="host_id",
+        "--name",
+        dest="host_name",
         default=None,
         help="Host name. Omit to list every host.",
     )
@@ -376,10 +376,10 @@ def build_parser() -> argparse.ArgumentParser:
         description="Restart the host's run and verify its correlated runtime view.",
     )
     host_restart.add_argument(
-        "--id",
+        "--name",
         required=True,
-        dest="host_id",
-        help=_STAGING_HOST_ID_HELP,
+        dest="host_name",
+        help=_STAGING_HOST_NAME_HELP,
     )
     host_restart.add_argument(
         "--timeout-s",
@@ -451,10 +451,10 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Serve the runtime routes for a Chase car from its latest controller release, "
             "and relaunch on a restart command. `hosts create` and `hosts run` start this in the background; "
-            "its log is runtime/hosts/<id>/bundle/runtime/automation/host.log."
+            "its log is runtime/hosts/<host-name>/bundle/runtime/automation/host.log."
         ),
     )
-    host_serve.add_argument("--id", required=True, dest="host_id", help="Chase host name.")
+    host_serve.add_argument("--name", required=True, dest="host_name", help="Chase host name.")
     host_serve.set_defaults(handler=_handle_hosts_serve)
 
     operation = host_commands.add_parser("operation", help="Run bounded vehicle checks and setup tasks.")
@@ -471,9 +471,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Send bounded action pulses and verify camera changes around each command.",
     )
     startup_check.add_argument(
-        "--id",
+        "--name",
         required=True,
-        dest="host_id",
+        dest="host_name",
         help="Host name from `automa hosts status`.",
     )
     startup_check.add_argument(
@@ -530,9 +530,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     perception_stream.add_argument(
-        "--id",
+        "--name",
         required=True,
-        dest="host_id",
+        dest="host_name",
         help="Host name from `automa hosts status`.",
     )
     perception_stream.add_argument(
@@ -570,9 +570,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     memory_stream.add_argument(
-        "--id",
+        "--name",
         required=True,
-        dest="host_id",
+        dest="host_name",
         help="Host name from `automa hosts status`.",
     )
     memory_stream.add_argument(
@@ -614,9 +614,9 @@ def build_parser() -> argparse.ArgumentParser:
             ),
         )
         step_stream.add_argument(
-            "--id",
+            "--name",
             required=True,
-            dest="host_id",
+            dest="host_name",
             help="Host name from `automa hosts status`.",
         )
         step_stream.add_argument(
@@ -663,9 +663,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     memory_reset.add_argument(
-        "--id",
+        "--name",
         required=True,
-        dest="host_id",
+        dest="host_name",
         help="Host name from `automa hosts status`.",
     )
     memory_reset.add_argument(
@@ -774,9 +774,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     memory_viability.add_argument(
-        "--id",
+        "--name",
         required=True,
-        dest="host_id",
+        dest="host_name",
         help="Host name from `automa hosts status`.",
     )
     memory_viability.add_argument(
@@ -912,9 +912,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Show the staged perception preset and plugins, the runner schema and the published view URL.",
     )
     perception_info.add_argument(
-        "--id",
+        "--name",
         required=True,
-        dest="host_id",
+        dest="host_name",
         help="Host name from `automa hosts status`.",
     )
     perception_info.add_argument(
@@ -930,9 +930,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="Show the staged memory preset and plugins, the runner schema and the live memory step state.",
     )
     memory_info.add_argument(
-        "--id",
+        "--name",
         required=True,
-        dest="host_id",
+        dest="host_name",
         help="Host name from `automa hosts status`.",
     )
     memory_info.add_argument(
@@ -958,9 +958,9 @@ def build_parser() -> argparse.ArgumentParser:
             ),
         )
         step_info.add_argument(
-            "--id",
+            "--name",
             required=True,
-            dest="host_id",
+            dest="host_name",
             help="Host name from `automa hosts status`.",
         )
         step_info.add_argument(
@@ -1008,10 +1008,10 @@ def build_parser() -> argparse.ArgumentParser:
         perception_inspect, "perception", verb="inspect", fallback="the recorded or staged selection, else ",
     )
     perception_inspect.add_argument(
-        "--id",
-        dest="host_id",
+        "--name",
+        dest="host_name",
         default=None,
-        help="Live host ID. Omit to select a safe observation target automatically.",
+        help="Live host name. Omit to select a safe observation target automatically.",
     )
     perception_inspect.add_argument(
         "--frames",
@@ -1078,9 +1078,9 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     perception_viability.add_argument(
-        "--id",
+        "--name",
         required=True,
-        dest="host_id",
+        dest="host_name",
         help="Host name from `automa hosts status`.",
     )
     perception_viability.add_argument(
@@ -1134,10 +1134,10 @@ def build_parser() -> argparse.ArgumentParser:
             ),
         )
         step_parser.add_argument(
-            "--id",
+            "--name",
             required=True,
-            dest="host_id",
-            help=_STAGING_HOST_ID_HELP,
+            dest="host_name",
+            help=_STAGING_HOST_NAME_HELP,
         )
         step_parser.add_argument(
             "--timeout-s",
@@ -1291,11 +1291,11 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "- status  show live catalog availability and plugin revisions (list is an alias)",
         "- help    show this summary", "",
         "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; upload, arm and disarm do not start automation.",
-        "Use ./cli/automa hosts status --id <host> to see the host's state.",
+        "Use ./cli/automa hosts status --name <host> to see the host's state.",
         "Use --url <runtime-or-workbench-url> to address an existing catalog directly.", "",
         "Example:",
-        "  ./cli/automa hosts plugins upload --id chase-sim-chaser --file ./prototype.py --step perception --plugin-id prototype --entrypoint prototype:Prototype",
-        "  ./cli/automa hosts plugins status --id chase-sim-chaser --step perception", "",
+        "  ./cli/automa hosts plugins upload --name chase-sim-chaser --file ./prototype.py --step perception --plugin-id prototype --entrypoint prototype:Prototype",
+        "  ./cli/automa hosts plugins status --name chase-sim-chaser --step perception", "",
         "Upload refuses source that does not compile; imports and dependencies load when armed.",
         "Re-uploading an ID leaves the running revision unchanged. Restart restoration is not guaranteed.",
         "Use upload --config '<JSON object>' to store constructor settings with the revision; arming uses them.", "",
@@ -1318,14 +1318,14 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
 
 
 def _handle_plugin_status(args: argparse.Namespace) -> int:
-    result = list_plugins(url=args.url, host_id=args.host_id, step=args.step, json_output=args.json_output)
+    result = list_plugins(url=args.url, host_name=args.host_name, step=args.step, json_output=args.json_output)
     print(result.message)
     return result.exit_code
 
 
 def _handle_plugin_upload(args: argparse.Namespace) -> int:
     result = upload_plugin(
-        url=args.url, host_id=args.host_id, file=args.file, step=args.step,
+        url=args.url, host_name=args.host_name, file=args.file, step=args.step,
         plugin_id=args.plugin_id, entrypoint=args.entrypoint, config=args.config, arm=args.arm,
         json_output=args.json_output,
     )
@@ -1337,7 +1337,7 @@ def _handle_plugin_arm(args: argparse.Namespace) -> int:
     if (args.step and not args.plugins) or (args.selection and args.plugins):
         print("Use --step with one or more --plugin IDs, or --selection without --plugin.")
         return 2
-    result = arm_plugins(url=args.url, host_id=args.host_id, step=args.step,
+    result = arm_plugins(url=args.url, host_name=args.host_name, step=args.step,
                          plugins=args.plugins, selection=args.selection, json_output=args.json_output)
     print(result.message)
     return result.exit_code
@@ -1349,7 +1349,7 @@ def _handle_plugin_disarm(args: argparse.Namespace) -> int:
             args.selection or args.all_plugins or named):
         print("Use --step with --plugin IDs, --selection alone, or --all with an optional --step.")
         return 2
-    result = disarm_plugins(url=args.url, host_id=args.host_id, step=args.step,
+    result = disarm_plugins(url=args.url, host_name=args.host_name, step=args.step,
                             plugins=args.plugins, selection=args.selection,
                             all_plugins=args.all_plugins, json_output=args.json_output)
     print(result.message)
@@ -1565,7 +1565,7 @@ _TIMEOUT_INPUT_ERROR = "timeout_invalid"
 _TIMEOUT_INPUT_CONSTRAINT = "finite number greater than zero"
 _TIMEOUT_INPUT_RECOVERY = "Provide a finite --timeout-s greater than zero."
 # Every `hosts stage <step>` resolves its host configuration with `staging_host`.
-_STAGING_HOST_ID_HELP = (
+_STAGING_HOST_NAME_HELP = (
     "Name of a host created with hosts create."
 )
 _STAGING_DISCOVERY_TIMEOUT_HELP = (
@@ -1643,7 +1643,7 @@ def _handle_hosts_run(args: argparse.Namespace) -> int:
         return 2
     if args.foreground:
         result = run_host_automation(
-            host_id=args.host_id,
+            host_name=args.host_name,
             host_url=args.host_url,
             timeout_s=args.timeout_s,
             num_decisions=args.num_decisions,
@@ -1655,7 +1655,7 @@ def _handle_hosts_run(args: argparse.Namespace) -> int:
         )
     else:
         result = start_host_automation_background(
-            host_id=args.host_id,
+            host_name=args.host_name,
             host_url=args.host_url,
             timeout_s=args.timeout_s,
             num_decisions=args.num_decisions,
@@ -1668,9 +1668,9 @@ def _handle_hosts_run(args: argparse.Namespace) -> int:
         )
     if result.message:
         print(result.message)
-    if args.foreground and args.host_id:
+    if args.foreground and args.host_name:
         record_host_automation_terminal_result(
-            host_id=args.host_id,
+            host_name=args.host_name,
             result=result,
         )
     return result.exit_code
@@ -1678,7 +1678,7 @@ def _handle_hosts_run(args: argparse.Namespace) -> int:
 
 def _handle_hosts_stop(args: argparse.Namespace) -> int:
     result = stop_host_automation(
-        host_id=args.host_id,
+        host_name=args.host_name,
         wait_s=args.wait_s,
     )
     if result.message:
@@ -1695,7 +1695,7 @@ def _handle_hosts_status(args: argparse.Namespace) -> int:
     ):
         return 2
     result = get_hosts_status(
-        host_id=args.host_id,
+        host_name=args.host_name,
         timeout_s=args.timeout_s,
         long=args.long,
         json_output=args.json,
@@ -1708,12 +1708,12 @@ def _handle_hosts_status(args: argparse.Namespace) -> int:
 def _handle_hosts_serve(args: argparse.Namespace) -> int:
     from .runtime_hosts import serve_chase_host
 
-    return serve_chase_host(args.host_id)
+    return serve_chase_host(args.host_name)
 
 
 def _handle_hosts_restart(args: argparse.Namespace) -> int:
     result = restart_host_automation(
-        host_id=args.host_id,
+        host_name=args.host_name,
         timeout_s=args.timeout_s,
         num_decisions=args.num_decisions,
         unbounded=args.unbounded,
@@ -1731,7 +1731,7 @@ def _handle_hosts_restart(args: argparse.Namespace) -> int:
 
 def _handle_hosts_operation_startup_check(args: argparse.Namespace) -> int:
     result = run_host_startup_check(
-        host_id=args.host_id,
+        host_name=args.host_name,
         timeout_s=args.timeout_s,
         throttle=args.throttle,
         duration_s=args.duration_s,
@@ -1746,7 +1746,7 @@ def _handle_hosts_operation_startup_check(args: argparse.Namespace) -> int:
 
 def _handle_hosts_stream_perception(args: argparse.Namespace) -> int:
     result = stream_host_perception(
-        host_id=args.host_id,
+        host_name=args.host_name,
         refresh_s=args.refresh_s,
         once=args.once,
         no_clear=args.no_clear,
@@ -1760,7 +1760,7 @@ def _handle_hosts_stream_perception(args: argparse.Namespace) -> int:
 
 def _handle_hosts_stream_memory(args: argparse.Namespace) -> int:
     result = stream_host_memory(
-        host_id=args.host_id,
+        host_name=args.host_name,
         refresh_s=args.refresh_s,
         once=args.once,
         no_clear=args.no_clear,
@@ -1775,7 +1775,7 @@ def _handle_hosts_stream_memory(args: argparse.Namespace) -> int:
 def _handle_hosts_stream_step(args: argparse.Namespace) -> int:
     result = stream_host_step(
         args.step,
-        host_id=args.host_id,
+        host_name=args.host_name,
         refresh_s=args.refresh_s,
         once=args.once,
         no_clear=args.no_clear,
@@ -1797,10 +1797,10 @@ def _handle_hosts_decision_step_help(args: argparse.Namespace) -> int:
                 f"- inspect  the {step} record for every frame of images or a recorded run; optional --frame, --record",
                 "- help     show this summary",
                 "",
-                f"Stage plugins with:              ./cli/automa hosts stage {step} --id <host>",
-                f"Inspect staged config with:      ./cli/automa hosts info {step} --id <host>",
-                f"Stream the latest cycle:         ./cli/automa hosts stream {step} --id <host>",
-                "Act on proposals in live modes:  ./cli/automa hosts stage action --id <host> --plugin mode",
+                f"Stage plugins with:              ./cli/automa hosts stage {step} --name <host>",
+                f"Inspect staged config with:      ./cli/automa hosts info {step} --name <host>",
+                f"Stream the latest cycle:         ./cli/automa hosts stream {step} --name <host>",
+                "Act on proposals in live modes:  ./cli/automa hosts stage action --name <host> --plugin mode",
                 "",
                 "Detailed help:",
                 f"- ./cli/automa hosts {step} inspect --help",
@@ -1838,9 +1838,9 @@ def _handle_hosts_memory_help(args: argparse.Namespace) -> int:
                 "- reset   clear live retained evidence; start a new empty epoch",
                 "- help    show this summary",
                 "",
-                "Stage an implementation with: ./cli/automa hosts stage memory --id <host>",
-                "Inspect staged config with:   ./cli/automa hosts info memory --id <host>",
-                "Stream live state with:       ./cli/automa hosts stream memory --id <host>",
+                "Stage an implementation with: ./cli/automa hosts stage memory --name <host>",
+                "Inspect staged config with:   ./cli/automa hosts info memory --name <host>",
+                "Stream live state with:       ./cli/automa hosts stream memory --name <host>",
                 "",
                 "Detailed help:",
                 "- ./cli/automa hosts memory <command> --help",
@@ -1852,7 +1852,7 @@ def _handle_hosts_memory_help(args: argparse.Namespace) -> int:
 
 def _handle_hosts_memory_reset(args: argparse.Namespace) -> int:
     result = reset_host_memory(
-        host_id=args.host_id,
+        host_name=args.host_name,
         timeout_s=args.timeout_s,
         json_output=args.json,
     )
@@ -1878,7 +1878,7 @@ def _handle_hosts_memory_inspect(args: argparse.Namespace) -> int:
 
 def _handle_hosts_memory_viability(args: argparse.Namespace) -> int:
     result = run_memory_viability_measurement(
-        host_id=args.host_id,
+        host_name=args.host_name,
         duration_s=args.duration_s,
         sample_period_s=args.sample_period_s,
         timeout_s=args.timeout_s,
@@ -1934,7 +1934,7 @@ def _handle_hosts_workbench_replay(args: argparse.Namespace) -> int:
 
 def _handle_hosts_create(args: argparse.Namespace) -> int:
     result = create_host(
-        host_id=args.host_id, provider=args.provider, url=args.url,
+        host_name=args.host_name, provider=args.provider, url=args.url,
         ssh_target=args.ssh_target, pi_home=args.pi_home, drive_args=args.drive_args,
         dry_run=args.dry_run, json_output=args.json, verbose=args.verbose,
         output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
@@ -1964,7 +1964,7 @@ def _handle_hosts_viewer(args: argparse.Namespace) -> int:
 
 def _handle_hosts_update(args: argparse.Namespace) -> int:
     result = update_host(
-        host_id=args.host_id, dry_run=args.dry_run, restart=args.restart,
+        host_name=args.host_name, dry_run=args.dry_run, restart=args.restart,
         drive_args=args.drive_args, json_output=args.json, verbose=args.verbose,
         output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
     )
@@ -1973,14 +1973,14 @@ def _handle_hosts_update(args: argparse.Namespace) -> int:
 
 
 def _handle_hosts_delete(args: argparse.Namespace) -> int:
-    result = delete_host(host_id=args.host_id, verbose=args.verbose, output=sys.stdout)
+    result = delete_host(host_name=args.host_name, verbose=args.verbose, output=sys.stdout)
     print(result.message)
     return result.exit_code
 
 
 def _handle_hosts_info_perception(args: argparse.Namespace) -> int:
     result = get_host_perception_info(
-        host_id=args.host_id,
+        host_name=args.host_name,
         json_output=args.json,
     )
     if result.message:
@@ -1990,7 +1990,7 @@ def _handle_hosts_info_perception(args: argparse.Namespace) -> int:
 
 def _handle_hosts_info_memory(args: argparse.Namespace) -> int:
     result = get_host_memory_info(
-        host_id=args.host_id,
+        host_name=args.host_name,
         json_output=args.json,
     )
     if result.message:
@@ -2001,7 +2001,7 @@ def _handle_hosts_info_memory(args: argparse.Namespace) -> int:
 def _handle_hosts_info_step(args: argparse.Namespace) -> int:
     result = get_host_step_info(
         args.step,
-        host_id=args.host_id,
+        host_name=args.host_name,
         json_output=args.json,
     )
     if result.message:
@@ -2012,7 +2012,7 @@ def _handle_hosts_info_step(args: argparse.Namespace) -> int:
 def _handle_hosts_perception_inspect(args: argparse.Namespace) -> int:
     result = inspect_perception(
         args.source,
-        host_id=args.host_id,
+        host_name=args.host_name,
         frames=args.frames,
         interval_s=args.interval_s,
         timeout_s=args.timeout_s,
@@ -2030,7 +2030,7 @@ def _handle_hosts_perception_inspect(args: argparse.Namespace) -> int:
 
 def _handle_hosts_perception_viability(args: argparse.Namespace) -> int:
     result = run_perception_viability_measurement(
-        host_id=args.host_id,
+        host_name=args.host_name,
         duration_s=args.duration_s,
         sample_period_s=args.sample_period_s,
         timeout_s=args.timeout_s,
@@ -2052,7 +2052,7 @@ def _handle_hosts_stage_step(args: argparse.Namespace) -> int:
     ):
         return 2
     exit_code, message = stage_host_step(
-        host_id=args.host_id,
+        host_name=args.host_name,
         step=args.step,
         plugins=args.plugins,
         preset=args.preset,

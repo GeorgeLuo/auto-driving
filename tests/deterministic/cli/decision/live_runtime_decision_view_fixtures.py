@@ -37,7 +37,7 @@ class LiveRuntimeDecisionViewFixture:
         write_host_fixture(self.runtime_root, "chase-sim-chaser")
         for step in ("proposal", "action"):
             code, message = stage_host_step(
-                host_id="chase-sim-chaser",
+                host_name="chase-sim-chaser",
                 step=step,
                 runtime_root=self.runtime_root,
                 json_output=True,
@@ -48,7 +48,7 @@ class LiveRuntimeDecisionViewFixture:
         self.automation_dir = self.runtime_dir / "automation"
         self.activation = decision_identity(host_bundle("chase-sim-chaser", self.runtime_root))
         self.server = RuntimeViewServer(
-            host_id="chase-sim-chaser",
+            host_name="chase-sim-chaser",
             automation_dir=self.automation_dir,
             port=0,
             run_id="run-live",
@@ -60,7 +60,7 @@ class LiveRuntimeDecisionViewFixture:
         """The decision producer a runtime host session announces."""
 
         return {
-            "host_id": "chase-sim-chaser",
+            "host_name": "chase-sim-chaser",
             "source_id": SOURCE_ID,
             "run_id": run_id,
             "producer_generation_id": self.activation["generation_id"],
@@ -83,7 +83,7 @@ class LiveRuntimeDecisionViewFixture:
         observation, memory = published_cycle(raw)
         return vehicle_report_for_records(
             records,
-            host_id="chase-sim-chaser",
+            host_name="chase-sim-chaser",
             run_id=run_id,
             generation_id=self.activation["generation_id"],
             frame_id=raw["frame_id"],

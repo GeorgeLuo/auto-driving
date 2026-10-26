@@ -41,12 +41,12 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
             from tests.support.runtime_fixtures import write_host_fixture
             write_host_fixture(runtime_root, "chase-sim-chaser", url=ws_url)
             invoke_automa(
-                "hosts", "stage", "perception", "--id", "chase-sim-chaser",
+                "hosts", "stage", "perception", "--name", "chase-sim-chaser",
                 runtime_root=runtime_root, extra_env=env,
             )
             try:
                 run_automa(
-                    "hosts", "run", "--id", "chase-sim-chaser",
+                    "hosts", "run", "--name", "chase-sim-chaser",
                     "--observe-only", "--num-decisions", "0", runtime_root=runtime_root, extra_env=env,
                 )
                 stream_env = {
@@ -60,7 +60,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 }
                 with subprocess.Popen(
                     [sys.executable, str(AUTOMA_PATH), "hosts", "stream", "perception",
-                     "--id", "chase-sim-chaser", "--json"],
+                     "--name", "chase-sim-chaser", "--json"],
                     cwd=WORKSPACE_ROOT, env=stream_env,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                 ) as stream:
@@ -78,7 +78,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                             stream.terminate()
                             stream.wait(timeout=5)
                 run = json.loads(invoke_automa(
-                    "hosts", "status", "--id", "chase-sim-chaser", "--json",
+                    "hosts", "status", "--name", "chase-sim-chaser", "--json",
                     runtime_root=runtime_root, extra_env=env,
                 ).stdout)["hosts"][0]["run"]
                 self.assertTrue(run["process"]["running"])
@@ -86,7 +86,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 self.assertFalse((runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json").exists())
             finally:
                 invoke_automa(
-                    "hosts", "stop", "--id", "chase-sim-chaser",
+                    "hosts", "stop", "--name", "chase-sim-chaser",
                     runtime_root=runtime_root, extra_env=env, check=False,
                 )
 
@@ -108,18 +108,18 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 self.assertEqual([vehicle["state"] for vehicle in initial["vehicles"]], ["running"])
                 self.assertNotIn("hosts", initial)
                 initial_fingerprint = _session_fingerprint(ws_url)
-                invoke_automa("hosts", "create", "--id", "chase-sim-chaser", "--provider", "chase-sim",
+                invoke_automa("hosts", "create", "--name", "chase-sim-chaser", "--provider", "chase-sim",
                               "--url", ws_url, runtime_root=runtime_root, extra_env=env)
 
                 invoke_automa(
-                    "hosts", "stage", "memory", "--id", "chase-sim-chaser",
+                    "hosts", "stage", "memory", "--name", "chase-sim-chaser",
                     "--preset", "recency_ledger", runtime_root=runtime_root, extra_env=env,
                 )
 
                 invoke_automa(
                     "hosts", "stage",
                     "perception",
-                    "--id",
+                    "--name",
                     "chase-sim-chaser",
                     "--preset",
                     "lightweight_observer",
@@ -127,7 +127,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     extra_env=env,
                 )
                 staged = json.loads(invoke_automa(
-                    "hosts", "status", "--id", "chase-sim-chaser", "--json",
+                    "hosts", "status", "--name", "chase-sim-chaser", "--json",
                     runtime_root=runtime_root, extra_env=env,
                 ).stdout)["hosts"][0]["run"]
                 self.assertTrue(staged["deployed"])
@@ -137,7 +137,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     run = run_automa(
                         "hosts",
                         "run",
-                        "--id",
+                        "--name",
                         "chase-sim-chaser",
                         "--observe-only",
                         "--num-decisions",
@@ -151,24 +151,24 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
 
                     for step in ("perception", "memory"):
                         probe = json.loads(invoke_automa(
-                            "hosts", "stream", step, "--id", "chase-sim-chaser",
+                            "hosts", "stream", step, "--name", "chase-sim-chaser",
                             "--once", "--json", runtime_root=runtime_root, extra_env=env,
                         ).stdout)
                         self.assertEqual(probe["status"], "live")
 
                     old_run = json.loads(invoke_automa(
-                        "hosts", "status", "--id", "chase-sim-chaser",
+                        "hosts", "status", "--name", "chase-sim-chaser",
                         "--json", runtime_root=runtime_root, extra_env=env,
                     ).stdout)["hosts"][0]["run"]["state"]["run_id"]
                     restarted = run_automa(
-                        "hosts", "restart", "--id", "chase-sim-chaser",
+                        "hosts", "restart", "--name", "chase-sim-chaser",
                         "--observe-only", "--num-decisions", "0", "--open-view",
                         runtime_root=runtime_root, extra_env=env,
                     )
                     self.assertIn("Run started on host", restarted.stdout)
                     self.assertIn("Browser opened:", restarted.stdout)
                     new_run = json.loads(invoke_automa(
-                        "hosts", "status", "--id", "chase-sim-chaser",
+                        "hosts", "status", "--name", "chase-sim-chaser",
                         "--json", runtime_root=runtime_root, extra_env=env,
                     ).stdout)["hosts"][0]["run"]["state"]["run_id"]
                     self.assertNotEqual(new_run, old_run)
@@ -177,12 +177,12 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     agents = MetricsUiWsClient(ws_url)
                     [presence] = wait_until(
                         lambda: [agent for agent in agents.list_agents()
-                                 if (agent.get("client") or {}).get("host_id") == "chase-sim-chaser"],
+                                 if (agent.get("client") or {}).get("host_name") == "chase-sim-chaser"],
                         message="the simulator never listed the running host as attached",
                     )
                     self.assertEqual(presence["client"]["kind"], "host")
                     running = json.loads(invoke_automa(
-                        "hosts", "status", "--id", "chase-sim-chaser",
+                        "hosts", "status", "--name", "chase-sim-chaser",
                         "--json", runtime_root=runtime_root, extra_env=env,
                     ).stdout)["hosts"][0]["run"]
                     self.assertTrue(running["process"]["running"])
@@ -193,7 +193,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     stopped = invoke_automa(
                         "hosts",
                         "stop",
-                        "--id",
+                        "--name",
                         "chase-sim-chaser",
                         runtime_root=runtime_root,
                         extra_env=env,
@@ -204,14 +204,14 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 self.assertNotIn("ready for:", stopped.stdout.lower())
 
                 final = json.loads(invoke_automa(
-                    "hosts", "status", "--id", "chase-sim-chaser",
+                    "hosts", "status", "--name", "chase-sim-chaser",
                     "--json", runtime_root=runtime_root, extra_env=env,
                 ).stdout)["hosts"][0]["run"]
                 self.assertTrue(final["deployed"])
                 self.assertFalse(final["process"]["running"])
                 self.assertEqual(_session_fingerprint(ws_url), initial_fingerprint)
                 deleted = invoke_automa(
-                    "hosts", "delete", "--id", "chase-sim-chaser",
+                    "hosts", "delete", "--name", "chase-sim-chaser",
                     runtime_root=runtime_root, extra_env=env,
                 )
                 self.assertIn("Stopped host chase-sim-chaser", deleted.stdout)

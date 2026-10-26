@@ -15,7 +15,7 @@ from cli.automa_cli.step_activations import bundle_activation_path
 from cli.automa_cli.streaming import probe_live_memory
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
-    HOST_ID,
+    HOST_NAME,
     _write_activations,
     chase_runtime,
     staged_runners,
@@ -37,7 +37,7 @@ def stage_runtime(runtime_root: Path) -> None:
     The bundle is not an extracted release, so plan names the source tree that
     `hosts info plan` loads.
     """
-    bundle = controller_bundle_paths(runtime_root / HOST_ID)
+    bundle = controller_bundle_paths(runtime_root / HOST_NAME)
     _write_activations(bundle)
     for activation in (
         packaged_activation("memory", ["bounded_evidence"]),
@@ -64,7 +64,7 @@ class LiveHostTestCase(unittest.TestCase):
         wait_until(
             lambda: any(
                 plugin["record_count"]
-                for plugin in probe_live_memory(host_id=HOST_ID)["plugins"]
+                for plugin in probe_live_memory(host_name=HOST_NAME)["plugins"]
             ),
             message="the session never filled memory",
         )

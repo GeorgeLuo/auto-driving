@@ -128,7 +128,7 @@ def identity_tuple(record: Mapping[str, Any]) -> tuple[Any, ...]:
     if not isinstance(activation, Mapping) or not isinstance(source_frame, Mapping):
         raise ValueError("record identity containers are missing")
     return (
-        record.get("host_id"),
+        record.get("host_name"),
         record.get("source_id"),
         record.get("run_id"),
         record.get("generation_id"),
@@ -180,7 +180,7 @@ class HostTelemetryStore:
     def __init__(
         self,
         *,
-        host_id: str,
+        host_name: str,
         source_id: str,
         run_id: str,
         generation_id: str,
@@ -191,7 +191,7 @@ class HostTelemetryStore:
         if type(max_records) is not int or max_records < 256:
             raise ValueError("max_records must retain at least 256 records")
         for field, value in (
-            ("host_id", host_id),
+            ("host_name", host_name),
             ("source_id", source_id),
             ("run_id", run_id),
             ("generation_id", generation_id),
@@ -202,7 +202,7 @@ class HostTelemetryStore:
         if clock is not None and not callable(clock):
             raise ValueError("clock must be callable")
 
-        self.host_id = host_id
+        self.host_name = host_name
         self.source_id = source_id
         self.run_id = run_id
         self.generation_id = generation_id
@@ -219,7 +219,7 @@ class HostTelemetryStore:
     @property
     def identity(self) -> tuple[Any, ...]:
         return (
-            self.host_id,
+            self.host_name,
             self.source_id,
             self.run_id,
             self.generation_id,
@@ -432,7 +432,7 @@ class HostTelemetryStore:
                 "schema": HOST_TELEMETRY_SCHEMA,
                 "status": status,
                 "reason": reason,
-                "host_id": self.host_id,
+                "host_name": self.host_name,
                 "source_id": self.source_id,
                 "run_id": self.run_id,
                 "generation_id": self.generation_id,

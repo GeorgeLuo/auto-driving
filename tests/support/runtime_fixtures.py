@@ -23,14 +23,14 @@ class RuntimeFixturePaths:
 
 def write_runtime_fixture(
     runtime_root: Path,
-    host_id: str,
+    host_name: str,
     *,
     pid: int,
     manifest_bundle_root: Path | None = None,
 ) -> RuntimeFixturePaths:
     """Write one explicit staged-runtime fixture and return its document paths."""
-    write_host_fixture(runtime_root, host_id)
-    bundle_root = runtime_root / host_id / "bundle"
+    write_host_fixture(runtime_root, host_name)
+    bundle_root = runtime_root / host_name / "bundle"
     activation_bundle_root = manifest_bundle_root or bundle_root
     perception_activation = bundle_root / "runtime" / "perception" / "active.json"
     automation_process = bundle_root / "runtime" / "automation" / "process.json"
@@ -59,18 +59,18 @@ def write_runtime_fixture(
         automation_process,
         {
             "schema": "automa_automation_process",
-            "host_id": host_id,
+            "host_name": host_name,
             "pid": pid,
             "log_to_disk": False,
             "log_path": None,
-            "command": [str(AUTOMA_PATH), "hosts", "run", "--id", host_id],
+            "command": [str(AUTOMA_PATH), "hosts", "run", "--name", host_name],
         },
     )
     write_json(
         automation_state,
         {
             "schema": "automa_automation_run_state",
-            "host_id": host_id,
+            "host_name": host_name,
             "run_id": "test-run",
             "status": "running",
             "pid": pid,
@@ -97,16 +97,16 @@ def write_runtime_fixture(
     )
 
 
-def write_host_fixture(runtime_root: Path, host_id: str, *, provider: str = "chase-sim",
+def write_host_fixture(runtime_root: Path, host_name: str, *, provider: str = "chase-sim",
                        url: str | None = None) -> None:
     from cli.automa_cli.step_activations import write_host_configuration
 
-    if (runtime_root / host_id / "host-configuration.json").exists():
+    if (runtime_root / host_name / "host-configuration.json").exists():
         return
     connection = ({"ws_url": url or "ws://localhost:5050/ws/control"} if provider == "chase-sim" else
                   {"base_url": url or "http://piracer.local:8887", "ssh_target": "piracer@piracer.local",
                    "pi_home": "/home/piracer"})
-    write_host_configuration(runtime_root, {"host_id": host_id, "provider": provider,
+    write_host_configuration(runtime_root, {"host_name": host_name, "provider": provider,
         "vehicle_kind": "chase-sim-ws" if provider == "chase-sim" else "picar-donkey-http",
         "connection": connection})
 

@@ -476,7 +476,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             )
 
             telemetry_store = None
-            host_id = None
+            host_name = None
             source_id = None
             generation_id = loop_options["generation_id"]
             run_id = None
@@ -488,16 +488,16 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 )
                 if not isinstance(identity, dict):
                     raise ValueError("runtime identity is not an object")
-                host_id = identity.get("host_id")
-                if type(host_id) is not str or not host_id:
-                    raise ValueError("runtime identity is missing host_id")
-                source_id = identity.get("source_id") or f"donkeycar:{host_id}"
+                host_name = identity.get("host_name")
+                if type(host_name) is not str or not host_name:
+                    raise ValueError("runtime identity is missing host_name")
+                source_id = identity.get("source_id") or f"donkeycar:{host_name}"
                 run_id = (
                     f"donkey-run-{os.getpid()}-{int(time.time() * 1000)}-"
                     f"{secrets.token_hex(8)}"
                 )
                 telemetry_store = HostTelemetryStore(
-                    host_id=host_id,
+                    host_name=host_name,
                     source_id=source_id,
                     run_id=run_id,
                     generation_id=generation_id,
@@ -515,7 +515,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             # drive mode.
             autonomy_part = AutonomyPilotPart(
                 host=host,
-                host_id=host_id,
+                host_name=host_name,
                 source_id=source_id if telemetry_store is not None else None,
                 run_id=run_id if telemetry_store is not None else None,
                 host_telemetry=host_telemetry_publisher,

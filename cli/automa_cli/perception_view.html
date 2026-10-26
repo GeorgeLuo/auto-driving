@@ -641,7 +641,7 @@
     }
 
     function renderData() {
-      document.getElementById("vehicle").textContent = latest.host_id || "unknown host";
+      document.getElementById("vehicle").textContent = latest.host_name || "unknown host";
       const metrics = document.getElementById("frameMetrics");
       metrics.replaceChildren();
       appendMetric(metrics, "Frame", latest.frame?.frame_id);

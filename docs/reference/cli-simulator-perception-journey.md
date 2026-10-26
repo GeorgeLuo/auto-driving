@@ -25,27 +25,27 @@ explicitly restaged using the recovery that `hosts status --long` prints.
 
 ```sh
 ./cli/automa vehicles status
-./cli/automa hosts create --id chase-sim-chaser --provider chase-sim --url http://localhost:5050
+./cli/automa hosts create --name chase-sim-chaser --provider chase-sim --url http://localhost:5050
 
 ./cli/automa hosts stage memory \
-  --id chase-sim-chaser \
+  --name chase-sim-chaser \
   --preset recency_ledger
 
 ./cli/automa hosts stage perception \
-  --id chase-sim-chaser \
+  --name chase-sim-chaser \
   --preset lightweight_observer
 
 ./cli/automa hosts run \
-  --id chase-sim-chaser \
+  --name chase-sim-chaser \
   --observe-only \
   --num-decisions 0 \
   --open-view
 
-./cli/automa hosts status --id chase-sim-chaser
+./cli/automa hosts status --name chase-sim-chaser
 
-./cli/automa hosts stop --id chase-sim-chaser
+./cli/automa hosts stop --name chase-sim-chaser
 
-./cli/automa hosts status --id chase-sim-chaser
+./cli/automa hosts status --name chase-sim-chaser
 ```
 
 `vehicles status` is read-only. It lists the default simulator, created
@@ -54,7 +54,7 @@ reachability. Use the provider and URL with `hosts create`.
 
 `hosts status` prints a block for each created host: its state, its vehicle
 and that vehicle's URL, whether its simulator lists it, and the host URL and
-pid. `--long` adds each host's deployment, run and view under its block. `--id`
+pid. `--long` adds each host's deployment, run and view under its block. `--name`
 selects one host; `--json` emits `automa_hosts_status` with a `hosts` array
 whose entries carry the host's `run` detail. Host names are chosen at creation
 and do not identify the vehicle environment.
@@ -131,7 +131,7 @@ Ctrl-C in a terminal stream stops that stream, not the worker. For a passive
 restart, keep `--observe-only` explicit:
 
 ```sh
-./cli/automa hosts restart --id chase-sim-chaser --observe-only --num-decisions 0 --open-view
+./cli/automa hosts restart --name chase-sim-chaser --observe-only --num-decisions 0 --open-view
 ```
 
 Stopping the worker keeps its local deployment staged and makes its previous
@@ -144,13 +144,13 @@ from selecting it:
 
 ```sh
 ./cli/automa hosts plugins upload \
-  --id chase-sim-chaser \
+  --name chase-sim-chaser \
   --file ./prototype.py \
   --step perception \
   --plugin-id prototype \
   --entrypoint prototype:Prototype
 
-./cli/automa hosts plugins status --id chase-sim-chaser --step perception
+./cli/automa hosts plugins status --name chase-sim-chaser --step perception
 ```
 
 The command reports success after the source is stored and its revision is
@@ -167,7 +167,7 @@ Add `--config '<JSON object>'`, for example `--config '{"throttle": -0.6}'`,
 to store constructor settings with the revision; arming constructs the plugin
 with them, and `plugins status --json` reports them.
 
-Use `--url <viewer-or-workbench-url>` instead of `--id` to address a catalog
+Use `--url <viewer-or-workbench-url>` instead of `--name` to address a catalog
 directly. The same command and `/api/plugins` endpoint apply to Chase, PiCar,
 and the replay workbench. Workbench plugin panels refresh their catalogs even
 before a replay starts or after it finishes. Dependent files can be uploaded
@@ -184,9 +184,9 @@ worker exits. Keeping that host alive between runs is separate work.
 After uploading, request the available revision without restarting the worker:
 
 ```sh
-./cli/automa hosts plugins arm --id chase-sim-chaser --step perception --plugin prototype
-./cli/automa hosts plugins status --id chase-sim-chaser --step perception
-./cli/automa hosts stream perception --id chase-sim-chaser --once
+./cli/automa hosts plugins arm --name chase-sim-chaser --step perception --plugin prototype
+./cli/automa hosts plugins status --name chase-sim-chaser --step perception
+./cli/automa hosts stream perception --name chase-sim-chaser --once
 ```
 
 The host imports and constructs the selection before answering. The receipt
@@ -212,8 +212,8 @@ selection document:
 ```
 
 ```sh
-./cli/automa hosts plugins arm --id chase-sim-chaser --selection ./selection.json
-./cli/automa hosts plugins status --id chase-sim-chaser
+./cli/automa hosts plugins arm --name chase-sim-chaser --selection ./selection.json
+./cli/automa hosts plugins status --name chase-sim-chaser
 ```
 
 The host loads every changed step before publishing any of the group. The
@@ -248,7 +248,7 @@ The commands keep these layers separate:
 `vehicles status --json` emits `automa_vehicles_status`, which lists vehicle
 environments in `vehicles` with provider, URL, state and error. Simulator
 entries also include frontend, game and created-process information.
-`hosts status --json` reports hosts separately, with their host IDs, the http
+`hosts status --json` reports hosts separately, with their host names, the http
 URLs of their vehicles, their runtime URLs and their simulator attachment.
 
 An absent or malformed evaluator reference does not block camera perception.
@@ -295,7 +295,7 @@ external change.
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 
 `vehicles status` exits 1 when no listed vehicle is reachable. `hosts status
---id <host>` exits 1 when that host is not found, not running, not answering,
+--name <host>` exits 1 when that host is not found, not running, not answering,
 or in error. Invalid arguments exit 2.
 
 Simulator preparation is deliberately outside passive attachment:

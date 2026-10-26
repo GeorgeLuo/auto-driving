@@ -17,7 +17,7 @@ class PerceptionInspectBundleTests(unittest.TestCase):
             write_host_fixture(runtime_root, "chase-sim-chaser", url=ws_url)
             env = {"CHASE_UI_WS_URL": ws_url}
             invoke_automa(
-                "hosts", "stage", "perception", "--id", "chase-sim-chaser",
+                "hosts", "stage", "perception", "--name", "chase-sim-chaser",
                 "--plugin", "frame", runtime_root=runtime_root, extra_env=env,
             )
             bundle = runtime_root / "chase-sim-chaser/bundle"
@@ -35,7 +35,7 @@ class PerceptionInspectBundleTests(unittest.TestCase):
             for selection in ((), ("--plugin", "frame"), ("--preset", "sim_debug")):
                 with self.subTest(selection=selection):
                     result = invoke_automa(
-                        "hosts", "perception", "inspect", "--id", "chase-sim-chaser",
+                        "hosts", "perception", "inspect", "--name", "chase-sim-chaser",
                         "--frames", "1", "--interval-s", "0", "--json", *selection,
                         runtime_root=runtime_root, extra_env=env,
                     )

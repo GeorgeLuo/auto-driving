@@ -23,7 +23,7 @@ from tests.shared.cli.invoke import invoke_automa
 from tests.support.cli_runner import WORKSPACE_ROOT, run_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
-HOST_ID = "chase-sim-chaser"
+HOST_NAME = "chase-sim-chaser"
 FRAME_PLUGIN = "implementations/decision_cycle/perception/plugins/frame/plugin.py"
 
 
@@ -42,7 +42,7 @@ def _package_release_with_frame_label(runtime_root: Path, source_root: Path, lab
         bundles, ROOT=source_root,
         AUTONOMY_DIR=source_root / "autonomy", IMPLEMENTATIONS_DIR=source_root / "implementations",
     ):
-        return bundles.package_controller_bundle(bundles.controller_bundle_paths(runtime_root / HOST_ID))
+        return bundles.package_controller_bundle(bundles.controller_bundle_paths(runtime_root / HOST_NAME))
 
 
 def _frame_label(report: dict) -> str:
@@ -62,30 +62,30 @@ class ReplayByReleaseTests(unittest.TestCase):
                 run = run_automa if args[:1] == ("run",) else invoke_automa
                 return run("hosts", *args, runtime_root=runtime_root, extra_env=env, check=check)
 
-            automa("stage", "perception", "--id", HOST_ID, "--plugin", "frame")
+            automa("stage", "perception", "--name", HOST_NAME, "--plugin", "frame")
             release = _package_release_with_frame_label(runtime_root, Path(tmp) / "source", "release camera frame")
             try:
                 automa(
-                    "run", "--id", HOST_ID, "--observe-only",
+                    "run", "--name", HOST_NAME, "--observe-only",
                     "--num-decisions", "2", "--record",
                 )
             finally:
-                automa("stop", "--id", HOST_ID, check=False)
-            runs = runtime_root / HOST_ID / "bundle/runtime/automation/runs"
+                automa("stop", "--name", HOST_NAME, check=False)
+            runs = runtime_root / HOST_NAME / "bundle/runtime/automation/runs"
             (recording,) = [path for path in runs.iterdir() if (path / "manifest.json").is_file()]
 
-            automa("stage", "perception", "--id", HOST_ID, "--plugin", "frame")
+            automa("stage", "perception", "--name", HOST_NAME, "--plugin", "frame")
             replay = automa("perception", "inspect", str(recording), "--json")
             self.assertEqual(_frame_label(json.loads(replay.stdout)), "release camera frame")
 
-            releases = runtime_root / HOST_ID / "bundle/releases"
+            releases = runtime_root / HOST_NAME / "bundle/releases"
             Path(release["archive"]["path"]).unlink()
             Path(release["manifest"]["path"]).unlink()
             shutil.rmtree(releases / release["archive"]["sha256"])
             missing = automa("perception", "inspect", str(recording), "--json", check=False)
             self.assertEqual(missing.returncode, 2, missing.stdout)
             self.assertIn(f"Controller release {release['tree_sha256'][:12]} is not in", missing.stdout)
-            self.assertIn(f"Run: ./cli/automa hosts update --id {HOST_ID}", missing.stdout)
+            self.assertIn(f"Run: ./cli/automa hosts update --name {HOST_NAME}", missing.stdout)
 
     def test_a_recording_replays_the_plugin_uploaded_to_its_host(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
@@ -100,8 +100,8 @@ class ReplayByReleaseTests(unittest.TestCase):
                 run = run_automa if own_process else invoke_automa
                 return run("hosts", *args, runtime_root=runtime_root, extra_env=env, check=check)
 
-            automa("stage", "perception", "--id", HOST_ID, "--plugin", "frame")
-            bundles.package_controller_bundle(bundles.controller_bundle_paths(runtime_root / HOST_ID))
+            automa("stage", "perception", "--name", HOST_NAME, "--plugin", "frame")
+            bundles.package_controller_bundle(bundles.controller_bundle_paths(runtime_root / HOST_NAME))
             plugin = Path(tmp) / "prototype.py"
             plugin.write_text(
                 "from dataclasses import replace\n"
@@ -115,19 +115,19 @@ class ReplayByReleaseTests(unittest.TestCase):
             )
             source = f"{hashlib.sha256(plugin.read_bytes()).hexdigest()}.py"
             try:
-                automa("run", "--id", HOST_ID, "--observe-only",
+                automa("run", "--name", HOST_NAME, "--observe-only",
                        "--num-decisions", "1")
-                automa("plugins", "upload", "--id", HOST_ID, "--file", str(plugin), "--step", "perception",
+                automa("plugins", "upload", "--name", HOST_NAME, "--file", str(plugin), "--step", "perception",
                        "--plugin-id", "uploaded", "--entrypoint", "prototype:Prototype", "--arm")
-                automa("run", "--id", HOST_ID, "--observe-only",
+                automa("run", "--name", HOST_NAME, "--observe-only",
                        "--num-decisions", "2", "--record")
             finally:
-                automa("stop", "--id", HOST_ID, check=False)
-            runs = runtime_root / HOST_ID / "bundle/runtime/automation/runs"
+                automa("stop", "--name", HOST_NAME, check=False)
+            runs = runtime_root / HOST_NAME / "bundle/runtime/automation/runs"
             (recording,) = [path for path in runs.iterdir() if (path / "manifest.json").is_file()]
             self.assertEqual((recording / "plugins" / source).read_bytes(), plugin.read_bytes())
             with mock.patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root):
-                stop_chase_host(HOST_ID)
+                stop_chase_host(HOST_NAME)
             plugin.unlink()
             moved = Path(tmp) / "moved-recording"
             shutil.move(recording, moved)

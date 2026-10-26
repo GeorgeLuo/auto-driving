@@ -294,40 +294,40 @@
             "path": "runtime/hosts/",
             "category": "generated-runtime",
             "commit_policy": "generated",
-            "responsibility": "Local runtime directories keyed by host ID.",
+            "responsibility": "Local runtime directories keyed by host name.",
             "children": [
               {
-                "path": "runtime/hosts/<host-id>/",
+                "path": "runtime/hosts/<host-name>/",
                 "category": "generated-runtime",
                 "commit_policy": "generated",
                 "responsibility": "One local runtime area for a host controlling a simulator or physical vehicle.",
                 "children": [
                   {
-                    "path": "runtime/hosts/<host-id>/bundle/",
+                    "path": "runtime/hosts/<host-name>/bundle/",
                     "category": "generated-runtime",
                     "commit_policy": "generated",
                     "responsibility": "Generated controller bundle with core code, concrete implementations, releases, active configuration, and worker state.",
                     "children": [
                       {
-                        "path": "runtime/hosts/<host-id>/bundle/autonomy/",
+                        "path": "runtime/hosts/<host-name>/bundle/autonomy/",
                         "category": "generated-runtime",
                         "commit_policy": "generated",
                         "responsibility": "Extracted stable autonomy package from the active local controller release."
                       },
                       {
-                        "path": "runtime/hosts/<host-id>/bundle/implementations/",
+                        "path": "runtime/hosts/<host-name>/bundle/implementations/",
                         "category": "generated-runtime",
                         "commit_policy": "generated",
                         "responsibility": "Extracted concrete implementations from the active local controller release."
                       },
                       {
-                        "path": "runtime/hosts/<host-id>/bundle/releases/",
+                        "path": "runtime/hosts/<host-name>/bundle/releases/",
                         "category": "generated-runtime",
                         "commit_policy": "generated",
                         "responsibility": "Hashed controller archives and manifests available for activation or remote deployment."
                       },
                       {
-                        "path": "runtime/hosts/<host-id>/bundle/runtime/",
+                        "path": "runtime/hosts/<host-name>/bundle/runtime/",
                         "category": "generated-runtime",
                         "commit_policy": "generated",
                         "responsibility": "Perception and decision activation manifests plus automation worker state and rolling output."
@@ -335,7 +335,7 @@
                     ]
                   },
                   {
-                    "path": "runtime/hosts/<host-id>/deploy/",
+                    "path": "runtime/hosts/<host-name>/deploy/",
                     "category": "generated-runtime",
                     "commit_policy": "generated",
                     "responsibility": "Target-specific activation metadata staged for physical deployment."

@@ -64,7 +64,7 @@ class CommandResult:
 def inspect_perception(
     source: Path | None = None,
     *,
-    host_id: str | None = None,
+    host_name: str | None = None,
     frames: int | None = None,
     interval_s: float | None = None,
     timeout_s: float | None = None,
@@ -92,7 +92,7 @@ def inspect_perception(
         return _unreadable_source("max_frames must be greater than zero")
     if source is not None:
         live_only = {
-            "--id": host_id,
+            "--name": host_name,
             "--frames": frames,
             "--interval-s": interval_s,
             "--timeout-s": timeout_s,
@@ -113,7 +113,7 @@ def inspect_perception(
             seed=seed,
         )
     return _inspect_vehicle(
-        host_id=host_id,
+        host_name=host_name,
         frames=DEFAULT_FRAME_COUNT if frames is None else frames,
         interval_s=DEFAULT_INTERVAL_S if interval_s is None else interval_s,
         timeout_s=3.0 if timeout_s is None else timeout_s,
@@ -127,7 +127,7 @@ def inspect_perception(
 
 def _inspect_vehicle(
     *,
-    host_id: str | None,
+    host_name: str | None,
     frames: int,
     interval_s: float,
     timeout_s: float,
@@ -137,13 +137,13 @@ def _inspect_vehicle(
     plugins: list[str] | None,
     seed: SharedMemorySeed | None,
 ) -> CommandResult:
-    discovery = {} if host_id is not None else discover_active_vehicles(
+    discovery = {} if host_name is not None else discover_active_vehicles(
         timeout_s=timeout_s,
         include_picar=True,
         include_chase_sim=True,
         include_inactive=True,
     )
-    vehicle, selection, error = _select_vehicle(discovery, host_id)
+    vehicle, selection, error = _select_vehicle(discovery, host_name)
     if error or vehicle is None:
         return CommandResult(
             2,
@@ -165,7 +165,7 @@ def _inspect_vehicle(
         return CommandResult(2, f"Could not prepare perception runtime: {type(exc).__name__}: {exc}")
 
     frame_count = max(1, int(frames))
-    run_id = _run_id("inspect", str(vehicle.get("host_id") or vehicle.get("vehicle_id") or "vehicle"))
+    run_id = _run_id("inspect", str(vehicle.get("host_name") or vehicle.get("vehicle_id") or "vehicle"))
     record_dir, error = _create_record_dir(run_id) if record else (None, None)
     if error is not None:
         return error
@@ -205,7 +205,7 @@ def _inspect_vehicle(
                     metadata={
                         "run_id": run_id,
                         "frame_index": index,
-                        "host_id": vehicle.get("host_id"),
+                        "host_name": vehicle.get("host_name"),
                         "vehicle_id": vehicle.get("vehicle_id"),
                         "recording": record,
                     },
@@ -223,7 +223,7 @@ def _inspect_vehicle(
                 run_id=run_id,
                 source={
                     "kind": "vehicle",
-                    "host_id": vehicle.get("host_id"),
+                    "host_name": vehicle.get("host_name"),
                     "vehicle_id": vehicle.get("vehicle_id"),
                     "provider": vehicle.get("provider"),
                     "selection": selection,
@@ -593,7 +593,7 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
     summary = report["summary"]
     source = report["source"]
     perception = report["perception"]
-    source_label = source.get("host_id") or source.get("vehicle_id") or source.get("path") or source.get("kind")
+    source_label = source.get("host_name") or source.get("vehicle_id") or source.get("path") or source.get("kind")
     detail = f"{summary['frames']} frames"
     if source.get("selection"):
         detail += f"; {source['selection']}"

@@ -180,7 +180,7 @@ def _format_inspect_report(report: dict[str, Any]) -> str:
 
 def reset_host_memory(
     *,
-    host_id: str,
+    host_name: str,
     timeout_s: float = 3.0,
     json_output: bool = False,
 ) -> CommandResult:
@@ -194,27 +194,27 @@ def reset_host_memory(
     Memory map.
     """
 
-    before = probe_live_memory(host_id=host_id, timeout_s=timeout_s)
+    before = probe_live_memory(host_name=host_name, timeout_s=timeout_s)
     if before.get("status") != "live":
         return CommandResult(
             2,
             "\n".join(
                 [
-                    f"Cannot reset memory for {host_id!r}: live memory is {before.get('status')!r}.",
+                    f"Cannot reset memory for {host_name!r}: live memory is {before.get('status')!r}.",
                     str(before.get("error") or "The runtime host reported no memory step."),
                 ]
             ),
         )
 
     try:
-        base_url = runtime_base_url(host_id)
+        base_url = runtime_base_url(host_name)
         reset_payload = RuntimeClient(base_url, timeout_s=timeout_s).reset_memory()
     except RuntimeError as exc:
-        return CommandResult(2, f"Memory reset failed for {host_id}: {exc}")
+        return CommandResult(2, f"Memory reset failed for {host_name}: {exc}")
 
     payload: dict[str, Any] = {
         "schema": MEMORY_RESET_SCHEMA,
-        "host_id": host_id,
+        "host_name": host_name,
         "ok": bool(reset_payload.get("ok")),
         "reset": reset_payload,
         "before": before,
@@ -226,7 +226,7 @@ def reset_host_memory(
             2,
             "\n".join(
                 [
-                    f"Memory reset failed: {host_id}",
+                    f"Memory reset failed: {host_name}",
                     str(reset_payload.get("error") or reset_payload.get("status") or "unknown error"),
                 ]
             ),
@@ -249,7 +249,7 @@ def reset_host_memory(
     if json_output:
         return CommandResult(0 if confirmed else 2, json.dumps(payload, indent=2, sort_keys=True))
     lines = [
-        f"Reset memory: {host_id}",
+        f"Reset memory: {host_name}",
         f"Plugins: {', '.join(after.get('plugin_ids') or before.get('plugin_ids') or []) or '—'}",
     ]
     for plugin_id in [*after_plugins, *(key for key in before_plugins if key not in after_plugins)]:

@@ -25,7 +25,7 @@ class PerceptionViewTests(unittest.TestCase):
             root = Path(tmp)
             frame_path = root / "frame.png"
             Image.new("RGB", (64, 48), (20, 40, 60)).save(frame_path)
-            view = PerceptionView(host_id="test-vehicle")
+            view = PerceptionView(host_name="test-vehicle")
 
             for index in range(MAX_BUFFERED_FRAMES):
                 record = _frame_record()
@@ -56,7 +56,7 @@ class PerceptionViewTests(unittest.TestCase):
             Image.new("RGB", (64, 48), (20, 40, 60)).save(frame_path)
             expected_frame = frame_path.read_bytes()
             server = RuntimeViewServer(
-                host_id="test-vehicle",
+                host_name="test-vehicle",
                 automation_dir=root / "automation",
                 port=0,
             ).start()
@@ -158,7 +158,7 @@ class PerceptionViewTests(unittest.TestCase):
     def test_view_rejects_data_requests_before_first_publication(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             server = RuntimeViewServer(
-                host_id="test-vehicle",
+                host_name="test-vehicle",
                 automation_dir=Path(tmp),
                 port=0,
             ).start()
@@ -177,7 +177,7 @@ class PerceptionViewTests(unittest.TestCase):
             self.assertFalse(status["available"])
 
             server = RuntimeViewServer(
-                host_id="test-vehicle",
+                host_name="test-vehicle",
                 automation_dir=root,
                 port=0,
             ).start()
@@ -191,7 +191,7 @@ class PerceptionViewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             server = RuntimeViewServer(
-                host_id="test-vehicle",
+                host_name="test-vehicle",
                 automation_dir=root,
                 port=0,
                 run_id="run-current",

@@ -199,7 +199,7 @@ def _evidence_projection(
 
 def decision_view_identity(
     *,
-    host_id: str,
+    host_name: str,
     source_id: str,
     run_id: str,
     producer_generation_id: str,
@@ -207,7 +207,7 @@ def decision_view_identity(
     """Identify one runtime host session's decision producer."""
 
     for field, value in (
-        ("host_id", host_id),
+        ("host_name", host_name),
         ("source_id", source_id),
         ("run_id", run_id),
         ("producer_generation_id", producer_generation_id),
@@ -215,7 +215,7 @@ def decision_view_identity(
         if type(value) is not str or not value:
             raise ValueError(f"decision view {field} is invalid")
     return {
-        "host_id": host_id,
+        "host_name": host_name,
         "source_id": source_id,
         "run_id": run_id,
         "producer_generation_id": producer_generation_id,
@@ -223,7 +223,7 @@ def decision_view_identity(
 
 
 def generation_id(identity: dict[str, Any]) -> str:
-    if set(identity) != {"host_id", "source_id", "run_id", "producer_generation_id"}:
+    if set(identity) != {"host_name", "source_id", "run_id", "producer_generation_id"}:
         raise ValueError("decision view identity has an unexpected key set")
     return _sha256_json(identity)
 
@@ -266,8 +266,8 @@ def parse_image_query(query: str) -> tuple[str, str]:
 class DecisionView:
     """One runtime generation's bounded decision/image transactions."""
 
-    def __init__(self, *, host_id: str, identity: dict[str, Any] | None = None) -> None:
-        self._host_id = host_id
+    def __init__(self, *, host_name: str, identity: dict[str, Any] | None = None) -> None:
+        self._host_name = host_name
         self.identity: dict[str, Any] | None = None
         self.generation_id: str | None = None
         self._lock = threading.Lock()
@@ -347,7 +347,7 @@ class DecisionView:
             diagnostic_ceiling(parsed.values)
             identity = self.identity
             if (
-                parsed.host_id != identity["host_id"]
+                parsed.host_name != identity["host_name"]
                 or parsed.run_id != identity["run_id"]
                 or parsed.generation_id != identity["producer_generation_id"]
                 or parsed.values.get("source_id") != identity["source_id"]

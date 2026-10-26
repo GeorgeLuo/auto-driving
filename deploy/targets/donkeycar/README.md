@@ -13,21 +13,21 @@ Use the CLI for deployment:
 ```sh
 ./cli/automa vehicles discover --provider picar --url http://piracer.local:8887
 ./cli/automa vehicles status
-./cli/automa hosts create --id piracer --provider picar --url http://piracer.local:8887
-./cli/automa hosts update --id piracer --restart
+./cli/automa hosts create --name piracer --provider picar --url http://piracer.local:8887
+./cli/automa hosts update --name piracer --restart
 ```
 
 Creation installs the core harness and boot service, deploys the controller
 release, restarts it and verifies every step in manual mode. Later updates use
-the recorded SSH connection. `hosts delete --id piracer` disables and
+the recorded SSH connection. `hosts delete --name piracer` disables and
 stops the service and removes local host data; the harness stays on the Pi.
 
 Movement uses the same commands as Chase after deployment:
 
 ```sh
-./cli/automa hosts run --id piracer --num-decisions 10
-./cli/automa hosts stop --id piracer
-./cli/automa hosts restart --id piracer --observe-only
+./cli/automa hosts run --name piracer --num-decisions 10
+./cli/automa hosts stop --name piracer
+./cli/automa hosts restart --name piracer --observe-only
 ```
 
 These commands use `/host/runtime` to operate the shared host. Restart

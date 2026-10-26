@@ -27,7 +27,7 @@ from .runtime_view import RuntimeViewServer
 
 def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:
     return {
-        "host_id": normalized["host_id"],
+        "host_name": normalized["host_name"],
         "source_id": normalized["source_id"],
         "run_id": normalized["run_id"],
         "producer_generation_id": normalized["generation_id"],
@@ -109,7 +109,7 @@ def _transaction_image(transaction: dict[str, Any]) -> tuple[bytes, str] | None:
 def _accepted_pair(
     base_url: str,
     *,
-    host_id: str,
+    host_name: str,
     timeout_s: float,
     cache: TransactionCache | None = None,
 ) -> tuple[dict[str, Any], tuple[bytes, str]]:
@@ -123,7 +123,7 @@ def _accepted_pair(
         try:
             normalized = accept_decision_publication(
                 publication,
-                host_id=host_id,
+                host_name=host_name,
                 now_ms=int(time.time() * 1000),
             )
         except DecisionSurfaceError as exc:
@@ -152,12 +152,12 @@ class DecisionViewAdapter:
     def __init__(
         self,
         *,
-        host_id: str,
+        host_name: str,
         base_url: str,
         view_server: RuntimeViewServer,
         timeout_s: float,
     ) -> None:
-        self.host_id = host_id
+        self.host_name = host_name
         self.base_url = base_url
         self.view_server = view_server
         self.timeout_s = timeout_s
@@ -174,7 +174,7 @@ class DecisionViewAdapter:
         frame_record["host_telemetry"] = read_host_telemetry_panel(
             self.base_url,
             normalized_decision=normalized,
-            host_id=self.host_id,
+            host_name=self.host_name,
             timeout_s=self.timeout_s,
         )
         published = self.view_server.decision.publish(
@@ -190,7 +190,7 @@ class DecisionViewAdapter:
     def refresh(self) -> bool:
         normalized, image = _accepted_pair(
             self.base_url,
-            host_id=self.host_id,
+            host_name=self.host_name,
             timeout_s=self.timeout_s, cache=self._transaction_cache,
         )
         return self.publish_frame(normalized, image)
@@ -200,7 +200,7 @@ def read_host_telemetry_panel(
     base_url: str,
     *,
     normalized_decision: dict[str, Any],
-    host_id: str,
+    host_name: str,
     timeout_s: float = 3.0,
     now_ms: int | None = None,
 ) -> dict[str, Any]:
@@ -212,18 +212,18 @@ def read_host_telemetry_panel(
         point = normalize_host_telemetry_record(
             raw,
             now_ms=effective_now_ms,
-            host_id=host_id,
+            host_name=host_name,
         )
         try:
             panel = join_host_telemetry_to_decision(
                 point,
                 normalized_decision,
-                host_id=host_id,
+                host_name=host_name,
             )
             return _with_host_telemetry_interval_coverage(
                 panel,
                 base_url,
-                host_id=host_id,
+                host_name=host_name,
                 point_sequence=point["host_tick"]["sequence"],
                 timeout_s=timeout_s,
                 now_ms=effective_now_ms,
@@ -250,17 +250,17 @@ def read_host_telemetry_panel(
                 candidate = normalize_host_telemetry_record(
                     raw_record,
                     now_ms=effective_now_ms,
-                    host_id=host_id,
+                    host_name=host_name,
                 )
                 panel = join_host_telemetry_to_decision(
                     candidate,
                     normalized_decision,
-                    host_id=host_id,
+                    host_name=host_name,
                 )
                 return _with_host_telemetry_interval_coverage(
                     panel,
                     base_url,
-                    host_id=host_id,
+                    host_name=host_name,
                     point_sequence=candidate["host_tick"]["sequence"],
                     timeout_s=timeout_s,
                     now_ms=effective_now_ms,
@@ -281,7 +281,7 @@ def _with_host_telemetry_interval_coverage(
     panel: dict[str, Any],
     base_url: str,
     *,
-    host_id: str,
+    host_name: str,
     point_sequence: int,
     timeout_s: float,
     now_ms: int,
@@ -330,7 +330,7 @@ def _with_host_telemetry_interval_coverage(
             now_ms=now_ms,
             after_sequence=after_sequence,
             limit=window,
-            host_id=host_id,
+            host_name=host_name,
         )
 
         # The latest endpoint and the history endpoint are independent reads.
@@ -358,7 +358,7 @@ def _with_host_telemetry_interval_coverage(
                     now_ms=now_ms,
                     after_sequence=after_sequence,
                     limit=window,
-                    host_id=host_id,
+                    host_name=host_name,
                 )
             except (HostTelemetryError, ConnectionError, OSError, TypeError, ValueError):
                 pass
@@ -419,7 +419,7 @@ def _host_record_matches_identity(
     if not isinstance(activation, dict) or not isinstance(source_frame, dict):
         return False
     return {
-        "host_id": record.get("host_id"),
+        "host_name": record.get("host_name"),
         "source_id": record.get("source_id"),
         "run_id": record.get("run_id"),
         "generation_id": record.get("generation_id"),

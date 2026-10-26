@@ -21,7 +21,7 @@ class MemoryCommandTests(unittest.TestCase):
             update = invoke_automa(
                 "hosts", "stage",
                 "memory",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 "--plugin",
                 "bounded_evidence",
@@ -31,7 +31,7 @@ class MemoryCommandTests(unittest.TestCase):
             info = invoke_automa(
                 "hosts", "info",
                 "memory",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 "--json",
                 runtime_root=runtime_root,
@@ -75,13 +75,13 @@ class MemoryCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")
-            invoke_automa("hosts", "stage", "memory", "--id", "chase-sim-chaser", runtime_root=runtime_root)
+            invoke_automa("hosts", "stage", "memory", "--name", "chase-sim-chaser", runtime_root=runtime_root)
             path = runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json"
             activation = json.loads(path.read_text())
             activation["plugin_specs"]["missing"] = "implementations.memory.not_installed:Plugin"
             path.write_text(json.dumps(activation))
             info = invoke_automa(
-                "hosts", "info", "memory", "--id", "chase-sim-chaser", "--json",
+                "hosts", "info", "memory", "--name", "chase-sim-chaser", "--json",
                 runtime_root=runtime_root,
             )
             expected = ["bounded_evidence", "missing"]
@@ -97,13 +97,13 @@ class MemoryCommandTests(unittest.TestCase):
                 updated = invoke_automa(
                     "hosts", "stage",
                     step,
-                    "--id",
+                    "--name",
                     "chase-sim-chaser",
                     runtime_root=runtime_root,
                     check=False,
                 )
                 self.assertIn(f"Staged {step}: chase-sim-chaser", updated.stdout)
-                info = ("hosts", "info", step, "--id", "chase-sim-chaser")
+                info = ("hosts", "info", step, "--name", "chase-sim-chaser")
                 payload = json.loads(
                     invoke_automa(*info, "--json", runtime_root=runtime_root).stdout
                 )
@@ -149,7 +149,7 @@ class MemoryCommandTests(unittest.TestCase):
             result = invoke_automa(
                 "hosts", "info",
                 "memory",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 runtime_root=runtime_root,
                 check=False,

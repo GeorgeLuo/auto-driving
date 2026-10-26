@@ -208,7 +208,7 @@ def fetch_autonomy_status(base_url: str, *, timeout_s: float = 3.0) -> dict[str,
     return _get_json(base_url, STATUS_JSON_PATH, timeout_s=timeout_s)
 
 
-def host_state(base_url: str, *, host_id: str | None = None, timeout_s: float) -> dict[str, Any]:
+def host_state(base_url: str, *, host_name: str | None = None, timeout_s: float) -> dict[str, Any]:
     """A runtime host's state as its ``/host/status`` reports it; never raises.
 
     ``state`` is the session status the host reports, ``not answering`` when no
@@ -234,8 +234,8 @@ def host_state(base_url: str, *, host_id: str | None = None, timeout_s: float) -
     result["reply"] = reply
     if reply.get("ok") is not True:
         return {**result, "state": "error", "error": str(reply.get("error") or f"HTTP {status_code}")}
-    if host_id is not None and reply.get("host_id") not in (None, host_id):
-        return {**result, "state": "error", "error": f"{base_url} answers as {reply['host_id']}"}
+    if host_name is not None and reply.get("host_name") not in (None, host_name):
+        return {**result, "state": "error", "error": f"{base_url} answers as {reply['host_name']}"}
     session = reply.get("session") if isinstance(reply.get("session"), dict) else {}
     autonomy = reply.get("host") if isinstance(reply.get("host"), dict) else {}
     if not autonomy or not isinstance(session.get("status"), str):
@@ -705,7 +705,7 @@ def host_telemetry_failure(
 
 def _host_identity_from_record(
     *,
-    host_id: str,
+    host_name: str,
     source_id: str,
     run_id: str,
     generation_id: str,
@@ -713,7 +713,7 @@ def _host_identity_from_record(
     source_frame: dict[str, Any],
 ) -> dict[str, Any]:
     return {
-        "host_id": host_id,
+        "host_name": host_name,
         "source_id": source_id,
         "run_id": run_id,
         "generation_id": generation_id,
@@ -733,7 +733,7 @@ def normalize_host_telemetry_record(
     record: object,
     *,
     now_ms: int,
-    host_id: str | None = None,
+    host_name: str | None = None,
     previous_record: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Normalize one producer record and enforce the amended consumer contract.
@@ -745,11 +745,11 @@ def normalize_host_telemetry_record(
 
     if type(now_ms) is not int or now_ms < 0:
         raise ValueError("now_ms must be a non-negative non-bool int")
-    if host_id is not None:
+    if host_name is not None:
         try:
-            host_id = require_ascii_id(host_id, field_name="host_id")
+            host_name = require_ascii_id(host_name, field_name="host_name")
         except ValueError as exc:
-            raise ValueError("host_id must be a valid identity") from exc
+            raise ValueError("host_name must be a valid identity") from exc
     if not isinstance(record, dict):
         raise _host_telemetry_error(
             "schema_invalid",
@@ -764,7 +764,7 @@ def normalize_host_telemetry_record(
     _host_status_error(record)
 
     required = {
-        "host_id",
+        "host_name",
         "source_id",
         "run_id",
         "generation_id",
@@ -786,12 +786,12 @@ def normalize_host_telemetry_record(
             details={"missing": missing},
         )
 
-    record_host_id = _host_require_id(record.get("host_id"), field="host_id")
-    if host_id is not None and record_host_id != host_id:
+    record_host_name = _host_require_id(record.get("host_name"), field="host_name")
+    if host_name is not None and record_host_name != host_name:
         raise _host_telemetry_error(
             "identity_mismatch",
-            "Host telemetry host_id does not match the requested host.",
-            field="host_id",
+            "Host telemetry host_name does not match the requested host.",
+            field="host_name",
         )
     source_id = _host_require_id(record.get("source_id"), field="source_id")
     run_id = _host_require_id(record.get("run_id"), field="run_id")
@@ -1056,7 +1056,7 @@ def normalize_host_telemetry_record(
         "skipped_since_previous": skipped_since_previous,
     }
     identity = _host_identity_from_record(
-        host_id=record_host_id,
+        host_name=record_host_name,
         source_id=source_id,
         run_id=run_id,
         generation_id=generation_id,
@@ -1136,7 +1136,7 @@ def normalize_host_telemetry_records(
     now_ms: int,
     after_sequence: int = 0,
     limit: int = 128,
-    host_id: str | None = None,
+    host_name: str | None = None,
 ) -> dict[str, Any]:
     """Normalize bounded history and report interval coverage explicitly."""
 
@@ -1211,7 +1211,7 @@ def normalize_host_telemetry_records(
             normalized = normalize_host_telemetry_record(
                 raw_record,
                 now_ms=now_ms,
-                host_id=host_id,
+                host_name=host_name,
                 previous_record=previous,
             )
             if previous is not None and normalized["identity"] != {
@@ -1222,7 +1222,7 @@ def normalize_host_telemetry_records(
                 # history sequence.  A runtime/session change closes coverage.
                 if any(
                     normalized["identity"].get(key) != previous["identity"].get(key)
-                    for key in ("host_id", "source_id", "run_id", "generation_id", "activation")
+                    for key in ("host_name", "source_id", "run_id", "generation_id", "activation")
                 ):
                     raise _host_telemetry_error(
                         "identity_mismatch",
@@ -1410,7 +1410,7 @@ def decision_publication_identity(normalized_decision: dict[str, Any]) -> dict[s
             "Decision publication cannot expose activation identity.",
         )
     try:
-        host_id = _host_require_id(decision.get("host_id"), field="decision.host_id")
+        host_name = _host_require_id(decision.get("host_name"), field="decision.host_name")
         source_id = _host_require_id(values.get("source_id"), field="decision.values.source_id")
         run_id = _host_require_id(decision.get("run_id"), field="decision.run_id")
         generation_id = _host_require_id(
@@ -1449,7 +1449,7 @@ def decision_publication_identity(normalized_decision: dict[str, Any]) -> dict[s
             "Decision timestamp does not match its source-frame identity.",
         )
     return {
-        "host_id": host_id,
+        "host_name": host_name,
         "source_id": source_id,
         "run_id": run_id,
         "generation_id": generation_id,
@@ -1492,7 +1492,7 @@ def join_host_telemetry_to_decision(
     normalized_decision: dict[str, Any],
     *,
     now_ms: int | None = None,
-    host_id: str | None = None,
+    host_name: str | None = None,
 ) -> dict[str, Any]:
     """Join a normalized/latest telemetry point to a decision exactly."""
 
@@ -1502,7 +1502,7 @@ def join_host_telemetry_to_decision(
         telemetry = normalize_host_telemetry_record(
             telemetry,
             now_ms=now_ms,
-            host_id=host_id,
+            host_name=host_name,
         )
     if not isinstance(telemetry, dict) or telemetry.get("schema") != HOST_TELEMETRY_NORMALIZED_SCHEMA:
         raise _host_telemetry_error(
@@ -1539,7 +1539,7 @@ def join_host_telemetry_to_decision(
 def normalize_decision_publication(
     publication: object,
     *,
-    host_id: str,
+    host_name: str,
     now_ms: int,
     max_age_ms: int | None = None,
 ) -> dict[str, Any]:
@@ -1567,9 +1567,9 @@ def normalize_decision_publication(
             field="schema",
         )
     try:
-        host_id = require_ascii_id(host_id, field_name="host_id")
+        host_name = require_ascii_id(host_name, field_name="host_name")
     except ValueError as exc:
-        raise ValueError("host_id must be a valid identity") from exc
+        raise ValueError("host_name must be a valid identity") from exc
     if "status" not in publication or "ok" not in publication:
         raise _publication_error(
             "incomplete",
@@ -1657,12 +1657,12 @@ def normalize_decision_publication(
     decision = report.to_dict()
     values = report.values
 
-    decision_host_id = report.host_id
-    if decision_host_id != host_id:
+    decision_host_name = report.host_name
+    if decision_host_name != host_name:
         raise _publication_error(
             "mismatched",
-            "Decision publication host_id does not match the requested host.",
-            field="decision.host_id",
+            "Decision publication host_name does not match the requested host.",
+            field="decision.host_name",
         )
     source_id = _required_id(values.get("source_id"), field="decision.values.source_id")
     run_id = report.run_id
@@ -1716,7 +1716,7 @@ def normalize_decision_publication(
     return {
         "publication": deepcopy(publication),
         "decision": deepcopy(decision),
-        "host_id": decision_host_id,
+        "host_name": decision_host_name,
         "source_id": source_id,
         "run_id": run_id,
         "generation_id": generation_id,

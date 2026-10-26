@@ -202,7 +202,7 @@ class MemoryInspectTests(unittest.TestCase):
         flags = invoke_automa("hosts", "memory", "inspect", "--help").stdout
         for flag in ("--preset", "--plugin", "--record", "--json"):
             self.assertIn(flag, flags)
-        for live in ("--id", "--frames", "--interval-s", "--timeout-s"):
+        for live in ("--name", "--frames", "--interval-s", "--timeout-s"):
             self.assertNotIn(live, flags)
 
 

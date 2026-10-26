@@ -229,11 +229,11 @@ def check_memory_selector() -> list[str]:
             for preset in MEMORY_PRESETS:
                 label = preset
                 completed = subprocess.run(
-                    automa("update", "memory", "--id", "chase-sim-chaser", "--preset", preset, "--dry-run", "--json"),
+                    automa("stage", "memory", "--name", "chase-sim-chaser", "--preset", preset, "--dry-run", "--json"),
                     cwd=ROOT, capture_output=True, text=True, check=False,
                 )
                 if completed.returncode != 0:
-                    problems.append(f"{label}: update memory exited {completed.returncode}")
+                    problems.append(f"{label}: stage memory exited {completed.returncode}")
                     continue
                 manifest = json.loads(completed.stdout)["manifest"]
                 expected = manifest["plugins"]

@@ -97,7 +97,7 @@ class VehicleStatusTests(unittest.TestCase):
                 return_value=[],
             ),
         ):
-            payload = get_vehicle_status(host_id="chase-sim-chaser")
+            payload = get_vehicle_status(host_name="chase-sim-chaser")
 
         self.assertEqual(payload["endpoint"]["resolved_ws_url"], endpoint)
         self.assertEqual(probe.call_args.args[0].url, endpoint)
@@ -130,17 +130,17 @@ class VehicleStatusTests(unittest.TestCase):
             return_value=[],
         ):
             payload = get_vehicle_status(
-                host_id="controller-a",
+                host_name="controller-a",
                 chase_url="http://localhost:5050",
             )
 
         self.assertEqual(payload["schema"], "automa_host_readiness")
-        self.assertEqual(payload["host_id"], "controller-a")
+        self.assertEqual(payload["host_name"], "controller-a")
         self.assertEqual(
             set(payload),
             {
                 "schema",
-                "host_id",
+                "host_name",
                 "endpoint",
                 "layers",
                 "capture",
@@ -172,7 +172,7 @@ class VehicleStatusTests(unittest.TestCase):
         )
         self.assertEqual(
             payload["next_action"]["command"],
-            "./cli/automa hosts update --id controller-a",
+            "./cli/automa hosts update --name controller-a",
         )
         self.assertIsNone(payload["next_action"]["external_change"])
 
@@ -195,7 +195,7 @@ class VehicleStatusTests(unittest.TestCase):
             },
         )
         automation = {
-            "host_id": "chase-sim-chaser",
+            "host_name": "chase-sim-chaser",
             "deployed": True,
             "bundle_root": "runtime/hosts/chase-sim-chaser/bundle",
             "process": {
@@ -231,7 +231,7 @@ class VehicleStatusTests(unittest.TestCase):
             "cli.automa_cli.automation._collect_automation_status",
             return_value=[automation],
         ):
-            payload = get_vehicle_status(host_id="chase-sim-chaser")
+            payload = get_vehicle_status(host_name="chase-sim-chaser")
 
         self.assertEqual(payload["readiness"]["status"], "ready")
         self.assertIsNone(payload["next_action"])
@@ -299,7 +299,7 @@ class VehicleStatusTests(unittest.TestCase):
             return_value=[],
         ):
             payload = get_vehicle_status(
-                host_id="chase-sim-chaser",
+                host_name="chase-sim-chaser",
                 chase_url="http://localhost:5050",
             )
 

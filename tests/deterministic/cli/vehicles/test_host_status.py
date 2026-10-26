@@ -35,25 +35,25 @@ def _host_blocks(stdout: str) -> list[list[str]]:
     return [block.splitlines() for block in stdout.strip("\n").split("\n\n")]
 
 
-def _record(runtime_root: Path, host_id: str, url: str, simulator: str | None = None) -> None:
-    """A running host record for ``host_id`` at ``url``, held by this process."""
+def _record(runtime_root: Path, host_name: str, url: str, simulator: str | None = None) -> None:
+    """A running host record for ``host_name`` at ``url``, held by this process."""
 
-    write_host_fixture(runtime_root, host_id, url=simulator)
-    bundle = controller_bundle_paths(runtime_root / host_id)
+    write_host_fixture(runtime_root, host_name, url=simulator)
+    bundle = controller_bundle_paths(runtime_root / host_name)
     write_host_record(Path(bundle["runtime_dir"]) / "automation" / HOST_RECORD, {
-        "schema": HOST_RECORD_SCHEMA, "host_id": host_id, "pid": os.getpid(), "base_url": url,
+        "schema": HOST_RECORD_SCHEMA, "host_name": host_name, "pid": os.getpid(), "base_url": url,
     })
 
 
-def _stage_picar(runtime_root: Path, host_id: str, url: str) -> None:
+def _stage_picar(runtime_root: Path, host_name: str, url: str) -> None:
     """A PiCar's staged perception step, which records its connection at ``url``."""
 
-    write_host_fixture(runtime_root, host_id, provider="picar", url=url)
-    bundle = controller_bundle_paths(runtime_root / host_id)
+    write_host_fixture(runtime_root, host_name, provider="picar", url=url)
+    bundle = controller_bundle_paths(runtime_root / host_name)
     packaged = preset_activation("perception", "lightweight_observer")
     activation = step_activation(
         "perception", packaged.plugins, packaged.plugin_specs, packaged.plugin_configs,
-        metadata={**packaged.metadata, "host_id": host_id, "provider": "picar",
+        metadata={**packaged.metadata, "host_name": host_name, "provider": "picar",
                   "runtime": {"connection": {"base_url": url}}},
     )
     path = Path(bundle["perception_runtime_dir"]) / "active.json"
@@ -62,14 +62,14 @@ def _stage_picar(runtime_root: Path, host_id: str, url: str) -> None:
 
 
 @contextmanager
-def _attached(server, host_id: str, url: str) -> Iterator[None]:
-    """``host_id``'s host at ``url``, listed by ``server`` as an attached agent."""
+def _attached(server, host_name: str, url: str) -> Iterator[None]:
+    """``host_name``'s host at ``url``, listed by ``server`` as an attached agent."""
 
-    client = {"kind": "host", "host_id": host_id, "url": url, "pid": os.getpid()}
+    client = {"kind": "host", "host_name": host_name, "url": url, "pid": os.getpid()}
     with MetricsUiPresence(server.url, client, retry_s=0.05):
         wait_until(
             lambda: any(agent.get("client") == client for agent in MetricsUiWsClient(server.url).list_agents()),
-            message=f"{host_id}'s host never attached",
+            message=f"{host_name}'s host never attached",
         )
         yield
 
@@ -108,15 +108,15 @@ class HostStatusTests(unittest.TestCase):
         # --long adds the run lines under the same block.
         self.assertTrue(long.stdout.startswith("\n".join(block[:3]) + "\n"), long.stdout)
         self.assertIn(f"\n  {host.base_url}, pid {os.getpid()}\n  deployment: ", long.stdout)
-        self.assertEqual((machine["schema"], machine["host_id"]), ("automa_hosts_status", None))
+        self.assertEqual((machine["schema"], machine["host_name"]), ("automa_hosts_status", None))
         [entry] = machine["hosts"]
         self.assertEqual(
-            {key: entry[key] for key in ("host_id", "provider", "vehicle_url", "attached", "local", "state", "mode",
+            {key: entry[key] for key in ("host_name", "provider", "vehicle_url", "attached", "local", "state", "mode",
                                          "decision_count")},
-            {"host_id": "chase-sim-chaser", "provider": "chase-sim", "vehicle_url": chase_operator_url(self.server.url),
+            {"host_name": "chase-sim-chaser", "provider": "chase-sim", "vehicle_url": chase_operator_url(self.server.url),
              "attached": True, "local": "host record", "state": "pre_start", "mode": "manual", "decision_count": 0},
         )
-        self.assertEqual(entry["run"]["host_id"], "chase-sim-chaser")
+        self.assertEqual(entry["run"]["host_name"], "chase-sim-chaser")
 
     def test_a_host_with_only_a_local_record_is_not_attached(self) -> None:
         host = self.host()
@@ -134,7 +134,7 @@ class HostStatusTests(unittest.TestCase):
     def test_a_created_host_without_a_process_is_not_running_and_fails_its_id(self) -> None:
         write_host_fixture(self.runtime_root, "free-name", url=self.server.url)
 
-        targeted = self.status("--id", "free-name")
+        targeted = self.status("--name", "free-name")
         every = self.status()
         [entry] = json.loads(self.status("--json").stdout)["hosts"]
 
@@ -150,13 +150,13 @@ class HostStatusTests(unittest.TestCase):
         path = self.runtime_root / "old-host" / "host-configuration.json"
         path.parent.mkdir()
         path.write_text(json.dumps({
-            "schema": "automa_host_configuration_v1", "host_id": "old-host", "provider": "chase-sim",
+            "schema": "automa_host_configuration_v1", "host_name": "old-host", "provider": "chase-sim",
             "connection": {"ws_url": self.server.url},
         }), encoding="utf-8")
 
         every = self.status()
-        targeted = self.status("--id", "old-host")
-        entry = json.loads(self.status("--id", "old-host", "--json").stdout)["hosts"][0]
+        targeted = self.status("--name", "old-host")
+        entry = json.loads(self.status("--name", "old-host", "--json").stdout)["hosts"][0]
 
         self.assertEqual(every.returncode, 0, every.stderr)
         self.assertEqual([block[0] for block in _host_blocks(every.stdout)], [
@@ -191,8 +191,8 @@ class HostStatusTests(unittest.TestCase):
         self.assertLess(elapsed, 2.0)
 
     def test_hosts_on_one_simulator_list_its_agents_once(self) -> None:
-        for host_id in ("chase-sim-chaser", "chase-sim-follower"):
-            _record(self.runtime_root, host_id, closed_url(), self.server.url)
+        for host_name in ("chase-sim-chaser", "chase-sim-follower"):
+            _record(self.runtime_root, host_name, closed_url(), self.server.url)
 
         with mock.patch.object(MetricsUiWsClient, "list_agents", autospec=True,
                                side_effect=MetricsUiWsClient.list_agents) as list_agents:
@@ -207,7 +207,7 @@ class HostStatusTests(unittest.TestCase):
         url = closed_url()
         _record(self.runtime_root, "chase-sim-chaser", url, self.server.url)
 
-        result = self.status("--id", "chase-sim-chaser")
+        result = self.status("--name", "chase-sim-chaser")
 
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertEqual(_host_blocks(result.stdout), [[
@@ -220,7 +220,7 @@ class HostStatusTests(unittest.TestCase):
 
     def test_a_host_session_error_shows_on_its_host_and_fails_its_id(self) -> None:
         body = json.dumps({
-            "ok": True, "host_id": "chase-sim-chaser", "mode": "autonomy",
+            "ok": True, "host_name": "chase-sim-chaser", "mode": "autonomy",
             "session": {"status": "error", "processed_decisions": 3},
             "host": {"error_count": 2, "last_error": "Chase passiveCaptureError: session moved"},
         }).encode()
@@ -228,7 +228,7 @@ class HostStatusTests(unittest.TestCase):
         _record(self.runtime_root, "chase-sim-chaser", url, self.server.url)
         self.enterContext(_attached(self.server, "chase-sim-chaser", url))
 
-        targeted = self.status("--id", "chase-sim-chaser")
+        targeted = self.status("--name", "chase-sim-chaser")
         every = self.status()
 
         self.assertEqual(targeted.returncode, 1, targeted.stderr)
@@ -249,14 +249,14 @@ class HostStatusTests(unittest.TestCase):
             ("running", "observe_only", "running, observe only", "running"),
         ):
             body = json.dumps({
-                "ok": True, "host_id": "chase-sim-chaser", "mode": mode,
+                "ok": True, "host_name": "chase-sim-chaser", "mode": mode,
                 "session": {"status": session, "processed_decisions": 1}, "host": {"error_count": 0},
             }).encode()
             with self.subTest(session=session), answering(body) as url:
                 _record(self.runtime_root, "chase-sim-chaser", url, self.server.url)
 
-                result = self.status("--id", "chase-sim-chaser")
-                machine = json.loads(self.status("--id", "chase-sim-chaser", "--json").stdout)
+                result = self.status("--name", "chase-sim-chaser")
+                machine = json.loads(self.status("--name", "chase-sim-chaser", "--json").stdout)
 
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(_host_blocks(result.stdout)[0][:3], [

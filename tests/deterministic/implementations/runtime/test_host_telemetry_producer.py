@@ -47,7 +47,7 @@ def _frame(index: int, *, captured_at_ms: int = 10_000) -> dict[str, int | str]:
 def _store(clock: _Clock | None = None, *, max_records: int = 256) -> HostTelemetryStore:
     active_clock = clock or _Clock()
     return HostTelemetryStore(
-        host_id="piracer",
+        host_name="piracer",
         source_id="donkeycar:piracer",
         run_id="donkey-run-test",
         generation_id="decision-test",
@@ -102,7 +102,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
         record = result["record"]
         self.assertEqual(
             (
-                record["host_id"],
+                record["host_name"],
                 record["source_id"],
                 record["run_id"],
                 record["generation_id"],
@@ -144,7 +144,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             HostTelemetryStore(
-                host_id="piracer",
+                host_name="piracer",
                 source_id="donkeycar:piracer",
                 run_id="donkey-run-test",
                 generation_id="",

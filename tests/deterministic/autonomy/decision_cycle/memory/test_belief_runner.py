@@ -58,7 +58,7 @@ class BeliefRunnerTests(unittest.TestCase):
         )
         self.addCleanup(host.close)
         result = host.run(_context({}))
-        report = report_from_host_result(result, host_id="test", run_id="run", generation_id="gen").to_dict()
+        report = report_from_host_result(result, host_name="test", run_id="run", generation_id="gen").to_dict()
         state = report["cycle"]["memory"]["plugins"][0]["state"]
         self.assertIn("status_error", state)
         self.assertIn("JSON", state["status_error"])

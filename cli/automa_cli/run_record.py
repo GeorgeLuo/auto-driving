@@ -37,7 +37,7 @@ def control_application(configuration: RunConfiguration) -> str:
 
 def new_run_state(
     *,
-    host_id: str,
+    host_name: str,
     run_id: str | None,
     status: str,
     pid: int | None,
@@ -53,7 +53,7 @@ def new_run_state(
     started_at_ms = timestamp_ms() if started_at_ms is None else started_at_ms
     return {
         "schema": RUN_STATE_SCHEMA,
-        "host_id": host_id,
+        "host_name": host_name,
         "run_id": run_id,
         "status": status,
         "pid": pid,
@@ -189,7 +189,7 @@ def startup_lines(state: dict[str, Any]) -> list[str]:
     view = state["published_view"]
     source = state["control_source"]
     return [
-        f"Run started on host {state['host_id']}.",
+        f"Run started on host {state['host_name']}.",
         *step_lines(
             {step: selection["plugins"] for step, selection in selections.items()},
             {step: selection["preset"] for step, selection in selections.items() if selection["preset"]},
@@ -276,12 +276,12 @@ def finish_run(
 def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
     """The exit code and closing lines for a finished run."""
 
-    host_id = state["host_id"]
+    host_name = state["host_name"]
     status = state["status"]
     if status == "error":
         return 2, "\n".join(
             [
-                f"The run on host {host_id} failed.",
+                f"The run on host {host_name} failed.",
                 f"Reason: {state['error']}",
                 f"State: {display_path(state_path)}",
             ]
@@ -291,7 +291,7 @@ def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
         dropped = "unavailable" if dropped is None else dropped
         return 0, "\n".join(
             [
-                f"Run completed on host {host_id}.",
+                f"Run completed on host {host_name}.",
                 f"Frames received: {state.get('frames_received', 0)}",
                 f"Frames dropped before decision: {dropped}",
                 f"Decisions completed: {state['processed_count']}",
@@ -306,7 +306,7 @@ def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
     code = 130 if state.get("stop_reason") == "keyboard_interrupt" else 0
     return code, "\n".join(
         [
-            f"Run stopped on host {host_id}.",
+            f"Run stopped on host {host_name}.",
             f"State: {display_path(state_path)}",
         ]
     )

@@ -8,7 +8,7 @@ from cli.automa_cli.automation import run_host_automation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.step_activations import stage_host_step
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
-    HOST_ID,
+    HOST_NAME,
     _SlowMapper,
     _write_activations,
     chase_runtime,
@@ -20,7 +20,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
     def test_cli_plugin_update_changes_running_mapper_on_next_frame(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            bundle = controller_bundle_paths(runtime_root / HOST_ID)
+            bundle = controller_bundle_paths(runtime_root / HOST_NAME)
             sync_controller_bundle(bundle, output=None)
             _write_activations(bundle, plugins=["frame"])
             applied_selections: list[tuple[str, ...]] = []
@@ -36,12 +36,12 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     applied_selections.append(tuple(mapper.plugin_ids))
                     if len(applied_selections) == 1:
                         cli_updates.append(stage_host_step(
-                            host_id=HOST_ID, step="perception", plugins=["frame", "floor_plane"],
+                            host_name=HOST_NAME, step="perception", plugins=["frame", "floor_plane"],
                             runtime_root=runtime_root, json_output=True,
                         ))
                     elif len(applied_selections) == 2:
                         cli_updates.append(stage_host_step(
-                            host_id=HOST_ID, step="perception", plugins=["floor_plane"],
+                            host_name=HOST_NAME, step="perception", plugins=["floor_plane"],
                             runtime_root=runtime_root, json_output=True,
                         ))
                     return result
@@ -53,7 +53,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 chase_runtime(runtime_root),
             ):
                 result = run_host_automation(
-                    host_id=HOST_ID, num_decisions=3, take_control=False,
+                    host_name=HOST_NAME, num_decisions=3, take_control=False,
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)
@@ -74,7 +74,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            bundle = controller_bundle_paths(runtime_root / HOST_ID)
+            bundle = controller_bundle_paths(runtime_root / HOST_NAME)
             _write_activations(bundle)
 
             with (
@@ -87,7 +87,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 patch("cli.automa_cli.decision_view.DecisionView.invalidate_latest", autospec=True) as invalidate,
             ):
                 result = run_host_automation(
-                    host_id=HOST_ID, num_decisions=1, take_control=False,
+                    host_name=HOST_NAME, num_decisions=1, take_control=False,
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)

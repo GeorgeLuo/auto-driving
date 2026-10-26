@@ -155,7 +155,7 @@ def _join_decision_copy(copier: threading.Thread | None, stop: threading.Event) 
     copier.join(timeout=1.0)
 
 
-def monitor_runtime(*, host_id: str, base_url: str, automation_dir: Path,
+def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                             selections: dict[str, dict[str, Any]], decision: dict[str, Any],
                             configuration: RunConfiguration, timeout_s: float,
                             record: bool, verbose: bool, output: TextIO | None) -> tuple[int, str]:
@@ -173,7 +173,7 @@ def monitor_runtime(*, host_id: str, base_url: str, automation_dir: Path,
     stop_copy = threading.Event()
     copied: dict[str, tuple[bool, str] | None] = {"result": None}
     state = new_run_state(
-        host_id=host_id, run_id=None, status="starting", pid=os.getpid(),
+        host_name=host_name, run_id=None, status="starting", pid=os.getpid(),
         configuration=configuration, record=record,
         control_source=control_source(configuration),
         automation_dir=automation_dir,
@@ -196,12 +196,12 @@ def monitor_runtime(*, host_id: str, base_url: str, automation_dir: Path,
         frames_dir = automation_dir / "latest" / "frames"
         frames_dir.mkdir(parents=True, exist_ok=True)
         server = RuntimeViewServer(
-            host_id=host_id, automation_dir=automation_dir,
+            host_name=host_name, automation_dir=automation_dir,
             run_id=run_id, worker_pid=os.getpid(),
             plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
         ).start()
         decision_view = DecisionViewAdapter(
-            host_id=host_id, base_url=base_url, view_server=server, timeout_s=timeout_s,
+            host_name=host_name, base_url=base_url, view_server=server, timeout_s=timeout_s,
         )
         state.update(
             run_id=run_id, status="running", published_view=server.describe(),
@@ -369,7 +369,7 @@ def _sync_recording(client: RuntimeClient, state: dict[str, Any], *,
         }
         for item in batch["frames"]:
             frame = item["frame"]
-            if frame["run_id"] != recording_id or frame["host_id"] != state["host_id"]:
+            if frame["run_id"] != recording_id or frame["host_name"] != state["host_name"]:
                 raise RuntimeError("a host recording frame belongs to another run or vehicle")
             write_recorded_frame(
                 run_dir, frame, base64.b64decode(item["image_base64"], validate=True),

@@ -70,7 +70,7 @@ class TimeoutInputTests(unittest.TestCase):
                     code, stdout, stderr = _invoke(
                         "hosts",
                         "run",
-                        "--id",
+                        "--name",
                         "chase-sim-chaser",
                         *_timeout_args(value),
                         "--foreground",
@@ -92,7 +92,7 @@ class TimeoutInputTests(unittest.TestCase):
             for value in INVALID_TIMEOUTS:
                 with self.subTest(step=step, value=value), patch(UPDATE_STEP) as update:
                     code, stdout, stderr = _invoke(
-                        "hosts", "stage", step, "--id", "chase-sim-chaser",
+                        "hosts", "stage", step, "--name", "chase-sim-chaser",
                         *_timeout_args(value), "--dry-run", "--json",
                     )
 
@@ -109,7 +109,7 @@ class TimeoutInputTests(unittest.TestCase):
         for step in STEPS:
             with self.subTest(step=step), patch(UPDATE_STEP) as update:
                 code, stdout, stderr = _invoke(
-                    "hosts", "stage", step, "--id", "chase-sim-chaser", "--timeout-s", "0", "--dry-run",
+                    "hosts", "stage", step, "--name", "chase-sim-chaser", "--timeout-s", "0", "--dry-run",
                 )
 
             self.assertEqual(code, 2)
@@ -123,7 +123,7 @@ class TimeoutInputTests(unittest.TestCase):
             for args, expected in ((("--timeout-s", "1.25"), 1.25), ((), 5.0)):
                 with self.subTest(step=step, args=args), patch(UPDATE_STEP, return_value=(0, "ok")) as update:
                     code, _, _ = _invoke(
-                        "hosts", "stage", step, "--id", "chase-sim-chaser", *args, "--dry-run"
+                        "hosts", "stage", step, "--name", "chase-sim-chaser", *args, "--dry-run"
                     )
                 self.assertEqual(code, 0)
                 self.assertEqual(update.call_args.kwargs["timeout_s"], expected)
@@ -142,7 +142,7 @@ class TimeoutInputTests(unittest.TestCase):
         ) as get_hosts:
             code, _, _ = _invoke("hosts", "status", "--timeout-s", "1.25")
         self.assertEqual(code, 0)
-        get_hosts.assert_called_once_with(host_id=None, timeout_s=1.25, long=False, json_output=False)
+        get_hosts.assert_called_once_with(host_name=None, timeout_s=1.25, long=False, json_output=False)
 
         with patch(
             "cli.automa_cli.app.run_host_automation",
@@ -153,7 +153,7 @@ class TimeoutInputTests(unittest.TestCase):
             code, _, _ = _invoke(
                 "hosts",
                 "run",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 "--timeout-s",
                 "1.25",
@@ -182,7 +182,7 @@ class TimeoutInputTests(unittest.TestCase):
             code, _, _ = _invoke(
                 "hosts",
                 "run",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 "--foreground",
             )

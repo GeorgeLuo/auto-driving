@@ -532,7 +532,7 @@
       const hostTelemetry = latest.host_telemetry || null;
       const candidate = selectedCandidate();
       const primary = primaryRecordIds();
-      vehicleEl.textContent = identity.host_id || "unknown host";
+      vehicleEl.textContent = identity.host_name || "unknown host";
 
       const cycleMetrics = document.getElementById("cycleMetrics");
       cycleMetrics.replaceChildren();

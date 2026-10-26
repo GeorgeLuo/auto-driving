@@ -13,7 +13,7 @@ from cli.automa_cli.runtime_view import RuntimeViewServer
 from cli.automa_cli.step_activations import decision_identity, stage_activation
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
-    HOST_ID,
+    HOST_NAME,
     _SlowMapper,
     _write_activations,
     chase_runtime,
@@ -31,7 +31,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            bundle = controller_bundle_paths(runtime_root / HOST_ID)
+            bundle = controller_bundle_paths(runtime_root / HOST_NAME)
             sync_controller_bundle(bundle, output=None)
             _write_activations(bundle)
             startup = decision_identity(bundle)["generation_id"]
@@ -52,7 +52,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
                     result = run(context)
                     applied.append(runner.plugin_ids)
                     if len(applied) == 1 and restaged is not None:
-                        stage_activation(bundle, restaged, host_id=HOST_ID)
+                        stage_activation(bundle, restaged, host_name=HOST_NAME)
                     return result
 
                 calls.enter_context(patch.object(type(step), "__call__", run_with_cli_restage))
@@ -66,9 +66,9 @@ class AutomationProposalSelectionTests(unittest.TestCase):
                 chase_runtime(runtime_root),
             ):
                 if before_run is not None:
-                    stage_activation(bundle, before_run, host_id=HOST_ID)
+                    stage_activation(bundle, before_run, host_name=HOST_NAME)
                 result = run_host_automation(
-                    host_id=HOST_ID, num_decisions=4, take_control=False,
+                    host_name=HOST_NAME, num_decisions=4, take_control=False,
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             state = json.loads((Path(bundle["runtime_dir"]) / "automation" / "state.json").read_text())

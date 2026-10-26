@@ -112,7 +112,7 @@ class ObservationPublicationTests(unittest.TestCase):
         activations = {step: packaged_activation(step) for step in DECISION_STEPS}
         return AutonomyPilotPart(
             host=create_host(steps=decision_steps(activations)),
-            host_id="piracer",
+            host_name="piracer",
             source_id="donkeycar:piracer",
             decision_activations={
                 step: activation.to_payload() for step, activation in activations.items()
@@ -347,7 +347,7 @@ class ObservationPublicationTests(unittest.TestCase):
         published = decision["decision"]
         assert isinstance(published, dict)
         self.assertEqual(published["schema"], "host_report")
-        self.assertEqual(published["host_id"], "piracer")
+        self.assertEqual(published["host_name"], "piracer")
         self.assertNotIn("vehicle_id", published)
         values = published["values"]
         self.assertEqual(values["source_id"], "donkeycar:piracer")

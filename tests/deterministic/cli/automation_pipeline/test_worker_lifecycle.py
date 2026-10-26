@@ -111,7 +111,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 ),
             ):
                 result = start_host_automation_background(
-                    host_id="chase-sim-chaser",
+                    host_name="chase-sim-chaser",
                     take_control=False,
                     startup_wait_s=0.1,
                 )
@@ -196,7 +196,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 ) as browser_open,
             ):
                 result = start_host_automation_background(
-                    host_id="chase-sim-chaser",
+                    host_name="chase-sim-chaser",
                     take_control=False,
                     open_view=True,
                     startup_wait_s=1.0,
@@ -267,7 +267,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 ) as browser_open,
             ):
                 result = start_host_automation_background(
-                    host_id="chase-sim-chaser",
+                    host_name="chase-sim-chaser",
                     take_control=False,
                     open_view=True,
                 )
@@ -317,7 +317,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 ),
             ):
                 result = start_host_automation_background(
-                    host_id="chase-sim-chaser",
+                    host_name="chase-sim-chaser",
                     take_control=False,
                     open_view=True,
                 )
@@ -343,7 +343,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             with (
                 patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root),
             ):
-                result = stop_host_automation(host_id="chase-sim-chaser")
+                result = stop_host_automation(host_name="chase-sim-chaser")
 
             state = json.loads(
                 (automation_dir / "state.json").read_text(encoding="utf-8")
@@ -373,7 +373,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root),
             ):
                 record_host_automation_terminal_result(
-                    host_id="chase-sim-chaser",
+                    host_name="chase-sim-chaser",
                     result=CommandResult(2, "No active Chase frontend was found."),
                 )
 

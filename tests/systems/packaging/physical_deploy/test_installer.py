@@ -17,9 +17,9 @@ from cli.automa_cli.step_activations import (
 )
 
 TARGET = PicarTarget(
-    host_id="piracer",
+    host_name="piracer",
     configuration={
-        "host_id": "piracer",
+        "host_name": "piracer",
         "vehicle_kind": "picar",
         "provider": "picar",
         "connection": {"base_url": "http://piracer.local:8887"},
@@ -40,7 +40,7 @@ class PhysicalDeployTests(unittest.TestCase):
             bundle = controller_bundle_paths(host_dir)
             release = sync_controller_bundle(bundle, output=None)
             ensure_step_activations(
-                host_id="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.configuration),
+                host_name="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.configuration),
             )
             steps = STEPS
             release_id = Path(release["archive"]["path"]).name.removesuffix(".tar.gz")

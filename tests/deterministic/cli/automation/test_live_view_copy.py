@@ -55,7 +55,7 @@ class LiveViewCopyTests(unittest.TestCase):
             patch.object(decision_steps, "fetch_decision_publication", return_value={}),
             patch.object(decision_steps, "accept_decision_publication", return_value=normalized),
         ):
-            result = decision_steps.stream_host_step("plan", host_id="fixture")
+            result = decision_steps.stream_host_step("plan", host_name="fixture")
         self.assertEqual(result.exit_code, 0)
         feed.read_observation.assert_called_once_with()
         feed.publish.assert_called_once_with(publication)
@@ -105,7 +105,7 @@ class LiveViewCopyTests(unittest.TestCase):
         ):
             root = Path(tmp)
             worker = threading.Thread(target=lambda: results.append(runtime_monitor.monitor_runtime(
-                host_id="picar-test", base_url=Client.base_url, automation_dir=root,
+                host_name="picar-test", base_url=Client.base_url, automation_dir=root,
                 selections=SELECTIONS, decision=dict(DECISION),
                 configuration=RunConfiguration(mode="observe_only", num_decisions=2),
                 timeout_s=0.2, record=True, verbose=False, output=None,

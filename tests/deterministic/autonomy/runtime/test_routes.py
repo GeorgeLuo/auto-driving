@@ -41,7 +41,7 @@ def _routes(steps=None, **kwargs) -> tuple[FrameLoop, RuntimeRoutes]:
         loop_options["decision_activations"] = kwargs.pop("decision_activations")
     loop = FrameLoop(
         host=AutonomyCycleHost(steps=steps or decision_steps(), target=_Target()),
-        host_id="test-car", runtime="test", run_id="test-run",
+        host_name="test-car", runtime="test", run_id="test-run",
         **loop_options,
     )
     return loop, RuntimeRoutes(loop, **kwargs)
@@ -59,7 +59,7 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["mode"], "manual")
         self.assertEqual(payload["host_run_id"], "test-run")
-        self.assertEqual(payload["host_id"], "test-car")
+        self.assertEqual(payload["host_name"], "test-car")
         self.assertEqual(payload["session"]["status"], "pre_start")
         self.assertNotIn("drive_mode", payload)
 

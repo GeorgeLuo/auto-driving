@@ -164,11 +164,11 @@ class RuntimeHTTPServer(ThreadingHTTPServer):
 class ChaseRuntimeHost:
     """One Chase car's frame loop and route server, until ``close``."""
 
-    def __init__(self, *, car: Any, runtime_dir: Path, host_id: str, port: int = 0,
+    def __init__(self, *, car: Any, runtime_dir: Path, host_name: str, port: int = 0,
                  on_restart: Callable[[], None] | None = None) -> None:
         host, options = staged_runtime(runtime_dir, lambda steps: create_host(car, steps=steps))
         self.loop = ChaseFrameLoop(
-            host=host, car=car, host_id=host_id, **options,
+            host=host, car=car, host_name=host_name, **options,
         )
         self.server = RuntimeHTTPServer(("127.0.0.1", port), RuntimeRoutes(self.loop, on_restart=on_restart))
         self.base_url = f"http://127.0.0.1:{self.server.server_address[1]}"
@@ -214,7 +214,7 @@ def _record_pid(path: Path) -> Any:
         return None
 
 
-def serve(*, host_id: str, ws_url: str | None, runtime_dir: Path, port: int,
+def serve(*, host_name: str, ws_url: str | None, runtime_dir: Path, port: int,
           host_record: Path, release: dict[str, Any]) -> int:
     restart = threading.Event()
     stop = threading.Event()
@@ -222,19 +222,19 @@ def serve(*, host_id: str, ws_url: str | None, runtime_dir: Path, port: int,
     signal.signal(signal.SIGINT, lambda *_: stop.set())
     car = ChaseSimCar(ws_url=ws_url, timeout_s=5.0)
     runtime = ChaseRuntimeHost(
-        car=car, runtime_dir=runtime_dir, host_id=host_id, port=port,
+        car=car, runtime_dir=runtime_dir, host_name=host_name, port=port,
         on_restart=lambda: (restart.set(), stop.set()),
     )
     # The simulator lists this socket to `hosts status` as the attached host.
     presence = MetricsUiPresence(car.ws_url, {
-        "kind": "host", "host_id": host_id, "url": runtime.base_url, "pid": os.getpid(),
+        "kind": "host", "host_name": host_name, "url": runtime.base_url, "pid": os.getpid(),
     })
     # Presence closes last, so the runtime releases control first and within
     # the stop deadline.
     with presence, runtime:
         write_host_record(host_record, {
             "schema": HOST_RECORD_SCHEMA,
-            "host_id": host_id,
+            "host_name": host_name,
             "pid": os.getpid(),
             "supervisor_pid": os.getppid(),
             "base_url": runtime.base_url,
@@ -242,7 +242,7 @@ def serve(*, host_id: str, ws_url: str | None, runtime_dir: Path, port: int,
             "release": release,
             "started_at_ms": int(time.time() * 1000),
         })
-        logger.info("Chase runtime for %s serving %s (release %s)", host_id, runtime.base_url,
+        logger.info("Chase runtime for %s serving %s (release %s)", host_name, runtime.base_url,
                     release.get("archive_sha256"))
         try:
             while not stop.wait(RECORD_CHECK_S):
@@ -258,7 +258,7 @@ def serve(*, host_id: str, ws_url: str | None, runtime_dir: Path, port: int,
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--host-id", required=True)
+    parser.add_argument("--host-name", required=True)
     parser.add_argument("--ws-url")
     parser.add_argument("--runtime-dir", type=Path, required=True)
     parser.add_argument("--port", type=int, required=True)
@@ -267,7 +267,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     return serve(
-        host_id=args.host_id, ws_url=args.ws_url, runtime_dir=args.runtime_dir,
+        host_name=args.host_name, ws_url=args.ws_url, runtime_dir=args.runtime_dir,
         port=args.port, host_record=args.host_record, release=args.release,
     )
 

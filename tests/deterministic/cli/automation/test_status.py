@@ -12,7 +12,7 @@ from tests.shared.cli.invoke import invoke_automa
 from tests.support.runtime_fixtures import write_runtime_fixture, write_json
 
 
-HOST_ID = "chase-sim-chaser"
+HOST_NAME = "chase-sim-chaser"
 DEAD_PID = 999_999_999
 
 
@@ -39,7 +39,7 @@ class AutomationStatusTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            write_runtime_fixture(runtime_root, HOST_ID, pid=os.getpid())
+            write_runtime_fixture(runtime_root, HOST_NAME, pid=os.getpid())
             with mock.patch(
                 "cli.automa_cli.runtime_hosts.RUNTIME_ROOT",
                 runtime_root,
@@ -49,7 +49,7 @@ class AutomationStatusTests(unittest.TestCase):
             ):
                 started = time.monotonic()
                 statuses = _collect_automation_status(
-                    host_id=HOST_ID,
+                    host_name=HOST_NAME,
                     view_timeout_s=0.05,
                 )
                 elapsed = time.monotonic() - started
@@ -97,7 +97,7 @@ class AutomationStatusTests(unittest.TestCase):
             ):
                 started = time.monotonic()
                 statuses = _collect_automation_status(
-                    host_id=None,
+                    host_name=None,
                     view_timeout_s=0.2,
                 )
                 elapsed = time.monotonic() - started
@@ -120,7 +120,7 @@ class AutomationStatusTests(unittest.TestCase):
             human = invoke_automa("hosts", "status", "--long", runtime_root=runtime_root)
             machine = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)
 
-        self.assertEqual(json.loads(machine.stdout), {"schema": "automa_hosts_status", "host_id": None, "hosts": []})
+        self.assertEqual(json.loads(machine.stdout), {"schema": "automa_hosts_status", "host_name": None, "hosts": []})
         self.assertEqual(human.stdout, "No hosts found\n")
         self.assertEqual(human.stderr, "")
         self.assertEqual(machine.stderr, "")
@@ -128,16 +128,16 @@ class AutomationStatusTests(unittest.TestCase):
     def test_an_unknown_id_is_not_found_and_exits_one(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            human = invoke_automa("hosts", "status", "--id", "missing-car", runtime_root=runtime_root, check=False)
+            human = invoke_automa("hosts", "status", "--name", "missing-car", runtime_root=runtime_root, check=False)
             machine = invoke_automa(
-                "hosts", "status", "--id", "missing-car", "--json", runtime_root=runtime_root, check=False,
+                "hosts", "status", "--name", "missing-car", "--json", runtime_root=runtime_root, check=False,
             )
 
         payload = json.loads(machine.stdout)
         self.assertEqual((human.returncode, machine.returncode), (1, 1))
-        self.assertEqual(payload["host_id"], "missing-car")
+        self.assertEqual(payload["host_name"], "missing-car")
         [host] = payload["hosts"]
-        self.assertEqual((host["host_id"], host["state"], host["run"]), ("missing-car", "not found", None))
+        self.assertEqual((host["host_name"], host["state"], host["run"]), ("missing-car", "not found", None))
         self.assertEqual(human.stdout, "Host missing-car  not found\n")
         self.assertEqual(human.stderr, "")
         self.assertEqual(machine.stderr, "")
@@ -145,7 +145,7 @@ class AutomationStatusTests(unittest.TestCase):
     def test_a_running_worker_has_matching_human_and_json_run(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            write_runtime_fixture(runtime_root, HOST_ID, pid=os.getpid())
+            write_runtime_fixture(runtime_root, HOST_NAME, pid=os.getpid())
 
             human = invoke_automa("hosts", "status", "--long", runtime_root=runtime_root)
             machine = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)
@@ -153,7 +153,7 @@ class AutomationStatusTests(unittest.TestCase):
         payload = json.loads(machine.stdout)
         self.assertEqual(payload["schema"], "automa_hosts_status")
         [host] = payload["hosts"]
-        self.assertEqual(host["host_id"], HOST_ID)
+        self.assertEqual(host["host_name"], HOST_NAME)
         self.assertEqual(host["state"], "not running")
         run = host["run"]
         self.assertTrue(run["deployed"])
@@ -170,7 +170,7 @@ class AutomationStatusTests(unittest.TestCase):
 
         # The host block comes first, then the host's run.
         self.assertTrue(human.stdout.startswith(
-            f"Host {HOST_ID}  not running\n"
+            f"Host {HOST_NAME}  not running\n"
             "  chaser at http://localhost:5050/\n"
             "  local host record\n"
             "  deployment: deployed\n"
@@ -189,7 +189,7 @@ class AutomationStatusTests(unittest.TestCase):
     def test_a_stale_worker_says_why_without_next_steps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            write_runtime_fixture(runtime_root, HOST_ID, pid=DEAD_PID)
+            write_runtime_fixture(runtime_root, HOST_NAME, pid=DEAD_PID)
 
             human = invoke_automa("hosts", "status", "--long", runtime_root=runtime_root)
             machine = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)
@@ -210,7 +210,7 @@ class AutomationStatusTests(unittest.TestCase):
         full_error = "camera capture failed\nTraceback (most recent call last): internal detail"
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            paths = write_runtime_fixture(runtime_root, HOST_ID, pid=DEAD_PID)
+            paths = write_runtime_fixture(runtime_root, HOST_NAME, pid=DEAD_PID)
             _set_runtime_state(
                 paths.automation_state,
                 status="error",
@@ -237,13 +237,13 @@ class AutomationStatusTests(unittest.TestCase):
     def test_scenario_stop_stale_worker_marks_runtime_stopped(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            write_runtime_fixture(runtime_root, HOST_ID, pid=DEAD_PID)
+            write_runtime_fixture(runtime_root, HOST_NAME, pid=DEAD_PID)
 
             stop = invoke_automa(
                 "hosts",
                 "stop",
-                "--id",
-                HOST_ID,
+                "--name",
+                HOST_NAME,
                 runtime_root=runtime_root,
             )
             status = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)

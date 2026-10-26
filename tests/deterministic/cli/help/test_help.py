@@ -19,7 +19,7 @@ class HelpCommandTests(unittest.TestCase):
             [
                 "hosts", "stage",
                 "perception",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 "--preset",
                 "lightweight_observer",
@@ -27,7 +27,7 @@ class HelpCommandTests(unittest.TestCase):
             [
                 "hosts",
                 "run",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 "--observe-only",
                 "--num-decisions",
@@ -35,11 +35,11 @@ class HelpCommandTests(unittest.TestCase):
                 "--open-view",
             ],
             [
-                "hosts", "restart", "--id", "piracer",
+                "hosts", "restart", "--name", "piracer",
                 "--num-decisions", "7",
             ],
             ["vehicles", "status"],
-            ["hosts", "stop", "--id", "chase-sim-chaser"],
+            ["hosts", "stop", "--name", "chase-sim-chaser"],
         ):
             with self.subTest(args=args):
                 parsed = parser.parse_args(args)
@@ -50,28 +50,28 @@ class HelpCommandTests(unittest.TestCase):
     def test_host_lifecycle_parses_under_one_group(self) -> None:
         parser = build_parser()
         for args in (
-            ["create", "--id", "demo", "--provider", "chase-sim", "--url", "http://localhost:5050"],
-            ["update", "--id", "demo", "--restart"],
-            ["run", "--id", "demo"],
-            ["stop", "--id", "demo"],
-            ["restart", "--id", "demo"],
-            ["status", "--id", "demo"],
-            ["serve", "--id", "demo"],
-            ["delete", "--id", "demo"],
+            ["create", "--name", "demo", "--provider", "chase-sim", "--url", "http://localhost:5050"],
+            ["update", "--name", "demo", "--restart"],
+            ["run", "--name", "demo"],
+            ["stop", "--name", "demo"],
+            ["restart", "--name", "demo"],
+            ["status", "--name", "demo"],
+            ["serve", "--name", "demo"],
+            ["delete", "--name", "demo"],
         ):
             with self.subTest(args=args):
                 parsed = parser.parse_args(["hosts", *args])
-                self.assertEqual((parsed.host_command, parsed.host_id), (args[0], "demo"))
+                self.assertEqual((parsed.host_command, parsed.host_name), (args[0], "demo"))
         for args in (
             ["host", "status"],
-            ["host", "run", "--id", "demo"],
+            ["host", "run", "--name", "demo"],
             ["vehicles", "host", "status"],
-            ["vehicles", "plugins", "status", "--id", "demo"],
-            ["vehicles", "update", "perception", "--id", "demo"],
-            ["vehicles", "automation", "run", "--id", "demo"],
-            ["vehicles", "create", "host", "--id", "demo", "--provider", "chase-sim", "--url", "http://localhost:5050"],
-            ["hosts", "stage", "host", "--id", "demo"],
-            ["vehicles", "delete", "host", "--id", "demo"],
+            ["vehicles", "plugins", "status", "--name", "demo"],
+            ["vehicles", "update", "perception", "--name", "demo"],
+            ["vehicles", "automation", "run", "--name", "demo"],
+            ["vehicles", "create", "host", "--name", "demo", "--provider", "chase-sim", "--url", "http://localhost:5050"],
+            ["hosts", "stage", "host", "--name", "demo"],
+            ["vehicles", "delete", "host", "--name", "demo"],
         ):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as caught:
@@ -90,12 +90,12 @@ class HelpCommandTests(unittest.TestCase):
         for args in (
             ["vehicles", "active", "--verbose"],
             ["vehicles", "active", "--include-inactive"],
-            ["hosts", "run", "--id", "chase-sim-chaser", "--frames", "3"],
-            ["hosts", "restart", "--id", "piracer", "--frames", "3"],
+            ["hosts", "run", "--name", "chase-sim-chaser", "--frames", "3"],
+            ["hosts", "restart", "--name", "piracer", "--frames", "3"],
             [
                 "hosts",
                 "run",
-                "--id",
+                "--name",
                 "chase-sim-chaser",
                 "--prepare-control",
             ],

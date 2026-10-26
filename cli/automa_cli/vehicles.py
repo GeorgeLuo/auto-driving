@@ -159,7 +159,7 @@ def format_active_vehicles(
 
 def get_vehicle_status(
     *,
-    host_id: str,
+    host_name: str,
     chase_url: str | None = None,
     chase_ws_url: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
@@ -197,19 +197,19 @@ def get_vehicle_status(
 
     remaining = operation_timeout - (time.monotonic() - started)
     automation = _collect_automation_status(
-        host_id=host_id,
+        host_name=host_name,
         view_timeout_s=remaining if remaining >= 0.05 else 0.0,
     )
     all_deployed_by_id = {
-        str(item.get("host_id")): item
+        str(item.get("host_name")): item
         for item in automation
-        if isinstance(item, dict) and item.get("host_id")
+        if isinstance(item, dict) and item.get("host_name")
     }
     deployed_by_id = all_deployed_by_id
     # The probe describes the environment at the requested endpoint, not a
     # host whose name happens to match a vehicle capability identifier.
     discovered_vehicle = probe.vehicle if probe.active else None
-    known_ids = {host_id}
+    known_ids = {host_name}
 
     inactive = next(
         (
@@ -224,7 +224,7 @@ def get_vehicle_status(
     )
     cards = [
         _build_vehicle_status_card(
-            host_id=known_id,
+            host_name=known_id,
             endpoint=endpoint,
             operator_url=display_url,
             timeout_s=operation_timeout,
@@ -452,7 +452,7 @@ def _indented(text: Any) -> list[str]:
 
 def _build_vehicle_status_card(
     *,
-    host_id: str,
+    host_name: str,
     endpoint: str,
     operator_url: str,
     timeout_s: float,
@@ -606,7 +606,7 @@ def _build_vehicle_status_card(
         else None,
     }
     next_action, blocking_layer, ready_for = _vehicle_next_action(
-        host_id=host_id,
+        host_name=host_name,
         operator_url=operator_url,
         endpoint=endpoint,
         layers=layers,
@@ -627,7 +627,7 @@ def _build_vehicle_status_card(
     }
     return {
         "schema": STATUS_SCHEMA,
-        "host_id": host_id,
+        "host_name": host_name,
         "endpoint": {
             "operator_url": operator_url,
             "resolved_ws_url": endpoint,
@@ -658,7 +658,7 @@ def _ready_layer_states(layer: str) -> set[str]:
 
 def _vehicle_next_action(
     *,
-    host_id: str,
+    host_name: str,
     operator_url: str,
     endpoint: str,
     layers: dict[str, dict[str, Any]],
@@ -796,7 +796,7 @@ def _vehicle_next_action(
         return (
             action(
                 "automation_not_deployed",
-                command=f"./cli/automa hosts update --id {host_id}",
+                command=f"./cli/automa hosts update --name {host_name}",
                 expected_state="automation_deployment=deployed",
             ),
             "automation_deployment",
@@ -808,7 +808,7 @@ def _vehicle_next_action(
                 "worker_start_failed",
                 command=(
                     "./cli/automa hosts run "
-                    f"--id {host_id} --observe-only --num-decisions 0 --open-view --log"
+                    f"--name {host_name} --observe-only --num-decisions 0 --open-view --log"
                 ),
                 expected_state="automation_worker=running",
             ),
@@ -821,7 +821,7 @@ def _vehicle_next_action(
                 "worker_stopped",
                 command=(
                     "./cli/automa hosts run "
-                    f"--id {host_id} --observe-only --num-decisions 0 --open-view"
+                    f"--name {host_name} --observe-only --num-decisions 0 --open-view"
                 ),
                 expected_state="automation_worker=running, perception_view=available",
             ),
@@ -851,7 +851,7 @@ def _vehicle_next_action(
                 else "view_unavailable",
                 command=(
                     "./cli/automa hosts restart "
-                    f"--id {host_id} --observe-only --num-decisions 0"
+                    f"--name {host_name} --observe-only --num-decisions 0"
                 ),
                 expected_state="perception_view=available",
             ),

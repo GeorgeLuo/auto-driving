@@ -17,7 +17,7 @@ from urllib.request import urlopen
 
 from cli.automa_cli.host_publications import fetch_decision_publication
 from cli.automa_cli.paths import ROOT
-from tests.shared.cli.automation_pipeline.pipeline_fixtures import HOST_ID
+from tests.shared.cli.automation_pipeline.pipeline_fixtures import HOST_NAME
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.integration.live_host import LiveHostTestCase, wait_until as _wait
 from tests.support.cli_runner import run_automa, start_automa
@@ -33,7 +33,7 @@ class LiveCommandsTests(LiveHostTestCase):
         file = self.runtime_root.parent / "highest_confidence.py"
         file.write_bytes(source)
         invoke_automa(
-            "hosts", "plugins", "upload", "--id", HOST_ID, "--file", str(file), "--step", "plan",
+            "hosts", "plugins", "upload", "--name", HOST_NAME, "--file", str(file), "--step", "plan",
             "--plugin-id", "highest_confidence", "--entrypoint", "highest_confidence:HighestConfidencePlan",
             "--arm", runtime_root=self.runtime_root,
         )
@@ -46,7 +46,7 @@ class LiveCommandsTests(LiveHostTestCase):
                 return False
 
         _wait(published, message="the host never published a cycle from the uploaded plan")
-        result = run_automa("hosts", "stream", "plan", "--id", HOST_ID, "--once", "--json",
+        result = run_automa("hosts", "stream", "plan", "--name", HOST_NAME, "--once", "--json",
                             runtime_root=self.runtime_root, check=False)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         frame = json.loads(result.stdout)
@@ -58,7 +58,7 @@ class LiveCommandsTests(LiveHostTestCase):
         # decision beside its frame and the evidence its proposals read.
         self.observe()
         stream = start_automa(
-            "hosts", "stream", "proposal", "--id", HOST_ID, "--no-clear", runtime_root=self.runtime_root,
+            "hosts", "stream", "proposal", "--name", HOST_NAME, "--no-clear", runtime_root=self.runtime_root,
         )
         self.addCleanup(stream.stdout.close)
         self.addCleanup(stream.wait, 10)
@@ -122,7 +122,7 @@ class LiveCommandsTests(LiveHostTestCase):
             try:
                 self.assertTrue(publishing.wait(10), "the host never completed another cycle")
                 stream = start_automa(
-                    "hosts", "stream", "proposal", "--id", HOST_ID,
+                    "hosts", "stream", "proposal", "--name", HOST_NAME,
                     "--once", "--json", runtime_root=self.runtime_root,
                 )
                 self.addCleanup(stream.stdout.close)

@@ -59,7 +59,7 @@ class PluginUploadFlows(unittest.TestCase):
                 self.addCleanup(host.close)
                 host.follow_activations({}, root / "runtime")
                 identity = host.applied_decision()
-                view = RuntimeViewServer(host_id="chase-sim-chaser", automation_dir=root / "automation",
+                view = RuntimeViewServer(host_name="chase-sim-chaser", automation_dir=root / "automation",
                                          port=0, plugin_catalog=PluginCatalogAPI(host.catalog)).start()
                 self.addCleanup(view.stop)
                 file = root / "prototype.py"

@@ -119,7 +119,7 @@ class ChaseFrameLoop(FrameLoop):
             except Exception as exc:
                 if generation == self._capture_generation and self._capture_enabled:
                     logger.exception("Chase capture failed")
-                    self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
+                    self.stop_after_error(exc)
                 else:
                     logger.info("Capture ended after the run changed: %s: %s", type(exc).__name__, exc)
             finally:

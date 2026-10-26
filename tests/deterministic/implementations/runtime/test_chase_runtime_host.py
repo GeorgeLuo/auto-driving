@@ -245,6 +245,34 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 self.assertIn("capability timed out", host.loop.host.last_error)
                 self.assertEqual(car.capture_count, 0)
 
+    def test_the_capture_loop_outlives_a_stop_that_fails_after_the_stream_ends(self):
+        # The simulator's frontend drops: its stream ends and the switch to manual fails.
+        from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
+        car, opened, dropped = _FakeCar(), [], threading.Event()
+        def ended():
+            opened.append(True)
+            dropped.set()
+            raise RuntimeError("Camera stream ended")
+        car.camera_stream = ended
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = controller_bundle_paths(Path(tmp) / "chase-sim-chaser")
+            _write_activations(bundle)
+            with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]),
+                                  vehicle_id="chase-sim-chaser") as host:
+                cycle_host = host.loop.host
+                set_mode = cycle_host.set_mode
+                def disconnected(mode):
+                    if mode == "manual" and dropped.is_set():
+                        raise MetricsUiWebSocketError("Frontend not connected")
+                    return set_mode(mode)
+                with patch.object(cycle_host, "set_mode", side_effect=disconnected):
+                    host.loop.start(RunConfiguration(mode="observe_only"))
+                    _wait(lambda: cycle_host.run_state == "error", message="the ended stream was hidden")
+                self.assertEqual(cycle_host.last_error, "RuntimeError: Camera stream ended; "
+                                                        "stop failed: MetricsUiWebSocketError: Frontend not connected")
+                host.loop.start(RunConfiguration(mode="observe_only"))
+                _wait(lambda: len(opened) == 2, message="the next run opened no stream")
+
 
 if __name__ == "__main__":
     unittest.main()

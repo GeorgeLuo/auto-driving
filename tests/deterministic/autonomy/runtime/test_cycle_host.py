@@ -200,6 +200,35 @@ class CycleHostMemoryTests(unittest.TestCase):
         self.assertIsNone(host.last_error)
         host.close()
 
+    def test_a_failed_stop_keeps_the_error_that_ended_the_run(self):
+        host, _ = _host()
+        host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+        self.addCleanup(host.close)
+        host.start()
+        with patch.object(host, "set_mode", side_effect=RuntimeError("Frontend not connected")):
+            with self.assertRaisesRegex(RuntimeError, "Frontend not connected"):
+                host.stop(reason="error", error="ChaseCameraStreamError: Camera stream ended")
+            self.assertEqual((host.run_state, host.last_error), (
+                "error", "ChaseCameraStreamError: Camera stream ended; stop failed: RuntimeError: Frontend not connected",
+            ))
+            with self.assertRaisesRegex(RuntimeError, "Frontend not connected"):
+                host.stop()
+            self.assertEqual(host.last_error, "stop failed: RuntimeError: Frontend not connected")
+
+    def test_a_failed_cycle_keeps_its_error_when_its_stop_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            host, _ = _host(memory=_memory_step(Path(tmp), fail_on_update=True))
+            host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+            self.addCleanup(host.close)
+            host.start()
+            with patch.object(host, "set_mode", side_effect=RuntimeError("Frontend not connected")):
+                with self.assertRaisesRegex(RuntimeError, "Frontend not connected"):
+                    host.run(DecisionFrameContext("frame_x", 0, 1))
+            self.assertIn("forced-update-failure", host.last_error)
+            self.assertTrue(host.last_error.endswith("; stop failed: RuntimeError: Frontend not connected"),
+                            host.last_error)
+            self.assertEqual((host.run_state, host.error_count), ("error", 1))
+
     def test_cycle_result_report_is_detached_from_step_owned_memory(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             step = _memory_step(Path(tmp))

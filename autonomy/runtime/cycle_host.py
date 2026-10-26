@@ -403,17 +403,17 @@ class AutonomyCycleHost:
             except Exception as exc:
                 self._cycle_in_progress = None
                 self._record_frame_context(context)
+                self.error_count += 1
+                self.last_error = "".join(
+                    traceback.format_exception_only(type(exc), exc)
+                ).strip()
                 try:
                     if self.execution is not None:
                         self.execution.cycle_failed(ticket)
                 finally:
                     with self._session_lock:
                         if run_generation == self._run_generation:
-                            self.stop(reason="error")
-                self.error_count += 1
-                self.last_error = "".join(
-                    traceback.format_exception_only(type(exc), exc)
-                ).strip()
+                            self.stop(reason="error", error=self.last_error)
                 raise
             finally:
                 if self._step_reports_wanted:
@@ -462,7 +462,9 @@ class AutonomyCycleHost:
                     self.set_mode("manual")
             except Exception as exc:
                 self.run_state = "error"
-                self.last_error = f"{type(exc).__name__}: {exc}"
+                # The error that stopped the run stays its cause.
+                failure = f"stop failed: {type(exc).__name__}: {exc}"
+                self.last_error = failure if error is None else f"{error}; {failure}"
                 self._refresh_session_view()
                 raise
             self.run_state = reason

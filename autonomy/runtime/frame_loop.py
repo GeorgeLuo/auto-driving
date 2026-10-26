@@ -483,6 +483,13 @@ class FrameLoop:
             status = self.host.stop(reason=reason, error=error)
             return status
 
+    def stop_after_error(self, exc: Exception) -> None:
+        """End the run ``exc`` broke; a loop thread outlives a stop that fails too."""
+        try:
+            self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
+        except Exception:  # noqa: BLE001 - the host's last error records both
+            logger.exception("Stopping the run after %s failed", type(exc).__name__)
+
     def shutdown(self) -> None:
         with self._lock:
             self._shutdown = True
@@ -956,7 +963,7 @@ class FrameLoop:
                         with self._lock:
                             current = generation == self._queue_generation
                         if current:
-                            self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
+                            self.stop_after_error(exc)
                     continue
                 with self._lock:
                     if generation != self._queue_generation:

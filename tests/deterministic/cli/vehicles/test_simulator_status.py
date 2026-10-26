@@ -28,16 +28,16 @@ from tests.support.fake_metrics_ui import fake_metrics_ui
 
 
 def _blocks(stdout: str) -> list[list[str]]:
-    """The simulator block and each host block of ``vehicles status``, as lines."""
+    """Each vehicle block and each host block of ``vehicles status``, as lines."""
 
     return [[line for line in block.splitlines() if not line.startswith(("  chaser at", "  PiCar at"))]
-            for block in stdout.strip("\n").split("\n\n") if not block.startswith("PiCar (picar)  ")]
+            for block in stdout.strip("\n").split("\n\n")]
 
 
-def _record(runtime_root: Path, vehicle_id: str, url: str) -> None:
+def _record(runtime_root: Path, vehicle_id: str, url: str, simulator: str | None = None) -> None:
     """A running host record for ``vehicle_id`` at ``url``, held by this process."""
 
-    write_host_fixture(runtime_root, vehicle_id)
+    write_host_fixture(runtime_root, vehicle_id, url=simulator)
     bundle = controller_bundle_paths(runtime_root / vehicle_id)
     write_host_record(Path(bundle["runtime_dir"]) / "automation" / HOST_RECORD, {
         "schema": HOST_RECORD_SCHEMA, "vehicle_id": vehicle_id, "pid": os.getpid(), "base_url": url,
@@ -81,12 +81,17 @@ class SimulatorStatusTests(unittest.TestCase):
                           "  frontend connected, game chase"]
 
     def status(self, *args: str, chase_url: str | None = None) -> subprocess.CompletedProcess[str]:
-        target = ("--chase-url", chase_url) if chase_url else ("--chase-ws-url", self.server.url)
-        return invoke_automa("vehicles", "status", *target, *args,
-                             runtime_root=self.runtime_root, check=False)
+        return invoke_automa("vehicles", "status", *args, runtime_root=self.runtime_root,
+                             extra_env={"CHASE_UI_WS_URL": chase_url or self.server.url}, check=False)
+
+    def host(self):
+        """The chaser's in-process host, created against this simulator."""
+
+        write_host_fixture(self.runtime_root, "chase-sim-chaser", url=self.server.url)
+        return self.enterContext(chase_runtime(self.runtime_root))
 
     def test_status_shows_the_simulator_and_an_attached_host(self) -> None:
-        host = self.enterContext(chase_runtime(self.runtime_root))
+        host = self.host()
         self.enterContext(_attached(self.server, "chase-sim-chaser", host.base_url))
 
         human = self.status()
@@ -98,8 +103,11 @@ class SimulatorStatusTests(unittest.TestCase):
         self.assertEqual(attached[:2], ["Host chase-sim-chaser  not started", "  0 decisions, 0 errors"])
         self.assertRegex(attached[2], r"^  attached since \d{4}-\d\d-\d\d \d\d:\d\d:\d\d$")
         self.assertEqual(attached[3:], [f"  {host.base_url}, pid {os.getpid()}"])
-        self.assertEqual(machine["schema"], "automa_simulator_status_v1")
-        self.assertEqual((machine["state"], machine["frontend"], machine["game"]), ("running", "connected", "chase"))
+        self.assertEqual(machine["schema"], "automa_simulator_status_v2")
+        self.assertEqual(machine["vehicles"], [{
+            "provider": "chase-sim", "url": chase_operator_url(self.server.url), "state": "running",
+            "error": None, "frontend": "connected", "game": "chase", "hosts_error": None,
+        }])
         [entry] = machine["hosts"]
         self.assertEqual(
             {key: entry[key] for key in ("vehicle_id", "attached", "local", "state", "mode", "decision_count")},
@@ -108,21 +116,21 @@ class SimulatorStatusTests(unittest.TestCase):
         )
 
     def test_a_host_with_only_a_local_record_is_not_attached(self) -> None:
-        host = self.enterContext(chase_runtime(self.runtime_root))
+        host = self.host()
 
         result = self.status()
 
         self.assertEqual(_blocks(result.stdout)[1], [
             "Host chase-sim-chaser  not started",
             "  0 decisions, 0 errors",
-            "  not attached to this simulator (local host record)",
+            "  not attached to its simulator (local host record)",
             f"  {host.base_url}, pid {os.getpid()}",
         ])
 
     def test_a_host_that_never_answers_does_not_hold_up_the_others(self) -> None:
         hung = self.enterContext(hung_url())
-        _record(self.runtime_root, "chase-sim-follower", hung)
-        host = self.enterContext(chase_runtime(self.runtime_root))
+        _record(self.runtime_root, "chase-sim-follower", hung, self.server.url)
+        host = self.host()
         self.enterContext(_attached(self.server, "chase-sim-chaser", host.base_url))
 
         started = time.monotonic()
@@ -135,7 +143,7 @@ class SimulatorStatusTests(unittest.TestCase):
         self.assertEqual(follower, [
             "Host chase-sim-follower  not answering",
             "  no answer within 1.0s",
-            "  not attached to this simulator (local host record)",
+            "  not attached to its simulator (local host record)",
             f"  {hung}, pid {os.getpid()}",
         ])
         self.assertLess(elapsed, 2.0)
@@ -148,7 +156,7 @@ class SimulatorStatusTests(unittest.TestCase):
 
     def test_an_id_whose_host_does_not_answer_exits_one(self) -> None:
         url = closed_url()
-        _record(self.runtime_root, "chase-sim-chaser", url)
+        _record(self.runtime_root, "chase-sim-chaser", url, self.server.url)
 
         result = self.status("--id", "chase-sim-chaser")
 
@@ -156,7 +164,7 @@ class SimulatorStatusTests(unittest.TestCase):
         self.assertEqual(_blocks(result.stdout)[1], [
             "Host chase-sim-chaser  not answering",
             "  Connection refused",
-            "  not attached to this simulator (local host record)",
+            "  not attached to its simulator (local host record)",
             f"  {url}, pid {os.getpid()}",
         ])
 
@@ -167,7 +175,7 @@ class SimulatorStatusTests(unittest.TestCase):
             "host": {"error_count": 2, "last_error": "Chase passiveCaptureError: session moved"},
         }).encode()
         url = self.enterContext(answering(body))
-        _record(self.runtime_root, "chase-sim-chaser", url)
+        _record(self.runtime_root, "chase-sim-chaser", url, self.server.url)
         self.enterContext(_attached(self.server, "chase-sim-chaser", url))
 
         targeted = self.status("--id", "chase-sim-chaser")
@@ -239,8 +247,7 @@ class SimulatorStatusTests(unittest.TestCase):
             with self.subTest(query=query), fake_metrics_ui() as server:
                 server.refuse(query, "Frontend not connected", code="frontend_not_connected")
 
-                result = invoke_automa("vehicles", "status", "--chase-ws-url", server.url,
-                                       runtime_root=self.runtime_root, check=False)
+                result = self.status(chase_url=server.url)
 
                 self.assertEqual(result.returncode, 0, result.stderr)
                 self.assertEqual(_blocks(result.stdout), [
@@ -250,7 +257,7 @@ class SimulatorStatusTests(unittest.TestCase):
 
     def test_a_simulator_that_cannot_list_hosts_says_why(self) -> None:
         self.server.refuse("list_agents", "unsupported command")
-        host = self.enterContext(chase_runtime(self.runtime_root))
+        host = self.host()
 
         result = self.status()
         machine = json.loads(self.status("--json").stdout)
@@ -317,14 +324,14 @@ class EnvironmentStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui() as simulator:
             root = Path(tmp)
             write_host_fixture(root, "free-name", url=simulator.url)
-            result = invoke_automa("vehicles", "status", "--chase-url", simulator.url,
-                                   "--json", runtime_root=root)
+            env = {"CHASE_UI_WS_URL": simulator.url}
+            result = invoke_automa("vehicles", "status", "--json", runtime_root=root, extra_env=env)
             [host] = json.loads(result.stdout)["hosts"]
             self.assertEqual(host["state"], "not running")
             self.assertEqual(host["provider"], "chase-sim")
             self.assertEqual(host["vehicle_url"], simulator.url)
-            failed = invoke_automa("vehicles", "status", "--id", "free-name", "--chase-url", simulator.url,
-                                   runtime_root=root, check=False)
+            failed = invoke_automa("vehicles", "status", "--id", "free-name",
+                                   runtime_root=root, extra_env=env, check=False)
             self.assertEqual(failed.returncode, 1)
             self.assertIn("chaser at", failed.stdout)
 
@@ -338,14 +345,16 @@ class EnvironmentStatusTests(unittest.TestCase):
             (False, {"runtime_state": "endpoint_unreachable"}, "unreachable", 1),
         ):
             with self.subTest(expected=expected), tempfile.TemporaryDirectory() as tmp:
-                probe = ProbeResult(active=active, candidate=Candidate("picar", url, "cli"),
+                probe = ProbeResult(active=active, candidate=Candidate("picar", url, "discovered"),
                                     diagnostics=diagnostics, error=None if active else "probe detail")
+                env = {"CHASE_UI_WS_URL": closed_url()}
                 with patch("cli.automa_cli.vehicles._probe_picar", return_value=probe):
-                    result = invoke_automa("vehicles", "status", "--chase-url", closed_url(),
-                                           "--picar-url", url, "--json", runtime_root=Path(tmp), check=False)
-                    text = invoke_automa("vehicles", "status", "--chase-url", closed_url(),
-                                         "--picar-url", url, runtime_root=Path(tmp), check=False)
+                    invoke_automa("vehicles", "discover", "--provider", "picar", "--url", url, "--force",
+                                  runtime_root=Path(tmp), extra_env=env)
+                    result = invoke_automa("vehicles", "status", "--json", runtime_root=Path(tmp),
+                                           extra_env=env, check=False)
+                    text = invoke_automa("vehicles", "status", runtime_root=Path(tmp), extra_env=env, check=False)
                 self.assertEqual(result.returncode, code, result.stderr)
-                self.assertEqual(json.loads(result.stdout)["picar"],
-                                 {"url": url, "state": expected, "error": probe.error})
+                self.assertEqual(json.loads(result.stdout)["vehicles"][1],
+                                 {"provider": "picar", "url": url, "state": expected, "error": probe.error})
                 self.assertIn(f"PiCar (picar)  {expected} at {url}", text.stdout)

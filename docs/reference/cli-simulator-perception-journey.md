@@ -24,7 +24,7 @@ intended selections instead: each update replaces its named step's configs.
 explicitly restaged using the recovery that `vehicles automation status` prints.
 
 ```sh
-./cli/automa vehicles status --chase-url http://localhost:5050
+./cli/automa vehicles status
 ./cli/automa vehicles create host --id chase-sim-chaser --provider chase-sim --url http://localhost:5050
 
 ./cli/automa vehicles update memory \
@@ -49,15 +49,15 @@ explicitly restaged using the recovery that `vehicles automation status` prints.
 ```
 
 `vehicles status` is read-only and is the one status overview. It prints a
-heading for the simulator, the PiCar and each vehicle host, with details
-indented below it. An environment's heading names the provider and URL that
-`vehicles create host --provider <provider> --url <url>` takes for it:
+heading for the default simulator, each discovered vehicle and each vehicle
+host, with details indented below it. A vehicle's heading names the provider
+and URL that `vehicles create host --provider <provider> --url <url>` takes for it:
 
 ```text
 Simulator (chase-sim)  running at http://localhost:5050/
   frontend connected, game chase
 
-PiCar (picar)  unreachable at http://piracer.local:8887: GET http://piracer.local:8887/host/status failed: [Errno 8] nodename nor servname provided, or not known
+PiCar (picar)  answering at http://piracer.local:8887
 
 Host chase-sim-chaser  running, observe only
   120 decisions, 0 errors, last frame 0.3s ago
@@ -66,7 +66,7 @@ Host chase-sim-chaser  running, observe only
 
 Host chase-sim-follower  not answering
   no answer within 2.0s
-  not attached to this simulator (local host record)
+  not attached to its simulator (local host record)
   http://127.0.0.1:54701, pid 50122
 ```
 
@@ -75,7 +75,7 @@ browser has it open; `frontend not connected` (or `not answering`) says no
 browser is serving it.
 When it is unreachable, the next line says why. Hosts are the names created with `vehicles create host`. A created Chase host
 without a live process appears as `not running`. Metrics UI attachment is shown
-for those hosts; ID prefixes have no meaning. Status reads every host's
+for those hosts, each against the simulator it was created at; ID prefixes have no meaning. Status reads every host's
 `/host/status` in parallel, within the one `--timeout-s` deadline, so a
 host that never answers does not hold up the others. A host's state is its
 session state (`not started`, `starting`, `running`, `stopping`, `finished run`,
@@ -85,13 +85,26 @@ or reached its limit. Otherwise the state is `not answering` with the reason, or
 `error` when its reply is not a runtime host status; its last error prints
 below. When the simulator cannot list agents, the line `cannot list attached
 hosts` says why and local hosts are still shown. `--id` shows only that
-vehicle's host, or `not found`. The JSON is `automa_simulator_status_v1`.
+vehicle's host, or `not found`. The JSON is `automa_simulator_status_v2`.
 
-An HTTP(S) Metrics UI origin is resolved to the
-same origin at `/ws/control`; an explicit non-root WS(S) path is preserved.
-Use either `--chase-url` or the compatibility option `--chase-ws-url`, not
-both. When neither is supplied, Automa uses `CHASE_UI_WS_URL` when set and
-otherwise connects to `http://localhost:5050`.
+Status always looks at the default simulator: `CHASE_UI_WS_URL` when set,
+otherwise `http://localhost:5050`. To look at another simulator or a PiCar,
+list it once:
+
+```sh
+./cli/automa vehicles discover --provider chase-sim --url http://localhost:5051
+./cli/automa vehicles discover --provider picar --url http://piracer.local:8887
+./cli/automa vehicles remove --url http://localhost:5051
+```
+
+`vehicles discover` adds the vehicle to `runtime/vehicles/discovered.json` when
+it can take a host: a simulator whose frontend is connected with the Chase game
+loaded, or a PiCar whose machine answers. Otherwise it exits 2 and says why;
+`--force` lists it anyway. The provider is required because a PiCar without its
+harness answers nothing that names it. `vehicles remove` stops listing a
+discovered vehicle; the default simulator is always listed. An HTTP(S) Metrics
+UI origin is resolved to the same origin at `/ws/control`, and an explicit
+non-root WS(S) path is preserved, so either form names the same simulator.
 
 `update memory` stages the memory preset and `update perception` the observer.
 Without them, an otherwise fresh cycle runs no memory or perception plugins,
@@ -229,10 +242,11 @@ The commands keep these layers separate:
 | `perception_view` | `available`, `unavailable`, `stale` | Loopback view belongs to the current worker generation |
 | `evaluator_reference` | `available`, `unavailable`, `invalid` | Optional frame-scoped scoring reference |
 
-`vehicles status` lists the simulator, PiCar reachability, and created hosts.
-The JSON includes `picar: {url, state, error}` and each host's provider and vehicle URL.
-It exits 1 when neither environment is reachable, or the requested host is missing,
-not running, not answering, or in error.
+`vehicles status` lists the default simulator, each discovered vehicle, and created hosts.
+The JSON's `vehicles` list holds each one's `{provider, url, state, error}`, a
+simulator adding `frontend`, `game` and `hosts_error`, and each host has its
+provider and vehicle URL. It exits 1 when no listed vehicle is reachable, or the
+requested host is missing, not running, not answering, or in error.
 
 An absent or malformed evaluator reference does not block camera perception.
 It is excluded from perception, observation, memory, and decision inputs.
@@ -277,7 +291,7 @@ external change.
 | Worker stopped | Run the printed observation-only `automation run --open-view` command |
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 
-`vehicles status` exits 1 when the simulator is not reachable, or when `--id`
+`vehicles status` exits 1 when no listed vehicle is reachable, or when `--id`
 names a host that is `not found`, `not answering` or in `error`; otherwise it
 exits 0, including when no host is found or the browser is closed. Invalid
 arguments exit 2.

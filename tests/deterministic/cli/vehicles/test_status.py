@@ -310,22 +310,6 @@ class VehicleStatusTests(unittest.TestCase):
             json.dumps(payload["next_action"]),
         )
 
-    def test_conflicting_explicit_urls_exit_two_before_any_probe(self) -> None:
-        result = invoke_automa(
-            "vehicles",
-            "status",
-            "--chase-url",
-            "http://localhost:5050",
-            "--chase-ws-url",
-            "ws://localhost:5050/ws/control",
-            "--json",
-            check=False,
-        )
-
-        self.assertEqual(result.returncode, 2)
-        self.assertEqual(result.stdout, "")
-        self.assertIn("cannot be used together", result.stderr)
-
     def test_retired_discovery_command_is_unavailable(self):
         result = invoke_automa("vehicles", "active", check=False)
         self.assertEqual(result.returncode, 2)

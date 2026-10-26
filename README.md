@@ -120,7 +120,9 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 
 | Command | Reads or changes |
 |---|---|
-| `vehicles status` | Shows the Chase simulator (running, its frontend and game), PiCar availability, and each created host's state (session, mode, decision and error counts, last frame), whether it is attached to the simulator or only known locally, and its error, without changing anything. |
+| `vehicles status` | Shows the default Chase simulator and each vehicle `vehicles discover` listed (a simulator: running, its frontend and game; a PiCar: whether it answers), and each created host's state (session, mode, decision and error counts, last frame), whether it is attached to its simulator or only known locally, and its error, without changing anything. |
+| `vehicles discover` | Lists the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url` in `vehicles status` once it can take a host; `--force` lists it regardless. The default simulator (`CHASE_UI_WS_URL`, else `http://localhost:5050`) is always listed. |
+| `vehicles remove` | Stops listing the discovered vehicle at `--url`. The default simulator cannot be removed. |
 | `vehicles update perception\|memory\|proposal\|plan` | Packages code and stages that step's preset or plugin selection locally (`--preset`, or repeatable `--plugin`; default presets `lightweight_observer`, `recency_ledger`, `obstruction_avoidance` and `most_confident`). |
 | `vehicles update observation\|action` | Packages code and stages that step's plugins locally (repeatable `--plugin`; without it, the step's default plugins and configs). |
 | `vehicles plugins upload` | Stores a local file in an existing live catalog, refusing source that does not compile; `--arm` also arms it through the same operation as `plugins arm`. |
@@ -138,7 +140,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles memory inspect` | Offline: runs an image, a directory of images, or a recorded perception or memory run through perception, observation and memory, and reports each memory plugin's health, record count and epoch after every frame, with the memory step's and each plugin's time. A recording restores the executable step selections and configs it contains; `--preset` or `--plugin` overrides memory. Otherwise each step uses its default. The report prints to the terminal; `--record` also saves the source frames, timing, both step selections and report under `runtime/memory-inspections/`. Record live frames with `vehicles perception inspect --record`, then inspect that run. |
 | `vehicles memory viability` | Memory health check: 60s poll of the runtime host's live memory step (update cadence, duration, failures, health, epoch stability). Saves `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
 | `vehicles perception viability` | Perception health check: 60s cadence/freshness measurement of the runtime host's observation publication that also requires that no cycle's control was applied (host RSS/CPU when the vehicle supplies an `ssh_target`). Saves `report.json` and `summary.md` under `lab/runs/perception-viability/` unless `--no-record`. |
-| `vehicles create host` | Creates a named host for the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url`, installs its release, and starts it. `vehicles status` names each environment's provider and URL. |
+| `vehicles create host` | Creates a named host for the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url`, installs its release, and starts it. `vehicles status` names each vehicle's provider and URL. |
 | `vehicles delete host` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. |
 | `vehicles update host` | Packages the staged steps as a versioned release for the vehicle's host: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `vehicles operation ...` | Runs a bounded, explicitly requested vehicle operation. |
@@ -285,7 +287,7 @@ without a record can be adopted, preserving staged steps. The passive path
 preserves the operator's simulator session:
 
 ```sh
-./cli/automa vehicles status --chase-url http://localhost:5050
+./cli/automa vehicles status
 ./cli/automa vehicles create host --id chase-sim-chaser --provider chase-sim --url http://localhost:5050
 ./cli/automa vehicles update memory \
   --id chase-sim-chaser \
@@ -731,6 +733,7 @@ The default target is `piracer@piracer.local`, with the Donkey server at
 Create the host once; its name is independent of the Pi's hostname:
 
 ```sh
+./cli/automa vehicles discover --provider picar --url http://piracer.local:8887
 ./cli/automa vehicles status
 ./cli/automa vehicles create host --id piracer --provider picar --url http://piracer.local:8887
 ./cli/automa vehicles update perception --id piracer --preset lightweight_observer

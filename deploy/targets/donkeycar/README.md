@@ -11,6 +11,7 @@ This directory contains source that is synced to the physical PiRacer runtime.
 Use the CLI for deployment:
 
 ```sh
+./cli/automa vehicles discover --provider picar --url http://piracer.local:8887
 ./cli/automa vehicles status
 ./cli/automa vehicles create host --id piracer --provider picar --url http://piracer.local:8887
 ./cli/automa vehicles update host --id piracer --restart

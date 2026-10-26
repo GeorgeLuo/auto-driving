@@ -136,17 +136,12 @@ class TimeoutInputTests(unittest.TestCase):
     def test_valid_positive_timeout_reaches_each_consumer_unchanged(self) -> None:
         with patch(
             "cli.automa_cli.app.get_chase_simulator_status",
-            return_value={"state": "running", "operator_url": "http://localhost:5050/", "hosts": []},
+            return_value={"vehicles": [{"provider": "chase-sim", "url": "http://localhost:5050/", "state": "running"}],
+                          "hosts": []},
         ) as get_status:
             code, _, _ = _invoke("vehicles", "status", "--timeout-s", "1.25")
         self.assertEqual(code, 0)
-        get_status.assert_called_once_with(
-            vehicle_id=None,
-            chase_url=None,
-            chase_ws_url=None,
-            picar_url=None,
-            timeout_s=1.25,
-        )
+        get_status.assert_called_once_with(vehicle_id=None, timeout_s=1.25)
 
         with patch(
             "cli.automa_cli.app.run_vehicle_automation",
@@ -169,7 +164,8 @@ class TimeoutInputTests(unittest.TestCase):
 
         with patch(
             "cli.automa_cli.app.get_chase_simulator_status",
-            return_value={"state": "running", "operator_url": "http://localhost:5050/", "hosts": []},
+            return_value={"vehicles": [{"provider": "chase-sim", "url": "http://localhost:5050/", "state": "running"}],
+                          "hosts": []},
         ) as get_status:
             code, _, _ = _invoke("vehicles", "status")
         self.assertEqual(code, 0)

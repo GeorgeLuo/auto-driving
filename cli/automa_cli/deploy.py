@@ -45,7 +45,7 @@ from .step_activations import (
     write_host_vehicle,
 )
 from .host_publications import host_state
-from .vehicles import Candidate, _host_block, _probe_chase, normalize_chase_url
+from .vehicles import Candidate, _host_block, _probe_chase, normalize_vehicle_url
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -524,22 +524,19 @@ def create_host(
         return CommandResult(2, error or f"Host {vehicle_id!r} already exists: {_vehicle_label(existing)}.")
     if chase and any(value is not None for value in (ssh_target, pi_home, drive_args)):
         return CommandResult(2, "--ssh-target, --pi-home and --drive-args apply only to a PiCar.")
+    try:
+        url = normalize_vehicle_url(provider, url)
+    except ValueError as exc:
+        return CommandResult(2, str(exc))
     vehicle = {"vehicle_id": vehicle_id, "provider": provider,
                "vehicle_kind": "chase-sim-ws" if chase else "picar-donkey-http"}
     if chase:
-        try:
-            url = normalize_chase_url(url)
-        except ValueError as exc:
-            return CommandResult(2, str(exc))
         vehicle["connection"] = {"ws_url": url}
         if not dry_run:
             probe = _probe_chase(Candidate("chase-sim", url, "cli"), timeout_s=5.0)
             if not probe.active:
                 return CommandResult(2, f"No Chase simulator can take a host at {url}: {probe.error}")
     else:
-        url = url.rstrip("/")
-        if urlparse(url).scheme not in {"http", "https"} or not urlparse(url).hostname:
-            return CommandResult(2, "A PiCar --url must be an HTTP(S) URL.")
         vehicle["connection"] = {"base_url": url}
         vehicle["connection"].update(
             ssh_target=ssh_target or os.environ.get("PI_HOST") or _ssh_target_from_vehicle(vehicle),

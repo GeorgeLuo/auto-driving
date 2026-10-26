@@ -10,7 +10,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 from urllib.parse import urlparse, urlunparse
 
 from implementations.vehicle.chase_sim import (
@@ -26,7 +26,6 @@ from implementations.vehicle.chase_sim.defaults import (
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
 from implementations.vehicle.picar import create_picar
 from implementations.vehicle.picar.defaults import (
-    get_default_picar_base_url,
     DEFAULT_LOCAL_CAR_BASE_URL,
     LOCAL_CAR_BASE_URL_ENV,
 )
@@ -35,8 +34,16 @@ from .host_publications import host_state
 
 DEFAULT_READINESS_TIMEOUT_S = 5.0
 STATUS_SCHEMA = "automa_vehicle_status_v1"
-SIMULATOR_STATUS_SCHEMA = "automa_simulator_status_v1"
+SIMULATOR_STATUS_SCHEMA = "automa_simulator_status_v2"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
+# Each vehicle's heading names the --provider that discover and create host take for it.
+_HEADINGS = {"chase-sim": "Simulator (chase-sim)", "picar": "PiCar (picar)"}
+
+
+@dataclass(frozen=True)
+class CommandResult:
+    exit_code: int
+    message: str
 
 
 @dataclass(frozen=True)
@@ -240,67 +247,102 @@ def get_vehicle_status(
 def get_chase_simulator_status(
     *,
     vehicle_id: str | None = None,
-    chase_url: str | None = None,
-    chase_ws_url: str | None = None,
-    picar_url: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
 ) -> dict[str, Any]:
-    """The Chase simulator, and the state of each vehicle host.
+    """Each listed vehicle, and the state of each vehicle host.
 
-    The simulator runs when its server answers; its frontend is connected when
-    a browser has the page open. Hosts come from explicit local records; the
-    simulator reports which of those hosts are attached. Every
-    host's ``/host/status`` is read in parallel within the one deadline.
+    Status looks at the default simulator, then at each vehicle ``vehicles
+    discover`` listed. A simulator runs when its server answers; its frontend
+    is connected when a browser has the page open. Hosts come from explicit
+    local records; a Chase host is attached when its simulator lists it. Every
+    vehicle and every host's ``/host/status`` is read in parallel within the
+    one deadline.
     """
 
     from .runtime_hosts import local_hosts
 
-    if chase_url is not None and chase_ws_url is not None:
-        raise ValueError("--chase-url and --chase-ws-url cannot be used together")
-    operation_timeout = _require_positive_timeout(timeout_s)
-    endpoint = normalize_chase_url(
-        (chase_url or chase_ws_url or os.environ.get(CHASE_UI_WS_URL_ENV, DEFAULT_CHASE_UI_WS_URL)).strip()
-    )
-    client = MetricsUiWsClient(endpoint, timeout_s=operation_timeout)
-    deadline = time.monotonic() + operation_timeout
+    deadline = time.monotonic() + _require_positive_timeout(timeout_s)
 
     def remaining() -> float:
         # The client refuses a zero timeout; a spent budget times out at once instead.
         return max(deadline - time.monotonic(), 1e-3)
 
+    candidates = listed_vehicles()
+    hosts: dict[str, dict[str, Any]] = {}
+    with ThreadPoolExecutor() as pool:
+        probes = [
+            pool.submit(_simulator_status if candidate.provider == "chase-sim" else _picar_status,
+                        candidate.url, remaining)
+            for candidate in candidates
+        ]
+        reads = {}
+        for local in local_hosts():
+            if vehicle_id not in (None, local["vehicle_id"]):
+                continue
+            host = hosts[local["vehicle_id"]] = _host_entry(**local)
+            if host["url"] is None:
+                host["state"] = "not running"
+            else:
+                reads[host["vehicle_id"]] = pool.submit(
+                    host_state, host["url"], vehicle_id=host["vehicle_id"], timeout_s=remaining()
+                )
+        results = [probe.result() for probe in probes]
+        states = {host_id: read.result() for host_id, read in reads.items()}
+
+    agents_by_endpoint = {
+        candidate.url: agents for candidate, (_, agents) in zip(candidates, results) if agents is not None
+    }
+    for host in hosts.values():
+        listed = agents_by_endpoint.get(host["vehicle_url"]) if host["provider"] == "chase-sim" else None
+        if listed is None:
+            continue
+        host["attached"] = False
+        for agent in listed:
+            client_info = agent.get("client")
+            if (
+                isinstance(client_info, dict)
+                and client_info.get("kind") == "vehicle-host"
+                and client_info.get("vehicle_id") == host["vehicle_id"]
+                and isinstance(client_info.get("url"), str)
+                and client_info["url"].rstrip("/") == host["url"]
+            ):
+                host.update(attached=True, attached_since=agent.get("connectedAt"))
+                if host["pid"] is None:
+                    host["pid"] = client_info.get("pid")
+    for host_id, state in states.items():
+        state.pop("reply")
+        # A bounded run ends "completed", but the CLI's closing stop leaves it "stopped".
+        if state["state"] in {"stopped", "completed"}:
+            state["state"] = "finished_run"
+        hosts[host_id].update(state)
     status: dict[str, Any] = {
         "schema": SIMULATOR_STATUS_SCHEMA,
         "vehicle_id": vehicle_id,
-        "operator_url": chase_operator_url(endpoint),
+        "vehicles": [vehicle for vehicle, _ in results],
+        "hosts": sorted(hosts.values(), key=lambda host: (str(host["vehicle_id"]), host["url"])),
+    }
+    if vehicle_id is not None and not status["hosts"]:
+        status["hosts"].append({**_host_entry(vehicle_id, None), "state": "not found"})
+    return status
+
+
+def _simulator_status(
+    endpoint: str, remaining: Callable[[], float]
+) -> tuple[dict[str, Any], list[dict[str, Any]] | None]:
+    """One simulator's state, and the agents it lists (``None`` when it could not list them)."""
+
+    client = MetricsUiWsClient(endpoint, timeout_s=remaining())
+    status: dict[str, Any] = {
+        "provider": "chase-sim",
+        "url": chase_operator_url(endpoint),
         "state": "unreachable",
         "error": None,
         "frontend": None,
         "game": None,
-        "hosts": [],
         "hosts_error": None,
     }
     failures = (OSError, ValueError, MetricsUiWebSocketError)
-    hosts: dict[str, dict[str, Any]] = {}
-    reads: dict[str, Any] = {}
-
-    with ThreadPoolExecutor() as pool:
-        picar_endpoint = (picar_url or get_default_picar_base_url()).rstrip("/")
-        picar_probe = pool.submit(_probe_picar, Candidate("picar", picar_endpoint, "cli"), timeout_s=remaining())
-
-        def add(host: dict[str, Any]) -> dict[str, Any]:
-            key = host["vehicle_id"]
-            hosts[key] = host
-            if host["url"] is None:
-                host["state"] = "not running"
-            else:
-                reads[key] = pool.submit(
-                    host_state, host["url"], vehicle_id=host["vehicle_id"], timeout_s=remaining()
-                )
-            return host
-
-        for local in local_hosts():
-            if vehicle_id in (None, local["vehicle_id"]):
-                add(_host_entry(**local))
+    with ThreadPoolExecutor(max_workers=1) as pool:
         agents = pool.submit(client.list_agents, timeout_s=remaining())
         state_error = listed = list_error = None
         try:
@@ -311,67 +353,121 @@ def get_chase_simulator_status(
             listed = agents.result()
         except failures as exc:
             list_error = exc
-        # A server that answers either query is running; without a browser,
-        # get_state fails with a frontend delivery code.
-        frontend_error = state_error if _frontend_code(state_error) else None
-        if state_error is None or frontend_error is not None or listed is not None:
-            status["state"] = "running"
-        if state_error is not None and frontend_error is None:
-            status["error"] = str(state_error)
-        if listed is None:
-            if status["state"] == "running":
-                status["hosts_error"] = str(list_error)
+    # A server that answers either query is running; without a browser,
+    # get_state fails with a frontend delivery code.
+    frontend_error = state_error if _frontend_code(state_error) else None
+    if state_error is None or frontend_error is not None or listed is not None:
+        status["state"] = "running"
+    if state_error is not None and frontend_error is None:
+        status["error"] = str(state_error)
+    if listed is None and status["state"] == "running":
+        status["hosts_error"] = str(list_error)
+    if status["state"] == "running" and frontend_error is None:
+        try:
+            debug = client.get_play_debug(timeout_s=remaining())
+        except failures as exc:
+            frontend_error = exc
         else:
-            for host in hosts.values():
-                host["attached"] = False
-            for agent in listed:
-                client_info = agent.get("client")
-                if (
-                    not isinstance(client_info, dict)
-                    or client_info.get("kind") != "vehicle-host"
-                    or not isinstance(client_info.get("url"), str)
-                    or vehicle_id not in (None, client_info.get("vehicle_id"))
-                ):
-                    continue
-                url = client_info["url"].rstrip("/")
-                host = hosts.get(client_info.get("vehicle_id"))
-                if host is None or host["url"] != url:
-                    continue
-                host.update(attached=True, attached_since=agent.get("connectedAt"))
-                if host["pid"] is None:
-                    host["pid"] = client_info.get("pid")
-        if status["state"] == "running" and frontend_error is None:
-            try:
-                debug = client.get_play_debug(timeout_s=remaining())
-            except failures as exc:
-                frontend_error = exc
-            else:
-                status["frontend"], status["game"] = "connected", debug.get("gameId")
-        if frontend_error is not None:
-            code = _frontend_code(frontend_error)
-            status["frontend"] = "not answering" if code == "frontend_unresponsive" else "not connected"
-            if code is None:
-                status["error"] = status["error"] or str(frontend_error)
+            status["frontend"], status["game"] = "connected", debug.get("gameId")
+    if frontend_error is not None:
+        code = _frontend_code(frontend_error)
+        status["frontend"] = "not answering" if code == "frontend_unresponsive" else "not connected"
+        if code is None:
+            status["error"] = status["error"] or str(frontend_error)
+    return status, listed
 
-    probe = picar_probe.result()
+
+def _picar_status(url: str, remaining: Callable[[], float]) -> tuple[dict[str, Any], None]:
+    probe = _probe_picar(Candidate("picar", url, "discovered"), timeout_s=remaining())
+    return {"provider": "picar", "url": url, "state": _picar_state(probe), "error": probe.error}, None
+
+
+def _picar_state(probe: ProbeResult) -> str:
+    if probe.active:
+        return "answering"
     reachable = probe.diagnostics.get("runtime_state") in {"server_not_listening", "http_unhealthy"}
-    status["picar"] = {"url": picar_endpoint, "state": "answering" if probe.active else
-                       "reachable, no host listening" if reachable else "unreachable", "error": probe.error}
-    for host_id, read in reads.items():
-        state = read.result()
-        state.pop("reply")
-        # A bounded run ends "completed", but the CLI's closing stop leaves it "stopped".
-        if state["state"] in {"stopped", "completed"}:
-            state["state"] = "finished_run"
-        hosts[host_id].update(state)
-    status["hosts"] = sorted(hosts.values(), key=lambda host: (str(host["vehicle_id"]), host["url"]))
-    if vehicle_id is not None and not status["hosts"]:
-        status["hosts"].append({
-            **_host_entry(vehicle_id, None),
-            "attached": False if listed is not None else None,
-            "state": "not found",
-        })
-    return status
+    return "reachable, no host listening" if reachable else "unreachable"
+
+
+def default_chase_url() -> str:
+    """The simulator status always lists: ``CHASE_UI_WS_URL``, else localhost:5050."""
+
+    return normalize_chase_url(os.environ.get(CHASE_UI_WS_URL_ENV, DEFAULT_CHASE_UI_WS_URL))
+
+
+def listed_vehicles() -> list[Candidate]:
+    """Where vehicles status looks: the default simulator, then each discovered vehicle."""
+
+    return _dedupe_candidates([Candidate("chase-sim", default_chase_url(), "default"), *_discovered_candidates()])
+
+
+def _discovered_candidates() -> list[Candidate]:
+    from .runtime_hosts import discovered_vehicles
+
+    return [Candidate(vehicle["provider"], vehicle["url"], "discovered") for vehicle in discovered_vehicles()]
+
+
+def normalize_vehicle_url(provider: str, url: str) -> str:
+    """A vehicle's URL as a host record and the discovered list keep it."""
+
+    if provider == "chase-sim":
+        return normalize_chase_url(url)
+    value = url.strip().rstrip("/")
+    parsed = urlparse(value)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("A PiCar --url must be an HTTP(S) URL.")
+    return value
+
+
+def _vehicle_heading(provider: str, url: str) -> str:
+    return f"{_HEADINGS[provider]} at {chase_operator_url(url) if provider == 'chase-sim' else url}"
+
+
+def discover_vehicle(*, provider: str, url: str, force: bool = False) -> CommandResult:
+    """List a vehicle in vehicles status once it can take a host, or regardless with ``force``."""
+
+    from .runtime_hosts import discovered_vehicles, write_discovered_vehicles
+
+    try:
+        url = normalize_vehicle_url(provider, url)
+    except ValueError as exc:
+        return CommandResult(2, str(exc))
+    heading = _vehicle_heading(provider, url)
+    listed = discovered_vehicles()
+    entry = {"provider": provider, "url": url}
+    if entry in listed or (provider == "chase-sim" and url == default_chase_url()):
+        return CommandResult(0, f"Already listed: {heading}")
+    probe = _probe_candidate(Candidate(provider, url, "discovered"), timeout_s=DEFAULT_READINESS_TIMEOUT_S)
+    # A simulator takes a host as create host requires; a PiCar once its machine answers.
+    ready = probe.active if provider == "chase-sim" else _picar_state(probe) != "unreachable"
+    if not ready and not force:
+        name = "Chase simulator" if provider == "chase-sim" else "PiCar"
+        return CommandResult(2, f"No {name} can take a host at {url}: {probe.error}")
+    write_discovered_vehicles([*listed, entry])
+    return CommandResult(0, f"Discovered {heading}" + ("" if ready else f", which cannot take a host now: {probe.error}"))
+
+
+def remove_vehicle(*, url: str) -> CommandResult:
+    """Stop listing a discovered vehicle; the default simulator stays."""
+
+    from .runtime_hosts import discovered_vehicles, write_discovered_vehicles
+
+    def normalized(provider: str) -> str | None:
+        try:
+            return normalize_vehicle_url(provider, url)
+        except ValueError:
+            return None
+
+    default = default_chase_url()
+    if normalized("chase-sim") == default:
+        return CommandResult(2, f"{chase_operator_url(default)} is the default simulator and is always listed.")
+    listed = discovered_vehicles()
+    removed = [vehicle for vehicle in listed if normalized(vehicle["provider"]) == vehicle["url"]]
+    if not removed:
+        names = ", ".join(_vehicle_heading(vehicle["provider"], vehicle["url"]) for vehicle in listed)
+        return CommandResult(2, f"No discovered vehicle at {url}. " + (f"Discovered: {names}." if names else "None discovered."))
+    write_discovered_vehicles([vehicle for vehicle in listed if vehicle not in removed])
+    return CommandResult(0, "\n".join(f"Removed {_vehicle_heading(vehicle['provider'], vehicle['url'])}" for vehicle in removed))
 
 
 def _frontend_code(exc: BaseException | None) -> str | None:
@@ -402,29 +498,27 @@ def host_state_text(host: dict[str, Any]) -> str:
 
 
 def format_chase_simulator_status(status: dict[str, Any]) -> str:
-    url = status.get("operator_url", "unknown")
-    # Each environment's heading names the --provider that create host takes for it.
-    if status.get("state") == "running":
-        simulator = [f"Simulator (chase-sim)  running at {url}"]
-        if status.get("frontend") == "connected" and status.get("game"):
-            simulator.append(f"  frontend connected, game {status['game']}")
-        elif status.get("frontend"):
-            simulator.append(f"  frontend {status['frontend']}")
-    else:
-        simulator = [f"Simulator (chase-sim)  unreachable at {url}"]
-    simulator += _indented(status.get("error"))
-    if status.get("hosts_error"):
-        simulator.append(f"  cannot list attached hosts: {status['hosts_error']}")
-    blocks = ["\n".join(simulator)]
-    picar = status.get("picar")
-    if picar:
-        blocks.append(f"PiCar (picar)  {picar['state']} at {picar['url']}" +
-                      (f": {picar['error']}" if picar.get("error") else ""))
+    blocks = [_vehicle_block(vehicle) for vehicle in status.get("vehicles") or []]
     hosts = status.get("hosts") or []
     if not hosts:
         blocks.append("No hosts found")
     blocks.extend(_host_block(host) for host in hosts)
     return "\n\n".join(blocks)
+
+
+def _vehicle_block(vehicle: dict[str, Any]) -> str:
+    heading = f"{_HEADINGS[vehicle['provider']]}  {vehicle['state']} at {vehicle['url']}"
+    if vehicle["provider"] == "picar":
+        return heading + (f": {vehicle['error']}" if vehicle.get("error") else "")
+    lines = [heading]
+    if vehicle.get("frontend") == "connected" and vehicle.get("game"):
+        lines.append(f"  frontend connected, game {vehicle['game']}")
+    elif vehicle.get("frontend"):
+        lines.append(f"  frontend {vehicle['frontend']}")
+    lines += _indented(vehicle.get("error"))
+    if vehicle.get("hosts_error"):
+        lines.append(f"  cannot list attached hosts: {vehicle['hosts_error']}")
+    return "\n".join(lines)
 
 
 def _host_block(host: dict[str, Any]) -> str:
@@ -459,7 +553,7 @@ def _attachment_text(host: dict[str, Any]) -> str | None:
     # A PiCar is not a simulator host.
     if local == "staged connection" or host.get("attached") is None:
         return local
-    return f"not attached to this simulator ({local})" if local else "not attached to this simulator"
+    return f"not attached to its simulator ({local})" if local else "not attached to its simulator"
 
 
 def _count(value: Any, noun: str) -> str | None:
@@ -1029,6 +1123,7 @@ def _picar_candidates(extra_urls: tuple[str, ...]) -> list[Candidate]:
         candidates.append(Candidate("picar", _normalize_http_url(env_url), f"env:{LOCAL_CAR_BASE_URL_ENV}"))
 
     candidates.append(Candidate("picar", _normalize_http_url(DEFAULT_LOCAL_CAR_BASE_URL), "default"))
+    candidates.extend(candidate for candidate in _discovered_candidates() if candidate.provider == "picar")
 
     for url in extra_urls:
         if url.strip():
@@ -1052,6 +1147,7 @@ def _chase_candidates(extra_urls: tuple[str, ...]) -> list[Candidate]:
     candidates.append(
         Candidate("chase-sim", normalize_chase_url(DEFAULT_CHASE_UI_WS_URL), "default")
     )
+    candidates.extend(candidate for candidate in _discovered_candidates() if candidate.provider == "chase-sim")
     for url in extra_urls:
         if url.strip():
             candidates.append(Candidate("chase-sim", normalize_chase_url(url), "cli"))

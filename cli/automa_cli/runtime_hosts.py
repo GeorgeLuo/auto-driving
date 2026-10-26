@@ -32,6 +32,9 @@ RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "ve
 AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
 HOST_RECORD = "host.json"
 HOST_LOG = "host.log"
+# Where vehicles status looks besides the default simulator.
+DISCOVERED = "discovered.json"
+DISCOVERED_SCHEMA = "automa_discovered_vehicles_v0"
 HOST_START_TIMEOUT_S = 20.0
 LOG_TAIL_LINES = 20
 # The host imports only the release: ``-I`` drops the working tree and user
@@ -379,6 +382,21 @@ def local_hosts() -> list[dict[str, Any]]:
             "vehicle_url": connection.get("ws_url") if chase else connection.get("base_url"),
         })
     return hosts
+
+
+def discovered_vehicles() -> list[dict[str, str]]:
+    """The ``{provider, url}`` of each vehicle ``vehicles discover`` listed, oldest first."""
+
+    path = RUNTIME_ROOT / DISCOVERED
+    if not path.is_file():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))["vehicles"]
+
+
+def write_discovered_vehicles(vehicles: list[dict[str, str]]) -> None:
+    path = RUNTIME_ROOT / DISCOVERED
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps({"schema": DISCOVERED_SCHEMA, "vehicles": vehicles}, indent=2) + "\n", encoding="utf-8")
 
 
 def runtime_base_url(vehicle_id: str, *, start: bool = False, timeout_s: float = HOST_START_TIMEOUT_S) -> str:

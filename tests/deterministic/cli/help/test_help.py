@@ -12,7 +12,9 @@ class HelpCommandTests(unittest.TestCase):
     def test_operator_journey_parses(self) -> None:
         parser = build_parser()
         for args in (
-            ["vehicles", "status", "--chase-url", "http://localhost:5050"],
+            ["vehicles", "status"],
+            ["vehicles", "discover", "--provider", "chase-sim", "--url", "http://localhost:5051"],
+            ["vehicles", "remove", "--url", "http://localhost:5051"],
             [
                 "vehicles",
                 "update",

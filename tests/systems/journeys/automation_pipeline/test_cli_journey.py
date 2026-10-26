@@ -97,18 +97,15 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     "BROWSER": "true",
                     "CHASE_UI_WS_URL": ws_url,
                 }
-                http_url = "http" + ws_url.removeprefix("ws").removesuffix(
-                    "/ws/control"
-                )
 
                 def simulator() -> dict:
                     return json.loads(invoke_automa(
-                        "vehicles", "status", "--chase-url", http_url, "--json",
-                        runtime_root=runtime_root, extra_env=env,
+                        "vehicles", "status", "--json", runtime_root=runtime_root, extra_env=env,
                     ).stdout)
 
                 initial = simulator()
-                self.assertEqual((initial["state"], initial["hosts"]), ("running", []))
+                self.assertEqual(([vehicle["state"] for vehicle in initial["vehicles"]], initial["hosts"]),
+                                 (["running"], []))
                 initial_fingerprint = _session_fingerprint(ws_url)
                 invoke_automa("vehicles", "create", "host", "--id", "chase-sim-chaser", "--provider", "chase-sim",
                               "--url", ws_url, runtime_root=runtime_root, extra_env=env)

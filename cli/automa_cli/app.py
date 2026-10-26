@@ -43,8 +43,10 @@ from .runtime_view import serve_viewer
 from .streaming import stream_vehicle_memory, stream_vehicle_perception
 from .vehicles import (
     DEFAULT_READINESS_TIMEOUT_S,
+    discover_vehicle,
     format_chase_simulator_status,
     get_chase_simulator_status,
+    remove_vehicle,
 )
 
 
@@ -137,10 +139,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     status = vehicle_commands.add_parser(
         "status",
-        help="Show simulator and PiCar availability and each created host.",
+        help="Show each discovered vehicle and each created host.",
         description=(
-            "Show simulator and PiCar availability and the state of created hosts. "
-            "Exits 1 when no environment is reachable, or --id names a missing, "
+            "Show the default simulator (CHASE_UI_WS_URL, else http://localhost:5050), "
+            "each vehicle that vehicles discover listed, and the state of created hosts. "
+            "Exits 1 when no vehicle is reachable, or --id names a missing, "
             "stopped, unanswering, or errored host."
         ),
     )
@@ -154,37 +157,43 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     status.add_argument(
-        "--chase-url",
-        default=None,
-        help=(
-            "Metrics UI HTTP(S) or WS(S) URL. HTTP origins are resolved to "
-            "/ws/control (default: CHASE_UI_WS_URL, then http://localhost:5050)."
-        ),
-    )
-    status.add_argument(
-        "--chase-ws-url",
-        default=None,
-        help=(
-            "Compatibility form for an explicit Metrics UI WebSocket URL; "
-            "cannot be combined with --chase-url."
-        ),
-    )
-    status.add_argument(
         "--timeout-s",
         type=float,
         default=DEFAULT_READINESS_TIMEOUT_S,
         help=(
-            "One wall-clock deadline in seconds for the simulator queries and the "
+            "One wall-clock deadline in seconds for the vehicle probes and the "
             f"host reads, which run in parallel (default: {DEFAULT_READINESS_TIMEOUT_S:g})."
         ),
     )
     status.add_argument(
         "--json",
         action="store_true",
-        help="Print automa_simulator_status_v1 JSON.",
+        help="Print automa_simulator_status_v2 JSON.",
     )
-    status.add_argument("--picar-url", default=None, help="PiCar HTTP(S) URL to probe.")
     status.set_defaults(handler=_handle_vehicles_status)
+
+    discover = vehicle_commands.add_parser(
+        "discover",
+        help="List a vehicle in vehicles status.",
+        description=(
+            "List a vehicle in vehicles status once it can take a host: a simulator "
+            "with its frontend connected and the Chase game loaded, or a PiCar whose "
+            "machine answers. Exits 2 otherwise, unless --force."
+        ),
+    )
+    discover.add_argument("--provider", required=True, choices=HOST_PROVIDERS,
+                          help="What the vehicle is: a simulator (chase-sim) or a PiCar (picar).")
+    discover.add_argument("--url", required=True,
+                          help="The simulator's HTTP(S) origin or WS(S) control URL, or the PiCar's HTTP(S) URL.")
+    discover.add_argument("--force", action="store_true", help="List the vehicle even when it cannot take a host now.")
+    discover.set_defaults(handler=_handle_vehicles_discover)
+    remove = vehicle_commands.add_parser(
+        "remove",
+        help="Stop listing a discovered vehicle in vehicles status.",
+        description="Stop listing a discovered vehicle. The default simulator is always listed.",
+    )
+    remove.add_argument("--url", required=True, help="The URL the vehicle was discovered at, in either form.")
+    remove.set_defaults(handler=_handle_vehicles_remove)
 
     automation = vehicle_commands.add_parser(
         "automation",
@@ -1374,7 +1383,9 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "",
                 "- create host  create and start a named host",
                 "- delete host  stop and remove a host",
-                "- status       show the simulator, its frontend, and each vehicle host's state",
+                "- discover     list a vehicle in status",
+                "- remove       stop listing a discovered vehicle",
+                "- status       show each discovered vehicle and each host's state",
                 "- update       stage controller selections or deploy vehicle code",
                 "- plugins      upload, arm, disarm and inspect plugins in a live catalog",
                 "- automation   manage locally deployed automation workers",
@@ -1577,20 +1588,8 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
         human_stream=sys.stderr,
     ):
         return 2
-    if args.chase_url is not None and args.chase_ws_url is not None:
-        print(
-            "automa vehicles status: --chase-url and --chase-ws-url cannot be used together",
-            file=sys.stderr,
-        )
-        return 2
     try:
-        payload = get_chase_simulator_status(
-            vehicle_id=args.vehicle_id,
-            chase_url=args.chase_url,
-            chase_ws_url=args.chase_ws_url,
-            picar_url=args.picar_url,
-            timeout_s=args.timeout_s,
-        )
+        payload = get_chase_simulator_status(vehicle_id=args.vehicle_id, timeout_s=args.timeout_s)
     except ValueError as exc:
         print(f"automa vehicles status: {exc}", file=sys.stderr)
         return 2
@@ -1598,7 +1597,7 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         print(format_chase_simulator_status(payload))
-    if payload["state"] != "running" and payload["picar"]["state"] == "unreachable":
+    if all(vehicle["state"] == "unreachable" for vehicle in payload["vehicles"]):
         return 1
     # Without --id, no host's state changes the exit.
     failed = {"not found", "not running", "not answering", "error"}
@@ -1904,6 +1903,18 @@ def _handle_vehicles_create_host(args: argparse.Namespace) -> int:
         dry_run=args.dry_run, json_output=args.json, verbose=args.verbose,
         output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
     )
+    print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_discover(args: argparse.Namespace) -> int:
+    result = discover_vehicle(provider=args.provider, url=args.url, force=args.force)
+    print(result.message)
+    return result.exit_code
+
+
+def _handle_vehicles_remove(args: argparse.Namespace) -> int:
+    result = remove_vehicle(url=args.url)
     print(result.message)
     return result.exit_code
 

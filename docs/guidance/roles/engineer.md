@@ -97,3 +97,10 @@ readable, possibility of consolidating similar code, or simply that there was to
 focus in documentation.
 
 tag: review, audit
+
+## Github
+
+After changes that propogate to a pr, create a comment that denotes what changed. If
+scope of pr changed, re-title the pr rather than modify the pr description. Taken together,
+this means pr description is the initial changes summary and subsequent changes are described
+in the comments.

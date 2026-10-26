@@ -36,6 +36,10 @@ inspection. It is observations, not a required gate.
 Report what changed, the focused validation result, known limitations, and the
 next concrete action only when one is still required.
 
+Include at the end of turn where the change is locally and if relevant to changes
+in that they were user facing, include instructions for running in terminal
+for basic expression of feature.
+
 ## Meta
 
 Before commit, verify changes do not introduce new vocabulary for like concepts

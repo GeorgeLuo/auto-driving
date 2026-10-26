@@ -1,4 +1,4 @@
-"""``hosts status``: each host's state and attachment, then its run."""
+"""``hosts status``: each host's state and attachment, and with ``--long`` its run."""
 
 from __future__ import annotations
 
@@ -30,14 +30,9 @@ from tests.support.runtime_fixtures import write_host_fixture
 
 
 def _host_blocks(stdout: str) -> list[list[str]]:
-    """Each host's block of ``hosts status``, without the run lines under it."""
+    """Each host's block of ``hosts status``."""
 
-    blocks = []
-    for block in stdout.strip("\n").split("\n\n"):
-        lines = block.splitlines()
-        run = next((index for index, line in enumerate(lines) if line.startswith("  deployment: ")), len(lines))
-        blocks.append(lines[:run])
-    return blocks
+    return [block.splitlines() for block in stdout.strip("\n").split("\n\n")]
 
 
 def _record(runtime_root: Path, host_id: str, url: str, simulator: str | None = None) -> None:
@@ -102,14 +97,17 @@ class HostStatusTests(unittest.TestCase):
         # The run lines use the host's one /host/status read.
         with mock.patch("cli.automa_cli.automation.host_state", side_effect=AssertionError("read twice")):
             human = self.status()
+            long = self.status("--long")
             machine = json.loads(self.status("--json").stdout)
 
-        self.assertEqual(human.returncode, 0, human.stderr)
+        self.assertEqual((human.returncode, long.returncode), (0, 0), human.stderr + long.stderr)
         [block] = _host_blocks(human.stdout)
         self.assertEqual(block[:3], ["Host chase-sim-chaser  not started", self.chaser, "  0 decisions, 0 errors"])
         self.assertRegex(block[3], r"^  attached since \d{4}-\d\d-\d\d \d\d:\d\d:\d\d$")
         self.assertEqual(block[4:], [f"  {host.base_url}, pid {os.getpid()}"])
-        self.assertIn("\n  deployment: ", human.stdout)
+        # --long adds the run lines under the same block.
+        self.assertTrue(long.stdout.startswith("\n".join(block[:3]) + "\n"), long.stdout)
+        self.assertIn(f"\n  {host.base_url}, pid {os.getpid()}\n  deployment: ", long.stdout)
         self.assertEqual((machine["schema"], machine["host_id"]), ("automa_hosts_status", None))
         [entry] = machine["hosts"]
         self.assertEqual(

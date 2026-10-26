@@ -32,7 +32,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     env = {"CHASE_UI_WS_URL": ws_url}
                     command = f"./cli/automa hosts stage {step} --id {HOST_ID}"
                     human = invoke_automa(
-                        "hosts", "status", runtime_root=runtime_root, extra_env=env,
+                        "hosts", "status", "--long", runtime_root=runtime_root, extra_env=env,
                     )
                     self.assertIn(f"Invalid {step} activation:", human.stdout)
                     self.assertIn(f"Restage with your intended selection: {command}", human.stdout)

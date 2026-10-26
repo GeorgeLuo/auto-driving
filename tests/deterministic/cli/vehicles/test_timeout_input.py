@@ -142,7 +142,7 @@ class TimeoutInputTests(unittest.TestCase):
         ) as get_hosts:
             code, _, _ = _invoke("hosts", "status", "--timeout-s", "1.25")
         self.assertEqual(code, 0)
-        get_hosts.assert_called_once_with(host_id=None, timeout_s=1.25, json_output=False)
+        get_hosts.assert_called_once_with(host_id=None, timeout_s=1.25, long=False, json_output=False)
 
         with patch(
             "cli.automa_cli.app.run_host_automation",

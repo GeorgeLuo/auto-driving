@@ -21,7 +21,7 @@ Run these commands from the repository root with the environment from
 perception and memory presets. For an existing tuned deployment, stage your
 intended selections instead: each update replaces its named step's configs.
 `runtime/` persists across branch changes; incompatible activations must be
-explicitly restaged using the recovery that `hosts status` prints.
+explicitly restaged using the recovery that `hosts status --long` prints.
 
 ```sh
 ./cli/automa vehicles status
@@ -54,10 +54,10 @@ reachability. Use the provider and URL with `hosts create`.
 
 `hosts status` prints a block for each created host: its state, its vehicle
 and that vehicle's URL, whether its simulator lists it, and the host URL and
-pid, then its deployment, run and view. `--id` selects one host; `--json` emits
-`automa_hosts_status` with a `hosts` array whose entries carry the host's
-`run` detail. Host names are chosen at creation and do not identify the
-vehicle environment.
+pid. `--long` adds each host's deployment, run and view under its block. `--id`
+selects one host; `--json` emits `automa_hosts_status` with a `hosts` array
+whose entries carry the host's `run` detail. Host names are chosen at creation
+and do not identify the vehicle environment.
 
 To look through a host, pass the URL on its last status line to `hosts viewer`:
 
@@ -113,7 +113,7 @@ host was created at that simulator.
 Without them, an otherwise fresh cycle runs no memory or perception plugins,
 and `hosts run` starts the same way. Each update writes only its own step; absent observation, plan and action activations run
 their built-in plugins. Neither update command starts a worker, applies
-movement, or requires a live simulator. `hosts status` reports
+movement, or requires a live simulator. `hosts status --long` reports
 invalid staged steps, and `hosts run` checks them before it starts.
 
 `hosts run --observe-only` preserves the current scenario, playback
@@ -290,7 +290,7 @@ external change.
 | Capture identity/image invalid | Repair the exact field named by `capture_identity_invalid` or `capture_image_invalid` |
 | Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it |
 | Deployment absent | Run the printed `hosts stage perception` command; stage memory separately when you want its ledger |
-| Staged step invalid (including a retired schema) | `hosts status`, startup, `hosts info`, and the autonomy update identify its step, activation path, and restage command. Run its `hosts stage <step>` command with your intended selection, then rerun `hosts status`. Checking never rewrites configs, and known invalid documents prevent worker startup, restart, and physical deployment |
+| Staged step invalid (including a retired schema) | `hosts status --long`, startup, `hosts info`, and the autonomy update identify its step, activation path, and restage command. Run its `hosts stage <step>` command with your intended selection, then rerun `hosts status --long`. Checking never rewrites configs, and known invalid documents prevent worker startup, restart, and physical deployment |
 | Worker stopped | Run the printed observation-only `hosts run --open-view` command |
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 

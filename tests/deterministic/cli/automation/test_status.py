@@ -117,7 +117,7 @@ class AutomationStatusTests(unittest.TestCase):
     def test_no_hosts_are_found_in_human_and_json_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            human = invoke_automa("hosts", "status", runtime_root=runtime_root)
+            human = invoke_automa("hosts", "status", "--long", runtime_root=runtime_root)
             machine = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)
 
         self.assertEqual(json.loads(machine.stdout), {"schema": "automa_hosts_status", "host_id": None, "hosts": []})
@@ -147,7 +147,7 @@ class AutomationStatusTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             write_runtime_fixture(runtime_root, HOST_ID, pid=os.getpid())
 
-            human = invoke_automa("hosts", "status", runtime_root=runtime_root)
+            human = invoke_automa("hosts", "status", "--long", runtime_root=runtime_root)
             machine = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)
 
         payload = json.loads(machine.stdout)
@@ -191,7 +191,7 @@ class AutomationStatusTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             write_runtime_fixture(runtime_root, HOST_ID, pid=DEAD_PID)
 
-            human = invoke_automa("hosts", "status", runtime_root=runtime_root)
+            human = invoke_automa("hosts", "status", "--long", runtime_root=runtime_root)
             machine = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)
 
         process = json.loads(machine.stdout)["hosts"][0]["run"]["process"]
@@ -218,7 +218,7 @@ class AutomationStatusTests(unittest.TestCase):
                 exit_code=2,
             )
 
-            human = invoke_automa("hosts", "status", runtime_root=runtime_root)
+            human = invoke_automa("hosts", "status", "--long", runtime_root=runtime_root)
             machine = invoke_automa("hosts", "status", "--json", runtime_root=runtime_root)
 
         run = json.loads(machine.stdout)["hosts"][0]["run"]

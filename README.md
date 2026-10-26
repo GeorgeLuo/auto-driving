@@ -261,7 +261,7 @@ staged now. If the archive is gone, replay exits 2 naming the release and
 Every step's update returns the same `host_step_update` payload under
 `--json`: `step`, `preset`, `plugins`, the staged `manifest`, and the `apply`
 commands. Staging does not check readiness; `hosts run` does before
-it starts, and `hosts status` reports invalid staged steps. An
+it starts, and `hosts status --long` reports invalid staged steps. An
 unknown-host failure under `--json` returns `host_step_update_error`
 with `host_id`, `step`, `error: unknown_host`, and the diagnostic in `message`; the command exits 2 and stages nothing.
 
@@ -306,7 +306,7 @@ uses its packaged configs.
 
 `runtime/` survives Git branch changes. Old per-step schemas, including
 `automa_memory_activation_v0`, are incompatible with the shared
-`automa_step_activation_v0` documents. `hosts status` reports an
+`automa_step_activation_v0` documents. `hosts status --long` reports an
 invalid deployment and the affected step's `hosts stage <step>` command.
 Restage that step with your intended selection, then check it again. Every command that reads
 staged documents checks them first and prints the same step, path, reason, and

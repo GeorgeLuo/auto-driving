@@ -852,29 +852,34 @@ def get_hosts_status(
     *,
     host_id: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
+    long: bool = False,
     json_output: bool = False,
 ) -> CommandResult:
-    """Each host's state and attachment, then its deployment, run and view.
+    """Each host's state and attachment; ``long`` adds its deployment, run and view.
 
-    With ``host_id``, exits 1 when that host is missing, stopped, not
-    answering, or reports an error. Without it, no host's state changes the exit.
+    The JSON carries every host's run. With ``host_id``, exits 1 when that host
+    is missing, stopped, not answering, or reports an error. Without it, no
+    host's state changes the exit.
     """
 
     reads = read_hosts(host_id=host_id, timeout_s=timeout_s)
-    runs = {
-        run["host_id"]: run
-        for run in _collect_automation_status(
-            host_id=host_id,
-            host_reads={host["host_id"]: read for host, read in reads if read is not None},
-        )
-    }
-    hosts = [{**host, "run": runs.get(host["host_id"])} for host, _ in reads]
+    hosts = [host for host, _ in reads]
     failed = {"not found", "not running", "not answering", "error"}
     exit_code = 1 if host_id is not None and any(host["state"] in failed for host in hosts) else 0
+    if long or json_output:
+        runs = {
+            run["host_id"]: run
+            for run in _collect_automation_status(
+                host_id=host_id,
+                host_reads={host["host_id"]: read for host, read in reads if read is not None},
+            )
+        }
+        for host in hosts:
+            host["run"] = runs.get(host["host_id"])
     if json_output:
         payload = {"schema": "automa_hosts_status", "host_id": host_id, "hosts": hosts}
         return CommandResult(exit_code, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(exit_code, _format_hosts_status(hosts))
+    return CommandResult(exit_code, _format_hosts_status(hosts, long=long))
 
 
 def stop_host_automation(
@@ -1291,10 +1296,12 @@ def _collect_automation_status(
     return statuses
 
 
-def _format_hosts_status(hosts: list[dict[str, Any]]) -> str:
+def _format_hosts_status(hosts: list[dict[str, Any]], *, long: bool) -> str:
     if not hosts:
         return "No hosts found"
-    return "\n\n".join("\n".join([host_block(host), *_run_lines(host["run"])]) for host in hosts)
+    return "\n\n".join(
+        "\n".join([host_block(host), *(_run_lines(host["run"]) if long else [])]) for host in hosts
+    )
 
 
 def _run_lines(item: dict[str, Any] | None) -> list[str]:

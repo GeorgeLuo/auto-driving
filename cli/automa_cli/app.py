@@ -337,10 +337,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     host_status = host_commands.add_parser(
         "status",
-        help="Show each host's state, attachment and run.",
+        help="Show each host's state and attachment.",
         description=(
-            "Show each host's state and whether its simulator lists it, then its "
-            "deployment, run and view. Exits 1 when --id names a missing, "
+            "Show each host's state and whether its simulator lists it; --long adds "
+            "its deployment, run and view. Exits 1 when --id names a missing, "
             "stopped, unanswering, or errored host."
         ),
     )
@@ -349,6 +349,11 @@ def build_parser() -> argparse.ArgumentParser:
         dest="host_id",
         default=None,
         help="Host name. Omit to list every host.",
+    )
+    host_status.add_argument(
+        "--long",
+        action="store_true",
+        help="Add each host's deployment, run and view under its block.",
     )
     host_status.add_argument(
         "--timeout-s",
@@ -1437,7 +1442,7 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "- stop      stop the run; the host stays attached until hosts delete",
                 "- restart   stop and start the run",
                 "- serve     serve a Chase host in the foreground",
-                "- status    show each host's state, attachment and run",
+                "- status    show each host's state and attachment",
                 "- stage     stage controller selections for a host",
                 "- plugins   manage plugins in a live host catalog",
                 "- operation run bounded vehicle checks through a host",
@@ -1692,6 +1697,7 @@ def _handle_hosts_status(args: argparse.Namespace) -> int:
     result = get_hosts_status(
         host_id=args.host_id,
         timeout_s=args.timeout_s,
+        long=args.long,
         json_output=args.json,
     )
     if result.message:

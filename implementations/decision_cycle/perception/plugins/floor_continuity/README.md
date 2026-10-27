@@ -11,8 +11,7 @@ Normalized regions mean only that the current image contains evidence
 consistent with visible floor being interrupted there.
 
 The implementation uses the core NumPy and OpenCV runtime at 320x240 by
-default. Diagnostic floor masks, boundary masks, overlays, and summaries are
-written only by an explicitly recorded experiment.
+default.
 
 Stage it on a host with the frame plugin:
 
@@ -23,11 +22,11 @@ Stage it on a host with the frame plugin:
 Apply it to one archived image or a whole capture directory:
 
 ```sh
-./cli/automa plugins perception inspect path/to/frame.jpg \
-  --plugin frame --plugin floor_continuity --record
+./cli/automa plugins inspect perception path/to/frame.jpg \
+  --plugin frame --plugin floor_continuity
 
-./cli/automa plugins perception inspect path/to/frames \
-  --plugin frame --plugin floor_continuity --record
+./cli/automa plugins inspect perception path/to/frames \
+  --plugin frame --plugin floor_continuity
 ```
 
 Its default config is the `floor_continuity` entry in
@@ -47,8 +46,7 @@ With the current defaults, a five-frame `chaser-depth-obstacles` application emi
 20 boundaries without failures and measured a 40.320 ms unrecorded plugin
 median on the development Mac. Six archived Pi capture sets contributed 50
 frames with no processing failures and 190 emitted boundaries. Their
-unrecorded plugin medians ranged from 37.263 to 65.531 ms. Recorded runs are
-slower because diagnostic masks and overlays are encoded inside plugin timing.
+unrecorded plugin medians ranged from 37.263 to 65.531 ms.
 
 These are preliminary operability measurements. The Pi frames are not labeled,
 the processing ran on the development machine, and visible carpet fragments

@@ -11,9 +11,9 @@ not object identity, semantic detection, depth, or safe traversability.
 Run it against the capture with:
 
 ```sh
-./cli/automa plugins perception inspect \
+./cli/automa plugins inspect perception \
   lab/runs/cv-synthesis-20260919/retry/frames \
-  --plugin frame --plugin floor_continuity_temporal --record
+  --plugin frame --plugin floor_continuity_temporal
 ```
 
 Temporal state (previous box/confidence, miss count, and age) lives under

@@ -1630,6 +1630,8 @@ def _handle_status(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(f"automa vehicles status: {exc}", file=sys.stderr)
         return 2
+    if result.message:
+        print()
     print(format_vehicles_status(payload))
     if all(vehicle["state"] == "unreachable" for vehicle in payload["vehicles"]):
         return 1

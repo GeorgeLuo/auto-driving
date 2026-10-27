@@ -35,6 +35,8 @@ from .loopback_http import (
 )
 from .plugin_catalog import serve_plugin_catalog
 from .host_status import host_state_text, host_statuses
+from .workbench_runner import ImageReplayRunner
+from .workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY, ReplayRunner, serve_workbench_route
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
@@ -51,6 +53,8 @@ RUNTIME_HOST_ROUTES = frozenset({
     "/api/decision/latest",
     "/api/decision/image",
 })
+# The workbench page and API, answered from a replay runner whether or not a host is connected.
+WORKBENCH_PREFIX = "/workbench"
 RUNTIME_VIEW_HTML_PATH = Path(__file__).with_name("runtime_view.html")
 MEMORY_VIEW_HTML_PATH = Path(__file__).with_name("memory_view.html")
 DECISION_VIEW_HTML_PATH = Path(__file__).with_name("live_decision_view.html")
@@ -71,10 +75,13 @@ class RuntimeViewServer:
         decision_identity: dict[str, Any] | None = None,
         plugin_catalog: Callable | None = None,
         connected: bool = True,
+        replay_runner: ReplayRunner | None = None,
     ) -> None:
         validate_loopback_host(host, owner="runtime view")
         self.host_name = host_name
         self.connected = connected
+        self._replay_runner = replay_runner
+        self._replay_runner_lock = threading.Lock()
         self.plugin_catalog = plugin_catalog
         self.automation_dir = automation_dir
         self.host = host
@@ -94,6 +101,18 @@ class RuntimeViewServer:
         if self._httpd is None:
             return None
         return self._httpd.loopback_url
+
+    @property
+    def workbench_url(self) -> str | None:
+        return f"{self.url}workbench/" if self.url is not None else None
+
+    def replay_runner(self) -> ReplayRunner:
+        """Build the viewer's shared replay runner on the first workbench visit."""
+
+        with self._replay_runner_lock:
+            if self._replay_runner is None:
+                self._replay_runner = ImageReplayRunner()
+            return self._replay_runner
 
     def start(self) -> "RuntimeViewServer":
         if self._httpd is not None:
@@ -173,6 +192,8 @@ class RuntimeViewServer:
         if httpd is None:
             return
         stop_server_thread(httpd, thread)
+        if self._replay_runner is not None:
+            self._replay_runner.close()
         self.decision.stop()
         self._write_record("stopped")
         self._httpd = None
@@ -184,6 +205,8 @@ class RuntimeViewServer:
 
 
 class _RuntimeHttpServer(LoopbackHTTPServer):
+    # A workbench visit queues its styles and scripts while replay work is running.
+    request_queue_size = 128
     publisher: RuntimeViewServer
 
 
@@ -199,6 +222,8 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
     def do_POST(self) -> None:
         route = urlparse(self.path).path
         if self._refuse_when_not_connected(route, include_body=True):
+            return
+        if self._serve_workbench(route, include_body=True):
             return
         if route == PLUGIN_CATALOG_PATH:
             serve_plugin_catalog(self, self.server.publisher.plugin_catalog)
@@ -234,10 +259,23 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         self._send_json(503, {"ok": False, "error": NOT_CONNECTED_ERROR}, include_body=include_body)
         return True
 
+    def _serve_workbench(self, route: str, *, include_body: bool) -> bool:
+        """Answer a route under /workbench/ from the viewer's replay runner; True if answered."""
+
+        if not route.startswith(WORKBENCH_PREFIX + "/"):
+            return False
+        runner = self.server.publisher.replay_runner()
+        self.content_security_policy = WORKBENCH_CONTENT_SECURITY_POLICY
+        if not serve_workbench_route(self, runner, route.removeprefix(WORKBENCH_PREFIX), include_body=include_body):
+            self._send_json(404, {"error": "not found"}, include_body=include_body)
+        return True
+
     def _handle_request(self, *, include_body: bool) -> None:
         request = urlparse(self.path)
         route = request.path
         if self._refuse_when_not_connected(route, include_body=include_body):
+            return
+        if self._serve_workbench(route, include_body=include_body):
             return
         if self._serve_shared_file(route, include_body=include_body):
             return

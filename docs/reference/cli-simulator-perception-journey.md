@@ -168,9 +168,9 @@ Add `--config '<JSON object>'`, for example `--config '{"throttle": -0.6}'`,
 to store constructor settings with the revision; arming constructs the plugin
 with them, and `plugins status --json` reports them.
 
-Use `--url <viewer-or-workbench-url>` instead of `--name` to address a catalog
-directly. The same command and `/api/plugins` endpoint apply to Chase, PiCar,
-and the replay workbench. Workbench plugin panels refresh their catalogs even
+Use `--url <viewer-url>/workbench` instead of `--name` to address the workbench
+catalog directly. The same command and relative `/api/plugins` endpoint apply
+to Chase, PiCar, and the replay workbench. Workbench plugin panels refresh their catalogs even
 before a replay starts or after it finishes. Dependent files can be uploaded
 in sequence without resolving each other during registration.
 

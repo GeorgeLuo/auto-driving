@@ -45,7 +45,7 @@ function flushLoop() {
   var body = { action: "set_loop", loop: on };
   var runId = selectedRunId("set_loop");
   if (runId) body.run_id = runId;
-  fetch("/api/action", {
+  fetch("api/action", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
@@ -96,7 +96,7 @@ async function action(action, extra) {
   if (extra) Object.keys(extra).forEach(function (key) { body[key] = extra[key]; });
   if (!skipViewer) setNotice("");
   try {
-    var response = await fetch("/api/action", {
+    var response = await fetch("api/action", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body)
@@ -205,7 +205,7 @@ function showScrubImage(position) {
   if (imageKey === lastImageKey) return;
   lastImageKey = imageKey;
   var requestGeneration = ++imageRequestGeneration;
-  var imageUrl = "/api/frame?run_id=" + encodeURIComponent(runId) + "&position=" + encodeURIComponent(position);
+  var imageUrl = "api/frame?run_id=" + encodeURIComponent(runId) + "&position=" + encodeURIComponent(position);
   var hasRenderedImage = loadedImageKey !== "";
   if (!hasRenderedImage) {
     elements.viewerFrame.hidden = true;

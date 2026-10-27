@@ -639,6 +639,13 @@ absent and shows the reason while memory can still show retained records.
 ./cli/automa hosts workbench replay path/to/images --perception-preset multi_obstruction --memory-preset recency_ledger --serve
 ```
 
+`--serve` keeps the viewer available with this replay on its **Workbench** page
+at `/workbench/`; `--open` also opens that page in a browser.
+
+`./cli/automa` with no command and every host's viewer have the same **Workbench**
+button. It opens an empty workbench with each step's default preset. Enter an
+image directory, then press Start. The Automa icon returns to the viewer's home page.
+
 A preset keeps its plugin configs until that step's ordered selection changes.
 A changed selection uses catalog defaults for every selected plugin; it does
 not restore a recording's step configs or a tuned preset just because its ids
@@ -652,7 +659,8 @@ rebuilds every step's pipeline with a fresh shared map and runs from the first
 frame to the displayed frame before the action returns. This includes the last frame still displayed
 between loop passes.
 
-For workbench API integrations, `GET /api/state` reports schema
+For workbench API integrations, the page and its API sit under `/workbench/`
+on the viewer. `GET /workbench/api/state` reports schema
 `workbench_image_replay_state_v3`. Read `<step>_plugin_catalog` for availability
 and default configs, `active_<step>_plugin_ids` for the selected execution order,
 and `machine_detail.pipeline.<step>_preset` for the selection's preset name or

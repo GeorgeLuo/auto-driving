@@ -1,0 +1,359 @@
+"""Decision playback page and API served by the runtime viewer under /workbench/."""
+
+from __future__ import annotations
+
+import json
+import re
+from pathlib import Path
+from typing import Any, Protocol
+from urllib.parse import parse_qs, urlparse
+
+from .loopback_http import STATIC_CONTENT_TYPES
+from .workbench_contract import (
+    ReplayActionError,
+    WORKBENCH_ACTION_RESULT_SCHEMA,
+    WORKBENCH_ERROR_SCHEMA,
+    WORKBENCH_MAX_ACTION_BYTES,
+)
+from .workbench_source import SourceValidationError
+from .plugin_catalog import serve_plugin_catalog
+from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
+
+
+WORKBENCH_PAGE_DIR = Path(__file__).with_name("workbench_page")
+# The page's own files, served read-only under /static/ beside /static/shared/.
+WORKBENCH_STATIC_PATTERN = re.compile(r"^/static/(workbench\.css|js/[a-z]+\.js)$")
+# The page runs no inline script, wherever it is served.
+WORKBENCH_CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; connect-src 'self'; img-src 'self' data:; "
+    "style-src 'self' 'unsafe-inline'; script-src 'self'"
+)
+
+
+class ReplayRunner(Protocol):
+    def state(self) -> dict[str, Any]:
+        ...
+
+    def close(self) -> None:
+        ...
+
+    def dispatch(self, action: str, **kwargs: Any) -> dict[str, Any]:
+        ...
+
+    def frame_bytes(
+        self,
+        frame_id: str | None = None,
+        *,
+        run_id: str,
+        position: int | None = None,
+    ) -> tuple[bytes, str] | None:
+        ...
+
+
+def serve_workbench_route(
+    handler: Any,
+    runner: ReplayRunner,
+    route: str,
+    *,
+    include_body: bool = True,
+) -> bool:
+    """Answer one workbench page or API route from ``runner``; False leaves it to the caller.
+
+    ``route`` is relative to ``/workbench/`` on the runtime viewer.
+    """
+
+    if route == PLUGIN_CATALOG_PATH:
+        serve_plugin_catalog(handler, getattr(runner, "plugin_catalog", None), include_body=include_body)
+        return True
+    if handler.command == "POST":
+        if route != "/api/action":
+            return False
+        _serve_action(handler, runner)
+        return True
+    if route in {"/", "/index.html"}:
+        _serve_page_file(handler, "index.html", include_body=include_body)
+        return True
+    if WORKBENCH_STATIC_PATTERN.match(route):
+        _serve_page_file(handler, route.removeprefix("/static/"), include_body=include_body)
+        return True
+    if handler._serve_shared_file(route, include_body=include_body):
+        return True
+    if route == "/api/state":
+        handler._send_json(200, runner.state(), include_body=include_body)
+        return True
+    if route == "/api/frame":
+        _serve_frame(handler, runner, urlparse(handler.path).query, include_body=include_body)
+        return True
+    return False
+
+
+def _action_payload(runner: ReplayRunner, payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise ReplayActionError(
+            "action body must be a JSON object",
+            status_code=400,
+            boundary="input",
+        )
+    allowed = {
+        "action",
+        "run_id",
+        "source_dir",
+        "cadence_ms",
+        "pace",
+        "step",
+        "active_plugin_ids",
+        "position",
+        "loop",
+    }
+    unknown = sorted(set(payload) - allowed)
+    if unknown:
+        raise ReplayActionError(
+            f"unknown action fields: {', '.join(str(item) for item in unknown)}",
+            status_code=400,
+            boundary="input",
+        )
+    action = payload.get("action")
+    if not isinstance(action, str) or not action.strip():
+        raise ReplayActionError(
+            "action must be a non-empty string",
+            status_code=400,
+            boundary="input",
+        )
+    run_id = payload.get("run_id")
+    if run_id is not None and (not isinstance(run_id, str) or not run_id.strip()):
+        raise ReplayActionError(
+            "run_id must be a non-empty string",
+            status_code=400,
+            boundary="input",
+        )
+    source_dir = payload.get("source_dir")
+    if source_dir is not None and not isinstance(source_dir, str):
+        raise ReplayActionError(
+            "source_dir must be a path string",
+            status_code=400,
+            boundary="input",
+        )
+    cadence_ms = payload.get("cadence_ms")
+    if cadence_ms is not None and (
+        isinstance(cadence_ms, bool) or not isinstance(cadence_ms, int)
+    ):
+        raise ReplayActionError(
+            "cadence_ms must be an integer",
+            status_code=400,
+            boundary="input",
+        )
+    pace = payload.get("pace")
+    if pace is not None and not isinstance(pace, str):
+        raise ReplayActionError(
+            "pace must be a string",
+            status_code=400,
+            boundary="input",
+        )
+    step = payload.get("step")
+    if step is not None and not isinstance(step, str):
+        raise ReplayActionError(
+            "step must be a string",
+            status_code=400,
+            boundary="input",
+        )
+    active_plugin_ids = payload.get("active_plugin_ids")
+    if active_plugin_ids is not None:
+        if not isinstance(active_plugin_ids, list) or any(
+            not isinstance(item, str) for item in active_plugin_ids
+        ):
+            raise ReplayActionError(
+                "active_plugin_ids must be an array of strings",
+                status_code=400,
+                boundary="input",
+            )
+    position = payload.get("position")
+    if position is not None and (
+        isinstance(position, bool) or not isinstance(position, int)
+    ):
+        raise ReplayActionError(
+            "position must be an integer",
+            status_code=400,
+            boundary="input",
+        )
+    loop = payload.get("loop")
+    if loop is not None and not isinstance(loop, bool):
+        raise ReplayActionError(
+            "loop must be a boolean",
+            status_code=400,
+            boundary="input",
+        )
+    try:
+        state = runner.dispatch(
+            action,
+            run_id=run_id,
+            source_dir=source_dir,
+            cadence_ms=cadence_ms,
+            pace=pace,
+            step=step,
+            active_plugin_ids=active_plugin_ids,
+            position=position,
+            loop=loop,
+        )
+    except SourceValidationError as exc:
+        raise ReplayActionError(
+            str(exc),
+            status_code=422,
+            boundary="source",
+            state=runner.state(),
+        ) from exc
+    return {
+        "schema": WORKBENCH_ACTION_RESULT_SCHEMA,
+        "ok": True,
+        "action": action,
+        "state": state,
+    }
+
+
+def _serve_frame(handler: Any, runner: ReplayRunner, query_string: str, *, include_body: bool) -> None:
+    query = parse_qs(query_string, keep_blank_values=True)
+    frame_id = _query_one(query, "frame_id")
+    run_id = _query_one(query, "run_id")
+    position_raw = _query_one(query, "position")
+    position = None
+    if position_raw is not None:
+        try:
+            position = int(position_raw)
+        except ValueError:
+            handler._send_json(
+                400,
+                _error_payload(
+                    "input",
+                    "position must be an integer",
+                    runner.state(),
+                ),
+                include_body=include_body,
+            )
+            return
+    if not run_id or (not frame_id and position is None):
+        handler._send_json(
+            400,
+            _error_payload(
+                "input",
+                "run_id and frame_id or position are required",
+                runner.state(),
+            ),
+            include_body=include_body,
+        )
+        return
+    try:
+        frame = runner.frame_bytes(
+            frame_id,
+            run_id=run_id,
+            position=position,
+        )
+    except ReplayActionError as exc:
+        handler._send_json(
+            exc.status_code,
+            _error_payload(
+                exc.boundary,
+                str(exc),
+                exc.state or runner.state(),
+            ),
+            include_body=include_body,
+        )
+        return
+    if frame is None:
+        handler._send_json(
+            404,
+            _error_payload(
+                "frame",
+                "frame bytes are unavailable",
+                runner.state(),
+            ),
+            include_body=include_body,
+        )
+        return
+    body, content_type = frame
+    handler._send(200, body, content_type, include_body=include_body)
+
+
+def _serve_action(handler: Any, runner: ReplayRunner) -> None:
+    content_length = handler.headers.get("Content-Length")
+    try:
+        size = int(content_length) if content_length is not None else -1
+    except ValueError:
+        size = -1
+    if size < 0 or size > WORKBENCH_MAX_ACTION_BYTES:
+        handler._send_json(
+            413,
+            _error_payload(
+                "input",
+                f"request body must be between 0 and {WORKBENCH_MAX_ACTION_BYTES} bytes",
+                None,
+            ),
+        )
+        return
+    try:
+        payload = json.loads(handler.rfile.read(size).decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        handler._send_json(400, _error_payload("input", f"invalid JSON: {exc}", None))
+        return
+    try:
+        result = _action_payload(runner, payload)
+    except ReplayActionError as exc:
+        handler._send_json(
+            exc.status_code,
+            _error_payload(
+                exc.boundary,
+                str(exc),
+                exc.state or runner.state(),
+            ),
+        )
+        return
+    handler._send_json(200, result)
+
+
+def _serve_page_file(handler: Any, relative: str, *, include_body: bool) -> None:
+    path = WORKBENCH_PAGE_DIR / relative
+    try:
+        body = path.read_bytes()
+    except FileNotFoundError:
+        handler._send_json(
+            404,
+            _error_payload("route", f"unknown route: /static/{relative}", None),
+            include_body=include_body,
+        )
+        return
+    except OSError as exc:
+        handler._send_json(
+            500,
+            _error_payload("server", str(exc), None),
+            include_body=include_body,
+        )
+        return
+    handler._send(
+        200,
+        body,
+        STATIC_CONTENT_TYPES.get(path.suffix, "text/html; charset=utf-8"),
+        include_body=include_body,
+    )
+
+
+def _query_one(query: dict[str, list[str]], key: str) -> str | None:
+    values = query.get(key)
+    return values[0] if values else None
+
+
+def _error_payload(
+    boundary: str,
+    message: str,
+    state: dict[str, Any] | None,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "schema": WORKBENCH_ERROR_SCHEMA,
+        "ok": False,
+        "boundary": boundary,
+        "message": message,
+        "recovery": "Inspect the returned state and use the allowed action.",
+    }
+    if state is not None:
+        payload["state"] = state
+    return payload
+
+
+__all__ = ["serve_workbench_route"]

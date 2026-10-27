@@ -37,6 +37,7 @@
     .status-dot.live { background: var(--green); }
     .status-dot.error { background: var(--red); }
     nav { display: grid; gap: 8px; }
+    nav + nav { margin-top: 40px; }
     .nav {
       display: block;
       padding: 7px 10px;
@@ -80,6 +81,7 @@
       <button type="button" class="nav" data-recall="connectFrame">Connect</button>
       __RUNTIME_NAV__
     </nav>
+    <nav aria-label="Workbench"><a class="nav" href="/workbench/">Workbench</a></nav>
   </main>
   <div id="floatLayer">
     <article class="float-frame" id="connectFrame" data-frame-anchor="center" data-frame-width="320" data-frame-height="220" data-frame-start="closed" hidden>

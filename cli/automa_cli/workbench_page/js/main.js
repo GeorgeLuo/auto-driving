@@ -84,7 +84,7 @@ async function poll() {
   pollInFlight = true;
   var requestGeneration = stateRequestGeneration;
   try {
-    var response = await fetch("/api/state", { cache: "no-store" });
+    var response = await fetch("api/state", { cache: "no-store" });
     var payload = response.ok ? await response.json() : null;
     if (payload && requestGeneration === stateRequestGeneration) render(payload);
   } catch (error) {

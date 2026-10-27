@@ -25,8 +25,8 @@ the repository state and the request to classify it.
 
 | Requested operation | Role guidance |
 | --- | --- |
-| Change, fix, build, or update code, configuration, or documentation | [roles/engineer.md](roles/engineer.md) |
-| Review, audit, diagnose, assess, explain, or investigate | [roles/reviewer.md](roles/reviewer.md) |
+| Review code, implement code, plan code | [roles/engineer.md](roles/engineer.md) |
+| Audit, diagnose, assess, explain, or investigate | [roles/reader.md](roles/reader.md) |
 
 Do not preload every guide. Read repository documentation only when it is
 relevant to the requested behavior or interface.

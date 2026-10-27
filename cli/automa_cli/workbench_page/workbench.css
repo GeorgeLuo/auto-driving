@@ -84,7 +84,7 @@ h3, .kicker {
 .sidebar-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 5px;
   flex: 0 0 auto;
   padding: 0 12px 8px;
 }
@@ -98,7 +98,7 @@ h3, .kicker {
   flex: 0 0 auto;
   color: var(--muted);
 }
-.automa-home svg { width: 16px; height: 16px; display: block; }
+.automa-home svg { width: 13px; height: 13px; display: block; }
 .automa-home:hover { color: var(--fg); }
 .sidebar-scroll {
   display: flex;

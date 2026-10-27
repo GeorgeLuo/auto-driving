@@ -80,7 +80,8 @@ class RuntimeViewServer:
         validate_loopback_host(host, owner="runtime view")
         self.host_name = host_name
         self.connected = connected
-        self.replay_runner = replay_runner
+        self._replay_runner = replay_runner
+        self._replay_runner_lock = threading.Lock()
         self.plugin_catalog = plugin_catalog
         self.automation_dir = automation_dir
         self.host = host
@@ -100,6 +101,18 @@ class RuntimeViewServer:
         if self._httpd is None:
             return None
         return self._httpd.loopback_url
+
+    @property
+    def workbench_url(self) -> str | None:
+        return f"{self.url}workbench/" if self.url is not None else None
+
+    def replay_runner(self) -> ReplayRunner:
+        """Build the viewer's shared replay runner on the first workbench visit."""
+
+        with self._replay_runner_lock:
+            if self._replay_runner is None:
+                self._replay_runner = ImageReplayRunner()
+            return self._replay_runner
 
     def start(self) -> "RuntimeViewServer":
         if self._httpd is not None:
@@ -165,13 +178,6 @@ class RuntimeViewServer:
             _nav_link("Plugins", "/plugins"),
         ))
 
-    def workbench_navigation_html(self) -> str:
-        """The workbench entry, apart from the host's runtime pages; empty without a replay runner."""
-
-        if self.replay_runner is None:
-            return ""
-        return f'<nav aria-label="Workbench">{_nav_link("Workbench", WORKBENCH_PREFIX + "/")}</nav>'
-
     def decision_navigation_html(self) -> str:
         """Return a usable decision link or an explicit unavailable status."""
 
@@ -186,6 +192,8 @@ class RuntimeViewServer:
         if httpd is None:
             return
         stop_server_thread(httpd, thread)
+        if self._replay_runner is not None:
+            self._replay_runner.close()
         self.decision.stop()
         self._write_record("stopped")
         self._httpd = None
@@ -252,9 +260,9 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
     def _serve_workbench(self, route: str, *, include_body: bool) -> bool:
         """Answer a route under /workbench/ from the viewer's replay runner; True if answered."""
 
-        runner = self.server.publisher.replay_runner
-        if runner is None or not route.startswith(WORKBENCH_PREFIX + "/"):
+        if not route.startswith(WORKBENCH_PREFIX + "/"):
             return False
+        runner = self.server.publisher.replay_runner()
         self.content_security_policy = WORKBENCH_CONTENT_SECURITY_POLICY
         if not serve_workbench_route(self, runner, route.removeprefix(WORKBENCH_PREFIX), include_body=include_body):
             self._send_json(404, {"error": "not found"}, include_body=include_body)
@@ -309,7 +317,6 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             publisher = self.server.publisher
             html = html.replace("__CONNECTION_DOT__", publisher.connection_dot_html())
             html = html.replace("__RUNTIME_NAV__", publisher.splash_navigation_html())
-            html = html.replace("__WORKBENCH_NAV__", publisher.workbench_navigation_html())
             self._send(
                 200,
                 html.encode("utf-8"),
@@ -427,15 +434,13 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
 
 
 def serve_viewer() -> int:
-    """Serve the runtime pages with no runtime host, and an empty workbench, until interrupted."""
+    """Serve the runtime pages with no runtime host until interrupted."""
 
-    replay_runner = ImageReplayRunner()
     server = RuntimeViewServer(
         host_name="viewer",
         automation_dir=None,
         port=VIEWER_PORT,
         connected=False,
-        replay_runner=replay_runner,
     ).start()
     print(open_view_message(server.url or ""), flush=True)
     try:
@@ -445,7 +450,6 @@ def serve_viewer() -> int:
         return 130
     finally:
         server.stop()
-        replay_runner.close()
 
 
 def open_view_message(url: str) -> str:

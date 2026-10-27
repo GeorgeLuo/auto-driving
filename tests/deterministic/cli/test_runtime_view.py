@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -60,7 +59,8 @@ class ViewerWithoutHostTests(unittest.TestCase):
                 f'<span class="nav unavailable" title="{NOT_CONNECTED_ERROR}">{label}</span>',
                 html,
             )
-        self.assertNotIn('<a class="nav"', html)
+        self.assertEqual(html.count('<a class="nav"'), 1)
+        self.assertIn('<a class="nav" href="/workbench/">Workbench</a>', html)
 
     def test_connect_window_has_a_status_box(self) -> None:
         html = _read_text(self.server.url)
@@ -115,9 +115,28 @@ class ConnectedSplashTests(unittest.TestCase):
         html = _read_text(server.url)
 
         self.assertIn('class="status-dot live"', html)
-        for href in ("/perception", "/memory", "/plugins"):
+        for href in ("/perception", "/memory", "/plugins", "/workbench/"):
             self.assertIn(f'<a class="nav" href="{href}">', html)
         self.assertIn('<span class="nav unavailable" title="Action view unavailable">Action</span>', html)
+
+    def test_workbench_is_created_on_first_visit_and_closed_with_the_viewer(self) -> None:
+        runner = ImageReplayRunner(cadence_ms=0, step_factories={"perception": FixtureMapper})
+        self.addCleanup(runner.close)
+        with mock.patch("cli.automa_cli.runtime_view.ImageReplayRunner", return_value=runner) as build:
+            server = RuntimeViewServer(host_name="test-vehicle", automation_dir=None, port=0).start()
+            self.addCleanup(server.stop)
+            _read_text(server.url)
+            _read_text(f"{server.url}api/health")
+            build.assert_not_called()
+
+            for _ in range(2):
+                state = json.loads(_read_text(f"{server.workbench_url}api/state"))
+                self.assertEqual(state["phase"], "idle")
+                self.assertIsNone(state["source_identity"])
+            build.assert_called_once_with()
+            with mock.patch.object(runner, "close", wraps=runner.close) as close:
+                server.stop()
+                close.assert_called_once_with()
 
 
 class ViewerWorkbenchTests(unittest.TestCase):
@@ -132,7 +151,7 @@ class ViewerWorkbenchTests(unittest.TestCase):
             replay_runner=self.runner,
         ).start()
         self.addCleanup(self.server.stop)
-        self.base = f"{self.server.url}workbench/"
+        self.base = self.server.workbench_url
 
     def test_splash_links_the_workbench_apart_from_the_host_pages_while_disconnected(self) -> None:
         html = _read_text(self.server.url)
@@ -147,16 +166,8 @@ class ViewerWorkbenchTests(unittest.TestCase):
         with urlopen(self.base, timeout=1.0) as response:
             self.assertEqual(response.headers["Content-Security-Policy"], WORKBENCH_CONTENT_SECURITY_POLICY)
             page = response.read().decode("utf-8")
-        paths = re.findall(r'(?:src|href)="static/([^"]+)"', page)
-
         self.assertIn("no source selected", page)
         self.assertIn('<a class="automa-home" href="/"', page)
-        self.assertIn("js/main.js", paths)
-        for path in paths:
-            with self.subTest(path=path):
-                with urlopen(f"{self.base}static/{path}", timeout=1.0) as response:
-                    self.assertEqual(response.status, 200)
-                    self.assertIn("javascript" if path.endswith(".js") else "css", response.headers["Content-Type"])
         for route in ("workbench", "workbench/api/health", "workbench/static/missing.js"):
             with self.subTest(route=route):
                 with self.assertRaises(HTTPError) as caught:

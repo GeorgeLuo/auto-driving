@@ -1,31 +1,19 @@
-"""Loopback HTTP boundary for the decision playback workbench."""
+"""Decision playback page and API served by the runtime viewer under /workbench/."""
 
 from __future__ import annotations
 
 import json
 import re
-import threading
-import time
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import parse_qs, urlparse
 
-from .loopback_http import (
-    STATIC_CONTENT_TYPES,
-    LoopbackHTTPRequestHandler,
-    LoopbackHTTPServer,
-    start_server_thread,
-    stop_server_thread,
-    validate_loopback_host,
-)
+from .loopback_http import STATIC_CONTENT_TYPES
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTION_RESULT_SCHEMA,
     WORKBENCH_ERROR_SCHEMA,
-    WORKBENCH_HOST,
     WORKBENCH_MAX_ACTION_BYTES,
-    WORKBENCH_SEQUENCE_ID,
-    WORKBENCH_SERVER_SCHEMA,
 )
 from .workbench_source import SourceValidationError
 from .plugin_catalog import serve_plugin_catalog
@@ -43,10 +31,6 @@ WORKBENCH_CONTENT_SECURITY_POLICY = (
 
 
 class ReplayRunner(Protocol):
-    @property
-    def server_identity(self) -> str:
-        ...
-
     def state(self) -> dict[str, Any]:
         ...
 
@@ -66,73 +50,6 @@ class ReplayRunner(Protocol):
         ...
 
 
-class WorkbenchServer:
-    """Loopback-only HTTP boundary for one persistent replay runner."""
-
-    def __init__(
-        self,
-        runner: ReplayRunner,
-        *,
-        host: str = WORKBENCH_HOST,
-        port: int = 0,
-    ) -> None:
-        validate_loopback_host(host, owner="workbench server")
-        self.runner = runner
-        self.host = host
-        self.preferred_port = int(port)
-        self._httpd: _WorkbenchHTTPServer | None = None
-        self._thread: threading.Thread | None = None
-        self._started_at_ms: int | None = None
-
-    @property
-    def url(self) -> str | None:
-        return self._httpd.loopback_url if self._httpd is not None else None
-
-    def start(self) -> "WorkbenchServer":
-        if self._httpd is not None:
-            return self
-        httpd = _WorkbenchHTTPServer.bind_with_ephemeral_fallback(
-            host=self.host,
-            preferred_port=self.preferred_port,
-            handler=_WorkbenchHTTPHandler,
-        )
-        httpd.workbench = self
-        self._httpd = httpd
-        self._started_at_ms = _now_ms()
-        self._thread = start_server_thread(
-            httpd,
-            name=f"automa-workbench-http-{self.runner.server_identity[-8:]}",
-        )
-        return self
-
-    def stop(self) -> None:
-        if self._httpd is None:
-            return
-        try:
-            stop_server_thread(self._httpd, self._thread)
-        finally:
-            self._httpd = None
-            self._thread = None
-            self.runner.close()
-
-    def health_payload(self) -> dict[str, Any]:
-        state = self.runner.state()
-        return {
-            "schema": WORKBENCH_SERVER_SCHEMA,
-            "server_identity": self.runner.server_identity,
-            "available": self._httpd is not None,
-            "host": self.host,
-            "port": self._httpd.server_address[1] if self._httpd else None,
-            "url": self.url,
-            "started_at_ms": self._started_at_ms,
-            "sequence_id": WORKBENCH_SEQUENCE_ID,
-            "run_id": state.get("run_id"),
-            "phase": state.get("phase"),
-            "persistent_across_terminal_state": True,
-            "observation_only": True,
-        }
-
-
 def serve_workbench_route(
     handler: Any,
     runner: ReplayRunner,
@@ -142,8 +59,7 @@ def serve_workbench_route(
 ) -> bool:
     """Answer one workbench page or API route from ``runner``; False leaves it to the caller.
 
-    ``route`` is relative to where the page is served: ``hosts workbench replay``
-    serves it at ``/`` and the runtime viewer at ``/workbench/``.
+    ``route`` is relative to ``/workbench/`` on the runtime viewer.
     """
 
     if route == PLUGIN_CATALOG_PATH:
@@ -418,41 +334,6 @@ def _serve_page_file(handler: Any, relative: str, *, include_body: bool) -> None
     )
 
 
-class _WorkbenchHTTPServer(LoopbackHTTPServer):
-    workbench: WorkbenchServer
-
-
-class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
-    server: _WorkbenchHTTPServer
-    content_security_policy = WORKBENCH_CONTENT_SECURITY_POLICY
-
-    def do_GET(self) -> None:
-        self._handle_get(include_body=True)
-
-    def do_HEAD(self) -> None:
-        self._handle_get(include_body=False)
-
-    def _handle_get(self, *, include_body: bool) -> None:
-        route = urlparse(self.path).path
-        if route == "/favicon.ico":
-            self._send(204, b"", "image/x-icon", include_body=False)
-            return
-        if route == "/api/health":
-            self._send_json(200, self.server.workbench.health_payload(), include_body=include_body)
-            return
-        if not serve_workbench_route(self, self.server.workbench.runner, route, include_body=include_body):
-            self._send_json(
-                404,
-                _error_payload("route", f"unknown route: {route}", None),
-                include_body=include_body,
-            )
-
-    def do_POST(self) -> None:
-        route = urlparse(self.path).path
-        if not serve_workbench_route(self, self.server.workbench.runner, route):
-            self._send_json(404, _error_payload("route", f"unknown route: {route}", None))
-
-
 def _query_one(query: dict[str, list[str]], key: str) -> str | None:
     values = query.get(key)
     return values[0] if values else None
@@ -475,8 +356,4 @@ def _error_payload(
     return payload
 
 
-def _now_ms() -> int:
-    return int(time.time() * 1000)
-
-
-__all__ = ["WorkbenchServer", "serve_workbench_route"]
+__all__ = ["serve_workbench_route"]

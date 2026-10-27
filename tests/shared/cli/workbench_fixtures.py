@@ -21,8 +21,8 @@ from autonomy.decision_cycle.activation import StepActivation
 from implementations.decision_cycle.catalog import selection_activation
 from cli.automa_cli.workbench import (
     ImageReplayRunner as ProductionImageReplayRunner,
-    WorkbenchServer,
 )
+from cli.automa_cli.runtime_view import RuntimeViewServer
 
 
 def perception_activations(*plugin_ids: str) -> dict[str, StepActivation]:
@@ -44,11 +44,17 @@ def write_manifest(root: Path, payload: dict, name: str = "manifest.json") -> No
 
 
 def serve_workbench(testcase, runner: ProductionImageReplayRunner) -> str:
-    server = WorkbenchServer(runner).start()
+    server = RuntimeViewServer(
+        host_name="viewer",
+        automation_dir=None,
+        port=0,
+        connected=False,
+        replay_runner=runner,
+    ).start()
     testcase.addCleanup(server.stop)
-    base = server.url
+    base = server.workbench_url
     if base is None:
-        raise AssertionError("workbench server has no URL")
+        raise AssertionError("viewer has no workbench URL")
     return base
 
 

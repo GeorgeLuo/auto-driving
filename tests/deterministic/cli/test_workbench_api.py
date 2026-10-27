@@ -5,7 +5,6 @@ from functools import partial
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from cli.automa_cli.workbench import WorkbenchServer
 from tests.shared.cli.workbench_fixtures import (
     FixtureMapper,
     ImageReplayRunner,
@@ -157,9 +156,7 @@ class WorkbenchTests(unittest.TestCase):
     def test_page_files_are_served_and_nothing_else(self) -> None:
         import re
 
-        server = WorkbenchServer(ImageReplayRunner(cadence_ms=0)).start()
-        self.addCleanup(server.stop)
-        base = server.url
+        base = serve_workbench(self, ImageReplayRunner(cadence_ms=0))
         page = urlopen(base, timeout=2).read().decode("utf-8")
         paths = re.findall(r'(?:src|href)="static/([^"]+)"', page)
         self.assertIn("workbench.css", paths)
@@ -175,7 +172,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(served.status, 200)
             self.assertIn("javascript" if path.endswith(".js") else "css", served.headers["Content-Type"])
         for blocked in (
-            "static/../workbench_server.py", "static/js/../index.html", "static/index.html", "static/js/missing.js",
+            "static/../workbench_view.py", "static/js/../index.html", "static/index.html", "static/js/missing.js",
             "static/shared/../loopback_http.py", "static/shared/missing.js",
         ):
             with self.assertRaises(HTTPError) as caught:
@@ -262,9 +259,7 @@ class WorkbenchTests(unittest.TestCase):
     ) -> None:
         with image_source(1) as root:
             runner = ImageReplayRunner(cadence_ms=0)
-            server = WorkbenchServer(runner).start()
-            self.addCleanup(server.stop)
-            base = server.url
+            base = serve_workbench(self, runner)
             self.assertIsNotNone(base)
 
             served = urlopen(base, timeout=2)
@@ -288,9 +283,6 @@ class WorkbenchTests(unittest.TestCase):
             state = runner.wait(5)
             self.assertEqual(state["phase"], "completed")
 
-            health = json.loads(urlopen(base + "api/health", timeout=2).read())
-            self.assertTrue(health["available"])
-            self.assertTrue(health["persistent_across_terminal_state"])
             latest = json.loads(urlopen(base + "api/state", timeout=2).read())
             self.assertEqual(latest["phase"], "completed")
             frame_id = state["timeline"][0]["frame"]["frame_id"]
@@ -338,6 +330,6 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(error.exception.code, 400)
             bad_payload = json.loads(error.exception.read())
             self.assertEqual(bad_payload["boundary"], "input")
-            server.stop()
+            self.doCleanups()
             self.assertIsNone(runner.state()["source"])
             self.assertEqual(runner.state()["timeline"], [])

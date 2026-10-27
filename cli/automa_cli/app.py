@@ -851,7 +851,7 @@ def build_parser() -> argparse.ArgumentParser:
             "selection uses default configs for that step; the other steps keep their "
             "selections and configs. The same ordered selection keeps the current "
             "configs and pass. Without --serve, one replay runs "
-            "to a terminal state; --serve keeps the loopback page available for "
+            "to a terminal state; --serve keeps the viewer's workbench page available for "
             "pause, step, reset, and another run. Changing a step's plugins in a "
             "running or paused served replay rebuilds every step's pipeline "
             "and replays from the first frame to the displayed frame before returning."
@@ -898,13 +898,13 @@ def build_parser() -> argparse.ArgumentParser:
     workbench_replay.add_argument(
         "--serve",
         action="store_true",
-        help="Keep the loopback workbench server alive after starting the replay.",
+        help="Keep serving the viewer, with this replay on its workbench page.",
     )
     workbench_replay.add_argument(
         "--open",
         dest="open_browser",
         action="store_true",
-        help="Open the loopback workbench page in a browser and imply --serve.",
+        help="Open the viewer's workbench page in a browser and imply --serve.",
     )
     workbench_replay.set_defaults(handler=_handle_hosts_workbench_replay)
 

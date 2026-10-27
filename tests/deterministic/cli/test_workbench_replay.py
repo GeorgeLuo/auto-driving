@@ -1,12 +1,41 @@
 from __future__ import annotations
 
+import json
 import unittest
+from io import StringIO
+from unittest import mock
+from urllib.request import urlopen
 
+from cli.automa_cli.workbench import run_workbench_replay
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
 
 
 class WorkbenchTests(unittest.TestCase):
+    def test_open_replay_opens_the_viewers_workbench_with_its_source_loaded(self) -> None:
+        output = StringIO()
+        opened = []
+        with image_source(1) as root:
+            def open_view(url: str) -> str:
+                opened.append(url)
+                self.assertTrue(url.endswith("/workbench/"))
+                with urlopen(url, timeout=2) as response:
+                    self.assertIn('<a class="automa-home" href="/"', response.read().decode())
+                with urlopen(url + "api/state", timeout=2) as response:
+                    state = json.load(response)
+                self.assertEqual(state["source"]["source_path"], str(root.resolve()))
+                with urlopen(url.removesuffix("workbench/"), timeout=2) as response:
+                    self.assertIn('<a class="nav" href="/workbench/">Workbench</a>', response.read().decode())
+                raise KeyboardInterrupt
+
+            with mock.patch("cli.automa_cli.workbench.open_view_message", side_effect=open_view) as launch:
+                result = run_workbench_replay(root, cadence_ms=0, open_browser=True, output=output)
+
+        launch.assert_called_once_with(opened[0])
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.message, "viewer stopped")
+        self.assertIn(f"workbench: {opened[0]}", output.getvalue())
+
     def test_cli_replay_human_output_names_recovery_and_cleanup(self) -> None:
         with image_source(1) as root:
             result = invoke_automa(

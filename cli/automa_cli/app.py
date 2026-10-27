@@ -66,6 +66,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     help_command.set_defaults(handler=_handle_top_level_help)
 
+    status = subcommands.add_parser(
+        "status",
+        help="Show hosts status and vehicles status.",
+        description="Print the regular text of hosts status, then vehicles status.",
+    )
+    status.set_defaults(handler=_handle_status)
+
     vehicles = subcommands.add_parser(
         "vehicles",
         help="Discover and inspect vehicle environments.",
@@ -1370,6 +1377,7 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "The sections below only show the next command level; each command has its own help for details.",
                 "",
                 "- help       Show this command summary.",
+                "- status     Show hosts status and vehicles status.",
                 "- vehicles   Discover and inspect vehicle environments.",
                 "- hosts      Create, configure, and operate vehicle controller hosts.",
                 "- simulators Create headless simulators, or prepare and inspect SimEval environments.",
@@ -1611,6 +1619,21 @@ def _validate_timeout_input(
     else:
         print(message, file=human_stream)
     return False
+
+
+def _handle_status(args: argparse.Namespace) -> int:
+    result = get_hosts_status(long=False, json_output=False)
+    if result.message:
+        print(result.message)
+    try:
+        payload = get_vehicles_status()
+    except ValueError as exc:
+        print(f"automa vehicles status: {exc}", file=sys.stderr)
+        return 2
+    print(format_vehicles_status(payload))
+    if all(vehicle["state"] == "unreachable" for vehicle in payload["vehicles"]):
+        return 1
+    return 0
 
 
 def _handle_vehicles_status(args: argparse.Namespace) -> int:

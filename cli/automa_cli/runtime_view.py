@@ -151,23 +151,26 @@ class RuntimeViewServer:
         return f'<span class="status-dot error" title="{NOT_CONNECTED_ERROR}"></span>'
 
     def splash_navigation_html(self) -> str:
-        """One entry per runtime page; none is available until connected, except the workbench."""
+        """One entry per runtime page; none is available until connected."""
 
         if not self.connected:
-            entries = [
+            return "\n".join(
                 _unavailable_nav(label, NOT_CONNECTED_ERROR)
                 for label in ("Perception", "Memory", "Action", "Plugins")
-            ]
-        else:
-            entries = [
-                _nav_link("Perception", "/perception"),
-                _nav_link("Memory", "/memory"),
-                self.decision_navigation_html(),
-                _nav_link("Plugins", "/plugins"),
-            ]
-        if self.replay_runner is not None:
-            entries.append(_nav_link("Workbench", WORKBENCH_PREFIX + "/"))
-        return "\n".join(entries)
+            )
+        return "\n".join((
+            _nav_link("Perception", "/perception"),
+            _nav_link("Memory", "/memory"),
+            self.decision_navigation_html(),
+            _nav_link("Plugins", "/plugins"),
+        ))
+
+    def workbench_navigation_html(self) -> str:
+        """The workbench entry, apart from the host's runtime pages; empty without a replay runner."""
+
+        if self.replay_runner is None:
+            return ""
+        return f'<nav aria-label="Workbench">{_nav_link("Workbench", WORKBENCH_PREFIX + "/")}</nav>'
 
     def decision_navigation_html(self) -> str:
         """Return a usable decision link or an explicit unavailable status."""
@@ -306,6 +309,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             publisher = self.server.publisher
             html = html.replace("__CONNECTION_DOT__", publisher.connection_dot_html())
             html = html.replace("__RUNTIME_NAV__", publisher.splash_navigation_html())
+            html = html.replace("__WORKBENCH_NAV__", publisher.workbench_navigation_html())
             self._send(
                 200,
                 html.encode("utf-8"),

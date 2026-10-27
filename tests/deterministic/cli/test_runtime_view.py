@@ -134,12 +134,14 @@ class ViewerWorkbenchTests(unittest.TestCase):
         self.addCleanup(self.server.stop)
         self.base = f"{self.server.url}workbench/"
 
-    def test_splash_links_the_workbench_after_plugins_while_disconnected(self) -> None:
+    def test_splash_links_the_workbench_apart_from_the_host_pages_while_disconnected(self) -> None:
         html = _read_text(self.server.url)
 
-        link = '<a class="nav" href="/workbench/">Workbench</a>'
-        self.assertIn(link, html)
-        self.assertLess(html.index(f'title="{NOT_CONNECTED_ERROR}">Plugins</span>'), html.index(link))
+        workbench = '<nav aria-label="Workbench"><a class="nav" href="/workbench/">Workbench</a></nav>'
+        self.assertIn(workbench, html)
+        runtime_views = html.index('<nav aria-label="Runtime views">')
+        self.assertLess(html.index(f'title="{NOT_CONNECTED_ERROR}">Plugins</span>'), html.index("</nav>", runtime_views))
+        self.assertLess(html.index("</nav>", runtime_views), html.index(workbench))
 
     def test_workbench_page_and_its_files_are_served_under_the_prefix(self) -> None:
         with urlopen(self.base, timeout=1.0) as response:

@@ -35,6 +35,11 @@ from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 WORKBENCH_PAGE_DIR = Path(__file__).with_name("workbench_page")
 # The page's own files, served read-only under /static/ beside /static/shared/.
 WORKBENCH_STATIC_PATTERN = re.compile(r"^/static/(workbench\.css|js/[a-z]+\.js)$")
+# The page runs no inline script, wherever it is served.
+WORKBENCH_CONTENT_SECURITY_POLICY = (
+    "default-src 'self'; connect-src 'self'; img-src 'self' data:; "
+    "style-src 'self' 'unsafe-inline'; script-src 'self'"
+)
 
 
 class ReplayRunner(Protocol):
@@ -419,10 +424,7 @@ class _WorkbenchHTTPServer(LoopbackHTTPServer):
 
 class _WorkbenchHTTPHandler(LoopbackHTTPRequestHandler):
     server: _WorkbenchHTTPServer
-    content_security_policy = (
-        "default-src 'self'; connect-src 'self'; img-src 'self' data:; "
-        "style-src 'self' 'unsafe-inline'; script-src 'self'"
-    )
+    content_security_policy = WORKBENCH_CONTENT_SECURITY_POLICY
 
     def do_GET(self) -> None:
         self._handle_get(include_body=True)

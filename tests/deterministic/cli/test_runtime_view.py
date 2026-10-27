@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 from urllib.error import HTTPError
+from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from cli.automa_cli import app
@@ -15,10 +17,12 @@ from cli.automa_cli.runtime_view import (
     RUNTIME_HOST_ROUTES,
     RuntimeViewServer,
 )
+from cli.automa_cli.workbench_server import WORKBENCH_CONTENT_SECURITY_POLICY
 from implementations.vehicle.chase_sim.defaults import CHASE_UI_WS_URL_ENV
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
 from implementations.vehicle.chase_sim.presence import MetricsUiPresence
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
+from tests.shared.cli.workbench_fixtures import FixtureMapper, ImageReplayRunner, image_source, post_action
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_hosts import closed_url
 from tests.support.fake_metrics_ui import fake_metrics_ui
@@ -114,6 +118,60 @@ class ConnectedSplashTests(unittest.TestCase):
         for href in ("/perception", "/memory", "/plugins"):
             self.assertIn(f'<a class="nav" href="{href}">', html)
         self.assertIn('<span class="nav unavailable" title="Action view unavailable">Action</span>', html)
+
+
+class ViewerWorkbenchTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.runner = ImageReplayRunner(cadence_ms=0, step_factories={"perception": FixtureMapper})
+        self.addCleanup(self.runner.close)
+        self.server = RuntimeViewServer(
+            host_name="viewer",
+            automation_dir=None,
+            port=0,
+            connected=False,
+            replay_runner=self.runner,
+        ).start()
+        self.addCleanup(self.server.stop)
+        self.base = f"{self.server.url}workbench/"
+
+    def test_splash_links_the_workbench_after_plugins_while_disconnected(self) -> None:
+        html = _read_text(self.server.url)
+
+        link = '<a class="nav" href="/workbench/">Workbench</a>'
+        self.assertIn(link, html)
+        self.assertLess(html.index(f'title="{NOT_CONNECTED_ERROR}">Plugins</span>'), html.index(link))
+
+    def test_workbench_page_and_its_files_are_served_under_the_prefix(self) -> None:
+        with urlopen(self.base, timeout=1.0) as response:
+            self.assertEqual(response.headers["Content-Security-Policy"], WORKBENCH_CONTENT_SECURITY_POLICY)
+            page = response.read().decode("utf-8")
+        paths = re.findall(r'(?:src|href)="static/([^"]+)"', page)
+
+        self.assertIn("no source selected", page)
+        self.assertIn("js/main.js", paths)
+        for path in paths:
+            with self.subTest(path=path):
+                with urlopen(f"{self.base}static/{path}", timeout=1.0) as response:
+                    self.assertEqual(response.status, 200)
+                    self.assertIn("javascript" if path.endswith(".js") else "css", response.headers["Content-Type"])
+        for route in ("workbench", "workbench/api/health", "workbench/static/missing.js"):
+            with self.subTest(route=route):
+                with self.assertRaises(HTTPError) as caught:
+                    urlopen(f"{self.server.url}{route}", timeout=1.0)
+                self.assertEqual(caught.exception.code, 404)
+
+    def test_empty_workbench_replays_a_directory_typed_into_it(self) -> None:
+        idle = json.loads(_read_text(f"{self.base}api/state"))
+        self.assertEqual(idle["phase"], "idle")
+        self.assertIsNone(idle["source_identity"])
+
+        with image_source(1) as root:
+            started = post_action(self.base, {"action": "start", "source_dir": str(root), "cadence_ms": 0})
+            self.assertEqual(self.runner.wait(5)["phase"], "completed")
+            query = urlencode({"run_id": started["state"]["run_id"], "position": "0"})
+            with urlopen(f"{self.base}api/frame?{query}", timeout=1.0) as frame:
+                self.assertEqual(frame.status, 200)
+                self.assertTrue(frame.read())
 
 
 class OpenViewerCommandTests(unittest.TestCase):

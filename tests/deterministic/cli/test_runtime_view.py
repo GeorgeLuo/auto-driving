@@ -148,6 +148,7 @@ class ViewerWorkbenchTests(unittest.TestCase):
         paths = re.findall(r'(?:src|href)="static/([^"]+)"', page)
 
         self.assertIn("no source selected", page)
+        self.assertIn('<a class="automa-home" href="/"', page)
         self.assertIn("js/main.js", paths)
         for path in paths:
             with self.subTest(path=path):

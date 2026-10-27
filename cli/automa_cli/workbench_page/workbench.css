@@ -380,6 +380,14 @@ h3, .kicker {
   flex: 0 0 auto;
   min-height: 24px;
 }
+.automa-home {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border-radius: var(--radius);
+  background: var(--red);
+}
+.automa-home:hover { filter: brightness(1.15); }
 .viewer {
   flex: 1;
   min-height: 0;

@@ -161,7 +161,7 @@ class WorkbenchTests(unittest.TestCase):
         self.addCleanup(server.stop)
         base = server.url
         page = urlopen(base, timeout=2).read().decode("utf-8")
-        paths = re.findall(r'(?:src|href)="/static/([^"]+)"', page)
+        paths = re.findall(r'(?:src|href)="static/([^"]+)"', page)
         self.assertIn("workbench.css", paths)
         self.assertIn("shared/float.css", paths)
         self.assertEqual(

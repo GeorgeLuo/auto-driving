@@ -42,7 +42,7 @@ function renderFrame() {
     lastImageKey = imageKey;
     var hasRenderedImage = loadedImageKey !== "";
     var requestGeneration = ++imageRequestGeneration;
-    var imageUrl = "/api/frame?run_id=" + encodeURIComponent(state.run_id || "") +
+    var imageUrl = "api/frame?run_id=" + encodeURIComponent(state.run_id || "") +
       "&frame_id=" + encodeURIComponent(frame.frame_id);
     elements.overlayCanvas.width = 1;
     elements.overlayCanvas.height = 1;

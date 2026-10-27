@@ -91,7 +91,7 @@ def serve():
     )
     server = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
     try:
-        yield Workbench(f"http://127.0.0.1:{port}")
+        yield Workbench(f"http://127.0.0.1:{port}/workbench")
     finally:
         server.terminate()
         server.wait(timeout=10)

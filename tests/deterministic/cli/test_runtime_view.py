@@ -16,7 +16,7 @@ from cli.automa_cli.runtime_view import (
     RUNTIME_HOST_ROUTES,
     RuntimeViewServer,
 )
-from cli.automa_cli.workbench_server import WORKBENCH_CONTENT_SECURITY_POLICY
+from cli.automa_cli.workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY
 from implementations.vehicle.chase_sim.defaults import CHASE_UI_WS_URL_ENV
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
 from implementations.vehicle.chase_sim.presence import MetricsUiPresence

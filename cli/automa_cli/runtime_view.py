@@ -36,7 +36,7 @@ from .loopback_http import (
 from .plugin_catalog import serve_plugin_catalog
 from .host_status import host_state_text, host_statuses
 from .workbench_runner import ImageReplayRunner
-from .workbench_server import WORKBENCH_CONTENT_SECURITY_POLICY, ReplayRunner, serve_workbench_route
+from .workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY, ReplayRunner, serve_workbench_route
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
@@ -205,6 +205,8 @@ class RuntimeViewServer:
 
 
 class _RuntimeHttpServer(LoopbackHTTPServer):
+    # A workbench visit queues its styles and scripts while replay work is running.
+    request_queue_size = 128
     publisher: RuntimeViewServer
 
 

@@ -6,6 +6,7 @@ import base64
 import json
 import unittest
 from urllib.error import HTTPError
+from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from autonomy.decision_cycle.steps import decision_steps
@@ -32,6 +33,8 @@ class CatalogWriteBoundaryFlows(unittest.TestCase):
             shared_host = self.enterContext(chase_runtime(runtime))
             for base in (view.url, workbench, shared_host.base_url + "/"):
                 with self.subTest(endpoint=base):
+                    address = urlsplit(base)
+                    origin = f"{address.scheme}://{address.netloc}"
                     file = root / "prototype.py"
                     write_plugin(file, "proposal", "existing", 1)
                     payloads = (
@@ -53,7 +56,7 @@ class CatalogWriteBoundaryFlows(unittest.TestCase):
                             ({"Origin": "null", "Content-Type": "application/json"}, 403),
                             ({"Sec-Fetch-Site": "cross-site", "Content-Type": "application/json"}, 403),
                             ({"Content-Type": "text/plain"}, 415),
-                            ({"Origin": base.rstrip("/"), "Content-Type": "application/x-www-form-urlencoded"}, 415),
+                            ({"Origin": origin, "Content-Type": "application/x-www-form-urlencoded"}, 415),
                         ]
                         if base != shared_host.base_url + "/":
                             requests.append(({"Host": "attacker.example", "Content-Type": "application/json"}, 403))
@@ -70,12 +73,12 @@ class CatalogWriteBoundaryFlows(unittest.TestCase):
                                 self.assertEqual(get_json(base, "/api/plugins"), before)
                     # CLI-shaped JSON was accepted above; same-origin browser JSON is also accepted.
                     request = Request(base + "api/plugins", data=json.dumps({**payloads[0], "plugin_id": "browser"}).encode(),
-                                      headers={"Origin": base.rstrip("/"), "Content-Type": "application/json; charset=utf-8"})
+                                      headers={"Origin": origin, "Content-Type": "application/json; charset=utf-8"})
                     with urlopen(request, timeout=3) as response:
                         self.assertEqual(json.load(response)["status"], "uploaded")
                     if base != workbench:
                         request = Request(base + "api/plugins", data=json.dumps(payloads[1]).encode(),
-                                          headers={"Origin": base.rstrip("/"), "Content-Type": "application/json"})
+                                          headers={"Origin": origin, "Content-Type": "application/json"})
                         with urlopen(request, timeout=3) as response:
                             self.assertEqual(json.load(response)["status"], "requested")
 

@@ -10,19 +10,18 @@ from __future__ import annotations
 
 import os
 import time
-import webbrowser
 from collections.abc import Mapping, Sequence
 from typing import Any, TextIO
 
 from implementations.decision_cycle.catalog import selection_activation
 
 from .perception_runs import CommandResult
+from .runtime_view import RuntimeViewServer, VIEW_HOST, open_view_message
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
     WORKBENCH_DEFAULT_CADENCE_MS,
     WORKBENCH_DEFAULT_PACE,
-    WORKBENCH_HOST,
     WORKBENCH_PACES,
     WORKBENCH_SEQUENCE_ID,
 )
@@ -33,7 +32,6 @@ from .workbench_plugins import (
     PluginCatalogError,
     packaged_plugin_catalog,
 )
-from .workbench_server import WorkbenchServer
 from .workbench_source import (
     ImageSource,
     ReplayFrame,
@@ -51,13 +49,13 @@ def run_workbench_replay(
     cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
     pace: str = WORKBENCH_DEFAULT_PACE,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
-    host: str = WORKBENCH_HOST,
+    host: str = VIEW_HOST,
     port: int = 0,
     serve: bool = False,
     open_browser: bool = False,
     output: TextIO | None = None,
 ) -> CommandResult:
-    """Run one CLI replay, optionally keeping the loopback workbench alive.
+    """Run one CLI replay, optionally keeping the viewer's workbench available.
 
     Recorded frames restore their executable step selections. Explicit CLI
     ``selections``, a ``(preset, plugins)`` pair by step, override those steps; an unrecorded step uses its packaged
@@ -76,7 +74,7 @@ def run_workbench_replay(
     if open_browser:
         serve = True
     runner: ImageReplayRunner | None = None
-    server: WorkbenchServer | None = None
+    server: RuntimeViewServer | None = None
     displayed_url: str | None = None
     try:
         runner = ImageReplayRunner(
@@ -88,8 +86,15 @@ def run_workbench_replay(
             loop=serve,
         )
         if serve:
-            server = WorkbenchServer(runner, host=host, port=port).start()
-            displayed_url = server.url
+            server = RuntimeViewServer(
+                host_name="viewer",
+                automation_dir=None,
+                host=host,
+                port=port,
+                connected=False,
+                replay_runner=runner,
+            ).start()
+            displayed_url = server.workbench_url
         runner.start()
         if output is not None and serve:
             print(
@@ -100,14 +105,14 @@ def run_workbench_replay(
                 ),
                 file=output,
             )
-        if open_browser and displayed_url:
-            webbrowser.open(displayed_url)
         if serve:
             try:
+                if open_browser and displayed_url:
+                    print(open_view_message(displayed_url), file=output)
                 while True:
                     time.sleep(0.25)
             except KeyboardInterrupt:
-                return CommandResult(0, "workbench server stopped")
+                return CommandResult(0, "viewer stopped")
         state = runner.wait()
         exit_code = 0 if state.get("phase") == "completed" else 2
         return CommandResult(
@@ -188,7 +193,6 @@ __all__ = [
     "ReplayActionError",
     "ReplayFrame",
     "SourceValidationError",
-    "WorkbenchServer",
     "WORKBENCH_ACTIONS",
     "WORKBENCH_DEFAULT_CADENCE_MS",
     "WORKBENCH_DEFAULT_PACE",

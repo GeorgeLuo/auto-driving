@@ -1,4 +1,4 @@
-# Reviewer Role
+# Reader Role
 
 This is guidance for how to perform investigation and diagnoses and how to return findings.
 
@@ -8,13 +8,13 @@ A task to gather information never leads to code changes to the repository. Ther
 
 # Scope
 
-Based on the scope inferred by the request, the review expectations will have slightly different guidance, informing the effort to apply, scope here correlates size of effort and response size. Something that takes more effort to address should yield more information.
+Based on the scope inferred by the request, the read expectations will have slightly different guidance, informing the effort to apply, scope here correlates size of effort and response size. Something that takes more effort to address should yield more information.
 
 All responses should briefly explain the search approach before directly answering the question, how the request execution was reasoned through. This informs any areas to investigate that might’ve been overlooked.
 
 ## Small
 
-A small scope review is initiated by queries or combinations of queries such as:
+A small scope read is initiated by queries or combinations of queries such as:
 
 * “High level, what is the business logic of \_\_\_?”
 * “What is the shape of \_\_\_?”
@@ -54,7 +54,3 @@ A more concrete point is if questions are for clarification or hypothesizing upo
 
 * response before contains pseudocode, do not switch to abstract description
 * Add another column to table, do not change the wording of the other columns
-
-# Plan
-
-Planning should take into consideration broader meta-decisions found in the engineer role.

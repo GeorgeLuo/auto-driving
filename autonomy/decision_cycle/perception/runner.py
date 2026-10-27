@@ -112,7 +112,7 @@ class PerceptionRunner(StepRunner[Any]):
                         context.sensor_frame,
                         shared_memory=context.shared_memory,
                         metadata={
-                            "runtime": "onboard",
+                            **context.metadata,
                             "activation": (
                                 str(self.activation.source_path)
                                 if self.activation and self.activation.source_path

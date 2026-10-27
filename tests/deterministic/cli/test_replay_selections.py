@@ -6,6 +6,11 @@ import tempfile
 import unittest
 from dataclasses import replace
 from pathlib import Path
+from unittest.mock import patch
+
+from autonomy.decision_cycle.perception.runner import PerceptionRunner
+from cli.automa_cli.workbench_frames import run_frame
+from cli.automa_cli.step_replay import read_replay_source
 
 from cli.automa_cli.inspection_runs import default_selection
 from cli.automa_cli.step_inspect import inspect_step
@@ -71,3 +76,32 @@ class ReplaySelectionTests(unittest.TestCase):
                                          for item in frame["record"]["plugins"]]) for frame in expected["frames"]])
                 finally:
                     runner.close()
+
+    def test_replay_uses_normal_perception_runner_status_reset_and_timing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = write_frames(Path(directory) / "source", count=1)
+            images, _ = read_replay_source(source, max_frames=512)
+            frame = replace(images.frames[0], frame_id="frame-7", frame_index=7)
+            mapper = PerceptionRunner.from_activation(default_selection("perception"))
+            memory = {}
+            requests = []
+            perceive = mapper.perceive
+            mapper.perceive = lambda request: requests.append(request) or perceive(request)
+            result = run_frame(frame, steps={"perception": mapper}, shared_memory=memory)
+            self.assertEqual(mapper.last_frame_index, 7)
+            self.assertEqual(requests[0].metadata["source_id"], frame.source_id)
+            self.assertEqual(requests[0].metadata["sequence_index"], frame.position)
+            self.assertEqual(requests[0].metadata["frame_index"], frame.frame_index)
+            self.assertIs(mapper.last_output, result.result.perception)
+            timing = result.result.timing["steps"][0]
+            self.assertEqual(timing["step"], "perception")
+            self.assertEqual([item["plugin_id"] for item in timing["plugins"]], list(mapper.plugin_ids))
+            with patch.object(mapper, "reset", wraps=mapper.reset) as reset:
+                absent = run_frame(
+                    replace(frame, frame_id="gap", frame_index=8, image_path=None,
+                            absence_reason="camera missing"),
+                    steps={"perception": mapper}, shared_memory=memory,
+                )
+                reset.assert_called_once_with(memory)
+            self.assertIsNone(absent.result.perception)
+            self.assertEqual(mapper.last_frame_index, 8)

@@ -83,7 +83,7 @@ h3, .kicker {
 }
 .sidebar-brand {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   flex: 0 0 auto;
   padding: 0 12px 8px;
@@ -93,6 +93,13 @@ h3, .kicker {
   font-weight: 500;
   letter-spacing: -.03em;
 }
+.automa-home {
+  display: inline-flex;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.automa-home svg { width: 16px; height: 16px; display: block; }
+.automa-home:hover { color: var(--fg); }
 .sidebar-scroll {
   display: flex;
   flex-direction: column;
@@ -380,14 +387,6 @@ h3, .kicker {
   flex: 0 0 auto;
   min-height: 24px;
 }
-.automa-home {
-  flex: 0 0 auto;
-  width: 24px;
-  height: 24px;
-  border-radius: var(--radius);
-  background: var(--red);
-}
-.automa-home:hover { filter: brightness(1.15); }
 .viewer {
   flex: 1;
   min-height: 0;

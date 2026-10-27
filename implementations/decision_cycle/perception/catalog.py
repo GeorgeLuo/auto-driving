@@ -172,11 +172,6 @@ PERCEPTION_PLUGINS: tuple[dict[str, Any], ...] = (
         "default_config": {},
     },
     {
-        "spec": "implementations.decision_cycle.perception.plugins.vlm_prep.plugin:VlmPrepPlugin",
-        "description": "",
-        "default_config": {},
-    },
-    {
         "spec": "implementations.decision_cycle.perception.plugins.classical_regions.plugin:ClassicalRegionPlugin",
         "description": "OpenCV-only coherent color components as generic image-space regions.",
         "default_config": {"working_width": 320, "spatial_radius": 8, "color_radius": 18, "min_area_fraction": 0.003, "max_area_fraction": 0.65, "max_regions": 32},

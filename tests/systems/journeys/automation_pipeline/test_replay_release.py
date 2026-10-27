@@ -8,6 +8,7 @@ its source, so a fresh process replays it.
 """
 from __future__ import annotations
 
+from functools import partial
 import hashlib
 import json
 import shutil
@@ -46,8 +47,16 @@ def _package_release_with_frame_label(runtime_root: Path, source_root: Path, lab
 
 
 def _frame_label(report: dict) -> str:
-    things = report["frames"][0]["perception"]["things"]
+    things = report["frames"][0]["record"]["things"]
     return next(item for item in things if item["thing_id"] == "front_camera_frame")["label"]
+
+
+def _automa(*args: str, runtime_root: Path, env: dict, check: bool = True):
+    # The run starts a worker; replay needs a fresh import of recorded plugin code.
+    own_process = args[:1] in (("run",), ("inspect",))
+    run = run_automa if own_process else invoke_automa
+    group = "plugins" if args[:1] == ("inspect",) else "hosts"
+    return run(group, *args, runtime_root=runtime_root, extra_env=env, check=check)
 
 
 class ReplayByReleaseTests(unittest.TestCase):
@@ -57,10 +66,7 @@ class ReplayByReleaseTests(unittest.TestCase):
             env = {"CHASE_UI_WS_URL": ws_url}
             write_host_fixture(runtime_root, "chase-sim-chaser", url=ws_url)
 
-            def automa(*args: str, check: bool = True):
-                # Only the run needs its own process; it starts the worker.
-                run = run_automa if args[:1] == ("run",) else invoke_automa
-                return run("hosts", *args, runtime_root=runtime_root, extra_env=env, check=check)
+            automa = partial(_automa, runtime_root=runtime_root, env=env)
 
             automa("stage", "perception", "--name", HOST_NAME, "--plugin", "frame")
             release = _package_release_with_frame_label(runtime_root, Path(tmp) / "source", "release camera frame")
@@ -75,14 +81,14 @@ class ReplayByReleaseTests(unittest.TestCase):
             (recording,) = [path for path in runs.iterdir() if (path / "manifest.json").is_file()]
 
             automa("stage", "perception", "--name", HOST_NAME, "--plugin", "frame")
-            replay = automa("perception", "inspect", str(recording), "--json")
+            replay = automa("inspect", "perception", str(recording), "--json")
             self.assertEqual(_frame_label(json.loads(replay.stdout)), "release camera frame")
 
             releases = runtime_root / HOST_NAME / "bundle/releases"
             Path(release["archive"]["path"]).unlink()
             Path(release["manifest"]["path"]).unlink()
             shutil.rmtree(releases / release["archive"]["sha256"])
-            missing = automa("perception", "inspect", str(recording), "--json", check=False)
+            missing = automa("inspect", "perception", str(recording), "--json", check=False)
             self.assertEqual(missing.returncode, 2, missing.stdout)
             self.assertIn(f"Controller release {release['tree_sha256'][:12]} is not in", missing.stdout)
             self.assertIn(f"Run: ./cli/automa hosts update --name {HOST_NAME}", missing.stdout)
@@ -93,12 +99,7 @@ class ReplayByReleaseTests(unittest.TestCase):
             env = {"CHASE_UI_WS_URL": ws_url}
             write_host_fixture(runtime_root, "chase-sim-chaser", url=ws_url)
 
-            def automa(*args: str, check: bool = True):
-                # The run starts the worker. A process keeps each uploaded
-                # module it imports, so replays also get their own process.
-                own_process = args[:1] == ("run",) or args[0] == "perception"
-                run = run_automa if own_process else invoke_automa
-                return run("hosts", *args, runtime_root=runtime_root, extra_env=env, check=check)
+            automa = partial(_automa, runtime_root=runtime_root, env=env)
 
             automa("stage", "perception", "--name", HOST_NAME, "--plugin", "frame")
             bundles.package_controller_bundle(bundles.controller_bundle_paths(runtime_root / HOST_NAME))
@@ -133,15 +134,23 @@ class ReplayByReleaseTests(unittest.TestCase):
             shutil.move(recording, moved)
             recording = moved
 
-            replay = json.loads(automa("perception", "inspect", str(recording), "--json").stdout)
+            replay = json.loads(automa("inspect", "perception", str(recording), "--json").stdout)
             for frame in replay["frames"]:
-                perception = frame["perception"]
+                perception = frame["record"]
                 self.assertEqual([(run["plugin_id"], run["status"]) for run in perception["plugin_runs"]],
                                  [("frame", "ok"), ("uploaded", "ok")])
                 self.assertEqual(perception["measurements"]["uploaded"]["uploaded_revision"], 7)
 
+            env["AUTOMA_PERCEPTION_INSPECT_ROOT"] = str(Path(tmp) / "inspect-runs")
+            archived = json.loads(automa("inspect", "perception", str(recording), "--record", "--json").stdout)
+            shutil.rmtree(recording)
+            recording = Path(tmp) / "moved-inspect"
+            shutil.move(archived["run_dir"], recording)
+            rerun = json.loads(automa("inspect", "perception", str(recording), "--json").stdout)
+            self.assertEqual(rerun["frames"][0]["record"]["measurements"]["uploaded"]["uploaded_revision"], 7)
+
             shutil.rmtree(recording / "plugins")
-            missing = automa("perception", "inspect", str(recording), "--json", check=False)
+            missing = automa("inspect", "perception", str(recording), "--json", check=False)
             self.assertEqual(missing.returncode, 2, missing.stdout)
             self.assertIn(f"uploaded plugin source {source} is not available here", missing.stdout)
 

@@ -151,6 +151,36 @@ def _recording_text(value: Any, label: str) -> str:
     return value
 
 
+def recording_frame_entry(
+    *, frame_id: str, timestamp_ms: int, image_path: str | None,
+    steps: dict[str, Any], frame_index: int | None = None,
+    context: dict[str, Any] | None = None,
+    control_application_change: dict[str, Any] | None = None,
+    mode: str | None = None, user_steering: float | None = None,
+    user_throttle: float | None = None, absence_reason: str | None = None,
+) -> dict[str, Any]:
+    """The inputs needed to replay one cycle; image paths are relative to its archive."""
+
+    entry: dict[str, Any] = {
+        "frame_id": frame_id,
+        "timestamp_ms": timestamp_ms,
+        "image_path": image_path,
+        "steps": copy.deepcopy(steps),
+    }
+    if frame_index is not None:
+        entry["frame_index"] = frame_index
+    for key, value in (("mode", mode), ("user_steering", user_steering), ("user_throttle", user_throttle)):
+        if value is not None:
+            entry[key] = value
+    if context is not None:
+        entry["context"] = recorded_context(context)
+    if control_application_change is not None:
+        entry[CONTROL_APPLICATION_CHANGE_FIELD] = copy.deepcopy(control_application_change)
+    if absence_reason is not None:
+        entry["absence_reason"] = absence_reason
+    return entry
+
+
 def append_recording_frame(
     run_dir: Path,
     *,
@@ -199,24 +229,15 @@ def append_recording_frame(
         relative_image = candidate.resolve().relative_to(root.resolve()).as_posix()
     except ValueError as exc:
         raise ValueError("recorded image must stay inside the run directory") from exc
-    entry: dict[str, Any] = {
-        "host_name": host_name,
-        "run_id": run_id,
-        "generation_id": generation_id,
-        "frame_id": frame_id,
-        "timestamp_ms": timestamp_ms,
-        "image_path": relative_image,
-        "steps": copy.deepcopy(steps),
+    entry = {
+        "host_name": host_name, "run_id": run_id, "generation_id": generation_id,
+        **recording_frame_entry(
+            frame_id=frame_id, frame_index=frame_index, timestamp_ms=timestamp_ms,
+            image_path=relative_image, steps=steps, context=context,
+            control_application_change=control_application_change, mode=mode,
+            user_steering=user_steering, user_throttle=user_throttle,
+        ),
     }
-    if frame_index is not None:
-        entry["frame_index"] = frame_index
-    for key, value in (("mode", mode), ("user_steering", user_steering), ("user_throttle", user_throttle)):
-        if value is not None:
-            entry[key] = value
-    if context is not None:
-        entry["context"] = recorded_context(context)
-    if control_application_change is not None:
-        entry[CONTROL_APPLICATION_CHANGE_FIELD] = copy.deepcopy(control_application_change)
     manifest_path = root / RECORDING_MANIFEST_NAME
     payload: dict[str, Any] = {
         "schema": RECORDING_MANIFEST_SCHEMA,

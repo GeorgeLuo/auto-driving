@@ -246,7 +246,6 @@ def _frame_record() -> dict:
                     "status": "ok",
                     "duration_ms": 8,
                     "thing_count": 2,
-                    "artifact_count": 0,
                 }
             ],
             "things": [

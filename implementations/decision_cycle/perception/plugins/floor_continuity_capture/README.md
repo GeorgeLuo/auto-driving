@@ -14,15 +14,15 @@ inherits the base floor-continuity default.
 Apply it to frame 19:
 
 ```sh
-./cli/automa hosts perception inspect path/to/chase_frame_000019_front_camera.jpg \
-  --plugin frame --plugin floor_continuity_capture --record
+./cli/automa plugins inspect perception path/to/chase_frame_000019_front_camera.jpg \
+  --plugin frame --plugin floor_continuity_capture
 ```
 
 Apply it to the complete capture:
 
 ```sh
-./cli/automa hosts perception inspect path/to/frames \
-  --plugin frame --plugin floor_continuity_capture --record
+./cli/automa plugins inspect perception path/to/frames \
+  --plugin frame --plugin floor_continuity_capture
 ```
 
 Its capture results are representation evidence, not

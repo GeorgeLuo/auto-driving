@@ -106,6 +106,47 @@ class HelpCommandTests(unittest.TestCase):
                     parser.parse_args(args)
                 self.assertEqual(caught.exception.code, 2)
 
+    def test_plugins_help_lists_inspect_and_inspect_help_lists_all_five_steps(self) -> None:
+        from tests.shared.cli.invoke import invoke_automa
+
+        top = invoke_automa("plugins").stdout
+        self.assertIn("- inspect", top)
+        self.assertNotIn("- perception", top)
+        steps = invoke_automa("plugins", "inspect").stdout
+        for step in ("perception", "memory", "proposal", "plan", "action"):
+            self.assertIn(f"- {step}", steps)
+        self.assertNotIn("Act on proposals", steps)
+
+    def test_step_inspect_parses_under_plugins(self) -> None:
+        parser = build_parser()
+        for step in ("perception", "memory", "proposal", "plan", "action"):
+            with self.subTest(step=step):
+                parsed = parser.parse_args(["plugins", "inspect", step, "frame.png"])
+                self.assertEqual(parsed.command, "plugins")
+                self.assertEqual(parsed.plugin_command, "inspect")
+                self.assertEqual(parsed.step, step)
+        for args in (
+            ["plugins", "inspect", "observation", "frame.png"],
+            ["hosts", "proposal", "inspect", "frame.png"],
+            ["hosts", "plan", "inspect", "frame.png"],
+            ["hosts", "action", "inspect", "frame.png"],
+            ["hosts", "perception", "inspect", "frame.png"],
+            ["hosts", "memory", "inspect", "frame.png"],
+            ["plugins", "inspect", "perception", "--name", "piracer"],
+            ["plugins", "inspect", "perception", "frame.png", "--frames", "1"],
+            ["plugins", "inspect", "perception", "frame.png", "--interval-s", "0"],
+            ["plugins", "inspect", "perception", "frame.png", "--timeout-s", "3"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+        for step in ("perception", "memory", "proposal", "plan", "action"):
+            with self.subTest(step=step, missing_source=True), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(["plugins", "inspect", step])
+                self.assertEqual(caught.exception.code, 2)
+
     def test_the_viewer_takes_one_host_by_name_or_url(self) -> None:
         parser = build_parser()
         named = parser.parse_args(["hosts", "viewer", "--name", "chase-sim-chaser"])

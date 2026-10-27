@@ -1,13 +1,15 @@
 """Replay an image source through a prefix of the cycle's steps, offline.
 
-Perception, memory, proposal, plan and action inspect all replay a source this
-way: the source's recorded selections, restaged per frame, unless overridden;
+``step_inspect`` replays every step through this path: the source's recorded
+selections, restaged per frame, unless overridden;
 then a report of the inspected step after every frame, optionally recorded as a
 run that replays as a source again.
 """
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 import shutil
 import time
@@ -15,13 +17,13 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from autonomy.plugins import uploaded_source
+from autonomy.runtime.recording import recording_frame_entry
 from autonomy.decision_cycle.activation import StepActivation
-from autonomy.decision_cycle.steps import builtin_activation
-from implementations.decision_cycle.catalog import selection_activation
 
 from .inspection_runs import (
-    SharedMemorySeed, recorded_runner, recorded_selection, recorded_selections, replay_step,
-    replayed_selection, selection_report,
+    SharedMemorySeed, recorded_runner, recorded_selection, recorded_selections,
+    default_selection, resolve_replay_activations, restage_replay_steps, selection_report,
 )
 from .paths import safe_path_part
 from .workbench_frames import FrameOutcome, run_frame
@@ -50,16 +52,6 @@ def read_replay_source(source: str | Path, *, max_frames: int) -> tuple[ImageSou
     return image_source, manifest or {}
 
 
-def default_selection(step: str) -> StepActivation | None:
-    """The selection inspect uses for a step its source did not record.
-
-    That is the built-in a vehicle runs when the step is unstaged, else the
-    step's default selection.
-    """
-
-    return builtin_activation(step) or selection_activation(step)
-
-
 class StepReplay:
     """Step runners that replay a source with the selections it recorded.
 
@@ -85,16 +77,15 @@ class StepReplay:
         self.overrides = dict(overrides or {})
         first = recorded_selections(image_source.frames[0].metadata)
         recorded = recorded_selections(manifest)
-        self.activations: dict[str, StepActivation | None] = {}
         for step in steps:
-            if step in self.overrides:
-                self.activations[step] = self.overrides[step]
-            elif step in first:
-                self.activations[step] = replayed_selection(step, first[step])
-            elif step in recorded:
-                self.activations[step] = replayed_selection(step, recorded[step])
-            else:
-                self.activations[step] = recorded_selection(step, manifest) or default_selection(step)
+            if step not in recorded:
+                legacy = recorded_selection(step, manifest)
+                if legacy is not None:
+                    recorded[step] = legacy
+        self.activations = resolve_replay_activations(
+            {**recorded, **first}, defaults={step: default_selection(step) for step in steps},
+            overrides=self.overrides,
+        )
         self.runners = {
             step: recorded_runner(activation) if activation is not None else None
             for step, activation in self.activations.items()
@@ -104,17 +95,30 @@ class StepReplay:
     def restage(self, frame: ReplayFrame) -> None:
         """Apply this frame's recorded selections, unless the step is overridden."""
 
-        selections = recorded_selections(frame.metadata)
-        for step in self.activations:
-            if step not in selections or step in self.overrides:
-                continue
-            activation = replayed_selection(step, selections[step])
-            self.runners[step] = replay_step(self.runners[step], activation, self.shared_memory)
-            self.activations[step] = activation
+        restage_replay_steps(
+            self.runners, self.activations, recorded_selections(frame.metadata),
+            overrides=set(self.overrides), shared_memory=self.shared_memory,
+        )
 
     def run(self, frame: ReplayFrame) -> FrameOutcome:
         self.restage(frame)
         return run_frame(frame, steps=self.runners, shared_memory=self.shared_memory)
+
+    def recording_entry(self, frame: ReplayFrame, outcome: FrameOutcome) -> dict[str, Any]:
+        """Executed inputs, including overrides, independent of the report's frame filter."""
+        applications = frame.control_applications
+        return recording_frame_entry(
+            frame_id=frame.frame_id, frame_index=frame.frame_index,
+            timestamp_ms=frame.timestamp_ms,
+            image_path=str(frame.image_path) if frame.image_path is not None else None,
+            absence_reason=frame.absence_reason, steps=self.step_payloads(),
+            context=outcome.result.context.to_dict(), mode=frame.mode,
+            user_steering=frame.user_steering, user_throttle=frame.user_throttle,
+            control_application_change=(
+                {"kept": 0, "added": [item.to_dict() for item in applications]}
+                if applications is not None else None
+            ),
+        )
 
     def step_payloads(self) -> dict[str, Any]:
         """Each step's current selection, as a frame records it for replay."""
@@ -138,8 +142,11 @@ def inspect_run_id(source_id: str) -> str:
     return f"inspect-{safe_path_part(source_id)}-{stamp}"
 
 
-def record_inspect_run(run_dir: Path, report: dict[str, Any], image_source: ImageSource) -> None:
-    """Save the report with copies of its frames, so the run replays as a source.
+def record_inspect_run(
+    run_dir: Path, report: dict[str, Any], image_source: ImageSource,
+    replay_inputs: list[dict[str, Any]],
+) -> None:
+    """Archive executed inputs and images; the report may select only one frame.
 
     Raises OSError when the directory exists or cannot be written.
     """
@@ -148,12 +155,47 @@ def record_inspect_run(run_dir: Path, report: dict[str, Any], image_source: Imag
     report["run_dir"] = str(run_dir)
     (run_dir / "frames").mkdir()
     sources = {frame.frame_id: frame for frame in image_source.frames}
-    for recorded_frame in report["frames"]:
-        frame = sources[recorded_frame["frame_id"]]
+    entries = copy.deepcopy(replay_inputs)
+    paths = {}
+    for entry in entries:
+        frame = sources[entry["frame_id"]]
         if frame.image_path is not None:
             relative = Path("frames") / f"frame_{frame.position:06d}{frame.image_path.suffix.lower()}"
             shutil.copyfile(frame.image_path, run_dir / relative)
-            recorded_frame["image_path"] = relative.as_posix()
+            entry["image_path"] = relative.as_posix()
+            paths[frame.frame_id] = relative.as_posix()
+        _retain_uploaded_sources(run_dir, entry["steps"])
+    selections = {entry["frame_id"]: entry["steps"] for entry in entries}
+    for item in report["frames"]:
+        item["image_path"] = paths.get(item["frame_id"])
+        item["steps"] = selections[item["frame_id"]]
     (run_dir / "report.json").write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"source_id": image_source.source_id, "frames": entries}, indent=2, sort_keys=True)
+        + "\n", encoding="utf-8",
+    )
+
+
+def _retain_uploaded_sources(run_dir: Path, steps: dict[str, Any]) -> None:
+    """Keep file-based plugin entrypoints relocatable, as runtime recordings do."""
+    for activation in steps.values():
+        if activation is None:
+            continue
+        metadata = activation.get("metadata") or {}
+        sources = metadata.pop("plugin_sources", {})
+        for plugin_id, spec in activation["plugin_specs"].items():
+            module, separator, name = spec.partition(":")
+            if not module.endswith(".py"):
+                continue
+            original = sources.get(module)
+            source = Path(original or module)
+            if original is None and not source.is_absolute():
+                source = uploaded_source(module)
+            data = source.read_bytes()
+            filename = f"{hashlib.sha256(data).hexdigest()}.py"
+            target = run_dir / "plugins" / filename
+            target.parent.mkdir(exist_ok=True)
+            target.write_bytes(data)
+            activation["plugin_specs"][plugin_id] = f"{filename}{separator}{name}"

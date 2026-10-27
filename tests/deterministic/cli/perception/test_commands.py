@@ -25,31 +25,6 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("invalid choice: 'replay'", result.stderr)
 
-    def test_perception_inspect_is_offline_and_does_not_record_by_default(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            frames = root / "frames"
-            frames.mkdir()
-            from PIL import Image
-
-            Image.new("RGB", (32, 24), (30, 40, 50)).save(frames / "000.png")
-            Image.new("RGB", (32, 24), (50, 40, 30)).save(frames / "001.png")
-            inspect_root = root / "applies"
-            result = invoke_automa(
-                "hosts", "perception",
-                "inspect",
-                str(frames),
-                "--json",
-                extra_env={"AUTOMA_PERCEPTION_INSPECT_ROOT": str(inspect_root)},
-            )
-
-            payload = json.loads(result.stdout)
-            self.assertEqual(payload["schema"], "perception_inspect")
-            self.assertEqual(payload["source"]["kind"], "images")
-            self.assertEqual(payload["summary"]["frames"], 2)
-            self.assertIsNone(payload["run_dir"])
-            self.assertFalse(inspect_root.exists())
-
     def test_scenario_deployed_perception_schema_is_machine_readable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"

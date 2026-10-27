@@ -4,7 +4,7 @@
 Serves the workbench on the bright high-rate capture with packaged perception
 plugins that extract signals, and runs it to the end. Every frame is then
 shown by seeking, as the page does, and compared with
-``automa hosts perception inspect`` over the same directory and plugins: the
+``automa plugins inspect perception`` over the same directory and plugins: the
 workbench must show the frame, status, and per-plugin signal and thing counts
 the CLI reports. Memory and decision state must be present for every frame.
 Both are given the ``multi_obstruction`` perception preset. A second pass
@@ -41,7 +41,8 @@ def inspect_report() -> dict:
     """The CLI's report for the same source, with the perception preset."""
 
     completed = subprocess.run(
-        automa("perception", "inspect", str(SOURCE), "--preset", PERCEPTION_PRESET, "--json"),
+        [sys.executable, str(ROOT / "cli/automa"), "plugins", "inspect", "perception",
+         str(SOURCE), "--preset", PERCEPTION_PRESET, "--json"],
         cwd=ROOT, capture_output=True, text=True, check=False,
     )
     if completed.returncode != 0:
@@ -108,7 +109,7 @@ def check_parity() -> list[str]:
     report = inspect_report()
     expected = report["frames"]
     problems: list[str] = []
-    inspected = report["perception"]
+    inspected = report["selections"]["perception"]
     try:
         with serve() as workbench:
             started = workbench.wait_for(lambda s: s["position"] >= 1)
@@ -134,15 +135,20 @@ def check_parity() -> list[str]:
                 entry = shown["timeline"][index]
                 if shown["position"] != index + 1:
                     problems.append(f"{label}: seek landed at {shown['position'] - 1}")
-                if entry.get("perception_status") != want["status"]:
+                record = want["record"]
+                if record is None:
+                    if shown["steps"]["perception"] is not None:
+                        problems.append(f"{label}: absent frame has a perception record")
+                    continue
+                if entry.get("perception_status") != record["status"]:
                     problems.append(
-                        f"{label}: status {entry.get('perception_status')!r}, inspect {want['status']!r}"
+                        f"{label}: status {entry.get('perception_status')!r}, inspect {record['status']!r}"
                     )
                 got_runs = [
                     {key: run.get(key) for key in RUN_KEYS}
                     for run in (shown["steps"]["perception"] or {}).get("plugin_runs") or []
                 ]
-                want_runs = [{key: run.get(key) for key in RUN_KEYS} for run in want["plugin_runs"]]
+                want_runs = [{key: run.get(key) for key in RUN_KEYS} for run in record["plugin_runs"]]
                 if got_runs != want_runs:
                     problems.append(f"{label}: plugin runs {got_runs}, inspect {want_runs}")
                 if not (entry.get("decision") or {}).get("status"):

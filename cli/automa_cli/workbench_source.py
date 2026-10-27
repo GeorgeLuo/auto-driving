@@ -207,19 +207,6 @@ def normalize_image_directory(
 
     source_id = _source_id(source_path, manifest)
     recorded_root = _recorded_root(manifest)
-    recorded_source = (
-        _recorded_source_mapping(manifest, source_path, recorded_root)
-        if manifest is not None and manifest.get("schema") == "perception_inspect"
-        else None
-    )
-    if (
-        root is not None
-        and recorded_source is not None
-        and not _is_within(recorded_source[1], root)
-    ):
-        raise SourceValidationError(
-            "manifest source must remain inside the configured source root"
-        )
     try:
         defaults = recorded_selections(manifest or {})
         for step in STEPS:
@@ -249,7 +236,6 @@ def normalize_image_directory(
             entry=entry,
             source_path=source_path,
             recorded_root=recorded_root,
-            recorded_source=recorded_source,
             max_image_bytes=max_image_bytes,
             control_applications=windows[position],
         )
@@ -289,7 +275,6 @@ def normalize_image_file(
         entry={"image_path": path.name},
         source_path=path.parent,
         recorded_root=None,
-        recorded_source=None,
         max_image_bytes=max_image_bytes,
     )
     return ImageSource(source_path=path, source_id=source_id, frames=(frame,))
@@ -347,50 +332,6 @@ def _recorded_root(manifest: dict[str, Any] | None) -> Path | None:
         return None
     value = manifest["run_dir"].strip()
     return Path(value).expanduser() if value else None
-
-
-def _recorded_source_mapping(
-    manifest: dict[str, Any] | None,
-    source_path: Path,
-    recorded_root: Path | None,
-) -> tuple[Path, Path] | None:
-    source = manifest.get("source") if manifest is not None else None
-    value = source.get("path") if isinstance(source, dict) else None
-    if not isinstance(value, str) or not value.strip():
-        return None
-    recorded = Path(value).expanduser()
-    if recorded.exists():
-        return recorded, recorded.resolve()
-    repository_root = _relocated_repository_root(source_path, recorded_root)
-    if repository_root is None:
-        return None
-    current = _existing_source_suffix(recorded, repository_root)
-    return (recorded, current) if current is not None else None
-
-
-def _relocated_repository_root(
-    source_path: Path,
-    recorded_root: Path | None,
-) -> Path | None:
-    if recorded_root is None or recorded_root.is_absolute():
-        return None
-    current = source_path
-    for part in reversed(recorded_root.parts):
-        if current.name != part:
-            return None
-        current = current.parent
-    return current
-
-
-def _existing_source_suffix(recorded: Path, repository_root: Path) -> Path | None:
-    if not recorded.is_absolute():
-        candidate = repository_root / recorded
-        return candidate.resolve() if candidate.exists() else None
-    for start in range(1, len(recorded.parts)):
-        candidate = repository_root.joinpath(*recorded.parts[start:])
-        if candidate.exists():
-            return candidate.resolve()
-    return None
 
 
 def _lexical_image_paths(source_path: Path) -> list[Path]:
@@ -460,7 +401,6 @@ def _build_frame(
     entry: Any,
     source_path: Path,
     recorded_root: Path | None,
-    recorded_source: tuple[Path, Path] | None,
     max_image_bytes: int,
     control_applications: tuple[ControlApplication, ...] | None = None,
 ) -> ReplayFrame:
@@ -480,7 +420,6 @@ def _build_frame(
             source_path,
             str(raw_image),
             recorded_root=recorded_root,
-            recorded_source=recorded_source,
             position=position,
         )
         image_metadata = _validate_image_path(
@@ -549,7 +488,6 @@ def _resolve_image_path(
     value: str,
     *,
     recorded_root: Path | None,
-    recorded_source: tuple[Path, Path] | None,
     position: int,
 ) -> Path:
     declared = Path(value).expanduser()
@@ -563,15 +501,6 @@ def _resolve_image_path(
             relative = _recorded_relative_path(declared, recorded_root)
             if relative is not None:
                 candidate = source_path / relative
-            elif recorded_source is not None:
-                recorded, current = recorded_source
-                try:
-                    relative = declared.relative_to(recorded)
-                except ValueError:
-                    pass
-                else:
-                    candidate = current / relative
-                    allowed_root = current
     else:
         if ".." in declared.parts:
             raise SourceValidationError(

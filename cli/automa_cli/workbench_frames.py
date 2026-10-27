@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.action.publication import write_host_inputs
@@ -16,9 +15,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.observation.perception_summary import observation_from_perception
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.interface import PerceptionText
-from autonomy.decision_cycle.steps import decision_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 from .step_hosting import plugin_report
@@ -57,17 +54,6 @@ def sensor_frame_for_replay_frame(frame: ReplayFrame) -> SensorFrame | None:
     )
 
 
-def workbench_decision_steps() -> dict[str, Any]:
-    """The built-in observation and action a vehicle host uses.
-
-    Plan has no built-in. The workbench builds an unrecorded plan from the
-    packaged default.
-    """
-
-    steps = decision_steps()
-    return {"observation": steps.observation, "action": steps.action}
-
-
 def decision_view(result: Any) -> dict[str, Any] | None:
     """The decision steps' records for the workbench timeline."""
 
@@ -92,26 +78,6 @@ class FrameOutcome:
     plugin_reports: dict[str, dict[str, Any] | None]
 
 
-def run_perception(
-    runner: Any,
-    sensor_frame: SensorFrame,
-    *,
-    shared_memory: dict[str, Any],
-    metadata: dict[str, Any],
-    output_dir: Path | None = None,
-):
-    """Run perception on one sensor frame; the step every consumer shares."""
-
-    return runner.perceive(
-        build_perception_request(
-            sensor_frame,
-            shared_memory=shared_memory,
-            output_dir=output_dir,
-            metadata=metadata,
-        )
-    )
-
-
 def run_frame(
     frame: ReplayFrame,
     *,
@@ -120,12 +86,9 @@ def run_frame(
 ) -> FrameOutcome:
     """Run one frame through the step runners in ``steps``, keyed by step.
 
-    Perception is required and is adapted to the replay frame; observation is
-    built from it. Every other step runs its runner, and a missing step is
-    skipped as the cycle skips it.
+    Each configured slot runs its normal cycle callable. When observation is
+    not supplied, build it from perception and the replay frame.
     """
-
-    perception_step = steps["perception"]
 
     sensor_frame = sensor_frame_for_replay_frame(frame)
     write_host_inputs(
@@ -149,27 +112,6 @@ def run_frame(
         },
     )
 
-    def perceive(current: DecisionFrameContext) -> PerceptionText | None:
-        if perception_step is None:
-            return None
-        if frame.absent or current.sensor_frame is None:
-            perception_step.reset(current.shared_memory)
-            return None
-        return run_perception(
-            perception_step,
-            current.sensor_frame,
-            shared_memory=current.shared_memory,
-            metadata={
-                "source": WORKBENCH_SEQUENCE_ID,
-                "source_id": frame.source_id,
-                "sequence_index": frame.position,
-            },
-        )
-
-    if callable(getattr(perception_step, "plugin_timing", None)):
-        # The cycle reads each step's plugin timing from its slot; this one is the runner's.
-        perceive.plugin_timing = perception_step.plugin_timing
-
     def observe(
         current: DecisionFrameContext,
         perception: PerceptionText | None,
@@ -189,7 +131,7 @@ def run_frame(
 
     result = DecisionCycle(
         DecisionSteps(
-            perception=perceive,
+            perception=steps.get("perception"),
             observation=steps.get("observation", observe),
             memory=steps.get("memory"),
             proposal=steps.get("proposal"),

@@ -105,12 +105,13 @@ class WorkbenchTests(unittest.TestCase):
         with TemporaryDirectory() as directory:
             workspace = Path(directory)
             root = workspace / "lab/runs/fixture-run"
-            image_root = workspace / "lab/runs/capture"
+            image_root = root / "frames"
             root.mkdir(parents=True)
             image_root.mkdir(parents=True)
             _make_images(image_root, 2)
             write_manifest(root, {
-                "schema": "perception_inspect",
+                "schema": "perception_inspect_v1",
+                "selections": {},
                 "source_id": "fixture.sequence",
                 "run_dir": "lab/runs/fixture-run",
                 "source": {
@@ -123,7 +124,7 @@ class WorkbenchTests(unittest.TestCase):
                         "frame_index": 5,
                         "captured_at_ms": 500,
                         "image_path": (
-                            "/previous/location/auto-driving/lab/runs/capture/"
+                            "frames/"
                             "frame_01.png"
                         ),
                     },

@@ -16,9 +16,8 @@ from .automation import (
     stop_host_automation,
 )
 from .deploy import create_host, update_host, delete_host
-from .decision_steps import get_host_step_info, inspect_decision_step, stream_host_step
-from .memory import get_host_memory_info
-from .memory_runs import inspect_memory, reset_host_memory
+from .decision_steps import get_host_step_info, stream_host_step
+from .memory import get_host_memory_info, reset_host_memory
 from .operations import run_host_startup_check
 from autonomy.plugins import DuplicatePluginIdError
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, SELECTABLE_STEPS, STEP_PRESETS
@@ -26,9 +25,7 @@ from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT
 from .step_activations import HOST_PROVIDERS, stage_host_step
 from .runtime_hosts import RUNTIME_ROOT as HOSTS_RUNTIME_ROOT
 from .perception import get_host_perception_info
-from .perception_runs import (
-    inspect_perception,
-)
+from .step_inspect import INSPECT_STEPS, inspect_step
 from .workbench import run_workbench_replay
 from .plugin_catalog import arm_plugins, disarm_plugins, list_plugins, upload_plugin
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
@@ -92,18 +89,18 @@ def build_parser() -> argparse.ArgumentParser:
     host_help = host_commands.add_parser("help", help="Show host-level commands.")
     host_help.set_defaults(handler=_handle_hosts_help)
 
-    plugins = host_commands.add_parser("plugins", help="Upload, arm, disarm and inspect plugins in a live catalog.")
-    plugins.set_defaults(handler=_handle_plugins_help)
+    plugins = host_commands.add_parser("plugins", help="Upload, arm, disarm and list plugins in a live catalog.")
+    plugins.set_defaults(handler=_handle_hosts_plugins_help)
     plugin_commands = plugins.add_subparsers(dest="plugin_command")
-    plugins_help = plugin_commands.add_parser("help", help="Show upload, arming, disarming and catalog inspection usage.")
-    plugins_help.set_defaults(handler=_handle_plugins_help)
+    plugins_help = plugin_commands.add_parser("help", help="Show upload, arming, disarming and catalog status usage.")
+    plugins_help.set_defaults(handler=_handle_hosts_plugins_help)
     listing = plugin_commands.add_parser("status", aliases=["list"], help="Show live catalog availability and plugin revisions (list is an alias).")
     listing_target = listing.add_mutually_exclusive_group(required=True)
     listing_target.add_argument("--name", dest="host_name", help="Host whose live catalog to read.")
     listing_target.add_argument("--url", help="Runtime or workbench URL; bypass host lookup.")
     listing.add_argument("--step", choices=STEPS, help="Show only this cycle step.")
     listing.add_argument("--json", dest="json_output", action="store_true", help="Print the catalog snapshot as JSON.")
-    listing.set_defaults(handler=_handle_plugin_status)
+    listing.set_defaults(handler=_handle_hosts_plugins_status)
     upload = plugin_commands.add_parser(
         "upload", help="Register a plugin file; optionally arm it on a runtime host.",
         description="Store a file in an existing live catalog. Upload success means available; source that does not compile is refused. Selection stays unchanged unless --arm, which loads it on the host and fails with its import or construction error.",
@@ -119,7 +116,7 @@ def build_parser() -> argparse.ArgumentParser:
     upload.add_argument("--config", metavar="JSON", help="JSON object of constructor settings stored with this revision, for example '{\"throttle\": -0.6}'; arming constructs the plugin with it. Default: {}.")
     upload.add_argument("--arm", action="store_true", help="After registration, add/update this ID in the runtime host's requested selection; other plugins stay selected.")
     upload.add_argument("--json", dest="json_output", action="store_true", help="Print the registration receipt as JSON.")
-    upload.set_defaults(handler=_handle_plugin_upload)
+    upload.set_defaults(handler=_handle_hosts_plugins_upload)
 
     arm = plugin_commands.add_parser(
         "arm", help="Add/update uploaded or packaged plugins without restarting automation.",
@@ -134,7 +131,7 @@ def build_parser() -> argparse.ArgumentParser:
     arm_input.add_argument("--selection", type=Path, help="JSON map of supported steps to ordered plugin-ID lists; arm the group together.")
     arm.add_argument("--plugin", action="append", dest="plugins", help="Plugin ID to add/update; repeat in the desired append order with --step.")
     arm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
-    arm.set_defaults(handler=_handle_plugin_arm)
+    arm.set_defaults(handler=_handle_hosts_plugins_arm)
 
     disarm = plugin_commands.add_parser(
         "disarm", help="Deselect plugins without deleting them from the live catalog.",
@@ -150,7 +147,7 @@ def build_parser() -> argparse.ArgumentParser:
     disarm_input.add_argument("--all", dest="all_plugins", action="store_true", help="Disarm every plugin in --step, or in every step that can run without plugins.")
     disarm.add_argument("--plugin", action="append", dest="plugins", help="Plugin ID to disarm from --step; repeat to name several.")
     disarm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
-    disarm.set_defaults(handler=_handle_plugin_disarm)
+    disarm.set_defaults(handler=_handle_hosts_plugins_disarm)
 
     status = vehicle_commands.add_parser(
         "status",
@@ -301,7 +298,7 @@ def build_parser() -> argparse.ArgumentParser:
     host_run.add_argument(
         "--record",
         action="store_true",
-        help="Save per-frame images and perception artifacts under a timestamped run directory.",
+        help="Save per-frame images and cycle records under a timestamped run directory.",
     )
     host_run.add_argument(
         "--verbose",
@@ -434,7 +431,7 @@ def build_parser() -> argparse.ArgumentParser:
     host_restart.add_argument(
         "--record",
         action="store_true",
-        help="Save per-frame images and perception artifacts under a timestamped run directory.",
+        help="Save per-frame images and cycle records under a timestamped run directory.",
     )
     host_restart.add_argument(
         "--verbose",
@@ -653,7 +650,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     memory_control = host_commands.add_parser(
         "memory",
-        help="Operate host memory (inspect, viability, reset).",
+        help="Measure and reset host memory.",
     )
     memory_control.set_defaults(handler=_handle_hosts_memory_help)
     memory_commands = memory_control.add_subparsers(dest="memory_command")
@@ -689,88 +686,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Print the full machine-readable reset payload.",
     )
     memory_reset.set_defaults(handler=_handle_hosts_memory_reset)
-    memory_inspect = memory_commands.add_parser(
-        "inspect",
-        help="Show what a memory selection retains, from images or a recorded run.",
-        description=(
-            "Show what a memory selection retains. The source (an image, a directory of "
-            "images, or a recorded perception or memory run) goes through perception and observation, "
-            "then the selected memory plugins, frame by frame. A recorded run restores its "
-            "perception and memory selections, including their configs; --preset or --plugin "
-            "overrides memory. Otherwise each step uses its default. Reports each plugin's health, "
-            "record count and epoch, and the evidence publisher, after every frame. It reads "
-            "the source only; record live frames with `perception inspect --record` and "
-            "inspect that run. Absent frames "
-            "update memory with an empty observation. Unmanifested images use filename order "
-            "and times 0, 1000, 2000, ... ms, as perception inspect and workbench replay do."
-        ),
-    )
-    memory_inspect.add_argument(
-        "source",
-        type=Path,
-        help="Image file, recorded perception or memory run, or directory of images.",
-    )
-    _add_selection_args(memory_inspect, "memory", verb="inspect", fallback="the recorded selection, else ")
-    memory_inspect.add_argument(
-        "--record",
-        action="store_true",
-        help="Persist source frames, timing, both step selections and the per-frame report for replay.",
-    )
-    memory_inspect.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the machine-readable report.",
-    )
-    memory_inspect.set_defaults(handler=_handle_hosts_memory_inspect)
-
-    decision_inspects = []
-    for step_name in DECISION_STEPS:
-        step_control = host_commands.add_parser(
-            step_name,
-            help=f"Inspect the {step_name} step offline, from images or a recorded run.",
-        )
-        step_control.set_defaults(handler=_handle_hosts_decision_step_help, step=step_name)
-        step_commands = step_control.add_subparsers(dest=f"{step_name}_command")
-        step_commands.add_parser(
-            "help", help=f"Show {step_name}-level commands.",
-        ).set_defaults(handler=_handle_hosts_decision_step_help, step=step_name)
-        step_inspect = step_commands.add_parser(
-            "inspect",
-            help=f"Show the {step_name} record for every frame of images or a recorded run.",
-            description=(
-                f"Replay the source (an image, a directory of images, or a recorded automation, "
-                f"perception, memory or decision-step inspect run) through perception, observation "
-                f"and memory, then proposal, plan and action, frame by frame, and report the "
-                f"{step_name} record after each. A recording restores every step's selection, "
-                f"restaged per frame as recorded; explicit selections override {step_name}. Otherwise each "
-                f"step uses its default. Recorded frames replay with their recorded drive mode."
-            ),
-        )
-        step_inspect.add_argument(
-            "source",
-            type=Path,
-            help="Image file, directory of images, or recorded run.",
-        )
-        _add_selection_args(step_inspect, step_name, verb="inspect", fallback="the recorded selection, else ")
-        step_inspect.add_argument(
-            "--frame",
-            type=int,
-            default=None,
-            metavar="N",
-            help="Report only the source's Nth frame (0-based); the frames before it still replay.",
-        )
-        step_inspect.add_argument(
-            "--record",
-            action="store_true",
-            help=f"Persist the reported frames, every step's selection and the per-frame report under runtime/{step_name}-inspections/ for replay.",
-        )
-        step_inspect.add_argument(
-            "--json",
-            action="store_true",
-            help="Print the machine-readable report.",
-        )
-        step_inspect.set_defaults(handler=_handle_hosts_decision_step_inspect, step=step_name)
-        decision_inspects.append(step_inspect)
     memory_viability = memory_commands.add_parser(
         "viability",
         help="Health-check memory on a host.",
@@ -981,7 +896,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     perception_control = host_commands.add_parser(
         "perception",
-        help="Inspect what perception detects and measure its viability.",
+        help="Measure perception viability on a host.",
     )
     perception_control.set_defaults(handler=_handle_hosts_perception_help)
     perception_commands = perception_control.add_subparsers(dest="perception_command")
@@ -990,89 +905,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show perception-level commands.",
     )
     perception_help.set_defaults(handler=_handle_hosts_perception_help)
-
-    perception_inspect = perception_commands.add_parser(
-        "inspect",
-        help="Show what a perception selection detects, from images or a live vehicle.",
-        description=(
-            "Show what a perception selection detects. With a source (an image, a directory "
-            "of images, or a recorded run) the selection is applied to those images. Without "
-            "one, frames are read from an active vehicle without taking movement control; "
-            "when several are active, the simulator is selected by default. Recorded "
-            "perception and memory runs restore their perception selection and preserve "
-            "frame identity and timestamps; --preset or --plugin overrides that selection. "
-            "Absent frames are reported as unavailable and reset temporal state. "
-            "Unmanifested images use filename order and times 0, 1000, 2000, ... ms, "
-            "as memory inspect and workbench replay do."
-        ),
-    )
-    perception_inspect.add_argument(
-        "source",
-        nargs="?",
-        type=Path,
-        default=None,
-        help="Image file, recorded perception or memory run, or directory of images. Omit to read a live vehicle.",
-    )
-    _add_selection_args(
-        perception_inspect, "perception", verb="inspect", fallback="the recorded or staged selection, else ",
-    )
-    perception_inspect.add_argument(
-        "--name",
-        dest="host_name",
-        default=None,
-        help="Live host name. Omit to select a safe observation target automatically.",
-    )
-    perception_inspect.add_argument(
-        "--frames",
-        type=int,
-        default=None,
-        help="Live frames to observe (default: 5).",
-    )
-    perception_inspect.add_argument(
-        "--interval-s",
-        type=float,
-        default=None,
-        help="Delay between live captures in seconds (default: 0.25).",
-    )
-    perception_inspect.add_argument(
-        "--timeout-s",
-        type=float,
-        default=None,
-        help="Vehicle discovery and capture timeout in seconds (default: 3).",
-    )
-    perception_inspect.add_argument(
-        "--record",
-        action="store_true",
-        help=(
-            "Persist the selection, timing, per-frame plugin outputs and report for replay; "
-            "live reads also keep the captured frames."
-        ),
-    )
-    perception_inspect.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the machine-readable report.",
-    )
-    perception_inspect.set_defaults(handler=_handle_hosts_perception_inspect)
-
-    for inspection in (perception_inspect, memory_inspect, *decision_inspects):
-        inspection.add_argument(
-            "--shared-memory",
-            type=Path,
-            dest="shared_memory_file",
-            default=None,
-            metavar="FILE",
-            help="Start inspect from a shared_memory_v1 JSON file; recorded as provenance.",
-        )
-        inspection.add_argument(
-            "--max-frames",
-            type=int,
-            default=WORKBENCH_DEFAULT_MAX_FRAMES,
-            help=(
-                "Reject image directories or recordings above this frame count; "
-                f"increase for larger sources (default: {WORKBENCH_DEFAULT_MAX_FRAMES})."
-            ),
-        )
 
     perception_viability = perception_commands.add_parser(
         "viability",
@@ -1171,6 +1003,84 @@ def build_parser() -> argparse.ArgumentParser:
             help="Print controller release packaging details.",
         )
         step_parser.set_defaults(handler=_handle_hosts_stage_step, step=step_name)
+
+    step_plugins = subcommands.add_parser(
+        "plugins",
+        help="Inspect what a step's plugins report, from images or a recorded run.",
+    )
+    step_plugins.set_defaults(handler=_handle_plugins_help)
+    step_plugin_commands = step_plugins.add_subparsers(dest="plugin_command")
+    step_plugin_commands.add_parser(
+        "help",
+        help="Show plugin inspection commands.",
+    ).set_defaults(handler=_handle_plugins_help)
+
+    inspect_control = step_plugin_commands.add_parser(
+        "inspect", help="Replay images or a recorded run and report a step's plugins.",
+    )
+    inspect_control.set_defaults(handler=_handle_plugins_inspect_help)
+    inspect_commands = inspect_control.add_subparsers(dest="step")
+    inspect_commands.add_parser("help", help="Show the inspect steps.").set_defaults(
+        handler=_handle_plugins_inspect_help,
+    )
+    for step_name in INSPECT_STEPS:
+        record_description = {
+            "perception": "what perception detects",
+            "memory": "what memory retains",
+        }.get(step_name, f"the {step_name} record")
+        step_inspect = inspect_commands.add_parser(
+            step_name,
+            help=f"Show {record_description} for every frame.",
+            description=(
+                f"Replay an image, a directory of images, or a recorded run through the whole "
+                f"cycle and report {record_description} after each frame. A recording restores "
+                f"every step's selection and restages it per frame; --preset or --plugin overrides "
+                f"{step_name}. Otherwise each step uses its default. Absent frames have a null "
+                f"record and reset temporal state. Unmanifested images use filename order and "
+                f"times 0, 1000, 2000, ... ms. Recorded frames replay with their recorded drive mode."
+            ),
+        )
+        step_inspect.add_argument(
+            "source",
+            type=Path,
+            help="Image file, directory of images, or recorded run.",
+        )
+        _add_selection_args(step_inspect, step_name, verb="inspect", fallback="the recorded selection, else ")
+        step_inspect.add_argument(
+            "--frame",
+            type=int,
+            default=None,
+            metavar="N",
+            help="Report only the source's Nth frame (0-based); the frames before it still replay.",
+        )
+        step_inspect.add_argument(
+            "--record",
+            action="store_true",
+            help=f"Persist executed frames and inputs in a replay manifest, with the selected report under runtime/{step_name}-inspections/ for replay.",
+        )
+        step_inspect.add_argument(
+            "--json",
+            action="store_true",
+            help="Print the machine-readable report.",
+        )
+        step_inspect.set_defaults(handler=_handle_plugins_inspect, step=step_name)
+        step_inspect.add_argument(
+            "--shared-memory",
+            type=Path,
+            dest="shared_memory_file",
+            default=None,
+            metavar="FILE",
+            help="Start inspect from a shared_memory_v1 JSON file; recorded as provenance.",
+        )
+        step_inspect.add_argument(
+            "--max-frames",
+            type=int,
+            default=WORKBENCH_DEFAULT_MAX_FRAMES,
+            help=(
+                "Reject image directories or recordings above this frame count; "
+                f"increase for larger sources (default: {WORKBENCH_DEFAULT_MAX_FRAMES})."
+            ),
+        )
 
     simulators = subcommands.add_parser("simulators", help="Create, prepare and inspect simulators.")
     simulators.set_defaults(handler=_handle_simulators_help)
@@ -1291,7 +1201,7 @@ def _add_selection_args(
     )
 
 
-def _handle_plugins_help(args: argparse.Namespace) -> int:
+def _handle_hosts_plugins_help(args: argparse.Namespace) -> int:
     print("\n".join([
         "automa hosts plugins commands", "",
         "- upload  store a file and register an available plugin revision",
@@ -1326,13 +1236,13 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
     return 0
 
 
-def _handle_plugin_status(args: argparse.Namespace) -> int:
+def _handle_hosts_plugins_status(args: argparse.Namespace) -> int:
     result = list_plugins(url=args.url, host_name=args.host_name, step=args.step, json_output=args.json_output)
     print(result.message)
     return result.exit_code
 
 
-def _handle_plugin_upload(args: argparse.Namespace) -> int:
+def _handle_hosts_plugins_upload(args: argparse.Namespace) -> int:
     result = upload_plugin(
         url=args.url, host_name=args.host_name, file=args.file, step=args.step,
         plugin_id=args.plugin_id, entrypoint=args.entrypoint, config=args.config, arm=args.arm,
@@ -1342,7 +1252,7 @@ def _handle_plugin_upload(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_plugin_arm(args: argparse.Namespace) -> int:
+def _handle_hosts_plugins_arm(args: argparse.Namespace) -> int:
     if (args.step and not args.plugins) or (args.selection and args.plugins):
         print("Use --step with one or more --plugin IDs, or --selection without --plugin.")
         return 2
@@ -1352,7 +1262,7 @@ def _handle_plugin_arm(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_plugin_disarm(args: argparse.Namespace) -> int:
+def _handle_hosts_plugins_disarm(args: argparse.Namespace) -> int:
     named = bool(args.step and args.plugins)
     if args.selection and (args.step or args.plugins) or args.all_plugins and args.plugins or not (
             args.selection or args.all_plugins or named):
@@ -1363,6 +1273,31 @@ def _handle_plugin_disarm(args: argparse.Namespace) -> int:
                             all_plugins=args.all_plugins, json_output=args.json_output)
     print(result.message)
     return result.exit_code
+
+
+def _handle_plugins_help(args: argparse.Namespace) -> int:
+    print("\n".join([
+        "automa plugins commands", "",
+        "- inspect  report a step's plugins from images or a recorded run",
+        "- help     show this summary", "",
+        "Upload, arm, disarm and catalog status: ./cli/automa hosts plugins", "",
+        "Detailed help: ./cli/automa plugins inspect <step> --help",
+    ]))
+    return 0
+
+
+def _handle_plugins_inspect_help(args: argparse.Namespace) -> int:
+    print("\n".join([
+        "automa plugins inspect steps", "",
+        "- perception  show what a selection detects",
+        "- memory      show what a selection retains",
+        "- proposal    show the proposal record",
+        "- plan        show the plan record",
+        "- action      show the action record", "",
+        "Source: an image, a directory of images, or a recorded run.",
+        "Detailed help: ./cli/automa plugins inspect <step> --help",
+    ]))
+    return 0
 
 
 def _handle_top_level_help(args: argparse.Namespace) -> int:
@@ -1380,6 +1315,7 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "- status     Show hosts status and vehicles status.",
                 "- vehicles   Discover and inspect vehicle environments.",
                 "- hosts      Create, configure, and operate vehicle controller hosts.",
+                "- plugins    Inspect what each step's plugins report.",
                 "- simulators Create headless simulators, or prepare and inspect SimEval environments.",
                 "",
                 "Open the runtime viewer. It does not require a host:",
@@ -1445,24 +1381,24 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
             [
                 "automa hosts commands",
                 "",
-                "- create    create and start a host",
-                "- update    package and deploy a host's release",
-                "- delete    stop the host and its run, and remove its local files",
-                "- run       start a run and verify camera + perception + current view",
-                "- stop      stop the run; the host stays attached until hosts delete",
-                "- restart   stop and start the run",
-                "- serve     serve a Chase host in the foreground",
-                "- status    show each host's state and attachment",
-                "- stage     stage controller selections for a host",
-                "- plugins   manage plugins in a live host catalog",
-                "- operation run bounded vehicle checks through a host",
-                "- info      inspect staged controller configuration",
-                "- memory    inspect, measure and reset memory",
-                "- perception, proposal, plan, action  inspect controller steps",
-                "- workbench replay images through the controller steps",
-                "- stream    read a host's rolling outputs",
-                "- viewer    open a host's runtime viewer",
-                "- help      show this summary",
+                "- create      create and start a host",
+                "- update      package and deploy a host's release",
+                "- delete      stop the host and its run, and remove its local files",
+                "- run         start a run and verify camera + perception + current view",
+                "- stop        stop the run; the host stays attached until hosts delete",
+                "- restart     stop and start the run",
+                "- serve       serve a Chase host in the foreground",
+                "- status      show each host's state and attachment",
+                "- stage       stage controller selections for a host",
+                "- plugins     manage plugins in a live host catalog",
+                "- operation   run bounded vehicle checks through a host",
+                "- info        inspect staged controller configuration",
+                "- memory      measure and reset memory",
+                "- perception  measure perception viability",
+                "- workbench   replay images through the controller steps",
+                "- stream      read a host's rolling outputs",
+                "- viewer      open a host's runtime viewer",
+                "- help        show this summary",
                 "",
                 "Detailed help:",
                 "- ./cli/automa hosts <command> --help",
@@ -1538,9 +1474,10 @@ def _handle_hosts_perception_help(args: argparse.Namespace) -> int:
             [
                 "automa hosts perception commands",
                 "",
-                "- inspect    show what a selection detects, from images or a live vehicle",
                 "- viability  health-check perception cadence and freshness",
                 "- help       show this summary",
+                "",
+                "Inspect what a selection detects: ./cli/automa plugins inspect perception <source>",
                 "",
                 "Detailed help:",
                 "- ./cli/automa hosts perception <command> --help",
@@ -1814,31 +1751,8 @@ def _handle_hosts_stream_step(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_hosts_decision_step_help(args: argparse.Namespace) -> int:
-    step = args.step
-    print(
-        "\n".join(
-            [
-                f"automa hosts {step} commands",
-                "",
-                f"- inspect  the {step} record for every frame of images or a recorded run; optional --frame, --record",
-                "- help     show this summary",
-                "",
-                f"Stage plugins with:              ./cli/automa hosts stage {step} --name <host>",
-                f"Inspect staged config with:      ./cli/automa hosts info {step} --name <host>",
-                f"Stream the latest cycle:         ./cli/automa hosts stream {step} --name <host>",
-                "Act on proposals in live modes:  ./cli/automa hosts stage action --name <host> --plugin mode",
-                "",
-                "Detailed help:",
-                f"- ./cli/automa hosts {step} inspect --help",
-            ]
-        )
-    )
-    return 0
-
-
-def _handle_hosts_decision_step_inspect(args: argparse.Namespace) -> int:
-    result = inspect_decision_step(
+def _handle_plugins_inspect(args: argparse.Namespace) -> int:
+    result = inspect_step(
         args.step,
         source=str(args.source),
         preset=args.preset,
@@ -1860,10 +1774,11 @@ def _handle_hosts_memory_help(args: argparse.Namespace) -> int:
             [
                 "automa hosts memory commands",
                 "",
-                "- inspect what a memory selection retains for an image source, frame by frame; optional --record",
                 "- viability  health-check memory update cadence, failures, and epoch",
-                "- reset   clear live retained evidence; start a new empty epoch",
-                "- help    show this summary",
+                "- reset      clear live retained evidence; start a new empty epoch",
+                "- help       show this summary",
+                "",
+                "Inspect what a selection retains: ./cli/automa plugins inspect memory <source>",
                 "",
                 "Stage an implementation with: ./cli/automa hosts stage memory --name <host>",
                 "Inspect staged config with:   ./cli/automa hosts info memory --name <host>",
@@ -1882,21 +1797,6 @@ def _handle_hosts_memory_reset(args: argparse.Namespace) -> int:
         host_name=args.host_name,
         timeout_s=args.timeout_s,
         json_output=args.json,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_memory_inspect(args: argparse.Namespace) -> int:
-    result = inspect_memory(
-        str(args.source),
-        preset=args.preset,
-        plugins=args.plugins,
-        record=args.record,
-        json_output=args.json,
-        max_frames=args.max_frames,
-        shared_memory_file=args.shared_memory_file,
     )
     if result.message:
         print(result.message)
@@ -2030,25 +1930,6 @@ def _handle_hosts_info_step(args: argparse.Namespace) -> int:
         args.step,
         host_name=args.host_name,
         json_output=args.json,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_perception_inspect(args: argparse.Namespace) -> int:
-    result = inspect_perception(
-        args.source,
-        host_name=args.host_name,
-        frames=args.frames,
-        interval_s=args.interval_s,
-        timeout_s=args.timeout_s,
-        record=args.record,
-        json_output=args.json,
-        preset=args.preset,
-        plugins=args.plugins,
-        max_frames=args.max_frames,
-        shared_memory_file=args.shared_memory_file,
     )
     if result.message:
         print(result.message)

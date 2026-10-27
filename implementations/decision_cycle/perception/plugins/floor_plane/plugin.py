@@ -1,11 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Any
 
 import cv2
 import numpy as np
-from PIL import Image
 
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
@@ -13,7 +11,6 @@ from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionSignal,
     ViewLocation,
 )
-from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink
 from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginContract,
     PerceptionPluginInputs,
@@ -23,9 +20,6 @@ from implementations.decision_cycle.perception.feeds.camera import CameraFrame, 
 from .model import (
     FloorPlaneConfig,
     estimate_floor_mask,
-    make_overlay,
-    project_topdown,
-    render_occupancy,
     source_obstacle_hits,
 )
 
@@ -52,13 +46,6 @@ class FloorPlanePlugin:
             "boundaries may be objects, walls, shadows, or floor-color discontinuities",
             "topdown_fov is approximate and uncalibrated",
         ),
-        diagnostic_artifacts=(
-            "floor_mask",
-            "floor_overlay",
-            "topdown_rgb",
-            "occupancy",
-            "summary",
-        ),
     )
 
     def __init__(
@@ -72,9 +59,7 @@ class FloorPlanePlugin:
         frame = inputs.require("frame", CameraFrame)
         analysis = _analyze_floor(
             rgb=frame.rgb,
-            source_path=frame.source_path,
             config=self.config,
-            diagnostics=inputs.diagnostics,
         )
 
         floor_confidence = _floor_confidence(analysis["floor_fraction_roi"])
@@ -152,57 +137,18 @@ class FloorPlanePlugin:
 def _analyze_floor(
     *,
     rgb: np.ndarray,
-    source_path,
     config: FloorPlaneConfig,
-    diagnostics: PerceptionDiagnosticSink,
 ) -> dict[str, Any]:
-    image = Image.fromarray(rgb, mode="RGB")
     normalized_rgb = rgb.astype(np.float32) / 255.0
     height, width = normalized_rgb.shape[:2]
 
-    floor_mask, roi_mask, model_info = estimate_floor_mask(normalized_rgb, config)
+    floor_mask, roi_mask, _model_info = estimate_floor_mask(normalized_rgb, config)
     occupied_mask = roi_mask & ~floor_mask
     boundary_hits = source_obstacle_hits(floor_mask, config)
     boundaries = _boundary_components(boundary_hits, config)
     roi_pixels = max(int(roi_mask.sum()), 1)
     source_columns = int(np.count_nonzero((boundary_hits & roi_mask).any(axis=0)))
     source_width = max(1, int(np.count_nonzero(roi_mask.any(axis=0))))
-
-    if diagnostics.enabled:
-        overlay = make_overlay(image, floor_mask, occupied_mask, config)
-        overlay_array = np.asarray(overlay).copy()
-        overlay_array[boundary_hits] = np.array([255, 225, 30], dtype=np.uint8)
-        overlay = Image.fromarray(overlay_array, mode="RGB")
-        topdown_rgb, occupancy = project_topdown(normalized_rgb, floor_mask, occupied_mask, config)
-        occupancy_img = render_occupancy(occupancy)
-
-        diagnostics.emit(
-            "floor_mask",
-            "floor_mask.png",
-            lambda path: Image.fromarray(
-                floor_mask.astype(np.uint8) * 255,
-                mode="L",
-            ).save(path),
-        )
-        diagnostics.emit("floor_overlay", "overlay.png", overlay.save)
-        diagnostics.emit(
-            "topdown_rgb",
-            "topdown_rgb.jpg",
-            lambda path: Image.fromarray(topdown_rgb).save(path, quality=92),
-        )
-        diagnostics.emit("occupancy", "occupancy.png", occupancy_img.save)
-        summary = {
-            "image": str(source_path) if source_path is not None else None,
-            "width": width,
-            "height": height,
-            "floor_fraction_roi": float((floor_mask & roi_mask).sum() / roi_pixels),
-            "occupied_fraction_roi": float((occupied_mask & roi_mask).sum() / roi_pixels),
-            "boundary_hit_fraction_columns": float(source_columns / source_width),
-            "boundaries": boundaries,
-            "config": asdict(config) | {"floor_model": model_info},
-            "artifacts": diagnostics.artifacts,
-        }
-        diagnostics.emit_json("summary", "summary.json", summary)
 
     return {
         "width": width,

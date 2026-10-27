@@ -159,7 +159,8 @@ class PluginUploadFlows(unittest.TestCase):
             upload(base, file, "unselected")
             ids = staged["perception"]["plugins"]
             post_action(base, {"action": "select_plugins", "step": "perception", "active_plugin_ids": ids})
-            post_action(base, {"action": "start"})
+            started = post_action(base, {"action": "start"})["state"]
+            self.assertEqual(started["phase"], "running", started.get("failure"))
             _wait_until(lambda: runner.state()["current_frame"] is not None)
             before = post_action(base, {"action": "pause", "run_id": runner.state()["run_id"]})["state"]
             run_id = before["run_id"]

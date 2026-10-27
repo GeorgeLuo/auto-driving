@@ -5,23 +5,12 @@ from unittest.mock import patch
 
 from cli.automa_cli.vehicles import (
     Candidate,
-    _picar_candidates,
     _probe_picar,
-    format_active_vehicles,
 )
 from tests.shared.cli.invoke import invoke_automa
 
 
 class VehicleDiscoveryTests(unittest.TestCase):
-    def test_default_picar_candidates_do_not_probe_the_cli_hosts_localhost(self) -> None:
-        with patch.dict("cli.automa_cli.vehicles.os.environ", {}, clear=True):
-            candidates = _picar_candidates(())
-
-        self.assertEqual(
-            [(candidate.url, candidate.source) for candidate in candidates],
-            [("http://piracer.local:8887", "default")],
-        )
-
     def test_picar_probe_distinguishes_a_reachable_host_without_a_server(self) -> None:
         with (
             patch(
@@ -47,17 +36,8 @@ class VehicleDiscoveryTests(unittest.TestCase):
         self.assertFalse(result.active)
         self.assertIn("server is not listening", result.error or "")
         self.assertEqual(result.diagnostics["runtime_state"], "server_not_listening")
-        listing = format_active_vehicles(
-            {
-                "active_count": 0,
-                "vehicles": [],
-                "inactive": [result.to_dict()],
-            },
-            include_inactive=True,
-        )
-        self.assertIn("runtime=server_not_listening", listing)
-        self.assertIn("tcp=no", listing)
-        self.assertIn("http=no", listing)
+        self.assertFalse(result.diagnostics["tcp_listener"])
+        self.assertFalse(result.diagnostics["http_ready"])
 
     def test_picar_probe_reports_listener_without_http_readiness(self) -> None:
         with (

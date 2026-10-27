@@ -377,15 +377,15 @@ class WorkbenchMatchesInspectTests(unittest.TestCase):
     def test_selection_results_equal_inspect_results(self) -> None:
         import json
 
-        from cli.automa_cli.perception_runs import inspect_perception
+        from cli.automa_cli.step_inspect import inspect_step
 
         def canonical(value):
             return json.loads(json.dumps(value, sort_keys=True, default=str))
 
         with image_source(1) as root:
             inspected = json.loads(
-                inspect_perception(root, plugins=["classical_regions"], json_output=True).message
-            )["frames"][0]["perception"]
+                inspect_step("perception", source=root, plugins=["classical_regions"], json_output=True).message
+            )["frames"][0]["record"]
             runner = ImageReplayRunner(
                 root, activations=perception_activations("classical_regions"), cadence_ms=0
             )

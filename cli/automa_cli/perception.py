@@ -6,16 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.activation import StepActivation
-from implementations.decision_cycle.catalog import selection_activation
-
 from .bundles import controller_bundle_paths
-from .step_activations import (
-    bundle_activation_problems,
-    format_activation_problems,
-    read_bundle_activation,
-    staged_activation,
-)
 from .step_schema import format_staged_step, staged_step_info
 from .paths import safe_path_part
 from .perception_view import get_perception_view_status
@@ -37,43 +28,6 @@ RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "ho
 class CommandResult:
     exit_code: int
     message: str
-
-
-def live_perception_selection(
-    vehicle: dict[str, Any],
-    *,
-    preset: str | None = None,
-    plugins: list[str] | None = None,
-) -> StepActivation:
-    """The perception selection a live inspect of ``vehicle`` runs; nothing is written.
-
-    An explicit ``preset`` or ``plugins`` wins, then the vehicle's staged
-    selection, then the default preset. Like the staged selection, the others
-    run the vehicle's bundle code when it has a bundle, else the installed
-    package.
-    """
-
-    host_name = _host_name(vehicle)
-    if host_name is None:
-        # A discovered environment does not identify a controller host.
-        return selection_activation("perception", preset=preset, plugins=plugins)
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(host_name))
-    problems = bundle_activation_problems(bundle, host_name, steps=("perception",))
-    if problems:
-        raise ValueError(format_activation_problems(problems))
-    staged = read_bundle_activation(bundle, "perception")
-    if staged is not None and preset is None and plugins is None:
-        return staged
-    selection = selection_activation("perception", preset=preset, plugins=plugins)
-    if not (Path(bundle["autonomy_dir"]).is_dir() and Path(bundle["implementations_dir"]).is_dir()):
-        return selection
-    return staged_activation(
-        bundle,
-        selection,
-        host_name=_host_name(vehicle),
-        vehicle=vehicle,
-        release_summary=_activation_release(staged),
-    )
 
 
 def get_host_perception_info(
@@ -100,21 +54,6 @@ def get_host_perception_info(
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
     return CommandResult(0, _format_perception_info(payload))
-
-
-def _host_name(vehicle: dict[str, Any]) -> str | None:
-    host_name = vehicle.get("host_name")
-    return host_name if isinstance(host_name, str) else None
-
-
-def _activation_release(activation: StepActivation | None) -> dict[str, Any] | None:
-    if activation is None:
-        return None
-    bundle = activation.metadata.get("controller_bundle")
-    if not isinstance(bundle, dict):
-        return None
-    release = bundle.get("release")
-    return dict(release) if isinstance(release, dict) else None
 
 
 def _format_perception_info(payload: dict[str, Any]) -> str:

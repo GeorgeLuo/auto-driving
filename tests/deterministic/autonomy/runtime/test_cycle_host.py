@@ -293,7 +293,7 @@ class CycleHostMemoryTests(unittest.TestCase):
             self.assertEqual(selection["status"], "failed")
             self.assertIn("no_such_module", selection["error"])
 
-    def test_default_steps_idle_while_memory_runs(self) -> None:
+    def test_default_steps_idle_while_memory_updates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             host = AutonomyCycleHost(
                 steps=replace(

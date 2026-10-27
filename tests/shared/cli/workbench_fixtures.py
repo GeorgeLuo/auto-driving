@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from typing import Iterator
 from urllib.request import Request, urlopen
 from PIL import Image
+from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
@@ -95,6 +96,14 @@ class FixtureMapper:
 
     def describe_schema(self) -> dict[str, object]:
         return {"plugin_id": self.plugin_id}
+
+    def __call__(self, context) -> PerceptionText | None:
+        if context.sensor_frame is None:
+            self.reset(context.shared_memory)
+            return None
+        return self.perceive(build_perception_request(
+            context.sensor_frame, shared_memory=context.shared_memory, metadata=context.metadata,
+        ))
 
     def perceive(self, request) -> PerceptionText:
         reading = request.sensor("front_camera")

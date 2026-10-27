@@ -19,7 +19,7 @@ This plugin and the object-separated variant each inherit temporal association
 from `MultiObstructionTracksPlugin`. Each emits tracked `obstacle` things and
 the `multi_obstruction_tracks_available` signal, and keeps optical-flow history
 and ID allocation at `perception.<plugin_id>.history` in the host map. Select
-one directly, for example `perception inspect images --plugin composite_box_fusion`.
+one directly, for example `plugins inspect perception images --plugin composite_box_fusion`.
 Selecting `multi_obstruction_tracks` alongside it runs an independent detector
 and tracker and emits evidence from both. The memory `bounded_evidence` plugin
 retains the tracked things for later steps.

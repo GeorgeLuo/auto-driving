@@ -9,7 +9,6 @@ for that feed.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 from autonomy.decision_cycle.perception.feeds.interface import PerceptionFeedUnavailable
@@ -25,7 +24,6 @@ class PerceptionRequest:
     """Framework request used to resolve shared feeds for plugins."""
 
     sensor_frame: SensorFrame
-    output_dir: Path | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
     _feeds: dict[str, Any] = field(default_factory=dict, repr=False)
     _feed_errors: dict[str, str] = field(default_factory=dict, repr=False)

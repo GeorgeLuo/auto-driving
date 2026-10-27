@@ -24,10 +24,6 @@ from implementations.vehicle.chase_sim.defaults import (
 )
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
 from implementations.vehicle.picar import create_picar
-from implementations.vehicle.picar.defaults import (
-    DEFAULT_LOCAL_CAR_BASE_URL,
-    LOCAL_CAR_BASE_URL_ENV,
-)
 
 DEFAULT_READINESS_TIMEOUT_S = 5.0
 STATUS_SCHEMA = "automa_host_readiness"
@@ -74,87 +70,6 @@ class ProbeResult:
         if self.diagnostics:
             data["diagnostics"] = self.diagnostics
         return data
-
-
-def discover_active_vehicles(
-    *,
-    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    picar_urls: tuple[str, ...] = (),
-    chase_ws_urls: tuple[str, ...] = (),
-    include_picar: bool = True,
-    include_chase_sim: bool = True,
-    include_inactive: bool = False,
-) -> dict[str, Any]:
-    """Probe configured vehicle endpoints and return active devices.
-
-    Discovery is intentionally conservative: it only performs read-only status
-    checks and never sends drive or mode-change commands.
-    """
-
-    timeout = _require_positive_timeout(timeout_s)
-    candidates: list[Candidate] = []
-    if include_picar:
-        candidates.extend(_picar_candidates(picar_urls))
-    if include_chase_sim:
-        candidates.extend(_chase_candidates(chase_ws_urls))
-
-    results = [_probe_candidate(candidate, timeout_s=timeout) for candidate in candidates]
-    active = [result.vehicle for result in results if result.active and result.vehicle is not None]
-    payload: dict[str, Any] = {
-        "schema": "automa_vehicle_discovery_v0",
-        "checked_at_ms": int(time.time() * 1000),
-        "active_count": len(active),
-        "vehicles": active,
-        "discovery": {
-            "candidate_count": len(candidates),
-            "providers": sorted({candidate.provider for candidate in candidates}),
-            "timeout_s": timeout,
-        },
-    }
-    if include_inactive:
-        payload["inactive"] = [
-            result.to_dict()
-            for result in results
-            if not result.active
-        ]
-    return payload
-
-
-def format_active_vehicles(
-    payload: dict[str, Any],
-    *,
-    include_inactive: bool = False,
-) -> str:
-    lines = [
-        f"Discoverable vehicles: {payload.get('active_count', 0)}",
-    ]
-    vehicles = payload.get("vehicles")
-    if not isinstance(vehicles, list) or not vehicles:
-        lines.append("No discoverable vehicles found.")
-    else:
-        for index, vehicle in enumerate(vehicles, start=1):
-            if not isinstance(vehicle, dict):
-                continue
-            lines.extend(_format_vehicle(index, vehicle))
-
-    if include_inactive:
-        inactive = payload.get("inactive")
-        if isinstance(inactive, list) and inactive:
-            lines.append("")
-            lines.append(f"Undiscoverable candidates: {len(inactive)}")
-            for item in inactive:
-                if not isinstance(item, dict):
-                    continue
-                candidate = item.get("candidate") if isinstance(item.get("candidate"), dict) else {}
-                provider = candidate.get("provider", "unknown")
-                url = candidate.get("url", "unknown")
-                error = item.get("error", "no error detail")
-                diagnostics = item.get("diagnostics") if isinstance(item.get("diagnostics"), dict) else {}
-                detail = _inactive_detail(diagnostics)
-                suffix = f" [{detail}]" if detail else ""
-                lines.append(f"- {provider} at {url}: {error}{suffix}")
-
-    return "\n".join(lines)
 
 
 def get_vehicle_status(
@@ -861,117 +776,6 @@ def _vehicle_next_action(
     return None, None, "inspect perception and stop automation"
 
 
-def _format_vehicle(index: int, vehicle: dict[str, Any]) -> list[str]:
-    provider = vehicle.get("provider", "unknown")
-    vehicle_id = vehicle.get("vehicle_id", "unknown")
-    kind = vehicle.get("vehicle_kind", "unknown")
-    connection = vehicle.get("connection") if isinstance(vehicle.get("connection"), dict) else {}
-    status = vehicle.get("status") if isinstance(vehicle.get("status"), dict) else {}
-    capabilities = vehicle.get("capabilities") if isinstance(vehicle.get("capabilities"), dict) else {}
-
-    lines = [
-        "",
-        f"{index}. {vehicle_id} ({provider})",
-        f"   id: {vehicle_id}",
-        f"   kind: {kind}",
-        f"   endpoint: {_connection_label(connection)}",
-    ]
-
-    mode = status.get("drive_mode")
-    runtime = status.get("runtime")
-    if isinstance(runtime, dict) and runtime.get("state"):
-        lines.append(f"   runtime: {runtime['state']}")
-    if mode is not None:
-        lines.append(f"   mode: {mode}")
-
-    autonomy = status.get("host")
-    if isinstance(autonomy, dict):
-        steps = autonomy.get("steps") if isinstance(autonomy.get("steps"), dict) else {}
-        action = steps.get("action") if isinstance(steps.get("action"), dict) else {}
-        action_plugins = action.get("plugin_ids") if isinstance(action.get("plugin_ids"), list) else []
-        last_control = autonomy.get("last_control")
-        reason = None
-        if isinstance(last_control, dict):
-            reason = last_control.get("reason")
-        autonomy_line = f"   autonomy: action={','.join(action_plugins) or 'unknown'}"
-        if reason:
-            autonomy_line += f" ({reason})"
-        lines.append(autonomy_line)
-
-    metrics_ui = status.get("metrics_ui")
-    if isinstance(metrics_ui, dict):
-        scenario = metrics_ui.get("scenario")
-        control_source = metrics_ui.get("chaser_control_source")
-        playback = metrics_ui.get("playback") if isinstance(metrics_ui.get("playback"), dict) else {}
-        playback_state = "playing" if playback.get("isPlaying") else "paused"
-        sim_bits = []
-        if scenario:
-            sim_bits.append(f"scenario={scenario}")
-        if control_source:
-            sim_bits.append(f"control={control_source}")
-        sim_bits.append(playback_state)
-        lines.append(f"   sim: {', '.join(sim_bits)}")
-    passive = (
-        status.get("passive_capture")
-        if isinstance(status.get("passive_capture"), dict)
-        else {}
-    )
-    if passive:
-        evaluator = (
-            passive.get("evaluator_reference")
-            if isinstance(passive.get("evaluator_reference"), dict)
-            else {}
-        )
-        lines.append(
-            "   passive capture: "
-            f"{passive.get('status', 'unknown')}; "
-            f"evaluator reference={evaluator.get('status', 'unavailable')}"
-        )
-
-    sensor_line = _sensor_summary(capabilities)
-    if sensor_line:
-        lines.append(f"   sensors: {sensor_line}")
-
-    return lines
-
-
-def _connection_label(connection: dict[str, Any]) -> str:
-    if "base_url" in connection:
-        source = connection.get("source")
-        endpoint = connection.get("status_endpoint")
-        label = str(connection["base_url"])
-        if endpoint:
-            label += f" {endpoint}"
-        if source:
-            label += f" [{source}]"
-        return label
-    if "ws_url" in connection:
-        source = connection.get("source")
-        label = str(connection["ws_url"])
-        if source:
-            label += f" [{source}]"
-        return label
-    return "unknown"
-
-
-def _sensor_summary(capabilities: dict[str, Any]) -> str:
-    sensors = capabilities.get("sensors")
-    if not isinstance(sensors, dict) or not sensors:
-        return ""
-    labels: list[str] = []
-    for sensor_id, sensor in sensors.items():
-        if not isinstance(sensor, dict):
-            labels.append(str(sensor_id))
-            continue
-        kind = sensor.get("sensor_kind", "sensor")
-        pose = sensor.get("pose")
-        label = f"{sensor_id}:{kind}"
-        if pose:
-            label += f"/{pose}"
-        labels.append(label)
-    return ", ".join(labels)
-
-
 def _probe_candidate(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     if candidate.provider == "picar":
         return _probe_picar(candidate, timeout_s=timeout_s)
@@ -982,45 +786,6 @@ def _probe_candidate(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
         candidate=candidate,
         error=f"unknown provider {candidate.provider!r}",
     )
-
-
-def _picar_candidates(extra_urls: tuple[str, ...]) -> list[Candidate]:
-    candidates: list[Candidate] = []
-    env_url = os.environ.get(LOCAL_CAR_BASE_URL_ENV)
-    if env_url:
-        candidates.append(Candidate("picar", _normalize_http_url(env_url), f"env:{LOCAL_CAR_BASE_URL_ENV}"))
-
-    candidates.append(Candidate("picar", _normalize_http_url(DEFAULT_LOCAL_CAR_BASE_URL), "default"))
-    candidates.extend(candidate for candidate in _discovered_candidates() if candidate.provider == "picar")
-
-    for url in extra_urls:
-        if url.strip():
-            candidates.append(Candidate("picar", _normalize_http_url(url), "cli"))
-
-    return _dedupe_candidates(candidates)
-
-
-def _chase_candidates(extra_urls: tuple[str, ...]) -> list[Candidate]:
-    candidates: list[Candidate] = []
-    env_url = os.environ.get(CHASE_UI_WS_URL_ENV)
-    if env_url:
-        candidates.append(
-            Candidate(
-                "chase-sim",
-                normalize_chase_url(env_url),
-                f"env:{CHASE_UI_WS_URL_ENV}",
-            )
-        )
-
-    candidates.append(
-        Candidate("chase-sim", normalize_chase_url(DEFAULT_CHASE_UI_WS_URL), "default")
-    )
-    candidates.extend(candidate for candidate in _discovered_candidates() if candidate.provider == "chase-sim")
-    for url in extra_urls:
-        if url.strip():
-            candidates.append(Candidate("chase-sim", normalize_chase_url(url), "cli"))
-
-    return _dedupe_candidates(candidates)
 
 
 def _dedupe_candidates(candidates: list[Candidate]) -> list[Candidate]:
@@ -1270,29 +1035,6 @@ def _probe_chase(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
         },
         diagnostics=diagnostics,
     )
-
-
-def _inactive_detail(diagnostics: dict[str, Any]) -> str:
-    parts: list[str] = []
-    runtime_state = diagnostics.get("runtime_state")
-    if runtime_state is not None:
-        parts.append(f"runtime={runtime_state}")
-    if "tcp_listener" in diagnostics:
-        parts.append(f"tcp={'ok' if diagnostics.get('tcp_listener') else 'no'}")
-    if "http_ready" in diagnostics:
-        parts.append(f"http={'ok' if diagnostics.get('http_ready') else 'no'}")
-    for key, label in (
-        ("ws_server", "ws"),
-        ("frontend_connected", "frontend"),
-        ("chase_loaded", "chase"),
-        ("front_view_ready", "front-view"),
-    ):
-        if key in diagnostics:
-            parts.append(f"{label}={'ok' if diagnostics.get(key) else 'no'}")
-    game_id = diagnostics.get("game_id")
-    if game_id is not None:
-        parts.append(f"game={game_id!r}")
-    return ", ".join(parts)
 
 
 def _probe_tcp_endpoint(base_url: str, *, timeout_s: float) -> dict[str, Any]:

@@ -18,7 +18,6 @@ from cli.automa_cli.step_activations import (
 from implementations.decision_cycle.catalog import SELECTABLE_STEPS, STEP_PRESETS
 from tests.shared.cli.invoke import invoke_automa
 
-DISCOVERY = "cli.automa_cli.vehicles.discover_active_vehicles"
 PICAR = {
     "host_name": "piracer-test",
     "vehicle_kind": "picar",
@@ -30,10 +29,6 @@ PICAR = {
 def _invoke(*args: str) -> tuple[int, str]:
     result = invoke_automa(*args, check=False)
     return result.returncode, result.stdout
-
-
-def _discovered(*vehicles: dict) -> dict:
-    return {"active_count": len(vehicles), "vehicles": list(vehicles), "inactive": []}
 
 
 class UpdateVehicleTests(unittest.TestCase):
@@ -51,7 +46,7 @@ class UpdateVehicleTests(unittest.TestCase):
 
 
     def test_generic_step_reports_an_unknown_host_in_its_json_error(self) -> None:
-        with self._runtime(), patch(DISCOVERY, return_value=_discovered()):
+        with self._runtime():
             code, stdout = _invoke("hosts", "stage", "proposal", "--name", "parity-unknown", "--json")
         self.assertEqual(code, 2)
         payload = json.loads(stdout)
@@ -63,7 +58,7 @@ class UpdateVehicleTests(unittest.TestCase):
     def test_a_plugin_list_keeps_staged_configs_and_a_config_change_names_its_restart(self) -> None:
         # The PiCar case: a tuned preset, then one more plugin, must stay adoptable live.
         plugins = ("frame", "floor_plane", "multi_obstruction_tracks", "motion_tracks")
-        with self._runtime() as root, patch(DISCOVERY, return_value=_discovered(PICAR)):
+        with self._runtime() as root:
             def update(*args: str) -> str:
                 code, stdout = _invoke("hosts", "stage", "perception", "--name", "piracer-test", *args)
                 self.assertEqual(code, 0, stdout)
@@ -87,7 +82,7 @@ class UpdateVehicleTests(unittest.TestCase):
             self.assertNotIn("Apply selection:", switched)
 
     def test_a_one_plugin_step_restaged_to_another_packaged_plugin_applies_live(self) -> None:
-        with self._runtime(), patch(DISCOVERY, return_value=_discovered(PICAR)):
+        with self._runtime():
             def update(*args: str) -> str:
                 code, stdout = _invoke("hosts", "stage", "action", "--name", "piracer-test", *args)
                 self.assertEqual(code, 0, stdout)
@@ -152,7 +147,7 @@ if __name__ == "__main__":
                 self.assertEqual(error, f"No host {name!r}. No hosts exist.")
 
     def test_record_controls_identity_and_connection_without_discovery(self):
-        with self._runtime() as root, patch(DISCOVERY, side_effect=AssertionError("no discovery")):
+        with self._runtime() as root:
             vehicle, error = staging_host("piracer-test", runtime_root=root)
             self.assertIsNone(error)
             self.assertEqual(vehicle["connection"], PICAR["connection"])

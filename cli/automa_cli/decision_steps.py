@@ -1,19 +1,9 @@
-"""Proposal, plan, and action: each decision step's info, stream, and inspect.
-
-Like ``perception`` and ``memory``, each decision step has an info command over
-its staged contract and live runner, a stream of its record from the latest
-cycle the vehicle published, and an offline inspect that replays a recording
-or images through the cycle and reports the step for every frame. The three
-steps share this module because one cycle publication and one replay hold all
-of their records; ``decision`` validates that publication.
-"""
+"""Live info, streams, and record formatters for proposal, plan, and action."""
 
 from __future__ import annotations
 
 import json
-import os
 import time
-from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON, HoldAction, idle_output
@@ -21,9 +11,7 @@ from autonomy.decision_cycle.action.selected import SelectedAction
 from autonomy.decision_cycle.activation import DECISION_STEPS
 from autonomy.decision_cycle.confidence import confidence_text
 from autonomy.decision_cycle.timing import step_timing
-from autonomy.shared_memory import SharedMemoryValueError
 from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, ModeAction
-from implementations.decision_cycle.catalog import selection_activation
 
 from .decision import (
     CommandResult,
@@ -34,25 +22,13 @@ from .decision import (
     decision_error_payload,
 )
 from .memory_report import evidence_publisher, evidence_records, plugin_summaries
-from .paths import ROOT, display_path
 from .host_publications import fetch_decision_publication
-from .inspection_runs import add_seed_provenance, read_shared_memory_seed
 from .runtime_hosts import RuntimeHostError, bundle_paths, runtime_base_url
 from .step_activations import decision_identity
-from .step_replay import StepReplay, inspect_run_id, read_replay_source, record_inspect_run
 from .step_schema import format_staged_step, staged_step_info
 from .streaming import _view_line, _ViewFeed
-from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationError
 
-# Each decision step replays every step before it, from perception on.
-_REPLAY_STEPS = ("perception", "observation", "memory", *DECISION_STEPS)
 _RETAINED_SHOWN = 12
-
-
-def inspect_root(step: str) -> Path:
-    return Path(os.environ.get(
-        f"AUTOMA_{step.upper()}_INSPECT_ROOT", ROOT / "runtime" / f"{step}-inspections",
-    ))
 
 
 # ---------------------------------------------------------------------------
@@ -420,127 +396,3 @@ def _command(command: Any) -> dict[str, Any] | None:
     if not isinstance(command, dict):
         return None
     return {"steering": command.get("steering"), "throttle": command.get("throttle")}
-
-
-# ---------------------------------------------------------------------------
-# inspect
-# ---------------------------------------------------------------------------
-
-
-def inspect_decision_step(
-    step: str,
-    *,
-    source: str | Path,
-    plugins: list[str] | None = None,
-    preset: str | None = None,
-    frame: int | None = None,
-    record: bool = False,
-    json_output: bool = False,
-    max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
-    shared_memory_file: Path | None = None,
-) -> CommandResult:
-    """Replay a recording or images through the cycle and report ``step`` per frame.
-
-    Every step runs the selection the source recorded, restaged per frame, or
-    its default; ``plugins`` replaces the inspected step's. ``frame`` reports
-    only that 0-based frame, after replaying the frames before it.
-    """
-
-    try:
-        seed = read_shared_memory_seed(shared_memory_file)
-    except (OSError, SharedMemoryValueError) as exc:
-        return CommandResult(2, f"Could not read shared memory file: {exc}")
-    try:
-        image_source, manifest = read_replay_source(source, max_frames=max_frames)
-    except SourceValidationError as exc:
-        return CommandResult(2, f"Could not read {step} inspect source: {exc}")
-    count = len(image_source.frames)
-    if frame is not None and not 0 <= frame < count:
-        return CommandResult(2, f"--frame {frame} is outside the source's {count} frames (0-{count - 1}).")
-    try:
-        overrides = None
-        if preset is not None or plugins is not None:
-            overrides = {step: selection_activation(step, preset=preset, plugins=plugins)}
-        replay = StepReplay(image_source, manifest, steps=_REPLAY_STEPS, overrides=overrides, seed=seed)
-    except Exception as exc:  # Plugin construction is a CLI preflight boundary.
-        return CommandResult(2, f"Could not load plugins for {step} inspect: {type(exc).__name__}: {exc}")
-
-    frames: list[dict[str, Any]] = []
-    for replay_frame in image_source.frames[: count if frame is None else frame + 1]:
-        try:
-            outcome = replay.run(replay_frame)
-        except Exception as exc:  # Plugins are third-party code; name the frame that broke.
-            return CommandResult(
-                2, f"{step.capitalize()} inspect failed at {replay_frame.frame_id}: {type(exc).__name__}: {exc}"
-            )
-        if frame is not None and replay_frame.position != frame:
-            continue
-        step_record = getattr(outcome.result, step)
-        frames.append({
-            "position": replay_frame.position,
-            "frame_id": replay_frame.frame_id,
-            "frame_index": replay_frame.frame_index,
-            "timestamp_ms": replay_frame.timestamp_ms,
-            "image_path": str(replay_frame.image_path) if replay_frame.image_path is not None else None,
-            "absence_reason": replay_frame.absence_reason,
-            "record": step_record.to_dict() if step_record is not None else None,
-            "plugin_report": outcome.plugin_reports.get(step),
-            "timing": outcome.result.timing,
-            "steps": replay.step_payloads(),
-            **({
-                "observation": (outcome.result.observation.to_dict()
-                                if outcome.result.observation is not None else None),
-                "memory": outcome.result.memory,
-            } if step == "proposal" else {}),
-        })
-
-    run_id = inspect_run_id(image_source.source_id)
-    report = {
-        "schema": f"{step}_inspect_v1",
-        "step": step,
-        "run_id": run_id,
-        "source_id": image_source.source_id,
-        "source": {
-            "path": str(image_source.source_path),
-            "source_id": image_source.source_id,
-            "frame_count": count,
-        },
-        "selections": replay.selection_records(),
-        "frames": frames,
-        "run_dir": None,
-    }
-    add_seed_provenance(report, seed)
-    if record:
-        run_dir = inspect_root(step) / run_id
-        try:
-            record_inspect_run(run_dir, report, image_source)
-        except OSError as exc:
-            return CommandResult(2, f"Could not record {step} inspect run {run_dir}: {exc}")
-    if json_output:
-        return CommandResult(0, json.dumps(report, indent=2, sort_keys=True))
-    return CommandResult(0, _format_inspect_report(report))
-
-
-def _format_inspect_report(report: dict[str, Any]) -> str:
-    step = report["step"]
-    source = report["source"]
-    lines = [
-        f"{step.capitalize()} inspect",
-        "-" * len(f"{step} inspect"),
-        f"Source: {source['path']} ({source['frame_count']} frames)",
-        "Steps: " + ", ".join(
-            f"{name}={','.join(selection['plugins']) or '-'}" if selection else f"{name}=off"
-            for name, selection in report["selections"].items()
-        ),
-    ]
-    for item in report["frames"]:
-        lines.extend(["", f"Frame {item['position']}: {item['frame_id']}"])
-        if item["absence_reason"]:
-            lines.append(f"Absent: {item['absence_reason']}")
-        lines.extend(format_step_record(
-            step, item["record"], observation=item.get("observation"), memory=item.get("memory"),
-        ))
-        lines.append(format_step_timing(step, item["timing"]))
-    if report["run_dir"]:
-        lines.extend(["", f"Recorded: {display_path(Path(report['run_dir']))}"])
-    return "\n".join(lines)

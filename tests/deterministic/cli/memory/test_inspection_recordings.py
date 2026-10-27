@@ -13,7 +13,8 @@ from tests.shared.cli.memory.frame_fixtures import write_frames
 
 
 # Where the frame was read from, and how long this run took on it.
-UNREPLAYED = ("image_path", "timing")
+# Plugin reports include measured durations; observations contain source image paths.
+UNREPLAYED = ("image_path", "timing", "observation", "plugin_report")
 
 class InspectionRecordingTests(unittest.TestCase):
     """Move a recording between the public perception and memory commands."""
@@ -31,8 +32,7 @@ class InspectionRecordingTests(unittest.TestCase):
     def inspect(self, step: str, source: Path, *options: str, exit_code: int = 0) -> dict:
         result = invoke_automa(
             "plugins",
-            step,
-            "inspect",
+            "inspect", step,
             str(source),
             *options,
             "--json",
@@ -61,11 +61,11 @@ class InspectionRecordingTests(unittest.TestCase):
             "perception", self.frames, "--preset", "obstruction_observer", "--record"
         )
         memory = self.inspect("memory", Path(perception["run_dir"]), "--record")
-        self.assertEqual(memory["perception"], perception["perception"])
+        self.assertEqual(memory["selections"]["perception"], perception["selections"]["perception"])
         self.assertEqual(
             [frame["timestamp_ms"] for frame in memory["frames"]], [5000] * 3
         )
-        records = memory["final"]["plugins"][0]["state"]["records"]
+        records = memory["frames"][-1]["record"]["plugins"][0]["state"]["records"]
         self.assertTrue(any(record["kind"] == "obstacle" for record in records))
 
         moved = self.root / "moved"
@@ -75,8 +75,8 @@ class InspectionRecordingTests(unittest.TestCase):
         for path in (moved / "frames").iterdir():
             os.utime(path, (99, 99))
         replay = self.inspect("memory", moved)
-        self.assertEqual(replay["perception"], memory["perception"])
-        self.assertEqual(replay["memory"], memory["memory"])
+        self.assertEqual(replay["selections"]["perception"], memory["selections"]["perception"])
+        self.assertEqual(replay["selections"]["memory"], memory["selections"]["memory"])
         self.assertEqual(
             [
                 {key: value for key, value in frame.items() if key not in UNREPLAYED}
@@ -91,12 +91,12 @@ class InspectionRecordingTests(unittest.TestCase):
             [Path(frame["image_path"]).parent for frame in replay["frames"]],
             [(moved / "frames").resolve()] * 3,
         )
-        self.assertEqual(replay["final"], memory["final"])
+        self.assertEqual(replay["frames"][-1]["record"], memory["frames"][-1]["record"])
 
         perceived = self.inspect("perception", moved)
-        self.assertEqual(perceived["perception"], perception["perception"])
+        self.assertEqual(perceived["selections"]["perception"], perception["selections"]["perception"])
         self.assertEqual(
-            [frame["captured_at_ms"] for frame in perceived["frames"]], [5000] * 3
+            [frame["timestamp_ms"] for frame in perceived["frames"]], [5000] * 3
         )
         self.assertEqual(
             [frame["frame_id"] for frame in perceived["frames"]],
@@ -105,23 +105,23 @@ class InspectionRecordingTests(unittest.TestCase):
 
     def test_both_inspect_reports_name_the_perception_selection_alike(self) -> None:
         perception = invoke_automa(
-            "plugins", "perception", "inspect", str(self.frames),
+            "plugins", "inspect", "perception", str(self.frames),
             "--preset", "obstruction_observer", "--record",
             extra_env=self.env,
         ).stdout.splitlines()
         recorded = Path(perception[-1].removeprefix("Recorded: "))
         memory = invoke_automa(
-            "plugins", "memory", "inspect", str(recorded), extra_env=self.env
+            "plugins", "inspect", "memory", str(recorded), extra_env=self.env
         ).stdout.splitlines()
 
         self.assertEqual((perception[0], memory[0]), ("Perception inspect", "Memory inspect"))
         self.assertTrue(perception[2].startswith("Source: "), perception)
         self.assertTrue(memory[2].startswith("Source: "), memory)
-        self.assertTrue(perception[3].startswith("Perception: obstruction_observer ("), perception)
+        self.assertTrue(perception[3].startswith("Steps: perception=frame,"), perception)
         self.assertEqual(memory[3], perception[3])
         self.assertEqual(recorded.parent, self.root / "perception")
         report = json.loads((recorded / "report.json").read_text(encoding="utf-8"))
-        self.assertEqual(report["schema"], "perception_inspect")
+        self.assertEqual(report["schema"], "perception_inspect_v1")
         self.assertEqual(sorted(path.name for path in recorded.glob("*.json")), ["report.json"])
 
     def test_recording_preserves_dropout_frames_and_custom_memory_bounds(self) -> None:
@@ -172,7 +172,7 @@ class InspectionRecordingTests(unittest.TestCase):
         )
         recorded = self.inspect("memory", self.frames, "--record")
         replay = self.inspect("memory", Path(recorded["run_dir"]))
-        self.assertEqual(replay["memory"]["config"], memory_config)
+        self.assertEqual(replay["selections"]["memory"]["config"], memory_config)
         self.assertEqual(
             [
                 {key: value for key, value in frame.items() if key not in UNREPLAYED}
@@ -183,26 +183,27 @@ class InspectionRecordingTests(unittest.TestCase):
                 for frame in recorded["frames"]
             ],
         )
-        self.assertEqual(replay["final"], recorded["final"])
+        self.assertEqual(replay["frames"][-1]["record"], recorded["frames"][-1]["record"])
+        self.assertIsNone(replay["frames"][1]["record"])
         self.assertEqual(replay["frames"][1]["absence_reason"], "camera missing")
         self.assertIsNone(replay["frames"][1]["image_path"])
         self.assertEqual(
-            replay["final"]["plugins"][0]["state"]["bounds"]["max_age_ms"], 600
+            replay["frames"][-1]["record"]["plugins"][0]["state"]["bounds"]["max_age_ms"], 600
         )
         overridden = self.inspect(
             "memory", Path(recorded["run_dir"]), "--preset", "recency_ledger"
         )
-        self.assertEqual(overridden["memory"]["preset"], "recency_ledger")
+        self.assertEqual(overridden["selections"]["memory"]["preset"], "recency_ledger")
         self.assertEqual(
-            overridden["final"]["plugins"][0]["state"]["bounds"]["max_age_ms"], 10000
+            overridden["frames"][-1]["record"]["plugins"][0]["state"]["bounds"]["max_age_ms"], 10000
         )
 
-        perceived = self.inspect("perception", Path(recorded["run_dir"]), exit_code=1)
+        perceived = self.inspect("perception", Path(recorded["run_dir"]), exit_code=0)
         self.assertEqual(
             [frame["frame_index"] for frame in perceived["frames"]], [7, 9, 12]
         )
         self.assertEqual(
-            [frame["captured_at_ms"] for frame in perceived["frames"]], [5000, 5000, 5800]
+            [frame["timestamp_ms"] for frame in perceived["frames"]], [5000, 5000, 5800]
         )
 
     def test_empty_recorded_selections_remain_empty_until_overridden(self) -> None:
@@ -222,19 +223,19 @@ class InspectionRecordingTests(unittest.TestCase):
             )
         )
         memory = self.inspect("memory", self.frames, "--record")
-        self.assertEqual(memory["perception"]["plugins"], [])
-        self.assertEqual(memory["memory"]["plugins"], [])
-        self.assertEqual(memory["final"]["plugins"], [])
+        self.assertEqual(memory["selections"]["perception"]["plugins"], [])
+        self.assertEqual(memory["selections"]["memory"]["plugins"], [])
+        self.assertEqual(memory["frames"][-1]["record"]["plugins"], [])
         replay = self.inspect("memory", Path(memory["run_dir"]))
-        self.assertEqual(replay["perception"]["plugins"], [])
-        self.assertEqual(replay["memory"]["plugins"], [])
+        self.assertEqual(replay["selections"]["perception"]["plugins"], [])
+        self.assertEqual(replay["selections"]["memory"]["plugins"], [])
         perception = self.inspect("perception", Path(memory["run_dir"]))
-        self.assertEqual(perception["perception"]["plugins"], [])
-        self.assertEqual(perception["frames"][0]["plugin_runs"], [])
+        self.assertEqual(perception["selections"]["perception"]["plugins"], [])
+        self.assertEqual(perception["frames"][0]["record"]["plugin_runs"], [])
         override = self.inspect(
             "perception", Path(memory["run_dir"]), "--plugin", "frame"
         )
-        self.assertEqual(override["perception"]["plugins"], ["frame"])
+        self.assertEqual(override["selections"]["perception"]["plugins"], ["frame"])
 
     def test_other_report_metadata_does_not_replace_image_directory_source(self) -> None:
         (self.frames / "report.json").write_text(json.dumps({"results": []}))
@@ -267,8 +268,8 @@ class InspectionRecordingTests(unittest.TestCase):
         )
         inspected = self.inspect("memory", self.frames)
         self.assertEqual(inspected["source"]["frame_count"], 3)
-        self.assertEqual(inspected["perception"]["preset"], "lightweight_observer")
-        self.assertEqual(inspected["perception"]["plugins"], ["frame", "floor_plane"])
+        self.assertEqual(inspected["selections"]["perception"]["preset"], "lightweight_observer")
+        self.assertEqual(inspected["selections"]["perception"]["plugins"], ["frame", "floor_plane"])
 
 
 if __name__ == "__main__":

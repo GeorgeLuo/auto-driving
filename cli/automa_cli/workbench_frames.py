@@ -8,7 +8,6 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.action.publication import write_host_inputs
@@ -98,7 +97,6 @@ def run_perception(
     *,
     shared_memory: dict[str, Any],
     metadata: dict[str, Any],
-    output_dir: Path | None = None,
 ):
     """Run perception on one sensor frame; the step every consumer shares."""
 
@@ -106,7 +104,6 @@ def run_perception(
         build_perception_request(
             sensor_frame,
             shared_memory=shared_memory,
-            output_dir=output_dir,
             metadata=metadata,
         )
     )

@@ -16,7 +16,7 @@ from typing import Any, TextIO
 
 from implementations.decision_cycle.catalog import selection_activation
 
-from .perception_runs import CommandResult
+from .step_inspect import CommandResult
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,

@@ -12,10 +12,8 @@ import numpy as np
 from PIL import Image
 
 from cli.automa_cli.app import build_parser
-from cli.automa_cli.decision_steps import inspect_decision_step
+from cli.automa_cli.step_inspect import inspect_step
 from cli.automa_cli.inspection_runs import SharedMemorySeed
-from cli.automa_cli.memory_runs import inspect_memory
-from cli.automa_cli.perception_runs import inspect_perception
 from cli.automa_cli.step_replay import StepReplay
 from cli.automa_cli.workbench_source import normalize_image_file
 
@@ -27,7 +25,7 @@ LEDGER_SPEC = "implementations.decision_cycle.memory.shared.evidence_ledger.ledg
 
 def _identity(frame: dict) -> dict:
     found = [
-        thing for thing in frame["perception"]["things"]
+        thing for thing in frame["record"]["things"]
         if str(thing.get("thing_id", "")).startswith("cardboard_object_")
     ]
     if len(found) != 1:
@@ -60,9 +58,7 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         }
         self.write_seed()
         self.record_root = self.root / "recordings"
-        for target in ("perception_runs.INSPECT_ROOT", "memory_runs.INSPECT_ROOT"):
-            self.enterContext(patch(f"cli.automa_cli.{target}", self.record_root))
-        self.enterContext(patch("cli.automa_cli.decision_steps.inspect_root", return_value=self.record_root))
+        self.enterContext(patch("cli.automa_cli.step_inspect.inspect_root", return_value=self.record_root))
 
     def write_seed(self) -> None:
         self.seed_file.write_text(json.dumps(self.document), encoding="utf-8")
@@ -72,7 +68,7 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         return json.loads(result.message)
 
     def assert_current_pair(self, frame: dict, object_id: int, event: str) -> None:
-        things = frame["perception"]["things"]
+        things = frame["record"]["things"]
         self.assertEqual(len(things), 2)
         detection, mapped = things
         self.assertEqual(detection["source_plugin_id"], "sim_cardboard_obstacle")
@@ -82,12 +78,12 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         self.assertEqual(mapped["properties"]["event"], event)
 
     def test_perception_inspect_continues_a_seeded_object(self) -> None:
-        seeded = self.report(inspect_perception(
-            self.image, plugins=PLUGINS,
+        seeded = self.report(inspect_step(
+            "perception", source=self.image, plugins=PLUGINS,
             shared_memory_file=self.seed_file, json_output=True, record=True,
         ))
-        plain = self.report(inspect_perception(
-            self.image, plugins=PLUGINS, json_output=True,
+        plain = self.report(inspect_step(
+            "perception", source=self.image, plugins=PLUGINS, json_output=True,
         ))
         continued = _identity(seeded["frames"][0])
         self.assert_current_pair(seeded["frames"][0], 7, "matched")
@@ -101,15 +97,15 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         self.assertEqual(seeded["shared_memory_seed"]["document"], self.document)
 
         # Replaying the recording starts fresh; its seed is provenance only.
-        replayed = self.report(inspect_perception(Path(seeded["run_dir"]), json_output=True))
+        replayed = self.report(inspect_step("perception", source=Path(seeded["run_dir"]), json_output=True))
         self.assertEqual(_identity(replayed["frames"][0])["thing_id"], "cardboard_object_001")
         self.assertNotIn("shared_memory_seed", replayed)
 
     def test_a_far_seed_does_not_draw_a_stale_box_or_claim_a_known_match(self) -> None:
         self.document["values"][KEY]["objects"][0]["bbox_xyxy_norm"] = [0.8, 0.25, 0.98, 0.58]
         self.write_seed()
-        report = self.report(inspect_perception(
-            self.image, plugins=PLUGINS,
+        report = self.report(inspect_step(
+            "perception", source=self.image, plugins=PLUGINS,
             shared_memory_file=self.seed_file, json_output=True,
         ))
         self.assert_current_pair(report["frames"][0], 8, "new")
@@ -129,10 +125,10 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         Image.fromarray(rgb).save(self.image)
         self.document["values"][KEY] = {"objects": list(reversed(objects)), "next_object_id": 24}
         self.write_seed()
-        report = self.report(inspect_perception(
-            self.image, plugins=PLUGINS, shared_memory_file=self.seed_file, json_output=True,
+        report = self.report(inspect_step(
+            "perception", source=self.image, plugins=PLUGINS, shared_memory_file=self.seed_file, json_output=True,
         ))
-        things = report["frames"][0]["perception"]["things"]
+        things = report["frames"][0]["record"]["things"]
         detections = [thing for thing in things if thing["source_plugin_id"] == PLUGINS[0]]
         identities = [thing for thing in things if thing["source_plugin_id"] == PLUGINS[1]]
         self.assertEqual(len(detections), 3)
@@ -148,13 +144,13 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         rgb[:] = (213, 197, 172)
         rgb[30:70, 44:104] = (158, 107, 56)
         Image.fromarray(rgb).save(self.source / "03.png")
-        report = self.report(inspect_perception(
-            self.source, plugins=PLUGINS,
+        report = self.report(inspect_step(
+            "perception", source=self.source, plugins=PLUGINS,
             shared_memory_file=self.seed_file, json_output=True,
         ))
         first, gap, returned = report["frames"]
         self.assert_current_pair(first, 7, "matched")
-        self.assertEqual(gap["perception"]["things"], [])
+        self.assertEqual(gap["record"]["things"], [])
         self.assert_current_pair(returned, 7, "matched")
         self.assertEqual(_identity(returned)["properties"]["seen_frames"], 5)
         self.assertNotEqual(
@@ -168,24 +164,24 @@ class InspectionSharedMemoryTests(unittest.TestCase):
             "data": {"memory_id": "memory-seeded", "epoch_id": "seeded", "bounds": {"max_records": 8}},
         }}
         self.write_seed()
-        report = self.report(inspect_memory(
-            str(self.source), plugins=["bounded_evidence"],
+        report = self.report(inspect_step(
+            "memory", source=str(self.source), plugins=["bounded_evidence"],
             shared_memory_file=self.seed_file, json_output=True,
         ))
         self.assertEqual(len(report["frames"]), 2)
-        self.assertEqual(report["frames"][0]["plugins"][0]["epoch_id"], "seeded")
+        self.assertEqual(report["frames"][0]["record"]["plugins"][0]["state"]["epoch_id"], "seeded")
         self.assertEqual(report["shared_memory_seed"]["document"], self.document)
         # The final status is suitable as the next ledger record's data.
-        self.document["values"][LEDGER_KEY]["data"] = report["final"]["plugins"][0]["state"]
+        self.document["values"][LEDGER_KEY]["data"] = report["frames"][-1]["record"]["plugins"][0]["state"]
         self.write_seed()
-        continued = self.report(inspect_memory(
-            str(self.image), plugins=["bounded_evidence"],
+        continued = self.report(inspect_step(
+            "memory", source=str(self.image), plugins=["bounded_evidence"],
             shared_memory_file=self.seed_file, json_output=True,
         ))
-        self.assertEqual(continued["frames"][0]["plugins"][0]["epoch_id"], "seeded")
+        self.assertEqual(continued["frames"][0]["record"]["plugins"][0]["state"]["epoch_id"], "seeded")
 
     def test_a_recorded_step_inspect_keeps_the_seed_as_provenance(self) -> None:
-        report = self.report(inspect_decision_step(
+        report = self.report(inspect_step(
             "proposal", source=self.image, shared_memory_file=self.seed_file,
             record=True, json_output=True,
         ))
@@ -196,9 +192,9 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         self.document["values"] = {"bad": {"$record": "bad"}}
         self.write_seed()
         calls = (
-            lambda: inspect_perception(self.image, shared_memory_file=self.seed_file, record=True),
-            lambda: inspect_memory(str(self.image), shared_memory_file=self.seed_file, record=True),
-            lambda: inspect_decision_step("proposal", source=self.image, shared_memory_file=self.seed_file, record=True),
+            lambda: inspect_step("perception", source=self.image, shared_memory_file=self.seed_file, record=True),
+            lambda: inspect_step("memory", source=str(self.image), shared_memory_file=self.seed_file, record=True),
+            lambda: inspect_step("proposal", source=self.image, shared_memory_file=self.seed_file, record=True),
         )
         for call in calls:
             with self.subTest(call=call):
@@ -213,7 +209,7 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         for step in ("perception", "memory", "proposal", "plan", "action"):
             with self.subTest(step=step):
                 args = parser.parse_args([
-                    "plugins", step, "inspect", str(self.image),
+                    "plugins", "inspect", step, str(self.image),
                     "--shared-memory", str(self.seed_file),
                 ])
                 self.assertEqual(args.shared_memory_file, self.seed_file)

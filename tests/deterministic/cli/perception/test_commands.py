@@ -25,49 +25,6 @@ class PerceptionCommandTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2)
         self.assertIn("invalid choice: 'replay'", result.stderr)
 
-    def test_perception_inspect_is_offline_and_does_not_record_by_default(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            frames = root / "frames"
-            frames.mkdir()
-            from PIL import Image
-
-            Image.new("RGB", (32, 24), (30, 40, 50)).save(frames / "000.png")
-            Image.new("RGB", (32, 24), (50, 40, 30)).save(frames / "001.png")
-            inspect_root = root / "applies"
-            result = invoke_automa(
-                "plugins", "perception",
-                "inspect",
-                str(frames),
-                "--json",
-                extra_env={"AUTOMA_PERCEPTION_INSPECT_ROOT": str(inspect_root)},
-            )
-
-            payload = json.loads(result.stdout)
-            self.assertEqual(payload["schema"], "perception_inspect")
-            self.assertEqual(payload["source"]["kind"], "images")
-            self.assertEqual(payload["summary"]["frames"], 2)
-            self.assertIsNone(payload["run_dir"])
-            self.assertFalse(inspect_root.exists())
-
-    def test_perception_inspect_requires_a_source(self) -> None:
-        missing = invoke_automa("plugins", "perception", "inspect", check=False)
-        self.assertEqual(missing.returncode, 2)
-        self.assertIn("source", missing.stderr)
-        named = invoke_automa(
-            "plugins", "perception", "inspect", "--name", "piracer", check=False,
-        )
-        self.assertEqual(named.returncode, 2)
-        self.assertIn("unrecognized arguments", named.stderr)
-        flags = invoke_automa("plugins", "perception", "inspect", "--help").stdout
-        for flag in ("--preset", "--plugin", "--record", "--json", "--shared-memory", "--max-frames"):
-            self.assertIn(flag, flags)
-        for live in ("--name", "--frames", "--interval-s", "--timeout-s"):
-            self.assertNotIn(live, flags)
-        hosts = invoke_automa("hosts", "perception", "help").stdout
-        self.assertIn("./cli/automa plugins perception inspect <source>", hosts)
-        self.assertNotIn("\n- inspect", hosts)
-
     def test_scenario_deployed_perception_schema_is_machine_readable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"

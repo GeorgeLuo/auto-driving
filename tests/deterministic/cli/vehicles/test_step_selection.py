@@ -190,7 +190,7 @@ class StepSelectionTests(unittest.TestCase):
         default proposal, while perception and memory replayed empty."""
 
         with image_source(1) as root:
-            code, stdout, stderr = _invoke("plugins", "proposal", "inspect", str(root), "--json")
+            code, stdout, stderr = _invoke("plugins", "inspect", "proposal", str(root), "--json")
             self.assertEqual(code, 0, stdout + stderr)
             original = json.loads(stdout)
             for step in SELECTABLE_STEPS:
@@ -203,7 +203,7 @@ class StepSelectionTests(unittest.TestCase):
                             frame["steps"][step]["plugins"] = []
                             frame["steps"][step]["metadata"]["preset"] = "custom"
                     write_manifest(root, recorded)
-                    inspect = ("plugins", step, "inspect", str(root), "--json")
+                    inspect = ("plugins", "inspect", step, str(root), "--json")
                     code, stdout, stderr = _invoke(*inspect)
                     self.assertEqual(code, 0, stdout + stderr)
                     if clearable:

@@ -1,7 +1,7 @@
 """Replay an image source through a prefix of the cycle's steps, offline.
 
-Perception, memory, proposal, plan and action inspect all replay a source this
-way: the source's recorded selections, restaged per frame, unless overridden;
+``step_inspect`` replays every step through this path: the source's recorded
+selections, restaged per frame, unless overridden;
 then a report of the inspected step after every frame, optionally recorded as a
 run that replays as a source again.
 """

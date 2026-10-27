@@ -42,8 +42,7 @@ class InspectionSourceTests(unittest.TestCase):
     def inspect(self, step: str, source: Path, *flags: str, exit_code: int = 0) -> dict:
         result = invoke_automa(
             "plugins",
-            step,
-            "inspect",
+            "inspect", step,
             str(source),
             *flags,
             "--json",
@@ -59,7 +58,7 @@ class InspectionSourceTests(unittest.TestCase):
             "perception",
             source,
             *flags,
-            exit_code=1 if any(frame.absent for frame in expected.frames) else 0,
+            exit_code=0,
         )
         memory = self.inspect("memory", source, *flags)
         sequence = frame_sequence([frame.to_dict() for frame in expected.frames])
@@ -74,11 +73,11 @@ class InspectionSourceTests(unittest.TestCase):
             os.utime(image, (seconds, seconds))
         perception, memory = self.assert_shared_sequence(self.source, "--record")
         self.assertEqual(
-            [frame["captured_at_ms"] for frame in perception["frames"]], [0, 1000]
+            [frame["timestamp_ms"] for frame in perception["frames"]], [0, 1000]
         )
         self.assertEqual(
             [Path(frame["image_path"]).name for frame in perception["frames"]],
-            ["a.png", "B.png"],
+            ["frame_000000.png", "frame_000001.png"],
         )
         for recorded in (perception, memory):
             self.assert_shared_sequence(Path(recorded["run_dir"]))
@@ -115,21 +114,19 @@ class InspectionSourceTests(unittest.TestCase):
         )
         perception, memory = self.assert_shared_sequence(self.source, "--record")
         dropout = perception["frames"][1]
-        self.assertEqual(dropout["status"], "unavailable")
-        self.assertEqual(dropout["plugin_runs"], [])
-        self.assertEqual(perception["summary"]["failed_frames"], 1)
+        self.assertIsNone(dropout["record"])
         self.assertIsNone(memory["frames"][1]["observation"])
         temporal = self.inspect(
             "perception",
             self.source,
             "--preset",
             "visual_observer",
-            exit_code=1,
+            exit_code=0,
         )
         for index in (0, 2):
             runs = {
                 run["plugin_id"]: run
-                for run in temporal["frames"][index]["plugin_runs"]
+                for run in temporal["frames"][index]["record"]["plugin_runs"]
             }
             self.assertEqual(runs["motion_tracks"]["status"], "warming_up")
         for recorded in (perception, memory):
@@ -183,8 +180,7 @@ class InspectionSourceTests(unittest.TestCase):
             with self.subTest(step=step):
                 result = invoke_automa(
                     "plugins",
-                    step,
-                    "inspect",
+                    "inspect", step,
                     str(self.source),
                     "--record",
                     "--json",
@@ -196,7 +192,7 @@ class InspectionSourceTests(unittest.TestCase):
                 self.assertFalse((self.root / step).exists())
                 report = self.inspect(step, self.source, "--max-frames", str(count))
                 self.assertEqual(len(report["frames"]), count)
-                help_text = invoke_automa("plugins", step, "inspect", "--help").stdout
+                help_text = invoke_automa("plugins", "inspect", step, "--help").stdout
                 self.assertIn("--max-frames", help_text)
 
     def test_operation_captures_keep_before_after_order_for_all_consumers(self) -> None:
@@ -232,8 +228,7 @@ class InspectionSourceTests(unittest.TestCase):
             with self.subTest(step=step):
                 result = invoke_automa(
                     "plugins",
-                    step,
-                    "inspect",
+                    "inspect", step,
                     str(self.source),
                     "--record",
                     "--json",

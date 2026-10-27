@@ -38,6 +38,8 @@
     .status-dot.error { background: var(--red); }
     nav { display: grid; gap: 8px; }
     nav + nav { margin-top: 40px; }
+    nav + nav a.nav { color: transparent; }
+    nav + nav a.nav:hover, nav + nav a.nav:focus-visible { color: var(--fg); }
     .nav {
       display: block;
       padding: 7px 10px;

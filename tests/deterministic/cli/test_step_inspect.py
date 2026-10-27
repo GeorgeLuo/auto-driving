@@ -167,15 +167,15 @@ class StepInspectTests(unittest.TestCase):
                 self.assertEqual(json.loads((run_dir / "report.json").read_text()), recorded)
                 written = sorted(path.relative_to(run_dir).as_posix() for path in run_dir.rglob("*") if path.is_file())
                 self.assertEqual(written, [
-                    "frames/frame_000000.png", "frames/frame_000001.png", "frames/frame_000002.png", "report.json",
+                    "frames/frame_000000.png", "frames/frame_000001.png", "frames/frame_000002.png", "manifest.json", "report.json",
                 ])
                 replayed = self.inspect("action" if step != "action" else "perception", source=run_dir)
                 self.assertEqual(replayed["selections"], recorded["selections"])
                 self.assertEqual([item["frame_id"] for item in replayed["frames"]],
                                  [item["frame_id"] for item in recorded["frames"]])
                 selected = self.inspect(step, record=True, frame=1)
-                self.assertEqual(len(list((Path(selected["run_dir"]) / "frames").iterdir())), 1)
-                self.assertEqual(self.inspect("action", source=Path(selected["run_dir"]))["source"]["frame_count"], 1)
+                self.assertEqual(len(list((Path(selected["run_dir"]) / "frames").iterdir())), 2)
+                self.assertEqual(self.inspect("action", source=Path(selected["run_dir"]))["source"]["frame_count"], 2)
 
     def test_absent_frames_have_no_record_for_every_step_and_replay_as_gaps(self) -> None:
         (self.frames / "manifest.json").write_text(json.dumps({"frames": [
@@ -253,7 +253,7 @@ class StepInspectTests(unittest.TestCase):
         written = sorted(path.relative_to(run_dir).as_posix() for path in run_dir.rglob("*") if path.is_file())
         self.assertEqual(
             written,
-            ["frames/frame_000000.png", "frames/frame_000001.png", "frames/frame_000002.png", "report.json"],
+            ["frames/frame_000000.png", "frames/frame_000001.png", "frames/frame_000002.png", "manifest.json", "report.json"],
         )
         replayed = self.inspect("proposal", source=run_dir)
         self.assertEqual(replayed["source"]["frame_count"], 3)

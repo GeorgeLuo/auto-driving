@@ -122,7 +122,7 @@ class InspectionRecordingTests(unittest.TestCase):
         self.assertEqual(recorded.parent, self.root / "perception")
         report = json.loads((recorded / "report.json").read_text(encoding="utf-8"))
         self.assertEqual(report["schema"], "perception_inspect_v1")
-        self.assertEqual(sorted(path.name for path in recorded.glob("*.json")), ["report.json"])
+        self.assertEqual(sorted(path.name for path in recorded.glob("*.json")), ["manifest.json", "report.json"])
 
     def test_recording_preserves_dropout_frames_and_custom_memory_bounds(self) -> None:
         perception = selection_activation("perception", preset="multi_obstruction")

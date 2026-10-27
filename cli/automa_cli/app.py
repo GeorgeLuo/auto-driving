@@ -1056,7 +1056,7 @@ def build_parser() -> argparse.ArgumentParser:
         step_inspect.add_argument(
             "--record",
             action="store_true",
-            help=f"Persist the reported frames, every step's selection and the per-frame report under runtime/{step_name}-inspections/ for replay.",
+            help=f"Persist executed frames and inputs in a replay manifest, with the selected report under runtime/{step_name}-inspections/ for replay.",
         )
         step_inspect.add_argument(
             "--json",

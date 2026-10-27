@@ -481,10 +481,13 @@ An unreadable source or seed, out-of-range `--frame`, plugin load error, excepti
 while replaying a frame, or recording failure exits 2.
 
 `--frame N` reports only the source's Nth frame (0-based), after replaying all
-frames before it. `--record` writes `report.json` plus copies of the reported
-images in `frames/` under `runtime/<step>-inspections/<run>/`, and prints the
+frames before it. `--record` writes `report.json`, a replay `manifest.json`, and
+copies of the executed images in `frames/` under `runtime/<step>-inspections/<run>/`, and prints the
 path after `Recorded:`. It writes no masks, overlays, or other plugin diagnostic
-files. Without `--record`, inspect writes nothing. A recording is a source for
+files. With `--frame N --record`, the manifest and images retain frames 0 through
+N, including their cycle inputs and selections; the report still shows only N.
+Referenced uploaded plugin sources are retained in `plugins/`. Without
+`--record`, inspect writes nothing. A recording is a source for
 any step and can be moved or used after the original images are removed:
 
 ```sh

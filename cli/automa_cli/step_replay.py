@@ -8,6 +8,8 @@ run that replays as a source again.
 
 from __future__ import annotations
 
+import copy
+import hashlib
 import json
 import shutil
 import time
@@ -15,6 +17,8 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from autonomy.plugins import uploaded_source
+from autonomy.runtime.recording import recording_frame_entry
 from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.steps import builtin_activation
 from implementations.decision_cycle.catalog import selection_activation
@@ -116,6 +120,22 @@ class StepReplay:
         self.restage(frame)
         return run_frame(frame, steps=self.runners, shared_memory=self.shared_memory)
 
+    def recording_entry(self, frame: ReplayFrame, outcome: FrameOutcome) -> dict[str, Any]:
+        """Executed inputs, including overrides, independent of the report's frame filter."""
+        applications = frame.control_applications
+        return recording_frame_entry(
+            frame_id=frame.frame_id, frame_index=frame.frame_index,
+            timestamp_ms=frame.timestamp_ms,
+            image_path=str(frame.image_path) if frame.image_path is not None else None,
+            absence_reason=frame.absence_reason, steps=self.step_payloads(),
+            context=outcome.result.context.to_dict(), mode=frame.mode,
+            user_steering=frame.user_steering, user_throttle=frame.user_throttle,
+            control_application_change=(
+                {"kept": 0, "added": [item.to_dict() for item in applications]}
+                if applications is not None else None
+            ),
+        )
+
     def step_payloads(self) -> dict[str, Any]:
         """Each step's current selection, as a frame records it for replay."""
 
@@ -138,8 +158,11 @@ def inspect_run_id(source_id: str) -> str:
     return f"inspect-{safe_path_part(source_id)}-{stamp}"
 
 
-def record_inspect_run(run_dir: Path, report: dict[str, Any], image_source: ImageSource) -> None:
-    """Save the report with copies of its frames, so the run replays as a source.
+def record_inspect_run(
+    run_dir: Path, report: dict[str, Any], image_source: ImageSource,
+    replay_inputs: list[dict[str, Any]],
+) -> None:
+    """Archive executed inputs and images; the report may select only one frame.
 
     Raises OSError when the directory exists or cannot be written.
     """
@@ -148,12 +171,47 @@ def record_inspect_run(run_dir: Path, report: dict[str, Any], image_source: Imag
     report["run_dir"] = str(run_dir)
     (run_dir / "frames").mkdir()
     sources = {frame.frame_id: frame for frame in image_source.frames}
-    for recorded_frame in report["frames"]:
-        frame = sources[recorded_frame["frame_id"]]
+    entries = copy.deepcopy(replay_inputs)
+    paths = {}
+    for entry in entries:
+        frame = sources[entry["frame_id"]]
         if frame.image_path is not None:
             relative = Path("frames") / f"frame_{frame.position:06d}{frame.image_path.suffix.lower()}"
             shutil.copyfile(frame.image_path, run_dir / relative)
-            recorded_frame["image_path"] = relative.as_posix()
+            entry["image_path"] = relative.as_posix()
+            paths[frame.frame_id] = relative.as_posix()
+        _retain_uploaded_sources(run_dir, entry["steps"])
+    selections = {entry["frame_id"]: entry["steps"] for entry in entries}
+    for item in report["frames"]:
+        item["image_path"] = paths.get(item["frame_id"])
+        item["steps"] = selections[item["frame_id"]]
     (run_dir / "report.json").write_text(
         json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8"
     )
+    (run_dir / "manifest.json").write_text(
+        json.dumps({"source_id": image_source.source_id, "frames": entries}, indent=2, sort_keys=True)
+        + "\n", encoding="utf-8",
+    )
+
+
+def _retain_uploaded_sources(run_dir: Path, steps: dict[str, Any]) -> None:
+    """Keep file-based plugin entrypoints relocatable, as runtime recordings do."""
+    for activation in steps.values():
+        if activation is None:
+            continue
+        metadata = activation.get("metadata") or {}
+        sources = metadata.pop("plugin_sources", {})
+        for plugin_id, spec in activation["plugin_specs"].items():
+            module, separator, name = spec.partition(":")
+            if not module.endswith(".py"):
+                continue
+            original = sources.get(module)
+            source = Path(original or module)
+            if original is None and not source.is_absolute():
+                source = uploaded_source(module)
+            data = source.read_bytes()
+            filename = f"{hashlib.sha256(data).hexdigest()}.py"
+            target = run_dir / "plugins" / filename
+            target.parent.mkdir(exist_ok=True)
+            target.write_bytes(data)
+            activation["plugin_specs"][plugin_id] = f"{filename}{separator}{name}"

@@ -141,6 +141,14 @@ class ReplayByReleaseTests(unittest.TestCase):
                                  [("frame", "ok"), ("uploaded", "ok")])
                 self.assertEqual(perception["measurements"]["uploaded"]["uploaded_revision"], 7)
 
+            env["AUTOMA_PERCEPTION_INSPECT_ROOT"] = str(Path(tmp) / "inspect-runs")
+            archived = json.loads(automa("inspect", "perception", str(recording), "--record", "--json").stdout)
+            shutil.rmtree(recording)
+            recording = Path(tmp) / "moved-inspect"
+            shutil.move(archived["run_dir"], recording)
+            rerun = json.loads(automa("inspect", "perception", str(recording), "--json").stdout)
+            self.assertEqual(rerun["frames"][0]["record"]["measurements"]["uploaded"]["uploaded_revision"], 7)
+
             shutil.rmtree(recording / "plugins")
             missing = automa("inspect", "perception", str(recording), "--json", check=False)
             self.assertEqual(missing.returncode, 2, missing.stdout)

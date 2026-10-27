@@ -82,6 +82,7 @@ def inspect_step(
         return CommandResult(2, f"Could not load plugins for {step} inspect: {type(exc).__name__}: {exc}")
 
     frames: list[dict[str, Any]] = []
+    replay_inputs: list[dict[str, Any]] = []
     for replay_frame in image_source.frames[: count if frame is None else frame + 1]:
         try:
             outcome = replay.run(replay_frame)
@@ -89,6 +90,8 @@ def inspect_step(
             return CommandResult(
                 2, f"{step.capitalize()} inspect failed at {replay_frame.frame_id}: {type(exc).__name__}: {exc}"
             )
+        if record:
+            replay_inputs.append(replay.recording_entry(replay_frame, outcome))
         if frame is not None and replay_frame.position != frame:
             continue
         step_record = None if replay_frame.absent else _RECORDS[step](outcome.result)
@@ -125,8 +128,8 @@ def inspect_step(
     if record:
         run_dir = inspect_root(step) / run_id
         try:
-            record_inspect_run(run_dir, report, image_source)
-        except OSError as exc:
+            record_inspect_run(run_dir, report, image_source, replay_inputs)
+        except (OSError, ValueError) as exc:
             return CommandResult(2, f"Could not record {step} inspect run {run_dir}: {exc}")
     if json_output:
         return CommandResult(0, json.dumps(report, indent=2, sort_keys=True))

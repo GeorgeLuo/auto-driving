@@ -35,6 +35,8 @@ from .loopback_http import (
 )
 from .plugin_catalog import serve_plugin_catalog
 from .host_status import host_state_text, host_statuses
+from .workbench_runner import ImageReplayRunner
+from .workbench_server import WORKBENCH_CONTENT_SECURITY_POLICY, ReplayRunner, serve_workbench_route
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
@@ -51,6 +53,8 @@ RUNTIME_HOST_ROUTES = frozenset({
     "/api/decision/latest",
     "/api/decision/image",
 })
+# The workbench page and API, answered from a replay runner whether or not a host is connected.
+WORKBENCH_PREFIX = "/workbench"
 RUNTIME_VIEW_HTML_PATH = Path(__file__).with_name("runtime_view.html")
 MEMORY_VIEW_HTML_PATH = Path(__file__).with_name("memory_view.html")
 DECISION_VIEW_HTML_PATH = Path(__file__).with_name("live_decision_view.html")
@@ -71,10 +75,12 @@ class RuntimeViewServer:
         decision_identity: dict[str, Any] | None = None,
         plugin_catalog: Callable | None = None,
         connected: bool = True,
+        replay_runner: ReplayRunner | None = None,
     ) -> None:
         validate_loopback_host(host, owner="runtime view")
         self.host_name = host_name
         self.connected = connected
+        self.replay_runner = replay_runner
         self.plugin_catalog = plugin_catalog
         self.automation_dir = automation_dir
         self.host = host
@@ -159,6 +165,13 @@ class RuntimeViewServer:
             _nav_link("Plugins", "/plugins"),
         ))
 
+    def workbench_navigation_html(self) -> str:
+        """The workbench entry, apart from the host's runtime pages; empty without a replay runner."""
+
+        if self.replay_runner is None:
+            return ""
+        return f'<nav aria-label="Workbench">{_nav_link("Workbench", WORKBENCH_PREFIX + "/")}</nav>'
+
     def decision_navigation_html(self) -> str:
         """Return a usable decision link or an explicit unavailable status."""
 
@@ -200,6 +213,8 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         route = urlparse(self.path).path
         if self._refuse_when_not_connected(route, include_body=True):
             return
+        if self._serve_workbench(route, include_body=True):
+            return
         if route == PLUGIN_CATALOG_PATH:
             serve_plugin_catalog(self, self.server.publisher.plugin_catalog)
             return
@@ -234,10 +249,23 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         self._send_json(503, {"ok": False, "error": NOT_CONNECTED_ERROR}, include_body=include_body)
         return True
 
+    def _serve_workbench(self, route: str, *, include_body: bool) -> bool:
+        """Answer a route under /workbench/ from the viewer's replay runner; True if answered."""
+
+        runner = self.server.publisher.replay_runner
+        if runner is None or not route.startswith(WORKBENCH_PREFIX + "/"):
+            return False
+        self.content_security_policy = WORKBENCH_CONTENT_SECURITY_POLICY
+        if not serve_workbench_route(self, runner, route.removeprefix(WORKBENCH_PREFIX), include_body=include_body):
+            self._send_json(404, {"error": "not found"}, include_body=include_body)
+        return True
+
     def _handle_request(self, *, include_body: bool) -> None:
         request = urlparse(self.path)
         route = request.path
         if self._refuse_when_not_connected(route, include_body=include_body):
+            return
+        if self._serve_workbench(route, include_body=include_body):
             return
         if self._serve_shared_file(route, include_body=include_body):
             return
@@ -281,6 +309,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             publisher = self.server.publisher
             html = html.replace("__CONNECTION_DOT__", publisher.connection_dot_html())
             html = html.replace("__RUNTIME_NAV__", publisher.splash_navigation_html())
+            html = html.replace("__WORKBENCH_NAV__", publisher.workbench_navigation_html())
             self._send(
                 200,
                 html.encode("utf-8"),
@@ -398,13 +427,15 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
 
 
 def serve_viewer() -> int:
-    """Serve the runtime pages with no runtime host until interrupted."""
+    """Serve the runtime pages with no runtime host, and an empty workbench, until interrupted."""
 
+    replay_runner = ImageReplayRunner()
     server = RuntimeViewServer(
         host_name="viewer",
         automation_dir=None,
         port=VIEWER_PORT,
         connected=False,
+        replay_runner=replay_runner,
     ).start()
     print(open_view_message(server.url or ""), flush=True)
     try:
@@ -414,6 +445,7 @@ def serve_viewer() -> int:
         return 130
     finally:
         server.stop()
+        replay_runner.close()
 
 
 def open_view_message(url: str) -> str:

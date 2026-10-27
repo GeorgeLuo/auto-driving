@@ -686,8 +686,15 @@ class ImageReplayRunner:
         steps = {}
         for step, activation in activations.items():
             factory = self.step_factories.get(step)
-            steps[step] = (factory() if factory is not None else
-                           recorded_runner(activation) if activation is not None else None)
+            if factory is not None:
+                steps[step] = factory()
+            elif step in SELECTABLE_STEPS and (
+                step not in recorded or step in self._selection_overrides
+            ):
+                # A local selection may carry staging metadata without its bundle.
+                steps[step] = self._catalogs[step].build(activation)
+            else:
+                steps[step] = recorded_runner(activation) if activation is not None else None
         self._replay_activations = activations
         for step, activation in activations.items():
             self._store_recorded_activation(step, activation)

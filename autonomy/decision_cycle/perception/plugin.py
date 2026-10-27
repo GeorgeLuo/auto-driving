@@ -12,10 +12,6 @@ from types import MappingProxyType
 from typing import Any, Literal, Mapping, Protocol, TypeVar, runtime_checkable
 
 from autonomy.decision_cycle.perception.feeds.interface import PerceptionPluginInput
-from autonomy.decision_cycle.perception.diagnostics.sink import (
-    PerceptionDiagnosticSink,
-    _safe_name,
-)
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -58,8 +54,6 @@ class PerceptionPluginContract:
     assumptions: tuple[str, ...] = ()
     emits: tuple[str, ...] = ()
     limitations: tuple[str, ...] = ()
-    diagnostic_artifacts: tuple[str, ...] = ()
-    diagnostics_required: bool = False
 
     def __post_init__(self) -> None:
         input_names = [item.name for item in self.inputs]
@@ -70,12 +64,6 @@ class PerceptionPluginContract:
             raise ValueError("plugin feed ids must be unique")
         if self.state_mode not in PLUGIN_STATE_MODES:
             raise ValueError(f"unsupported plugin state mode: {self.state_mode!r}")
-        if len(self.diagnostic_artifacts) != len(set(self.diagnostic_artifacts)):
-            raise ValueError("diagnostic artifact ids must be unique")
-        if any(_safe_name(item) != item for item in self.diagnostic_artifacts):
-            raise ValueError("diagnostic artifact ids must be non-empty safe names")
-        if self.diagnostics_required and not self.diagnostic_artifacts:
-            raise ValueError("diagnostics_required needs declared diagnostic artifacts")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -87,8 +75,6 @@ class PerceptionPluginContract:
             "assumptions": list(self.assumptions),
             "emits": list(self.emits),
             "limitations": list(self.limitations),
-            "diagnostic_artifacts": list(self.diagnostic_artifacts),
-            "diagnostics_required": self.diagnostics_required,
         }
 
 
@@ -99,7 +85,6 @@ class PerceptionPluginInputs:
     frame_id: str
     captured_at_ms: int
     feeds: Mapping[str, Any]
-    diagnostics: PerceptionDiagnosticSink
     metadata: Mapping[str, Any] = field(default_factory=dict)
     shared_memory: SharedMemory | None = field(default=None, repr=False, compare=False)
     # Things already emitted by earlier plugins in this frame, in selection order.

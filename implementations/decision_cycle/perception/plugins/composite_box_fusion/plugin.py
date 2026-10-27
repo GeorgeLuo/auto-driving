@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from copy import copy
-from dataclasses import fields
 import hashlib
 import json
 import os
@@ -21,7 +20,6 @@ from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginInputs,
 )
 from implementations.decision_cycle.perception.feeds.camera import (
-    CameraFrame,
     FRONT_CAMERA_RGB_INPUT,
 )
 from implementations.decision_cycle.perception.plugins.floor_continuity.model import (
@@ -30,7 +28,6 @@ from implementations.decision_cycle.perception.plugins.floor_continuity.model im
 )
 from implementations.decision_cycle.perception.shared.obstructions.boxes import (
     center_distance,
-    clamp,
     zone,
 )
 from implementations.decision_cycle.perception.shared.regions.detection import detect_regions
@@ -43,8 +40,6 @@ from implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.
 )
 
 from .issue219_cues import (
-    _adaptive_contours,
-    _bbox_area,
     _bbox_iou,
     _canny_morph,
     _corner_junctions,
@@ -102,7 +97,6 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
             "floor boundaries can be shadows or surface changes",
             "tracking remains local to one reset-bounded run",
         ),
-        diagnostic_artifacts=("track_summary", "edge_summary", "composite_summary"),
     )
 
     _STRATEGY_FAMILIES = {
@@ -262,16 +256,6 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
             self._current_frame_id = "unknown"
         measurements = dict(batch.measurements)
         measurements["composite"] = self._last_composite_summary
-        if inputs.diagnostics.enabled:
-            inputs.diagnostics.emit_json(
-                "composite_summary",
-                "composite_summary.json",
-                {
-                    "frame_id": inputs.frame_id,
-                    "strategies": list(self.enabled_substrategies),
-                    **self._last_composite_summary,
-                },
-            )
         return PerceptionEvidenceBatch(
             signals=batch.signals,
             things=batch.things,

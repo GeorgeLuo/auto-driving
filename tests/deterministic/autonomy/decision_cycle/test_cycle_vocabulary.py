@@ -65,8 +65,6 @@ class CycleVocabularyTests(unittest.TestCase):
                 "assumptions",
                 "emits",
                 "limitations",
-                "diagnostic_artifacts",
-                "diagnostics_required",
             },
         )
         self.assertTrue(payload["memory_required"])

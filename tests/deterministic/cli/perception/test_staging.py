@@ -67,7 +67,6 @@ class PerceptionCommandTests(unittest.TestCase):
 
             for relative in (
                 "implementations/decision_cycle/perception/plugins/floor_plane/plugin.py",
-                "implementations/decision_cycle/perception/plugins/vlm_prep/plugin.py",
                 "implementations/decision_cycle/perception/plugins/motion_tracks/plugin.py",
                 "autonomy/decision_cycle/perception/runner.py",
                 "bundle-manifest.json",

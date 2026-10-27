@@ -13,7 +13,6 @@ import importlib
 from collections.abc import Mapping
 from copy import deepcopy
 from dataclasses import dataclass, replace
-from pathlib import Path
 from typing import Any, ClassVar
 
 from autonomy.decision_cycle.activation import step_activation
@@ -28,7 +27,6 @@ from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition, PluginManager
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.decision_cycle.perception.feeds.interface import FeedProvider
-from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink
 from autonomy.decision_cycle.perception.evidence.rendering import signal_line, thing_line
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
@@ -51,16 +49,10 @@ from autonomy.decision_cycle.perception.plugin import (
 )
 
 
-# ``context.metadata`` key naming the directory a recording host wants
-# perception diagnostics written to for the frame.
-PERCEPTION_OUTPUT_DIR_KEY = "perception_output_dir"
-
-
 @dataclass(frozen=True)
 class _PluginExecution:
     status: PluginResultStatus
     batch: PerceptionEvidenceBatch
-    artifacts: dict[str, str]
     duration_ms: float
     error: str | None = None
 
@@ -114,15 +106,11 @@ class PerceptionRunner(StepRunner[Any]):
                 self.reset(context.shared_memory)
                 self.last_frame_index = context.frame_index
                 return None
-            metadata = context.metadata if isinstance(context.metadata, dict) else {}
-            # A host that records diagnostics names the directory per frame.
-            output_dir = metadata.get(PERCEPTION_OUTPUT_DIR_KEY)
             try:
                 self.last_output = self.perceive(
                     build_perception_request(
                         context.sensor_frame,
                         shared_memory=context.shared_memory,
-                        output_dir=Path(output_dir) if isinstance(output_dir, str) else None,
                         metadata={
                             "runtime": "onboard",
                             "activation": (
@@ -251,7 +239,6 @@ class PerceptionRunner(StepRunner[Any]):
         signals: list[PerceptionSignal] = []
         things: list[PerceivedThing] = []
         measurements: dict[str, dict[str, Any]] = {}
-        artifacts: dict[str, str] = {}
         limits: list[str] = []
         plugin_runs: list[PerceptionPluginRun] = []
 
@@ -280,15 +267,13 @@ class PerceptionRunner(StepRunner[Any]):
                     duration_ms=execution.duration_ms,
                     signal_count=len(attributed_signals),
                     thing_count=len(attributed_things),
-                    artifact_count=len(execution.artifacts),
                     error=execution.error,
                 )
             )
             lines.append(
                 f"plugin_run id={catalog_id} status={execution.status} "
                 f"duration_ms={execution.duration_ms:.3f} "
-                f"signals={len(attributed_signals)} things={len(attributed_things)} "
-                f"artifacts={len(execution.artifacts)}"
+                f"signals={len(attributed_signals)} things={len(attributed_things)}"
             )
             if execution.error:
                 lines.append(
@@ -301,12 +286,6 @@ class PerceptionRunner(StepRunner[Any]):
             things.extend(attributed_things)
             if execution.batch.measurements:
                 measurements[catalog_id] = dict(execution.batch.measurements)
-            artifacts.update(
-                {
-                    f"{catalog_id}/{artifact_id}": path
-                    for artifact_id, path in execution.artifacts.items()
-                }
-            )
             limits.extend(plugin.contract.limitations)
 
         return PerceptionText(
@@ -318,7 +297,6 @@ class PerceptionRunner(StepRunner[Any]):
             things=tuple(things),
             plugin_runs=tuple(plugin_runs),
             measurements=measurements,
-            artifacts=artifacts,
             limits=tuple(dict.fromkeys(limits)),
         )
 
@@ -392,18 +370,6 @@ class PerceptionRunner(StepRunner[Any]):
         prior_things: tuple[PerceivedThing, ...] = (),
     ) -> _PluginExecution:
         started = clock()
-        diagnostics = PerceptionDiagnosticSink(
-            output_dir=request.output_dir,
-            plugin_id=catalog_id,
-            allowed_artifacts=plugin.contract.diagnostic_artifacts,
-        )
-        if plugin.contract.diagnostics_required and not diagnostics.enabled:
-            return _execution(
-                started,
-                status="unavailable",
-                error="diagnostics are required but recording is disabled",
-            )
-
         try:
             feeds, missing = self._resolve_inputs(plugin.contract, request)
             if missing and FAILURE_POLICY.missing_input == "skip_plugin":
@@ -421,7 +387,6 @@ class PerceptionRunner(StepRunner[Any]):
                 frame_id=request.sensor_frame.read_id,
                 captured_at_ms=request.sensor_frame.completed_at_ms,
                 feeds=feeds,
-                diagnostics=diagnostics,
                 metadata=request.metadata,
                 shared_memory=request.shared_memory,
                 prior_things=prior_things,
@@ -431,23 +396,17 @@ class PerceptionRunner(StepRunner[Any]):
                 raise TypeError(
                     f"plugin {catalog_id!r} must return PerceptionEvidenceBatch"
                 )
-            status: PluginResultStatus = (
-                "ok"
-                if batch.signals or batch.things or diagnostics.artifacts
-                else "empty"
-            )
+            status: PluginResultStatus = "ok" if batch.signals or batch.things else "empty"
             return _execution(
                 started,
                 status=status,
                 batch=batch,
-                artifacts=diagnostics.artifacts,
             )
         except PerceptionPluginWarmingUp as exc:
             return _execution(
                 started,
                 status="warming_up",
                 batch=PerceptionEvidenceBatch(measurements=exc.measurements),
-                artifacts=diagnostics.artifacts,
                 error=exc.reason,
             )
         except Exception as exc:
@@ -456,7 +415,6 @@ class PerceptionRunner(StepRunner[Any]):
             return _execution(
                 started,
                 status="error",
-                artifacts=diagnostics.artifacts,
                 error=f"{type(exc).__name__}: {exc}",
             )
 
@@ -498,13 +456,11 @@ def _execution(
     *,
     status: PluginResultStatus,
     batch: PerceptionEvidenceBatch | None = None,
-    artifacts: dict[str, str] | None = None,
     error: str | None = None,
 ) -> _PluginExecution:
     return _PluginExecution(
         status=status,
         batch=batch or PerceptionEvidenceBatch(),
-        artifacts=dict(artifacts or {}),
         duration_ms=elapsed_ms(started),
         error=error,
     )

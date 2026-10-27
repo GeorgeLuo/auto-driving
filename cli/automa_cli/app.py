@@ -298,7 +298,7 @@ def build_parser() -> argparse.ArgumentParser:
     host_run.add_argument(
         "--record",
         action="store_true",
-        help="Save per-frame images and perception artifacts under a timestamped run directory.",
+        help="Save per-frame images and cycle records under a timestamped run directory.",
     )
     host_run.add_argument(
         "--verbose",
@@ -431,7 +431,7 @@ def build_parser() -> argparse.ArgumentParser:
     host_restart.add_argument(
         "--record",
         action="store_true",
-        help="Save per-frame images and perception artifacts under a timestamped run directory.",
+        help="Save per-frame images and cycle records under a timestamped run directory.",
     )
     host_restart.add_argument(
         "--verbose",

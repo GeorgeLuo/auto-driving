@@ -62,9 +62,6 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
             "things": observation_value.get("things")
             if isinstance(observation_value.get("things"), list)
             else [],
-            "artifacts": observation_value.get("artifacts")
-            if isinstance(observation_value.get("artifacts"), dict)
-            else {},
             "plugin_id": observation_value.get("perception_plugin_id"),
             "plugin_runs": [],
             "measurements": {},

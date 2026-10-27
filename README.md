@@ -426,8 +426,8 @@ restarts; a stopped one uses the selection the next time it starts:
 
 `lightweight_observer` is the production-oriented frame and floor-boundary
 chain. `visual_observer` adds feature-motion tracks and is intentionally much
-slower. Artifact-only VLM preprocessing remains an optional diagnostic plugin,
-not part of either observer.
+slower. Standalone image preprocessing is available through
+`scripts/perception/prepare_vlm_image.py`.
 
 ### Plugin inspection
 
@@ -935,9 +935,9 @@ generic `SensorFrame` and runs configured plugins without knowing which
 sensor or meaning any plugin uses. Each plugin declares named feed inputs
 and returns only structured signals, spatial evidence, and measurements. The
 generic runner resolves and caches those inputs, then owns missing-input and
-warm-up status, error isolation, timing, source attribution, text rendering,
-and optional diagnostic persistence. The surrounding cycle owns the sensor
-frame, so perception output does not duplicate it. Concrete camera decoding
+warm-up status, error isolation, timing, source attribution, and text rendering.
+The surrounding cycle owns the sensor frame, so perception output does not
+duplicate it. Concrete camera decoding
 and every meaning-making algorithm live under
 `implementations/decision_cycle/perception/`.
 

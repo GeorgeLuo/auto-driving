@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
 
 import numpy as np
 
@@ -60,7 +58,7 @@ def _array_reading(
 
 
 class PerceptionPluginTests(unittest.TestCase):
-    def test_current_plugins_share_camera_feed_without_writing_diagnostics(self) -> None:
+    def test_current_plugins_share_camera_feed(self) -> None:
         rgb = np.random.default_rng(3).integers(0, 256, (72, 96, 3), dtype=np.uint8)
         request = build_perception_request(_sensor_frame(_array_reading(rgb)))
         mapper = PerceptionRunner.from_selection(
@@ -72,7 +70,6 @@ class PerceptionPluginTests(unittest.TestCase):
 
         self.assertEqual(perception.status, "ok")
         self.assertEqual(request.feed_summary()["available"], {FRONT_CAMERA_FEED: "CameraFrame"})
-        self.assertEqual(perception.artifacts, {})
         frame = next(thing for thing in perception.things if thing.kind == "sensor_frame")
         self.assertEqual(frame.properties["width_px"], 96)
 
@@ -138,7 +135,6 @@ class PerceptionPluginTests(unittest.TestCase):
         self.assertEqual(first.status, "warming_up")
         self.assertIn(second.status, {"ok", "empty"})
         self.assertEqual(after_reset.status, "warming_up")
-        self.assertEqual(second.artifacts, {})
 
     def test_windowed_tracks_keep_ids_and_expire_after_bounded_misses(self) -> None:
         plugin = MotionTracksPlugin(max_track_misses=1)
@@ -162,31 +158,6 @@ class PerceptionPluginTests(unittest.TestCase):
         self.assertEqual(plugin._update_tracks([]), [])
         self.assertEqual(plugin._update_tracks([]), [1])
         self.assertEqual(plugin._tracks, {})
-
-    def test_framework_namespaces_declared_diagnostics(self) -> None:
-        rgb = np.random.default_rng(11).integers(0, 256, (72, 96, 3), dtype=np.uint8)
-        shifted = np.roll(rgb, 2, axis=1)
-        mapper = PerceptionRunner.from_selection(
-            plugins=["motion_tracks"],
-            plugin_specs=_PERCEPTION_SPECS,
-            plugin_configs={"motion_tracks": {"max_features": 50, "search_radius": 8}},
-        )
-        with tempfile.TemporaryDirectory() as tmp:
-            output_dir = Path(tmp)
-            memory = {}
-            mapper.perceive(
-                build_perception_request(_sensor_frame(_array_reading(rgb), "first"), output_dir=output_dir, shared_memory=memory)
-            )
-            result = mapper.perceive(
-                build_perception_request(
-                    _sensor_frame(_array_reading(shifted), "second"),
-                    output_dir=output_dir,
-                    shared_memory=memory,
-                )
-            )
-            key = "motion_tracks/scene_tracks"
-            self.assertIn(key, result.artifacts)
-            self.assertTrue(Path(result.artifacts[key]).is_file())
 
 
 if __name__ == "__main__":

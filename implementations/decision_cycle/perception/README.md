@@ -54,9 +54,9 @@ boundaries from the same frame; `model.py` beside it holds the floor model and
 As in memory and proposal, `autonomy/decision_cycle/perception/` owns the
 plugin protocol (`plugin.py`), composition and failure policy (`interface.py`),
 and step execution (`runner.py`). Perception's `inputs.py` builds each frame's
-plugin request, `evidence/` defines the evidence values plugins emit, and
-`diagnostics/` the diagnostic artifacts they may emit. Those types belong to
-the perception contract, rather than to a concrete detector.
+plugin request, and `evidence/` defines the signals, spatial evidence, and
+measurements plugins emit. Those types belong to the perception contract,
+rather than to a concrete detector.
 
 Perception is the step that reads sensors. Its plugins declare their inputs
 through `feeds/`, which turns a sensor reading into a typed plugin input; the

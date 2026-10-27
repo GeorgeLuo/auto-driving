@@ -24,7 +24,6 @@ class Observation:
     summary: tuple[str, ...] = ()
     things: tuple[dict[str, Any], ...] = ()
     signals: tuple[dict[str, Any], ...] = ()
-    artifacts: dict[str, str] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
     schema: str = OBSERVATION_SCHEMA
 
@@ -51,10 +50,7 @@ class Observation:
             raise ValueError("observation things must be a list")
         if not isinstance(signals, (list, tuple)):
             raise ValueError("observation signals must be a list")
-        artifacts = data.get("artifacts") or {}
         metadata = data.get("metadata") or {}
-        if not isinstance(artifacts, dict):
-            raise ValueError("observation artifacts must be a dictionary")
         if not isinstance(metadata, dict):
             raise ValueError("observation metadata must be a dictionary")
         summary = data.get("summary") or ()
@@ -81,8 +77,6 @@ class Observation:
             summary=summary_items,
             things=tuple(item for item in things if isinstance(item, dict)),
             signals=tuple(item for item in signals if isinstance(item, dict)),
-            artifacts={str(key): str(value) for key, value in artifacts.items()},
             metadata=metadata,
             schema=str(data.get("schema") or OBSERVATION_SCHEMA),
         )
-

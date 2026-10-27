@@ -18,7 +18,6 @@ from cli.automa_cli.workbench_source import normalize_image_directory
 from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
-from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from cli.automa_cli.decision_steps import format_step_record
 from cli.automa_cli.step_inspect import INSPECT_STEPS, inspect_step
 from cli.automa_cli.step_replay import StepReplay, default_selection
@@ -260,20 +259,12 @@ class StepInspectTests(unittest.TestCase):
         self.assertEqual(replayed["selections"]["action"]["plugins"], ["mode"])
 
     def test_a_recording_that_disabled_a_selectable_step_replays_without_its_plugins(self) -> None:
-        """A clearable step the recording left empty replays with no plugins.
-
-        Plan runs one plugin, so a recording that left it empty stays absent.
-        """
-
+        """A recorded absent slot stays absent, even when its step is clearable."""
         replay = StepReplay(_source(), {"steps": dict.fromkeys(SELECTABLE_STEPS)}, steps=SELECTABLE_STEPS)
         for step in SELECTABLE_STEPS:
             with self.subTest(step=step):
-                if step in CLEARABLE_STEPS:
-                    self.assertEqual(replay.activations[step].plugins, ())
-                    self.assertIsNotNone(replay.runners[step])
-                else:
-                    self.assertIsNone(replay.activations[step])
-                    self.assertIsNone(replay.runners[step])
+                self.assertIsNone(replay.activations[step])
+                self.assertIsNone(replay.runners[step])
 
     def test_the_first_frames_selection_builds_the_runners_so_its_restage_keeps_the_map(self) -> None:
         """Regression: a source that records selections only per frame built default

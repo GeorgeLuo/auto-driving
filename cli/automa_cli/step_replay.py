@@ -20,12 +20,10 @@ from typing import Any
 from autonomy.plugins import uploaded_source
 from autonomy.runtime.recording import recording_frame_entry
 from autonomy.decision_cycle.activation import StepActivation
-from autonomy.decision_cycle.steps import builtin_activation
-from implementations.decision_cycle.catalog import selection_activation
 
 from .inspection_runs import (
-    SharedMemorySeed, recorded_runner, recorded_selection, recorded_selections, replay_step,
-    replayed_selection, selection_report,
+    SharedMemorySeed, recorded_runner, recorded_selection, recorded_selections,
+    default_selection, resolve_replay_activations, restage_replay_steps, selection_report,
 )
 from .paths import safe_path_part
 from .workbench_frames import FrameOutcome, run_frame
@@ -54,16 +52,6 @@ def read_replay_source(source: str | Path, *, max_frames: int) -> tuple[ImageSou
     return image_source, manifest or {}
 
 
-def default_selection(step: str) -> StepActivation | None:
-    """The selection inspect uses for a step its source did not record.
-
-    That is the built-in a vehicle runs when the step is unstaged, else the
-    step's default selection.
-    """
-
-    return builtin_activation(step) or selection_activation(step)
-
-
 class StepReplay:
     """Step runners that replay a source with the selections it recorded.
 
@@ -89,16 +77,15 @@ class StepReplay:
         self.overrides = dict(overrides or {})
         first = recorded_selections(image_source.frames[0].metadata)
         recorded = recorded_selections(manifest)
-        self.activations: dict[str, StepActivation | None] = {}
         for step in steps:
-            if step in self.overrides:
-                self.activations[step] = self.overrides[step]
-            elif step in first:
-                self.activations[step] = replayed_selection(step, first[step])
-            elif step in recorded:
-                self.activations[step] = replayed_selection(step, recorded[step])
-            else:
-                self.activations[step] = recorded_selection(step, manifest) or default_selection(step)
+            if step not in recorded:
+                legacy = recorded_selection(step, manifest)
+                if legacy is not None:
+                    recorded[step] = legacy
+        self.activations = resolve_replay_activations(
+            {**recorded, **first}, defaults={step: default_selection(step) for step in steps},
+            overrides=self.overrides,
+        )
         self.runners = {
             step: recorded_runner(activation) if activation is not None else None
             for step, activation in self.activations.items()
@@ -108,13 +95,10 @@ class StepReplay:
     def restage(self, frame: ReplayFrame) -> None:
         """Apply this frame's recorded selections, unless the step is overridden."""
 
-        selections = recorded_selections(frame.metadata)
-        for step in self.activations:
-            if step not in selections or step in self.overrides:
-                continue
-            activation = replayed_selection(step, selections[step])
-            self.runners[step] = replay_step(self.runners[step], activation, self.shared_memory)
-            self.activations[step] = activation
+        restage_replay_steps(
+            self.runners, self.activations, recorded_selections(frame.metadata),
+            overrides=set(self.overrides), shared_memory=self.shared_memory,
+        )
 
     def run(self, frame: ReplayFrame) -> FrameOutcome:
         self.restage(frame)

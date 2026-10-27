@@ -14,13 +14,16 @@ from typing import Any, Callable
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
 from autonomy.decision_cycle.perception.interface import PerceptionText
-from implementations.decision_cycle.catalog import CUSTOM_PRESET, selection_activation
+from implementations.decision_cycle.catalog import CUSTOM_PRESET
 from autonomy.plugins import LocalPluginCatalog
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 
 from .memory_report import evidence_publisher, plugin_states, plugin_summaries
 from .step_hosting import plugin_report
-from .inspection_runs import recorded_runner, recorded_selections, replay_step
+from .inspection_runs import (
+    default_selection, recorded_runner, recorded_selections,
+    resolve_replay_activations, restage_replay_steps,
+)
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
@@ -31,7 +34,7 @@ from .workbench_contract import (
     WORKBENCH_SEQUENCE_ID,
     WORKBENCH_STATE_SCHEMA,
 )
-from .workbench_frames import run_frame, workbench_decision_steps
+from .workbench_frames import run_frame
 from .workbench_plugins import (
     SELECTABLE_STEPS,
     PluginCatalog,
@@ -178,7 +181,7 @@ class ImageReplayRunner:
         given = dict(activations or {})
         selected: dict[str, StepActivation] = {}
         for step in SELECTABLE_STEPS:
-            activation = given[step] if step in given else selection_activation(step)
+            activation = given[step] if step in given else default_selection(step)
             if activation.step != step:
                 raise ValueError(f"activation for {activation.step!r} given as {step!r}")
             selected[step] = activation
@@ -674,25 +677,21 @@ class ImageReplayRunner:
     def _build_steps(self, first_frame: ReplayFrame | None = None) -> dict[str, Any]:
         """Restore the first frame's selections before constructing any selectable step."""
         recorded = recorded_selections(first_frame.metadata) if first_frame else {}
-        steps = workbench_decision_steps()
-        for step in STEPS:
-            if step in recorded and step not in self._selection_overrides:
-                activation = recorded[step]
-                steps[step] = recorded_runner(activation) if activation is not None else None
-                self._store_recorded_activation(step, activation)
-            elif step in SELECTABLE_STEPS:
-                if step not in self._selection_overrides:
-                    self._activations[step] = self._default_activations[step]
-                steps[step] = self._build_step(step)
+        defaults = {step: default_selection(step) for step in STEPS}
+        defaults.update(self._default_activations)
+        activations = resolve_replay_activations(
+            recorded, defaults=defaults,
+            overrides={step: self._activations[step] for step in self._selection_overrides},
+        )
+        steps = {}
+        for step, activation in activations.items():
+            factory = self.step_factories.get(step)
+            steps[step] = (factory() if factory is not None else
+                           recorded_runner(activation) if activation is not None else None)
+        self._replay_activations = activations
+        for step, activation in activations.items():
+            self._store_recorded_activation(step, activation)
         return steps
-
-    def _build_step(self, step: str) -> Any:
-        """The step's runner for its current activation, unless a test injected one."""
-
-        factory = self.step_factories.get(step)
-        if factory is not None:
-            return factory()
-        return self._catalogs[step].build(self._activations[step])
 
     def _set_loop(self, loop: bool | None) -> dict[str, Any]:
         if not isinstance(loop, bool):
@@ -947,11 +946,12 @@ class ImageReplayRunner:
                 steps = self._steps
             try:
                 with self._condition:
-                    for step, activation in recorded_selections(frame.metadata).items():
-                        if step in self._selection_overrides:
-                            continue
-                        steps[step] = replay_step(steps.get(step), activation, self._shared_memory)
-                        self._store_recorded_activation(step, activation)
+                    changed = restage_replay_steps(
+                        steps, self._replay_activations, recorded_selections(frame.metadata),
+                        overrides=self._selection_overrides, shared_memory=self._shared_memory,
+                    )
+                    for step in changed:
+                        self._store_recorded_activation(step, self._replay_activations[step])
                     self._apply_plugin_configuration_locked()
                 outcome = run_frame(frame, steps=steps, shared_memory=self._shared_memory)
                 result = outcome.result

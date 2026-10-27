@@ -17,7 +17,6 @@ from autonomy.decision_cycle.observation.perception_summary import observation_f
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.interface import PerceptionText
-from autonomy.decision_cycle.steps import decision_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 from .step_hosting import plugin_report
@@ -54,17 +53,6 @@ def sensor_frame_for_replay_frame(frame: ReplayFrame) -> SensorFrame | None:
             "absence": False,
         },
     )
-
-
-def workbench_decision_steps() -> dict[str, Any]:
-    """The built-in observation and action a vehicle host uses.
-
-    Plan has no built-in. The workbench builds an unrecorded plan from the
-    packaged default.
-    """
-
-    steps = decision_steps()
-    return {"observation": steps.observation, "action": steps.action}
 
 
 def decision_view(result: Any) -> dict[str, Any] | None:

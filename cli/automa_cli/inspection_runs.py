@@ -16,7 +16,7 @@ from typing import Any
 from autonomy.decision_cycle.activation import (
     StepActivation, step_activation,
 )
-from autonomy.decision_cycle.steps import CLEARABLE_STEPS
+from autonomy.decision_cycle.steps import builtin_activation
 from autonomy.runtime.plugin_loader import code_source_from_activation, load_runner
 from autonomy.runtime.recording import recorded_selections
 from autonomy.shared_memory import read_shared_memory_file
@@ -71,16 +71,39 @@ def replay_step(runner: Any, activation: StepActivation | None, shared_memory: d
     return replacement
 
 
-def replayed_selection(step: str, recorded: StepActivation | None) -> StepActivation | None:
-    """A recorded selection as replay runs it.
+def default_selection(step: str) -> StepActivation:
+    """Offline defaults: the cycle's built-in, else the packaged selection."""
+    return builtin_activation(step) or selection_activation(step)
 
-    A clearable step the recording left empty replays with no plugins. A
-    one-plugin step left empty stays absent.
-    """
 
-    if recorded is None and step in CLEARABLE_STEPS:
-        return selection_activation(step, plugins=[])
-    return recorded
+def resolve_replay_activations(
+    recorded: dict[str, StepActivation | None], *,
+    defaults: dict[str, StepActivation | None],
+    overrides: dict[str, StepActivation | None],
+) -> dict[str, StepActivation | None]:
+    """Resolve each step once; an absent recorded slot stays absent."""
+    return {
+        step: overrides[step] if step in overrides else recorded.get(step, default)
+        for step, default in defaults.items()
+    }
+
+
+def restage_replay_steps(
+    runners: dict[str, Any], activations: dict[str, StepActivation | None],
+    recorded: dict[str, StepActivation | None], *,
+    overrides: set[str], shared_memory: dict[str, Any],
+) -> set[str]:
+    """Apply recorded transitions to non-overridden slots and return changed steps."""
+    changed = set()
+    for step, activation in recorded.items():
+        if step not in activations or step in overrides:
+            continue
+        previous = activations[step]
+        runners[step] = replay_step(runners.get(step), activation, shared_memory)
+        activations[step] = activation
+        if previous != activation:
+            changed.add(step)
+    return changed
 
 
 def recorded_release(activation: StepActivation) -> tuple[str, str] | None:

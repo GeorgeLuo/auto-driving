@@ -57,7 +57,7 @@ def inspect_memory(
     Reports what each memory plugin retained after every frame. A recorded run
     restores its executable perception and memory selections; explicit flags
     override memory. Otherwise each step uses its default. It reads the source
-    only; live frames come from ``perception inspect --record``.
+    only. A recorded perception inspect run is a source.
     """
 
     try:

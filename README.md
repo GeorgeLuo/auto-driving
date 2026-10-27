@@ -132,7 +132,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `hosts plugins status` | Reads available, requested and applied revisions; exits 2 while the last selection request failed. `list` is an alias. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
 | `hosts info perception\|memory\|proposal\|plan\|action` | Reads that step's staged activation, enabled and available plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception, memory, proposal and plan also show their preset. Each reports its view; memory, proposal, plan and action include live runner status. Proposal, plan and action also show the decision generation, each decision step's plugins, and the action authority. |
 | `plugins proposal\|plan\|action inspect` | Offline: replays an image, a directory of images, or a recorded automation or inspect run through perception, observation, memory and the decision steps, and prints that step's record for every frame, with that step's and each of its plugins' time and the cycle's (`--json` carries every step's in `timing`). A recording restores the selections it recorded for each frame; `--plugin` replaces the inspected step's; proposal and plan also accept `--preset`. `--frame N` reports one 0-based frame after replaying the ones before it. `--record` also saves the report and source frames under `runtime/<step>-inspections/`; that run replays as a source. |
-| `plugins perception inspect` | Shows what a perception selection detects, from images, a recorded run, or a live vehicle without taking movement control. |
+| `plugins perception inspect` | Shows what a perception selection detects from an image, a directory of images, or a recorded run. |
 | `hosts create` | Creates a named host for the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url`, installs its release, and starts it. `vehicles status` names each vehicle's provider and URL. |
 | `hosts delete` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. |
 | `hosts update` | Packages the staged steps as a versioned release for the vehicle's host: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
@@ -141,7 +141,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `hosts stream memory` | Inspects live memory as a key→value ledger. The terminal shows health and counts and serves a local `/memory` map page whose URL it shows. Keys are `record_id`s; click a key to see the retained value. |
 | `hosts stream proposal\|plan\|action` | Prints that step's record from the latest cycle the host published, with its age, generation, plugins, and the step's and each plugin's time; action also shows how the host applied control. `--once` prints one and exits 2 with the reason when none is current; `--json` returns `host_<step>_stream`. A running terminal stream also serves the local action view below. |
 | `hosts memory reset` | Clears live retained evidence on the runtime host and starts a new epoch. Exits 0 once the host's answer shows every plugin on a new epoch or empty, even while a running session refills memory. Does not move the vehicle. |
-| `plugins memory inspect` | Offline: runs an image, a directory of images, or a recorded perception or memory run through perception, observation and memory, and reports each memory plugin's health, record count and epoch after every frame, with the memory step's and each plugin's time. A recording restores the executable step selections and configs it contains; `--preset` or `--plugin` overrides memory. Otherwise each step uses its default. The report prints to the terminal; `--record` also saves the source frames, timing, both step selections and report under `runtime/memory-inspections/`. Record live frames with `plugins perception inspect --record`, then inspect that run. |
+| `plugins memory inspect` | Offline: runs an image, a directory of images, or a recorded perception or memory run through perception, observation and memory, and reports each memory plugin's health, record count and epoch after every frame, with the memory step's and each plugin's time. A recording restores the executable step selections and configs it contains; `--preset` or `--plugin` overrides memory. Otherwise each step uses its default. The report prints to the terminal; `--record` also saves the source frames, timing, both step selections and report under `runtime/memory-inspections/`. A recorded perception inspect run is a source. |
 | `hosts memory viability` | Memory health check: 60s poll of the runtime host's live memory step (update cadence, duration, failures, health, epoch stability). Saves `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
 | `hosts perception viability` | Perception health check: 60s cadence/freshness measurement of the runtime host's observation publication that also requires that no cycle's control was applied (host RSS/CPU when the vehicle supplies an `ssh_target`). Saves `report.json` and `summary.md` under `lab/runs/perception-viability/` unless `--no-record`. |
 | `hosts operation ...` | Runs a bounded, explicitly requested vehicle operation. |
@@ -433,19 +433,16 @@ not part of either observer.
 
 ### Perception Inspection
 
-Inspect what a perception selection detects: observe five frames from a usable
-vehicle without taking movement control, or apply a preset or a plugin
+Inspect what a perception selection detects: apply a preset or a plugin
 selection to an image, an image directory, or a recorded perception or memory
 run:
 
 ```sh
-./cli/automa plugins perception inspect
-./cli/automa plugins perception inspect --name piracer --preset lightweight_observer
 ./cli/automa plugins perception inspect path/to/frame.jpg --plugin frame --plugin floor_continuity
 ./cli/automa plugins perception inspect path/to/images --preset visual_observer
 ```
 
-Start perception inspection (images or live), memory, proposal, plan, or action
+Start perception, memory, proposal, plan, or action
 inspection with `--shared-memory FILE`. The file is a `shared_memory_v1` JSON
 document. For example, save this as `seed.json` to continue cardboard object 7:
 
@@ -510,18 +507,12 @@ aggregate statuses, latency, representation health and each plugin's status
 counts. `--json` includes each frame's identity, timing and plugin outputs.
 `--record` also saves the selection, timing, per-frame plugin outputs and the
 report as `report.json` under `runtime/perception-inspections/<run>/`, and
-prints that directory after `Recorded:`. A live recording keeps its captured
-frames in `frames/`; an image recording refers to the source images where they
-are.
+prints that directory after `Recorded:`. An image recording refers to the source
+images where they are.
 
 A recording restores its perception selection, frame identity and timestamps;
-`--preset` or `--plugin` overrides the selection. Without a recording, a live
-read uses the vehicle's staged selection and images use the default preset.
-
-Live inspection writes nothing to the vehicle: it neither stages a selection
-nor repackages the code bundle. Any selection it runs, staged or explicit, runs
-the vehicle's bundle code when the vehicle has a bundle. Stage a selection with
-`hosts stage perception`, as for memory and proposal.
+`--preset` or `--plugin` overrides the selection. Without a recording, the step
+uses its default preset.
 
 Both inspection commands read recorded frames the same way: equal timestamps
 are allowed at millisecond resolution, frame indices preserve ordering and
@@ -543,11 +534,6 @@ it exits 0. Source, plugin-loading and execution exceptions exit 2.
 
 Image directories and recordings default to a 512-frame limit in both inspection
 commands and workbench replay. Pass `--max-frames N` to read a larger source.
-This bound does not limit live perception capture (`--frames` controls that).
-
-For a physical vehicle, `plugins perception inspect --name piracer` currently fetches
-Pi camera frames and runs perception on them on the development machine.
-It does not prove that the Pi executed or published the perception result.
 
 ### Memory Plugins
 
@@ -590,13 +576,11 @@ a recorded perception or memory run through perception, observation and memory:
 ./cli/automa plugins memory inspect path/to/images --plugin bounded_evidence
 ```
 
-Memory inspection reads its source only. To inspect memory over frames from a
-vehicle, record them with perception inspection, then inspect the directory it
-prints after `Recorded:`. Memory runs the same perception selection over the
-same frames:
+Memory inspection reads its source only. A recorded perception inspect run is a
+source, and memory runs the same perception selection over the same frames:
 
 ```sh
-./cli/automa plugins perception inspect --name chase-sim-chaser --frames 20 --record
+./cli/automa plugins perception inspect path/to/images --record
 ./cli/automa plugins memory inspect runtime/perception-inspections/<run>
 ```
 

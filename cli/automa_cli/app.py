@@ -1020,7 +1020,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     perception_inspect_control = step_plugin_commands.add_parser(
         "perception",
-        help="Inspect what perception detects, from images or a live vehicle.",
+        help="Inspect what perception detects, from images or a recorded run.",
     )
     perception_inspect_control.set_defaults(handler=_handle_plugins_perception_help)
     perception_inspect_commands = perception_inspect_control.add_subparsers(dest="perception_command")
@@ -1030,60 +1030,29 @@ def build_parser() -> argparse.ArgumentParser:
     ).set_defaults(handler=_handle_plugins_perception_help)
     perception_inspect = perception_inspect_commands.add_parser(
         "inspect",
-        help="Show what a perception selection detects, from images or a live vehicle.",
+        help="Show what a perception selection detects, from images or a recorded run.",
         description=(
-            "Show what a perception selection detects. With a source (an image, a directory "
-            "of images, or a recorded run) the selection is applied to those images. Without "
-            "one, frames are read from an active vehicle without taking movement control; "
-            "when several are active, the simulator is selected by default. Recorded "
+            "Show what a perception selection detects. The source (an image, a directory "
+            "of images, or a recorded run) is perceived frame by frame. Recorded "
             "perception and memory runs restore their perception selection and preserve "
             "frame identity and timestamps; --preset or --plugin overrides that selection. "
-            "Absent frames are reported as unavailable and reset temporal state. "
-            "Unmanifested images use filename order and times 0, 1000, 2000, ... ms, "
-            "as memory inspect and workbench replay do."
+            "Otherwise the step uses its default. Absent frames are reported as unavailable "
+            "and reset temporal state. Unmanifested images use filename order and times "
+            "0, 1000, 2000, ... ms, as memory inspect and workbench replay do."
         ),
     )
     perception_inspect.add_argument(
         "source",
-        nargs="?",
         type=Path,
-        default=None,
-        help="Image file, recorded perception or memory run, or directory of images. Omit to read a live vehicle.",
+        help="Image file, recorded perception or memory run, or directory of images.",
     )
     _add_selection_args(
-        perception_inspect, "perception", verb="inspect", fallback="the recorded or staged selection, else ",
-    )
-    perception_inspect.add_argument(
-        "--name",
-        dest="host_name",
-        default=None,
-        help="Live host name. Omit to select a safe observation target automatically.",
-    )
-    perception_inspect.add_argument(
-        "--frames",
-        type=int,
-        default=None,
-        help="Live frames to observe (default: 5).",
-    )
-    perception_inspect.add_argument(
-        "--interval-s",
-        type=float,
-        default=None,
-        help="Delay between live captures in seconds (default: 0.25).",
-    )
-    perception_inspect.add_argument(
-        "--timeout-s",
-        type=float,
-        default=None,
-        help="Vehicle discovery and capture timeout in seconds (default: 3).",
+        perception_inspect, "perception", verb="inspect", fallback="the recorded selection, else ",
     )
     perception_inspect.add_argument(
         "--record",
         action="store_true",
-        help=(
-            "Persist the selection, timing, per-frame plugin outputs and report for replay; "
-            "live reads also keep the captured frames."
-        ),
+        help="Persist the selection, timing, per-frame plugin outputs and report for replay.",
     )
     perception_inspect.add_argument(
         "--json",
@@ -1112,8 +1081,7 @@ def build_parser() -> argparse.ArgumentParser:
             "perception and memory selections, including their configs; --preset or --plugin "
             "overrides memory. Otherwise each step uses its default. Reports each plugin's health, "
             "record count and epoch, and the evidence publisher, after every frame. It reads "
-            "the source only; record live frames with `plugins perception inspect --record` and "
-            "inspect that run. Absent frames "
+            "the source only. A recorded perception inspect run is a source. Absent frames "
             "update memory with an empty observation. Unmanifested images use filename order "
             "and times 0, 1000, 2000, ... ms, as perception inspect and workbench replay do."
         ),
@@ -1364,7 +1332,7 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
             [
                 "automa plugins commands",
                 "",
-                "- perception  show what a selection detects, from images or a live vehicle",
+                "- perception  show what a selection detects, from images or a recorded run",
                 "- memory      show what a selection retains, from images or a recorded run",
                 "- proposal    show the proposal record for every frame",
                 "- plan        show the plan record for every frame",
@@ -1387,7 +1355,7 @@ def _handle_plugins_perception_help(args: argparse.Namespace) -> int:
             [
                 "automa plugins perception commands",
                 "",
-                "- inspect  show what a selection detects, from images or a live vehicle",
+                "- inspect  show what a selection detects, from images or a recorded run",
                 "- help     show this summary",
                 "",
                 "Stage plugins with:         ./cli/automa hosts stage perception --name <host>",
@@ -1642,7 +1610,7 @@ def _handle_hosts_perception_help(args: argparse.Namespace) -> int:
                 "- viability  health-check perception cadence and freshness",
                 "- help       show this summary",
                 "",
-                "Inspect what a selection detects: ./cli/automa plugins perception inspect",
+                "Inspect what a selection detects: ./cli/automa plugins perception inspect <source>",
                 "",
                 "Detailed help:",
                 "- ./cli/automa hosts perception <command> --help",
@@ -2142,10 +2110,6 @@ def _handle_hosts_info_step(args: argparse.Namespace) -> int:
 def _handle_plugins_perception_inspect(args: argparse.Namespace) -> int:
     result = inspect_perception(
         args.source,
-        host_name=args.host_name,
-        frames=args.frames,
-        interval_s=args.interval_s,
-        timeout_s=args.timeout_s,
         record=args.record,
         json_output=args.json,
         preset=args.preset,

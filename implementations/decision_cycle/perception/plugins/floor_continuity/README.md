@@ -14,15 +14,13 @@ The implementation uses the core NumPy and OpenCV runtime at 320x240 by
 default. Diagnostic floor masks, boundary masks, overlays, and summaries are
 written only by an explicitly recorded experiment.
 
-Run it against an active simulator by enabling it in the staged perception
-selection:
+Stage it on a host with the frame plugin:
 
 ```sh
 ./cli/automa hosts stage perception --name chase-sim-chaser --plugin frame --plugin floor_continuity
-./cli/automa plugins perception inspect --name chase-sim-chaser --record
 ```
 
-Apply it to one archived image or a whole capture directory locally:
+Apply it to one archived image or a whole capture directory:
 
 ```sh
 ./cli/automa plugins perception inspect path/to/frame.jpg \

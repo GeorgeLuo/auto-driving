@@ -120,10 +120,19 @@ class HelpCommandTests(unittest.TestCase):
             ["hosts", "action", "inspect", "frame.png"],
             ["hosts", "perception", "inspect", "frame.png"],
             ["hosts", "memory", "inspect", "frame.png"],
+            ["plugins", "perception", "inspect", "--name", "piracer"],
+            ["plugins", "perception", "inspect", "frame.png", "--frames", "1"],
+            ["plugins", "perception", "inspect", "frame.png", "--interval-s", "0"],
+            ["plugins", "perception", "inspect", "frame.png", "--timeout-s", "3"],
         ):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as caught:
                     parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+        for step in ("perception", "memory", "proposal", "plan", "action"):
+            with self.subTest(step=step, missing_source=True), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(["plugins", step, "inspect"])
                 self.assertEqual(caught.exception.code, 2)
 
     def test_the_viewer_takes_one_host_by_name_or_url(self) -> None:

@@ -50,6 +50,24 @@ class PerceptionCommandTests(unittest.TestCase):
             self.assertIsNone(payload["run_dir"])
             self.assertFalse(inspect_root.exists())
 
+    def test_perception_inspect_requires_a_source(self) -> None:
+        missing = invoke_automa("plugins", "perception", "inspect", check=False)
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("source", missing.stderr)
+        named = invoke_automa(
+            "plugins", "perception", "inspect", "--name", "piracer", check=False,
+        )
+        self.assertEqual(named.returncode, 2)
+        self.assertIn("unrecognized arguments", named.stderr)
+        flags = invoke_automa("plugins", "perception", "inspect", "--help").stdout
+        for flag in ("--preset", "--plugin", "--record", "--json", "--shared-memory", "--max-frames"):
+            self.assertIn(flag, flags)
+        for live in ("--name", "--frames", "--interval-s", "--timeout-s"):
+            self.assertNotIn(live, flags)
+        hosts = invoke_automa("hosts", "perception", "help").stdout
+        self.assertIn("./cli/automa plugins perception inspect <source>", hosts)
+        self.assertNotIn("\n- inspect", hosts)
+
     def test_scenario_deployed_perception_schema_is_machine_readable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"

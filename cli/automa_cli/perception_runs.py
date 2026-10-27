@@ -23,24 +23,16 @@ from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
     SensorFrame,
     SensorReading,
-    SensorReadRequest,
 )
 from implementations.decision_cycle.catalog import selection_activation
 
 from .inspection_runs import (
-    SharedMemorySeed, add_seed_provenance, read_shared_memory_seed, selection_report,
+    SharedMemorySeed, add_seed_provenance, read_shared_memory_seed,
 )
 from .step_replay import StepReplay
 from .workbench_frames import run_perception
 from .paths import ROOT, display_path, safe_path_part
-from .perception import live_perception_selection
 from .perception_evaluation import evaluate_perception_frames
-from .step_hosting import load_staged_runner
-from .vehicle_access import create_vehicle_access
-from .vehicles import (
-    discover_active_vehicles,
-    format_active_vehicles,
-)
 from .workbench_source import (
     WORKBENCH_DEFAULT_MAX_FRAMES,
     SourceValidationError,
@@ -49,8 +41,6 @@ from .workbench_source import (
     read_image_manifest,
 )
 
-DEFAULT_FRAME_COUNT = 5
-DEFAULT_INTERVAL_S = 0.25
 INSPECT_ROOT = Path(os.environ.get("AUTOMA_PERCEPTION_INSPECT_ROOT", ROOT / "runtime" / "perception-inspections"))
 PERCEPTION_INSPECT_SCHEMA = "perception_inspect"
 
@@ -62,12 +52,8 @@ class CommandResult:
 
 
 def inspect_perception(
-    source: Path | None = None,
+    source: str | Path,
     *,
-    host_name: str | None = None,
-    frames: int | None = None,
-    interval_s: float | None = None,
-    timeout_s: float | None = None,
     record: bool = False,
     json_output: bool = False,
     preset: str | None = None,
@@ -75,13 +61,10 @@ def inspect_perception(
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
     shared_memory_file: Path | None = None,
 ) -> CommandResult:
-    """Show what a perception selection detects, from images or a live vehicle.
+    """Apply a perception selection to an image source, frame by frame.
 
-    With ``source`` (an image, a directory of images, or a recorded run) the
-    selection is applied to those images. Without it, frames are read from an
-    active vehicle. With neither ``preset`` nor ``plugins``, a recorded run's
-    own selection applies to a source, and a vehicle's staged selection to a
-    live read.
+    A recorded run restores its perception selection; explicit flags override
+    it. Otherwise the step uses its default. It reads the source only.
     """
 
     try:
@@ -90,158 +73,15 @@ def inspect_perception(
         return CommandResult(2, f"Could not read shared memory file: {exc}")
     if max_frames <= 0:
         return _unreadable_source("max_frames must be greater than zero")
-    if source is not None:
-        live_only = {
-            "--name": host_name,
-            "--frames": frames,
-            "--interval-s": interval_s,
-            "--timeout-s": timeout_s,
-        }
-        given = [flag for flag, value in live_only.items() if value is not None]
-        if given:
-            return CommandResult(
-                2,
-                f"{', '.join(given)} read a live vehicle and cannot be combined with a source.",
-            )
-        return _inspect_images(
-            source,
-            record=record,
-            json_output=json_output,
-            preset=preset,
-            plugins=plugins,
-            max_frames=max_frames,
-            seed=seed,
-        )
-    return _inspect_vehicle(
-        host_name=host_name,
-        frames=DEFAULT_FRAME_COUNT if frames is None else frames,
-        interval_s=DEFAULT_INTERVAL_S if interval_s is None else interval_s,
-        timeout_s=3.0 if timeout_s is None else timeout_s,
+    return _inspect_images(
+        Path(source),
         record=record,
         json_output=json_output,
         preset=preset,
         plugins=plugins,
+        max_frames=max_frames,
         seed=seed,
     )
-
-
-def _inspect_vehicle(
-    *,
-    host_name: str | None,
-    frames: int,
-    interval_s: float,
-    timeout_s: float,
-    record: bool,
-    json_output: bool,
-    preset: str | None,
-    plugins: list[str] | None,
-    seed: SharedMemorySeed | None,
-) -> CommandResult:
-    discovery = {} if host_name is not None else discover_active_vehicles(
-        timeout_s=timeout_s,
-        include_picar=True,
-        include_chase_sim=True,
-        include_inactive=True,
-    )
-    vehicle, selection, error = _select_vehicle(discovery, host_name)
-    if error or vehicle is None:
-        return CommandResult(
-            2,
-            "\n\n".join(
-                [
-                    error or "No active vehicle is available.",
-                    format_active_vehicles(discovery, include_inactive=True),
-                    "Prepare a simulator with: ./cli/automa simulators ensure",
-                ]
-            ),
-        )
-
-    try:
-        access = create_vehicle_access(vehicle, timeout_s=timeout_s)
-        activation = live_perception_selection(vehicle, preset=preset, plugins=plugins)
-        runner = load_staged_runner(activation)
-        perception_record = selection_report(activation)
-    except Exception as exc:
-        return CommandResult(2, f"Could not prepare perception runtime: {type(exc).__name__}: {exc}")
-
-    frame_count = max(1, int(frames))
-    run_id = _run_id("inspect", str(vehicle.get("host_name") or vehicle.get("vehicle_id") or "vehicle"))
-    record_dir, error = _create_record_dir(run_id) if record else (None, None)
-    if error is not None:
-        return error
-    frame_id: str | None = None
-
-    try:
-        with _workspace_context(record_dir) as workspace_value:
-            working_dir = Path(workspace_value)
-            frames_dir = working_dir / "frames"
-            results_dir = working_dir / "results"
-            frames_dir.mkdir(parents=True, exist_ok=True)
-            if record:
-                results_dir.mkdir(parents=True, exist_ok=True)
-
-            shared_memory = seed.shared_memory if seed is not None else {}
-            frame_records: list[dict[str, Any]] = []
-            for index in range(frame_count):
-                frame_id = f"frame_{index:06d}"
-                started = clock()
-                sensor_frame = access.car.read_sensors(
-                    SensorReadRequest(
-                        output_dir=frames_dir,
-                        read_id=frame_id,
-                        requested_sensors=(FRONT_CAMERA_SENSOR_ID,),
-                        front_camera_endpoint=access.front_camera_endpoint,
-                        image_extension=access.image_extension,
-                    )
-                )
-                reading = sensor_frame.readings.get(FRONT_CAMERA_SENSOR_ID)
-                record_item, _ = perceive_sensor_frame(
-                    runner,
-                    sensor_frame,
-                    frame_id=frame_id,
-                    frame_index=index,
-                    image_path=reading.path if reading is not None else None,
-                    shared_memory=shared_memory,
-                    metadata={
-                        "run_id": run_id,
-                        "frame_index": index,
-                        "host_name": vehicle.get("host_name"),
-                        "vehicle_id": vehicle.get("vehicle_id"),
-                        "recording": record,
-                    },
-                    result_dir=results_dir / frame_id if record else None,
-                    started=started,
-                    absence_reason="front camera missing"
-                    if reading is None or not reading.path
-                    else None,
-                )
-                frame_records.append(record_item)
-                if index + 1 < frame_count and interval_s > 0:
-                    time.sleep(max(0.0, float(interval_s)))
-
-            report = _inspect_report(
-                run_id=run_id,
-                source={
-                    "kind": "vehicle",
-                    "host_name": vehicle.get("host_name"),
-                    "vehicle_id": vehicle.get("vehicle_id"),
-                    "provider": vehicle.get("provider"),
-                    "selection": selection,
-                },
-                perception=perception_record,
-                frames=frame_records,
-                run_dir=record_dir,
-            )
-            add_seed_provenance(report, seed)
-            if record_dir is not None:
-                _write_report(record_dir, report)
-    except Exception as exc:  # Plugins are third-party code; name the frame that broke.
-        return _inspect_failed(frame_id, exc)
-
-    exit_code = 0 if report["summary"]["failed_frames"] == 0 else 1
-    if json_output:
-        return CommandResult(exit_code, json.dumps(report, indent=2, sort_keys=True))
-    return CommandResult(exit_code, _format_inspect_report(report))
 
 
 def _inspect_images(
@@ -384,34 +224,6 @@ def _unreadable_source(reason: str) -> CommandResult:
 def _inspect_failed(frame_id: str | None, exc: Exception) -> CommandResult:
     where = f" at {frame_id}" if frame_id is not None else ""
     return CommandResult(2, f"Perception inspect failed{where}: {type(exc).__name__}: {exc}")
-
-
-def _select_vehicle(
-    discovery: dict[str, Any],
-    requested_id: str | None,
-) -> tuple[dict[str, Any] | None, str | None, str | None]:
-    if requested_id:
-        from .step_activations import staging_host
-        from .runtime_hosts import RUNTIME_ROOT
-        vehicle, error = staging_host(requested_id, runtime_root=RUNTIME_ROOT)
-        return vehicle, "explicit id", error
-
-    vehicles = [item for item in discovery.get("vehicles", []) if isinstance(item, dict)]
-    if not vehicles:
-        return None, None, "No active vehicles were discovered."
-    ranked = sorted(
-        vehicles,
-        key=lambda item: (
-            0 if item.get("provider") == "chase-sim" else 1,
-            str(item.get("vehicle_id") or ""),
-        ),
-    )
-    selected = ranked[0]
-    if len(ranked) == 1:
-        reason = "only active vehicle"
-    else:
-        reason = "simulator preferred for observation-only experiments"
-    return selected, reason, None
 
 
 def perceive_sensor_frame(

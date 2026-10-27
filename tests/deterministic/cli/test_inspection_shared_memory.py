@@ -11,16 +11,13 @@ from unittest.mock import patch
 import numpy as np
 from PIL import Image
 
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.app import build_parser
 from cli.automa_cli.decision_steps import inspect_decision_step
 from cli.automa_cli.inspection_runs import SharedMemorySeed
 from cli.automa_cli.memory_runs import inspect_memory
 from cli.automa_cli.perception_runs import inspect_perception
 from cli.automa_cli.step_replay import StepReplay
-from cli.automa_cli.vehicle_access import VehicleAccess
 from cli.automa_cli.workbench_source import normalize_image_file
-from implementations.decision_cycle.catalog import selection_activation
 
 KEY = "perception.sim_cardboard_permanence.history"
 PLUGINS = ["sim_cardboard_obstacle", "sim_cardboard_permanence"]
@@ -220,44 +217,6 @@ class InspectionSharedMemoryTests(unittest.TestCase):
                     "--shared-memory", str(self.seed_file),
                 ])
                 self.assertEqual(args.shared_memory_file, self.seed_file)
-
-    def test_a_live_inspect_starts_from_the_seed_and_records_its_provenance(self) -> None:
-        image = self.image
-
-        class FrameCar:
-            def read_sensors(self, request):
-                path = request.front_camera_path()
-                path.parent.mkdir(parents=True, exist_ok=True)
-                path.write_bytes(image.read_bytes())
-                return SensorFrame(
-                    read_id=request.read_id,
-                    readings={FRONT_CAMERA_SENSOR_ID: SensorReading(
-                        sensor_id=FRONT_CAMERA_SENSOR_ID, sensor_kind="camera",
-                        captured_at_ms=10, path=str(path),
-                    )},
-                    started_at_ms=10, completed_at_ms=10,
-                )
-
-        with (
-            patch("cli.automa_cli.perception_runs.discover_active_vehicles", return_value={
-                "vehicles": [{"vehicle_id": "fixture", "provider": "chase-sim"}],
-            }),
-            patch("cli.automa_cli.perception_runs.create_vehicle_access", return_value=VehicleAccess(
-                car=FrameCar(), image_extension="png", front_camera_endpoint="frame",
-            )),
-            patch("cli.automa_cli.perception_runs.live_perception_selection", return_value=selection_activation(
-                "perception", plugins=PLUGINS,
-            )),
-        ):
-            report = self.report(inspect_perception(
-                frames=1, interval_s=0, shared_memory_file=self.seed_file,
-                record=True, json_output=True,
-            ))
-        thing = _identity(report["frames"][0])
-        self.assertEqual(thing["thing_id"], "cardboard_object_007")
-        self.assertEqual(thing["properties"]["event"], "matched")
-        saved = json.loads((self.record_root / report["run_id"] / "report.json").read_text(encoding="utf-8"))
-        self.assertEqual(saved["shared_memory_seed"]["document"], self.document)
 
     def test_a_replay_uses_the_seeded_map_even_when_it_is_empty(self) -> None:
         seed = SharedMemorySeed(self.seed_file, self.document, {})

@@ -35,7 +35,7 @@ class PerceptionInspectBundleTests(unittest.TestCase):
             for selection in ((), ("--plugin", "frame"), ("--preset", "sim_debug")):
                 with self.subTest(selection=selection):
                     result = invoke_automa(
-                        "hosts", "perception", "inspect", "--name", "chase-sim-chaser",
+                        "plugins", "perception", "inspect", "--name", "chase-sim-chaser",
                         "--frames", "1", "--interval-s", "0", "--json", *selection,
                         runtime_root=runtime_root, extra_env=env,
                     )

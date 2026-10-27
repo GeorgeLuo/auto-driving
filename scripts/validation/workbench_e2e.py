@@ -4,7 +4,7 @@
 Serves the workbench on the bright high-rate capture with packaged perception
 plugins that extract signals, and runs it to the end. Every frame is then
 shown by seeking, as the page does, and compared with
-``automa hosts perception inspect`` over the same directory and plugins: the
+``automa plugins perception inspect`` over the same directory and plugins: the
 workbench must show the frame, status, and per-plugin signal and thing counts
 the CLI reports. Memory and decision state must be present for every frame.
 Both are given the ``multi_obstruction`` perception preset. A second pass

@@ -195,15 +195,19 @@ class MemoryInspectTests(unittest.TestCase):
         self.assertFalse(self.root.exists())
 
     def test_help_lists_inspect_and_not_replay(self) -> None:
-        listing = invoke_automa("hosts", "memory", "help").stdout
+        listing = invoke_automa("plugins", "memory", "help").stdout
         self.assertIn("inspect", listing)
         for removed in ("replay", "enable", "disable"):
             self.assertNotIn(removed, listing)
-        flags = invoke_automa("hosts", "memory", "inspect", "--help").stdout
+        flags = invoke_automa("plugins", "memory", "inspect", "--help").stdout
         for flag in ("--preset", "--plugin", "--record", "--json"):
             self.assertIn(flag, flags)
         for live in ("--name", "--frames", "--interval-s", "--timeout-s"):
             self.assertNotIn(live, flags)
+        hosts = invoke_automa("hosts", "memory", "help").stdout
+        self.assertNotIn("\n- inspect", hosts)
+        removed = invoke_automa("hosts", "memory", "inspect", check=False)
+        self.assertEqual(removed.returncode, 2)
 
 
 if __name__ == "__main__":

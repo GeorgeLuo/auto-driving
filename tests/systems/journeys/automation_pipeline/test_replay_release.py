@@ -60,7 +60,8 @@ class ReplayByReleaseTests(unittest.TestCase):
             def automa(*args: str, check: bool = True):
                 # Only the run needs its own process; it starts the worker.
                 run = run_automa if args[:1] == ("run",) else invoke_automa
-                return run("hosts", *args, runtime_root=runtime_root, extra_env=env, check=check)
+                group = "plugins" if args[:2] == ("perception", "inspect") else "hosts"
+                return run(group, *args, runtime_root=runtime_root, extra_env=env, check=check)
 
             automa("stage", "perception", "--name", HOST_NAME, "--plugin", "frame")
             release = _package_release_with_frame_label(runtime_root, Path(tmp) / "source", "release camera frame")
@@ -96,9 +97,10 @@ class ReplayByReleaseTests(unittest.TestCase):
             def automa(*args: str, check: bool = True):
                 # The run starts the worker. A process keeps each uploaded
                 # module it imports, so replays also get their own process.
-                own_process = args[:1] == ("run",) or args[0] == "perception"
+                own_process = args[:1] == ("run",) or args[:2] == ("perception", "inspect")
                 run = run_automa if own_process else invoke_automa
-                return run("hosts", *args, runtime_root=runtime_root, extra_env=env, check=check)
+                group = "plugins" if args[:2] == ("perception", "inspect") else "hosts"
+                return run(group, *args, runtime_root=runtime_root, extra_env=env, check=check)
 
             automa("stage", "perception", "--name", HOST_NAME, "--plugin", "frame")
             bundles.package_controller_bundle(bundles.controller_bundle_paths(runtime_root / HOST_NAME))

@@ -106,6 +106,26 @@ class HelpCommandTests(unittest.TestCase):
                     parser.parse_args(args)
                 self.assertEqual(caught.exception.code, 2)
 
+    def test_step_inspect_parses_under_plugins(self) -> None:
+        parser = build_parser()
+        for step in ("perception", "memory", "proposal", "plan", "action"):
+            with self.subTest(step=step):
+                parsed = parser.parse_args(["plugins", step, "inspect", "frame.png"])
+                self.assertEqual(parsed.command, "plugins")
+                self.assertEqual(getattr(parsed, f"{step}_command"), "inspect")
+        for args in (
+            ["plugins", "observation", "inspect", "frame.png"],
+            ["hosts", "proposal", "inspect", "frame.png"],
+            ["hosts", "plan", "inspect", "frame.png"],
+            ["hosts", "action", "inspect", "frame.png"],
+            ["hosts", "perception", "inspect", "frame.png"],
+            ["hosts", "memory", "inspect", "frame.png"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+
     def test_the_viewer_takes_one_host_by_name_or_url(self) -> None:
         parser = build_parser()
         named = parser.parse_args(["hosts", "viewer", "--name", "chase-sim-chaser"])

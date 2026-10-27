@@ -19,16 +19,16 @@ selection:
 
 ```sh
 ./cli/automa hosts stage perception --name chase-sim-chaser --plugin frame --plugin floor_continuity
-./cli/automa hosts perception inspect --name chase-sim-chaser --record
+./cli/automa plugins perception inspect --name chase-sim-chaser --record
 ```
 
 Apply it to one archived image or a whole capture directory locally:
 
 ```sh
-./cli/automa hosts perception inspect path/to/frame.jpg \
+./cli/automa plugins perception inspect path/to/frame.jpg \
   --plugin frame --plugin floor_continuity --record
 
-./cli/automa hosts perception inspect path/to/frames \
+./cli/automa plugins perception inspect path/to/frames \
   --plugin frame --plugin floor_continuity --record
 ```
 

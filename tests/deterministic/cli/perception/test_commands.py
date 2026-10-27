@@ -36,7 +36,7 @@ class PerceptionCommandTests(unittest.TestCase):
             Image.new("RGB", (32, 24), (50, 40, 30)).save(frames / "001.png")
             inspect_root = root / "applies"
             result = invoke_automa(
-                "hosts", "perception",
+                "plugins", "perception",
                 "inspect",
                 str(frames),
                 "--json",

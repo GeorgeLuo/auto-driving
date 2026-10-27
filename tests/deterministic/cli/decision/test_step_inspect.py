@@ -186,9 +186,11 @@ class DecisionStepInspectTests(unittest.TestCase):
     def test_cli_has_a_group_per_step_and_no_decision_command(self) -> None:
         for step in DECISION_STEPS:
             with self.subTest(step=step):
-                flags = invoke_automa("hosts", step, "inspect", "--help").stdout
+                flags = invoke_automa("plugins", step, "inspect", "--help").stdout
                 for flag in ("--plugin", "--frame", "--record", "--json", "--max-frames"):
                     self.assertIn(flag, flags)
+                removed_host = invoke_automa("hosts", step, "inspect", "--help", check=False)
+                self.assertEqual(removed_host.returncode, 2)
         removed = invoke_automa("vehicles", "decision", "help", check=False)
         self.assertEqual(removed.returncode, 2)
         self.assertIn("invalid choice: 'decision'", removed.stderr)

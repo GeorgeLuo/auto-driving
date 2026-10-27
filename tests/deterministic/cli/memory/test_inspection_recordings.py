@@ -30,7 +30,7 @@ class InspectionRecordingTests(unittest.TestCase):
 
     def inspect(self, step: str, source: Path, *options: str, exit_code: int = 0) -> dict:
         result = invoke_automa(
-            "hosts",
+            "plugins",
             step,
             "inspect",
             str(source),
@@ -105,13 +105,13 @@ class InspectionRecordingTests(unittest.TestCase):
 
     def test_both_inspect_reports_name_the_perception_selection_alike(self) -> None:
         perception = invoke_automa(
-            "hosts", "perception", "inspect", str(self.frames),
+            "plugins", "perception", "inspect", str(self.frames),
             "--preset", "obstruction_observer", "--record",
             extra_env=self.env,
         ).stdout.splitlines()
         recorded = Path(perception[-1].removeprefix("Recorded: "))
         memory = invoke_automa(
-            "hosts", "memory", "inspect", str(recorded), extra_env=self.env
+            "plugins", "memory", "inspect", str(recorded), extra_env=self.env
         ).stdout.splitlines()
 
         self.assertEqual((perception[0], memory[0]), ("Perception inspect", "Memory inspect"))

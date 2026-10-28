@@ -36,6 +36,7 @@ from .runtime_hosts import RuntimeHostError, local_hosts, runtime_base_url
 from .runtime_monitor import PERCEPTION_COPY_INTERVAL_S, _pause_s
 from .runtime_view import RuntimeViewServer, open_view_message
 from .step_activations import absent_step_error
+from .stream_output import write_stream_frame
 from .view_discovery import runtime_view_dir
 
 PERCEPTION_LIVE_SCHEMA = "host_perception_live"
@@ -205,10 +206,7 @@ def _poll_stream(
         while True:
             live, source = probe()
             line = json.dumps(live, sort_keys=True) if json_output else render(live, source)
-            if stream is not None:
-                if not no_clear and not json_output:
-                    print("\033[2J\033[H", end="", file=stream)
-                print(line, file=stream, flush=True)
+            write_stream_frame(stream, line, clear=not no_clear and not json_output)
             if once:
                 return CommandResult(
                     *once_stream_outcome(step=step, live=live, line=line, stream=stream)

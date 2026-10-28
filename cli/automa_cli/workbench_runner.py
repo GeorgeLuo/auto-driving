@@ -11,15 +11,12 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, Callable
 
-from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
-from autonomy.decision_cycle.perception.interface import PerceptionText
 from implementations.decision_cycle.catalog import CUSTOM_PRESET
 from autonomy.plugins import LocalPluginCatalog
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.recording import recorded_selections
 
-from .memory_report import evidence_publisher, plugin_states, plugin_summaries
 from .step_hosting import plugin_report
 from .inspection_runs import (
     default_selection, recorded_runner,
@@ -35,7 +32,10 @@ from .workbench_contract import (
     WORKBENCH_SEQUENCE_ID,
     WORKBENCH_STATE_SCHEMA,
 )
-from .workbench_frames import run_frame
+from .workbench_frames import FrameOutcome, run_frame
+from .workbench_presentation import (
+    displayed_steps, empty_steps, frame_detail, frame_summary, timeline_item,
+)
 from .workbench_plugins import (
     WORKBENCH_SELECTABLE_STEPS,
     PluginCatalog,
@@ -54,44 +54,8 @@ from .workbench_source import (
 )
 
 
-def _empty_steps() -> dict[str, Any]:
-    """The per-step payloads of the displayed frame, before any frame ran."""
-
-    return {"perception": None, "observation": None, "memory": None, "decision": None}
-
-
 def _safe_status(value: Any) -> str:
     return str(value or "").strip().lower()
-
-
-def _record_ids(state: dict[str, Any] | None) -> set[str]:
-    records = (state or {}).get("records")
-    if not isinstance(records, (list, tuple)):
-        return set()
-    return {str(item.get("record_id")) for item in records if isinstance(item, dict)}
-
-
-def _memory_effects(previous: Any, current: Any) -> list[dict[str, Any]]:
-    """Each plugin's record ids added, removed and retained since the shown frame.
-
-    Plugins are matched by ``plugin_id``. A plugin the previous report did not
-    list starts from no records.
-    """
-
-    before = {plugin_id: _record_ids(state) for plugin_id, state in plugin_states(previous)}
-    effects: list[dict[str, Any]] = []
-    for plugin_id, state in plugin_states(current):
-        now = _record_ids(state)
-        prior = before.get(plugin_id, set())
-        effects.append(
-            {
-                "plugin_id": plugin_id,
-                "added": sorted(now - prior),
-                "removed": sorted(prior - now),
-                "retained": sorted(now & prior),
-            }
-        )
-    return effects
 
 
 def _state_action_set(phase: str) -> list[str]:
@@ -304,7 +268,7 @@ class ImageReplayRunner:
                 "total": len(image_source.frames),
                 "percent": 0.0,
             }
-            self._state["summary"] = self._summary(
+            self._state["summary"] = frame_summary(
                 frames_completed=0,
                 frames_total=len(image_source.frames),
             )
@@ -630,7 +594,7 @@ class ImageReplayRunner:
                 boundary="plugin_catalog",
                 state=self.state(),
             ) from exc
-        self._set_steps_locked(_empty_steps())
+        self._set_steps_locked(empty_steps())
         return list(self._image_source.frames[:displayed]) if self._image_source else []
 
     def _restart_capture_locked(self) -> None:
@@ -828,7 +792,7 @@ class ImageReplayRunner:
             round((completed / total) * 100.0, 2) if total else 100.0
         )
         self._state["position"] = completed
-        self._state["summary"] = copy.deepcopy(cached.get("summary")) or self._summary(
+        self._state["summary"] = copy.deepcopy(cached.get("summary")) or frame_summary(
             frames_completed=completed, frames_total=total,
             duration_ms=cached.get("duration_ms"),
         )
@@ -861,7 +825,7 @@ class ImageReplayRunner:
                     "total": len(image_source.frames),
                     "percent": 0.0,
                 }
-                self._state["summary"] = self._summary(
+                self._state["summary"] = frame_summary(
                     frames_completed=0,
                     frames_total=len(image_source.frames),
                 )
@@ -963,61 +927,9 @@ class ImageReplayRunner:
                     self._apply_plugin_configuration_locked()
                 outcome = run_frame(frame, steps=steps, shared_memory=self._shared_memory)
                 result = outcome.result
-                decision_payload = outcome.decision
-                plugin_reports = {
-                    f"{step}_plugin_report": outcome.plugin_reports.get(step)
-                    for step in WORKBENCH_SELECTABLE_STEPS
-                }
-                perception_payload = (
-                    result.perception.to_dict() if result.perception else None
-                )
-                observation_payload = (
-                    result.observation.to_dict() if result.observation else None
-                )
-                # The memory step's report: every plugin's state by plugin_id
-                # and the evidence publisher, as inspect and the live probes read it.
-                memory_payload = copy.deepcopy(result.memory)
+                presented_steps = displayed_steps(outcome)
                 with self._condition:
-                    previous_memory = self._state["steps"]["memory"]
-                    self._state["current_frame"] = frame.to_dict()
-                    self._set_steps_locked(
-                        {
-                            "perception": perception_payload,
-                            "observation": observation_payload,
-                            "memory": memory_payload,
-                            "decision": copy.deepcopy(decision_payload),
-                        }
-                    )
-                    self._state["progress"]["completed"] = frame.position + 1
-                    self._state["progress"]["percent"] = (
-                        round(
-                            ((frame.position + 1) / len(self._image_source.frames)) * 100.0,
-                            2,
-                        )
-                        if self._image_source
-                        else 100.0
-                    )
-                    self._state["summary"] = self._summary(
-                        perception=result.perception,
-                        observation=result.observation,
-                        memory=memory_payload,
-                        duration_ms=result.duration_ms,
-                    )
-                    detail = self._frame_detail(
-                        frame=frame,
-                        result=result,
-                        previous_memory=previous_memory,
-                    )
-                    detail.update(plugin_reports)
-                    pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
-                    pipeline.update(self._step_reports())
-                    detail["configuration"] = self._plugin_configuration()
-                    detail["pipeline"] = copy.deepcopy(pipeline)
-                    detail["summary"] = copy.deepcopy(self._state["summary"])
-                    detail["steps"]["decision"] = copy.deepcopy(decision_payload)
-                    self._history[frame.frame_id] = detail
-                    self._upsert_timeline_locked(detail)
-                    self._state["position"] = frame.position + 1
+                    self._publish_frame_locked(frame, outcome, presented_steps)
                     if result.perception is not None and _safe_status(
                         result.perception.status
                     ) in {
@@ -1036,7 +948,7 @@ class ImageReplayRunner:
             except Exception as exc:  # noqa: BLE001 - per-frame isolation boundary
                 with self._condition:
                     self._state["current_frame"] = frame.to_dict()
-                    self._set_steps_locked(_empty_steps())
+                    self._set_steps_locked(empty_steps())
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "pipeline"),
                         message=f"{type(exc).__name__}: {exc}",
@@ -1044,6 +956,51 @@ class ImageReplayRunner:
                     )
                     self._condition.notify_all()
                 return False
+
+    def _publish_frame_locked(
+        self, frame: ReplayFrame, outcome: FrameOutcome, steps: dict[str, Any],
+    ) -> None:
+        """Publish a processed frame and cache its presentation under the condition lock."""
+
+        result = outcome.result
+        previous_memory = self._state["steps"]["memory"]
+        self._state["current_frame"] = frame.to_dict()
+        self._set_steps_locked(steps)
+        self._state["progress"]["completed"] = frame.position + 1
+        self._state["progress"]["percent"] = (
+            round(
+                ((frame.position + 1) / len(self._image_source.frames)) * 100.0,
+                2,
+            )
+            if self._image_source
+            else 100.0
+        )
+        self._state["summary"] = frame_summary(
+            perception=result.perception,
+            observation=result.observation,
+            memory=steps["memory"],
+            duration_ms=result.duration_ms,
+            frames_completed=self._state["progress"]["completed"],
+            frames_total=self._state["progress"].get("total", 0),
+        )
+        detail = frame_detail(
+            frame=frame,
+            outcome=outcome,
+            steps=steps,
+            previous_memory=previous_memory,
+        )
+        detail.update({
+            f"{step}_plugin_report": outcome.plugin_reports.get(step)
+            for step in WORKBENCH_SELECTABLE_STEPS
+        })
+        pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
+        pipeline.update(self._step_reports())
+        detail["configuration"] = self._plugin_configuration()
+        detail["pipeline"] = copy.deepcopy(pipeline)
+        detail["summary"] = copy.deepcopy(self._state["summary"])
+        self._history[frame.frame_id] = detail
+        self._upsert_timeline_locked(detail)
+        self._state["position"] = frame.position + 1
 
     def _complete_locked(self) -> None:
         if self._state["phase"] in {"running", "paused"}:
@@ -1160,9 +1117,9 @@ class ImageReplayRunner:
             "current_frame": None,
             "position": 0,
             "progress": {"completed": 0, "total": 0, "percent": 0.0},
-            "summary": self._summary(frames_completed=0, frames_total=0),
+            "summary": frame_summary(frames_completed=0, frames_total=0),
             "machine_detail": self._machine_detail(),
-            "steps": _empty_steps(),
+            "steps": empty_steps(),
             "steps_revision": 0,
             "timeline": [],
             "failure": None,
@@ -1181,40 +1138,6 @@ class ImageReplayRunner:
             "loop": bool(getattr(self, "_loop", WORKBENCH_DEFAULT_LOOP)),
             "allowed_actions": _state_action_set(current_phase),
         }
-
-    def _summary(
-        self,
-        *,
-        perception: PerceptionText | None = None,
-        observation: Observation | None = None,
-        memory: Any = None,
-        duration_ms: int | float | None = None,
-        frames_completed: int | None = None,
-        frames_total: int | None = None,
-    ) -> dict[str, Any]:
-        progress = self._state.get("progress", {}) if hasattr(self, "_state") else {}
-        summary = {
-            "frames_completed": (
-                int(progress.get("completed", 0))
-                if frames_completed is None
-                else int(frames_completed)
-            ),
-            "frames_total": (
-                int(progress.get("total", 0))
-                if frames_total is None
-                else int(frames_total)
-            ),
-            "perception_status": perception.status if perception else None,
-            "perception_things": len(perception.things) if perception else 0,
-            "perception_signals": len(perception.signals) if perception else 0,
-            "observation_available": observation is not None,
-            "memory_plugins": plugin_summaries(memory),
-            "memory_evidence_publisher": evidence_publisher(memory),
-            "last_duration_ms": round(float(duration_ms), 3)
-            if duration_ms is not None
-            else None,
-        }
-        return summary
 
     def _machine_detail(self) -> dict[str, Any]:
         return {
@@ -1256,34 +1179,8 @@ class ImageReplayRunner:
         detail["last_transition"] = item
         self._state["controls"] = self._controls()
 
-    def _frame_detail(
-        self,
-        *,
-        frame: ReplayFrame,
-        result: Any,
-        previous_memory: dict[str, Any] | None,
-    ) -> dict[str, Any]:
-        memory = copy.deepcopy(result.memory)
-        return {
-            "frame": frame.to_dict(include_path=False),
-            "steps": {
-                "perception": result.perception.to_dict() if result.perception else None,
-                "observation": result.observation.to_dict() if result.observation else None,
-                "memory": memory,
-                "decision": None,
-            },
-            "perception_status": result.perception.status
-            if result.perception
-            else None,
-            "memory_plugins": plugin_summaries(memory),
-            "memory_evidence_publisher": evidence_publisher(memory),
-            "memory_effects": _memory_effects(previous_memory, memory),
-            "duration_ms": result.duration_ms,
-            "timing": copy.deepcopy(result.timing),
-        }
-
     def _upsert_timeline_locked(self, detail: dict[str, Any]) -> None:
-        item = self._timeline_item(detail)
+        item = timeline_item(detail)
         frame_id = item["frame"]["frame_id"]
         timeline = self._state["timeline"]
         for index, existing in enumerate(timeline):
@@ -1292,26 +1189,6 @@ class ImageReplayRunner:
                 timeline[index] = item
                 return
         timeline.append(item)
-
-    def _timeline_item(self, detail: dict[str, Any]) -> dict[str, Any]:
-        frame = detail["frame"]
-        return {
-            "frame": {
-                "frame_id": frame["frame_id"],
-                "frame_index": frame["frame_index"],
-                "position": frame["position"],
-                "timestamp_ms": frame["timestamp_ms"],
-                "absent": frame["absent"],
-                "absence_reason": frame["absence_reason"],
-            },
-            "perception_status": detail["perception_status"],
-            "memory_plugins": copy.deepcopy(detail["memory_plugins"]),
-            "memory_evidence_publisher": detail["memory_evidence_publisher"],
-            "memory_effects": copy.deepcopy(detail["memory_effects"]),
-            "decision": self._decision_timeline_item(detail["steps"]["decision"]),
-            "duration_ms": detail["duration_ms"],
-            "timing": copy.deepcopy(detail.get("timing")),
-        }
 
     def _decision_step_plugins(self) -> dict[str, list[str]]:
         return {
@@ -1333,25 +1210,6 @@ class ImageReplayRunner:
             "action": plugins["action"],
             "gate_id": plugins["action"][0] if plugins["action"] else None,
             "host_delivery": "absent",
-        }
-
-    @staticmethod
-    def _decision_timeline_item(decision: Any) -> dict[str, Any]:
-        cycle = decision if isinstance(decision, dict) else {}
-        plan = cycle.get("plan") if isinstance(cycle.get("plan"), dict) else {}
-        authority = (
-            cycle.get("authority")
-            if isinstance(cycle.get("authority"), dict)
-            else {}
-        )
-        proposed = authority.get("proposed")
-        return {
-            "status": cycle.get("status"),
-            "selected_proposal_id": plan.get("selected_proposal_id"),
-            "proposed_steering": (
-                proposed.get("steering") if isinstance(proposed, dict) else None
-            ),
-            "proposed_applied": authority.get("proposed_applied", False),
         }
 
     @staticmethod

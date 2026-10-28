@@ -46,14 +46,15 @@ class PluginListFlows(unittest.TestCase):
                 entry = packaged[item["step"], item["id"]]
                 self.assertEqual((item["entrypoint"], item["config"]), (entry["spec"], entry["default_config"]))
 
-            human = listed().stdout
-            self.assertIn("Packaged plugins:", human)
+            # One row per plugin, as hosts plugins status lists a host's catalog.
+            rows = []
             for step in STEPS:
                 defaults = DEFAULT_STEP_PLUGINS[step]
                 ordered = [*defaults, *sorted(set(step_plugins(step)) - set(defaults))]
                 self.assertEqual([item["id"] for item in catalog["plugins"] if item["step"] == step], ordered)
-                marked = [f"{plugin_id} (default)" if plugin_id in defaults else plugin_id for plugin_id in ordered]
-                self.assertIn(f"  {step}: {', '.join(marked)}\n", human)
+                rows += [f"- {step}/{plugin_id}: packaged" + (" (default)" if plugin_id in defaults else "")
+                         for plugin_id in ordered]
+            self.assertEqual(listed().stdout.splitlines()[:len(rows) + 1], ["Packaged plugins:", *rows])
             action = json.loads(listed("--step", "action", "--json").stdout)
             self.assertEqual({item["step"] for item in action["plugins"]}, {"action"})
             self.assertEqual(list(action["defaults"]), ["action"])
@@ -70,15 +71,15 @@ class PluginListFlows(unittest.TestCase):
                                          runtime_root=runtime_root)
 
                 human = listed().stdout
-                for step in STEPS:
-                    self.assertIn(f"  {step}:", human)
                 initial = json.loads(listed("--json").stdout)
+                for item in initial["plugins"]:
+                    self.assertIn(f"- {item['step']}/{item['id']}: packaged\n", human)
                 self.assertEqual(initial["host_name"], "one")
                 self.assertEqual(initial["url"].rstrip("/"), base.rstrip("/"))
                 self.assertIn("perception_summary", [item["id"] for item in initial["plugins"]])
                 self.assertIn("selected", [item["id"] for item in initial["plugins"]])
                 self.assertEqual(json.loads(listed("--step", "memory", "--json").stdout)["plugins"], [])
-                self.assertIn("memory: (none)", listed("--step", "memory").stdout)
+                self.assertIn("Loaded plugins:\n(none)\n", listed("--step", "memory").stdout)
 
                 file = root / "proposal.py"
                 write_plugin(file, "proposal", "prototype", 1)
@@ -95,7 +96,8 @@ class PluginListFlows(unittest.TestCase):
                 pending = json.loads(listed("--step", "proposal", "--json").stdout)
                 self.assertEqual(pending["plugins"], [first["plugin"]])
                 self.assertEqual(pending["arming"]["status"], "requested")
-                self.assertIn(f"prototype (revision {first['plugin']['metadata']['revision']})",
+                metadata = first["plugin"]["metadata"]
+                self.assertIn(f"- proposal/prototype: revision {metadata['revision']} ({metadata['filename']})\n",
                               listed("--step", "proposal").stdout)
                 self.assertEqual(host.plugin_catalog(), before)
                 self.assertEqual(host.session_status(), session)

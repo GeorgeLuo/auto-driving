@@ -185,9 +185,7 @@ def list_plugins(*, host_name: str | None = None, step: str | None = None,
         lines.extend(["Loaded plugins: unavailable", f"Reason: {payload['error']}"])
         return CommandResult(exit_code, "\n".join(lines))
     lines.append("Loaded plugins:" if host_name else "Packaged plugins:")
-    for name in steps:
-        listed = [_listed(plugin, payload.get("defaults")) for plugin in payload["plugins"] if plugin["step"] == name]
-        lines.append(f"  {name}: {', '.join(listed) or '(none)'}")
+    lines.extend(_plugin_rows(payload["plugins"], payload.get("defaults")))
     if host_name is None:
         lines.append("Loaded plugins: ./cli/automa plugins list --host-name <host>")
     else:
@@ -209,13 +207,18 @@ def _packaged_plugins(step: str) -> list[dict[str, Any]]:
     return [describe_plugin(definitions[plugin_id]) for plugin_id in ordered]
 
 
-def _listed(plugin: dict[str, Any], defaults: dict[str, list[str]] | None) -> str:
-    """A packaged plugin marked when it is a default, else a loaded plugin with its revision."""
+def _plugin_rows(plugins: list[dict[str, Any]], defaults: dict[str, list[str]] | None = None) -> list[str]:
+    """One ``- step/id: source`` row per definition, marking each step's ``defaults`` when given."""
 
-    if defaults is not None:
-        return f"{plugin['id']} (default)" if plugin["id"] in defaults[plugin["step"]] else plugin["id"]
-    revision = plugin["metadata"].get("revision")
-    return f"{plugin['id']} ({f'revision {revision}' if revision else 'packaged'})"
+    rows = []
+    for plugin in plugins:
+        metadata = plugin.get("metadata", {})
+        revision = metadata.get("revision")
+        source = f"revision {revision} ({metadata.get('filename', 'uploaded')})" if revision else "packaged"
+        if defaults is not None and plugin["id"] in defaults[plugin["step"]]:
+            source += " (default)"
+        rows.append(f"- {plugin['step']}/{plugin['id']}: {source}")
+    return rows or ["(none)"]
 
 
 def get_catalog_status(*, url: str | None, host_name: str | None, step: str | None = None,
@@ -306,14 +309,7 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, host_nam
             _catalog_version(result), "Selection: unchanged",
         ])
     elif operation == "status":
-        lines.extend([_catalog_version(result), "Available plugins:"])
-        entries = []
-        for plugin in result["plugins"]:
-            metadata = plugin.get("metadata", {})
-            revision = metadata.get("revision")
-            source = f"revision {revision} ({metadata.get('filename', 'uploaded')})" if revision else "packaged"
-            entries.append(f"- {plugin['step']}/{plugin['id']}: {source}")
-        lines.extend(entries or ["(none)"])
+        lines.extend([_catalog_version(result), "Available plugins:", *_plugin_rows(result["plugins"])])
     arming = result.get("arming")
     if arming:
         lines.append(f"Request: {arming['request_id']}" if label in ("Arming", "Disarming")

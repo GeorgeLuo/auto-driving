@@ -11,7 +11,7 @@ from implementations.vehicle.chase_sim.defaults import (
     DEFAULT_CHASE_UI_WS_URL,
 )
 
-from .probes import (
+from ..vehicles.probes import (
     DEFAULT_READINESS_TIMEOUT_S,
     Candidate,
     _probe_chase,

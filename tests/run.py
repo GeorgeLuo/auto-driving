@@ -17,7 +17,7 @@ for path in (ROOT / "cli", ROOT):
         sys.path.insert(0, path_text)
 
 from automa_cli.hosts.deploy import inspect_picar_autonomy_runtime
-from automa_cli.simulators import ensure_simulator
+from automa_cli.simulators.ensure import ensure_simulator
 from implementations.vehicle.picar.defaults import DEFAULT_LOCAL_CAR_BASE_URL, LOCAL_CAR_BASE_URL_ENV
 
 SYSTEMS_GROUPS = ("commands", "journeys", "frontend", "packaging", "qca", "live")

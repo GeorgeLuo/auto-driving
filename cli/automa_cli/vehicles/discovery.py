@@ -39,7 +39,7 @@ def listed_vehicles() -> list[Candidate]:
 
 
 def _created_candidates() -> list[Candidate]:
-    from ..hosts.runtime_hosts import created_simulators
+    from ..simulators.created import created_simulators
 
     return [Candidate("chase-sim", simulator["url"], "created") for simulator in created_simulators()]
 

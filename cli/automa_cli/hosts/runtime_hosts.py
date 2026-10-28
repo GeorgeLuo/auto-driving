@@ -5,12 +5,9 @@ CLI addresses a runtime only by ``base_url``. A PiCar's host is its Donkey
 service at the staged connection. A Chase car's host is a local process
 (``implementations.runtime.chase_sim.service``) that runs from the vehicle's
 controller release, as the Pi runs the release ``hosts update`` installed.
-A simulator ``simulators create`` started is a local process too, recorded
-by port so ``vehicles status`` lists it while it runs.
 """
 from __future__ import annotations
 
-import contextlib
 import hashlib
 import json
 import os
@@ -39,13 +36,6 @@ HOST_LOG = "host.log"
 DISCOVERED = "discovered.json"
 DISCOVERED_SCHEMA = "automa_discovered_vehicles_v0"
 HOST_START_TIMEOUT_S = 20.0
-# Each simulator ``simulators create`` started, in ``simulators/<port>/``.
-SIMULATORS = "simulators"
-SIMULATOR_RECORD = "simulator.json"
-SIMULATOR_LOG = "simulator.log"
-SIMULATOR_SCHEMA = "automa_created_simulator_v0"
-# The headless launcher prints this line once its simulator is ready.
-SIMULATOR_READY = "CHASE_UI_WS_URL="
 LOG_TAIL_LINES = 20
 # The host imports only the release: ``-I`` drops the working tree and user
 # site from ``sys.path``; the release directory is put first.
@@ -431,108 +421,3 @@ def runtime_base_url(host_name: str, *, start: bool = False, timeout_s: float = 
     if base_url is not None:
         return base_url
     raise RuntimeHostError(f"Host {host_name!r} is not running.")
-
-
-# Created simulators ---------------------------------------------------------
-
-def simulator_dir(port: int) -> Path:
-    return RUNTIME_ROOT / SIMULATORS / str(port)
-
-
-def created_simulators() -> list[dict[str, Any]]:
-    """The record of each simulator ``simulators create`` started that is still running, by port."""
-
-    records = []
-    for path in (RUNTIME_ROOT / SIMULATORS).glob(f"*/{SIMULATOR_RECORD}"):
-        try:
-            record = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(record, dict) and record.get("schema") == SIMULATOR_SCHEMA and _pid_alive(record.get("pid")):
-            records.append(record)
-    return sorted(records, key=lambda record: record["port"])
-
-
-def _ended(pid: int) -> bool:
-    """Whether the process is gone, reaping it when this process started it."""
-
-    try:
-        if os.waitpid(pid, os.WNOHANG)[0] == pid:
-            return True
-    except ChildProcessError:
-        pass
-    return not _pid_alive(pid)
-
-
-def _end_process_group(pid: int, *, wait_s: float = 3.0) -> bool:
-    """Terminate the process group ``pid`` leads; ``True`` when it had to be killed."""
-
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(pid, signal.SIGTERM)
-    deadline = time.monotonic() + wait_s
-    while not _ended(pid):
-        if time.monotonic() >= deadline:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(pid, signal.SIGKILL)
-            return True
-        time.sleep(0.05)
-    return False
-
-
-def _wait_for_simulator(log_path: Path, process: subprocess.Popen[Any], timeout_s: float) -> str:
-    deadline = time.monotonic() + timeout_s
-    while True:
-        for line in log_path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line.startswith(SIMULATOR_READY):
-                return line.removeprefix(SIMULATOR_READY).strip()
-        if process.poll() is not None:
-            raise RuntimeHostError(
-                f"The simulator exited with code {process.returncode} before it was ready.\n"
-                + _log_tail(log_path, "Simulator")
-            )
-        if time.monotonic() >= deadline:
-            raise RuntimeHostError(
-                f"The simulator was not ready within {timeout_s:g} s.\n" + _log_tail(log_path, "Simulator")
-            )
-        time.sleep(0.1)
-
-
-def start_simulator(command: list[str], *, cwd: Path, port: int, timeout_s: float) -> dict[str, Any]:
-    """Run a headless simulator launcher on ``port`` and record it once it prints its URL.
-
-    The launcher leads its own session, so the simulator outlives this
-    command. One that exits, is not ready within ``timeout_s``, or whose
-    start is interrupted is ended.
-    """
-
-    directory = simulator_dir(port)
-    directory.mkdir(parents=True, exist_ok=True)
-    log_path = directory / SIMULATOR_LOG
-    with log_path.open("w", encoding="utf-8") as log:
-        process = subprocess.Popen(
-            command, cwd=cwd, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
-            start_new_session=True,
-        )
-    try:
-        record = {
-            "schema": SIMULATOR_SCHEMA,
-            "pid": process.pid,
-            "port": port,
-            "url": _wait_for_simulator(log_path, process, timeout_s),
-            "metrics_ui_dir": str(cwd),
-            "config": "default",
-            "started_at_ms": int(time.time() * 1000),
-        }
-        (directory / SIMULATOR_RECORD).write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
-        return record
-    except BaseException:
-        _end_process_group(process.pid)
-        raise
-
-
-def stop_simulator(record: dict[str, Any]) -> bool:
-    """End a created simulator and remove its record; ``True`` when it had to be killed."""
-
-    killed = _end_process_group(record["pid"])
-    (simulator_dir(record["port"]) / SIMULATOR_RECORD).unlink(missing_ok=True)
-    return killed

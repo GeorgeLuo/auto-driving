@@ -22,6 +22,7 @@ from cli.automa_cli.hosts import (
     view_discovery,
     viability,
 )
+from cli.automa_cli.simulators import created
 from tests.support.cli_runner import WORKSPACE_ROOT, checked_result
 from tests.support.offline.sitecustomize import offline_getaddrinfo
 
@@ -34,6 +35,7 @@ IMPORT_TIME_ENV = {
         (memory, "RUNTIME_ROOT"),
         (perception, "RUNTIME_ROOT"),
         (runtime_hosts, "RUNTIME_ROOT"),
+        (created, "RUNTIME_ROOT"),
         (view_discovery, "RUNTIME_ROOT"),
         (view_discovery.runtime_view_dir.__kwdefaults__, "runtime_root"),
         (view_discovery.discover_runtime_view.__kwdefaults__, "runtime_root"),

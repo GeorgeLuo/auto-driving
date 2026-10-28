@@ -4,12 +4,12 @@ import json
 import unittest
 from unittest.mock import patch
 
+from cli.automa_cli.simulators.readiness import get_vehicle_status
 from cli.automa_cli.vehicles.probes import (
     Candidate,
     ProbeResult,
     normalize_chase_url,
 )
-from cli.automa_cli.vehicles.readiness import get_vehicle_status
 from tests.shared.cli.invoke import invoke_automa
 
 
@@ -89,7 +89,7 @@ class VehicleStatusTests(unittest.TestCase):
                 {"CHASE_UI_WS_URL": endpoint},
             ),
             patch(
-                "cli.automa_cli.vehicles.readiness._probe_chase",
+                "cli.automa_cli.simulators.readiness._probe_chase",
                 return_value=probe_result,
             ) as probe,
             patch(
@@ -123,7 +123,7 @@ class VehicleStatusTests(unittest.TestCase):
             },
         )
         with patch(
-            "cli.automa_cli.vehicles.readiness._probe_chase",
+            "cli.automa_cli.simulators.readiness._probe_chase",
             return_value=probe,
         ), patch(
             "cli.automa_cli.hosts.automation._collect_automation_status",
@@ -225,7 +225,7 @@ class VehicleStatusTests(unittest.TestCase):
             },
         }
         with patch(
-            "cli.automa_cli.vehicles.readiness._probe_chase",
+            "cli.automa_cli.simulators.readiness._probe_chase",
             return_value=probe,
         ), patch(
             "cli.automa_cli.hosts.automation._collect_automation_status",
@@ -292,7 +292,7 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertNotIn("atomic-evaluation-capture", probe.error or "")
 
         with patch(
-            "cli.automa_cli.vehicles.readiness._probe_chase",
+            "cli.automa_cli.simulators.readiness._probe_chase",
             return_value=probe,
         ), patch(
             "cli.automa_cli.hosts.automation._collect_automation_status",

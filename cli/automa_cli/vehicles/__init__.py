@@ -4,5 +4,4 @@
 - ``status``: ``vehicles status``.
 - ``discovery``: ``vehicles discover`` and ``remove``, and the vehicles status lists.
 - ``probes``: how each vehicle is probed.
-- ``readiness``: a host's readiness at a Chase simulator, which ``simulators ensure`` checks.
 """

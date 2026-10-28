@@ -260,13 +260,19 @@
             "path": "cli/automa_cli/vehicles/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa vehicles commands, and the vehicle probes, listing and readiness that hosts and simulators share."
+            "responsibility": "The automa vehicles commands, and the vehicle probes and listing that hosts and simulators share."
           },
           {
             "path": "cli/automa_cli/hosts/",
             "category": "tooling",
             "commit_policy": "source",
             "responsibility": "The automa hosts commands, and the host deploy, runs, staging, streams, plugins and workbench they drive."
+          },
+          {
+            "path": "cli/automa_cli/simulators/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "The automa simulators commands: the SimEval checks, the Chase environment ensure prepares, and the simulators create starts."
           }
         ]
       },

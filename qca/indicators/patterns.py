@@ -7,6 +7,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from .context import AnalysisContext
+from . import opaque_conditionals
 from .evidence import LocatedNode
 from .report import kind_finding, measured_factor as _factor, source_code as _source_code
 
@@ -32,7 +33,13 @@ def analyze(context: AnalysisContext) -> dict[str, Any]:
         for path, tree in context.trees(family="default").items()
         if path.endswith(".py")
     }
-    return _analyze_trees(trees, context=context)
+    patterns = _analyze_trees(trees, context=context)
+    opaque = opaque_conditionals.analyze(context)
+    return _factor(
+        {**patterns["metrics"], **opaque["metrics"]},
+        patterns["findings"] + opaque["findings"],
+        patterns["limitations"] + opaque["limitations"],
+    )
 
 
 def _analyze_trees(

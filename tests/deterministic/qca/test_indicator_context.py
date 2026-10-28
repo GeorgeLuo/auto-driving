@@ -17,6 +17,7 @@ from qca.indicators import coupling
 from qca.indicators import functional_style
 from qca.indicators import functionality
 from qca.indicators import lifecycle
+from qca.indicators import opaque_conditionals
 from qca.indicators import patterns
 from qca.indicators import redundancy
 from qca.indicators import test_effectiveness
@@ -146,6 +147,7 @@ class IndicatorRegistryTests(unittest.TestCase):
             contracts,
             test_effectiveness,
             lifecycle,
+            opaque_conditionals,
         ):
             expected.add(module.INDICATOR_ID)
             expected.update(module.DETECTOR_IDS.values())

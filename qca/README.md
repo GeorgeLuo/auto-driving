@@ -53,7 +53,7 @@ carries `indicator` (`id`, `version`) and `evidence` (`revision`, `primary`,
 | Factor | Computed evidence | Interpretation |
 | --- | --- | --- |
 | `redundancy` | Nontrivial callable clones and repeated branch bodies | Candidates for shared behavior; identifier normalization is approximate |
-| `patterns` | Recognized error-handling patterns and redundant `any()` guards | Inspect intent at the owning boundary |
+| `patterns` | Recognized error-handling patterns, redundant `any()` guards, and opaque conditionals | Inspect intent at the owning boundary |
 | `functional_style` | State writes, mutable defaults, recognized effects, unresolved calls | Candidates for pure transformations; absence of recognized effects does not prove purity |
 | `functionality` | Stub and obvious unreachable-code patterns | Inspect intentional hooks and protocols before removing code |
 | `coupling` | Resolved local edges, fan-in/fan-out, cycles | Dependencies to examine, including relative imports |
@@ -176,3 +176,30 @@ unchanged.
 Independent tests can call a detector predicate or `analyze(context)` without
 building a public report. New prototype indicators should follow the same
 module, registry, and evidence shape.
+
+### Opaque conditionals (analyzer 0.3.12)
+
+`patterns.metrics.opaque_conditional_count` counts expressions with more than
+two predicates, repeated subjects across predicates, mixed `and`/`or`, or
+recognized execution within evaluation. Per-reason metrics use
+`opaque_conditional_<reason>_count`; one expression can contribute to several.
+Findings include `reasons`, `predicate_count`, `repeated_subjects`,
+`execution_kinds`, and exact expression evidence. The independent detector is
+`qca.indicators.opaque_conditionals`.
+
+The scan covers `if`, `while`, ternary tests, assertions, comprehension filters,
+and Boolean value expressions. Nested Boolean operators contribute to one
+finding; chained comparisons contribute one predicate per comparison. Subject
+matching uses names, full attribute paths, and literal-key subscripts. Callable
+names and common object prefixes alone do not establish reuse; method receivers
+do, so repeated `mapping.get(...)` calls can be candidates.
+
+Two-part safety guards such as `x is not None and x.ready`,
+`isinstance(x, T) and x.ready`, and `not x or x.ready` are exempt from reuse.
+The exemption does not suppress other reasons or longer expressions.
+Execution recognition covers assignment expressions, await/yield, the existing
+functional-style mutator names, and discarded short-circuit calls such as
+`ready and act()`. Ordinary predicate calls are allowed; helper effects, aliases,
+bindings, custom truthiness, and deferred lambda/generator bodies are not inferred.
+These are inspection candidates, with the usual changed-file diff scope, not
+proof of unreadability or newly introduced problems.

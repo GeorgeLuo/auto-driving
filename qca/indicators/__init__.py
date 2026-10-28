@@ -27,6 +27,7 @@ from . import coupling
 from . import functional_style
 from . import functionality
 from . import lifecycle
+from . import opaque_conditionals
 from . import patterns
 from . import redundancy
 from . import test_effectiveness
@@ -64,6 +65,7 @@ INDICATOR_REGISTRY: dict[str, IndicatorSpec] = {
         contracts,
         test_effectiveness,
         lifecycle,
+        opaque_conditionals,
     ),
     "structure.syntax_error": IndicatorSpec("structure.syntax_error", "1"),
 }

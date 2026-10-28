@@ -74,6 +74,7 @@ class AutonomyCycleHost:
         self.configuration = RunConfiguration(mode="manual")
         self.run_state = "pre_start"
         self.run_decisions = 0
+        self.last_decision_frame_id: str | None = None
         self.recording: RunRecording | None = None
         self._run_generation = 0
         self.cycle_count = 0
@@ -391,6 +392,7 @@ class AutonomyCycleHost:
                                 result, ticket.control_applications if ticket is not None else None,
                             )
                         self.run_decisions += 1
+                        self.last_decision_frame_id = context.frame_id
                         if (
                             self.configuration.num_decisions
                             and self.run_decisions >= self.configuration.num_decisions
@@ -437,6 +439,7 @@ class AutonomyCycleHost:
             self.configuration = configuration
             self.recording = recording
             self.run_decisions = 0
+            self.last_decision_frame_id = None
             self.run_state = "starting"
             self._refresh_session_view()
             try:
@@ -472,6 +475,8 @@ class AutonomyCycleHost:
         self._session_view = {
             "status": self.run_state, "configuration": self.configuration.to_dict(),
             "processed_decisions": self.run_decisions,
+            # The frame loop publishes this frame after the run reports its end.
+            "last_decision_frame_id": self.last_decision_frame_id,
             "recording": self.recording.status() if self.recording is not None else None,
         }
 

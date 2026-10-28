@@ -145,6 +145,27 @@ def _copy_latest_perception(
         copied["ready"].set()
 
 
+def _drain_perception_copy(copied: dict[str, Any], frame_id: str | None, *, timeout_s: float) -> None:
+    """Wait for the perception copy of a run's last decision.
+
+    The host publishes that frame after it reports the run's end, and a copy
+    fetched before the end can finish after it, so one more pass is not
+    enough. A host that names no last decision gets one more pass.
+    """
+
+    if frame_id is None:
+        copied["ready"].clear()
+        copied["ready"].wait(timeout_s)
+        return
+    deadline = time.monotonic() + timeout_s
+    while (copied["frame"] or {}).get("frame_id") != frame_id:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        copied["ready"].clear()
+        copied["ready"].wait(remaining)
+
+
 def _join_decision_copy(copier: threading.Thread | None, stop: threading.Event) -> None:
     """Stop the decision copy before the view server is torn down."""
 
@@ -251,8 +272,9 @@ def monitor_runtime(*, vehicle_id: str, base_url: str, automation_dir: Path,
                 time.sleep(_pause_s(poll_started, MONITOR_POLL_INTERVAL_S))
                 continue
             if session["status"] != "running":
-                perception_copy["ready"].clear()
-                perception_copy["ready"].wait(min(timeout_s, 0.5))
+                _drain_perception_copy(
+                    perception_copy, session.get("last_decision_frame_id"), timeout_s=min(timeout_s, 0.5),
+                )
             # A terminal session is drained before manual observations can replace
             # its final decision in the live latest-only publication.
             if run_dir is not None and session["status"] != "running":

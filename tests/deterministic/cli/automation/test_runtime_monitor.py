@@ -4,6 +4,8 @@ import copy
 import io
 import json
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -57,6 +59,22 @@ class _FakeClient:
         return {"ok": True, "host_run_id": "host-1", "session": released}
 
 
+class _EndingClient(_FakeClient):
+    """Ends the run while a perception copy is still fetching."""
+
+    def __init__(self, sessions: list[dict], hosts: list[dict], *,
+                 in_flight: threading.Event, ended: threading.Event) -> None:
+        super().__init__(sessions, hosts)
+        self.in_flight, self.ended = in_flight, ended
+
+    def status(self) -> dict:
+        reply = super().status()
+        if reply["session"]["status"] != "running":
+            self.in_flight.wait(1.0)
+            self.ended.set()
+        return reply
+
+
 class _FakeDecisionView:
     def __init__(self, **kwargs) -> None:
         pass
@@ -103,16 +121,18 @@ def _publication(index: int) -> dict:
 
 
 class RuntimeMonitorTests(unittest.TestCase):
-    def _monitor(self, automation_dir: Path, *, sessions: list[dict], hosts: list[dict]):
+    def _monitor(self, automation_dir: Path, *, sessions: list[dict] | None = None,
+                 hosts: list[dict] | None = None, client: _FakeClient | None = None, publish=None):
         jpeg = io.BytesIO()
         Image.new("RGB", (4, 4)).save(jpeg, format="JPEG")
         publications = [_publication(0), _publication(1)]
-        def sample(*_args, **_kwargs):
+        def latest():
             # The latest publication repeats once the host has no newer frame.
-            publication = publications.pop(0) if len(publications) > 1 else publications[0]
-            return publication, jpeg.getvalue()
+            return publications.pop(0) if len(publications) > 1 else publications[0]
+        def sample(*_args, **_kwargs):
+            return (publish or latest)(), jpeg.getvalue()
 
-        client = _FakeClient(sessions, hosts)
+        client = client or _FakeClient(sessions, hosts)
         output = io.StringIO()
         with (
             mock.patch.object(runtime_monitor, "RuntimeClient", return_value=client),
@@ -198,6 +218,37 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(state["last_frame"]["capture_to_perception_ms"], 40)
         self.assertEqual(state["last_frame"]["control"]["reason"], "steer-left")
         self.assertEqual(state["published_view"]["available"], False)
+
+    def test_the_last_copy_holds_the_frame_of_the_last_decision(self) -> None:
+        """A copy fetched before the run ended cannot stand in for its last decision."""
+        in_flight, ended = threading.Event(), threading.Event()
+        fetches = 0
+
+        def publish():
+            nonlocal fetches
+            fetches += 1
+            if ended.is_set():
+                return _publication(1)
+            if fetches > 1:
+                in_flight.set()
+                ended.wait(1.0)
+                # This fetch finishes after the monitor has seen the run end.
+                time.sleep(0.1)
+            return _publication(0)
+
+        final = {**_session("completed", 2), "last_decision_frame_id": "donkey_frame_000001"}
+        client = _EndingClient(
+            [_session("running", 1), final], [_host(10), _host(11), _host(12)],
+            in_flight=in_flight, ended=ended,
+        )
+        with tempfile.TemporaryDirectory() as tmp:
+            automation_dir = Path(tmp) / "automation"
+            _, code, _, _, state = self._monitor(automation_dir, client=client, publish=publish)
+            latest = json.loads((automation_dir / "latest_perception.json").read_text(encoding="utf-8"))
+
+        self.assertEqual(code, 0)
+        self.assertEqual(latest["frame_id"], "donkey_frame_000001")
+        self.assertEqual(state["last_frame"]["frame_id"], "donkey_frame_000001")
 
     def test_a_missing_capture_counter_is_unavailable_rather_than_zero(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "does not report"):

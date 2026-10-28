@@ -29,6 +29,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost, sync_live_selection
 from autonomy.runtime.execution import ControlExecution
+from autonomy.runtime.session import RunConfiguration
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from tests.support.action_fixtures import action_runner, plan_runner, proposal_runner
@@ -198,6 +199,19 @@ class CycleHostMemoryTests(unittest.TestCase):
         with patch.object(host, "set_mode", return_value={}):
             host.start()
         self.assertIsNone(host.last_error)
+
+    def test_the_session_names_the_frame_of_its_last_decision(self):
+        host, _ = _host()
+        host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+        self.addCleanup(host.close)
+        host.start(RunConfiguration(mode="observe_only", num_decisions=2))
+        for index in range(3):
+            host.run(DecisionFrameContext(f"frame-{index}", index, int(time.time() * 1000)))
+        session = host.session_status()
+        # A frame after the run ends is not one of its decisions.
+        self.assertEqual((session["status"], session["last_decision_frame_id"]), ("completed", "frame-1"))
+        host.start(RunConfiguration(mode="observe_only", num_decisions=2))
+        self.assertIsNone(host.session_status()["last_decision_frame_id"])
         host.close()
 
     def test_cycle_result_report_is_detached_from_step_owned_memory(self) -> None:

@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
+from cli.automa_cli.command_result import CommandResult
 from cli.automa_cli import decision_steps, runtime_monitor, streaming
 from cli.automa_cli.runtime_view import RuntimeViewServer
 from tests.deterministic.cli.automation.test_runtime_monitor import (
@@ -41,7 +42,7 @@ class LiveViewCopyTests(unittest.TestCase):
         feed.read_observation.return_value = publication, None
         def one_pass(**kwargs):
             kwargs["accept"]()
-            return decision_steps.CommandResult(0, "done")
+            return CommandResult(0, "done")
         normalized = {
             "result_age_ms": 0, "max_age_ms": 1000,
             "decision": {"values": {"activation": {"steps": {"plan": {"plugins": []}}}},

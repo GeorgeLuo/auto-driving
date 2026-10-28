@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -13,6 +12,7 @@ from implementations.operations import (
     run_startup_action_check,
 )
 from implementations.operations.artifact_writers import write_json
+from .command_result import CommandResult
 from .paths import ROOT, display_path
 from .vehicle_access import create_vehicle_access
 from .step_activations import staging_host
@@ -22,12 +22,6 @@ from . import runtime_hosts
 OPERATION_OUTPUT_ROOT = Path(
     os.environ.get("AUTOMA_OPERATION_OUTPUT_ROOT", ROOT / "lab" / "runs" / "startup-check")
 )
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    exit_code: int
-    message: str
 
 
 def run_host_startup_check(

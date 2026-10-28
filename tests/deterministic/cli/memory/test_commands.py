@@ -8,7 +8,7 @@ from tests.support.runtime_fixtures import write_host_fixture
 
 from autonomy.decision_cycle.activation import read_step_activation
 from cli.automa_cli.workbench_runner import ImageReplayRunner
-from implementations.decision_cycle.catalog import SELECTABLE_STEPS
+from implementations.decision_cycle.catalog import PRESET_STEPS
 from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PRESET
 from tests.shared.cli.invoke import invoke_automa
 
@@ -93,7 +93,7 @@ class MemoryCommandTests(unittest.TestCase):
             write_host_fixture(runtime_root, "chase-sim-chaser")
             staged = {}
             presets = {}
-            for step in SELECTABLE_STEPS:
+            for step in PRESET_STEPS:
                 updated = invoke_automa(
                     "hosts", "stage",
                     step,

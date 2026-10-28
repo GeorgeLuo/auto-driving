@@ -37,7 +37,7 @@ from .workbench_contract import (
 )
 from .workbench_frames import run_frame
 from .workbench_plugins import (
-    SELECTABLE_STEPS,
+    WORKBENCH_SELECTABLE_STEPS,
     PluginCatalog,
     PluginCatalogError,
     packaged_plugin_catalog,
@@ -145,7 +145,7 @@ class ImageReplayRunner:
         self._loop = bool(loop)
         self._server_identity = f"workbench-{uuid.uuid4().hex[:12]}"
         self._catalogs: dict[str, PluginCatalog] = {
-            step: packaged_plugin_catalog(step) for step in SELECTABLE_STEPS
+            step: packaged_plugin_catalog(step) for step in WORKBENCH_SELECTABLE_STEPS
         }
         self.catalog = LocalPluginCatalog(
             definition for step, catalog in self._catalogs.items()
@@ -167,7 +167,7 @@ class ImageReplayRunner:
 
     def state(self) -> dict[str, Any]:
         with self._lock:
-            for step in SELECTABLE_STEPS:
+            for step in WORKBENCH_SELECTABLE_STEPS:
                 self._state[f"{step}_plugin_catalog"] = self._catalogs[step].to_dict(
                     active_ids=self._state[f"active_{step}_plugin_ids"],
                 )
@@ -181,7 +181,7 @@ class ImageReplayRunner:
 
         given = dict(activations or {})
         selected: dict[str, StepActivation] = {}
-        for step in SELECTABLE_STEPS:
+        for step in WORKBENCH_SELECTABLE_STEPS:
             activation = given[step] if step in given else default_selection(step)
             if activation.step != step:
                 raise ValueError(f"activation for {activation.step!r} given as {step!r}")
@@ -197,7 +197,7 @@ class ImageReplayRunner:
         """Each selectable step's catalog and active plugins, as the page shows them."""
 
         configuration: dict[str, Any] = {}
-        for step in SELECTABLE_STEPS:
+        for step in WORKBENCH_SELECTABLE_STEPS:
             active = self._activations[step].plugins
             configuration[f"{step}_plugin_catalog"] = self._catalogs[step].to_dict(
                 active_ids=active
@@ -208,7 +208,7 @@ class ImageReplayRunner:
     def _selection_presets(self) -> dict[str, Any]:
         """Each selectable step's preset, under ``<step>_preset``."""
 
-        return {f"{step}_preset": self._selection_preset(step) for step in SELECTABLE_STEPS}
+        return {f"{step}_preset": self._selection_preset(step) for step in WORKBENCH_SELECTABLE_STEPS}
 
     def _step_reports(self) -> dict[str, Any]:
         """What the built steps report.
@@ -220,7 +220,7 @@ class ImageReplayRunner:
         return {
             **{
                 f"{step}_plugin_report": plugin_report(self._steps.get(step))
-                for step in SELECTABLE_STEPS
+                for step in WORKBENCH_SELECTABLE_STEPS
             },
             "decision_steps": self._decision_step_plugins(),
             "decision_config": self._decision_configuration(),
@@ -538,9 +538,9 @@ class ImageReplayRunner:
         step: str | None,
         active_plugin_ids: list[str] | tuple[str, ...] | None,
     ) -> dict[str, Any]:
-        if step not in SELECTABLE_STEPS:
+        if step not in WORKBENCH_SELECTABLE_STEPS:
             raise ReplayActionError(
-                f"select_plugins requires step, one of: {', '.join(SELECTABLE_STEPS)}",
+                f"select_plugins requires step, one of: {', '.join(WORKBENCH_SELECTABLE_STEPS)}",
                 status_code=400,
                 boundary="input",
             )
@@ -672,7 +672,7 @@ class ImageReplayRunner:
         Whether the step runs comes from the recording, not from this activation.
         """
 
-        if step in SELECTABLE_STEPS:
+        if step in WORKBENCH_SELECTABLE_STEPS:
             self._activations[step] = activation or self._catalogs[step].activation([])
 
     def _build_steps(self, first_frame: ReplayFrame | None = None) -> dict[str, Any]:
@@ -689,7 +689,7 @@ class ImageReplayRunner:
             factory = self.step_factories.get(step)
             if factory is not None:
                 steps[step] = factory()
-            elif step in SELECTABLE_STEPS and (
+            elif step in WORKBENCH_SELECTABLE_STEPS and (
                 step not in recorded or step in self._selection_overrides
             ):
                 # A local selection may carry staging metadata without its bundle.
@@ -966,7 +966,7 @@ class ImageReplayRunner:
                 decision_payload = outcome.decision
                 plugin_reports = {
                     f"{step}_plugin_report": outcome.plugin_reports.get(step)
-                    for step in SELECTABLE_STEPS
+                    for step in WORKBENCH_SELECTABLE_STEPS
                 }
                 perception_payload = (
                     result.perception.to_dict() if result.perception else None

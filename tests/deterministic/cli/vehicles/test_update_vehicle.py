@@ -15,7 +15,7 @@ from cli.automa_cli.step_activations import (
     write_host_configuration,
     host_bundle,
 )
-from implementations.decision_cycle.catalog import SELECTABLE_STEPS, STEP_PRESETS
+from implementations.decision_cycle.catalog import PRESET_STEPS, STEP_PRESETS
 from tests.shared.cli.invoke import invoke_automa
 
 PICAR = {
@@ -121,7 +121,7 @@ class UpdateVehicleTests(unittest.TestCase):
             root = Path(tmp)
             write_host_configuration(root, {"host_name": "chase-sim-chaser", "provider": "chase-sim",
                 "connection": {"ws_url": "ws://localhost:5050/ws/control"}})
-            for step in SELECTABLE_STEPS:
+            for step in PRESET_STEPS:
                 preset = sorted(STEP_PRESETS[step])[-1]
                 with self.subTest(step=step):
                     payload = json.loads(invoke_automa(

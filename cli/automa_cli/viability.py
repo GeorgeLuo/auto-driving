@@ -5,10 +5,10 @@ import os
 import statistics
 import subprocess
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
+from .command_result import CommandResult
 from .paths import ROOT, display_path
 from autonomy.runtime.client import RuntimeClient
 
@@ -28,12 +28,6 @@ REQUIRED_MIN_FRESH_HZ = 2.0
 REQUIRED_CADENCE_FRACTION = 0.90
 REQUIRED_P95_AGE_MS = 1000.0
 FRESH_FRAME_WAIT_S = 5.0
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    exit_code: int
-    message: str
 
 
 def _resolve_viability_host(

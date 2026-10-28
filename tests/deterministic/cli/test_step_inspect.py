@@ -18,11 +18,11 @@ from cli.automa_cli.workbench_source import normalize_image_directory
 from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
-from cli.automa_cli.decision_steps import format_step_record
+from cli.automa_cli.step_formatting import format_step_record
 from cli.automa_cli.step_inspect import INSPECT_STEPS, inspect_step
 from cli.automa_cli.step_replay import StepReplay, default_selection
 from cli.automa_cli.workbench_source import ImageSource, ReplayFrame
-from implementations.decision_cycle.catalog import SELECTABLE_STEPS
+from implementations.decision_cycle.catalog import PRESET_STEPS
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     LedgerBounds,
@@ -260,8 +260,8 @@ class StepInspectTests(unittest.TestCase):
 
     def test_a_recording_that_disabled_a_selectable_step_replays_without_its_plugins(self) -> None:
         """A recorded absent slot stays absent, even when its step is clearable."""
-        replay = StepReplay(_source({"steps": dict.fromkeys(SELECTABLE_STEPS)}), steps=SELECTABLE_STEPS)
-        for step in SELECTABLE_STEPS:
+        replay = StepReplay(_source({"steps": dict.fromkeys(PRESET_STEPS)}), steps=PRESET_STEPS)
+        for step in PRESET_STEPS:
             with self.subTest(step=step):
                 self.assertIsNone(replay.activations[step])
                 self.assertIsNone(replay.runners[step])

@@ -1,6 +1,6 @@
 """Live catalog listing and selection for the replay workbench.
 
-The workbench offers every packaged plugin of the ``SELECTABLE_STEPS``:
+The workbench offers every packaged plugin of the ``WORKBENCH_SELECTABLE_STEPS``:
 perception, memory, proposal and plan. A selection is built by the catalog's
 ``selection_activation``, the activation the CLI stages for that step, so a
 preset given on the command line keeps its plugin configs. Listing a catalog
@@ -20,13 +20,16 @@ from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS, step_runner
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
-    SELECTABLE_STEPS,
+    PRESET_STEPS,
     packaged_activation,
     plugin_list_preset,
     selection_activation,
     step_plugins,
 )
 
+
+# The workbench exposes selection controls for the steps with packaged presets.
+WORKBENCH_SELECTABLE_STEPS = PRESET_STEPS
 
 PLUGIN_CATALOG_SCHEMA = "workbench_plugin_catalog_v1"
 
@@ -158,9 +161,9 @@ class PluginCatalog:
 def packaged_plugin_catalog(step: str) -> PluginCatalog:
     """Every packaged plugin of ``step``; the step's default selection is preselected."""
 
-    if step not in SELECTABLE_STEPS:
+    if step not in WORKBENCH_SELECTABLE_STEPS:
         raise PluginCatalogError(
-            f"plugins can be selected for {', '.join(SELECTABLE_STEPS)}, not {step!r}"
+            f"plugins can be selected for {', '.join(WORKBENCH_SELECTABLE_STEPS)}, not {step!r}"
         )
     default_ids = DEFAULT_STEP_PLUGINS[step]
     entries = step_plugins(step)
@@ -188,6 +191,6 @@ __all__ = [
     "PluginCatalog",
     "PluginCatalogError",
     "PluginDescriptor",
-    "SELECTABLE_STEPS",
+    "WORKBENCH_SELECTABLE_STEPS",
     "packaged_plugin_catalog",
 ]

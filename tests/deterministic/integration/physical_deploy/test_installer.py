@@ -13,7 +13,7 @@ from cli.automa_cli.step_activations import ensure_step_activations, stage_activ
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
     DEFAULT_STEP_PRESETS,
-    SELECTABLE_STEPS,
+    PRESET_STEPS,
     STEP_PRESETS,
     selection_activation,
 )
@@ -70,13 +70,13 @@ class PhysicalDeployTests(unittest.TestCase):
                         staged(paths, step)["metadata"].get("preset"), DEFAULT_STEP_PRESETS.get(step),
                     )
 
-            for step in SELECTABLE_STEPS:
+            for step in PRESET_STEPS:
                 stale = staged(paths, step)
                 stale["plugins"] = []
                 paths[step].write_text(json.dumps(stale), encoding="utf-8")
             stage_activation(bundle, selection_activation("action", plugins=["hold"]), host_name="piracer")
             paths = ensure()
-            for step in SELECTABLE_STEPS:
+            for step in PRESET_STEPS:
                 with self.subTest(step=step, staged="named preset"):
                     self.assertEqual(
                         staged(paths, step)["plugins"],

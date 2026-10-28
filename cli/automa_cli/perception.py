@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from .command_result import CommandResult
 from .bundles import controller_bundle_paths
 from .step_schema import format_staged_step, staged_step_info
 from .paths import safe_path_part
@@ -22,12 +22,6 @@ from .runtime_hosts import RuntimeHostError, runtime_base_url
 
 ROOT = Path(__file__).resolve().parents[2]
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    exit_code: int
-    message: str
 
 
 def get_host_perception_info(

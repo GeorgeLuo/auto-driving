@@ -19,6 +19,7 @@ from autonomy.decision_cycle.activation import STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
 from implementations.decision_cycle.catalog import selection_activation
 
+from .command_result import CommandResult
 from .bundles import (
     controller_bundle_paths,
     controller_bundle_source_summary,
@@ -170,12 +171,6 @@ status_pending.write_text(
 os.replace(status_pending, status_path)
 print(status_path.read_text(encoding="utf-8"))
 """.strip()
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    exit_code: int
-    message: str
 
 
 @dataclass(frozen=True)

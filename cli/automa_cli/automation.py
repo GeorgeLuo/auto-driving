@@ -7,7 +7,6 @@ import signal
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 from urllib.parse import urlparse
@@ -17,6 +16,7 @@ from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
+from .command_result import CommandResult
 from .vehicle_access import create_vehicle_access
 from .staged_bundle import write_json_atomically
 from .bundles import controller_bundle_paths
@@ -61,12 +61,6 @@ from .vehicles import DEFAULT_READINESS_TIMEOUT_S
 ROOT = Path(__file__).resolve().parents[2]
 AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
 MAX_STATUS_REASON_CHARS = 240
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    exit_code: int
-    message: str
 
 
 def _host_runtime_status(

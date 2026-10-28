@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 from collections.abc import Mapping
 from copy import deepcopy
-from dataclasses import dataclass
 from typing import Any
 
 from autonomy.decision_cycle.plan.values import (
@@ -49,6 +48,7 @@ from autonomy.runtime.report import (
     REPORT_SCHEMA,
 )
 
+from .command_result import CommandResult
 from .decision_records import DecisionRecords, activations_from_payloads
 from .step_activations import (
     bundle_activation_problems,
@@ -121,12 +121,6 @@ SOURCE_REF_EXACT_KEYS = frozenset(
 COMMAND_EXACT_KEYS = frozenset(
     {"schema", "steering", "throttle", "gear", "normalized"}
 )
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    exit_code: int
-    message: str
 
 
 class DecisionSurfaceError(Exception):

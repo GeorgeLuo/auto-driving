@@ -4,7 +4,7 @@ import json
 import unittest
 from pathlib import Path
 
-from implementations.decision_cycle.catalog import SELECTABLE_STEPS
+from cli.automa_cli.workbench_plugins import WORKBENCH_SELECTABLE_STEPS
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.memory.frame_fixtures import write_frames
 from tests.shared.cli.workbench_fixtures import (
@@ -38,7 +38,7 @@ class SelectionRebuildTests(unittest.TestCase):
 
     def test_each_step_replays_the_displayed_frame_between_loop_passes(self) -> None:
         for phase in ("running", "paused"):
-            for step in SELECTABLE_STEPS:
+            for step in WORKBENCH_SELECTABLE_STEPS:
                 with self.subTest(phase=phase, step=step), image_source(1) as root:
                     if step == "plan":
                         _write_recording(root, ["frame_00.png"], NO_PLAN)
@@ -112,7 +112,7 @@ class SelectionRebuildTests(unittest.TestCase):
                         if step == "perception"
                         else shown["active_perception_plugin_ids"],
                     )
-                    for other in set(SELECTABLE_STEPS) - {step}:
+                    for other in set(WORKBENCH_SELECTABLE_STEPS) - {step}:
                         self.assertEqual(
                             selected[f"active_{other}_plugin_ids"],
                             shown[f"active_{other}_plugin_ids"],
@@ -153,7 +153,7 @@ class SelectionRebuildTests(unittest.TestCase):
         self,
     ) -> None:
         tracked = ["frame", "floor_plane", "multi_obstruction_tracks"]
-        for step in SELECTABLE_STEPS:
+        for step in WORKBENCH_SELECTABLE_STEPS:
             with self.subTest(step=step), image_source(0) as root:
                 write_frames(root, count=6)
                 images = [f"frame_{index}.png" for index in range(6)]

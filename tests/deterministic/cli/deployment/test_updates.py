@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from cli.automa_cli.command_result import CommandResult
 from cli.automa_cli import deploy, runtime_hosts
 from cli.automa_cli.vehicles import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
@@ -62,7 +63,7 @@ class HostLifecycleTests(unittest.TestCase):
         directory.mkdir(parents=True)
         staged = directory / "keep.json"
         staged.write_text("{}")
-        with patch.object(deploy, "_install_picar_core", return_value=deploy.CommandResult(2, "ssh failed")):
+        with patch.object(deploy, "_install_picar_core", return_value=CommandResult(2, "ssh failed")):
             result = deploy.create_host(host_name="test", provider="picar", url="http://example:8887")
         self.assertEqual(result.exit_code, 2)
         self.assertTrue(staged.exists())
@@ -108,7 +109,7 @@ class HostLifecycleTests(unittest.TestCase):
         self.assertFalse((self.root / "car").exists())
 
     def test_failed_new_creation_removes_the_directory(self):
-        with patch.object(deploy, "_install_picar_core", return_value=deploy.CommandResult(2, "sync failed")):
+        with patch.object(deploy, "_install_picar_core", return_value=CommandResult(2, "sync failed")):
             result = deploy.create_host(host_name="car", provider="picar", url="http://example:8887")
         self.assertEqual(result.exit_code, 2)
         self.assertFalse((self.root / "car").exists())
@@ -117,7 +118,7 @@ class HostLifecycleTests(unittest.TestCase):
         write_host_fixture(self.root, "car", provider="picar")
         with patch.object(deploy, "host_state", return_value={"state": "running"}), \
              patch("cli.automa_cli.automation.stop_host_automation",
-                   return_value=deploy.CommandResult(2, "could not release control")), \
+                   return_value=CommandResult(2, "could not release control")), \
              patch.object(deploy, "_run_step") as remote:
             result = deploy.delete_host(host_name="car")
         self.assertEqual(result.exit_code, 2)

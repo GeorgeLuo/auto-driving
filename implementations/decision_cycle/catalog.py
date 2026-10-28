@@ -8,7 +8,7 @@ such conflicts. ``DEFAULT_STEP_PLUGINS`` is each step's default selection. ``pac
 ``StepActivation`` that makes every packaged plugin of the step available,
 selects the requested ones in order, and applies config overrides.
 Perception, memory, proposal and plan have presets, ``STEP_PRESETS``; they are the
-``SELECTABLE_STEPS``. ``preset_activation`` builds an activation from a named
+``PRESET_STEPS``. ``preset_activation`` builds an activation from a named
 preset of a step. ``selection_activation`` is every step's selection: a
 preset or a plugin list, else the step's default.
 """
@@ -88,9 +88,9 @@ DEFAULT_STEP_PRESETS: dict[str, str] = {
     "proposal": DEFAULT_PROPOSAL_PRESET,
     "plan": DEFAULT_PLAN_PRESET,
 }
-# The steps an operator selects by preset or plugin list.
+# The steps whose packaged selections include named presets.
 # Empty replay follows CLEARABLE_STEPS, the steps that can run no plugins.
-SELECTABLE_STEPS: tuple[str, ...] = tuple(STEP_PRESETS)
+PRESET_STEPS: tuple[str, ...] = tuple(STEP_PRESETS)
 # The ``preset`` metadata of a selection that equals no preset.
 CUSTOM_PRESET = "custom"
 

@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import dataclass
 from typing import Any, Callable, TextIO
 
 from autonomy.decision_cycle.memory.interface import (
@@ -19,6 +18,7 @@ from autonomy.decision_cycle.memory.interface import (
     RECORD_COUNT,
 )
 from autonomy.decision_cycle.timing import step_timing
+from .command_result import CommandResult
 from .decision_live import DecisionViewAdapter
 from .memory_report import evidence_publisher, ledger_summary, plugin_ledgers
 from .host_publications import (
@@ -53,12 +53,6 @@ _PERCEPTION_STATUS = {
     "unavailable": "unavailable",
     "error": "error",
 }
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    exit_code: int
-    message: str
 
 
 def stream_host_perception(

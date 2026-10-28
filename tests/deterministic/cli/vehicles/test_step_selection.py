@@ -17,7 +17,7 @@ from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS, bundle_activ
 from cli.automa_cli.workbench_runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PRESETS,
-    SELECTABLE_STEPS,
+    PRESET_STEPS,
     STEP_PRESETS,
     preset_activation,
     selection_activation,
@@ -53,7 +53,7 @@ class StepSelectionTests(unittest.TestCase):
         own update path, and proposal had no default preset to stage."""
 
         with self._runtime() as root:
-            for step in SELECTABLE_STEPS:
+            for step in PRESET_STEPS:
                 with self.subTest(step=step):
                     implicit = self._update(step, "--dry-run")
                     explicit = self._update(step, "--preset", DEFAULT_STEP_PRESETS[step], "--dry-run")
@@ -88,7 +88,7 @@ class StepSelectionTests(unittest.TestCase):
         preset in memory's update only."""
 
         with self._runtime():
-            for step in SELECTABLE_STEPS:
+            for step in PRESET_STEPS:
                 with self.subTest(step=step):
                     plugins = STEP_PRESETS[step][DEFAULT_STEP_PRESETS[step]]["plugins"]
                     payload = self._update(
@@ -135,7 +135,7 @@ class StepSelectionTests(unittest.TestCase):
         update paths, apart from the argparse group every step now shares."""
 
         with self._runtime() as root:
-            for step in SELECTABLE_STEPS:
+            for step in PRESET_STEPS:
                 with self.subTest(step=step):
                     update = ("hosts", "stage", step, "--name", VEHICLE)
                     preset = DEFAULT_STEP_PRESETS[step]
@@ -158,15 +158,15 @@ class StepSelectionTests(unittest.TestCase):
         memory ``vehicle_memory_update_v1``, each with its own fields."""
 
         with self._runtime() as root:
-            payloads = {step: self._update(step) for step in SELECTABLE_STEPS}
+            payloads = {step: self._update(step) for step in PRESET_STEPS}
             bundle = host_bundle(VEHICLE, root)
             documents = {
                 step: json.loads(bundle_activation_path(bundle, step).read_text(encoding="utf-8"))
-                for step in SELECTABLE_STEPS
+                for step in PRESET_STEPS
             }
 
         perception = documents["perception"]["metadata"]
-        for step in SELECTABLE_STEPS:
+        for step in PRESET_STEPS:
             with self.subTest(step=step):
                 self.assertEqual(payloads[step]["schema"], "host_step_update")
                 self.assertEqual(set(payloads[step]), set(payloads["perception"]))
@@ -193,7 +193,7 @@ class StepSelectionTests(unittest.TestCase):
             code, stdout, stderr = _invoke("plugins", "inspect", "proposal", str(root), "--json")
             self.assertEqual(code, 0, stdout + stderr)
             original = json.loads(stdout)
-            for step in SELECTABLE_STEPS:
+            for step in PRESET_STEPS:
                 with self.subTest(step=step):
                     recorded = copy.deepcopy(original)
                     # A one-plugin step cannot be left empty by a recording.
@@ -221,7 +221,7 @@ class StepSelectionTests(unittest.TestCase):
         ``workbench_plugins.step_selection``, apart from the update path."""
 
         with image_source(1) as root, self._runtime():
-            for step in SELECTABLE_STEPS:
+            for step in PRESET_STEPS:
                 with self.subTest(step=step):
                     staged = self._update(step, "--dry-run")
                     for activations in (None, {step: selection_activation(step)}):

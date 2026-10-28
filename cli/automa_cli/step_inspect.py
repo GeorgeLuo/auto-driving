@@ -11,8 +11,8 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from autonomy.shared_memory import SharedMemoryValueError
 from implementations.decision_cycle.catalog import selection_activation
 
-from .decision import CommandResult
-from .decision_steps import format_step_record, format_step_timing
+from .command_result import CommandResult
+from .step_formatting import format_step_record, format_step_timing
 from .inspection_runs import add_seed_provenance, read_shared_memory_seed
 from .memory_report import evidence_publisher, plugin_summaries
 from .paths import ROOT, display_path

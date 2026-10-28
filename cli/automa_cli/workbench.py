@@ -15,7 +15,7 @@ from typing import Any, TextIO
 
 from implementations.decision_cycle.catalog import selection_activation
 
-from .step_inspect import CommandResult
+from .command_result import CommandResult
 from .runtime_view import RuntimeViewServer, VIEW_HOST, open_view_message
 from .workbench_contract import (
     ReplayActionError,
@@ -27,7 +27,7 @@ from .workbench_contract import (
 )
 from .workbench_runner import ImageReplayRunner
 from .workbench_plugins import (
-    SELECTABLE_STEPS,
+    WORKBENCH_SELECTABLE_STEPS,
     PluginCatalog,
     PluginCatalogError,
     packaged_plugin_catalog,
@@ -152,7 +152,7 @@ def _format_workbench_status(
             + _selection_text(
                 pipeline.get(f"{step}_preset"), state.get(f"active_{step}_plugin_ids")
             )
-            for step in SELECTABLE_STEPS
+            for step in WORKBENCH_SELECTABLE_STEPS
         ),
         f"progress: {progress.get('completed', 0)}/{progress.get('total', 0)}",
     ]
@@ -168,7 +168,7 @@ def _format_workbench_status(
         lines.append(f"recovery: {recovery}")
     cleanup = state.get("cleanup")
     if isinstance(cleanup, dict):
-        fields = (*SELECTABLE_STEPS, "source_read_only", "movement_control")
+        fields = (*WORKBENCH_SELECTABLE_STEPS, "source_read_only", "movement_control")
         lines.append(
             "cleanup: " + "; ".join(f"{field}={cleanup.get(field)}" for field in fields)
         )

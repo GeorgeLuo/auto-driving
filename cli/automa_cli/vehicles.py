@@ -25,17 +25,13 @@ from implementations.vehicle.chase_sim.defaults import (
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
 from implementations.vehicle.picar import create_picar
 
+from .command_result import CommandResult
+
 DEFAULT_READINESS_TIMEOUT_S = 5.0
 STATUS_SCHEMA = "automa_host_readiness"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
 # Each vehicle's heading names the --provider that discover and hosts create take for it.
 _HEADINGS = {"chase-sim": "Simulator (chase-sim)", "picar": "PiCar (picar)"}
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    exit_code: int
-    message: str
 
 
 @dataclass(frozen=True)

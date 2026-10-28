@@ -8,13 +8,13 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.memory.interface import EPOCH_ID, HEALTH, RECORD_COUNT
 from autonomy.runtime.client import RuntimeClient
 
+from .command_result import CommandResult
 from .memory_report import ledger_is_empty
 from .runtime_hosts import runtime_base_url
 from .bundles import controller_bundle_paths
@@ -24,12 +24,6 @@ from .streaming import _format_live_memory_screen, _live_plugins, _live_step_fie
 
 MEMORY_RESET_SCHEMA = "host_memory_reset"
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    exit_code: int
-    message: str
 
 
 def get_host_memory_info(

@@ -6,6 +6,7 @@ from dataclasses import replace
 
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
+from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import (
@@ -187,6 +188,48 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(result.to_dict()["memory"], report)
         result.to_dict()["memory"]["plugins"][0]["state"]["record_count"] = 9
         self.assertEqual(report["plugins"][0]["state"]["record_count"], 0)
+
+    def test_memory_callable_failures_stop_the_cycle_with_memory_diagnostics(self) -> None:
+        class UnprintableError(Exception):
+            def __str__(self):
+                raise RuntimeError("cannot describe this error")
+
+        for failure, diagnostic in (
+            (ValueError("update failed"), "ValueError: update failed"),
+            (MemoryUpdateError("already classified"), "already classified"),
+            (UnprintableError(), "UnprintableError: unprintable error"),
+        ):
+            with self.subTest(diagnostic=diagnostic):
+                calls = []
+
+                def remember(context):
+                    calls.append("memory")
+                    raise failure
+
+                def propose(context):
+                    calls.append("proposal")
+
+                cycle = DecisionCycle(DecisionSteps(memory=remember, proposal=propose))
+                with self.assertRaises(MemoryUpdateError) as caught:
+                    cycle.run(self.context())
+
+                self.assertEqual(str(caught.exception), diagnostic)
+                self.assertEqual(calls, ["memory"])
+                if isinstance(failure, MemoryUpdateError):
+                    self.assertIs(caught.exception, failure)
+                else:
+                    self.assertIs(caught.exception.__cause__, failure)
+
+    def test_memory_callable_must_return_a_report_or_none(self) -> None:
+        cycle = DecisionCycle(DecisionSteps(memory=lambda context: []))
+
+        with self.assertRaises(MemoryUpdateError) as caught:
+            cycle.run(self.context())
+
+        self.assertEqual(
+            str(caught.exception), "TypeError: memory step must return a report dict or None"
+        )
+        self.assertIsInstance(caught.exception.__cause__, TypeError)
 
 
 class StepSnapshotTests(unittest.TestCase):

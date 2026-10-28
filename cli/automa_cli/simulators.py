@@ -16,6 +16,8 @@ from implementations.vehicle.chase_sim.defaults import (
     get_default_chase_ui_ws_url,
 )
 
+from .command_result import CommandResult
+
 
 DEFAULT_SERVER = "http://127.0.0.1:3000/api"
 DEFAULT_UI_HTTP_URL = "http://127.0.0.1:5050"
@@ -31,12 +33,6 @@ HEADLESS_SIM_SCRIPT = "scripts/play-chase-headless.mjs"
 # 5050 stays the default simulator's.
 SIMULATOR_PORTS = range(5051, 5100)
 SIMULATOR_START_TIMEOUT_S = 45.0
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    exit_code: int
-    message: str
 
 
 @dataclass(frozen=True)

@@ -20,13 +20,14 @@ from .decision_steps import get_host_step_info, stream_host_step
 from .memory import get_host_memory_info, reset_host_memory
 from .operations import run_host_startup_check
 from autonomy.plugins import DuplicatePluginIdError
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, SELECTABLE_STEPS, STEP_PRESETS
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, STEP_PRESETS
 
 from .step_activations import HOST_PROVIDERS, stage_host_step
 from .runtime_hosts import RUNTIME_ROOT as HOSTS_RUNTIME_ROOT
 from .perception import get_host_perception_info
 from .step_inspect import INSPECT_STEPS, inspect_step
 from .workbench import run_workbench_replay
+from .workbench_plugins import WORKBENCH_SELECTABLE_STEPS
 from .plugin_catalog import arm_plugins, disarm_plugins, list_plugins, upload_plugin
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS, STEP_RUNNERS
@@ -70,6 +71,14 @@ def build_parser() -> argparse.ArgumentParser:
     )
     status.set_defaults(handler=_handle_status)
 
+    _register_vehicles(subcommands)
+    _register_hosts(subcommands)
+    _register_plugins(subcommands)
+    _register_simulators(subcommands)
+    return parser
+
+
+def _register_vehicles(subcommands: argparse._SubParsersAction) -> None:
     vehicles = subcommands.add_parser(
         "vehicles",
         help="Discover and inspect vehicle environments.",
@@ -83,12 +92,74 @@ def build_parser() -> argparse.ArgumentParser:
     )
     vehicles_help.set_defaults(handler=_handle_vehicles_help)
 
+    status = vehicle_commands.add_parser(
+        "status",
+        help="Show discovered vehicle environments.",
+        description=(
+            "Show the default simulator (CHASE_UI_WS_URL, else http://localhost:5050), "
+            "and each vehicle that vehicles discover listed. "
+            "Exits 1 when no vehicle is reachable."
+        ),
+    )
+    status.add_argument(
+        "--timeout-s",
+        type=float,
+        default=DEFAULT_READINESS_TIMEOUT_S,
+        help=(
+            f"One wall-clock deadline for vehicle probes (default: {DEFAULT_READINESS_TIMEOUT_S:g}s)."
+        ),
+    )
+    status.add_argument(
+        "--json",
+        action="store_true",
+        help="Print automa_vehicles_status JSON.",
+    )
+    status.set_defaults(handler=_handle_vehicles_status)
+
+    discover = vehicle_commands.add_parser(
+        "discover",
+        help="List a vehicle in vehicles status.",
+        description=(
+            "List a vehicle in vehicles status once it can take a host: a simulator "
+            "with its frontend connected and the Chase game loaded, or a PiCar whose "
+            "machine answers. Exits 2 otherwise, unless --force."
+        ),
+    )
+    discover.add_argument("--provider", required=True, choices=HOST_PROVIDERS,
+                          help="What the vehicle is: a simulator (chase-sim) or a PiCar (picar).")
+    discover.add_argument("--url", required=True,
+                          help="The simulator's HTTP(S) origin or WS(S) control URL, or the PiCar's HTTP(S) URL.")
+    discover.add_argument("--force", action="store_true", help="List the vehicle even when it cannot take a host now.")
+    discover.set_defaults(handler=_handle_vehicles_discover)
+    remove = vehicle_commands.add_parser(
+        "remove",
+        help="Stop listing a discovered vehicle in vehicles status.",
+        description="Stop listing a discovered vehicle. The default simulator is always listed.",
+    )
+    remove.add_argument("--url", required=True, help="The URL the vehicle was discovered at, in either form.")
+    remove.set_defaults(handler=_handle_vehicles_remove)
+
+
+def _register_hosts(subcommands: argparse._SubParsersAction) -> None:
     hosts = subcommands.add_parser("hosts", help="Create, configure, and operate vehicle controller hosts.")
     hosts.set_defaults(handler=_handle_hosts_help)
     host_commands = hosts.add_subparsers(dest="host_command")
     host_help = host_commands.add_parser("help", help="Show host-level commands.")
     host_help.set_defaults(handler=_handle_hosts_help)
 
+    _register_hosts_plugins(host_commands)
+    _register_hosts_viewer(host_commands)
+    _register_hosts_lifecycle(host_commands)
+    _register_hosts_operations(host_commands)
+    _register_hosts_streams(host_commands)
+    _register_hosts_memory(host_commands)
+    _register_hosts_workbench(host_commands)
+    _register_hosts_info(host_commands)
+    _register_hosts_perception(host_commands)
+    _register_hosts_staging(host_commands)
+
+
+def _register_hosts_plugins(host_commands: argparse._SubParsersAction) -> None:
     plugins = host_commands.add_parser("plugins", help="Upload, arm, disarm and list plugins in a live catalog.")
     plugins.set_defaults(handler=_handle_hosts_plugins_help)
     plugin_commands = plugins.add_subparsers(dest="plugin_command")
@@ -149,52 +220,8 @@ def build_parser() -> argparse.ArgumentParser:
     disarm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
     disarm.set_defaults(handler=_handle_hosts_plugins_disarm)
 
-    status = vehicle_commands.add_parser(
-        "status",
-        help="Show discovered vehicle environments.",
-        description=(
-            "Show the default simulator (CHASE_UI_WS_URL, else http://localhost:5050), "
-            "and each vehicle that vehicles discover listed. "
-            "Exits 1 when no vehicle is reachable."
-        ),
-    )
-    status.add_argument(
-        "--timeout-s",
-        type=float,
-        default=DEFAULT_READINESS_TIMEOUT_S,
-        help=(
-            f"One wall-clock deadline for vehicle probes (default: {DEFAULT_READINESS_TIMEOUT_S:g}s)."
-        ),
-    )
-    status.add_argument(
-        "--json",
-        action="store_true",
-        help="Print automa_vehicles_status JSON.",
-    )
-    status.set_defaults(handler=_handle_vehicles_status)
 
-    discover = vehicle_commands.add_parser(
-        "discover",
-        help="List a vehicle in vehicles status.",
-        description=(
-            "List a vehicle in vehicles status once it can take a host: a simulator "
-            "with its frontend connected and the Chase game loaded, or a PiCar whose "
-            "machine answers. Exits 2 otherwise, unless --force."
-        ),
-    )
-    discover.add_argument("--provider", required=True, choices=HOST_PROVIDERS,
-                          help="What the vehicle is: a simulator (chase-sim) or a PiCar (picar).")
-    discover.add_argument("--url", required=True,
-                          help="The simulator's HTTP(S) origin or WS(S) control URL, or the PiCar's HTTP(S) URL.")
-    discover.add_argument("--force", action="store_true", help="List the vehicle even when it cannot take a host now.")
-    discover.set_defaults(handler=_handle_vehicles_discover)
-    remove = vehicle_commands.add_parser(
-        "remove",
-        help="Stop listing a discovered vehicle in vehicles status.",
-        description="Stop listing a discovered vehicle. The default simulator is always listed.",
-    )
-    remove.add_argument("--url", required=True, help="The URL the vehicle was discovered at, in either form.")
-    remove.set_defaults(handler=_handle_vehicles_remove)
+def _register_hosts_viewer(host_commands: argparse._SubParsersAction) -> None:
     viewer = host_commands.add_parser(
         "viewer",
         help="Open the runtime viewer on a host.",
@@ -209,6 +236,8 @@ def build_parser() -> argparse.ArgumentParser:
     viewer_target.add_argument("--host-url", help="The host's URL from hosts status.")
     viewer.set_defaults(handler=_handle_hosts_viewer)
 
+
+def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None:
     host_create = host_commands.add_parser("create", help="Create and start a host.")
     host_update = host_commands.add_parser("update", help="Package and deploy a host's release.")
     host_delete = host_commands.add_parser("delete", help="Stop the host and its run, and remove its local files.")
@@ -463,6 +492,8 @@ def build_parser() -> argparse.ArgumentParser:
     host_serve.add_argument("--name", required=True, dest="host_name", help="Chase host name.")
     host_serve.set_defaults(handler=_handle_hosts_serve)
 
+
+def _register_hosts_operations(host_commands: argparse._SubParsersAction) -> None:
     operation = host_commands.add_parser("operation", help="Run bounded vehicle checks and setup tasks.")
     operation.set_defaults(handler=_handle_hosts_operation_help)
     operation_commands = operation.add_subparsers(dest="operation_command")
@@ -518,6 +549,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     startup_check.set_defaults(handler=_handle_hosts_operation_startup_check)
 
+
+def _register_hosts_streams(host_commands: argparse._SubParsersAction) -> None:
     stream = host_commands.add_parser("stream", help="Read a host's rolling outputs.")
     stream_commands = stream.add_subparsers(dest="stream_command", required=True)
     stream_help = stream_commands.add_parser(
@@ -535,32 +568,10 @@ def build_parser() -> argparse.ArgumentParser:
             "URL the terminal shows."
         ),
     )
-    perception_stream.add_argument(
-        "--name",
-        required=True,
-        dest="host_name",
-        help="Host name from `automa hosts status`.",
-    )
-    perception_stream.add_argument(
-        "--refresh-s",
-        type=float,
-        default=0.5,
-        help="Refresh cadence for the replacing terminal view.",
-    )
-    perception_stream.add_argument(
-        "--once",
-        action="store_true",
-        help="Render once and exit; exit 2 unless perception is live.",
-    )
-    perception_stream.add_argument(
-        "--no-clear",
-        action="store_true",
-        help="Print each render below the previous one, keeping earlier renders in scrollback.",
-    )
-    perception_stream.add_argument(
-        "--json",
-        action="store_true",
-        help="Print one host_perception_live JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
+    _add_stream_args(
+        perception_stream,
+        once_help="Render once and exit; exit 2 unless perception is live.",
+        json_help="Print one host_perception_live JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
     )
     perception_stream.set_defaults(handler=_handle_hosts_stream_perception)
 
@@ -575,32 +586,10 @@ def build_parser() -> argparse.ArgumentParser:
             "and the selected value."
         ),
     )
-    memory_stream.add_argument(
-        "--name",
-        required=True,
-        dest="host_name",
-        help="Host name from `automa hosts status`.",
-    )
-    memory_stream.add_argument(
-        "--refresh-s",
-        type=float,
-        default=0.5,
-        help="Refresh cadence for the replacing terminal view.",
-    )
-    memory_stream.add_argument(
-        "--once",
-        action="store_true",
-        help="Render once and exit; exit 2 unless memory is live.",
-    )
-    memory_stream.add_argument(
-        "--no-clear",
-        action="store_true",
-        help="Print each render below the previous one, keeping earlier renders in scrollback.",
-    )
-    memory_stream.add_argument(
-        "--json",
-        action="store_true",
-        help="Print one host_memory_live JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
+    _add_stream_args(
+        memory_stream,
+        once_help="Render once and exit; exit 2 unless memory is live.",
+        json_help="Print one host_memory_live JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
     )
     memory_stream.set_defaults(handler=_handle_hosts_stream_memory)
 
@@ -619,35 +608,15 @@ def build_parser() -> argparse.ArgumentParser:
                 "replacing the terminal view as each arrives."
             ),
         )
-        step_stream.add_argument(
-            "--name",
-            required=True,
-            dest="host_name",
-            help="Host name from `automa hosts status`.",
-        )
-        step_stream.add_argument(
-            "--refresh-s",
-            type=float,
-            default=0.5,
-            help="Refresh cadence for the replacing terminal view.",
-        )
-        step_stream.add_argument(
-            "--once",
-            action="store_true",
-            help="Accept one cycle and exit; exit 2 when none is available.",
-        )
-        step_stream.add_argument(
-            "--no-clear",
-            action="store_true",
-            help="Print each render below the previous one, keeping earlier renders in scrollback.",
-        )
-        step_stream.add_argument(
-            "--json",
-            action="store_true",
-            help=f"Print one host_{step_name}_stream JSON object per refresh.",
+        _add_stream_args(
+            step_stream,
+            once_help="Accept one cycle and exit; exit 2 when none is available.",
+            json_help=f"Print one host_{step_name}_stream JSON object per refresh.",
         )
         step_stream.set_defaults(handler=_handle_hosts_stream_step, step=step_name)
 
+
+def _register_hosts_memory(host_commands: argparse._SubParsersAction) -> None:
     memory_control = host_commands.add_parser(
         "memory",
         help="Measure and reset host memory.",
@@ -733,6 +702,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     memory_viability.set_defaults(handler=_handle_hosts_memory_viability)
 
+
+def _register_hosts_workbench(host_commands: argparse._SubParsersAction) -> None:
     workbench = host_commands.add_parser(
         "workbench",
         help="Replay images through the decision playback workbench.",
@@ -776,7 +747,7 @@ def build_parser() -> argparse.ArgumentParser:
         "source_dir",
         help="Directory containing supported images and optional ordered manifest.",
     )
-    for step_name in SELECTABLE_STEPS:
+    for step_name in WORKBENCH_SELECTABLE_STEPS:
         _add_selection_args(workbench_replay, step_name, verb="replay", flag_prefix=f"{step_name}-")
     workbench_replay.add_argument(
         "--cadence-ms",
@@ -823,6 +794,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     workbench_replay.set_defaults(handler=_handle_hosts_workbench_replay)
 
+
+def _register_hosts_info(host_commands: argparse._SubParsersAction) -> None:
     info = host_commands.add_parser("info", help="Inspect locally staged controller configuration.")
     info_commands = info.add_subparsers(dest="info_command", required=True)
     info_help = info_commands.add_parser(
@@ -835,16 +808,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show the staged perception preset and plugins, the runner schema and the published view URL.",
         description="Show the staged perception preset and plugins, the runner schema and the published view URL.",
     )
-    perception_info.add_argument(
-        "--name",
-        required=True,
-        dest="host_name",
-        help="Host name from `automa hosts status`.",
-    )
-    perception_info.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable perception info payload.",
+    _add_info_args(
+        perception_info,
+        json_help="Print the full machine-readable perception info payload.",
     )
     perception_info.set_defaults(handler=_handle_hosts_info_perception)
 
@@ -853,16 +819,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show the staged memory preset and plugins, the runner schema and the live memory step state.",
         description="Show the staged memory preset and plugins, the runner schema and the live memory step state.",
     )
-    memory_info.add_argument(
-        "--name",
-        required=True,
-        dest="host_name",
-        help="Host name from `automa hosts status`.",
-    )
-    memory_info.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable memory info payload.",
+    _add_info_args(
+        memory_info,
+        json_help="Print the full machine-readable memory info payload.",
     )
     memory_info.set_defaults(handler=_handle_hosts_info_memory)
 
@@ -881,19 +840,14 @@ def build_parser() -> argparse.ArgumentParser:
                 "engine has it."
             ),
         )
-        step_info.add_argument(
-            "--name",
-            required=True,
-            dest="host_name",
-            help="Host name from `automa hosts status`.",
-        )
-        step_info.add_argument(
-            "--json",
-            action="store_true",
-            help=f"Print the full machine-readable {step_name} info payload.",
+        _add_info_args(
+            step_info,
+            json_help=f"Print the full machine-readable {step_name} info payload.",
         )
         step_info.set_defaults(handler=_handle_hosts_info_step, step=step_name)
 
+
+def _register_hosts_perception(host_commands: argparse._SubParsersAction) -> None:
     perception_control = host_commands.add_parser(
         "perception",
         help="Measure perception viability on a host.",
@@ -954,6 +908,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     perception_viability.set_defaults(handler=_handle_hosts_perception_viability)
 
+
+def _register_hosts_staging(host_commands: argparse._SubParsersAction) -> None:
     update = host_commands.add_parser(
         "stage",
         help="Stage controller selections for a host.",
@@ -1004,6 +960,8 @@ def build_parser() -> argparse.ArgumentParser:
         )
         step_parser.set_defaults(handler=_handle_hosts_stage_step, step=step_name)
 
+
+def _register_plugins(subcommands: argparse._SubParsersAction) -> None:
     step_plugins = subcommands.add_parser(
         "plugins",
         help="Inspect what a step's plugins report, from images or a recorded run.",
@@ -1082,6 +1040,8 @@ def build_parser() -> argparse.ArgumentParser:
             ),
         )
 
+
+def _register_simulators(subcommands: argparse._SubParsersAction) -> None:
     simulators = subcommands.add_parser("simulators", help="Create, prepare and inspect simulators.")
     simulators.set_defaults(handler=_handle_simulators_help)
     simulator_commands = simulators.add_subparsers(dest="simulator_command")
@@ -1157,7 +1117,54 @@ def build_parser() -> argparse.ArgumentParser:
     )
     simulators_delete.add_argument("--url", required=True, help="The simulator's URL from simulators create.")
     simulators_delete.set_defaults(handler=_handle_simulators_delete)
-    return parser
+
+
+def _add_stream_args(
+    parser: argparse.ArgumentParser, *, once_help: str, json_help: str,
+) -> None:
+    parser.add_argument(
+        "--name",
+        required=True,
+        dest="host_name",
+        help="Host name from `automa hosts status`.",
+    )
+    parser.add_argument(
+        "--refresh-s",
+        type=float,
+        default=0.5,
+        help="Refresh cadence for the replacing terminal view.",
+    )
+    parser.add_argument(
+        "--once",
+        action="store_true",
+        help=once_help,
+    )
+    parser.add_argument(
+        "--no-clear",
+        action="store_true",
+        help="Print each render below the previous one, keeping earlier renders in scrollback.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help=json_help,
+    )
+
+
+def _add_info_args(
+    parser: argparse.ArgumentParser, *, json_help: str,
+) -> None:
+    parser.add_argument(
+        "--name",
+        required=True,
+        dest="host_name",
+        help="Host name from `automa hosts status`.",
+    )
+    parser.add_argument(
+        "--json",
+        action="store_true",
+        help=json_help,
+    )
 
 
 def _add_selection_args(
@@ -1843,7 +1850,7 @@ def _handle_hosts_workbench_replay(args: argparse.Namespace) -> int:
         args.source_dir,
         selections={
             step: (getattr(args, f"{step}_preset"), getattr(args, f"{step}_plugins"))
-            for step in SELECTABLE_STEPS
+            for step in WORKBENCH_SELECTABLE_STEPS
         },
         cadence_ms=args.cadence_ms,
         pace=args.pace,

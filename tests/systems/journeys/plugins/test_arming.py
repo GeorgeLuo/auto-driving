@@ -12,7 +12,7 @@ from unittest.mock import patch
 from urllib.request import urlopen
 
 from cli.automa_cli.runtime_hosts import stop_chase_host
-from implementations.decision_cycle.catalog import SELECTABLE_STEPS, packaged_activation
+from implementations.decision_cycle.catalog import PRESET_STEPS, packaged_activation
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import (
@@ -37,7 +37,7 @@ class PluginArmingFlows(unittest.TestCase):
                   plugin_host(root, vehicle, {"perception": activation}) as (host, base)):
                 before = catalog(base)
                 session = host.session_status()
-                for step in SELECTABLE_STEPS:
+                for step in PRESET_STEPS:
                     file = root / f"{step}.py"
                     write_plugin(file, step, f"prototype-{step}", 1)
                     upload(base, file, step, f"prototype-{step}")
@@ -46,7 +46,7 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(available["arming"], before["arming"])
                 self.assertEqual(available["applied_decision"], before["applied_decision"])
                 selection = root / "selection.json"
-                selection.write_text(json.dumps({step: [f"prototype-{step}"] for step in SELECTABLE_STEPS}))
+                selection.write_text(json.dumps({step: [f"prototype-{step}"] for step in PRESET_STEPS}))
                 # Through the executable once; the worker journey below covers
                 # upload, status and disarm the same way.
                 receipt = json.loads(run_automa("hosts", "plugins", "arm", "--url", base,

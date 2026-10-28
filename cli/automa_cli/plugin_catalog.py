@@ -5,7 +5,6 @@ from __future__ import annotations
 import base64
 import json
 import shlex
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
@@ -14,6 +13,8 @@ from urllib.parse import urlsplit
 
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH, catalog_write_error
+
+from .command_result import CommandResult
 
 # Arming waits for the host's current cycle and for the selection to load.
 ARM_TIMEOUT_S = 60.0
@@ -81,12 +82,6 @@ def serve_plugin_catalog(handler: Any, api: Callable | None, *, include_body: bo
     except (OSError, ValueError, TypeError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
     handler._send_json(200 if result.get("ok") else 400, result, include_body=include_body)
-
-
-@dataclass(frozen=True)
-class CommandResult:
-    exit_code: int
-    message: str
 
 
 def catalog_url(host_name: str) -> str:

@@ -1,4 +1,5 @@
 from __future__ import annotations
+import copy
 import time
 import unittest
 from functools import partial
@@ -230,6 +231,49 @@ class WorkbenchTests(unittest.TestCase):
         idle = ImageReplayRunner()
         with self.assertRaises(ReplayActionError):
             idle.dispatch("seek", run_id="missing", position=0)
+
+    def test_cached_frame_is_detached_from_later_memory_and_returned_state(self) -> None:
+        class MutableMemory:
+            def __init__(self):
+                self.report = {"plugins": [{"plugin_id": "mutable", "state": {
+                    "health": "healthy", "epoch_id": "epoch", "record_count": 0, "records": [],
+                }}]}
+
+            def __call__(self, context):
+                state = self.report["plugins"][0]["state"]
+                state["records"].append({"record_id": context.frame_id})
+                state["record_count"] = len(state["records"])
+                return self.report
+
+            def reset(self, shared_memory=None):
+                pass
+
+        with image_source(3) as root:
+            memory = MutableMemory()
+            runner = ImageReplayRunner(
+                root, cadence_ms=5000,
+                step_factories={"perception": FixtureMapper, "memory": lambda: memory},
+            )
+            try:
+                run_id = runner.start()["run_id"]
+                _wait_until(lambda: len(runner.state()["timeline"]) == 1)
+                first = runner.dispatch("pause", run_id=run_id)
+                expected = copy.deepcopy(first)
+                second = runner.dispatch("step", run_id=run_id)
+                self.assertEqual(second["steps"]["memory"]["plugins"][0]["state"]["record_count"], 2)
+                self.assertEqual(second["timeline"][0], expected["timeline"][0])
+                self.assertEqual(second["summary"]["memory_plugins"], second["timeline"][1]["memory_plugins"])
+                self.assertEqual(second["summary"]["frames_completed"], 2)
+                first["steps"]["memory"]["plugins"][0]["state"]["records"].clear()
+                first["summary"]["memory_plugins"].clear()
+                second["timeline"][0]["memory_effects"].clear()
+                cached = runner.dispatch("seek", run_id=run_id, position=0)
+                self.assertEqual(cached["steps"], expected["steps"])
+                self.assertEqual(cached["summary"], expected["summary"])
+                self.assertEqual(cached["timeline"][0], expected["timeline"][0])
+                self.assertEqual(memory.report["plugins"][0]["state"]["record_count"], 2)
+            finally:
+                runner.close()
 
     def test_loop_playback_reprocesses_the_capture_each_pass(self) -> None:
         with image_source(2) as root:

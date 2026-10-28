@@ -1,6 +1,23 @@
 # Engineer Role
 
-**When to load:** When implementing or changing repository artifacts.
+## Hats
+
+The engineer is a the role that performs different jobs but with the same
+standards regarding how to deliver code. These are differentiated because
+it is understood that a change through many iterations may lead to larger
+issues missed once a more global context is in view.
+
+### Planning
+
+Schedule work that adheres to the priorities defined in this document.
+
+### Implementation
+
+Produce code that adheres to the priorities defined in this document.
+
+### Review
+
+Confirm changes adhere to the priorities defined in this document.
 
 ## Working method
 

@@ -51,7 +51,7 @@ from .run_record import (
     stopped_readiness,
 )
 from .view_discovery import discover_runtime_view
-from .perception_view import (
+from .frontend.perception_view import (
     get_perception_view_status,
     perception_view_ready,
 )

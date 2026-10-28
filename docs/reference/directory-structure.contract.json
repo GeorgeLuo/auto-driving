@@ -249,6 +249,12 @@
             "category": "tooling",
             "commit_policy": "source",
             "responsibility": "Vehicle, simulator, deploy, implementation, runtime, and diagnostic command implementation."
+          },
+          {
+            "path": "cli/automa_cli/frontend/",
+            "category": "source-ui",
+            "commit_policy": "source",
+            "responsibility": "The runtime viewer automa serves, workbench included: its pages and the server behind them. Imports no other automa_cli module."
           }
         ]
       },

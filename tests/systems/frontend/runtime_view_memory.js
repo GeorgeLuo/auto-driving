@@ -111,7 +111,7 @@ async function settle() {
 async function memoryPage() {
   let latest = publication([BOUNDED], "bounded_evidence");
   const ctx = pageContext(async () => ({ ok: true, json: async () => latest }));
-  runPage("cli/automa_cli/memory_view.html", ctx);
+  runPage("cli/automa_cli/frontend/pages/memory/index.html", ctx);
   await settle();
   const $ = (id) => ctx.document.getElementById(id);
   const pluginRows = () => $("pluginList").querySelectorAll(".plugin-row").map((button) => ({
@@ -185,7 +185,7 @@ async function memoryPage() {
 
 function perceptionPage() {
   const ctx = pageContext(() => new Promise(() => {}));
-  runPage("cli/automa_cli/perception_view.html", ctx);
+  runPage("cli/automa_cli/frontend/pages/perception/index.html", ctx);
   const frameMetrics = () => metrics(ctx.document.getElementById("frameMetrics"));
   const render = (payload) => vm.runInContext(`latest = ${JSON.stringify(payload)}; renderData();`, ctx);
 

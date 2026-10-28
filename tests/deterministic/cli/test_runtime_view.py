@@ -11,12 +11,14 @@ from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
 from cli.automa_cli import app
-from cli.automa_cli.runtime_view import (
+from cli.automa_cli.frontend.server import (
     NOT_CONNECTED_ERROR,
     RUNTIME_HOST_ROUTES,
+    WORKBENCH_UNAVAILABLE_ERROR,
     RuntimeViewServer,
 )
-from cli.automa_cli.workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY
+from cli.automa_cli.frontend.workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY
+from cli.automa_cli.runtime_view import runtime_view_server
 from implementations.vehicle.chase_sim.defaults import CHASE_UI_WS_URL_ENV
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
 from implementations.vehicle.chase_sim.presence import MetricsUiPresence
@@ -29,7 +31,7 @@ from tests.support.fake_metrics_ui import fake_metrics_ui
 
 class ViewerWithoutHostTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.server = RuntimeViewServer(
+        self.server = runtime_view_server(
             host_name="viewer",
             automation_dir=None,
             port=0,
@@ -123,7 +125,7 @@ class ConnectedSplashTests(unittest.TestCase):
         runner = ImageReplayRunner(cadence_ms=0, step_factories={"perception": FixtureMapper})
         self.addCleanup(runner.close)
         with mock.patch("cli.automa_cli.runtime_view.ImageReplayRunner", return_value=runner) as build:
-            server = RuntimeViewServer(host_name="test-vehicle", automation_dir=None, port=0).start()
+            server = runtime_view_server(host_name="test-vehicle", automation_dir=None, port=0).start()
             self.addCleanup(server.stop)
             _read_text(server.url)
             _read_text(f"{server.url}api/health")
@@ -137,6 +139,16 @@ class ConnectedSplashTests(unittest.TestCase):
             with mock.patch.object(runner, "close", wraps=runner.close) as close:
                 server.stop()
                 close.assert_called_once_with()
+
+    def test_server_without_automa_providers_lists_no_hosts_and_refuses_the_workbench(self) -> None:
+        server = RuntimeViewServer(host_name="viewer", automation_dir=None, port=0, connected=False).start()
+        self.addCleanup(server.stop)
+
+        self.assertEqual(json.loads(_read_text(f"{server.url}api/hosts")), {"hosts": []})
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(f"{server.workbench_url}api/state", timeout=1.0)
+        self.assertEqual(caught.exception.code, 503)
+        self.assertEqual(json.loads(caught.exception.read()), {"ok": False, "error": WORKBENCH_UNAVAILABLE_ERROR})
 
 
 class ViewerWorkbenchTests(unittest.TestCase):

@@ -9,7 +9,7 @@ from .command_result import CommandResult
 from .bundles import controller_bundle_paths
 from .step_schema import format_staged_step, staged_step_info
 from .paths import safe_path_part
-from .perception_view import get_perception_view_status
+from .frontend.perception_view import get_perception_view_status
 from .view_discovery import discover_runtime_view
 from .host_publications import (
     LATEST_FRAME_PATH,

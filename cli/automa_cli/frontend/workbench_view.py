@@ -4,23 +4,21 @@ from __future__ import annotations
 
 import json
 import re
-from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import parse_qs, urlparse
 
-from .loopback_http import STATIC_CONTENT_TYPES
+from .loopback_http import PAGES_DIR, STATIC_CONTENT_TYPES
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTION_RESULT_SCHEMA,
     WORKBENCH_ERROR_SCHEMA,
     WORKBENCH_MAX_ACTION_BYTES,
 )
-from .workbench_source import SourceValidationError
 from .plugin_catalog import serve_plugin_catalog
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
-WORKBENCH_PAGE_DIR = Path(__file__).with_name("workbench_page")
+WORKBENCH_PAGE_DIR = PAGES_DIR / "workbench"
 # The page's own files, served read-only under /static/ beside /static/shared/.
 WORKBENCH_STATIC_PATTERN = re.compile(r"^/static/(workbench\.css|js/[a-z]+\.js)$")
 # The page runs no inline script, wherever it is served.
@@ -182,25 +180,17 @@ def _action_payload(runner: ReplayRunner, payload: Any) -> dict[str, Any]:
             status_code=400,
             boundary="input",
         )
-    try:
-        state = runner.dispatch(
-            action,
-            run_id=run_id,
-            source_dir=source_dir,
-            cadence_ms=cadence_ms,
-            pace=pace,
-            step=step,
-            active_plugin_ids=active_plugin_ids,
-            position=position,
-            loop=loop,
-        )
-    except SourceValidationError as exc:
-        raise ReplayActionError(
-            str(exc),
-            status_code=422,
-            boundary="source",
-            state=runner.state(),
-        ) from exc
+    state = runner.dispatch(
+        action,
+        run_id=run_id,
+        source_dir=source_dir,
+        cadence_ms=cadence_ms,
+        pace=pace,
+        step=step,
+        active_plugin_ids=active_plugin_ids,
+        position=position,
+        loop=loop,
+    )
     return {
         "schema": WORKBENCH_ACTION_RESULT_SCHEMA,
         "ok": True,

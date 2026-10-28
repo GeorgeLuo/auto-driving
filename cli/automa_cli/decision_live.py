@@ -11,10 +11,10 @@ from .decision import (
     accept_decision_publication,
     decision_view_frame,
 )
-from .decision_view import unavailable_host_telemetry_panel
 from .host_publications import (
     fetch_decision_transaction, TransactionCache,
     HostTelemetryError,
+    host_telemetry_failure,
     fetch_host_telemetry_latest,
     fetch_host_telemetry_records,
     join_host_telemetry_to_decision,
@@ -22,7 +22,8 @@ from .host_publications import (
     normalize_host_telemetry_records,
     decision_publication_identity,
 )
-from .runtime_view import RuntimeViewServer
+from .frontend.server import RuntimeViewServer
+from .memory_report import evidence_records
 
 
 def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:
@@ -83,6 +84,7 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         "perception": perception,
         "observation": observation_value,
         "memory": cycle["memory"],
+        "memory_evidence": evidence_records(cycle["memory"]),
         "action_policy": mode,
         "control_source": "runtime_host",
         "control_application": "shared_execution" if mode == "autonomy" else "not_applied",
@@ -266,9 +268,9 @@ def read_host_telemetry_panel(
             else:
                 raise latest_error
     except HostTelemetryError as exc:
-        return unavailable_host_telemetry_panel(exc.reason, message=exc.message_text)
+        return host_telemetry_failure(exc.reason, message=exc.message_text)
     except (ConnectionError, OSError, TypeError, ValueError) as exc:
-        return unavailable_host_telemetry_panel(
+        return host_telemetry_failure(
             "publisher_missing",
             message=f"Host telemetry is unavailable: {type(exc).__name__}: {exc}",
         )

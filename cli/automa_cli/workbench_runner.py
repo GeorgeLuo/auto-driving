@@ -22,7 +22,7 @@ from .inspection_runs import (
     default_selection, recorded_runner,
     resolve_replay_activations, restage_replay_steps,
 )
-from .workbench_contract import (
+from .frontend.workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
     WORKBENCH_DEFAULT_CADENCE_MS,
@@ -451,7 +451,15 @@ class ImageReplayRunner:
                     self._record_action_locked(action)
                 return self.state()
             if action == "start":
-                return self.start(source_dir, cadence_ms=cadence_ms, pace=pace, loop=loop)
+                try:
+                    return self.start(source_dir, cadence_ms=cadence_ms, pace=pace, loop=loop)
+                except SourceValidationError as exc:
+                    raise ReplayActionError(
+                        str(exc),
+                        status_code=422,
+                        boundary="source",
+                        state=self.state(),
+                    ) from exc
             if action == "set_cadence":
                 if cadence_ms is None and pace is None:
                     raise ReplayActionError(

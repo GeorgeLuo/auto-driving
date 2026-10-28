@@ -17,7 +17,7 @@ from autonomy.plugins import uploaded_source
 from autonomy.runtime.plugin_loader import load_runner
 from autonomy.runtime.recording import RunRecording
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.runtime_view import RuntimeViewServer
+from cli.automa_cli.frontend.server import RuntimeViewServer
 from implementations.decision_cycle.catalog import PRESET_STEPS
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host

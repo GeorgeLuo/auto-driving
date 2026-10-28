@@ -19,7 +19,7 @@ from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 from .step_hosting import plugin_report
-from .workbench_contract import WORKBENCH_SEQUENCE_ID
+from .frontend.workbench_contract import WORKBENCH_SEQUENCE_ID
 from .workbench_source import ReplayFrame
 
 

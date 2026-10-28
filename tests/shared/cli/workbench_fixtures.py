@@ -23,7 +23,7 @@ from implementations.decision_cycle.catalog import selection_activation
 from cli.automa_cli.workbench import (
     ImageReplayRunner as ProductionImageReplayRunner,
 )
-from cli.automa_cli.runtime_view import RuntimeViewServer
+from cli.automa_cli.frontend.server import RuntimeViewServer
 
 
 def perception_activations(*plugin_ids: str) -> dict[str, StepActivation]:

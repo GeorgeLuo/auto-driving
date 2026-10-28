@@ -25,7 +25,7 @@ const ctx = {
   }
 };
 vm.createContext(ctx);
-vm.runInContext(fs.readFileSync("cli/automa_cli/page_shared/float.js", "utf8"), ctx);
+vm.runInContext(fs.readFileSync("cli/automa_cli/frontend/pages/shared/float.js", "utf8"), ctx);
 const [onResize, onMutation] = observers;
 
 assert.equal(status.attributes["data-scrollable"], "false");

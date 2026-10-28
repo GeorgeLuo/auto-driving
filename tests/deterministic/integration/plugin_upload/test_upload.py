@@ -12,7 +12,7 @@ from autonomy.decision_cycle.activation import step_activation_from_payload
 from autonomy.plugins import uploaded_source
 from cli.automa_cli.bundles import controller_bundle_paths
 from cli.automa_cli.plugin_catalog import PluginCatalogClient
-from cli.automa_cli.runtime_view import RuntimeViewServer
+from cli.automa_cli.frontend.server import RuntimeViewServer
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import (

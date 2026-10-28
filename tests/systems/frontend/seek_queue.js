@@ -26,7 +26,7 @@ const ctx = {
   },
 };
 vm.createContext(ctx);
-vm.runInContext(fs.readFileSync("cli/automa_cli/workbench_page/js/transport.js", "utf8"), ctx);
+vm.runInContext(fs.readFileSync("cli/automa_cli/frontend/pages/workbench/js/transport.js", "utf8"), ctx);
 const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) { console.log("FAIL", m, JSON.stringify(a), JSON.stringify(b)); process.exit(1); } };
 const settle = async () => { for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r)); };
 const reply = async (phase) => { replies.shift()(phase); await settle(); };

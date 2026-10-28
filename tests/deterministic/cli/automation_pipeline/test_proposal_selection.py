@@ -9,7 +9,8 @@ from unittest.mock import patch
 
 from cli.automa_cli.automation import run_host_automation
 from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.runtime_view import RuntimeViewServer
+from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.runtime_view import runtime_view_server
 from cli.automa_cli.step_activations import decision_identity, stage_activation
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
@@ -40,7 +41,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
             calls = ExitStack()
 
             def record_server(**kwargs):
-                servers.append(RuntimeViewServer(**kwargs))
+                servers.append(runtime_view_server(**kwargs))
                 return servers[-1]
 
             def wrap_proposal(step_name, step):
@@ -59,7 +60,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
 
             with (
                 calls,
-                patch("cli.automa_cli.runtime_monitor.RuntimeViewServer", side_effect=record_server),
+                patch("cli.automa_cli.runtime_monitor.runtime_view_server", side_effect=record_server),
                 # Exercise the view projection without opening a socket.
                 patch.object(RuntimeViewServer, "start", lambda server: server),
                 staged_runners(perception=_SlowMapper(), wrap=wrap_proposal),

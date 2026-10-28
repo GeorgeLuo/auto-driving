@@ -46,7 +46,7 @@ const ctx = {
   document: { createElement() { return fakeElement(); } }
 };
 vm.createContext(ctx);
-vm.runInContext(fs.readFileSync("cli/automa_cli/workbench_page/js/memory.js", "utf8"), ctx);
+vm.runInContext(fs.readFileSync("cli/automa_cli/frontend/pages/workbench/js/memory.js", "utf8"), ctx);
 
 ctx.renderMemory();
 assert.equal(elements.memoryHealth.textContent, "disabled");

@@ -20,8 +20,10 @@ STATIC_CONTENT_TYPES = {
     ".css": "text/css; charset=utf-8",
     ".js": "text/javascript; charset=utf-8",
 }
-# Files every loopback page may load, served read-only under /static/shared/.
-SHARED_PAGE_DIR = Path(__file__).with_name("page_shared")
+# One directory per page; ``shared`` holds the files every page may load,
+# served read-only under /static/shared/.
+PAGES_DIR = Path(__file__).with_name("pages")
+SHARED_PAGE_DIR = PAGES_DIR / "shared"
 SHARED_STATIC_PATTERN = re.compile(r"^/static/shared/([a-z]+\.(?:css|js))$")
 
 

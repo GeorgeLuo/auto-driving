@@ -44,7 +44,7 @@ Run the tests your change reaches, not every suite. `commands` and `journeys` to
 | Plugin upload, arming, disarming, or the plugin catalog | `--systems journeys -k journeys.plugins` |
 | Automation runs, streams, recordings, or replay | `--systems journeys -k automation_pipeline` |
 | The Chase runtime host | `--systems journeys -k runtime_host` |
-| `cli/automa_cli/workbench_page/js/` | `--systems frontend` |
+| `cli/automa_cli/frontend/pages/` | `--systems frontend` |
 | `deploy/`, the release bundle, or the import surface | `--systems packaging` |
 | `qca/` | `--systems qca` |
 
@@ -68,7 +68,7 @@ A test whose behavior needs another program goes under `systems/`, in the group 
 |---|---|---|
 | `commands/<family>/` | `automa` commands whose behavior needs another program: `help` through the executable, `simulators` against a fake `simeval`, and `automation` recovery around a running process | `cli/automa`, `simeval`, or a child process |
 | `journeys/` | Flows that cross commands and hosts: the automation pipeline, plugin upload and arming, and the runtime host lifecycle | `cli/automa`, runtime hosts, and Chromium for one upload test |
-| `frontend/` | Workbench page scripts in `cli/automa_cli/workbench_page/js/`. Each test keeps its `.js` driver beside it | `node`; skipped when it is missing |
+| `frontend/` | Runtime viewer and workbench page scripts in `cli/automa_cli/frontend/pages/`. Each test keeps its `.js` driver beside it | `node`; skipped when it is missing |
 | `packaging/` | Fresh-interpreter import order, source visibility, and the Pi installer, service, and runner scripts | A fresh Python, `bash`, and `git` |
 | `qca/` | The QCA analyzer against a scratch repository | `git` |
 | `live/` | Bounded checks against a real simulator or Pi | Only with `--live-sim` or `--live-pi` |

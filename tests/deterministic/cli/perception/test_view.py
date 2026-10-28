@@ -9,8 +9,8 @@ from urllib.request import Request, urlopen
 
 from PIL import Image
 
-from cli.automa_cli.runtime_view import RuntimeViewServer
-from cli.automa_cli.perception_view import (
+from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.frontend.perception_view import (
     MAX_BUFFERED_FRAMES,
     PUBLICATION_SCHEMA,
     PerceptionView,

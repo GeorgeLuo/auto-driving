@@ -20,8 +20,6 @@ from typing import Any
 from urllib.parse import parse_qs, urlencode
 
 from autonomy.runtime.report import HostReport, diagnostic_ceiling
-from .host_publications import host_telemetry_failure
-from .memory_report import evidence_records
 
 
 DECISION_VIEW_SCHEMA = "automa_live_decision_view"
@@ -443,8 +441,7 @@ class DecisionView:
         action = cycle.get("action") if isinstance(cycle, dict) else None
         authority = action.get("authority") if isinstance(action, dict) else None
         observation = transaction.frame_record.get("observation")
-        memory = transaction.frame_record.get("memory")
-        evidence_input = evidence_records(memory)
+        evidence_input = transaction.frame_record.get("memory_evidence")
         evidence = _evidence_projection(
             transaction_id=transaction.transaction_id,
             frame_id=transaction.frame_record["frame_id"],
@@ -515,10 +512,3 @@ def decision_error_payload(view: DecisionView, *, reason: str) -> dict[str, Any]
         "identity": _json_copy(view.identity) if view.identity is not None else None,
     }
 
-
-def unavailable_host_telemetry_panel(
-    reason: str = "publisher_missing",
-    *,
-    message: str | None = None,
-) -> dict[str, Any]:
-    return host_telemetry_failure(reason, message=message)

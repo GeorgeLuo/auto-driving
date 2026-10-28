@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from cli.automa_cli.runtime_view import RuntimeViewServer
+from cli.automa_cli.frontend.server import RuntimeViewServer
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.cli_runner import WORKSPACE_ROOT as ROOT
 from tests.support.runtime_fixtures import write_runtime_fixture

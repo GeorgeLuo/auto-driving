@@ -19,7 +19,7 @@ from autonomy.runtime.recording import write_recorded_frame
 from autonomy.vehicle.vehicle import FRONT_CAMERA_SENSOR_ID
 from autonomy.runtime.client import RuntimeClient
 from .paths import display_path
-from .perception_view import perception_view_ready
+from .frontend.perception_view import perception_view_ready
 from .host_publications import (
     fetch_observation_sample, TransactionCache, publication_to_frame_record, perception_text_from_publication,
 )
@@ -28,7 +28,8 @@ from .run_record import (
     new_run_state, record_host_status, reports_frame, run_result, startup_lines,
     timestamp_ms,
 )
-from .runtime_view import RuntimeViewServer
+from .frontend.server import RuntimeViewServer
+from .runtime_view import runtime_view_server
 from .decision_live import DecisionViewAdapter
 from .staged_bundle import write_json_atomically
 from .plugin_catalog import PluginCatalogClient
@@ -195,7 +196,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
         run_dir = automation_dir / "runs" / recording_id if record else None
         frames_dir = automation_dir / "latest" / "frames"
         frames_dir.mkdir(parents=True, exist_ok=True)
-        server = RuntimeViewServer(
+        server = runtime_view_server(
             host_name=host_name, automation_dir=automation_dir,
             run_id=run_id, worker_pid=os.getpid(),
             plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),

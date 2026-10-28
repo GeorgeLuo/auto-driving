@@ -34,7 +34,8 @@ from .host_publications import (
 from .plugin_catalog import PluginCatalogClient
 from .runtime_hosts import RuntimeHostError, local_hosts, runtime_base_url
 from .runtime_monitor import PERCEPTION_COPY_INTERVAL_S, _pause_s
-from .runtime_view import RuntimeViewServer, open_view_message
+from .frontend.server import RuntimeViewServer
+from .runtime_view import open_view_message, runtime_view_server
 from .step_activations import absent_step_error
 from .stream_output import write_stream_frame
 from .view_discovery import runtime_view_dir
@@ -283,7 +284,7 @@ class _ViewFeed:
         self._observation: tuple[dict[str, Any], bytes | None] | None = None
         self._last_capture: tuple[Any, ...] | None = None
         try:
-            self.server = RuntimeViewServer(
+            self.server = runtime_view_server(
                 host_name=host_name,
                 automation_dir=runtime_dir,
                 plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),

@@ -89,7 +89,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     "cli.automa_cli.runtime_monitor.DecisionViewAdapter.refresh",
                     side_effect=RuntimeError("decision view unavailable"),
                 ),
-                patch("cli.automa_cli.decision_view.DecisionView.invalidate_latest", autospec=True) as invalidate,
+                patch("cli.automa_cli.frontend.decision_view.DecisionView.invalidate_latest", autospec=True) as invalidate,
             ):
                 result = run_host_automation(
                     host_name=HOST_NAME, num_decisions=1, take_control=False,

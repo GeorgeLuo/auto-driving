@@ -20,7 +20,7 @@ from cli.automa_cli.bundles import controller_bundle_paths
 from cli.automa_cli.decision import accept_decision_publication, decision_view_frame
 from cli.automa_cli.decision_live import DecisionViewAdapter, _provider_identity
 from cli.automa_cli.decision_records import activations_from_payloads
-from cli.automa_cli.runtime_view import RuntimeViewServer
+from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.step_activations import replace_metadata
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.picar import AutonomyPilotPart, create_host

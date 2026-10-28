@@ -255,6 +255,12 @@
             "category": "source-ui",
             "commit_policy": "source",
             "responsibility": "The runtime viewer automa serves, workbench included: its pages and the server behind them. Imports no other automa_cli module."
+          },
+          {
+            "path": "cli/automa_cli/vehicles/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "The automa vehicles commands, and the vehicle probes, listing and readiness that hosts and simulators share."
           }
         ]
       },

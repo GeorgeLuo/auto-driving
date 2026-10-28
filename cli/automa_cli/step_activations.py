@@ -43,7 +43,7 @@ from .bundles import (
     sync_controller_bundle,
 )
 from .paths import display_path, safe_path_part
-from .vehicles import DEFAULT_READINESS_TIMEOUT_S
+from .vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
 
 def host_bundle(host_name: str, runtime_root: Path) -> dict[str, str]:
     return controller_bundle_paths(Path(runtime_root) / safe_path_part(host_name))

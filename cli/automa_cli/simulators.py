@@ -233,10 +233,8 @@ def ensure_simulator(
     chase_status: dict[str, Any] | None = None
     chase_gate_ready = False
     if configured_usable:
-        from .vehicles import (
-            DEFAULT_READINESS_TIMEOUT_S,
-            get_vehicle_status,
-        )
+        from .vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
+        from .vehicles.readiness import get_vehicle_status
 
         chase_status = get_vehicle_status(
             host_name="chase-sim-chaser",
@@ -421,7 +419,7 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Command
     """
 
     from .runtime_hosts import RuntimeHostError, start_simulator
-    from .vehicles import _vehicle_heading
+    from .vehicles.discovery import _vehicle_heading
 
     ui_dir, error = _metrics_ui_dir()
     if ui_dir is None:
@@ -444,7 +442,8 @@ def delete_simulator(*, url: str) -> CommandResult:
     """End a simulator ``simulators create`` started, unless a host was created at it."""
 
     from .runtime_hosts import created_simulators, local_hosts, stop_simulator
-    from .vehicles import _vehicle_heading, chase_operator_url, normalize_chase_url
+    from .vehicles.discovery import _vehicle_heading
+    from .vehicles.probes import chase_operator_url, normalize_chase_url
 
     try:
         ws_url = normalize_chase_url(url)

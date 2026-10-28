@@ -4,12 +4,12 @@ import json
 import unittest
 from unittest.mock import patch
 
-from cli.automa_cli.vehicles import (
+from cli.automa_cli.vehicles.probes import (
     Candidate,
     ProbeResult,
-    get_vehicle_status,
     normalize_chase_url,
 )
+from cli.automa_cli.vehicles.readiness import get_vehicle_status
 from tests.shared.cli.invoke import invoke_automa
 
 
@@ -89,7 +89,7 @@ class VehicleStatusTests(unittest.TestCase):
                 {"CHASE_UI_WS_URL": endpoint},
             ),
             patch(
-                "cli.automa_cli.vehicles._probe_chase",
+                "cli.automa_cli.vehicles.readiness._probe_chase",
                 return_value=probe_result,
             ) as probe,
             patch(
@@ -123,7 +123,7 @@ class VehicleStatusTests(unittest.TestCase):
             },
         )
         with patch(
-            "cli.automa_cli.vehicles._probe_chase",
+            "cli.automa_cli.vehicles.readiness._probe_chase",
             return_value=probe,
         ), patch(
             "cli.automa_cli.automation._collect_automation_status",
@@ -225,7 +225,7 @@ class VehicleStatusTests(unittest.TestCase):
             },
         }
         with patch(
-            "cli.automa_cli.vehicles._probe_chase",
+            "cli.automa_cli.vehicles.readiness._probe_chase",
             return_value=probe,
         ), patch(
             "cli.automa_cli.automation._collect_automation_status",
@@ -278,10 +278,10 @@ class VehicleStatusTests(unittest.TestCase):
             )
 
         with patch(
-            "cli.automa_cli.vehicles.ChaseSimCar.inspect_passive_capture",
+            "cli.automa_cli.vehicles.probes.ChaseSimCar.inspect_passive_capture",
             side_effect=_raise_frontend_unresponsive,
         ):
-            from cli.automa_cli.vehicles import _probe_chase
+            from cli.automa_cli.vehicles.probes import _probe_chase
 
             probe = _probe_chase(candidate, timeout_s=1.0)
 
@@ -292,7 +292,7 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertNotIn("atomic-evaluation-capture", probe.error or "")
 
         with patch(
-            "cli.automa_cli.vehicles._probe_chase",
+            "cli.automa_cli.vehicles.readiness._probe_chase",
             return_value=probe,
         ), patch(
             "cli.automa_cli.automation._collect_automation_status",

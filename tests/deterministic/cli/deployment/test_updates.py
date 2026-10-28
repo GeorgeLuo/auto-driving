@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from cli.automa_cli.command_result import CommandResult
 from cli.automa_cli import deploy, runtime_hosts
-from cli.automa_cli.vehicles import Candidate, ProbeResult
+from cli.automa_cli.vehicles.probes import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.runtime_fixtures import write_host_fixture
 

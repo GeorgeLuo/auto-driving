@@ -47,7 +47,8 @@ from .step_activations import (
 )
 from .host_publications import host_state
 from .host_status import host_block
-from .vehicles import Candidate, _probe_chase, chase_operator_url, normalize_vehicle_url
+from .vehicles.discovery import normalize_vehicle_url
+from .vehicles.probes import Candidate, _probe_chase, chase_operator_url
 
 
 ROOT = Path(__file__).resolve().parents[2]

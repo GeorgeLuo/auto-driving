@@ -15,7 +15,7 @@ UPDATE_STEP = "cli.automa_cli.app.stage_host_step"
 TIMEOUT_MESSAGE = "--timeout-s must be a finite number greater than zero"
 # Each status command and the function its timeout reaches.
 STATUS_COMMANDS = {
-    ("vehicles", "status"): "cli.automa_cli.app.get_vehicles_status",
+    ("vehicles", "status"): "cli.automa_cli.vehicles.commands.get_vehicles_status",
     ("hosts", "status"): "cli.automa_cli.app.get_hosts_status",
 }
 
@@ -130,7 +130,7 @@ class TimeoutInputTests(unittest.TestCase):
 
     def test_valid_positive_timeout_reaches_each_consumer_unchanged(self) -> None:
         with patch(
-            "cli.automa_cli.app.get_vehicles_status",
+            "cli.automa_cli.vehicles.commands.get_vehicles_status",
             return_value={"vehicles": [{"provider": "chase-sim", "url": "http://localhost:5050/", "state": "running"}]},
         ) as get_status:
             code, _, _ = _invoke("vehicles", "status", "--timeout-s", "1.25")

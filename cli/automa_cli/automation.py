@@ -55,7 +55,7 @@ from .frontend.perception_view import (
     get_perception_view_status,
     perception_view_ready,
 )
-from .vehicles import DEFAULT_READINESS_TIMEOUT_S
+from .vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
 
 
 ROOT = Path(__file__).resolve().parents[2]

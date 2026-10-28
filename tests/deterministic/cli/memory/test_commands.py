@@ -85,7 +85,7 @@ class MemoryCommandTests(unittest.TestCase):
                 runtime_root=runtime_root,
             )
             expected = ["bounded_evidence", "missing"]
-            self.assertEqual(json.loads(info.stdout)["activation"]["available_plugins"], expected)
+            self.assertEqual(sorted(json.loads(info.stdout)["activation"]["plugin_specs"]), expected)
 
     def test_info_names_the_staged_preset_and_plugins_as_perception_info_does(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -116,12 +116,9 @@ class MemoryCommandTests(unittest.TestCase):
                 self.assertEqual(
                     text[1], f"Enabled plugins: {', '.join(activation['plugins'])}"
                 )
-                self.assertEqual(
-                    activation["available_plugins"], sorted(activation["plugin_specs"])
-                )
-                self.assertEqual(
-                    text[2], f"Available plugins: {', '.join(activation['available_plugins'])}"
-                )
+                # The packaged catalog is listed by `plugins list`, not by info.
+                self.assertNotIn("available_plugins", activation)
+                self.assertFalse(any(line.startswith("Available plugins") for line in text))
                 # Every selectable step declares a schema and reports the same
                 # section titles and failure-policy field names.
                 schema = payload[f"{step}_schema"]

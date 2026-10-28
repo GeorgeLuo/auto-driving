@@ -129,8 +129,9 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `hosts plugins upload` | Stores a local file in an existing live catalog, refusing source that does not compile; `--arm` also arms it through the same operation as `hosts plugins arm`. |
 | `hosts plugins arm` | Loads plugins for any step on the host and applies them at its next cycle, without restarting automation. On observation, plan and action, which run one plugin, the armed plugin replaces the current one. An import or construction error fails the command (exit 2) and keeps the previous selection. Repeat `--plugin` with `--step`, or use a JSON `--selection` map to arm several steps together. |
 | `hosts plugins disarm` | Deselects named plugins on an existing host; observation, plan and action keep their one plugin (arm a replacement instead). Use `--step` with repeatable `--plugin`, a JSON `--selection` map for grouped removals, or `--all` to clear one step (with `--step`) or perception, memory and proposal. The next cycle resets disarmed instances; catalog entries remain available. |
-| `hosts plugins status` | Reads available, requested and applied revisions; exits 2 while the last selection request failed. `list` is an alias. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
-| `hosts info perception\|memory\|proposal\|plan\|action` | Reads that step's staged activation, enabled and available plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception, memory, proposal and plan also show their preset. Each reports its view; memory, proposal, plan and action include live runner status. Proposal, plan and action also show the decision generation, each decision step's plugins, and the action authority. |
+| `hosts plugins status` | Reads available, requested and applied revisions; exits 2 while the last selection request failed. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
+| `hosts info perception\|memory\|proposal\|plan\|action` | Reads that step's staged activation, enabled plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception, memory, proposal and plan also show their preset. Each reports its view; memory, proposal, plan and action include live runner status. Proposal, plan and action also show the decision generation, each decision step's plugins, and the action authority. |
+| `plugins list` | Offline: lists every packaged plugin by step, defaults first and marked; `--step` filters and `--json` adds each definition's entrypoint, default config and description. With `--host-name`, reads the plugins that host has applied and their loaded revisions instead. |
 | `plugins inspect <step>` | Offline: replays an image, image directory, or recorded run through the whole cycle and reports perception, memory, proposal, plan, or action. Restores recorded selections; `--preset` or `--plugin` overrides the inspected step. `--frame N` reports one frame after replaying its history. `--record` saves `report.json` and copied frames under `runtime/<step>-inspections/`. See [Plugin inspection](#plugin-inspection). |
 | `hosts create` | Creates a named host for the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url`, installs its release, and starts it. `vehicles status` names each vehicle's provider and URL. |
 | `hosts delete` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. |
@@ -411,8 +412,9 @@ their default configs from `implementations/decision_cycle/perception/catalog.py
 `implementations/decision_cycle/perception/presets.py`. The two are exclusive,
 and a plugin list is recorded as the preset it equals, else `custom`.
 
-`hosts info perception` reports the staged preset, its enabled plugins and
-the available ones, and the staged runner's `perception_schema_v3` contract.
+`./cli/automa plugins list --step perception` lists the packaged perception
+plugins. `hosts info perception` reports the staged preset, its enabled plugins,
+and the staged runner's `perception_schema_v3` contract.
 `--json` returns `host_perception_info` with that contract under
 `perception_schema`. Staging replaces the selection. A running worker applies a
 changed plugin list at its next frame and changed plugin configs when it
@@ -563,8 +565,9 @@ default configs from `implementations/decision_cycle/memory/catalog.py`.
 `implementations/decision_cycle/memory/presets.py`. The two are exclusive,
 and a plugin list is recorded as the preset it equals, else `custom`.
 
-`hosts info memory` reports the staged preset, its enabled plugins and the
-available ones, and the staged runner's `memory_schema_v1` contract.
+`./cli/automa plugins list --step memory` lists the packaged memory plugins.
+`hosts info memory` reports the staged preset, its enabled plugins, and the
+staged runner's `memory_schema_v1` contract.
 `--json` returns `host_memory_info` with that contract under `memory_schema`.
 Perception, memory, and proposal (`hosts info proposal`) describe inputs,
 plugins, output, composition and failure policy;
@@ -594,7 +597,8 @@ Its default business logic is reached through
 [`proposal/catalog.py`](implementations/decision_cycle/proposal/catalog.py), and
 [`plugins/avoid_recent_obstruction/plugin.py`](implementations/decision_cycle/proposal/plugins/avoid_recent_obstruction/plugin.py).
 
-`hosts info proposal` reports the staged plugins and the available ones,
+`./cli/automa plugins list --step proposal` lists the packaged proposal plugins.
+`hosts info proposal` reports the staged plugins,
 the staged runner's `proposal_schema_v1` contract, and the plan and action
 plugins that act on them. `--json` returns `host_proposal_info` with that
 contract under `proposal_schema`, and the decision generation, each decision

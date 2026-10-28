@@ -16,7 +16,7 @@ from .step_inspect import INSPECT_STEPS, inspect_step
 def register_plugins(subcommands: argparse._SubParsersAction) -> None:
     step_plugins = subcommands.add_parser(
         "plugins",
-        help="List loaded host plugins or inspect plugins from images and recordings.",
+        help="List packaged or loaded host plugins, or inspect plugins from images and recordings.",
     )
     step_plugins.set_defaults(handler=_handle_plugins_help)
     step_plugin_commands = step_plugins.add_subparsers(dest="plugin_command")
@@ -26,16 +26,17 @@ def register_plugins(subcommands: argparse._SubParsersAction) -> None:
     ).set_defaults(handler=_handle_plugins_help)
 
     listing = step_plugin_commands.add_parser(
-        "list", help="Show the plugins loaded on a named host, grouped by step.",
+        "list", help="Show packaged plugins, or those loaded on a named host, grouped by step.",
         description=(
-            "Read the host's applied plugin selection and loaded revisions. "
-            "Available uploads and pending selections are not listed as loaded. "
+            "Without --host-name, list every packaged plugin and mark each step's defaults. "
+            "With it, read the host's applied plugin selection and loaded revisions; "
+            "available uploads and pending selections are not listed as loaded. "
             "This command does not start a host or change its selection."
         ),
     )
-    listing.add_argument("--host-name", required=True, help="Host name from hosts status.")
+    listing.add_argument("--host-name", help="Host name from hosts status; omit to list every packaged plugin.")
     listing.add_argument("--step", choices=STEPS, help="Show only this cycle step.")
-    listing.add_argument("--json", action="store_true", help="Print loaded definitions and selection status as JSON.")
+    listing.add_argument("--json", action="store_true", help="Print the listed definitions as JSON, with each step's defaults or the host's selection status.")
     listing.set_defaults(handler=_handle_plugins_list)
 
     inspect_control = step_plugin_commands.add_parser(
@@ -109,10 +110,11 @@ def register_plugins(subcommands: argparse._SubParsersAction) -> None:
 def _handle_plugins_help(args: argparse.Namespace) -> int:
     print("\n".join([
         "automa plugins commands", "",
-        "- list     show the plugins loaded on a named host",
+        "- list     show packaged plugins or those loaded on a named host",
         "- inspect  report a step's plugins from images or a recorded run",
         "- help     show this summary", "",
         "Upload, arm, disarm and catalog status: ./cli/automa hosts plugins", "",
+        "Packaged plugins: ./cli/automa plugins list",
         "Loaded plugins: ./cli/automa plugins list --host-name <host>",
         "Detailed help: ./cli/automa plugins <command> --help",
     ]))

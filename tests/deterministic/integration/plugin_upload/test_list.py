@@ -9,6 +9,7 @@ import unittest
 from pathlib import Path
 
 from autonomy.decision_cycle.activation import STEPS
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, step_plugins
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
@@ -28,6 +29,36 @@ def name_host(runtime_root: Path, base: str, provider: str) -> None:
 
 
 class PluginListFlows(unittest.TestCase):
+    def test_without_a_host_lists_every_packaged_plugin(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+
+            def listed(*options):
+                return invoke_automa("plugins", "list", *options, runtime_root=root)
+
+            catalog = json.loads(listed("--json").stdout)
+            self.assertTrue(catalog["ok"])
+            self.assertIsNone(catalog["host_name"])
+            self.assertEqual(catalog["defaults"], {step: list(ids) for step, ids in DEFAULT_STEP_PLUGINS.items()})
+            packaged = {(step, plugin_id): entry for step in STEPS for plugin_id, entry in step_plugins(step).items()}
+            self.assertEqual({(item["step"], item["id"]) for item in catalog["plugins"]}, set(packaged))
+            for item in catalog["plugins"]:
+                entry = packaged[item["step"], item["id"]]
+                self.assertEqual((item["entrypoint"], item["config"]), (entry["spec"], entry["default_config"]))
+
+            human = listed().stdout
+            self.assertIn("Packaged plugins:", human)
+            for step in STEPS:
+                defaults = DEFAULT_STEP_PLUGINS[step]
+                ordered = [*defaults, *sorted(set(step_plugins(step)) - set(defaults))]
+                self.assertEqual([item["id"] for item in catalog["plugins"] if item["step"] == step], ordered)
+                marked = [f"{plugin_id} (default)" if plugin_id in defaults else plugin_id for plugin_id in ordered]
+                self.assertIn(f"  {step}: {', '.join(marked)}\n", human)
+            action = json.loads(listed("--step", "action", "--json").stdout)
+            self.assertEqual({item["step"] for item in action["plugins"]}, {"action"})
+            self.assertEqual(list(action["defaults"]), ["action"])
+            self.assertEqual(list(root.iterdir()), [])
+
     def test_named_hosts_list_applied_revisions_without_changing_selection_or_session(self):
         for vehicle, provider in (("chase", "chase-sim"), ("picar", "picar")):
             with self.subTest(vehicle=vehicle), image_source(1) as root, plugin_host(root, vehicle) as (host, base):

@@ -92,7 +92,6 @@ def staged_step_info(
             "path": display_path(path),
             "preset": activation.metadata.get("preset"),
             "plugins": list(manager.selected_ids),
-            "available_plugins": sorted(item.plugin_id for item in available),
             "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
             "plugin_configs": {item.plugin_id: dict(item.config) for item in available},
         },
@@ -127,7 +126,6 @@ def format_staged_step(
     lines = [
         f"{step.capitalize()}: {payload['host_name']}" + (f" -> {preset}" if preset else ""),
         f"Enabled plugins: {', '.join(activation.get('plugins') or []) or 'none'}",
-        f"Available plugins: {', '.join(activation.get('available_plugins') or []) or 'none'}",
         *([view] if view else []),
         f"Bundle: {bundle.get('root_dir') or 'unknown'}",
         f"Activation: {activation['path']}",

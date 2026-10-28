@@ -11,13 +11,13 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from autonomy.shared_memory import SharedMemoryValueError
 from implementations.decision_cycle.catalog import selection_activation
 
-from .command_result import CommandResult
-from .hosts.step_formatting import format_step_record, format_step_timing
-from .hosts.inspection_runs import add_seed_provenance, read_shared_memory_seed
-from .hosts.memory_report import evidence_publisher, plugin_summaries
-from .paths import ROOT, display_path
+from ..command_result import CommandResult
+from ..hosts.step_formatting import format_step_record, format_step_timing
+from ..hosts.inspection_runs import add_seed_provenance, read_shared_memory_seed
+from ..hosts.memory_report import evidence_publisher, plugin_summaries
+from ..paths import ROOT, display_path
 from .step_replay import StepReplay, inspect_run_id, read_replay_source, record_inspect_run
-from .hosts.workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationError
+from ..hosts.workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationError
 
 INSPECT_STEPS = ("perception", "memory", *DECISION_STEPS)
 

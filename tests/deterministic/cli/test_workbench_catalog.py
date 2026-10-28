@@ -377,7 +377,7 @@ class WorkbenchMatchesInspectTests(unittest.TestCase):
     def test_selection_results_equal_inspect_results(self) -> None:
         import json
 
-        from cli.automa_cli.step_inspect import inspect_step
+        from cli.automa_cli.plugins.step_inspect import inspect_step
 
         def canonical(value):
             return json.loads(json.dumps(value, sort_keys=True, default=str))

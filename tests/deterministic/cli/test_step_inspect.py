@@ -19,8 +19,8 @@ from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from cli.automa_cli.hosts.step_formatting import format_step_record
-from cli.automa_cli.step_inspect import INSPECT_STEPS, inspect_step
-from cli.automa_cli.step_replay import StepReplay, default_selection
+from cli.automa_cli.plugins.step_inspect import INSPECT_STEPS, inspect_step
+from cli.automa_cli.plugins.step_replay import StepReplay, default_selection
 from cli.automa_cli.hosts.workbench_source import ImageSource, ReplayFrame
 from implementations.decision_cycle.catalog import PRESET_STEPS
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
@@ -214,12 +214,12 @@ class StepInspectTests(unittest.TestCase):
     def test_every_step_names_a_failed_frame_or_recording_and_exits_2(self) -> None:
         for step in INSPECT_STEPS:
             with self.subTest(step=step):
-                with patch("cli.automa_cli.step_inspect.StepReplay.run", side_effect=RuntimeError("broken frame")):
+                with patch("cli.automa_cli.plugins.step_inspect.StepReplay.run", side_effect=RuntimeError("broken frame")):
                     result = inspect_step(step, source=self.frames)
                 self.assertEqual(result.exit_code, 2)
                 self.assertIn("inspect failed at", result.message)
                 self.assertIn("broken frame", result.message)
-                with patch("cli.automa_cli.step_inspect.record_inspect_run", side_effect=OSError("disk full")):
+                with patch("cli.automa_cli.plugins.step_inspect.record_inspect_run", side_effect=OSError("disk full")):
                     result = inspect_step(step, source=self.frames, record=True)
                 self.assertEqual(result.exit_code, 2)
                 self.assertIn(f"Could not record {step} inspect run", result.message)

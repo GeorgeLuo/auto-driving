@@ -161,8 +161,9 @@ use `--json` for the complete receipt or catalog snapshot, including the target,
 outcome, and recovery action. `./cli/automa plugins list --host-name chase-sim-chaser`
 shows the host's applied plugins, grouped by step, with their loaded revisions.
 Use `--step perception` to filter or `--json` for their definitions and configs.
-Without `--host-name`, `plugins list` lists every packaged plugin and marks each
-step's defaults; no host is needed.
+Without `--host-name`, `plugins list` lists every packaged plugin in
+`implementations/decision_cycle/catalog.py` and marks each step's defaults; no
+host is needed.
 The former `hosts plugins list` alias is removed. `hosts plugins help` describes
 the file identity arguments and the existing-host precondition.
 Open **Plugins** in the runtime viewer to see the available

@@ -39,6 +39,7 @@ class PluginListFlows(unittest.TestCase):
             catalog = json.loads(listed("--json").stdout)
             self.assertTrue(catalog["ok"])
             self.assertIsNone(catalog["host_name"])
+            self.assertEqual(catalog["catalog"], "implementations/decision_cycle/catalog.py")
             self.assertEqual(catalog["defaults"], {step: list(ids) for step, ids in DEFAULT_STEP_PLUGINS.items()})
             packaged = {(step, plugin_id): entry for step in STEPS for plugin_id, entry in step_plugins(step).items()}
             self.assertEqual({(item["step"], item["id"]) for item in catalog["plugins"]}, set(packaged))
@@ -54,7 +55,8 @@ class PluginListFlows(unittest.TestCase):
                 self.assertEqual([item["id"] for item in catalog["plugins"] if item["step"] == step], ordered)
                 rows += [f"- {step}/{plugin_id}: packaged" + (" (default)" if plugin_id in defaults else "")
                          for plugin_id in ordered]
-            self.assertEqual(listed().stdout.splitlines()[:len(rows) + 1], ["Packaged plugins:", *rows])
+            self.assertEqual(listed().stdout.splitlines()[:len(rows) + 2],
+                             ["Catalog: implementations/decision_cycle/catalog.py", "Packaged plugins:", *rows])
             action = json.loads(listed("--step", "action", "--json").stdout)
             self.assertEqual({item["step"] for item in action["plugins"]}, {"action"})
             self.assertEqual(list(action["defaults"]), ["action"])

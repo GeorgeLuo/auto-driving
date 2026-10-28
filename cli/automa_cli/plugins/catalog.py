@@ -14,9 +14,11 @@ from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.plugins import PluginDefinition
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH, describe_plugin
+from implementations.decision_cycle import catalog as packaged_catalog
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, step_plugins
 
 from ..shared.command_result import CommandResult
+from ..shared.paths import display_path
 
 # Arming waits for the host's current cycle and for the selection to load.
 ARM_TIMEOUT_S = 60.0
@@ -150,12 +152,13 @@ def list_plugins(*, host_name: str | None = None, step: str | None = None,
 
     steps = (step,) if step is not None else STEPS
     payload: dict[str, Any] = {
-        "schema": "automa_plugin_list", "host_name": host_name, "url": None,
+        "schema": "automa_plugin_list", "host_name": host_name, "catalog": None, "url": None,
         "step": step, "ok": False, "plugins": [],
     }
     if host_name is None:
         payload.update(
             ok=True,
+            catalog=display_path(Path(packaged_catalog.__file__)),
             plugins=[plugin for name in steps for plugin in _packaged_plugins(name)],
             defaults={name: list(DEFAULT_STEP_PLUGINS[name]) for name in steps},
         )
@@ -180,7 +183,7 @@ def list_plugins(*, host_name: str | None = None, step: str | None = None,
     exit_code = 0 if payload["ok"] else 2
     if json_output:
         return CommandResult(exit_code, json.dumps(payload, indent=2, sort_keys=True))
-    lines = [f"Host: {host_name}"] if host_name else []
+    lines = [f"Host: {host_name}"] if host_name else [f"Catalog: {payload['catalog']}"]
     if not payload["ok"]:
         lines.extend(["Loaded plugins: unavailable", f"Reason: {payload['error']}"])
         return CommandResult(exit_code, "\n".join(lines))

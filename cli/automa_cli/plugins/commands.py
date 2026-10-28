@@ -28,7 +28,8 @@ def register_plugins(subcommands: argparse._SubParsersAction) -> None:
     listing = step_plugin_commands.add_parser(
         "list", help="Show packaged plugins, or those loaded on a named host, grouped by step.",
         description=(
-            "Without --host-name, list every packaged plugin and mark each step's defaults. "
+            "Without --host-name, list every packaged plugin in "
+            "implementations/decision_cycle/catalog.py and mark each step's defaults. "
             "With it, read the host's applied plugin selection and loaded revisions; "
             "available uploads and pending selections are not listed as loaded. "
             "This command does not start a host or change its selection."

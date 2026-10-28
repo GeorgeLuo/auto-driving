@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import unittest
 
+from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.session import RunConfiguration
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.invoke import invoke_automa
@@ -110,9 +111,12 @@ class PluginArmingFlows(unittest.TestCase):
                     self.assertEqual(refused.returncode, 2, refused.stdout)
                     self.assertIn("Arming: failed", refused.stdout)
                     self.assertIn("ModuleNotFoundError: No module named 'not_uploaded_yet'", refused.stdout)
-            failed = invoke_automa("hosts", "plugins", "status", "--url", base, "--json", check=False)
+            failed = invoke_automa("plugins", "list", "--url", base, "--json", check=False)
             self.assertEqual(failed.returncode, 2)
-            shown = json.loads(failed.stdout)
+            listed = json.loads(failed.stdout)
+            self.assertIn("No module named 'not_uploaded_yet'", listed["arming_error"])
+            self.assertEqual(listed["armed"], [item for step in STEPS for item in before["arming"]["requested"][step]])
+            shown = catalog(base)
             self.assertEqual(shown["arming"]["status"], "failed")
             self.assertEqual(shown["arming"]["requested"], before["arming"]["requested"])
             self.assertEqual(shown["arming"]["applied"], before["arming"]["applied"])

@@ -5,22 +5,43 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from autonomy.decision_cycle.activation import STEPS
+
 from ..hosts.workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ..shared.selection_args import add_selection_args
+from .catalog import list_plugins
 from .step_inspect import INSPECT_STEPS, inspect_step
 
 
 def register_plugins(subcommands: argparse._SubParsersAction) -> None:
     step_plugins = subcommands.add_parser(
         "plugins",
-        help="Inspect what a step's plugins report, from images or a recorded run.",
+        help="List a plugin catalog or what a host has armed, or inspect plugins from images and recordings.",
     )
     step_plugins.set_defaults(handler=_handle_plugins_help)
     step_plugin_commands = step_plugins.add_subparsers(dest="plugin_command")
     step_plugin_commands.add_parser(
         "help",
-        help="Show plugin inspection commands.",
+        help="Show plugin listing and inspection commands.",
     ).set_defaults(handler=_handle_plugins_help)
+
+    listing = step_plugin_commands.add_parser(
+        "list", help="Show the packaged catalog, or what a host has armed, in cycle order.",
+        description=(
+            "Without a host, list the packaged catalog in implementations/decision_cycle/catalog.py "
+            "and mark each step's defaults. With --host-name or --url, list the plugins the host has "
+            "armed; --long lists the host's whole catalog, packaged and uploaded, and marks the armed "
+            "plugins. Exits 2 while the host's last arming failed. "
+            "This command does not start a host or change what it has armed."
+        ),
+    )
+    listing_target = listing.add_mutually_exclusive_group()
+    listing_target.add_argument("--host-name", help="Host name from hosts status; omit to list the packaged catalog.")
+    listing_target.add_argument("--url", help="Runtime or workbench URL; bypass host lookup. A workbench catalog arms nothing, so list it with --long.")
+    listing.add_argument("--long", action="store_true", help="List the host's whole catalog and its version, marking armed plugins.")
+    listing.add_argument("--step", choices=STEPS, help="Show only this cycle step.")
+    listing.add_argument("--json", action="store_true", help="Print the catalog and each step's defaults, or the host's armed plugins, as JSON.")
+    listing.set_defaults(handler=_handle_plugins_list)
 
     inspect_control = step_plugin_commands.add_parser(
         "inspect", help="Replay images or a recorded run and report a step's plugins.",
@@ -93,12 +114,23 @@ def register_plugins(subcommands: argparse._SubParsersAction) -> None:
 def _handle_plugins_help(args: argparse.Namespace) -> int:
     print("\n".join([
         "automa plugins commands", "",
+        "- list     show the packaged catalog or what a host has armed",
         "- inspect  report a step's plugins from images or a recorded run",
         "- help     show this summary", "",
-        "Upload, arm, disarm and catalog status: ./cli/automa hosts plugins", "",
-        "Detailed help: ./cli/automa plugins inspect <step> --help",
+        "Upload, arm and disarm: ./cli/automa hosts plugins", "",
+        "Packaged catalog: ./cli/automa plugins list",
+        "Armed on a host: ./cli/automa plugins list --host-name <host>",
+        "A host's catalog: ./cli/automa plugins list --host-name <host> --long",
+        "Detailed help: ./cli/automa plugins <command> --help",
     ]))
     return 0
+
+
+def _handle_plugins_list(args: argparse.Namespace) -> int:
+    result = list_plugins(host_name=args.host_name, url=args.url, step=args.step, long=args.long,
+                          json_output=args.json)
+    print(result.message)
+    return result.exit_code
 
 
 def _handle_plugins_inspect_help(args: argparse.Namespace) -> int:

@@ -9,7 +9,7 @@
 - ``info``, ``stream``, ``viewer``: ``perception``, ``memory``, ``decision_steps`` and
   ``streaming``, with ``stream_output``, ``decision_live`` and ``view_discovery``.
 - ``memory``, ``perception``: ``viability`` for the viability measurements, ``memory`` for reset.
-- ``plugins``: ``plugin_catalog``.
+- ``plugins``: ``plugins.catalog`` (shared with top-level ``plugins list``).
 - ``operation``: ``operations``.
 - ``workbench``: ``workbench`` and the ``workbench_*`` modules.
 - Read by several commands: ``host_publications``, ``vehicle_access``, ``decision``,

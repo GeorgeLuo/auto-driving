@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.hosts.plugin_catalog import PluginCatalogClient
+from cli.automa_cli.plugins.catalog import PluginCatalogClient
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner, image_source, serve_workbench
 from tests.shared.integration.plugin_flow_fixtures import (
@@ -207,9 +207,10 @@ class PluginDisarmingFlows(unittest.TestCase):
                     with self.assertRaisesRegex(RuntimeError, "reset refused"):
                         host.run(frame(root, 2))
                     cycle.assert_not_called()
-                result = invoke_automa("hosts", "plugins", "status", "--url", base, "--json", check=False)
+                result = invoke_automa("plugins", "list", "--url", base, "--json", check=False)
                 self.assertEqual(result.returncode, 2)
-                shown = json.loads(result.stdout)
+                self.assertIn("reset refused", json.loads(result.stdout)["arming_error"])
+                shown = catalog(base)
                 self.assertEqual(shown["arming"]["status"], "failed")
                 self.assertEqual([item["id"] for item in selected(shown, "applied", "perception")], ["frame"])
                 self.assertEqual(host.session_status()["status"], "error")
@@ -249,9 +250,10 @@ class PluginDisarmingFlows(unittest.TestCase):
                     with self.assertRaisesRegex(MemoryUpdateError, "memory reset refused"):
                         host.run(frame(root, 2))
                     cycle.assert_not_called()
-                result = invoke_automa("hosts", "plugins", "status", "--url", base, "--json", check=False)
+                result = invoke_automa("plugins", "list", "--url", base, "--json", check=False)
                 self.assertEqual(result.returncode, 2)
-                shown = json.loads(result.stdout)
+                self.assertIn("memory reset refused", json.loads(result.stdout)["arming_error"])
+                shown = catalog(base)
                 self.assertEqual(selected(shown, "applied", "perception"), [])
                 self.assertEqual([item["id"] for item in selected(shown, "applied", "memory")], ["bounded_evidence"])
                 self.assertEqual(shown["arming"]["status"], "failed")

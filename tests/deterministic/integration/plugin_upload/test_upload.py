@@ -11,7 +11,7 @@ from urllib.error import HTTPError
 from autonomy.decision_cycle.activation import step_activation_from_payload
 from autonomy.plugins import uploaded_source
 from cli.automa_cli.hosts.bundles import controller_bundle_paths
-from cli.automa_cli.hosts.plugin_catalog import PluginCatalogClient
+from cli.automa_cli.plugins.catalog import PluginCatalogClient
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.shared.cli.invoke import invoke_automa
@@ -82,12 +82,15 @@ class PluginUploadFlows(unittest.TestCase):
                     self.assertGreater(receipt["catalog_version"], previous)
                     previous = receipt["catalog_version"]
                     listing = json.loads(invoke_automa(
-                        "hosts", "plugins", "status", "--url", base, "--step", "perception", "--json",
+                        "plugins", "list", "--url", base, "--step", "perception", "--long", "--json",
                     ).stdout)
-                    self.assertEqual(listing["outcome"]["status"], "ok")
+                    self.assertTrue(listing["ok"])
                     self.assertEqual(listing["url"], base)
-                    self.assertTrue(all(plugin["step"] == "perception" for plugin in listing["plugins"]))
-                    registered = next(p for p in listing["plugins"] if p["id"] == plugin_id)
+                    # A workbench catalog takes uploads but arms nothing.
+                    self.assertIsNone(listing["armed"])
+                    self.assertEqual(listing["catalog"]["source"], base)
+                    self.assertTrue(all(plugin["step"] == "perception" for plugin in listing["catalog"]["plugins"]))
+                    registered = next(p for p in listing["catalog"]["plugins"] if p["id"] == plugin_id)
                     self.assertEqual(registered, receipt["plugin"])
                     self.assertEqual(uploaded_source(registered["metadata"]["source_file"]).read_bytes(), source)
                 shown = get_json(base, "/api/state")
@@ -151,8 +154,8 @@ class PluginUploadFlows(unittest.TestCase):
             })
             base = serve_workbench(self, runner)
             catalog = json.loads(invoke_automa(
-                "hosts", "plugins", "status", "--url", base, "--step", "perception", "--json",
-            ).stdout)
+                "plugins", "list", "--url", base, "--step", "perception", "--long", "--json",
+            ).stdout)["catalog"]
             default_cutoff = next(item for item in catalog["plugins"] if item["id"] == "multi_obstruction_tracks")["config"]["floor_cutoff_y"]
             file = root / "unselected.py"
             file.write_text("raise RuntimeError('not loaded during catalog registration')\n")
@@ -272,13 +275,15 @@ class PluginUploadFlows(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             runtime_root = root / "vehicles"
-            unavailable = invoke_automa("hosts", "plugins", "status", "--name", "chase-sim-chaser",
-                                     "--json", runtime_root=runtime_root, check=False)
+            unavailable = invoke_automa("plugins", "list", "--host-name", "chase-sim-chaser", "--long",
+                                        "--json", runtime_root=runtime_root, check=False)
             missing = json.loads(unavailable.stdout)
             self.assertNotEqual(unavailable.returncode, 0)
             self.assertEqual(missing["host_name"], "chase-sim-chaser")
-            self.assertEqual(missing["outcome"]["status"], "unavailable")
-            self.assertIsNone(missing["outcome"]["recovery"])
+            self.assertFalse(missing["ok"])
+            # The error already says why a named host is unreachable; there is no retry hint.
+            self.assertNotIn("Next:", invoke_automa("plugins", "list", "--host-name", "chase-sim-chaser",
+                                                    runtime_root=runtime_root, check=False).stdout)
             bundle = controller_bundle_paths(runtime_root / "chase-sim-chaser")
             chase = self.enterContext(chase_runtime(runtime_root))
             viewer = RuntimeViewServer(host_name="chase-sim-chaser", automation_dir=Path(bundle["runtime_dir"]) / "automation",
@@ -292,17 +297,17 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertIn("Upload: uploaded", result.stdout)
             self.assertIn("Plugin: prototype", result.stdout)
             self.assertIn("Selection: unchanged", result.stdout)
-            self.assertIn("Next: ./cli/automa hosts plugins status --name chase-sim-chaser --step memory", result.stdout)
+            self.assertIn("Next: ./cli/automa plugins list --host-name chase-sim-chaser --step memory --long", result.stdout)
+            armed = json.loads(invoke_automa(
+                "plugins", "list", "--host-name", "chase-sim-chaser", "--step", "memory", "--json",
+                runtime_root=runtime_root,
+            ).stdout)
+            self.assertTrue(armed["ok"])
+            self.assertEqual(armed["armed"], [])
             listed = json.loads(invoke_automa(
-                "hosts", "plugins", "list", "--name", "chase-sim-chaser", "--step", "memory", "--json",
+                "plugins", "list", "--host-name", "chase-sim-chaser", "--step", "memory", "--long", "--json",
                 runtime_root=runtime_root,
-            ).stdout)
-            self.assertTrue(listed["ok"])
-            status = json.loads(invoke_automa(
-                "hosts", "plugins", "status", "--name", "chase-sim-chaser", "--step", "memory", "--json",
-                runtime_root=runtime_root,
-            ).stdout)
-            self.assertEqual(listed, status)
+            ).stdout)["catalog"]
             self.assertEqual(len(listed["plugins"]), 1)
             self.assertEqual(listed["plugins"][0]["id"], "prototype")
             self.assertIn(listed["plugins"][0]["metadata"]["revision"], result.stdout)
@@ -316,9 +321,9 @@ class PluginUploadFlows(unittest.TestCase):
             file = Path(directory) / "prototype.py"
             file.write_text("from dependency_can_arrive_later import Prototype\n")
 
-            def status(host_run_id: str) -> str:
-                result = invoke_automa("hosts", "plugins", "status", "--name", "chase-sim-chaser",
-                                    "--step", "memory", runtime_root=runtime_root)
+            def listed(host_run_id: str) -> str:
+                result = invoke_automa("plugins", "list", "--host-name", "chase-sim-chaser",
+                                       "--step", "memory", "--long", runtime_root=runtime_root)
                 self.assertIn(f"(host run {host_run_id})", result.stdout)
                 return result.stdout
 
@@ -327,10 +332,10 @@ class PluginUploadFlows(unittest.TestCase):
                                       "--file", str(file), "--step", "memory", "--plugin-id", "prototype",
                                       "--entrypoint", "prototype:Prototype", runtime_root=runtime_root)
                 self.assertIn(f"(host run {first.loop.run_id})", uploaded.stdout)
-                self.assertIn("memory/prototype", status(first.loop.run_id))
+                self.assertIn("memory/prototype", listed(first.loop.run_id))
             with chase_runtime(runtime_root) as restarted:
                 self.assertNotEqual(restarted.loop.run_id, first.loop.run_id)
-                self.assertNotIn("memory/prototype", status(restarted.loop.run_id))
+                self.assertNotIn("memory/prototype", listed(restarted.loop.run_id))
 
 
 if __name__ == "__main__":

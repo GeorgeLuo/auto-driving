@@ -11,7 +11,7 @@ from tests.support.runtime_fixtures import write_host_fixture
 from unittest.mock import patch
 from urllib.request import urlopen
 
-from cli.automa_cli.hosts.runtime_hosts import stop_chase_host
+from cli.automa_cli.hosts.runtime_hosts import runtime_base_url, stop_chase_host
 from implementations.decision_cycle.catalog import PRESET_STEPS, packaged_activation
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
@@ -48,7 +48,7 @@ class PluginArmingFlows(unittest.TestCase):
                 selection = root / "selection.json"
                 selection.write_text(json.dumps({step: [f"prototype-{step}"] for step in PRESET_STEPS}))
                 # Through the executable once; the worker journey below covers
-                # upload, status and disarm the same way.
+                # upload, plugins list and disarm the same way.
                 receipt = json.loads(run_automa("hosts", "plugins", "arm", "--url", base,
                                                 "--selection", str(selection), "--json").stdout)
                 self.assertEqual(receipt["status"], "requested")
@@ -66,9 +66,10 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(proposal(result, "prototype-proposal").metadata["memory"],
                                  {"revision": 1, "perception": 1, "count": 1})
                 self.assertEqual(host.session_status()["status"], "pre_start")
-                human = invoke_automa("hosts", "plugins", "status", "--url", base).stdout
-                self.assertIn("Arming: applied", human)
-                self.assertIn("Applied proposal: prototype-proposal", human)
+                human = invoke_automa("plugins", "list", "--url", base).stdout
+                self.assertIn("Armed:", human)
+                armed = selected(applied, "applied", "proposal")[0]["metadata"]
+                self.assertIn(f"- proposal/prototype-proposal: revision {armed['revision']} ({armed['filename']})", human)
 
     def test_cli_worker_view_and_stream_adopt_new_proposals_without_restarting(self):
         with tempfile.TemporaryDirectory() as directory, fake_metrics_ui_server() as ws_url:
@@ -80,11 +81,16 @@ class PluginArmingFlows(unittest.TestCase):
             def cli(*args, check=True):
                 return run_automa("hosts", *args, runtime_root=runtime, extra_env=env, check=check)
 
+            def host_catalog():
+                # Adoption at the host's next cycle shows only in its catalog API.
+                with patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime):
+                    return catalog(runtime_base_url("chase-sim-chaser"))
+
             cli("stage", "perception", "--name", "chase-sim-chaser", "--preset", "lightweight_observer")
             try:
                 cli("run", "--name", "chase-sim-chaser", "--observe-only", "--num-decisions", "0", "--record")
                 original = json.loads(cli("status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
-                before = json.loads(cli("plugins", "status", "--name", "chase-sim-chaser", "--json").stdout)
+                before = host_catalog()
                 file = root / "proposal.py"
                 for revision in (1, 2):
                     write_plugin(file, "proposal", "prototype", revision)
@@ -94,12 +100,15 @@ class PluginArmingFlows(unittest.TestCase):
                     self.assertTrue(receipt["ok"])
                     deadline = time.monotonic() + 5
                     while True:
-                        shown = json.loads(cli("plugins", "status", "--name", "chase-sim-chaser", "--json").stdout)
+                        shown = host_catalog()
                         if shown["arming"]["status"] == "applied":
                             break
                         self.assertLess(time.monotonic(), deadline, shown)
                         time.sleep(0.05)
                     self.assertEqual(selected(shown, "applied", "proposal")[0], receipt["plugin"])
+                    armed = json.loads(run_automa("plugins", "list", "--host-name", "chase-sim-chaser", "--step", "proposal",
+                                                  "--json", runtime_root=runtime, extra_env=env).stdout)["armed"]
+                    self.assertEqual(armed, [receipt["plugin"]])
                     streamed = json.loads(cli("stream", "proposal", "--name", "chase-sim-chaser", "--once", "--json").stdout)
                     self.assertEqual(streamed["plugins"], ["prototype"])
                     self.assertEqual(streamed["generation_id"], shown["applied_decision"]["generation_id"])
@@ -130,7 +139,7 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertTrue(disarmed["ok"])
                 deadline = time.monotonic() + 5
                 while True:
-                    shown = json.loads(cli("plugins", "status", "--name", "chase-sim-chaser", "--json").stdout)
+                    shown = host_catalog()
                     if shown["arming"]["status"] == "applied":
                         break
                     self.assertLess(time.monotonic(), deadline, shown)
@@ -171,8 +180,9 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(exported, json.loads(host_manifest.read_text()))
                 self.assertEqual(len(exported["frames"]), state["recorded_count"])
                 # The host outlives the run and keeps live deselections, like a PiCar's.
-                after = json.loads(cli("plugins", "status", "--name", "chase-sim-chaser", "--json").stdout)
-                self.assertEqual(selected(after, "applied", "proposal"), [])
+                after = json.loads(run_automa("plugins", "list", "--host-name", "chase-sim-chaser", "--step", "proposal",
+                                              "--json", runtime_root=runtime, extra_env=env).stdout)
+                self.assertEqual(after["armed"], [])
             finally:
                 cli("stop", "--name", "chase-sim-chaser", check=False)
                 with patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime):

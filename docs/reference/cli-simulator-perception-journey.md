@@ -151,25 +151,34 @@ from selecting it:
   --plugin-id prototype \
   --entrypoint prototype:Prototype
 
-./cli/automa hosts plugins status --name chase-sim-chaser --step perception
+./cli/automa plugins list --host-name chase-sim-chaser --step perception --long
 ```
 
 The command reports success after the source is stored and its revision is
-registered, and prints the next verification command. `plugins status` reads the
-live catalog and reports its version, plugin IDs, filenames, and revisions;
-use `--json` for the complete receipt or catalog snapshot, including the target,
-outcome, and recovery action. `plugins list` remains an alias for `status`. `plugins help`
-describes the file identity arguments and the existing-host precondition.
+registered, and prints the next verification command; add `--json` for the
+complete receipt, including the target, outcome, and recovery action.
+`plugins list --long` reads the host's live catalog and reports its version,
+plugin IDs, filenames, and revisions, marking the plugins the host has armed.
+Without `--long`, `./cli/automa plugins list --host-name chase-sim-chaser`
+lists only what the host has armed, grouped by step in the order they run.
+Use `--step perception` to filter or `--json` for their definitions and configs.
+Without a host, `plugins list` lists the packaged catalog in
+`implementations/decision_cycle/catalog.py` and marks each step's defaults; no
+host is needed.
+The former `hosts plugins list` alias and `hosts plugins status` command are
+removed. `hosts plugins help` describes the file identity arguments and the
+existing-host precondition.
 Open **Plugins** in the runtime viewer to see the available
 revision. Upload does not change the selected or running plugins. Source that
 does not compile is refused with its file and line. The file is not imported,
 constructed, or checked for dependencies during upload; arming loads it.
 Add `--config '<JSON object>'`, for example `--config '{"throttle": -0.6}'`,
 to store constructor settings with the revision; arming constructs the plugin
-with them, and `plugins status --json` reports them.
+with them, and `plugins list --long --json` reports them.
 
 Use `--url <viewer-url>/workbench` instead of `--name` to address the workbench
-catalog directly. The same command and relative `/api/plugins` endpoint apply
+catalog directly; `plugins list --url <viewer-url>/workbench --long` lists it.
+A workbench arms nothing, so it lists only with `--long`. The same command and relative `/api/plugins` endpoint apply
 to Chase, PiCar, and the replay workbench. Workbench plugin panels refresh their catalogs even
 before a replay starts or after it finishes. Dependent files can be uploaded
 in sequence without resolving each other during registration.
@@ -186,19 +195,20 @@ After uploading, request the available revision without restarting the worker:
 
 ```sh
 ./cli/automa hosts plugins arm --name chase-sim-chaser --step perception --plugin prototype
-./cli/automa hosts plugins status --name chase-sim-chaser --step perception
+./cli/automa plugins list --host-name chase-sim-chaser --step perception
 ./cli/automa hosts stream perception --name chase-sim-chaser --once
 ```
 
 The host imports and constructs the selection before answering. The receipt
 reports `requested`, and the host applies it at its next cycle. An import or
 construction error fails the arm with exit 2 and the error, keeps the previous
-selection, and `plugins status` exits 2 until an arm succeeds.
-Status and the viewer's **Plugins** page distinguish available, requested and
-applied revisions. New IDs append in command order. An existing ID updates in
-place; other plugins retain their definitions and configurations. Uploading a
-newer revision does not change a pending or applied selection until another arm
-request names that ID. Re-arming an unchanged definition preserves its instance
+selection, and `plugins list` prints the arming error and exits 2 until an arm
+succeeds. `plugins list` shows what is armed as soon as the arm answers; the
+viewer's **Plugins** page also shows when the host's cycle has applied it. New
+IDs append in command order. An existing ID updates in place; other plugins
+retain their definitions and configurations. Uploading a newer revision does not
+change what is armed until another arm request names that ID; `plugins list
+--long` then lists the armed revision beside the newer one. Re-arming an unchanged definition preserves its instance
 and history.
 
 For one-command registration and arming, add `--arm` to the upload command.
@@ -214,7 +224,7 @@ selection document:
 
 ```sh
 ./cli/automa hosts plugins arm --name chase-sim-chaser --selection ./selection.json
-./cli/automa hosts plugins status --name chase-sim-chaser
+./cli/automa plugins list --host-name chase-sim-chaser
 ```
 
 The host loads every changed step before publishing any of the group. The

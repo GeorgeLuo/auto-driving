@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.automa_cli.command_result import CommandResult
+from cli.automa_cli.shared.command_result import CommandResult
 from cli.automa_cli.hosts import deploy, runtime_hosts
 from cli.automa_cli.vehicles.probes import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa

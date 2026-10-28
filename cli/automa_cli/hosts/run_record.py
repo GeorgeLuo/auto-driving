@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.runtime.session import RunConfiguration
-from ..paths import display_path
+from ..shared.paths import display_path
 from ..frontend.server import RuntimeViewServer
 from .step_activations import step_lines
 

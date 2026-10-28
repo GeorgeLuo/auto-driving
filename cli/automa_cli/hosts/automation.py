@@ -16,11 +16,11 @@ from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
-from ..command_result import CommandResult
+from ..shared.command_result import CommandResult
 from .vehicle_access import create_vehicle_access
 from .staged_bundle import write_json_atomically
 from .bundles import controller_bundle_paths
-from ..paths import display_path, safe_path_part
+from ..shared.paths import display_path, safe_path_part
 from . import runtime_hosts
 from .runtime_hosts import (
     bundle_paths,

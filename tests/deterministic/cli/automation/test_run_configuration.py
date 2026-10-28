@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.command_result import CommandResult
+from cli.automa_cli.shared.command_result import CommandResult
 from cli.automa_cli.app import main
 from cli.automa_cli.hosts.automation import (
     _automation_command_matches_host,

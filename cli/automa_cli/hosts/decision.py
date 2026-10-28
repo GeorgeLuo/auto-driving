@@ -48,7 +48,7 @@ from autonomy.runtime.report import (
     REPORT_SCHEMA,
 )
 
-from ..command_result import CommandResult
+from ..shared.command_result import CommandResult
 from .decision_records import DecisionRecords, activations_from_payloads
 from .step_activations import (
     bundle_activation_problems,

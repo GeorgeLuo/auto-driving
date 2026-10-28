@@ -12,7 +12,7 @@ from unittest.mock import Mock, patch
 from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.command_result import CommandResult
+from cli.automa_cli.shared.command_result import CommandResult
 from cli.automa_cli.hosts import decision_steps, runtime_monitor, streaming
 from cli.automa_cli.runtime_view import runtime_view_server
 from tests.deterministic.cli.automation.test_runtime_monitor import (

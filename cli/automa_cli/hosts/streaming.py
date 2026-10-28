@@ -18,7 +18,7 @@ from autonomy.decision_cycle.memory.interface import (
     RECORD_COUNT,
 )
 from autonomy.decision_cycle.timing import step_timing
-from ..command_result import CommandResult
+from ..shared.command_result import CommandResult
 from .decision_live import DecisionViewAdapter
 from .memory_report import evidence_publisher, ledger_summary, plugin_ledgers
 from .host_publications import (

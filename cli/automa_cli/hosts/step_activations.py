@@ -42,7 +42,7 @@ from .bundles import (
     release_activation_summary,
     sync_controller_bundle,
 )
-from ..paths import display_path, safe_path_part
+from ..shared.paths import display_path, safe_path_part
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
 
 def host_bundle(host_name: str, runtime_root: Path) -> dict[str, str]:

@@ -18,7 +18,7 @@ from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.recording import write_recorded_frame
 from autonomy.vehicle.vehicle import FRONT_CAMERA_SENSOR_ID
 from autonomy.runtime.client import RuntimeClient
-from ..paths import display_path
+from ..shared.paths import display_path
 from ..frontend.perception_view import perception_view_ready
 from .host_publications import (
     fetch_observation_sample, TransactionCache, publication_to_frame_record, perception_text_from_publication,

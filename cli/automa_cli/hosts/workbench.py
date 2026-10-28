@@ -15,7 +15,7 @@ from typing import Any, TextIO
 
 from implementations.decision_cycle.catalog import selection_activation
 
-from ..command_result import CommandResult
+from ..shared.command_result import CommandResult
 from ..frontend.server import RuntimeViewServer, VIEW_HOST
 from ..frontend.workbench_contract import (
     ReplayActionError,

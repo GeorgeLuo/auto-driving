@@ -12,7 +12,7 @@ from typing import Any, TextIO
 
 from autonomy.runtime.layout import RuntimeLayout
 
-from ..paths import ROOT, display_path
+from ..shared.paths import ROOT, display_path
 
 AUTONOMY_DIR = ROOT / "autonomy"
 IMPLEMENTATIONS_DIR = ROOT / "implementations"

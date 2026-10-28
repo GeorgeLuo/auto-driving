@@ -257,6 +257,12 @@
             "responsibility": "The runtime viewer automa serves, workbench included: its pages and the server behind them. Imports no other automa_cli module."
           },
           {
+            "path": "cli/automa_cli/shared/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "Code every automa command shares and none owns: command results, repository paths, the --timeout-s check and a step's --preset/--plugin selection."
+          },
+          {
             "path": "cli/automa_cli/vehicles/",
             "category": "tooling",
             "commit_policy": "source",

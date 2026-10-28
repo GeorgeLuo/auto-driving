@@ -19,7 +19,7 @@ from autonomy.decision_cycle.activation import STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
 from implementations.decision_cycle.catalog import selection_activation
 
-from ..command_result import CommandResult
+from ..shared.command_result import CommandResult
 from .bundles import (
     controller_bundle_paths,
     controller_bundle_source_summary,
@@ -31,7 +31,7 @@ from .donkeycar_vendor import (
     ensure_donkeycar_vendor,
     load_donkeycar_vendor_manifest,
 )
-from ..paths import display_path, safe_path_part
+from ..shared.paths import display_path, safe_path_part
 from .step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     HOST_PROVIDERS,

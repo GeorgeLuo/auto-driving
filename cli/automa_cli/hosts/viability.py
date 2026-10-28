@@ -8,8 +8,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
-from ..command_result import CommandResult
-from ..paths import ROOT, display_path
+from ..shared.command_result import CommandResult
+from ..shared.paths import ROOT, display_path
 from autonomy.runtime.client import RuntimeClient
 
 from .host_publications import fetch_observation_publication

@@ -10,7 +10,7 @@ from implementations.vehicle.chase_sim.defaults import (
     DEFAULT_CHASE_UI_WS_URL,
 )
 
-from ..command_result import CommandResult
+from ..shared.command_result import CommandResult
 from .probes import (
     DEFAULT_READINESS_TIMEOUT_S,
     Candidate,

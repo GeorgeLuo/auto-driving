@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..command_result import CommandResult
+from ..shared.command_result import CommandResult
 from .simeval import (
     DEFAULT_TIMEOUT_MS,
     DEFAULT_UI_HTTP_URL,

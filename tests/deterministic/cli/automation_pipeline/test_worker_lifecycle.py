@@ -10,7 +10,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.session import RunConfiguration
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from unittest.mock import patch
-from cli.automa_cli.command_result import CommandResult
+from cli.automa_cli.shared.command_result import CommandResult
 from cli.automa_cli.hosts.automation import (
     _wait_for_automation_startup,
     record_host_automation_terminal_result,

@@ -17,7 +17,7 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ..command_result import CommandResult
+from ..shared.command_result import CommandResult
 from ..hosts.runtime_hosts import RUNTIME_ROOT, RuntimeHostError, _log_tail, _pid_alive
 
 

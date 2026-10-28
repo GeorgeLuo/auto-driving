@@ -14,11 +14,11 @@ from typing import Any
 from autonomy.decision_cycle.memory.interface import EPOCH_ID, HEALTH, RECORD_COUNT
 from autonomy.runtime.client import RuntimeClient
 
-from ..command_result import CommandResult
+from ..shared.command_result import CommandResult
 from .memory_report import ledger_is_empty
 from .runtime_hosts import runtime_base_url
 from .bundles import controller_bundle_paths
-from ..paths import ROOT, safe_path_part
+from ..shared.paths import ROOT, safe_path_part
 from .step_schema import format_staged_step, staged_step_info
 from .streaming import _format_live_memory_screen, _live_plugins, _live_step_fields, probe_live_memory
 

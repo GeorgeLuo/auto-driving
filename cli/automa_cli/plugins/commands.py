@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from ..hosts.commands import _add_selection_args
 from ..hosts.workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
+from ..shared.selection_args import add_selection_args
 from .step_inspect import INSPECT_STEPS, inspect_step
 
 
@@ -52,7 +52,7 @@ def register_plugins(subcommands: argparse._SubParsersAction) -> None:
             type=Path,
             help="Image file, directory of images, or recorded run.",
         )
-        _add_selection_args(step_inspect, step_name, verb="inspect", fallback="the recorded selection, else ")
+        add_selection_args(step_inspect, step_name, verb="inspect", fallback="the recorded selection, else ")
         step_inspect.add_argument(
             "--frame",
             type=int,

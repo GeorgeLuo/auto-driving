@@ -10,7 +10,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from ..command_result import CommandResult
+from ..shared.command_result import CommandResult
 
 
 DEFAULT_SERVER = "http://127.0.0.1:3000/api"

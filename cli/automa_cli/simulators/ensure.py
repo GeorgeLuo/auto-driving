@@ -14,7 +14,7 @@ from implementations.vehicle.chase_sim.defaults import (
     get_default_chase_ui_ws_url,
 )
 
-from ..command_result import CommandResult
+from ..shared.command_result import CommandResult
 from .simeval import (
     DEFAULT_SCENARIO_ID,
     DEFAULT_TIMEOUT_MS,

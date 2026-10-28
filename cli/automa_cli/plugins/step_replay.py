@@ -25,7 +25,7 @@ from ..hosts.inspection_runs import (
     SharedMemorySeed, recorded_runner,
     default_selection, resolve_replay_activations, restage_replay_steps, selection_report,
 )
-from ..paths import safe_path_part
+from ..shared.paths import safe_path_part
 from ..hosts.workbench_frames import FrameOutcome, run_frame
 from ..hosts.workbench_source import (
     ImageSource,

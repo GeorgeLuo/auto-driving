@@ -25,7 +25,7 @@ from autonomy.runtime.client import RuntimeClient
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, RESTART_EXIT_CODE
 
 from .bundles import controller_bundle_paths
-from ..paths import ROOT, display_path, safe_path_part
+from ..shared.paths import ROOT, display_path, safe_path_part
 from .step_activations import host_names, staging_host
 
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))

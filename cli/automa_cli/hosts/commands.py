@@ -8,9 +8,9 @@ from pathlib import Path
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS, STEP_RUNNERS
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, STEP_PRESETS
 
-from ..timeout_input import validate_timeout_input
+from ..shared.selection_args import add_selection_args
+from ..shared.timeout_input import validate_timeout_input
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
 from .automation import (
     get_hosts_status,
@@ -646,7 +646,7 @@ def _register_hosts_workbench(host_commands: argparse._SubParsersAction) -> None
         help="Directory containing supported images and optional ordered manifest.",
     )
     for step_name in WORKBENCH_SELECTABLE_STEPS:
-        _add_selection_args(workbench_replay, step_name, verb="replay", flag_prefix=f"{step_name}-")
+        add_selection_args(workbench_replay, step_name, verb="replay", flag_prefix=f"{step_name}-")
     workbench_replay.add_argument(
         "--cadence-ms",
         type=int,
@@ -840,7 +840,7 @@ def _register_hosts_staging(host_commands: argparse._SubParsersAction) -> None:
             default=DEFAULT_READINESS_TIMEOUT_S,
             help=_STAGING_DISCOVERY_TIMEOUT_HELP,
         )
-        _add_selection_args(step_parser, step_name, verb="stage")
+        add_selection_args(step_parser, step_name, verb="stage")
         step_parser.add_argument(
             "--dry-run",
             action="store_true",
@@ -904,47 +904,6 @@ def _add_info_args(
         "--json",
         action="store_true",
         help=json_help,
-    )
-
-
-def _add_selection_args(
-    parser: argparse.ArgumentParser,
-    step: str,
-    *,
-    verb: str,
-    fallback: str = "",
-    flag_prefix: str = "",
-) -> None:
-    """Add a step's mutually exclusive ``--preset``/``--plugin`` selection.
-
-    Steps without presets take only ``--plugin`` and parse ``preset`` as None.
-    ``flag_prefix`` names one step among several on a command, such as
-    ``--memory-preset``; ``fallback`` precedes the default in the help text.
-    """
-    dest = flag_prefix.replace("-", "_")
-    group = parser.add_mutually_exclusive_group()
-    if step in STEP_PRESETS:
-        group.add_argument(
-            f"--{flag_prefix}preset",
-            dest=f"{dest}preset",
-            choices=sorted(STEP_PRESETS[step]),
-            default=None,
-            help=f"Packaged {step} preset to {verb} (default: {fallback}{DEFAULT_STEP_PRESETS[step]}).",
-        )
-        plugin_help = f"Packaged {step} plugin to {verb} instead of a preset"
-    else:
-        parser.set_defaults(**{f"{dest}preset": None})
-        plugin_help = (
-            f"Packaged {step} plugin to {verb} "
-            f"(default: {fallback}{', '.join(DEFAULT_STEP_PLUGINS[step]) or 'none'})"
-        )
-    group.add_argument(
-        f"--{flag_prefix}plugin",
-        action="append",
-        dest=f"{dest}plugins",
-        default=None,
-        metavar="PLUGIN_ID",
-        help=f"{plugin_help}; repeat to select several in order.",
     )
 
 

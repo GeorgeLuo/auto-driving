@@ -86,17 +86,26 @@ class HelpCommandTests(unittest.TestCase):
         deleted = parser.parse_args(["simulators", "delete", "--url", "http://127.0.0.1:5051/"])
         self.assertEqual((deleted.simulator_command, deleted.url), ("delete", "http://127.0.0.1:5051/"))
 
-    def test_plugin_listing_parses_with_or_without_a_named_host(self) -> None:
+    def test_plugin_listing_parses_with_or_without_a_host(self) -> None:
         parser = build_parser()
         listed = parser.parse_args(["plugins", "list", "--host-name", "one", "--step", "memory", "--json"])
         self.assertEqual((listed.command, listed.plugin_command, listed.host_name, listed.step),
                          ("plugins", "list", "one", "memory"))
         self.assertTrue(listed.json)
-        self.assertIsNone(parser.parse_args(["plugins", "list"]).host_name)
-        with contextlib.redirect_stderr(io.StringIO()):
-            with self.assertRaises(SystemExit) as caught:
-                parser.parse_args(["hosts", "plugins", "list", "--name", "one"])
-        self.assertEqual(caught.exception.code, 2)
+        self.assertFalse(listed.long)
+        packaged = parser.parse_args(["plugins", "list"])
+        self.assertEqual((packaged.host_name, packaged.url), (None, None))
+        by_url = parser.parse_args(["plugins", "list", "--url", "http://127.0.0.1:5051", "--long"])
+        self.assertEqual((by_url.url, by_url.long), ("http://127.0.0.1:5051", True))
+        for args in (
+            ["hosts", "plugins", "list", "--name", "one"],
+            ["hosts", "plugins", "status", "--name", "one"],
+            ["plugins", "list", "--host-name", "one", "--url", "http://127.0.0.1:5051"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
 
     def test_removed_flags_are_rejected_before_execution(self) -> None:
         parser = build_parser()

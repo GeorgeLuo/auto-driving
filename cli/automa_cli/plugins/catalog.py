@@ -89,7 +89,7 @@ def upload_plugin(*, url: str | None, host_name: str | None, file: Path, step: s
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
     if result.get("ok"):
-        recovery = f"./cli/automa hosts plugins status {_target_args(url, host_name)} --step {step}"
+        recovery = f"./cli/automa plugins list {_target_args(url, host_name)} --step {step} --long"
         if arm:
             uploaded = result
             try:
@@ -115,7 +115,7 @@ def arm_plugins(*, url: str | None, host_name: str | None, step: str | None = No
         recovery = _catalog_recovery(url, host_name)
         endpoint = url or catalog_url(host_name)
         result = _request_arm(PluginCatalogClient(endpoint), selections)
-        recovery = f"./cli/automa hosts plugins status {_target_args(url, host_name)}"
+        recovery = f"./cli/automa plugins list {_target_args(url, host_name)}"
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
     return _result(result, operation="arm", url=endpoint, host_name=host_name, step=step,
@@ -139,63 +139,96 @@ def disarm_plugins(*, url: str | None, host_name: str | None, step: str | None =
         result = PluginCatalogClient(endpoint)(
             {"operation": "disarm", "selections": selections, "all": all_plugins}, timeout_s=ARM_TIMEOUT_S,
         )
-        recovery = f"./cli/automa hosts plugins status {_target_args(url, host_name)}"
+        recovery = f"./cli/automa plugins list {_target_args(url, host_name)}"
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
     return _result(result, operation="disarm", url=endpoint, host_name=host_name, step=step,
                    recovery=recovery, json_output=json_output)
 
 
-def list_plugins(*, host_name: str | None = None, step: str | None = None,
-                 json_output: bool = False) -> CommandResult:
-    """List a named host's applied definitions, else every packaged definition."""
+def list_plugins(*, host_name: str | None = None, url: str | None = None, step: str | None = None,
+                 long: bool = False, json_output: bool = False) -> CommandResult:
+    """List what a host has armed, or with ``long`` its whole catalog; without a host, the packaged catalog."""
 
     steps = (step,) if step is not None else STEPS
-    payload: dict[str, Any] = {
-        "schema": "automa_plugin_list", "host_name": host_name, "catalog": None, "url": None,
-        "step": step, "ok": False, "plugins": [],
-    }
-    if host_name is None:
+    payload: dict[str, Any] = {"schema": "automa_plugin_list", "host_name": host_name, "url": url,
+                               "step": step, "ok": False}
+    if host_name is None and url is None:
+        defaults = {name: list(DEFAULT_STEP_PLUGINS[name]) for name in steps}
         payload.update(
-            ok=True,
-            catalog=display_path(Path(packaged_catalog.__file__)),
-            plugins=[plugin for name in steps for plugin in _packaged_plugins(name)],
-            defaults={name: list(DEFAULT_STEP_PLUGINS[name]) for name in steps},
+            ok=True, defaults=defaults,
+            catalog={"source": display_path(Path(packaged_catalog.__file__)),
+                     "plugins": [plugin for name in steps for plugin in _packaged_plugins(name)]},
         )
-    else:
-        try:
-            payload["url"] = catalog_url(host_name)
-            snapshot = PluginCatalogClient(payload["url"])()
-            if not snapshot.get("ok"):
-                raise RuntimeError(snapshot.get("error") or "Host plugin catalog is unavailable.")
-            arming = snapshot.get("arming")
-            applied = arming.get("applied") if isinstance(arming, dict) else None
-            if not isinstance(applied, dict) or any(not isinstance(applied.get(name), list) for name in steps):
-                raise ValueError("Host did not report its applied plugin selection.")
-            payload.update(
-                ok=True,
-                plugins=[plugin for name in steps for plugin in applied[name]],
-                arming={key: arming.get(key) for key in ("status", "request_id", "error")},
-            )
-        except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
-            payload["error"] = str(exc)
+        lines = [f"Catalog: {payload['catalog']['source']}",
+                 *_plugin_rows(payload["catalog"]["plugins"],
+                               {(name, plugin_id, None) for name in steps for plugin_id in defaults[name]}, "default")]
+        return _listing(payload, lines, json_output)
 
-    exit_code = 0 if payload["ok"] else 2
+    payload.update(armed=None, arming_error=None)
+    lines = [f"Host: {host_name}"] if host_name else []
+    try:
+        payload["url"] = url or catalog_url(host_name)
+        snapshot = PluginCatalogClient(payload["url"])()
+        if not snapshot.get("ok"):
+            raise RuntimeError(snapshot.get("error") or "Host plugin catalog is unavailable.")
+        arming = snapshot.get("arming")
+        if arming is None and not long:
+            raise ValueError("This catalog does not arm plugins; add --long to list it.")
+        if arming is not None:
+            requested = arming.get("requested") if isinstance(arming, dict) else None
+            if not isinstance(requested, dict) or any(not isinstance(requested.get(name), list) for name in steps):
+                raise ValueError("Host did not report its armed plugins.")
+            payload.update(armed=[plugin for name in steps for plugin in requested[name]],
+                           arming_error=arming.get("error"))
+        if long:
+            payload["catalog"] = {
+                "source": payload["url"], "version": snapshot["catalog_version"],
+                "host_run_id": snapshot.get("host_run_id"),
+                "plugins": [plugin for name in steps for plugin in snapshot["plugins"] if plugin["step"] == name],
+            }
+        payload["ok"] = True
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
+        payload["error"] = str(exc)
+        lines.extend(["Catalog: unavailable", f"Reason: {payload['error']}"])
+        recovery = _catalog_recovery(url, host_name)
+        return _listing(payload, [*lines, f"Next: {recovery}"] if recovery else lines, json_output)
+
+    armed = payload["armed"] or []
+    if long:
+        lines.extend([f"Catalog: {payload['url']}", _catalog_version(snapshot),
+                      *_plugin_rows(_armed_first(payload["catalog"]["plugins"], armed),
+                                    {_plugin_key(plugin) for plugin in armed}, "armed")])
+    else:
+        lines.extend([*([] if host_name else [f"Catalog: {payload['url']}"]), "Armed:", *_plugin_rows(armed)])
+    if payload["arming_error"]:
+        lines.append(f"Arming error: {payload['arming_error']}")
+    return _listing(payload, lines, json_output)
+
+
+def _listing(payload: dict[str, Any], lines: list[str], json_output: bool) -> CommandResult:
+    # A host whose last arming failed lists what it has armed but exits 2 until an arm succeeds.
+    exit_code = 0 if payload["ok"] and not payload.get("arming_error") else 2
     if json_output:
         return CommandResult(exit_code, json.dumps(payload, indent=2, sort_keys=True))
-    lines = [f"Host: {host_name}"] if host_name else [f"Catalog: {payload['catalog']}"]
-    if not payload["ok"]:
-        lines.extend(["Loaded plugins: unavailable", f"Reason: {payload['error']}"])
-        return CommandResult(exit_code, "\n".join(lines))
-    lines.append("Loaded plugins:" if host_name else "Packaged plugins:")
-    lines.extend(_plugin_rows(payload["plugins"], payload.get("defaults")))
-    if host_name is None:
-        lines.append("Loaded plugins: ./cli/automa plugins list --host-name <host>")
-    else:
-        lines.append(f"Selection: {payload['arming']['status']}")
-        if payload["arming"].get("error"):
-            lines.append(f"Selection error: {payload['arming']['error']}")
     return CommandResult(exit_code, "\n".join(lines))
+
+
+def _plugin_key(plugin: dict[str, Any]) -> tuple[str, str, str | None]:
+    return plugin["step"], plugin["id"], plugin.get("metadata", {}).get("revision")
+
+
+def _armed_first(catalog: list[dict[str, Any]], armed: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Each step's armed definitions in run order, then its other catalog entries, newer revisions of armed IDs first."""
+
+    ordered = []
+    keys = {_plugin_key(plugin) for plugin in armed}
+    for name in STEPS:
+        armed_ids = {plugin["id"] for plugin in armed if plugin["step"] == name}
+        ordered += [plugin for plugin in armed if plugin["step"] == name]
+        ordered += sorted((plugin for plugin in catalog if plugin["step"] == name and _plugin_key(plugin) not in keys),
+                          key=lambda plugin: (plugin["id"] not in armed_ids, plugin["id"]))
+    return ordered
 
 
 def _packaged_plugins(step: str) -> list[dict[str, Any]]:
@@ -210,47 +243,30 @@ def _packaged_plugins(step: str) -> list[dict[str, Any]]:
     return [describe_plugin(definitions[plugin_id]) for plugin_id in ordered]
 
 
-def _plugin_rows(plugins: list[dict[str, Any]], defaults: dict[str, list[str]] | None = None) -> list[str]:
-    """One ``- step/id: source`` row per definition, marking each step's ``defaults`` when given."""
+def _plugin_rows(plugins: list[dict[str, Any]], marked: set[tuple[str, str, str | None]] = frozenset(),
+                 label: str = "") -> list[str]:
+    """One ``- step/id: source`` row per definition, with ``(label)`` on the ``marked`` step, ID and revision keys."""
 
     rows = []
     for plugin in plugins:
         metadata = plugin.get("metadata", {})
         revision = metadata.get("revision")
         source = f"revision {revision} ({metadata.get('filename', 'uploaded')})" if revision else "packaged"
-        if defaults is not None and plugin["id"] in defaults[plugin["step"]]:
-            source += " (default)"
+        if _plugin_key(plugin) in marked:
+            source += f" ({label})"
         rows.append(f"- {plugin['step']}/{plugin['id']}: {source}")
     return rows or ["(none)"]
 
 
-def get_catalog_status(*, url: str | None, host_name: str | None, step: str | None = None,
-                       json_output: bool = False) -> CommandResult:
-    endpoint = url
-    try:
-        endpoint = url or catalog_url(host_name)
-        result = PluginCatalogClient(endpoint)()
-        if result.get("ok") and step is not None:
-            result["plugins"] = [plugin for plugin in result["plugins"] if plugin["step"] == step]
-            if result.get("arming"):
-                for name in ("requested", "applied"):
-                    result["arming"][name] = {step: result["arming"][name].get(step, [])}
-    except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
-        result = {"ok": False, "status": "failed", "error": str(exc)}
-    return _result(result, operation="status", url=endpoint, host_name=host_name, step=step,
-                   recovery=None if result.get("ok") else _catalog_recovery(url, host_name),
-                   json_output=json_output)
-
-
 def _target_args(url: str | None, host_name: str | None) -> str:
-    return f"--url {shlex.quote(url)}" if url else f"--name {shlex.quote(host_name)}"
+    return f"--url {shlex.quote(url)}" if url else f"--host-name {shlex.quote(host_name)}"
 
 
 def _catalog_recovery(url: str | None, host_name: str | None) -> str | None:
     # The error already says why the vehicle's host cannot be reached.
     if host_name:
         return None
-    return f"Check that the catalog host at {url} is running, then retry ./cli/automa hosts plugins status {_target_args(url, host_name)}"
+    return f"Check that the catalog host at {url} is running, then retry ./cli/automa plugins list {_target_args(url, host_name)} --long"
 
 
 def _catalog_version(result: dict[str, Any]) -> str:
@@ -264,7 +280,7 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, host_nam
     """Render the same target, outcome and recovery in human and JSON output."""
 
     ok = bool(result.get("ok"))
-    # A failed selection change also fails status until a request succeeds.
+    # A failed selection change exits 2.
     exit_code = 0 if ok and (result.get("arming") or {}).get("status") != "failed" else 2
     if operation == "arm":
         label, state = "Arming", result.get("status", "failed")
@@ -275,17 +291,14 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, host_nam
     elif result.get("upload"):
         label, state = "Arming", result.get("status", "failed")
         message = "Plugin uploaded and loaded; the host applies it at its next cycle."
-    elif operation == "upload":
+    else:
         label, state = "Upload", "uploaded" if ok else "failed"
         message = "Plugin uploaded and available; selection unchanged."
-    else:
-        label, state = "Catalog", "available" if ok else "unavailable"
-        message = "Live plugin catalog is available."
     if not ok:
         message = result.get("error", "Catalog request failed.")
     result = {
         **result,
-        "schema": {"upload": "automa_plugin_upload", "arm": "automa_plugin_arm", "disarm": "automa_plugin_disarm", "status": "automa_plugin_catalog_status"}[operation],
+        "schema": {"upload": "automa_plugin_upload", "arm": "automa_plugin_arm", "disarm": "automa_plugin_disarm"}[operation],
         "host_name": host_name, "url": url, "step": step,
         "outcome": {"status": state if operation in ("arm", "disarm") or result.get("upload") else "ok" if ok else state,
                     "message": message, "recovery": recovery},
@@ -311,12 +324,9 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, host_nam
             f"Plugin: {plugin_id}", f"Revision: {result['plugin']['metadata']['revision']}",
             _catalog_version(result), "Selection: unchanged",
         ])
-    elif operation == "status":
-        lines.extend([_catalog_version(result), "Available plugins:", *_plugin_rows(result["plugins"])])
     arming = result.get("arming")
     if arming:
-        lines.append(f"Request: {arming['request_id']}" if label in ("Arming", "Disarming")
-                     else f"Arming: {arming['status']} (request {arming['request_id']})")
+        lines.append(f"Request: {arming['request_id']}")
         for name in ("requested", "applied"):
             for selected_step, definitions in arming[name].items():
                 selected = ", ".join(f"{item['id']} ({item['metadata'].get('revision', 'packaged')})" for item in definitions)

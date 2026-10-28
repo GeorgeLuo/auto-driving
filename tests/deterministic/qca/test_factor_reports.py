@@ -13,6 +13,24 @@ from qca.render import render_html
 
 
 class FactorReportTests(unittest.TestCase):
+    def test_opaque_conditionals_reach_public_metrics_and_renderers(self):
+        report = analyze_sources({
+            "app.py": "if a < b and c < d and e < f:\n    pass\n",
+            "broken.py": "def broken(:\n",
+            "ignored.pyi": "if a and b and c:\n    pass\n",
+        })
+        payload = report_to_dict(report)
+        factor = payload["factors"]["patterns"]
+        self.assertEqual(factor["metrics"]["opaque_conditional_count"], 1)
+        findings = [item for item in factor["findings"] if item["kind"] == "opaque_conditional"]
+        self.assertEqual(len(findings), 1)
+        self.assertIsNone(findings[0]["evidence"]["revision"])
+        self.assertTrue(any(item["kind"] == "syntax_error" for item in factor["findings"]))
+        self.assertIn("structure.opaque_conditionals.opaque_conditional", render_markdown(report))
+        rendered = render_html(json.loads(json.dumps(payload)))
+        self.assertIn("structure.opaque_conditionals.opaque_conditional", rendered)
+        self.assertIn("a &lt; b and c &lt; d and e &lt; f", rendered)
+
     def test_source_evidence_uses_python_physical_lines(self):
         for prefix in ('TEXT = "first\u2028second"\n', '\fTEXT = "page"\n', 'TEXT = "é"\n'):
             with self.subTest(prefix=prefix), tempfile.TemporaryDirectory() as directory:

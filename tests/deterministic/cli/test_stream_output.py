@@ -6,9 +6,9 @@ import json
 import unittest
 from unittest.mock import Mock, patch
 
-from cli.automa_cli.decision import DecisionSurfaceError
-from cli.automa_cli.decision_steps import _poll
-from cli.automa_cli.streaming import _poll_stream
+from cli.automa_cli.hosts.decision import DecisionSurfaceError
+from cli.automa_cli.hosts.decision_steps import _poll
+from cli.automa_cli.hosts.streaming import _poll_stream
 
 
 class FlushedOutput(io.StringIO):
@@ -27,7 +27,7 @@ class StreamOutputTests(unittest.TestCase):
                 output = FlushedOutput()
                 probes = [{"status": "unavailable", "error": "offline"}, {"status": "live"}]
                 probe = Mock(side_effect=[(item, None) for item in probes])
-                with patch("cli.automa_cli.streaming.time.sleep", side_effect=[None, KeyboardInterrupt]) as sleep:
+                with patch("cli.automa_cli.hosts.streaming.time.sleep", side_effect=[None, KeyboardInterrupt]) as sleep:
                     result = _poll_stream(
                         step="memory", probe=probe, render=lambda live, _: live["status"],
                         refresh_s=0, once=False, no_clear=no_clear,
@@ -46,7 +46,7 @@ class StreamOutputTests(unittest.TestCase):
                 with self.subTest(status=status, connected=connected):
                     output = FlushedOutput() if connected else None
                     live = {"status": status}
-                    with patch("cli.automa_cli.streaming.time.sleep") as sleep:
+                    with patch("cli.automa_cli.hosts.streaming.time.sleep") as sleep:
                         result = _poll_stream(
                             step="perception", probe=lambda: (live, None),
                             render=Mock(side_effect=AssertionError("JSON must not render")),
@@ -64,7 +64,7 @@ class StreamOutputTests(unittest.TestCase):
         for json_output, no_clear in ((False, False), (False, True), (True, False)):
             with self.subTest(json=json_output, no_clear=no_clear):
                 output = FlushedOutput()
-                with patch("cli.automa_cli.decision_steps.time.sleep", side_effect=[None, KeyboardInterrupt]) as sleep:
+                with patch("cli.automa_cli.hosts.decision_steps.time.sleep", side_effect=[None, KeyboardInterrupt]) as sleep:
                     result = _poll(
                         host_name="fixture", accept=Mock(side_effect=[error, {"frame_id": "next"}]),
                         render=lambda frame: frame["frame_id"], footer=lambda: ["view"],
@@ -85,7 +85,7 @@ class StreamOutputTests(unittest.TestCase):
                 self.assertEqual([call.args for call in sleep.call_args_list], [(0.05,), (0.05,)])
 
     def test_decision_interrupt_retains_the_last_error_without_output(self):
-        with patch("cli.automa_cli.decision_steps.time.sleep", side_effect=KeyboardInterrupt):
+        with patch("cli.automa_cli.hosts.decision_steps.time.sleep", side_effect=KeyboardInterrupt):
             result = _poll(
                 host_name="fixture",
                 accept=Mock(side_effect=DecisionSurfaceError("unavailable", "offline")),
@@ -99,7 +99,7 @@ class StreamOutputTests(unittest.TestCase):
                 output = FlushedOutput()
                 accept = (Mock(side_effect=DecisionSurfaceError("unavailable", "offline"))
                           if fail else Mock(return_value={"frame_id": "one"}))
-                with patch("cli.automa_cli.decision_steps.time.sleep") as sleep:
+                with patch("cli.automa_cli.hosts.decision_steps.time.sleep") as sleep:
                     result = _poll(
                         host_name="fixture", accept=accept, render=str,
                         refresh_s=1, once=True, no_clear=False, json_output=True, output=output,

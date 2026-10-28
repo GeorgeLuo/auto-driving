@@ -15,9 +15,9 @@ from typing import Any, TextIO
 
 from implementations.decision_cycle.catalog import selection_activation
 
-from .command_result import CommandResult
-from .frontend.server import RuntimeViewServer, VIEW_HOST
-from .frontend.workbench_contract import (
+from ..command_result import CommandResult
+from ..frontend.server import RuntimeViewServer, VIEW_HOST
+from ..frontend.workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
     WORKBENCH_DEFAULT_CADENCE_MS,
@@ -25,7 +25,7 @@ from .frontend.workbench_contract import (
     WORKBENCH_PACES,
     WORKBENCH_SEQUENCE_ID,
 )
-from .runtime_view import open_view_message, runtime_view_server
+from ..runtime_view import open_view_message, runtime_view_server
 from .workbench_runner import ImageReplayRunner
 from .workbench_plugins import (
     WORKBENCH_SELECTABLE_STEPS,

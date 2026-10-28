@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from .bundles import controller_bundle_paths
-from .paths import ROOT, safe_path_part
+from ..paths import ROOT, safe_path_part
 
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))
 

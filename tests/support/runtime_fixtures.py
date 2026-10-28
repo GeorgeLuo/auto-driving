@@ -99,7 +99,7 @@ def write_runtime_fixture(
 
 def write_host_fixture(runtime_root: Path, host_name: str, *, provider: str = "chase-sim",
                        url: str | None = None) -> None:
-    from cli.automa_cli.step_activations import write_host_configuration
+    from cli.automa_cli.hosts.step_activations import write_host_configuration
 
     if (runtime_root / host_name / "host-configuration.json").exists():
         return

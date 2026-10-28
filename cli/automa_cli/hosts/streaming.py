@@ -18,7 +18,7 @@ from autonomy.decision_cycle.memory.interface import (
     RECORD_COUNT,
 )
 from autonomy.decision_cycle.timing import step_timing
-from .command_result import CommandResult
+from ..command_result import CommandResult
 from .decision_live import DecisionViewAdapter
 from .memory_report import evidence_publisher, ledger_summary, plugin_ledgers
 from .host_publications import (
@@ -34,8 +34,8 @@ from .host_publications import (
 from .plugin_catalog import PluginCatalogClient
 from .runtime_hosts import RuntimeHostError, local_hosts, runtime_base_url
 from .runtime_monitor import PERCEPTION_COPY_INTERVAL_S, _pause_s
-from .frontend.server import RuntimeViewServer
-from .runtime_view import open_view_message, runtime_view_server
+from ..frontend.server import RuntimeViewServer
+from ..runtime_view import open_view_message, runtime_view_server
 from .step_activations import absent_step_error
 from .stream_output import write_stream_frame
 from .view_discovery import runtime_view_dir

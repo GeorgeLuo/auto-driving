@@ -20,7 +20,7 @@ from autonomy.decision_cycle.perception.evidence.values import (
 )
 from autonomy.decision_cycle.activation import StepActivation
 from implementations.decision_cycle.catalog import selection_activation
-from cli.automa_cli.workbench import (
+from cli.automa_cli.hosts.workbench import (
     ImageReplayRunner as ProductionImageReplayRunner,
 )
 from cli.automa_cli.frontend.server import RuntimeViewServer

@@ -16,12 +16,12 @@ from PIL import Image
 
 from autonomy.decision_cycle.activation import STEPS, step_activation_path, write_step_activation
 from autonomy.decision_cycle.steps import decision_steps
-from cli.automa_cli.bundles import controller_bundle_paths
-from cli.automa_cli.decision import accept_decision_publication, decision_view_frame
-from cli.automa_cli.decision_live import DecisionViewAdapter, _provider_identity
-from cli.automa_cli.decision_records import activations_from_payloads
+from cli.automa_cli.hosts.bundles import controller_bundle_paths
+from cli.automa_cli.hosts.decision import accept_decision_publication, decision_view_frame
+from cli.automa_cli.hosts.decision_live import DecisionViewAdapter, _provider_identity
+from cli.automa_cli.hosts.decision_records import activations_from_payloads
 from cli.automa_cli.frontend.server import RuntimeViewServer
-from cli.automa_cli.step_activations import replace_metadata
+from cli.automa_cli.hosts.step_activations import replace_metadata
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
@@ -46,7 +46,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             host_name="piracer", base_url="http://host.invalid", view_server=server,
             timeout_s=0.1,
         )
-        with patch("cli.automa_cli.decision_live.read_host_telemetry_panel", return_value={}), \
+        with patch("cli.automa_cli.hosts.decision_live.read_host_telemetry_panel", return_value={}), \
                 patch.object(server.perception, "publish_frame") as frame, \
                 patch.object(server.perception, "publish_perception") as perception:
             self.assertTrue(adapter.publish_frame(normalized, (b"fixture-jpeg", "image/jpeg")))
@@ -187,7 +187,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         image_buffer = io.BytesIO()
         Image.new("RGB", (40, 30), (20, 80, 150)).save(image_buffer, format="JPEG")
         with patch(
-            "cli.automa_cli.decision_live._accepted_pair",
+            "cli.automa_cli.hosts.decision_live._accepted_pair",
             return_value=(normalized, (image_buffer.getvalue(), "image/jpeg")),
         ):
             adapter = DecisionViewAdapter(

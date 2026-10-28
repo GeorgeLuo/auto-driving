@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from cli.automa_cli import runtime_hosts
+from cli.automa_cli.hosts import runtime_hosts
 from cli.automa_cli.simulators import create_simulator
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.fake_headless_sim import fake_headless_sim_command

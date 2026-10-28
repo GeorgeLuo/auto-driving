@@ -39,13 +39,13 @@ def listed_vehicles() -> list[Candidate]:
 
 
 def _created_candidates() -> list[Candidate]:
-    from ..runtime_hosts import created_simulators
+    from ..hosts.runtime_hosts import created_simulators
 
     return [Candidate("chase-sim", simulator["url"], "created") for simulator in created_simulators()]
 
 
 def _discovered_candidates() -> list[Candidate]:
-    from ..runtime_hosts import discovered_vehicles
+    from ..hosts.runtime_hosts import discovered_vehicles
 
     return [Candidate(vehicle["provider"], vehicle["url"], "discovered") for vehicle in discovered_vehicles()]
 
@@ -81,7 +81,7 @@ def _vehicle_heading(provider: str, url: str) -> str:
 def discover_vehicle(*, provider: str, url: str, force: bool = False) -> CommandResult:
     """List a vehicle in vehicles status once it can take a host, or regardless with ``force``."""
 
-    from ..runtime_hosts import discovered_vehicles, write_discovered_vehicles
+    from ..hosts.runtime_hosts import discovered_vehicles, write_discovered_vehicles
 
     try:
         url = normalize_vehicle_url(provider, url)
@@ -105,7 +105,7 @@ def discover_vehicle(*, provider: str, url: str, force: bool = False) -> Command
 def remove_vehicle(*, url: str) -> CommandResult:
     """Stop listing a discovered vehicle; the default simulator stays."""
 
-    from ..runtime_hosts import discovered_vehicles, write_discovered_vehicles
+    from ..hosts.runtime_hosts import discovered_vehicles, write_discovered_vehicles
 
     def normalized(provider: str) -> str | None:
         try:

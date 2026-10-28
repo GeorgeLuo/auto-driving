@@ -13,8 +13,8 @@ from tests.support.runtime_fixtures import write_host_fixture
 from unittest.mock import patch
 
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
-from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS, bundle_activation_path, host_bundle
-from cli.automa_cli.workbench_runner import ImageReplayRunner
+from cli.automa_cli.hosts.step_activations import CONTROLLER_BUNDLE_KEYS, bundle_activation_path, host_bundle
+from cli.automa_cli.hosts.workbench_runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PRESETS,
     PRESET_STEPS,
@@ -40,7 +40,7 @@ class StepSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
-            with patch("cli.automa_cli.app.HOSTS_RUNTIME_ROOT", root):
+            with patch("cli.automa_cli.hosts.commands.HOSTS_RUNTIME_ROOT", root):
                 yield root
 
     def _update(self, step: str, *flags: str) -> dict:

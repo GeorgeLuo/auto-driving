@@ -16,8 +16,8 @@ from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
 
 from .host_publications import host_state
 from .runtime_hosts import local_hosts
-from .vehicles.probes import DEFAULT_READINESS_TIMEOUT_S, _require_positive_timeout, chase_operator_url
-from .vehicles.status import _indented
+from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S, _require_positive_timeout, chase_operator_url
+from ..vehicles.status import _indented
 
 
 def host_statuses(

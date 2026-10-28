@@ -9,19 +9,19 @@ from pathlib import Path
 
 from PIL import Image
 from dataclasses import replace
-from cli.automa_cli.inspection_runs import selection_report
-from cli.automa_cli.memory_report import plugin_summaries
+from cli.automa_cli.hosts.inspection_runs import selection_report
+from cli.automa_cli.hosts.memory_report import plugin_summaries
 from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
 from implementations.decision_cycle.catalog import selection_activation
-from cli.automa_cli.workbench_source import normalize_image_directory
+from cli.automa_cli.hosts.workbench_source import normalize_image_directory
 from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
-from cli.automa_cli.step_formatting import format_step_record
+from cli.automa_cli.hosts.step_formatting import format_step_record
 from cli.automa_cli.step_inspect import INSPECT_STEPS, inspect_step
 from cli.automa_cli.step_replay import StepReplay, default_selection
-from cli.automa_cli.workbench_source import ImageSource, ReplayFrame
+from cli.automa_cli.hosts.workbench_source import ImageSource, ReplayFrame
 from implementations.decision_cycle.catalog import PRESET_STEPS
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (

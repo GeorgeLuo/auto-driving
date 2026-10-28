@@ -10,7 +10,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 VENDOR_MANIFEST_PATH = ROOT / "deploy" / "targets" / "donkeycar" / "donkeycar-vendor.json"
 VENDOR_STATE_FILE = ".automa-vendor-state.json"
 

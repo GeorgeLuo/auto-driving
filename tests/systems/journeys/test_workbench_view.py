@@ -7,7 +7,7 @@ import unittest
 from playwright.sync_api import expect, sync_playwright
 
 from cli.automa_cli.frontend.server import RuntimeViewServer
-from cli.automa_cli.workbench_runner import ImageReplayRunner
+from cli.automa_cli.hosts.workbench_runner import ImageReplayRunner
 from tests.shared.cli.workbench_fixtures import image_source
 
 

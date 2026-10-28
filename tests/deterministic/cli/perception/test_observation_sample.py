@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
-from cli.automa_cli import host_publications as publications, streaming
+from cli.automa_cli.hosts import host_publications as publications, streaming
 
 
 class _Response(io.BytesIO):

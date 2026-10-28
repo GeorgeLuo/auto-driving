@@ -5,12 +5,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.bundles import (
+from cli.automa_cli.hosts.bundles import (
     controller_bundle_paths,
     release_activation_summary,
     sync_controller_bundle,
 )
-from cli.automa_cli.step_activations import CONTROLLER_BUNDLE_KEYS
+from cli.automa_cli.hosts.step_activations import CONTROLLER_BUNDLE_KEYS
 from implementations.decision_cycle.catalog import preset_activation
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.runtime_fixtures import write_json

@@ -13,7 +13,7 @@ from urllib.request import Request, urlopen
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
-from .command_result import CommandResult
+from ..command_result import CommandResult
 
 # Arming waits for the host's current cycle and for the selection to load.
 ARM_TIMEOUT_S = 60.0

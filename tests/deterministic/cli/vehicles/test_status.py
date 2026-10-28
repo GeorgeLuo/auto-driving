@@ -93,7 +93,7 @@ class VehicleStatusTests(unittest.TestCase):
                 return_value=probe_result,
             ) as probe,
             patch(
-                "cli.automa_cli.automation._collect_automation_status",
+                "cli.automa_cli.hosts.automation._collect_automation_status",
                 return_value=[],
             ),
         ):
@@ -126,7 +126,7 @@ class VehicleStatusTests(unittest.TestCase):
             "cli.automa_cli.vehicles.readiness._probe_chase",
             return_value=probe,
         ), patch(
-            "cli.automa_cli.automation._collect_automation_status",
+            "cli.automa_cli.hosts.automation._collect_automation_status",
             return_value=[],
         ):
             payload = get_vehicle_status(
@@ -228,7 +228,7 @@ class VehicleStatusTests(unittest.TestCase):
             "cli.automa_cli.vehicles.readiness._probe_chase",
             return_value=probe,
         ), patch(
-            "cli.automa_cli.automation._collect_automation_status",
+            "cli.automa_cli.hosts.automation._collect_automation_status",
             return_value=[automation],
         ):
             payload = get_vehicle_status(host_name="chase-sim-chaser")
@@ -295,7 +295,7 @@ class VehicleStatusTests(unittest.TestCase):
             "cli.automa_cli.vehicles.readiness._probe_chase",
             return_value=probe,
         ), patch(
-            "cli.automa_cli.automation._collect_automation_status",
+            "cli.automa_cli.hosts.automation._collect_automation_status",
             return_value=[],
         ):
             payload = get_vehicle_status(

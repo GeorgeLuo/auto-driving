@@ -11,7 +11,7 @@ from autonomy.decision_cycle.action.selected import SelectedAction
 from autonomy.decision_cycle.activation import DECISION_STEPS
 from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, ModeAction
 
-from .command_result import CommandResult
+from ..command_result import CommandResult
 from .decision import (
     DecisionSurfaceError,
     _error_result,

@@ -5,11 +5,11 @@ import os
 from pathlib import Path
 from typing import Any
 
-from .command_result import CommandResult
+from ..command_result import CommandResult
 from .bundles import controller_bundle_paths
 from .step_schema import format_staged_step, staged_step_info
-from .paths import safe_path_part
-from .frontend.perception_view import get_perception_view_status
+from ..paths import safe_path_part
+from ..frontend.perception_view import get_perception_view_status
 from .view_discovery import discover_runtime_view
 from .host_publications import (
     LATEST_FRAME_PATH,
@@ -20,7 +20,7 @@ from .host_publications import (
 from .runtime_hosts import RuntimeHostError, runtime_base_url
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))
 
 

@@ -25,7 +25,7 @@ def get_vehicles_status(*, timeout_s: float = DEFAULT_READINESS_TIMEOUT_S) -> di
     one deadline.
     """
 
-    from ..runtime_hosts import created_simulators
+    from ..hosts.runtime_hosts import created_simulators
 
     deadline = time.monotonic() + _require_positive_timeout(timeout_s)
 

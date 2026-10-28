@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 
-from ..step_activations import HOST_PROVIDERS
+from ..hosts.step_activations import HOST_PROVIDERS
 from ..timeout_input import validate_timeout_input
 from .discovery import discover_vehicle, remove_vehicle
 from .probes import DEFAULT_READINESS_TIMEOUT_S

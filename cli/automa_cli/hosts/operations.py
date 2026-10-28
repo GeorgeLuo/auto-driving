@@ -12,8 +12,8 @@ from implementations.operations import (
     run_startup_action_check,
 )
 from implementations.operations.artifact_writers import write_json
-from .command_result import CommandResult
-from .paths import ROOT, display_path
+from ..command_result import CommandResult
+from ..paths import ROOT, display_path
 from .vehicle_access import create_vehicle_access
 from .step_activations import staging_host
 from . import runtime_hosts

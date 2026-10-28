@@ -8,9 +8,9 @@ import unittest
 from pathlib import Path
 
 from autonomy.decision_cycle.activation import STEPS, read_step_activation
-from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.deploy import PicarTarget, _REMOTE_AUTONOMY_INSTALL_SCRIPT, _write_remote_activation_files
-from cli.automa_cli.step_activations import (
+from cli.automa_cli.hosts.bundles import controller_bundle_paths, sync_controller_bundle
+from cli.automa_cli.hosts.deploy import PicarTarget, _REMOTE_AUTONOMY_INSTALL_SCRIPT, _write_remote_activation_files
+from cli.automa_cli.hosts.step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     bundle_activation_path,
     ensure_step_activations,

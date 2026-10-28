@@ -19,7 +19,7 @@ from autonomy.decision_cycle.activation import STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
 from implementations.decision_cycle.catalog import selection_activation
 
-from .command_result import CommandResult
+from ..command_result import CommandResult
 from .bundles import (
     controller_bundle_paths,
     controller_bundle_source_summary,
@@ -31,7 +31,7 @@ from .donkeycar_vendor import (
     ensure_donkeycar_vendor,
     load_donkeycar_vendor_manifest,
 )
-from .paths import display_path, safe_path_part
+from ..paths import display_path, safe_path_part
 from .step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     HOST_PROVIDERS,
@@ -47,11 +47,11 @@ from .step_activations import (
 )
 from .host_publications import host_state
 from .host_status import host_block
-from .vehicles.discovery import normalize_vehicle_url
-from .vehicles.probes import Candidate, _probe_chase, chase_operator_url
+from ..vehicles.discovery import normalize_vehicle_url
+from ..vehicles.probes import Candidate, _probe_chase, chase_operator_url
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 DEPLOY_DIR = ROOT / "deploy" / "targets" / "donkeycar"
 DONKEY_SERVICE_NAME = "automa-donkey.service"
 DONKEY_SERVICE_DIR = DEPLOY_DIR / "systemd"

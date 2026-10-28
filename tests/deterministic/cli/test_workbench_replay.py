@@ -6,7 +6,7 @@ from io import StringIO
 from unittest import mock
 from urllib.request import urlopen
 
-from cli.automa_cli.workbench import run_workbench_replay
+from cli.automa_cli.hosts.workbench import run_workbench_replay
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
 
@@ -28,7 +28,7 @@ class WorkbenchTests(unittest.TestCase):
                     self.assertIn('<a class="nav" href="/workbench/">Workbench</a>', response.read().decode())
                 raise KeyboardInterrupt
 
-            with mock.patch("cli.automa_cli.workbench.open_view_message", side_effect=open_view) as launch:
+            with mock.patch("cli.automa_cli.hosts.workbench.open_view_message", side_effect=open_view) as launch:
                 result = run_workbench_replay(root, cadence_ms=0, open_browser=True, output=output)
 
         launch.assert_called_once_with(opened[0])

@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import unittest
 
-from cli.automa_cli.deploy import inspect_picar_autonomy_runtime
+from cli.automa_cli.hosts.deploy import inspect_picar_autonomy_runtime
 from implementations.vehicle.picar.defaults import DEFAULT_LOCAL_CAR_BASE_URL
 
 

@@ -418,7 +418,7 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Command
     until ``delete_simulator`` ends it.
     """
 
-    from .runtime_hosts import RuntimeHostError, start_simulator
+    from .hosts.runtime_hosts import RuntimeHostError, start_simulator
     from .vehicles.discovery import _vehicle_heading
 
     ui_dir, error = _metrics_ui_dir()
@@ -441,7 +441,7 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Command
 def delete_simulator(*, url: str) -> CommandResult:
     """End a simulator ``simulators create`` started, unless a host was created at it."""
 
-    from .runtime_hosts import created_simulators, local_hosts, stop_simulator
+    from .hosts.runtime_hosts import created_simulators, local_hosts, stop_simulator
     from .vehicles.discovery import _vehicle_heading
     from .vehicles.probes import chase_operator_url, normalize_chase_url
 

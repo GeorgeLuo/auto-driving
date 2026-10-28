@@ -20,7 +20,7 @@ from typing import Any
 from autonomy.decision_cycle.activation import read_step_activation
 from autonomy.decision_cycle.steps import STEP_RUNNERS
 
-from .paths import display_path
+from ..paths import display_path
 from .step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     bundle_activation_path,

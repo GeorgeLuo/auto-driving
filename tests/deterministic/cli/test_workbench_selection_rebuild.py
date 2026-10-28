@@ -4,7 +4,7 @@ import json
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.workbench_plugins import WORKBENCH_SELECTABLE_STEPS
+from cli.automa_cli.hosts.workbench_plugins import WORKBENCH_SELECTABLE_STEPS
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.memory.frame_fixtures import write_frames
 from tests.shared.cli.workbench_fixtures import (

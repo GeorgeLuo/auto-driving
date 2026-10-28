@@ -11,8 +11,9 @@ from contextlib import ExitStack, chdir, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from cli.automa_cli import (
-    app,
+from cli.automa_cli import app
+from cli.automa_cli.hosts import (
+    commands as hosts_commands,
     deploy,
     memory,
     operations,
@@ -28,7 +29,7 @@ from tests.support.offline.sitecustomize import offline_getaddrinfo
 # run in this process sees a test's value only if the name is rebound.
 IMPORT_TIME_ENV = {
     "AUTOMA_RUNTIME_ROOT": (
-        (app, "HOSTS_RUNTIME_ROOT"),
+        (hosts_commands, "HOSTS_RUNTIME_ROOT"),
         (deploy, "RUNTIME_ROOT"),
         (memory, "RUNTIME_ROOT"),
         (perception, "RUNTIME_ROOT"),

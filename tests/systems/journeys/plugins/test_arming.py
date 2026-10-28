@@ -11,7 +11,7 @@ from tests.support.runtime_fixtures import write_host_fixture
 from unittest.mock import patch
 from urllib.request import urlopen
 
-from cli.automa_cli.runtime_hosts import stop_chase_host
+from cli.automa_cli.hosts.runtime_hosts import stop_chase_host
 from implementations.decision_cycle.catalog import PRESET_STEPS, packaged_activation
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
@@ -175,7 +175,7 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(selected(after, "applied", "proposal"), [])
             finally:
                 cli("stop", "--name", "chase-sim-chaser", check=False)
-                with patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime):
+                with patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime):
                     stop_chase_host("chase-sim-chaser")
 
 

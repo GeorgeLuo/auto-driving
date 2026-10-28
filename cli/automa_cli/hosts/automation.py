@@ -16,11 +16,11 @@ from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
-from .command_result import CommandResult
+from ..command_result import CommandResult
 from .vehicle_access import create_vehicle_access
 from .staged_bundle import write_json_atomically
 from .bundles import controller_bundle_paths
-from .paths import display_path, safe_path_part
+from ..paths import display_path, safe_path_part
 from . import runtime_hosts
 from .runtime_hosts import (
     bundle_paths,
@@ -41,7 +41,7 @@ from .step_activations import (
     selection_label,
     staged_selections,
 )
-from .runtime_view import open_view_message
+from ..runtime_view import open_view_message
 from .run_record import (
     control_application,
     control_source,
@@ -51,14 +51,14 @@ from .run_record import (
     stopped_readiness,
 )
 from .view_discovery import discover_runtime_view
-from .frontend.perception_view import (
+from ..frontend.perception_view import (
     get_perception_view_status,
     perception_view_ready,
 )
-from .vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
+from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
 
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[3]
 AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
 MAX_STATUS_REASON_CHARS = 240
 

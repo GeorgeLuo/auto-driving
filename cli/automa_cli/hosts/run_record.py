@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.runtime.session import RunConfiguration
-from .paths import display_path
-from .frontend.server import RuntimeViewServer
+from ..paths import display_path
+from ..frontend.server import RuntimeViewServer
 from .step_activations import step_lines
 
 RUN_STATE_SCHEMA = "automa_automation_run_state"

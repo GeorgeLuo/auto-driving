@@ -7,9 +7,9 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from autonomy.decision_cycle.activation import STEPS
-from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.deploy import PicarTarget, _verify_picar_autonomy_runtime
-from cli.automa_cli.step_activations import ensure_step_activations, stage_activation
+from cli.automa_cli.hosts.bundles import controller_bundle_paths, sync_controller_bundle
+from cli.automa_cli.hosts.deploy import PicarTarget, _verify_picar_autonomy_runtime
+from cli.automa_cli.hosts.step_activations import ensure_step_activations, stage_activation
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
     DEFAULT_STEP_PRESETS,
@@ -106,7 +106,7 @@ class PhysicalDeployTests(unittest.TestCase):
         )
         for mode, reported, error in cases:
             with self.subTest(mode=mode, reported=reported), patch(
-                "cli.automa_cli.deploy.urllib_request.urlopen",
+                "cli.automa_cli.hosts.deploy.urllib_request.urlopen",
                 return_value=_status_response(mode, reported),
             ):
                 if error is None:

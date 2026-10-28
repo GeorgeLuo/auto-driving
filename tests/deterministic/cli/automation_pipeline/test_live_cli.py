@@ -15,8 +15,8 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
-from cli.automa_cli.host_publications import fetch_observation_sample
-from cli.automa_cli.streaming import _ViewFeed, _read_publication
+from cli.automa_cli.hosts.host_publications import fetch_observation_sample
+from cli.automa_cli.hosts.streaming import _ViewFeed, _read_publication
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import HOST_NAME
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.integration.live_host import LiveHostTestCase, stage_runtime as _stage, wait_until
@@ -28,7 +28,7 @@ class LiveCommandsTests(LiveHostTestCase):
 
     def test_the_perception_view_stays_live_while_the_decision_is_unavailable(self) -> None:
         self.observe()
-        with patch("cli.automa_cli.streaming.runtime_view_dir", return_value=self.runtime_root / "view"):
+        with patch("cli.automa_cli.hosts.streaming.runtime_view_dir", return_value=self.runtime_root / "view"):
             feed = _ViewFeed(HOST_NAME, base_url=self.host.base_url, timeout_s=3.0)
         self.addCleanup(feed.stop)
         feed.decision.refresh = Mock(side_effect=ConnectionError("decision route down"))
@@ -40,7 +40,7 @@ class LiveCommandsTests(LiveHostTestCase):
             samples.append(pair)
             return pair
 
-        with patch("cli.automa_cli.streaming.fetch_observation_sample", side_effect=sample):
+        with patch("cli.automa_cli.hosts.streaming.fetch_observation_sample", side_effect=sample):
             feed.publish(publication)
         self.assertIn("ConnectionError: decision route down", feed.decision_line())
         with urlopen(f"{feed.url.rstrip('/')}/api/latest", timeout=5) as response:
@@ -93,9 +93,9 @@ class LiveCommandsTests(LiveHostTestCase):
                 served.append((exc.code, json.load(exc)))
             raise KeyboardInterrupt
 
-        with patch("cli.automa_cli.streaming.open_view_message",
+        with patch("cli.automa_cli.hosts.streaming.open_view_message",
                    side_effect=lambda url: opened.append(url) or f"Browser opened: {url}"), \
-             patch("cli.automa_cli.streaming._pause_s", side_effect=interrupt):
+             patch("cli.automa_cli.hosts.streaming._pause_s", side_effect=interrupt):
             result = self.viewer(*target)
         self.assertEqual(result.returncode, 130, result.stdout + result.stderr)
         return result, opened[0], served[0]
@@ -140,7 +140,7 @@ class LiveCommandsTests(LiveHostTestCase):
         url = closed_url()
         write_host_fixture(self.runtime_root, "piracer", provider="picar", url=url)
         for target in (("--host-url", url), ("--name", "piracer")):
-            with self.subTest(target=target), patch("cli.automa_cli.streaming.open_view_message") as open_view:
+            with self.subTest(target=target), patch("cli.automa_cli.hosts.streaming.open_view_message") as open_view:
                 silent = self.viewer(*target)
                 self.assertEqual(silent.returncode, 2, silent.stdout + silent.stderr)
                 self.assertTrue(silent.stdout.startswith(f"Cannot view host piracer at {url}: "), silent.stdout)

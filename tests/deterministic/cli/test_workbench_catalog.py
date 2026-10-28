@@ -7,8 +7,8 @@ from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.vehicle import SensorFrame
 from implementations.decision_cycle.catalog import selection_activation, step_plugins
 from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
-from cli.automa_cli.workbench_plugins import packaged_plugin_catalog
-from cli.automa_cli.workbench import ReplayActionError
+from cli.automa_cli.hosts.workbench_plugins import packaged_plugin_catalog
+from cli.automa_cli.hosts.workbench import ReplayActionError
 from tests.shared.cli.workbench_fixtures import (
     DecisionFixtureMapper,
     ImageReplayRunner,

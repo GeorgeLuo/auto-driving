@@ -23,8 +23,8 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.report import report_from_host_result
 from implementations.decision_cycle.catalog import packaged_activation
-from cli.automa_cli.decision_records import DecisionRecords, DecisionRunners
-from cli.automa_cli.step_activations import (
+from cli.automa_cli.hosts.decision_records import DecisionRecords, DecisionRunners
+from cli.automa_cli.hosts.step_activations import (
     decision_generation_id,
     decision_identity,
     stage_host_step,
@@ -186,7 +186,7 @@ class DecisionSurfaceFixture:
         )
         self._env_patch.start()
         # runtime_hosts reads RUNTIME_ROOT at import time; rebind for tests.
-        import cli.automa_cli.runtime_hosts as runtime_hosts_mod
+        import cli.automa_cli.hosts.runtime_hosts as runtime_hosts_mod
 
         self._root_patches = [patch.object(runtime_hosts_mod, "RUNTIME_ROOT", self.runtime_root)]
         for root_patch in self._root_patches:

@@ -22,7 +22,7 @@ from .host_publications import (
     normalize_host_telemetry_records,
     decision_publication_identity,
 )
-from .frontend.server import RuntimeViewServer
+from ..frontend.server import RuntimeViewServer
 from .memory_report import evidence_records
 
 

@@ -22,7 +22,7 @@ from .inspection_runs import (
     default_selection, recorded_runner,
     resolve_replay_activations, restage_replay_steps,
 )
-from .frontend.workbench_contract import (
+from ..frontend.workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
     WORKBENCH_DEFAULT_CADENCE_MS,

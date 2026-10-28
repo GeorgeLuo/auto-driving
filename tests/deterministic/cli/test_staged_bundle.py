@@ -8,7 +8,7 @@ import types
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.staged_bundle import StagedBundleImport, write_json_atomically
+from cli.automa_cli.hosts.staged_bundle import StagedBundleImport, write_json_atomically
 
 
 HOST_NAME = "bundle_probe_host.marker"

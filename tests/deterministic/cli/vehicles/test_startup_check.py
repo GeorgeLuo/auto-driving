@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.automa_cli.operations import run_host_startup_check
+from cli.automa_cli.hosts.operations import run_host_startup_check
 from implementations.vehicle.access import VehicleAccess
 from tests.deterministic.implementations.operations.test_startup_action_check import FakeImageCar
 
@@ -29,9 +29,9 @@ class StartupCheckTests(unittest.TestCase):
         access = VehicleAccess(car=car, image_extension="jpg", front_camera_endpoint="", control=control)
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch("cli.automa_cli.operations.OPERATION_OUTPUT_ROOT", Path(tmp)),
-            patch("cli.automa_cli.operations.staging_host", return_value=({"host_name": "fake-car"}, None)),
-            patch("cli.automa_cli.operations.create_vehicle_access", return_value=access),
+            patch("cli.automa_cli.hosts.operations.OPERATION_OUTPUT_ROOT", Path(tmp)),
+            patch("cli.automa_cli.hosts.operations.staging_host", return_value=({"host_name": "fake-car"}, None)),
+            patch("cli.automa_cli.hosts.operations.create_vehicle_access", return_value=access),
         ):
             result = run_host_startup_check(
                 host_name="fake-car", duration_s=0.0, settle_s=0.0, dry_run=dry_run

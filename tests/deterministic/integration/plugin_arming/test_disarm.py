@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.plugin_catalog import PluginCatalogClient
+from cli.automa_cli.hosts.plugin_catalog import PluginCatalogClient
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner, image_source, serve_workbench
 from tests.shared.integration.plugin_flow_fixtures import (

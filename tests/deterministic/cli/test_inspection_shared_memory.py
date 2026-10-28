@@ -13,9 +13,9 @@ from PIL import Image
 
 from cli.automa_cli.app import build_parser
 from cli.automa_cli.step_inspect import inspect_step
-from cli.automa_cli.inspection_runs import SharedMemorySeed
+from cli.automa_cli.hosts.inspection_runs import SharedMemorySeed
 from cli.automa_cli.step_replay import StepReplay
-from cli.automa_cli.workbench_source import normalize_image_file
+from cli.automa_cli.hosts.workbench_source import normalize_image_file
 
 KEY = "perception.sim_cardboard_permanence.history"
 PLUGINS = ["sim_cardboard_obstacle", "sim_cardboard_permanence"]

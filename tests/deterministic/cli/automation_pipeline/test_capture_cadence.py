@@ -8,8 +8,8 @@ import time
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.automation import run_host_automation
-from cli.automa_cli.bundles import controller_bundle_paths
+from cli.automa_cli.hosts.automation import run_host_automation
+from cli.automa_cli.hosts.bundles import controller_bundle_paths
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (

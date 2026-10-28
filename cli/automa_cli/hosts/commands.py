@@ -926,6 +926,7 @@ def _handle_hosts_plugins_help(args: argparse.Namespace) -> int:
         "Disarming supports the same steps; a one-plugin step keeps its plugin. Use --step with --plugin IDs,",
         "or --selection for grouped removals. Use disarm --all to clear every step that can run without",
         "plugins, or disarm --step <step> --all to clear one step.",
+        "./cli/automa plugins disarm --host-name <host> --all clears the same steps as disarm --all.",
         "The next cycle resets disarmed instances; catalog entries remain available to arm again.",
         "Arm and disarm change the current host only; staged selections are restored when the host restarts.",
         "Neither changes control mode or starts or stops automation. Workbench catalogs support upload only.", "",

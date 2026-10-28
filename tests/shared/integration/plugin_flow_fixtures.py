@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -13,6 +14,7 @@ from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.plugins.catalog import PluginCatalogClient
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.chase_sim import create_host as create_chase_host
+from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
 from tests.shared.cli.invoke import invoke_automa
@@ -23,6 +25,7 @@ from tests.shared.cli.workbench_fixtures import (
     post_action,
     serve_workbench,
 )
+from tests.support.runtime_fixtures import write_host_fixture, write_json
 
 
 def frame(root, index):
@@ -63,6 +66,16 @@ def plugin_host(root, vehicle="chase", activations=None):
     finally:
         view.stop()
         host.close()
+
+
+def name_host(runtime_root: Path, base: str, provider: str) -> None:
+    """Name the host serving ``base`` "one" under ``runtime_root``, so ``--host-name one`` reaches it."""
+
+    write_host_fixture(runtime_root, "one", provider=provider, url=base)
+    if provider == "chase-sim":
+        write_json(runtime_root / "one/bundle/runtime/automation/host.json", {
+            "schema": HOST_RECORD_SCHEMA, "host_name": "one", "pid": os.getpid(), "base_url": base,
+        })
 
 
 def upload(base, file, step, plugin_id, *, arm=False, check=True):

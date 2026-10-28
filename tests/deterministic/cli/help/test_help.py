@@ -107,6 +107,22 @@ class HelpCommandTests(unittest.TestCase):
                     parser.parse_args(args)
                 self.assertEqual(caught.exception.code, 2)
 
+    def test_plugin_disarm_parses_against_a_host(self) -> None:
+        parser = build_parser()
+        disarmed = parser.parse_args(["plugins", "disarm", "--host-name", "one", "--all"])
+        self.assertEqual((disarmed.command, disarmed.plugin_command, disarmed.host_name, disarmed.all_plugins),
+                         ("plugins", "disarm", "one", True))
+        self.assertFalse(disarmed.json)
+        for args in (
+            ["plugins", "disarm", "--all"],
+            ["plugins", "disarm", "--host-name", "one"],
+            ["plugins", "disarm", "--host-name", "one", "--url", "http://127.0.0.1:5051", "--all"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+
     def test_removed_flags_are_rejected_before_execution(self) -> None:
         parser = build_parser()
         for args in (

@@ -15,6 +15,7 @@ from tests.shared.integration.plugin_flow_fixtures import (
     arm_step,
     catalog,
     frame,
+    name_host,
     plugin_host,
     selected,
     upload,
@@ -107,6 +108,30 @@ class PluginDisarmingFlows(unittest.TestCase):
                 for step in ("plan", "action"):
                     self.assertEqual(after["applied_decision"]["steps"][step], before["applied_decision"]["steps"][step])
                 self.assertIn("Disarming: applied", self.disarm(base, "--all").stdout)
+
+    def test_plugins_disarm_all_clears_a_named_host(self):
+        for vehicle, provider in (("chase", "chase-sim"), ("picar", "picar")):
+            with self.subTest(vehicle=vehicle), image_source(1) as root, plugin_host(root, vehicle) as (host, base):
+                for step in CLEARABLE_STEPS:
+                    file = root / f"{step}.py"
+                    write_plugin(file, step, f"prototype-{step}", 1)
+                    upload(base, file, step, f"prototype-{step}", arm=True)
+                host.run(frame(root, 1))
+                before = catalog(base)
+                runtime_root = root / "hosts"
+                name_host(runtime_root, base, provider)
+                receipt = json.loads(invoke_automa("plugins", "disarm", "--host-name", "one", "--all", "--json",
+                                                   runtime_root=runtime_root).stdout)
+                self.assertEqual(receipt["schema"], "automa_plugin_disarm")
+                self.assertEqual(receipt["host_name"], "one")
+                self.assertEqual(receipt["outcome"]["status"], "requested")
+                host.run(frame(root, 2))
+                after = catalog(base)
+                for step in CLEARABLE_STEPS:
+                    self.assertEqual(selected(after, "applied", step), [])
+                for step in ("plan", "action"):
+                    self.assertEqual(after["applied_decision"]["steps"][step], before["applied_decision"]["steps"][step])
+                self.assertIn("Disarming: applied", invoke_automa("plugins", "disarm", "--url", base, "--all").stdout)
 
     def test_batch_empty_and_inactive_ids_are_noops_and_rapid_requests_compose(self):
         with image_source(1) as root, plugin_host(root) as (host, base):

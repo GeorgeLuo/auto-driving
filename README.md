@@ -131,6 +131,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `hosts plugins disarm` | Deselects named plugins on an existing host; observation, plan and action keep their one plugin (arm a replacement instead). Use `--step` with repeatable `--plugin`, a JSON `--selection` map for grouped removals, or `--all` to clear one step (with `--step`) or perception, memory and proposal. The next cycle resets disarmed instances; catalog entries remain available. |
 | `hosts info perception\|memory\|proposal\|plan\|action` | Reads that step's staged activation, enabled plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception, memory, proposal and plan also show their preset. Each reports its view; memory, proposal, plan and action include live runner status. Proposal, plan and action also show the decision generation, each decision step's plugins, and the action authority. |
 | `plugins list` | Offline: lists the packaged catalog, `implementations/decision_cycle/catalog.py`, by step, defaults first and marked; `--step` filters and `--json` adds each definition's entrypoint, default config and description. With `--host-name` (or a runtime `--url`), lists what that host has armed instead; `--long` lists the host's whole catalog, packaged and uploaded, with its version and the armed plugins marked. A workbench `--url` arms nothing and lists only with `--long`. Exits 2 while the host's last arming failed. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
+| `plugins disarm` | With `--host-name` (or a runtime `--url`) and `--all`, clears perception, memory and proposal on that host, as `hosts plugins disarm --all` does; observation, plan and action keep their one plugin. The next cycle applies it; catalog entries remain available. |
 | `plugins inspect <step>` | Offline: replays an image, image directory, or recorded run through the whole cycle and reports perception, memory, proposal, plan, or action. Restores recorded selections; `--preset` or `--plugin` overrides the inspected step. `--frame N` reports one frame after replaying its history. `--record` saves `report.json` and copied frames under `runtime/<step>-inspections/`. See [Plugin inspection](#plugin-inspection). |
 | `hosts create` | Creates a named host for the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url`, installs its release, and starts it. `vehicles status` names each vehicle's provider and URL. |
 | `hosts delete` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. |
@@ -179,6 +180,7 @@ activations unchanged; a host restart restores staged selections. Both accept
 ./cli/automa hosts plugins disarm --name chase-sim-chaser --step proposal --plugin avoid_recent_obstruction
 ./cli/automa hosts plugins disarm --name chase-sim-chaser --step memory --all
 ./cli/automa hosts plugins disarm --name chase-sim-chaser --all
+./cli/automa plugins disarm --host-name chase-sim-chaser --all
 ./cli/automa hosts plugins disarm --name chase-sim-chaser --selection removals.json --json
 ```
 

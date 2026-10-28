@@ -17,15 +17,15 @@ from typing import Any, Sequence
 
 from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS, step_runner
-from autonomy.plugins import LocalPluginCatalog, PluginDefinition
+from autonomy.plugins import LocalPluginCatalog
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
     PRESET_STEPS,
-    packaged_activation,
     plugin_list_preset,
     selection_activation,
-    step_plugins,
 )
+
+from ..shared.plugin_catalog import ordered_plugin_definitions, packaged_plugin_definitions
 
 
 # The workbench exposes selection controls for the steps with packaged presets.
@@ -77,8 +77,6 @@ class PluginCatalog:
 
     @property
     def plugins(self) -> tuple[PluginDescriptor, ...]:
-        definitions = {item.plugin_id: item for item in self.resolver.list(self.step)}
-        ids = list(dict.fromkeys([*self.defaults, *sorted(definitions)]))
         return tuple(
             PluginDescriptor(
                 plugin_id=item.plugin_id,
@@ -89,7 +87,7 @@ class PluginCatalog:
                 revision=item.metadata.get("revision"),
                 filename=item.metadata.get("filename"),
             )
-            for plugin_id in ids if (item := definitions.get(plugin_id)) is not None
+            for item in ordered_plugin_definitions(self.resolver.list(self.step), self.defaults)
         )
 
     @property
@@ -165,17 +163,8 @@ def packaged_plugin_catalog(step: str) -> PluginCatalog:
         raise PluginCatalogError(
             f"plugins can be selected for {', '.join(WORKBENCH_SELECTABLE_STEPS)}, not {step!r}"
         )
-    default_ids = DEFAULT_STEP_PLUGINS[step]
-    entries = step_plugins(step)
-    definitions: dict[str, PluginDefinition] = {
-        item.plugin_id: item
-        for item in packaged_activation(step, []).plugin_manager().available
-    }
-    resolver = LocalPluginCatalog(
-        replace(item, metadata={"description": str(entries[item.plugin_id].get("description") or "")})
-        for item in definitions.values()
-    )
-    return PluginCatalog(step=step, resolver=resolver, defaults=tuple(default_ids))
+    resolver = LocalPluginCatalog(packaged_plugin_definitions(step))
+    return PluginCatalog(step=step, resolver=resolver, defaults=tuple(DEFAULT_STEP_PLUGINS[step]))
 
 
 def _json_safe(value: Any) -> Any:

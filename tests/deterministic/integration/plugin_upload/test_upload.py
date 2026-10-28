@@ -11,7 +11,7 @@ from urllib.error import HTTPError
 from autonomy.decision_cycle.activation import step_activation_from_payload
 from autonomy.plugins import uploaded_source
 from cli.automa_cli.hosts.bundles import controller_bundle_paths
-from cli.automa_cli.hosts.plugin_catalog import PluginCatalogClient
+from cli.automa_cli.plugins.catalog import PluginCatalogClient
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.shared.cli.invoke import invoke_automa
@@ -293,16 +293,16 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertIn("Plugin: prototype", result.stdout)
             self.assertIn("Selection: unchanged", result.stdout)
             self.assertIn("Next: ./cli/automa hosts plugins status --name chase-sim-chaser --step memory", result.stdout)
-            listed = json.loads(invoke_automa(
-                "hosts", "plugins", "list", "--name", "chase-sim-chaser", "--step", "memory", "--json",
+            loaded = json.loads(invoke_automa(
+                "plugins", "list", "--host-name", "chase-sim-chaser", "--step", "memory", "--json",
                 runtime_root=runtime_root,
             ).stdout)
-            self.assertTrue(listed["ok"])
-            status = json.loads(invoke_automa(
+            self.assertTrue(loaded["ok"])
+            self.assertEqual(loaded["plugins"], [])
+            listed = json.loads(invoke_automa(
                 "hosts", "plugins", "status", "--name", "chase-sim-chaser", "--step", "memory", "--json",
                 runtime_root=runtime_root,
             ).stdout)
-            self.assertEqual(listed, status)
             self.assertEqual(len(listed["plugins"]), 1)
             self.assertEqual(listed["plugins"][0]["id"], "prototype")
             self.assertIn(listed["plugins"][0]["metadata"]["revision"], result.stdout)

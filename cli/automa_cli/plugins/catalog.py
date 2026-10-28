@@ -1,4 +1,4 @@
-"""CLI upload, arming, disarming and status against a host's live plugin catalog."""
+"""Loaded plugin listing and CLI operations against a host's live catalog."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
+from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
@@ -48,7 +49,7 @@ class PluginCatalogClient:
 def catalog_url(host_name: str) -> str:
     """The host's catalog; every host serves ``/api/plugins``."""
 
-    from .runtime_hosts import runtime_base_url
+    from ..hosts.runtime_hosts import runtime_base_url
 
     return runtime_base_url(host_name)
 
@@ -141,8 +142,56 @@ def disarm_plugins(*, url: str | None, host_name: str | None, step: str | None =
                    recovery=recovery, json_output=json_output)
 
 
-def list_plugins(*, url: str | None, host_name: str | None, step: str | None = None,
+def list_plugins(*, host_name: str, step: str | None = None,
                  json_output: bool = False) -> CommandResult:
+    """List the definitions applied by a named host, including their loaded revisions."""
+
+    steps = (step,) if step is not None else STEPS
+    payload: dict[str, Any] = {
+        "schema": "automa_plugin_list", "host_name": host_name, "url": None,
+        "step": step, "ok": False, "plugins": [],
+    }
+    try:
+        payload["url"] = catalog_url(host_name)
+        snapshot = PluginCatalogClient(payload["url"])()
+        if not snapshot.get("ok"):
+            raise RuntimeError(snapshot.get("error") or "Host plugin catalog is unavailable.")
+        arming = snapshot.get("arming")
+        applied = arming.get("applied") if isinstance(arming, dict) else None
+        if not isinstance(applied, dict) or any(not isinstance(applied.get(name), list) for name in steps):
+            raise ValueError("Host did not report its applied plugin selection.")
+        payload.update(
+            ok=True,
+            plugins=[plugin for name in steps for plugin in applied[name]],
+            arming={key: arming.get(key) for key in ("status", "request_id", "error")},
+        )
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
+        payload["error"] = str(exc)
+
+    exit_code = 0 if payload["ok"] else 2
+    if json_output:
+        return CommandResult(exit_code, json.dumps(payload, indent=2, sort_keys=True))
+    lines = [f"Host: {host_name}"]
+    if not payload["ok"]:
+        lines.extend(["Loaded plugins: unavailable", f"Reason: {payload['error']}"])
+    else:
+        lines.append("Loaded plugins:")
+        for name in steps:
+            selected = []
+            for plugin in payload["plugins"]:
+                if plugin["step"] == name:
+                    revision = plugin["metadata"].get("revision")
+                    source = f"revision {revision}" if revision else "packaged"
+                    selected.append(f"{plugin['id']} ({source})")
+            lines.append(f"  {name}: {', '.join(selected) or '(none)'}")
+        lines.append(f"Selection: {payload['arming']['status']}")
+        if payload["arming"].get("error"):
+            lines.append(f"Selection error: {payload['arming']['error']}")
+    return CommandResult(exit_code, "\n".join(lines))
+
+
+def get_catalog_status(*, url: str | None, host_name: str | None, step: str | None = None,
+                       json_output: bool = False) -> CommandResult:
     endpoint = url
     try:
         endpoint = url or catalog_url(host_name)

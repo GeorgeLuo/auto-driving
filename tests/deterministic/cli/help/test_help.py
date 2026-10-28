@@ -86,6 +86,21 @@ class HelpCommandTests(unittest.TestCase):
         deleted = parser.parse_args(["simulators", "delete", "--url", "http://127.0.0.1:5051/"])
         self.assertEqual((deleted.simulator_command, deleted.url), ("delete", "http://127.0.0.1:5051/"))
 
+    def test_plugin_listing_requires_a_named_host_at_top_level(self) -> None:
+        parser = build_parser()
+        listed = parser.parse_args(["plugins", "list", "--host-name", "one", "--step", "memory", "--json"])
+        self.assertEqual((listed.command, listed.plugin_command, listed.host_name, listed.step),
+                         ("plugins", "list", "one", "memory"))
+        self.assertTrue(listed.json)
+        for args in (
+            ["plugins", "list"],
+            ["hosts", "plugins", "list", "--name", "one"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+
     def test_removed_flags_are_rejected_before_execution(self) -> None:
         parser = build_parser()
         for args in (

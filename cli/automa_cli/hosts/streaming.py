@@ -31,7 +31,7 @@ from .host_publications import (
     presets_text,
     publication_to_frame_record,
 )
-from .plugin_catalog import PluginCatalogClient
+from ..plugins.catalog import PluginCatalogClient
 from .runtime_hosts import RuntimeHostError, local_hosts, runtime_base_url
 from .runtime_monitor import PERCEPTION_COPY_INTERVAL_S, _pause_s
 from ..frontend.server import RuntimeViewServer

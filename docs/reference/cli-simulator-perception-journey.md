@@ -155,11 +155,14 @@ from selecting it:
 ```
 
 The command reports success after the source is stored and its revision is
-registered, and prints the next verification command. `plugins status` reads the
+registered, and prints the next verification command. `hosts plugins status` reads the
 live catalog and reports its version, plugin IDs, filenames, and revisions;
 use `--json` for the complete receipt or catalog snapshot, including the target,
-outcome, and recovery action. `plugins list` remains an alias for `status`. `plugins help`
-describes the file identity arguments and the existing-host precondition.
+outcome, and recovery action. `./cli/automa plugins list --host-name chase-sim-chaser`
+shows the host's applied plugins, grouped by step, with their loaded revisions.
+Use `--step perception` to filter or `--json` for their definitions and configs.
+The former `hosts plugins list` alias is removed. `hosts plugins help` describes
+the file identity arguments and the existing-host precondition.
 Open **Plugins** in the runtime viewer to see the available
 revision. Upload does not change the selected or running plugins. Source that
 does not compile is refused with its file and line. The file is not imported,

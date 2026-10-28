@@ -29,7 +29,7 @@ from .runtime_hosts import RUNTIME_ROOT as HOSTS_RUNTIME_ROOT
 from .perception import get_host_perception_info
 from .workbench import run_workbench_replay
 from .workbench_plugins import WORKBENCH_SELECTABLE_STEPS
-from .plugin_catalog import arm_plugins, disarm_plugins, list_plugins, upload_plugin
+from ..plugins.catalog import arm_plugins, disarm_plugins, get_catalog_status, upload_plugin
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .viability import (
     run_memory_viability_measurement,
@@ -63,7 +63,7 @@ def _register_hosts_plugins(host_commands: argparse._SubParsersAction) -> None:
     plugin_commands = plugins.add_subparsers(dest="plugin_command")
     plugins_help = plugin_commands.add_parser("help", help="Show upload, arming, disarming and catalog status usage.")
     plugins_help.set_defaults(handler=_handle_hosts_plugins_help)
-    listing = plugin_commands.add_parser("status", aliases=["list"], help="Show live catalog availability and plugin revisions (list is an alias).")
+    listing = plugin_commands.add_parser("status", help="Show live catalog availability and plugin revisions.")
     listing_target = listing.add_mutually_exclusive_group(required=True)
     listing_target.add_argument("--name", dest="host_name", help="Host whose live catalog to read.")
     listing_target.add_argument("--url", help="Runtime or workbench URL; bypass host lookup.")
@@ -913,10 +913,11 @@ def _handle_hosts_plugins_help(args: argparse.Namespace) -> int:
         "- upload  store a file and register an available plugin revision",
         "- arm     add/update named plugins together on a runtime host",
         "- disarm  deselect named plugins or clear steps on a runtime host",
-        "- status  show live catalog availability and plugin revisions (list is an alias)",
+        "- status  show live catalog availability and plugin revisions",
         "- help    show this summary", "",
         "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; upload, arm and disarm do not start automation.",
         "Use ./cli/automa hosts status --name <host> to see the host's state.",
+        "Use ./cli/automa plugins list --host-name <host> to see its loaded plugins.",
         "Use --url <runtime-or-workbench-url> to address an existing catalog directly.", "",
         "Example:",
         "  ./cli/automa hosts plugins upload --name chase-sim-chaser --file ./prototype.py --step perception --plugin-id prototype --entrypoint prototype:Prototype",
@@ -943,7 +944,7 @@ def _handle_hosts_plugins_help(args: argparse.Namespace) -> int:
 
 
 def _handle_hosts_plugins_status(args: argparse.Namespace) -> int:
-    result = list_plugins(url=args.url, host_name=args.host_name, step=args.step, json_output=args.json_output)
+    result = get_catalog_status(url=args.url, host_name=args.host_name, step=args.step, json_output=args.json_output)
     print(result.message)
     return result.exit_code
 

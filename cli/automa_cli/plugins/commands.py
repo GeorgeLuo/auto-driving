@@ -5,22 +5,38 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from autonomy.decision_cycle.activation import STEPS
+
 from ..hosts.workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ..shared.selection_args import add_selection_args
+from .catalog import list_plugins
 from .step_inspect import INSPECT_STEPS, inspect_step
 
 
 def register_plugins(subcommands: argparse._SubParsersAction) -> None:
     step_plugins = subcommands.add_parser(
         "plugins",
-        help="Inspect what a step's plugins report, from images or a recorded run.",
+        help="List loaded host plugins or inspect plugins from images and recordings.",
     )
     step_plugins.set_defaults(handler=_handle_plugins_help)
     step_plugin_commands = step_plugins.add_subparsers(dest="plugin_command")
     step_plugin_commands.add_parser(
         "help",
-        help="Show plugin inspection commands.",
+        help="Show plugin listing and inspection commands.",
     ).set_defaults(handler=_handle_plugins_help)
+
+    listing = step_plugin_commands.add_parser(
+        "list", help="Show the plugins loaded on a named host, grouped by step.",
+        description=(
+            "Read the host's applied plugin selection and loaded revisions. "
+            "Available uploads and pending selections are not listed as loaded. "
+            "This command does not start a host or change its selection."
+        ),
+    )
+    listing.add_argument("--host-name", required=True, help="Host name from hosts status.")
+    listing.add_argument("--step", choices=STEPS, help="Show only this cycle step.")
+    listing.add_argument("--json", action="store_true", help="Print loaded definitions and selection status as JSON.")
+    listing.set_defaults(handler=_handle_plugins_list)
 
     inspect_control = step_plugin_commands.add_parser(
         "inspect", help="Replay images or a recorded run and report a step's plugins.",
@@ -93,12 +109,20 @@ def register_plugins(subcommands: argparse._SubParsersAction) -> None:
 def _handle_plugins_help(args: argparse.Namespace) -> int:
     print("\n".join([
         "automa plugins commands", "",
+        "- list     show the plugins loaded on a named host",
         "- inspect  report a step's plugins from images or a recorded run",
         "- help     show this summary", "",
         "Upload, arm, disarm and catalog status: ./cli/automa hosts plugins", "",
-        "Detailed help: ./cli/automa plugins inspect <step> --help",
+        "Loaded plugins: ./cli/automa plugins list --host-name <host>",
+        "Detailed help: ./cli/automa plugins <command> --help",
     ]))
     return 0
+
+
+def _handle_plugins_list(args: argparse.Namespace) -> int:
+    result = list_plugins(host_name=args.host_name, step=args.step, json_output=args.json)
+    print(result.message)
+    return result.exit_code
 
 
 def _handle_plugins_inspect_help(args: argparse.Namespace) -> int:

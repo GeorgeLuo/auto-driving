@@ -11,12 +11,12 @@ from tests.shared.cli.invoke import invoke_automa
 
 INVALID_TIMEOUTS = ("0", "-1", "nan", "-nan", "inf", "+inf", "-inf")
 # Every `hosts stage <step>` command dispatches to the shared update.
-UPDATE_STEP = "cli.automa_cli.app.stage_host_step"
+UPDATE_STEP = "cli.automa_cli.hosts.commands.stage_host_step"
 TIMEOUT_MESSAGE = "--timeout-s must be a finite number greater than zero"
 # Each status command and the function its timeout reaches.
 STATUS_COMMANDS = {
-    ("vehicles", "status"): "cli.automa_cli.app.get_vehicles_status",
-    ("hosts", "status"): "cli.automa_cli.app.get_hosts_status",
+    ("vehicles", "status"): "cli.automa_cli.vehicles.commands.get_vehicles_status",
+    ("hosts", "status"): "cli.automa_cli.hosts.commands.get_hosts_status",
 }
 
 
@@ -63,9 +63,9 @@ class TimeoutInputTests(unittest.TestCase):
         for value in INVALID_TIMEOUTS:
             with self.subTest(value=value):
                 with (
-                    patch("cli.automa_cli.app.run_host_automation") as run_automation,
-                    patch("cli.automa_cli.app.start_host_automation_background") as start_automation,
-                    patch("cli.automa_cli.app.record_host_automation_terminal_result") as record_result,
+                    patch("cli.automa_cli.hosts.commands.run_host_automation") as run_automation,
+                    patch("cli.automa_cli.hosts.commands.start_host_automation_background") as start_automation,
+                    patch("cli.automa_cli.hosts.commands.record_host_automation_terminal_result") as record_result,
                 ):
                     code, stdout, stderr = _invoke(
                         "hosts",
@@ -130,7 +130,7 @@ class TimeoutInputTests(unittest.TestCase):
 
     def test_valid_positive_timeout_reaches_each_consumer_unchanged(self) -> None:
         with patch(
-            "cli.automa_cli.app.get_vehicles_status",
+            "cli.automa_cli.vehicles.commands.get_vehicles_status",
             return_value={"vehicles": [{"provider": "chase-sim", "url": "http://localhost:5050/", "state": "running"}]},
         ) as get_status:
             code, _, _ = _invoke("vehicles", "status", "--timeout-s", "1.25")
@@ -138,17 +138,17 @@ class TimeoutInputTests(unittest.TestCase):
         get_status.assert_called_once_with(timeout_s=1.25)
 
         with patch(
-            "cli.automa_cli.app.get_hosts_status", return_value=SimpleNamespace(exit_code=0, message="ok"),
+            "cli.automa_cli.hosts.commands.get_hosts_status", return_value=SimpleNamespace(exit_code=0, message="ok"),
         ) as get_hosts:
             code, _, _ = _invoke("hosts", "status", "--timeout-s", "1.25")
         self.assertEqual(code, 0)
         get_hosts.assert_called_once_with(host_name=None, timeout_s=1.25, long=False, json_output=False)
 
         with patch(
-            "cli.automa_cli.app.run_host_automation",
+            "cli.automa_cli.hosts.commands.run_host_automation",
             return_value=SimpleNamespace(exit_code=0, message="ok"),
         ) as run_automation, patch(
-            "cli.automa_cli.app.record_host_automation_terminal_result"
+            "cli.automa_cli.hosts.commands.record_host_automation_terminal_result"
         ):
             code, _, _ = _invoke(
                 "hosts",
@@ -174,10 +174,10 @@ class TimeoutInputTests(unittest.TestCase):
             self.assertEqual(get_status.call_args.kwargs["timeout_s"], 5.0)
 
         with patch(
-            "cli.automa_cli.app.run_host_automation",
+            "cli.automa_cli.hosts.commands.run_host_automation",
             return_value=SimpleNamespace(exit_code=0, message="ok"),
         ) as run_automation, patch(
-            "cli.automa_cli.app.record_host_automation_terminal_result"
+            "cli.automa_cli.hosts.commands.record_host_automation_terminal_result"
         ):
             code, _, _ = _invoke(
                 "hosts",

@@ -14,8 +14,8 @@ from PIL import Image
 
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
-from cli.automa_cli.step_inspect import inspect_step
-from cli.automa_cli.step_replay import read_replay_source
+from cli.automa_cli.plugins.step_inspect import inspect_step
+from cli.automa_cli.plugins.step_replay import read_replay_source
 from tests.shared.cli.memory.frame_fixtures import write_frames
 
 

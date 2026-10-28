@@ -12,7 +12,7 @@ from autonomy.runtime.assembly import staged_runtime
 from autonomy.runtime import recording as recording_module
 from autonomy.runtime.recording import RunRecording
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.runtime_monitor import _sync_recording
+from cli.automa_cli.hosts.runtime_monitor import _sync_recording
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.picar import create_host
 from tests.shared.cli.workbench_fixtures import image_source

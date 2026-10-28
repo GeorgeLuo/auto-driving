@@ -125,7 +125,7 @@ class MemoryInterfaceTests(unittest.TestCase):
     def test_schema_reads_the_declared_policy_and_a_missing_ledger_key_is_null(self) -> None:
         from autonomy.decision_cycle.memory.interface import FAILURE_POLICY, MEMORY_SCHEMA
         from autonomy.decision_cycle.runner import FAILURE_POLICY_FIELDS
-        from cli.automa_cli.memory_report import ledger_summary
+        from cli.automa_cli.hosts.memory_report import ledger_summary
         from implementations.decision_cycle.catalog import selection_activation
 
         schema = MemoryRunner.from_activation(selection_activation("memory")).describe_schema()

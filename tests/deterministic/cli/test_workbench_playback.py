@@ -16,7 +16,7 @@ from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import EvidenceLedger
 from implementations.decision_cycle.catalog import selection_activation
-from cli.automa_cli.workbench import ReplayActionError
+from cli.automa_cli.hosts.workbench import ReplayActionError
 from tests.shared.cli.workbench_fixtures import (
     FixtureMapper,
     ImageReplayRunner,

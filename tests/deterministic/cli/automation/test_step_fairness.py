@@ -14,7 +14,7 @@ from unittest import mock
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import builtin_activation
-from cli.automa_cli.automation import _collect_automation_status, run_host_automation
+from cli.automa_cli.hosts.automation import _collect_automation_status, run_host_automation
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.runtime_fixtures import write_json
 
@@ -37,10 +37,10 @@ class StepFairnessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
-            with mock.patch("cli.automa_cli.app.HOSTS_RUNTIME_ROOT", root), mock.patch(
-                "cli.automa_cli.runtime_hosts.RUNTIME_ROOT", root
+            with mock.patch("cli.automa_cli.hosts.commands.HOSTS_RUNTIME_ROOT", root), mock.patch(
+                "cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", root
             ), mock.patch(
-                "cli.automa_cli.automation.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
+                "cli.automa_cli.hosts.automation.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
             ):
                 for step in staged:
                     code, stdout = _invoke("hosts", "stage", step, "--name", VEHICLE, "--json")
@@ -63,9 +63,9 @@ class StepFairnessTests(unittest.TestCase):
 
         for step in STEPS:
             with self.subTest(step=step), self._runtime(step), mock.patch(
-                "cli.automa_cli.automation.runtime_base_url", return_value="http://host.invalid"
+                "cli.automa_cli.hosts.automation.runtime_base_url", return_value="http://host.invalid"
             ), mock.patch(
-                "cli.automa_cli.automation.monitor_runtime", return_value=(0, "done")
+                "cli.automa_cli.hosts.automation.monitor_runtime", return_value=(0, "done")
             ) as monitor:
                 result = run_host_automation(
                     host_name=VEHICLE, take_control=False, num_decisions=1, output=io.StringIO()

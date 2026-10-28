@@ -7,7 +7,7 @@ from pathlib import Path
 from tests.support.runtime_fixtures import write_host_fixture
 
 from autonomy.decision_cycle.activation import read_step_activation
-from cli.automa_cli.workbench_runner import ImageReplayRunner
+from cli.automa_cli.hosts.workbench_runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import PRESET_STEPS
 from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PRESET
 from tests.shared.cli.invoke import invoke_automa

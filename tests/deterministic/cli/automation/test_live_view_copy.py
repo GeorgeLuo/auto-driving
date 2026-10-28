@@ -12,9 +12,9 @@ from unittest.mock import Mock, patch
 from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.command_result import CommandResult
-from cli.automa_cli import decision_steps, runtime_monitor, streaming
-from cli.automa_cli.runtime_view import RuntimeViewServer
+from cli.automa_cli.shared.command_result import CommandResult
+from cli.automa_cli.hosts import decision_steps, runtime_monitor, streaming
+from cli.automa_cli.runtime_view import runtime_view_server
 from tests.deterministic.cli.automation.test_runtime_monitor import (
     DECISION, SELECTIONS, _FakeDecisionView, _host, _publication, _session,
 )
@@ -87,7 +87,7 @@ class LiveViewCopyTests(unittest.TestCase):
             return _publication(current["index"]), output.getvalue()
 
         def server(**kwargs):
-            holder["server"] = RuntimeViewServer(**kwargs)
+            holder["server"] = runtime_view_server(**kwargs)
             return holder["server"]
 
         def export(*args, **kwargs):
@@ -99,7 +99,7 @@ class LiveViewCopyTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as tmp,
             patch.object(runtime_monitor, "RuntimeClient", return_value=Client()),
-            patch.object(runtime_monitor, "RuntimeViewServer", side_effect=server),
+            patch.object(runtime_monitor, "runtime_view_server", side_effect=server),
             patch.object(runtime_monitor, "DecisionViewAdapter", _FakeDecisionView),
             patch.object(runtime_monitor, "fetch_observation_sample", side_effect=sample),
             patch.object(runtime_monitor, "_sync_recording", side_effect=export),

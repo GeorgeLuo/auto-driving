@@ -7,9 +7,9 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.automa_cli.step_inspect import inspect_step
-from cli.automa_cli.memory_report import plugin_summaries
-from cli.automa_cli.workbench_runner import ImageReplayRunner
+from cli.automa_cli.plugins.step_inspect import inspect_step
+from cli.automa_cli.hosts.memory_report import plugin_summaries
+from cli.automa_cli.hosts.workbench_runner import ImageReplayRunner
 from tests.shared.cli.memory.frame_fixtures import write_frames
 
 

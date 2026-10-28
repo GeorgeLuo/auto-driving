@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import unittest
 
-from cli.automa_cli.viability import _compute_perception_metrics, _evaluate_perception_gates
+from cli.automa_cli.hosts.viability import _compute_perception_metrics, _evaluate_perception_gates
 
 
 def _sample(captured_at_ms: int, processed_count: int) -> dict:

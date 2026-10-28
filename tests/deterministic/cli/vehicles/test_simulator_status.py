@@ -7,8 +7,8 @@ import time
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.host_publications import host_state
-from cli.automa_cli.vehicles import chase_operator_url
+from cli.automa_cli.hosts.host_publications import host_state
+from cli.automa_cli.vehicles.probes import chase_operator_url
 from tests.deterministic.cli.vehicles.test_host_status import _record
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.shared.cli.invoke import invoke_automa
@@ -96,7 +96,7 @@ class HostStateTests(unittest.TestCase):
 class EnvironmentStatusTests(unittest.TestCase):
     def test_picar_states_and_picar_only_exit(self):
         from unittest.mock import patch
-        from cli.automa_cli.vehicles import Candidate, ProbeResult
+        from cli.automa_cli.vehicles.probes import Candidate, ProbeResult
         url = "http://example:8887"
         for active, diagnostics, expected, code in (
             (True, {}, "answering", 0),
@@ -107,7 +107,7 @@ class EnvironmentStatusTests(unittest.TestCase):
                 probe = ProbeResult(active=active, candidate=Candidate("picar", url, "discovered"),
                                     diagnostics=diagnostics, error=None if active else "probe detail")
                 env = {"CHASE_UI_WS_URL": closed_url()}
-                with patch("cli.automa_cli.vehicles._probe_picar", return_value=probe):
+                with patch("cli.automa_cli.vehicles.probes._probe_picar", return_value=probe):
                     invoke_automa("vehicles", "discover", "--provider", "picar", "--url", url, "--force",
                                   runtime_root=Path(tmp), extra_env=env)
                     result = invoke_automa("vehicles", "status", "--json", runtime_root=Path(tmp),

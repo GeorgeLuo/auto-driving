@@ -29,7 +29,7 @@ const ctx = {
   action(name, payload) { ctx.actionInFlight = true; sent.push(payload); }
 };
 vm.createContext(ctx);
-vm.runInContext(fs.readFileSync("cli/automa_cli/workbench_page/js/plugins.js", "utf8"), ctx);
+vm.runInContext(fs.readFileSync("cli/automa_cli/frontend/pages/workbench/js/plugins.js", "utf8"), ctx);
 const inputs = (step) => elements[ctx.pluginPanels[step].catalogId].querySelectorAll("input[data-plugin-id]");
 const checked = (step) => inputs(step).filter((input) => input.checked).map((input) => input.getAttribute("data-plugin-id"));
 function toggle(step, id, selected) {

@@ -8,8 +8,8 @@ from pathlib import Path
 
 from PIL import Image
 
-from cli.automa_cli.workbench_runner import ImageReplayRunner
-from cli.automa_cli.workbench_source import normalize_image_directory
+from cli.automa_cli.hosts.workbench_runner import ImageReplayRunner
+from cli.automa_cli.hosts.workbench_source import normalize_image_directory
 from tests.shared.cli.invoke import invoke_automa
 
 

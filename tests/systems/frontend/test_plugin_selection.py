@@ -6,7 +6,7 @@ import subprocess
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.workbench_runner import ImageReplayRunner
+from cli.automa_cli.hosts.workbench_runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import selection_activation
 from tests.support.cli_runner import WORKSPACE_ROOT as ROOT
 

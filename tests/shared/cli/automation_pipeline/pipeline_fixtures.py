@@ -20,7 +20,7 @@ from implementations.decision_cycle.catalog import packaged_activation, preset_a
 # Capture threads keep the host type while staged runners swap implementations.
 from implementations.vehicle.chase_sim import ChaseCameraCapture
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from cli.automa_cli.bundles import controller_bundle_paths
+from cli.automa_cli.hosts.bundles import controller_bundle_paths
 
 from tests.support.runtime_fixtures import write_host_fixture
 
@@ -250,12 +250,12 @@ def chase_runtime(runtime_root: Path, *, car=None, host_name: str = HOST_NAME):
     from implementations.runtime.chase_sim.service import (
         HOST_RECORD_SCHEMA, ChaseRuntimeHost, write_host_record,
     )
-    from cli.automa_cli.runtime_hosts import HOST_RECORD
+    from cli.automa_cli.hosts.runtime_hosts import HOST_RECORD
 
     write_host_fixture(runtime_root, host_name)
     bundle = controller_bundle_paths(runtime_root / host_name)
     with ExitStack() as stack:
-        stack.enter_context(patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root))
+        stack.enter_context(patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root))
         host = stack.enter_context(ChaseRuntimeHost(
             car=_FakeCar() if car is None else car,
             runtime_dir=Path(bundle["runtime_dir"]), host_name=host_name,
@@ -267,5 +267,5 @@ def chase_runtime(runtime_root: Path, *, car=None, host_name: str = HOST_NAME):
         })
         stack.callback(record.unlink, missing_ok=True)
         # Starting a host builds it from a release; this one is already serving.
-        stack.enter_context(patch("cli.automa_cli.automation.runtime_base_url", return_value=host.base_url))
+        stack.enter_context(patch("cli.automa_cli.hosts.automation.runtime_base_url", return_value=host.base_url))
         yield host

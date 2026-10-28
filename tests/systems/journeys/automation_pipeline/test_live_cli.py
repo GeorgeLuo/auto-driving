@@ -15,8 +15,8 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
-from cli.automa_cli.host_publications import fetch_decision_publication
-from cli.automa_cli.paths import ROOT
+from cli.automa_cli.hosts.host_publications import fetch_decision_publication
+from cli.automa_cli.shared.paths import ROOT
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import HOST_NAME
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.integration.live_host import LiveHostTestCase, wait_until as _wait

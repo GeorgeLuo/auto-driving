@@ -12,8 +12,8 @@ from tests.support.runtime_fixtures import write_host_fixture
 from typing import Iterator
 from unittest import mock
 
-from cli.automa_cli import runtime_hosts
-from cli.automa_cli.runtime_hosts import RuntimeHostError, ensure_chase_host
+from cli.automa_cli.hosts import runtime_hosts
+from cli.automa_cli.hosts.runtime_hosts import RuntimeHostError, ensure_chase_host
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_metrics_ui import fake_metrics_ui_server

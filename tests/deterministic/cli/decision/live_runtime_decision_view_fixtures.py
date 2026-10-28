@@ -6,9 +6,10 @@ from copy import deepcopy
 from pathlib import Path
 from urllib.request import HTTPRedirectHandler, urlopen
 from PIL import Image
-from cli.automa_cli.decision_records import DecisionRunners
-from cli.automa_cli.runtime_view import RuntimeViewServer
-from cli.automa_cli.step_activations import decision_identity, stage_host_step, host_bundle
+from cli.automa_cli.hosts.decision_records import DecisionRunners
+from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.hosts.memory_report import evidence_records
+from cli.automa_cli.hosts.step_activations import decision_identity, stage_host_step, host_bundle
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
     published_cycle,
     frame_inputs,
@@ -139,6 +140,7 @@ class LiveRuntimeDecisionViewFixture:
             },
             "observation": cycle["observation"],
             "memory": cycle["memory"],
+            "memory_evidence": evidence_records(cycle["memory"]),
         }
         target.perception.publish_frame(
             frame_path=frame_path, frame_record=frame_record

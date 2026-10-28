@@ -10,12 +10,12 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 from autonomy.decision_cycle.steps import decision_steps
-from cli.automa_cli.runtime_view import RuntimeViewServer
+from cli.automa_cli.frontend.server import RuntimeViewServer
 from implementations.runtime.picar import create_host
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner, get_json, image_source, serve_workbench
 from tests.shared.integration.plugin_flow_fixtures import write_plugin
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime, _write_activations
-from cli.automa_cli.bundles import controller_bundle_paths
+from cli.automa_cli.hosts.bundles import controller_bundle_paths
 
 
 class CatalogWriteBoundaryFlows(unittest.TestCase):

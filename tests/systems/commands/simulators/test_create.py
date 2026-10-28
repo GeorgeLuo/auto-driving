@@ -15,8 +15,8 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from cli.automa_cli import runtime_hosts
-from cli.automa_cli.simulators import create_simulator
+from cli.automa_cli.simulators import created
+from cli.automa_cli.simulators.created import create_simulator
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.fake_headless_sim import fake_headless_sim_command
 from tests.support.fake_metrics_ui import fake_metrics_ui
@@ -52,7 +52,7 @@ class CreatedSimulatorTests(unittest.TestCase):
         self.port = _free_port()
         self.url = f"http://127.0.0.1:{self.port}/"
         # The default simulator answers on the first port, so create skips it.
-        self.enterContext(patch("cli.automa_cli.simulators.SIMULATOR_PORTS",
+        self.enterContext(patch("cli.automa_cli.simulators.created.SIMULATOR_PORTS",
                                 [self.default.server_address[1], self.port]))
         self.addCleanup(self.end_simulators)
 
@@ -116,7 +116,7 @@ class CreatedSimulatorTests(unittest.TestCase):
 
     def test_a_launcher_that_is_not_ready_in_time_is_ended(self) -> None:
         launcher = _launcher("import os, time; print('pid', os.getpid(), flush=True); time.sleep(60)")
-        with patch.dict(os.environ, self.env(launcher)), patch.object(runtime_hosts, "RUNTIME_ROOT", self.runtime_root):
+        with patch.dict(os.environ, self.env(launcher)), patch.object(created, "RUNTIME_ROOT", self.runtime_root):
             result = create_simulator(timeout_s=0.5)
 
         self.assertEqual(result.exit_code, 2)

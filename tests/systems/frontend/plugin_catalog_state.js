@@ -42,7 +42,7 @@ const ctx = {
   setTimeout(callback, delay) { assert.strictEqual(delay, 500); timers.push(callback); }
 };
 vm.createContext(ctx);
-const html = fs.readFileSync('cli/automa_cli/plugin_catalog.html', 'utf8');
+const html = fs.readFileSync('cli/automa_cli/frontend/pages/plugins/index.html', 'utf8');
 // The server fills in the steps' run order.
 vm.runInContext(html.match(/<script>([\s\S]*)<\/script>/)[1].replace('__PLUGIN_STEPS__', JSON.stringify(steps)), ctx);
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); };

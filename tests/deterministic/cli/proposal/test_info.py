@@ -13,8 +13,8 @@ from autonomy.decision_cycle.activation import (
 )
 from autonomy.decision_cycle.steps import load_decision_steps
 from implementations.decision_cycle.catalog import step_plugins
-from cli.automa_cli.decision_steps import get_host_step_info
-from cli.automa_cli.step_activations import (
+from cli.automa_cli.hosts.decision_steps import get_host_step_info
+from cli.automa_cli.hosts.step_activations import (
     bundle_activation_path,
     stage_host_step,
     host_bundle,

@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import STEPS
-from cli.automa_cli.step_activations import (
+from cli.automa_cli.hosts.step_activations import (
     read_bundle_activation,
     staging_host,
     write_host_configuration,
@@ -40,7 +40,7 @@ class UpdateVehicleTests(unittest.TestCase):
             root = Path(tmp)
             write_host_configuration(root, PICAR)
             with (
-                patch("cli.automa_cli.app.HOSTS_RUNTIME_ROOT", root),
+                patch("cli.automa_cli.hosts.commands.HOSTS_RUNTIME_ROOT", root),
             ):
                 yield root
 

@@ -14,9 +14,9 @@ from typing import Iterator
 from unittest import mock
 
 from autonomy.decision_cycle.activation import step_activation
-from cli.automa_cli.bundles import controller_bundle_paths
-from cli.automa_cli.runtime_hosts import HOST_RECORD
-from cli.automa_cli.vehicles import chase_operator_url
+from cli.automa_cli.hosts.bundles import controller_bundle_paths
+from cli.automa_cli.hosts.runtime_hosts import HOST_RECORD
+from cli.automa_cli.vehicles.probes import chase_operator_url
 from implementations.decision_cycle.catalog import preset_activation
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, write_host_record
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
@@ -95,7 +95,7 @@ class HostStatusTests(unittest.TestCase):
         self.enterContext(_attached(self.server, "chase-sim-chaser", host.base_url))
 
         # The run lines use the host's one /host/status read.
-        with mock.patch("cli.automa_cli.automation.host_state", side_effect=AssertionError("read twice")):
+        with mock.patch("cli.automa_cli.hosts.automation.host_state", side_effect=AssertionError("read twice")):
             human = self.status()
             long = self.status("--long")
             machine = json.loads(self.status("--json").stdout)

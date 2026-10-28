@@ -15,7 +15,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.frame_loop import DECISION_TRANSACTION_PATH
 from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli import runtime_monitor
+from cli.automa_cli.hosts import runtime_monitor
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 
@@ -160,7 +160,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 with (
                     patch.object(runtime_monitor, "RuntimeClient", return_value=RuntimeClient()),
                     patch.object(runtime_monitor, "fetch_observation_sample", side_effect=sample),
-                    patch("cli.automa_cli.decision_live.fetch_decision_transaction", side_effect=transaction),
+                    patch("cli.automa_cli.hosts.decision_live.fetch_decision_transaction", side_effect=transaction),
                 ):
                     started = time.monotonic()
                     code, message = runtime_monitor.monitor_runtime(

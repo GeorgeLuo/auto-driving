@@ -4,9 +4,9 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from cli.automa_cli.automation import run_host_automation
-from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.step_activations import stage_host_step
+from cli.automa_cli.hosts.automation import run_host_automation
+from cli.automa_cli.hosts.bundles import controller_bundle_paths, sync_controller_bundle
+from cli.automa_cli.hosts.step_activations import stage_host_step
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     HOST_NAME,
     _SlowMapper,
@@ -86,10 +86,10 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 staged_runners(perception=_SlowMapper()),
                 chase_runtime(runtime_root),
                 patch(
-                    "cli.automa_cli.runtime_monitor.DecisionViewAdapter.refresh",
+                    "cli.automa_cli.hosts.runtime_monitor.DecisionViewAdapter.refresh",
                     side_effect=RuntimeError("decision view unavailable"),
                 ),
-                patch("cli.automa_cli.decision_view.DecisionView.invalidate_latest", autospec=True) as invalidate,
+                patch("cli.automa_cli.frontend.decision_view.DecisionView.invalidate_latest", autospec=True) as invalidate,
             ):
                 result = run_host_automation(
                     host_name=HOST_NAME, num_decisions=1, take_control=False,

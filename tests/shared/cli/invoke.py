@@ -11,8 +11,9 @@ from contextlib import ExitStack, chdir, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from cli.automa_cli import (
-    app,
+from cli.automa_cli import app
+from cli.automa_cli.hosts import (
+    commands as hosts_commands,
     deploy,
     memory,
     operations,
@@ -21,6 +22,7 @@ from cli.automa_cli import (
     view_discovery,
     viability,
 )
+from cli.automa_cli.simulators import created
 from tests.support.cli_runner import WORKSPACE_ROOT, checked_result
 from tests.support.offline.sitecustomize import offline_getaddrinfo
 
@@ -28,11 +30,12 @@ from tests.support.offline.sitecustomize import offline_getaddrinfo
 # run in this process sees a test's value only if the name is rebound.
 IMPORT_TIME_ENV = {
     "AUTOMA_RUNTIME_ROOT": (
-        (app, "HOSTS_RUNTIME_ROOT"),
+        (hosts_commands, "HOSTS_RUNTIME_ROOT"),
         (deploy, "RUNTIME_ROOT"),
         (memory, "RUNTIME_ROOT"),
         (perception, "RUNTIME_ROOT"),
         (runtime_hosts, "RUNTIME_ROOT"),
+        (created, "RUNTIME_ROOT"),
         (view_discovery, "RUNTIME_ROOT"),
         (view_discovery.runtime_view_dir.__kwdefaults__, "runtime_root"),
         (view_discovery.discover_runtime_view.__kwdefaults__, "runtime_root"),

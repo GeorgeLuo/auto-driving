@@ -24,6 +24,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             sync_controller_bundle(bundle, output=None)
             _write_activations(bundle, plugins=["frame"])
             applied_selections: list[tuple[str, ...]] = []
+            frame_selections: dict[str, list[str]] = {}
             cli_updates = []
 
             def wrap_perception(step, mapper):
@@ -34,6 +35,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 def perceive_with_cli_updates(request):
                     result = perceive(request)
                     applied_selections.append(tuple(mapper.plugin_ids))
+                    frame_selections[request.sensor_frame.read_id] = list(mapper.plugin_ids)
                     if len(applied_selections) == 1:
                         cli_updates.append(update_vehicle_step(
                             vehicle_id=VEHICLE_ID, step="perception", plugins=["frame", "floor_plane"],
@@ -66,7 +68,10 @@ class AutomationLivePipelineTests(unittest.TestCase):
             state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
             self.assertEqual(state["steps"]["perception"]["plugin_ids"], ["floor_plane"])
             latest = json.loads((automation_dir / "latest_perception.json").read_text(encoding="utf-8"))
-            self.assertEqual(latest["step_activations"]["perception"]["plugins"], ["floor_plane"])
+            # The latest copy can be any decided frame, so it is checked against its own frame.
+            self.assertEqual(
+                latest["step_activations"]["perception"]["plugins"], frame_selections[latest["frame_id"]],
+            )
             self.assertIn("memory", latest)
 
     def test_a_decision_view_failure_is_recorded_and_does_not_stop_automation(self) -> None:

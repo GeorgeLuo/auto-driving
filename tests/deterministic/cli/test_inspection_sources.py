@@ -147,10 +147,9 @@ class InspectionSourceTests(unittest.TestCase):
     def test_recording_with_only_absent_frames_can_be_inspected_and_replayed(
         self,
     ) -> None:
-        (self.source / "report.json").write_text(
+        (self.source / "manifest.json").write_text(
             json.dumps(
                 {
-                    "schema": "memory_inspect_v0",
                     "frames": [
                         {
                             "frame_id": "dropout",

@@ -18,11 +18,11 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.plugins import uploaded_source
-from autonomy.runtime.recording import recording_frame_entry
+from autonomy.runtime.recording import recorded_selections, recording_frame_entry
 from autonomy.decision_cycle.activation import StepActivation
 
 from .inspection_runs import (
-    SharedMemorySeed, recorded_runner, recorded_selection, recorded_selections,
+    SharedMemorySeed, recorded_runner,
     default_selection, resolve_replay_activations, restage_replay_steps, selection_report,
 )
 from .paths import safe_path_part
@@ -33,11 +33,11 @@ from .workbench_source import (
     SourceValidationError,
     normalize_image_directory,
     normalize_image_file,
-    read_image_manifest,
 )
 
-def read_replay_source(source: str | Path, *, max_frames: int) -> tuple[ImageSource, dict[str, Any]]:
-    """The source's frames and its manifest (empty for plain images).
+
+def read_replay_source(source: str | Path, *, max_frames: int) -> ImageSource:
+    """Normalize an image or directory into replay frames and their selections.
 
     Raises SourceValidationError naming what is wrong with the source.
     """
@@ -46,19 +46,16 @@ def read_replay_source(source: str | Path, *, max_frames: int) -> tuple[ImageSou
     if max_frames <= 0:
         raise SourceValidationError("max_frames must be greater than zero")
     if path.is_file():
-        return normalize_image_file(path), {}
-    image_source = normalize_image_directory(path, max_frames=max_frames)
-    _manifest_path, manifest = read_image_manifest(image_source.source_path)
-    return image_source, manifest or {}
+        return normalize_image_file(path)
+    return normalize_image_directory(path, max_frames=max_frames)
 
 
 class StepReplay:
     """Step runners that replay a source with the selections it recorded.
 
     Each step uses its override, else the selection the source's first frame
-    recorded, else the selection the source recorded, else
-    ``default_selection``. A frame that recorded a restage replaces that step's
-    selection from then on, unless the step is overridden; the replaced runner
+    recorded, else ``default_selection``. A frame that recorded a restage replaces
+    that step's selection from then on, unless the step is overridden; the replaced runner
     is reset over the map. Starting from the first frame's selection, its
     restage keeps the runners and the map. Constructing the runners raises
     before any frame runs, including for a recorded release that is not
@@ -68,7 +65,6 @@ class StepReplay:
     def __init__(
         self,
         image_source: ImageSource,
-        manifest: dict[str, Any],
         *,
         steps: tuple[str, ...],
         overrides: dict[str, StepActivation] | None = None,
@@ -76,14 +72,8 @@ class StepReplay:
     ) -> None:
         self.overrides = dict(overrides or {})
         first = recorded_selections(image_source.frames[0].metadata)
-        recorded = recorded_selections(manifest)
-        for step in steps:
-            if step not in recorded:
-                legacy = recorded_selection(step, manifest)
-                if legacy is not None:
-                    recorded[step] = legacy
         self.activations = resolve_replay_activations(
-            {**recorded, **first}, defaults={step: default_selection(step) for step in steps},
+            first, defaults={step: default_selection(step) for step in steps},
             overrides=self.overrides,
         )
         self.runners = {

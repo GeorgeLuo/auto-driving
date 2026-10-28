@@ -26,10 +26,10 @@ class ReplaySelectionTests(unittest.TestCase):
             empty = replace(configured, plugins=())
             for selection in (None, empty, configured):
                 with self.subTest(selection=selection):
-                    (source / "manifest.json").write_text(json.dumps({"frames": [
-                        {"image_path": f"frame_{i}.png", "steps": {"memory": selection.to_payload() if selection else None}}
-                        for i in range(3)
-                    ]}))
+                    (source / "manifest.json").write_text(json.dumps({
+                        "steps": {"memory": selection.to_payload() if selection else None},
+                        "frames": [{"image_path": f"frame_{i}.png"} for i in range(3)],
+                    }))
                     inspected = inspect_step("memory", source=source, json_output=True)
                     self.assertEqual(inspected.exit_code, 0, inspected.message)
                     expected = json.loads(inspected.message)["frames"][-1]["record"]
@@ -53,10 +53,14 @@ class ReplaySelectionTests(unittest.TestCase):
             source = write_frames(Path(directory) / "source", count=3)
             default = default_selection("memory")
             empty = replace(default, plugins=())
-            (source / "manifest.json").write_text(json.dumps({"frames": [
-                {"image_path": f"frame_{i}.png", "steps": {"memory": selection.to_payload() if selection else None}}
-                for i, selection in enumerate((default, None, empty))
-            ]}))
+            (source / "manifest.json").write_text(json.dumps({
+                "steps": {"memory": default.to_payload()},
+                "frames": [
+                    {"image_path": "frame_0.png"},
+                    {"image_path": "frame_1.png", "steps": {"memory": None}},
+                    {"image_path": "frame_2.png", "steps": {"memory": empty.to_payload()}},
+                ],
+            }))
             for overridden in (False, True):
                 options = {"plugins": ["bounded_evidence"]} if overridden else {}
                 inspected = inspect_step("memory", source=source, json_output=True, **options)
@@ -77,10 +81,31 @@ class ReplaySelectionTests(unittest.TestCase):
                 finally:
                     runner.close()
 
+    def test_top_level_legacy_config_does_not_select_plugins(self):
+        with tempfile.TemporaryDirectory() as directory:
+            source = write_frames(Path(directory) / "source", count=1)
+            # Old reports used this executable config; only steps now selects runners.
+            (source / "report.json").write_text(json.dumps({
+                "memory": {"preset": "custom", "config": {"plugins": [], "plugin_specs": {}}},
+                "frames": [{"image_path": "frame_0.png"}],
+            }))
+            inspected = inspect_step("memory", source=source, json_output=True)
+            self.assertEqual(inspected.exit_code, 0, inspected.message)
+            expected = json.loads(inspected.message)["frames"][0]["record"]
+            self.assertEqual([item["plugin_id"] for item in expected["plugins"]], ["bounded_evidence"])
+            runner = ImageReplayRunner(source, cadence_ms=0, loop=False)
+            try:
+                runner.start()
+                completed = runner.wait(5)
+                self.assertEqual(completed["phase"], "completed", completed.get("failure"))
+                self.assertEqual(json.loads(json.dumps(completed["steps"]["memory"])), expected)
+            finally:
+                runner.close()
+
     def test_replay_uses_normal_perception_runner_status_reset_and_timing(self):
         with tempfile.TemporaryDirectory() as directory:
             source = write_frames(Path(directory) / "source", count=1)
-            images, _ = read_replay_source(source, max_frames=512)
+            images = read_replay_source(source, max_frames=512)
             frame = replace(images.frames[0], frame_id="frame-7", frame_index=7)
             mapper = PerceptionRunner.from_activation(default_selection("perception"))
             memory = {}

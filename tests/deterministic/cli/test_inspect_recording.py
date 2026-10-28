@@ -55,8 +55,8 @@ class InspectRecordingTests(unittest.TestCase):
         self.assertTrue(report["frames"][0]["record"]["authority"]["proposed_applied"])
         self.assertEqual([frame["record"] for frame in report["frames"]],
                          [frame["record"] for frame in replayed["frames"]])
-        before, _ = read_replay_source(source, max_frames=512)
-        after, _ = read_replay_source(archive, max_frames=512)
+        before = read_replay_source(source, max_frames=512)
+        after = read_replay_source(archive, max_frames=512)
         for first, second in zip(before.frames, after.frames):
             self.assertEqual((first.mode, first.user_steering, first.user_throttle, first.control_applications),
                              (second.mode, second.user_steering, second.user_throttle, second.control_applications))
@@ -67,7 +67,7 @@ class InspectRecordingTests(unittest.TestCase):
         entries[-1]["control_application_change"]["added"] = applications
         (source / "manifest.json").write_text(json.dumps({"frames": entries}))
         report = self.inspect("action", source, record=True)
-        loaded, _ = read_replay_source(report["run_dir"], max_frames=512)
+        loaded = read_replay_source(report["run_dir"], max_frames=512)
         self.assertEqual([a.delivered_at_ms for a in loaded.frames[-1].control_applications], [100, 100, 90])
 
     def test_selected_frame_keeps_warmup_prefix_after_archive_moves(self):

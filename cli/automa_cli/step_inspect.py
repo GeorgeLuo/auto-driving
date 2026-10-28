@@ -21,19 +21,6 @@ from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationErro
 
 INSPECT_STEPS = ("perception", "memory", *DECISION_STEPS)
 
-
-def _serialized_record(value: Any) -> dict[str, Any] | None:
-    return value.to_dict() if value is not None else None
-
-
-_RECORDS = {
-    "perception": lambda result: _serialized_record(result.perception),
-    "observation": lambda result: _serialized_record(result.observation),
-    "memory": lambda result: result.memory,
-    "proposal": lambda result: _serialized_record(result.proposal),
-    "plan": lambda result: _serialized_record(result.plan),
-    "action": lambda result: _serialized_record(result.action),
-}
 _INPUTS = {"memory": ("observation",), "proposal": ("observation", "memory")}
 
 
@@ -67,7 +54,7 @@ def inspect_step(
     except (OSError, SharedMemoryValueError) as exc:
         return CommandResult(2, f"Could not read shared memory file: {exc}")
     try:
-        image_source, manifest = read_replay_source(source, max_frames=max_frames)
+        image_source = read_replay_source(source, max_frames=max_frames)
     except SourceValidationError as exc:
         return CommandResult(2, f"Could not read {step} inspect source: {exc}")
     count = len(image_source.frames)
@@ -77,7 +64,7 @@ def inspect_step(
         overrides = None
         if preset is not None or plugins is not None:
             overrides = {step: selection_activation(step, preset=preset, plugins=plugins)}
-        replay = StepReplay(image_source, manifest, steps=STEPS, overrides=overrides, seed=seed)
+        replay = StepReplay(image_source, steps=STEPS, overrides=overrides, seed=seed)
     except Exception as exc:  # Plugin construction is a CLI preflight boundary.
         return CommandResult(2, f"Could not load plugins for {step} inspect: {type(exc).__name__}: {exc}")
 
@@ -94,7 +81,8 @@ def inspect_step(
             replay_inputs.append(replay.recording_entry(replay_frame, outcome))
         if frame is not None and replay_frame.position != frame:
             continue
-        step_record = None if replay_frame.absent else _RECORDS[step](outcome.result)
+        cycle = outcome.result.to_dict()
+        step_record = None if replay_frame.absent else cycle[step]
         frames.append({
             "position": replay_frame.position,
             "frame_id": replay_frame.frame_id,
@@ -104,9 +92,9 @@ def inspect_step(
             "absence_reason": replay_frame.absence_reason,
             "record": step_record,
             "plugin_report": outcome.plugin_reports.get(step),
-            "timing": outcome.result.timing,
+            "timing": cycle["timing"],
             "steps": replay.step_payloads(),
-            **{name: _RECORDS[name](outcome.result) for name in _INPUTS.get(step, ())},
+            **{name: cycle[name] for name in _INPUTS.get(step, ())},
         })
 
     run_id = inspect_run_id(image_source.source_id)

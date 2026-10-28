@@ -216,5 +216,5 @@ class InspectionSharedMemoryTests(unittest.TestCase):
 
     def test_a_replay_uses_the_seeded_map_even_when_it_is_empty(self) -> None:
         seed = SharedMemorySeed(self.seed_file, self.document, {})
-        replay = StepReplay(normalize_image_file(self.image), {}, steps=("perception",), seed=seed)
+        replay = StepReplay(normalize_image_file(self.image), steps=("perception",), seed=seed)
         self.assertIs(replay.shared_memory, seed.shared_memory)

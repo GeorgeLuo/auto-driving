@@ -25,6 +25,7 @@ from .step_activations import decision_identity
 from .step_formatting import format_step_record, format_step_timing
 from .step_schema import format_staged_step, staged_step_info
 from .streaming import _view_line, _ViewFeed
+from .stream_output import write_stream_frame
 
 
 # ---------------------------------------------------------------------------
@@ -251,11 +252,7 @@ def _poll(
                 ), sort_keys=True) if json_output else last_error
             if footer is not None and not json_output:
                 text = "\n".join([text, "", *footer()])
-            if output is not None:
-                if not no_clear and not json_output:
-                    output.write("\033[2J\033[H")
-                output.write(text + "\n")
-                output.flush()
+            write_stream_frame(output, text, clear=not no_clear and not json_output)
             time.sleep(max(0.05, float(refresh_s)))
     except KeyboardInterrupt:
         return CommandResult(130, last_error or "")

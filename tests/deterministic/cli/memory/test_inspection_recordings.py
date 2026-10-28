@@ -5,6 +5,7 @@ import os
 import shutil
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from implementations.decision_cycle.catalog import selection_activation
@@ -127,26 +128,17 @@ class InspectionRecordingTests(unittest.TestCase):
     def test_recording_preserves_dropout_frames_and_custom_memory_bounds(self) -> None:
         perception = selection_activation("perception", preset="multi_obstruction")
         memory = selection_activation("memory")
-        memory_config = {
-            "plugins": list(memory.plugins),
-            "plugin_specs": dict(memory.plugin_specs),
-            "plugin_configs": {
-                "bounded_evidence": {"max_age_ms": 600, "max_records": 16}
-            },
-        }
-        (self.frames / "report.json").write_text(
+        memory = replace(memory, plugin_configs={
+            "bounded_evidence": {"max_age_ms": 600, "max_records": 16},
+        })
+        (self.frames / "manifest.json").write_text(
             json.dumps(
                 {
                     "source_id": "recording.fixture",
-                    "perception": {
-                        "preset": "multi_obstruction",
-                        "config": {
-                            "plugins": list(perception.plugins),
-                            "plugin_specs": dict(perception.plugin_specs),
-                            "plugin_configs": dict(perception.plugin_configs),
-                        },
+                    "steps": {
+                        "perception": perception.to_payload(),
+                        "memory": memory.to_payload(),
                     },
-                    "memory": {"preset": "custom", "config": memory_config},
                     "frames": [
                         {
                             "frame_id": "camera-a",
@@ -172,7 +164,7 @@ class InspectionRecordingTests(unittest.TestCase):
         )
         recorded = self.inspect("memory", self.frames, "--record")
         replay = self.inspect("memory", Path(recorded["run_dir"]))
-        self.assertEqual(replay["selections"]["memory"]["config"], memory_config)
+        self.assertEqual(replay["frames"][0]["steps"]["memory"], memory.to_payload())
         self.assertEqual(
             [
                 {key: value for key, value in frame.items() if key not in UNREPLAYED}
@@ -207,16 +199,12 @@ class InspectionRecordingTests(unittest.TestCase):
         )
 
     def test_empty_recorded_selections_remain_empty_until_overridden(self) -> None:
-        (self.frames / "report.json").write_text(
+        (self.frames / "manifest.json").write_text(
             json.dumps(
                 {
-                    "perception": {
-                        "preset": "custom",
-                        "config": {"plugins": [], "plugin_specs": {}},
-                    },
-                    "memory": {
-                        "preset": "custom",
-                        "config": {"plugins": [], "plugin_specs": {}},
+                    "steps": {
+                        step: selection_activation(step, plugins=[]).to_payload()
+                        for step in ("perception", "memory")
                     },
                     "frames": [{"image_path": "frame_0.png", "timestamp_ms": 5000}],
                 }
@@ -245,7 +233,7 @@ class InspectionRecordingTests(unittest.TestCase):
             [frame["timestamp_ms"] for frame in inspected["frames"]], [0, 1000, 2000]
         )
 
-    def test_legacy_summary_only_memory_recording_uses_defaults_and_copied_images(
+    def test_summary_without_image_inventory_is_rejected(
         self,
     ) -> None:
         (self.frames / "report.json").write_text(
@@ -266,10 +254,12 @@ class InspectionRecordingTests(unittest.TestCase):
                 }
             )
         )
-        inspected = self.inspect("memory", self.frames)
-        self.assertEqual(inspected["source"]["frame_count"], 3)
-        self.assertEqual(inspected["selections"]["perception"]["preset"], "lightweight_observer")
-        self.assertEqual(inspected["selections"]["perception"]["plugins"], ["frame", "floor_plane"])
+        result = invoke_automa(
+            "plugins", "inspect", "memory", str(self.frames), check=False,
+            extra_env=self.env,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("manifest frame 0 has no image or absence reason", result.stdout)
 
 
 if __name__ == "__main__":

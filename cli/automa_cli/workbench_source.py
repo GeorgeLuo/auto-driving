@@ -18,13 +18,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.activation import STEPS
 from autonomy.plugins import add_uploaded_source_root
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.recording import (
     CONTROL_APPLICATION_CHANGE_FIELD, UPLOADED_SOURCES_DIR, control_application_windows,
+    recorded_selections,
 )
-from .inspection_runs import recorded_selection, recorded_selections
 
 
 WORKBENCH_ADAPTER = "image_directory"
@@ -160,15 +159,8 @@ def normalize_image_directory(
         if captures:
             manifest = {**manifest, "frames": captures}
     if manifest_path is not None and manifest_path.name == "report.json":
-        entries = manifest.get("frames")
-        if (
-            "frames" not in manifest and "camera_frames" not in manifest
-        ) or (
-            manifest.get("schema") == "memory_inspect_v0"
-            and isinstance(entries, list)
-            and all(isinstance(frame, dict) and "image_path" not in frame for frame in entries)
-        ):
-            # Other reports and older memory summaries have no image inventory.
+        if "frames" not in manifest and "camera_frames" not in manifest:
+            # Unrelated reports have no image inventory.
             manifest_path, manifest = None, None
     if manifest is not None:
         entries = manifest.get("frames")
@@ -209,10 +201,6 @@ def normalize_image_directory(
     recorded_root = _recorded_root(manifest)
     try:
         defaults = recorded_selections(manifest or {})
-        for step in STEPS:
-            legacy = recorded_selection(step, manifest or {})
-            if step not in defaults and legacy is not None:
-                defaults[step] = legacy
         if defaults:
             payloads = {step: value.to_payload() if value else None for step, value in defaults.items()}
             entries = [
@@ -288,7 +276,7 @@ load_image_source = normalize_image_directory
 
 
 def read_image_manifest(source_path: Path) -> tuple[Path | None, dict[str, Any] | None]:
-    """Read an ordered manifest or either inspection's recorded report."""
+    """Read an ordered manifest or a report containing a capture inventory."""
     for name in _MANIFEST_NAMES:
         path = source_path / name
         if not os.path.lexists(path):

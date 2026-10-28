@@ -260,7 +260,7 @@ class StepInspectTests(unittest.TestCase):
 
     def test_a_recording_that_disabled_a_selectable_step_replays_without_its_plugins(self) -> None:
         """A recorded absent slot stays absent, even when its step is clearable."""
-        replay = StepReplay(_source(), {"steps": dict.fromkeys(SELECTABLE_STEPS)}, steps=SELECTABLE_STEPS)
+        replay = StepReplay(_source({"steps": dict.fromkeys(SELECTABLE_STEPS)}), steps=SELECTABLE_STEPS)
         for step in SELECTABLE_STEPS:
             with self.subTest(step=step):
                 self.assertIsNone(replay.activations[step])
@@ -273,7 +273,7 @@ class StepInspectTests(unittest.TestCase):
         recorded = default_selection("memory").to_payload()
         recorded["plugin_configs"]["bounded_evidence"]["max_records"] = 8
         source = _source({"steps": {"memory": recorded}})
-        replay = StepReplay(source, {}, steps=("memory",))
+        replay = StepReplay(source, steps=("memory",))
         self.assertEqual(replay.activations["memory"].to_payload(), recorded)
         runner = replay.runners["memory"]
         replay.shared_memory[LEDGER_KEY] = empty_ledger(

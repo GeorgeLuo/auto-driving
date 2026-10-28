@@ -17,11 +17,12 @@ from autonomy.decision_cycle.perception.interface import PerceptionText
 from implementations.decision_cycle.catalog import CUSTOM_PRESET
 from autonomy.plugins import LocalPluginCatalog
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
+from autonomy.runtime.recording import recorded_selections
 
 from .memory_report import evidence_publisher, plugin_states, plugin_summaries
 from .step_hosting import plugin_report
 from .inspection_runs import (
-    default_selection, recorded_runner, recorded_selections,
+    default_selection, recorded_runner,
     resolve_replay_activations, restage_replay_steps,
 )
 from .workbench_contract import (

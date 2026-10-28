@@ -12,13 +12,13 @@ from urllib.request import Request, urlopen
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
-from autonomy.plugins import PluginDefinition
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH, describe_plugin
 from implementations.decision_cycle import catalog as packaged_catalog
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, step_plugins
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
 
 from ..shared.command_result import CommandResult
 from ..shared.paths import display_path
+from ..shared.plugin_catalog import packaged_plugin_definitions
 
 # Arming waits for the host's current cycle and for the selection to load.
 ARM_TIMEOUT_S = 60.0
@@ -158,7 +158,8 @@ def list_plugins(*, host_name: str | None = None, url: str | None = None, step: 
         payload.update(
             ok=True, defaults=defaults,
             catalog={"source": display_path(Path(packaged_catalog.__file__)),
-                     "plugins": [plugin for name in steps for plugin in _packaged_plugins(name)]},
+                     "plugins": [describe_plugin(plugin) for name in steps
+                                 for plugin in packaged_plugin_definitions(name)]},
         )
         lines = [f"Catalog: {payload['catalog']['source']}",
                  *_plugin_rows(payload["catalog"]["plugins"],
@@ -231,18 +232,6 @@ def _armed_first(catalog: list[dict[str, Any]], armed: list[dict[str, Any]]) -> 
     return ordered
 
 
-def _packaged_plugins(step: str) -> list[dict[str, Any]]:
-    """The step's packaged definitions as a host describes them, its defaults first in order."""
-
-    definitions = {
-        plugin_id: PluginDefinition(step, plugin_id, entry["spec"], entry["default_config"],
-                                    {"description": entry["description"]})
-        for plugin_id, entry in step_plugins(step).items()
-    }
-    ordered = dict.fromkeys([*DEFAULT_STEP_PLUGINS[step], *sorted(definitions)])
-    return [describe_plugin(definitions[plugin_id]) for plugin_id in ordered]
-
-
 def _plugin_rows(plugins: list[dict[str, Any]], marked: set[tuple[str, str, str | None]] = frozenset(),
                  label: str = "") -> list[str]:
     """One ``- step/id: source`` row per definition, with ``(label)`` on the ``marked`` step, ID and revision keys."""
@@ -281,7 +270,7 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, host_nam
 
     ok = bool(result.get("ok"))
     # A failed selection change exits 2.
-    exit_code = 0 if ok and (result.get("arming") or {}).get("status") != "failed" else 2
+    exit_code = 0 if ok else 2
     if operation == "arm":
         label, state = "Arming", result.get("status", "failed")
         message = "Plugin selection loaded; the host applies it at its next cycle."
@@ -331,8 +320,6 @@ def _result(result: dict[str, Any], *, operation: str, url: str | None, host_nam
             for selected_step, definitions in arming[name].items():
                 selected = ", ".join(f"{item['id']} ({item['metadata'].get('revision', 'packaged')})" for item in definitions)
                 lines.append(f"{name.capitalize()} {selected_step}: {selected or '(none)'}")
-        if ok and arming.get("error"):
-            lines.append(f"Reason: {arming['error']}")
     if recovery:
         lines.append(f"Next: {recovery}")
     return CommandResult(exit_code, "\n".join(lines))

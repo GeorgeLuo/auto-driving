@@ -19,6 +19,7 @@ from ..vehicles.probes import (
     chase_operator_url,
     normalize_chase_url,
 )
+from ..vehicles.providers import CHASE_SIM
 
 STATUS_SCHEMA = "automa_host_readiness"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
@@ -44,7 +45,7 @@ def get_vehicle_status(
     endpoint = normalize_chase_url(operator_url)
     display_url = chase_operator_url(endpoint)
     started = time.monotonic()
-    candidate = Candidate("chase-sim", endpoint, "cli")
+    candidate = Candidate(CHASE_SIM.name, endpoint, "cli")
     probe = _probe_chase(candidate, timeout_s=operation_timeout)
     discovery = {
         "schema": "automa_vehicle_discovery_v0",
@@ -54,7 +55,7 @@ def get_vehicle_status(
         "inactive": [] if probe.active else [probe.to_dict()],
         "discovery": {
             "candidate_count": 1,
-            "providers": ["chase-sim"],
+            "providers": [CHASE_SIM.name],
             "timeout_s": operation_timeout,
         },
     }
@@ -84,7 +85,7 @@ def get_vehicle_status(
             for item in discovery.get("inactive", [])
             if isinstance(item, dict)
             and isinstance(item.get("candidate"), dict)
-            and item["candidate"].get("provider") == "chase-sim"
+            and item["candidate"].get("provider") == CHASE_SIM.name
             and item["candidate"].get("url") == endpoint
         ),
         None,

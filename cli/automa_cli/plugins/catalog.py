@@ -18,6 +18,7 @@ from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, catalog
 from ..shared.command_result import CommandResult
 from ..shared.paths import display_path
 from ..shared.plugin_catalog import packaged_plugin_definitions
+from ..vehicles.providers import PROVIDERS
 
 # Arming waits for the host's current cycle and for the selection to load.
 ARM_TIMEOUT_S = 60.0
@@ -276,7 +277,7 @@ def save_plugins(*, host_name: str, step: str | None = None, json_output: bool =
     rows = step_lines({name: entry["plugins"] for name, entry in selections.items()},
                       {name: entry["preset"] for name, entry in selections.items() if entry["preset"]})
     startup = (f"{host_name} starts with these plugins; hosts update keeps the saved steps."
-               if configuration["provider"] == "chase-sim" else
+               if PROVIDERS[configuration["provider"]].local_host else
                f"{host_name} starts with these plugins once they ship: "
                f"./cli/automa hosts update --name {shlex.quote(host_name)}")
     return CommandResult(0, "\n".join([

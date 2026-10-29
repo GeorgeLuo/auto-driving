@@ -60,13 +60,13 @@ class ProbeResult:
         return data
 
 
-def _simulator_status(endpoint: str, remaining: Callable[[], float]) -> dict[str, Any]:
+def _simulator_status(candidate: Candidate, remaining: Callable[[], float]) -> dict[str, Any]:
     """One simulator's state; listing its agents is the second query that shows it runs."""
 
-    client =MetricsUiWsClient(endpoint, timeout_s=remaining())
+    client = MetricsUiWsClient(candidate.url, timeout_s=remaining())
     status: dict[str, Any] = {
-        "provider": "chase-sim",
-        "url": chase_operator_url(endpoint),
+        "provider": candidate.provider,
+        "url": chase_operator_url(candidate.url),
         "state": "unreachable",
         "error": None,
         "frontend": None,
@@ -107,11 +107,6 @@ def _simulator_status(endpoint: str, remaining: Callable[[], float]) -> dict[str
     return status
 
 
-def _picar_status(url: str, remaining: Callable[[], float]) -> dict[str, Any]:
-    probe = _probe_picar(Candidate("picar", url, "discovered"), timeout_s=remaining())
-    return {"provider": "picar", "url": url, "state": _picar_state(probe), "error": probe.error}
-
-
 def _picar_state(probe: ProbeResult) -> str:
     if probe.active:
         return "answering"
@@ -124,18 +119,6 @@ def _frontend_code(exc: BaseException | None) -> str | None:
 
     code = getattr(exc, "code", None)
     return code if code in FRONTEND_DELIVERY_PROTOCOL_CODES else None
-
-
-def _probe_candidate(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
-    if candidate.provider == "picar":
-        return _probe_picar(candidate, timeout_s=timeout_s)
-    if candidate.provider == "chase-sim":
-        return _probe_chase(candidate, timeout_s=timeout_s)
-    return ProbeResult(
-        active=False,
-        candidate=candidate,
-        error=f"unknown provider {candidate.provider!r}",
-    )
 
 
 def _normalize_http_url(url: str) -> str:
@@ -203,7 +186,7 @@ def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
             vehicle={
                 "vehicle_id": capabilities["vehicle_id"],
                 "vehicle_kind": capabilities["vehicle_kind"],
-                "provider": "picar",
+                "provider": candidate.provider,
                 "connection": {
                     "base_url": base_url,
                     "status_endpoint": STATUS_PATH,
@@ -347,7 +330,7 @@ def _probe_chase(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
         vehicle={
             "vehicle_id": capabilities["vehicle_id"],
             "vehicle_kind": capabilities["vehicle_kind"],
-            "provider": "chase-sim",
+            "provider": candidate.provider,
             "connection": {
                 "ws_url": candidate.url,
                 "source": candidate.source,

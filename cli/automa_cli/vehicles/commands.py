@@ -6,10 +6,10 @@ import argparse
 import json
 import sys
 
-from ..hosts.step_activations import HOST_PROVIDERS
 from ..shared.timeout_input import validate_timeout_input
 from .discovery import discover_vehicle, remove_vehicle
 from .probes import DEFAULT_READINESS_TIMEOUT_S
+from .providers import PROVIDERS
 from .status import format_vehicles_status, get_vehicles_status
 
 
@@ -60,7 +60,7 @@ def register_vehicles(subcommands: argparse._SubParsersAction) -> None:
             "machine answers. Exits 2 otherwise, unless --force."
         ),
     )
-    discover.add_argument("--provider", required=True, choices=HOST_PROVIDERS,
+    discover.add_argument("--provider", required=True, choices=PROVIDERS,
                           help="What the vehicle is: a simulator (chase-sim) or a PiCar (picar).")
     discover.add_argument("--url", required=True,
                           help="The simulator's HTTP(S) origin or WS(S) control URL, or the PiCar's HTTP(S) URL.")

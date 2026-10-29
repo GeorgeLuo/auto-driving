@@ -17,6 +17,7 @@ from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
 from .host_publications import host_state
 from .runtime_hosts import local_hosts
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S, _require_positive_timeout, chase_operator_url
+from ..vehicles.providers import CHASE_SIM, PROVIDERS
 from ..vehicles.status import _indented
 
 
@@ -50,7 +51,8 @@ def read_hosts(
         for local in local_hosts()
         if host_name in (None, local["host_name"])
     }
-    simulators = {host["vehicle_url"] for host in hosts.values() if host["provider"] == "chase-sim" and host["vehicle_url"]}
+    simulators = {host["vehicle_url"] for host in hosts.values()
+                  if host["provider"] == CHASE_SIM.name and host["vehicle_url"]}
     with ThreadPoolExecutor() as pool:
         reads = {}
         for host in hosts.values():
@@ -68,7 +70,7 @@ def read_hosts(
         agents_by_endpoint = {endpoint: listing.result() for endpoint, listing in listings.items()}
 
     for host in hosts.values():
-        if host["provider"] != "chase-sim" or not host["vehicle_url"]:
+        if host["provider"] != CHASE_SIM.name or not host["vehicle_url"]:
             continue
         listed = agents_by_endpoint[host["vehicle_url"]]
         # The agent list is read at the simulator's control endpoint; status reports its page.
@@ -131,8 +133,7 @@ def host_state_text(host: dict[str, Any]) -> str:
 def host_block(host: dict[str, Any]) -> str:
     lines = [f"Host {host.get('host_name')}  {host_state_text(host)}"]
     if host.get("vehicle_url"):
-        kind = "chaser" if host.get("provider") == "chase-sim" else "PiCar"
-        lines.append(f"  {kind} at {host['vehicle_url']}")
+        lines.append(f"  {PROVIDERS[host['provider']].label} at {host['vehicle_url']}")
     activity = [
         _count(host.get("decision_count"), "decision"),
         _count(host.get("error_count"), "error"),

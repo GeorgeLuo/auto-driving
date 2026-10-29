@@ -20,6 +20,7 @@ from typing import Any
 from ..shared.command_result import CommandResult
 from ..hosts.runtime_hosts import RUNTIME_ROOT, RuntimeHostError, _log_tail
 from ..shared.processes import pid_alive
+from ..vehicles.providers import CHASE_SIM
 
 
 # simulators create runs Metrics UI's headless launcher from this checkout.
@@ -45,8 +46,6 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Command
     until ``delete_simulator`` ends it.
     """
 
-    from ..vehicles.discovery import _vehicle_heading
-
     ui_dir, error = _metrics_ui_dir()
     if ui_dir is None:
         return CommandResult(2, f"Cannot create a simulator: {error}")
@@ -61,14 +60,13 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Command
         return CommandResult(2, f"Cannot create a simulator: {exc}")
     except RuntimeHostError as exc:
         return CommandResult(2, str(exc))
-    return CommandResult(0, f"Created {_vehicle_heading('chase-sim', record['url'])}")
+    return CommandResult(0, f"Created {CHASE_SIM.heading_at(record['url'])}")
 
 
 def delete_simulator(*, url: str) -> CommandResult:
     """End a simulator ``simulators create`` started, unless a host was created at it."""
 
     from ..hosts.runtime_hosts import local_hosts
-    from ..vehicles.discovery import _vehicle_heading
     from ..vehicles.probes import chase_operator_url, normalize_chase_url
 
     try:
@@ -81,13 +79,13 @@ def delete_simulator(*, url: str) -> CommandResult:
         names = ", ".join(chase_operator_url(simulator["url"]) for simulator in created)
         return CommandResult(2, f"No created simulator at {url}. " + (f"Created: {names}." if names else "None created."))
     hosts = [host["host_name"] for host in local_hosts()
-             if host["provider"] == "chase-sim" and host["vehicle_url"] == ws_url]
+             if host["provider"] == CHASE_SIM.name and host["vehicle_url"] == ws_url]
     if hosts:
         subject = f"Host {hosts[0]} uses" if len(hosts) == 1 else f"Hosts {', '.join(hosts)} use"
         return CommandResult(2, f"{subject} the simulator at {chase_operator_url(ws_url)}; "
                                 f"delete {'it' if len(hosts) == 1 else 'them'} first.")
     killed = stop_simulator(record)
-    return CommandResult(0, f"Deleted {_vehicle_heading('chase-sim', ws_url)}" + (", killed" if killed else ""))
+    return CommandResult(0, f"Deleted {CHASE_SIM.heading_at(ws_url)}" + (", killed" if killed else ""))
 
 
 def _metrics_ui_dir() -> tuple[Path | None, str | None]:

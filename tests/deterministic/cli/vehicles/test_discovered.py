@@ -6,12 +6,12 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from cli.automa_cli.vehicles.probes import Candidate, ProbeResult, chase_operator_url, normalize_chase_url
 from implementations.vehicle.chase_sim.presence import MetricsUiPresence
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.shared.cli.invoke import invoke_automa
+from tests.shared.cli.vehicle_fixtures import probe_returning
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_hosts import closed_url
 from tests.support.fake_metrics_ui import fake_metrics_ui
@@ -69,7 +69,7 @@ class DiscoveredVehicleTests(unittest.TestCase):
         for runtime_state, code in (("endpoint_unreachable", 2), ("server_not_listening", 0)):
             probe = ProbeResult(active=False, candidate=Candidate("picar", url, "discovered"),
                                 diagnostics={"runtime_state": runtime_state}, error="probe detail")
-            with self.subTest(runtime_state=runtime_state), patch("cli.automa_cli.vehicles.probes._probe_picar", return_value=probe):
+            with self.subTest(runtime_state=runtime_state), probe_returning(probe):
                 result = self.automa("discover", "--provider", "picar", "--url", url + "/")
                 headings = self.headings()
 

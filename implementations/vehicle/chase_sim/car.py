@@ -31,6 +31,7 @@ from autonomy.vehicle import (
 )
 
 
+VEHICLE_KIND = "chase-sim-ws"
 CHASE_SET_CHASER_INPUT = "set-chaser-input"
 logger = logging.getLogger(__name__)
 
@@ -130,7 +131,7 @@ class ChaseSimCar(CarInterface):
         self._last_passive_capture: dict[str, Any] | None = None
         self._capabilities = VehicleCapabilities(
             vehicle_id=vehicle_id,
-            vehicle_kind="chase-sim-ws",
+            vehicle_kind=VEHICLE_KIND,
             can_capture_highres=False,
             sensors={
                 FRONT_CAMERA_SENSOR_ID: {

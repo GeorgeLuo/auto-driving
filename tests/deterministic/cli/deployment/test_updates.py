@@ -10,6 +10,7 @@ from cli.automa_cli.shared.command_result import CommandResult
 from cli.automa_cli.hosts import deploy, runtime_hosts
 from cli.automa_cli.vehicles.probes import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
+from tests.shared.cli.vehicle_fixtures import probe_returning
 from tests.support.runtime_fixtures import write_host_fixture
 
 
@@ -35,7 +36,7 @@ class HostLifecycleTests(unittest.TestCase):
 
     def test_create_chase_packages_starts_and_records_a_free_name(self):
         probe = ProbeResult(active=True, candidate=Candidate("chase-sim", "ws://localhost:5050/ws/control", "cli"))
-        with patch.object(deploy, "_probe_chase", return_value=probe), \
+        with probe_returning(probe), \
              patch.object(runtime_hosts, "ensure_chase_host", return_value="http://localhost:9999") as start, \
              patch.object(deploy, "host_state", return_value={"state": "idle"}):
             result = deploy.create_host(host_name="test", provider="chase-sim", url="http://localhost:5050")
@@ -52,7 +53,7 @@ class HostLifecycleTests(unittest.TestCase):
 
     def test_unreachable_simulator_leaves_no_directory(self):
         probe = ProbeResult(active=False, candidate=Candidate("chase-sim", "ws://example/ws/control", "cli"), error="no frontend")
-        with patch.object(deploy, "_probe_chase", return_value=probe):
+        with probe_returning(probe):
             result = deploy.create_host(host_name="test", provider="chase-sim", url="http://example")
         self.assertEqual(result.exit_code, 2)
         self.assertIn("no frontend", result.message)

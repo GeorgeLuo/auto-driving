@@ -28,6 +28,7 @@ from .bundles import controller_bundle_paths
 from ..shared.json_files import write_json_atomically
 from ..shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
 from ..shared.processes import pid_alive
+from ..vehicles.providers import PROVIDERS
 from .step_activations import host_names, staging_host
 
 HOST_RECORD = "host.json"
@@ -344,7 +345,7 @@ def running_base_url(host_name: str) -> str | None:
     A PiCar's is its staged connection; a Chase car's is its running host.
     """
 
-    if staged_host(host_name)["provider"] == "chase-sim":
+    if PROVIDERS[staged_host(host_name)["provider"]].local_host:
         record = host_record(host_name)
         return None if record is None else record["base_url"]
     base_url = staged_connection(host_name).get("base_url")
@@ -368,15 +369,15 @@ def local_hosts() -> list[dict[str, Any]]:
                           "vehicle_url": None, "error": str(exc)})
             continue
         connection = configuration["connection"]
-        chase = configuration["provider"] == "chase-sim"
-        record = host_record(host_name) if chase else None
+        vehicle = PROVIDERS[configuration["provider"]]
+        record = host_record(host_name) if vehicle.local_host else None
         hosts.append({
             "host_name": host_name,
-            "url": (record["base_url"] if record else None) if chase else connection["base_url"],
+            "url": (record["base_url"] if record else None) if vehicle.local_host else connection["base_url"],
             "pid": record.get("pid") if record else None,
-            "local": "host record" if chase else "staged connection",
+            "local": "host record" if vehicle.local_host else "staged connection",
             "provider": configuration["provider"],
-            "vehicle_url": connection.get("ws_url") if chase else connection.get("base_url"),
+            "vehicle_url": connection.get(vehicle.url_key),
             "error": None,
         })
     return hosts
@@ -401,7 +402,7 @@ def runtime_base_url(host_name: str, *, start: bool = False, timeout_s: float = 
     ``start`` starts (or moves onto the latest release) a local Chase host.
     """
 
-    if start and staged_host(host_name)["provider"] == "chase-sim":
+    if start and PROVIDERS[staged_host(host_name)["provider"]].local_host:
         return ensure_chase_host(host_name, timeout_s=timeout_s)
     base_url = running_base_url(host_name)
     if base_url is not None:

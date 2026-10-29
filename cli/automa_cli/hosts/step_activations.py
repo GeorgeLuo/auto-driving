@@ -41,6 +41,7 @@ from implementations.decision_cycle.catalog import (
 
 from .bundles import controller_bundle_paths, release_activation_summary
 from ..shared.paths import display_path, safe_path_part
+from ..vehicles.providers import PROVIDERS
 
 def host_bundle(host_name: str, runtime_root: Path) -> dict[str, str]:
     return controller_bundle_paths(Path(runtime_root) / safe_path_part(host_name))
@@ -104,9 +105,6 @@ def absent_step_error(step: str, host_name: str) -> str:
     )
 
 
-HOST_PROVIDERS = ("chase-sim", "picar")
-
-
 def staging_host(
     host_name: str, *, runtime_root: Path,
 ) -> tuple[dict[str, Any] | None, str | None]:
@@ -123,7 +121,7 @@ def staging_host(
         configuration = json.loads(path.read_text(encoding="utf-8"))
         if (not isinstance(configuration, dict) or configuration.get("schema") != "automa_host_configuration"
                 or configuration.get("host_name") != host_name
-                or configuration.get("provider") not in HOST_PROVIDERS
+                or configuration.get("provider") not in PROVIDERS
                 or not isinstance(configuration.get("connection"), dict)):
             raise ValueError("invalid host record")
     except (OSError, ValueError) as exc:
@@ -190,7 +188,7 @@ def staging_metadata(
             "provider": vehicle.get("provider"),
             "vehicle_kind": vehicle.get("vehicle_kind"),
             "runtime": {
-                "kind": "ws_cli_controller" if vehicle.get("provider") == "chase-sim" else "onboard_controller",
+                "kind": PROVIDERS[vehicle["provider"]].runtime_kind,
                 "connection": deepcopy(vehicle.get("connection")),
             },
         })

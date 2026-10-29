@@ -34,7 +34,6 @@ from ..shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
 from ..shared.processes import pid_alive
 from .step_activations import (
     CONTROLLER_BUNDLE_KEYS,
-    HOST_PROVIDERS,
     bundle_activation_path,
     decision_generation_id,
     ensure_step_activations,
@@ -47,8 +46,8 @@ from .step_activations import (
 )
 from .host_publications import host_state
 from .host_status import host_block
-from ..vehicles.discovery import normalize_vehicle_url
-from ..vehicles.probes import Candidate, _probe_chase, chase_operator_url
+from ..vehicles.probes import Candidate
+from ..vehicles.providers import PROVIDERS
 
 
 DEPLOY_DIR = ROOT / "deploy" / "targets" / "donkeycar"
@@ -247,7 +246,7 @@ def update_host(
         return CommandResult(2, error)
     if drive_args is not None and not restart:
         return CommandResult(2, "--drive-args requires --restart so the new arguments take effect.")
-    if configuration["provider"] == "chase-sim":
+    if PROVIDERS[configuration["provider"]].local_host:
         if drive_args is not None:
             return CommandResult(2, "--drive-args applies only to a PiCar.")
         return _update_local_autonomy(host_name=host_name, dry_run=dry_run, restart=restart,
@@ -499,7 +498,8 @@ def _update_local_autonomy(
 
 def _resolve_picar_target(configuration: dict[str, Any]) -> PicarTarget:
     connection = configuration["connection"]
-    return PicarTarget(configuration["host_name"], configuration, "picar", connection["ssh_target"], connection["pi_home"])
+    return PicarTarget(configuration["host_name"], configuration, configuration["provider"],
+                       connection["ssh_target"], connection["pi_home"])
 
 
 def create_host(
@@ -512,35 +512,34 @@ def create_host(
 
     if host_name in {".", ".."} or safe_path_part(host_name) != host_name or not host_name:
         return CommandResult(2, "Host names may contain letters, digits, dots, underscores and hyphens, excluding . and ..")
-    if provider not in HOST_PROVIDERS:
-        return CommandResult(2, f"Provider must be one of {', '.join(HOST_PROVIDERS)} (got {provider!r}).")
-    chase = provider == "chase-sim"
+    if provider not in PROVIDERS:
+        return CommandResult(2, f"Provider must be one of {', '.join(PROVIDERS)} (got {provider!r}).")
+    vehicle = PROVIDERS[provider]
+    local = vehicle.local_host
     directory = RUNTIME_ROOT / safe_path_part(host_name)
     if (directory / "host-configuration.json").exists():
         existing, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
         return CommandResult(2, error or f"Host {host_name!r} already exists: {_vehicle_label(existing)}.")
-    if chase and any(value is not None for value in (ssh_target, pi_home, drive_args)):
+    if local and any(value is not None for value in (ssh_target, pi_home, drive_args)):
         return CommandResult(2, "--ssh-target, --pi-home and --drive-args apply only to a PiCar.")
     try:
-        url = normalize_vehicle_url(provider, url)
+        url = vehicle.normalize_url(url)
     except ValueError as exc:
         return CommandResult(2, str(exc))
-    configuration = {"host_name": host_name, "provider": provider,
-               "vehicle_kind": "chase-sim-ws" if chase else "picar-donkey-http"}
-    if chase:
-        configuration["connection"] = {"ws_url": url}
+    configuration = {"host_name": host_name, "provider": provider, "vehicle_kind": vehicle.vehicle_kind,
+                     "connection": {vehicle.url_key: url}}
+    if local:
         if not dry_run:
-            probe = _probe_chase(Candidate("chase-sim", url, "cli"), timeout_s=5.0)
-            if not probe.active:
-                return CommandResult(2, f"No Chase simulator can take a host at {url}: {probe.error}")
+            probe = vehicle.probe(Candidate(provider, url, "cli"), timeout_s=5.0)
+            if not vehicle.can_take_host(probe):
+                return CommandResult(2, f"No {vehicle.machine} can take a host at {url}: {probe.error}")
     else:
-        configuration["connection"] = {"base_url": url}
         configuration["connection"].update(
             ssh_target=ssh_target or os.environ.get("PI_HOST") or _ssh_target_from_vehicle(configuration),
             pi_home=pi_home or os.environ.get("PI_HOME") or DEFAULT_PI_HOME,
         )
     if dry_run:
-        if chase:
+        if local:
             return _update_local_autonomy(host_name=host_name, dry_run=True, restart=True,
                                           json_output=json_output, output=output)
         target = _resolve_picar_target(configuration)
@@ -554,16 +553,16 @@ def create_host(
     made_directory = not directory.exists()
     write_host_configuration(RUNTIME_ROOT, configuration)
     try:
-        if not chase:
+        if not local:
             core = _install_picar_core(_resolve_picar_target(configuration), verbose=verbose, output=output)
             if core.exit_code:
                 raise RuntimeError(core.message)
-        result = update_host(host_name=host_name, restart=not chase, drive_args=drive_args,
+        result = update_host(host_name=host_name, restart=not local, drive_args=drive_args,
                              json_output=json_output, verbose=verbose, output=output)
         if result.exit_code:
             raise RuntimeError(result.message)
         state = None
-        if chase:
+        if local:
             base_url = ensure_chase_host(host_name)
             state = host_state(base_url, host_name=host_name, timeout_s=5.0)
         if json_output:
@@ -574,23 +573,22 @@ def create_host(
         lines = [f"Host {host_name} created for {_vehicle_label(configuration)}", detail]
         if state:
             lines.append(host_block({**state, "host_name": host_name, "attached": True,
-                                     "provider": "chase-sim", "vehicle_url": chase_operator_url(url)}))
+                                     "provider": provider, "vehicle_url": vehicle.operator_url(url)}))
         return CommandResult(0, "\n".join(lines))
     except (OSError, RuntimeError, ValueError) as exc:
-        if chase:
+        if local:
             stop_chase_host(host_name)
         if made_directory:
             shutil.rmtree(directory)
         else:
             (directory / "host-configuration.json").unlink(missing_ok=True)
-        suffix = "" if chase else " The Pi keeps files already synced."
+        suffix = "" if local else " The Pi keeps files already synced."
         return CommandResult(2, f"Could not create host {host_name!r}: {exc}{suffix}")
 
 
 def _vehicle_label(configuration: dict[str, Any]) -> str:
-    connection = configuration["connection"]
-    return (f"the chaser at {chase_operator_url(connection['ws_url'])}" if configuration["provider"] == "chase-sim"
-            else f"PiCar at {connection['base_url']}")
+    vehicle = PROVIDERS[configuration["provider"]]
+    return f"the {vehicle.label} at {vehicle.operator_url(configuration['connection'][vehicle.url_key])}"
 
 
 def delete_host(*, host_name: str, verbose: bool = False, output: TextIO | None = None) -> CommandResult:
@@ -615,7 +613,8 @@ def delete_host(*, host_name: str, verbose: bool = False, output: TextIO | None 
         result = stop_host_automation(host_name=host_name)
         if result.exit_code:
             return CommandResult(result.exit_code, result.message)
-    if configuration["provider"] == "chase-sim":
+    local = PROVIDERS[configuration["provider"]].local_host
+    if local:
         stop_chase_host(host_name)
     else:
         target = _resolve_picar_target(configuration)
@@ -625,7 +624,7 @@ def delete_host(*, host_name: str, verbose: bool = False, output: TextIO | None 
         if code:
             return CommandResult(code, "Could not stop the PiCar host; its local record was kept.")
     shutil.rmtree(directory)
-    suffix = " Harness files stay in ~/mycar on the PiCar." if configuration["provider"] == "picar" else ""
+    suffix = "" if local else " Harness files stay in ~/mycar on the PiCar."
     stopped = "Stopped the run. " if active_run else ""
     return CommandResult(0, f"{stopped}Stopped host {host_name}. Removed {display_path(directory)}.{suffix}")
 

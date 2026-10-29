@@ -10,6 +10,7 @@ from autonomy.decision_cycle.steps import STEP_RUNNERS
 
 from ..shared.timeout_input import validate_timeout_input
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
+from ..vehicles.providers import PROVIDERS
 from .automation import (
     get_hosts_status,
     record_host_automation_terminal_result,
@@ -21,7 +22,6 @@ from .automation import (
 from .deploy import create_host, update_host, delete_host
 from .decision_steps import get_host_step_info
 from .memory import get_host_memory_info
-from .step_activations import HOST_PROVIDERS
 from .perception import get_host_perception_info
 from .streaming import serve_host_viewer
 
@@ -65,7 +65,7 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
         command.add_argument("--dry-run", action="store_true", help="Print the deployment plan without writing or connecting.")
         command.add_argument("--json", action="store_true")
         command.add_argument("--drive-args", help="Persist PiCar drive arguments; update requires --restart.")
-    host_create.add_argument("--provider", required=True, choices=HOST_PROVIDERS,
+    host_create.add_argument("--provider", required=True, choices=PROVIDERS,
                              help="What the host controls: the simulator's chaser (chase-sim) or a PiCar (picar).")
     host_create.add_argument("--url", required=True,
                              help="The vehicle's URL: the simulator's HTTP(S) origin or WS(S) control URL, "

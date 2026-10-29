@@ -58,6 +58,7 @@ from ..frontend.perception_view import (
     perception_view_ready,
 )
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
+from ..vehicles.providers import PROVIDERS
 
 
 AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
@@ -873,7 +874,7 @@ def stop_host_automation(
         try:
             RuntimeClient(base_url, timeout_s=max(1.0, wait_s)).stop()
         except RuntimeError as exc:
-            if staged_host(host_name)["provider"] != "chase-sim":
+            if not PROVIDERS[staged_host(host_name)["provider"]].local_host:
                 return CommandResult(2, f"Could not stop {host_name}: {exc}")
             forced = _replace_unanswering_host(host_name, wait_s=wait_s)
             if forced is not None:

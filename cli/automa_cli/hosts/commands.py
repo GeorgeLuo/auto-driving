@@ -29,10 +29,6 @@ from .perception import get_host_perception_info
 from .workbench import run_workbench_replay
 from .workbench_plugins import WORKBENCH_SELECTABLE_STEPS
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
-from .viability import (
-    run_memory_viability_measurement,
-    run_perception_viability_measurement,
-)
 from .streaming import serve_host_viewer, stream_host_memory, stream_host_perception
 
 
@@ -50,7 +46,6 @@ def register_hosts(subcommands: argparse._SubParsersAction) -> None:
     _register_hosts_memory(host_commands)
     _register_hosts_workbench(host_commands)
     _register_hosts_info(host_commands)
-    _register_hosts_perception(host_commands)
     _register_hosts_staging(host_commands)
 
 
@@ -452,7 +447,7 @@ def _register_hosts_streams(host_commands: argparse._SubParsersAction) -> None:
 def _register_hosts_memory(host_commands: argparse._SubParsersAction) -> None:
     memory_control = host_commands.add_parser(
         "memory",
-        help="Measure and reset host memory.",
+        help="Reset host memory.",
     )
     memory_control.set_defaults(handler=_handle_hosts_memory_help)
     memory_commands = memory_control.add_subparsers(dest="memory_command")
@@ -488,52 +483,6 @@ def _register_hosts_memory(host_commands: argparse._SubParsersAction) -> None:
         help="Print the full machine-readable reset payload.",
     )
     memory_reset.set_defaults(handler=_handle_hosts_memory_reset)
-    memory_viability = memory_commands.add_parser(
-        "viability",
-        help="Health-check memory on a host.",
-        description=(
-            "Health-check memory on a host. The host's live memory step is polled "
-            "for a bounded interval (default 60s) to "
-            "record update cadence, update duration, failures, and each applied "
-            "plugin's health and epoch stability. Measurements save report.json under "
-            "lab/runs/memory-viability/ unless --no-record."
-        ),
-    )
-    memory_viability.add_argument(
-        "--name",
-        required=True,
-        dest="host_name",
-        help="Host name from `automa hosts status`.",
-    )
-    memory_viability.add_argument(
-        "--duration-s",
-        type=float,
-        default=60.0,
-        help="Measurement window in seconds (default: 60).",
-    )
-    memory_viability.add_argument(
-        "--sample-period-s",
-        type=float,
-        default=0.25,
-        help="Status poll period in seconds (default: 0.25).",
-    )
-    memory_viability.add_argument(
-        "--timeout-s",
-        type=float,
-        default=3.0,
-        help="Per-request timeout in seconds (default: 3).",
-    )
-    memory_viability.add_argument(
-        "--no-record",
-        action="store_true",
-        help="Do not write a viability report directory.",
-    )
-    memory_viability.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the report or preflight error as JSON; the report is also saved unless --no-record.",
-    )
-    memory_viability.set_defaults(handler=_handle_hosts_memory_viability)
 
 
 def _register_hosts_workbench(host_commands: argparse._SubParsersAction) -> None:
@@ -680,68 +629,6 @@ def _register_hosts_info(host_commands: argparse._SubParsersAction) -> None:
         step_info.set_defaults(handler=_handle_hosts_info_step, step=step_name)
 
 
-def _register_hosts_perception(host_commands: argparse._SubParsersAction) -> None:
-    perception_control = host_commands.add_parser(
-        "perception",
-        help="Measure perception viability on a host.",
-    )
-    perception_control.set_defaults(handler=_handle_hosts_perception_help)
-    perception_commands = perception_control.add_subparsers(dest="perception_command")
-    perception_help = perception_commands.add_parser(
-        "help",
-        help="Show perception-level commands.",
-    )
-    perception_help.set_defaults(handler=_handle_hosts_perception_help)
-
-    perception_viability = perception_commands.add_parser(
-        "viability",
-        help="Health-check perception on a host.",
-        description=(
-            "Health-check perception on a host. The host's observation "
-            "publication is polled for a bounded interval (default 60s) to record "
-            "cadence, result age, processing duration, cycle period, and that no control "
-            "was applied, plus "
-            "host RSS/CPU when the host's configuration has an ssh_target. Measurements save "
-            "report.json and summary.md under lab/runs/perception-viability/ unless --no-record."
-        ),
-    )
-    perception_viability.add_argument(
-        "--name",
-        required=True,
-        dest="host_name",
-        help="Host name from `automa hosts status`.",
-    )
-    perception_viability.add_argument(
-        "--duration-s",
-        type=float,
-        default=60.0,
-        help="Measurement window in seconds (default: 60).",
-    )
-    perception_viability.add_argument(
-        "--sample-period-s",
-        type=float,
-        default=0.25,
-        help="Publication poll period in seconds (default: 0.25).",
-    )
-    perception_viability.add_argument(
-        "--timeout-s",
-        type=float,
-        default=3.0,
-        help="Per-request timeout in seconds (default: 3).",
-    )
-    perception_viability.add_argument(
-        "--no-record",
-        action="store_true",
-        help="Do not write a viability report directory.",
-    )
-    perception_viability.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the report or preflight error as JSON; the report is also saved unless --no-record.",
-    )
-    perception_viability.set_defaults(handler=_handle_hosts_perception_viability)
-
-
 def _register_hosts_staging(host_commands: argparse._SubParsersAction) -> None:
     update = host_commands.add_parser(
         "stage",
@@ -859,8 +746,7 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "- stage       stage controller selections for a host",
                 "- operation   run bounded vehicle checks through a host",
                 "- info        inspect staged controller configuration",
-                "- memory      measure and reset memory",
-                "- perception  measure perception viability",
+                "- memory      reset live memory",
                 "- workbench   replay images through the controller steps",
                 "- stream      read a host's rolling outputs",
                 "- viewer      open a host's runtime viewer",
@@ -928,25 +814,6 @@ def _handle_hosts_info_help(args: argparse.Namespace) -> int:
                 "",
                 "Detailed help:",
                 "- ./cli/automa hosts info <command> --help",
-            ]
-        )
-    )
-    return 0
-
-
-def _handle_hosts_perception_help(args: argparse.Namespace) -> int:
-    print(
-        "\n".join(
-            [
-                "automa hosts perception commands",
-                "",
-                "- viability  health-check perception cadence and freshness",
-                "- help       show this summary",
-                "",
-                "Inspect what a selection detects: ./cli/automa plugins inspect perception <source>",
-                "",
-                "Detailed help:",
-                "- ./cli/automa hosts perception <command> --help",
             ]
         )
     )
@@ -1146,9 +1013,8 @@ def _handle_hosts_memory_help(args: argparse.Namespace) -> int:
             [
                 "automa hosts memory commands",
                 "",
-                "- viability  health-check memory update cadence, failures, and epoch",
-                "- reset      clear live retained evidence; start a new empty epoch",
-                "- help       show this summary",
+                "- reset  clear live retained evidence; start a new empty epoch",
+                "- help   show this summary",
                 "",
                 "Inspect what a selection retains: ./cli/automa plugins inspect memory <source>",
                 "",
@@ -1169,21 +1035,6 @@ def _handle_hosts_memory_reset(args: argparse.Namespace) -> int:
         host_name=args.host_name,
         timeout_s=args.timeout_s,
         json_output=args.json,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_memory_viability(args: argparse.Namespace) -> int:
-    result = run_memory_viability_measurement(
-        host_name=args.host_name,
-        duration_s=args.duration_s,
-        sample_period_s=args.sample_period_s,
-        timeout_s=args.timeout_s,
-        record=not args.no_record,
-        json_output=args.json,
-        output=None if args.json else sys.stdout,
     )
     if result.message:
         print(result.message)
@@ -1290,21 +1141,6 @@ def _handle_hosts_info_step(args: argparse.Namespace) -> int:
         args.step,
         host_name=args.host_name,
         json_output=args.json,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_perception_viability(args: argparse.Namespace) -> int:
-    result = run_perception_viability_measurement(
-        host_name=args.host_name,
-        duration_s=args.duration_s,
-        sample_period_s=args.sample_period_s,
-        timeout_s=args.timeout_s,
-        record=not args.no_record,
-        json_output=args.json,
-        output=None if args.json else sys.stdout,
     )
     if result.message:
         print(result.message)

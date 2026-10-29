@@ -20,7 +20,6 @@ from cli.automa_cli.hosts import (
     perception,
     runtime_hosts,
     view_discovery,
-    viability,
 )
 from cli.automa_cli.simulators import created
 from tests.support.cli_runner import WORKSPACE_ROOT, checked_result
@@ -41,8 +40,6 @@ IMPORT_TIME_ENV = {
         (view_discovery.discover_runtime_view.__kwdefaults__, "runtime_root"),
     ),
     "AUTOMA_OPERATION_OUTPUT_ROOT": ((operations, "OPERATION_OUTPUT_ROOT"),),
-    "AUTOMA_PERCEPTION_VIABILITY_OUTPUT_ROOT": ((viability, "PERCEPTION_VIABILITY_OUTPUT_ROOT"),),
-    "AUTOMA_MEMORY_VIABILITY_OUTPUT_ROOT": ((viability, "MEMORY_VIABILITY_OUTPUT_ROOT"),),
 }
 LIVE_ENV = ("AUTOMA_TEST_LIVE_SIM", "AUTOMA_TEST_LIVE_PI")
 

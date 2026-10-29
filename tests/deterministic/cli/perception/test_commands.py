@@ -15,16 +15,6 @@ from tests.support.runtime_fixtures import write_runtime_fixture
 
 
 class PerceptionCommandTests(unittest.TestCase):
-    def test_perception_replay_is_not_retained_as_an_alias(self) -> None:
-        result = invoke_automa(
-            "hosts", "perception",
-            "replay",
-            check=False,
-        )
-
-        self.assertEqual(result.returncode, 2)
-        self.assertIn("invalid choice: 'replay'", result.stderr)
-
     def test_scenario_deployed_perception_schema_is_machine_readable(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"

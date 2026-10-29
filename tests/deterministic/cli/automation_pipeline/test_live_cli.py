@@ -1,14 +1,13 @@
 """The public live commands against a running runtime host.
 
 Every vehicle's host serves the same routes and the CLI finds it only by
-``base_url``, so streams, viability and memory reset run here against an
+``base_url``, so streams and memory reset run here against an
 in-process host; a PiCar differs only in where its ``base_url`` comes from.
 """
 from __future__ import annotations
 
 import json
 import tempfile
-import time
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -157,27 +156,6 @@ class LiveCommandsTests(LiveHostTestCase):
         self.assertEqual(plan.returncode, 0, plan.stdout + plan.stderr)
         self.assertIsInstance(json.loads(plan.stdout)["live"]["last_duration_ms"], float)
 
-    def test_viability_passes_while_the_host_applies_no_control(self) -> None:
-        # A parked car's session is manual: the host runs its cycles and
-        # applies none of their control.
-        self.observe("manual")
-        for step in ("perception", "memory"):
-            with self.subTest(step=step):
-                result = self.automa(step, "viability", "--duration-s", "1", "--no-record", "--json")
-                report = json.loads(result.stdout)
-                failed = [gate for gate in report["gates"] if not gate["passed"]]
-                self.assertEqual(result.returncode, 0, failed)
-
-    def test_viability_of_an_idle_host_exits_2_before_measuring(self) -> None:
-        started = time.monotonic()
-        result = self.automa("perception", "viability", "--no-record", "--json")
-        self.assertLess(time.monotonic() - started, 15)
-        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-        payload = json.loads(result.stdout)
-        self.assertEqual(payload["error"], "no_fresh_frames")
-        self.assertIn("is not processing frames", payload["message"])
-        self.assertIn("start a run if none is active", payload["message"])
-
     def test_memory_reset_is_confirmed_while_the_session_refills_memory(self) -> None:
         self.observe()
         result = self.automa("memory", "reset", "--json")
@@ -200,8 +178,6 @@ class NoRuntimeHostTests(unittest.TestCase):
             for args in (
                 ("stream", "perception", "--once", "--json"),
                 ("stream", "memory", "--once", "--json"),
-                ("perception", "viability", "--no-record", "--json"),
-                ("memory", "viability", "--no-record"),
                 ("memory", "reset"),
                 ("viewer",),
             ):

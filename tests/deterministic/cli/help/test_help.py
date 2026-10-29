@@ -132,10 +132,19 @@ class HelpCommandTests(unittest.TestCase):
         self.assertEqual((disarmed.command, disarmed.plugin_command, disarmed.host_name, disarmed.all_plugins),
                          ("plugins", "disarm", "one", True))
         self.assertFalse(disarmed.json)
+        named = parser.parse_args(["plugins", "disarm", "--host-name", "one",
+                                   "--name", "proposal/x", "--name", "memory/y"])
+        self.assertEqual((named.plugins, named.step), ([("proposal", "x"), ("memory", "y")], None))
+        cleared = parser.parse_args(["plugins", "disarm", "--host-name", "one", "--step", "memory"])
+        self.assertEqual((cleared.plugins, cleared.step, cleared.all_plugins), (None, "memory", False))
         for args in (
+            ["hosts", "plugins", "disarm", "--name", "one", "--all"],
             ["plugins", "disarm", "--all"],
             ["plugins", "disarm", "--host-name", "one"],
             ["plugins", "disarm", "--host-name", "one", "--url", "http://127.0.0.1:5051", "--all"],
+            ["plugins", "disarm", "--host-name", "one", "--all", "--name", "proposal/x"],
+            ["plugins", "disarm", "--host-name", "one", "--step", "memory", "--all"],
+            ["plugins", "disarm", "--host-name", "one", "--step", "plan"],
         ):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as caught:

@@ -6,7 +6,7 @@ import argparse
 from pathlib import Path
 
 from autonomy.decision_cycle.activation import STEPS
-from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS
+from autonomy.decision_cycle.steps import CLEARABLE_STEPS, ONE_PLUGIN_STEPS
 
 from ..hosts.workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ..shared.selection_args import add_selection_args
@@ -77,15 +77,20 @@ def register_plugins(subcommands: argparse._SubParsersAction) -> None:
         description=(
             f"Deselect plugins on an existing runtime host. A one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) "
             "keeps its plugin; arm a replacement instead. The host resets disarmed instances and applies "
-            "the selection at its next cycle. Catalog entries remain available to arm again."
+            "the selection at its next cycle; retained plugins keep their state. Catalog entries remain "
+            "available to arm again."
         ),
         epilog="Disarming does not start or stop automation, change control mode, or edit staged activations.",
     )
     disarm_target = disarm.add_mutually_exclusive_group(required=True)
     disarm_target.add_argument("--host-name", help="Host name from hosts status.")
     disarm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
-    disarm.add_argument("--all", dest="all_plugins", action="store_true", required=True,
-                        help="Disarm every plugin in every step that can run without plugins.")
+    disarm_input = disarm.add_mutually_exclusive_group(required=True)
+    disarm_input.add_argument("--name", dest="plugins", action="append", type=_step_plugin, metavar="STEP/PLUGIN",
+                              help="Plugin to disarm, named as plugins list --host-name <host> lists it; repeat to disarm several together.")
+    disarm_input.add_argument("--step", choices=CLEARABLE_STEPS, help="Disarm every plugin in this step.")
+    disarm_input.add_argument("--all", dest="all_plugins", action="store_true",
+                              help="Disarm every plugin in every step that can run without plugins.")
     disarm.add_argument("--json", action="store_true", help="Print the request receipt and selection state as JSON.")
     disarm.set_defaults(handler=_handle_plugins_disarm)
 
@@ -162,15 +167,15 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "automa plugins commands", "",
         "- list     show the packaged catalog or what a host has armed",
         "- arm      arm catalog plugins on a host by step/plugin",
-        "- disarm   clear every step on a host that can run without plugins",
+        "- disarm   deselect a host's plugins by step/plugin, or clear a step or every step",
         "- inspect  report a step's plugins from images or a recorded run",
         "- help     show this summary", "",
-        "Upload and disarm individual plugins: ./cli/automa hosts plugins", "",
+        "Upload plugins: ./cli/automa hosts plugins", "",
         "Packaged catalog: ./cli/automa plugins list",
         "Armed on a host: ./cli/automa plugins list --host-name <host>",
         "A host's catalog: ./cli/automa plugins list --host-name <host> --long",
         "Arm on a host: ./cli/automa plugins arm --host-name <host> --name <step>/<plugin>",
-        "Disarm on a host: ./cli/automa plugins disarm --host-name <host> --all",
+        "Disarm on a host: ./cli/automa plugins disarm --host-name <host> --name <step>/<plugin>",
         "Detailed help: ./cli/automa plugins <command> --help",
     ]))
     return 0
@@ -190,7 +195,7 @@ def _handle_plugins_arm(args: argparse.Namespace) -> int:
 
 
 def _handle_plugins_disarm(args: argparse.Namespace) -> int:
-    result = disarm_plugins(url=args.url, host_name=args.host_name, all_plugins=args.all_plugins,
+    result = disarm_plugins(url=args.url, host_name=args.host_name, plugins=args.plugins, step=args.step,
                             json_output=args.json)
     print(result.message)
     return result.exit_code

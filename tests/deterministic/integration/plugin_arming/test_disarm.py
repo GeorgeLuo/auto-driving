@@ -26,7 +26,7 @@ from tests.shared.cli.invoke import invoke_automa
 
 class PluginDisarmingFlows(unittest.TestCase):
     def disarm(self, base, *args, check=True):
-        return invoke_automa("hosts", "plugins", "disarm", "--url", base, *args, check=check)
+        return invoke_automa("plugins", "disarm", "--url", base, *args, check=check)
 
     def test_named_removal_keeps_catalog_order_and_retained_instances(self):
         for vehicle in ("chase", "picar"):
@@ -39,8 +39,8 @@ class PluginDisarmingFlows(unittest.TestCase):
                 before = catalog(base)
                 instances = dict((definition.plugin_id, instance) for definition, instance in host.step("proposal").applied)
                 with patch.object(host.step("proposal"), "_reset_plugin", wraps=host.step("proposal")._reset_plugin) as reset:
-                    receipt = json.loads(self.disarm(base, "--step", "proposal", "--plugin", "second",
-                                                    "--plugin", "second", "--json").stdout)
+                    receipt = json.loads(self.disarm(base, "--name", "proposal/second",
+                                                    "--name", "proposal/second", "--json").stdout)
                     self.assertEqual(receipt["schema"], "automa_plugin_disarm")
                     self.assertEqual(receipt["outcome"]["status"], "requested")
                     self.assertEqual(selected(receipt, "applied", "proposal"), selected(before, "applied", "proposal"))
@@ -70,7 +70,7 @@ class PluginDisarmingFlows(unittest.TestCase):
             host.run(frame(root, 1))
             self.assertEqual(host.shared_memory["prototype.memory"]["count"], 1)
             instance = host.step("memory").applied[0][1]
-            self.disarm(base, "--step", "proposal", "--plugin", "first")
+            self.disarm(base, "--name", "proposal/first")
             host.run(frame(root, 2))
             self.assertIs(host.step("memory").applied[0][1], instance)
             self.assertEqual(host.shared_memory["prototype.memory"]["count"], 2)
@@ -87,7 +87,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                 self.assertIn("prototype.memory", host.shared_memory)
                 before = catalog(base)
                 session = host.session_status()
-                human = self.disarm(base, "--step", "memory", "--all").stdout
+                human = self.disarm(base, "--step", "memory").stdout
                 self.assertIn("Disarming: requested", human)
                 self.assertIn("Requested memory: (none)", human)
                 self.assertIn("Next:", human)
@@ -109,7 +109,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                     self.assertEqual(after["applied_decision"]["steps"][step], before["applied_decision"]["steps"][step])
                 self.assertIn("Disarming: applied", self.disarm(base, "--all").stdout)
 
-    def test_plugins_disarm_all_clears_a_named_host(self):
+    def test_plugins_disarm_names_and_clears_on_a_named_host(self):
         for vehicle, provider in (("chase", "chase-sim"), ("picar", "picar")):
             with self.subTest(vehicle=vehicle), image_source(1) as root, plugin_host(root, vehicle) as (host, base):
                 for step in CLEARABLE_STEPS:
@@ -120,12 +120,23 @@ class PluginDisarmingFlows(unittest.TestCase):
                 before = catalog(base)
                 runtime_root = root / "hosts"
                 name_host(runtime_root, base, provider)
-                receipt = json.loads(invoke_automa("plugins", "disarm", "--host-name", "one", "--all", "--json",
-                                                   runtime_root=runtime_root).stdout)
-                self.assertEqual(receipt["schema"], "automa_plugin_disarm")
-                self.assertEqual(receipt["host_name"], "one")
-                self.assertEqual(receipt["outcome"]["status"], "requested")
+
+                def disarm(*args):
+                    return json.loads(invoke_automa("plugins", "disarm", "--host-name", "one", *args, "--json",
+                                                    runtime_root=runtime_root).stdout)
+
+                # One request disarms the named group across steps.
+                receipt = disarm("--name", "memory/prototype-memory", "--name", "proposal/prototype-proposal")
+                self.assertEqual((receipt["schema"], receipt["host_name"], receipt["outcome"]["status"]),
+                                 ("automa_plugin_disarm", "one", "requested"))
                 host.run(frame(root, 2))
+                named = catalog(base)
+                self.assertEqual([item["id"] for item in selected(named, "applied", "perception")],
+                                 ["prototype-perception"])
+                for step in ("memory", "proposal"):
+                    self.assertEqual(selected(named, "applied", step), [])
+                self.assertEqual(disarm("--all")["outcome"]["status"], "requested")
+                host.run(frame(root, 3))
                 after = catalog(base)
                 for step in CLEARABLE_STEPS:
                     self.assertEqual(selected(after, "applied", step), [])
@@ -140,18 +151,16 @@ class PluginDisarmingFlows(unittest.TestCase):
                 write_plugin(file, "proposal", name, 1)
                 upload(base, file, "proposal", name)
             arm_step(base, "proposal", "first", "second")
-            self.disarm(base, "--step", "proposal", "--plugin", "first")
+            self.disarm(base, "--name", "proposal/first")
             arm_step(base, "proposal", "third")
-            removals = root / "removals.json"
-            removals.write_text(json.dumps({"proposal": ["third"], "memory": []}))
-            self.disarm(base, "--selection", str(removals))
+            self.disarm(base, "--name", "proposal/third")
             self.assertEqual([item["id"] for item in selected(catalog(base), "requested", "proposal")], ["second"])
             host.run(frame(root, 1))
             before = catalog(base)
-            receipt = json.loads(self.disarm(base, "--step", "proposal", "--plugin", "first", "--json").stdout)
+            receipt = json.loads(self.disarm(base, "--name", "proposal/first", "--json").stdout)
             self.assertEqual(receipt["status"], "applied")
-            removals.write_text(json.dumps({"proposal": []}))
-            self.disarm(base, "--selection", str(removals))
+            # The CLI cannot send an empty ID list; the catalog API treats one as no removal.
+            self.assertTrue(PluginCatalogClient(base)({"operation": "disarm", "selections": {"proposal": [], "memory": []}})["ok"])
             host.run(frame(root, 2))
             after = catalog(base)
             self.assertEqual(after["applied_decision"], before["applied_decision"])
@@ -162,21 +171,19 @@ class PluginDisarmingFlows(unittest.TestCase):
                 "perception": packaged_activation("perception", ["frame"]),
         }) as (host, base):
             before = catalog(base)
-            bad_maps = ({"perception": ["frame"], "proposal": ["missing"]},
-                        {"steering": []}, {"perception": "frame"}, {"memory": [7]}, {}, [])
-            file = root / "removals.json"
-            for selections in bad_maps:
+            # One unknown name fails the whole group.
+            result = self.disarm(base, "--name", "perception/frame", "--name", "proposal/missing", "--json", check=False)
+            self.assertEqual(result.returncode, 2)
+            receipt = json.loads(result.stdout)
+            self.assertEqual(receipt["outcome"]["status"], "failed")
+            self.assertIn("recovery", receipt["outcome"])
+            self.assertEqual(catalog(base), before)
+            for selections in ({"steering": []}, {"perception": "frame"}, {"memory": [7]}, {}, []):
                 with self.subTest(selections=selections):
-                    file.write_text(json.dumps(selections))
-                    result = self.disarm(base, "--selection", str(file), "--json", check=False)
-                    self.assertEqual(result.returncode, 2)
-                    receipt = json.loads(result.stdout)
-                    self.assertEqual(receipt["outcome"]["status"], "failed")
-                    self.assertIn("recovery", receipt["outcome"])
+                    self.assertFalse(PluginCatalogClient(base)({"operation": "disarm", "selections": selections})["ok"])
                     self.assertEqual(catalog(base), before)
-            for args in ((), ("--step", "memory"), ("--plugin", "frame"),
-                         ("--all", "--plugin", "frame"), ("--all", "--selection", str(file)),
-                         ("--selection", str(file), "--step", "memory")):
+            for args in ((), ("--all", "--name", "perception/frame"), ("--step", "memory", "--all"),
+                         ("--step", "memory", "--name", "memory/x"), ("--name", "frame"), ("--step", "plan")):
                 with self.subTest(args=args):
                     self.assertEqual(self.disarm(base, *args, check=False).returncode, 2)
                     self.assertEqual(catalog(base), before)
@@ -188,7 +195,7 @@ class PluginDisarmingFlows(unittest.TestCase):
     def test_a_one_plugin_step_keeps_its_plugin(self):
         with image_source(1) as root, plugin_host(root) as (host, base):
             before = selected(catalog(base), "applied", "plan")
-            result = self.disarm(base, "--step", "plan", "--plugin", "highest_confidence", "--json", check=False)
+            result = self.disarm(base, "--name", "plan/highest_confidence", "--json", check=False)
             self.assertEqual(result.returncode, 2)
             self.assertEqual(json.loads(result.stdout)["outcome"]["message"],
                              "plan: ValueError: the plan step runs exactly one plugin; 0 selected")
@@ -227,7 +234,7 @@ class PluginDisarmingFlows(unittest.TestCase):
             host.run(frame(root, 1))
             runner = host.step("perception")
             with patch.object(runner, "_reset_plugin", side_effect=RuntimeError("reset refused")):
-                self.disarm(base, "--step", "perception", "--all")
+                self.disarm(base, "--step", "perception")
                 with patch.object(host.cycle, "run", side_effect=AssertionError("cycle executed")) as cycle:
                     with self.assertRaisesRegex(RuntimeError, "reset refused"):
                         host.run(frame(root, 2))

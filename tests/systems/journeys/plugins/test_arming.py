@@ -132,8 +132,9 @@ class PluginArmingFlows(unittest.TestCase):
                     self.assertEqual(current["state"]["action_policy"], "observe_only")
                     self.assertEqual(current["decision"]["generation_id"], streamed["generation_id"])
                     self.assertNotEqual(streamed["generation_id"], before["applied_decision"]["generation_id"])
-                disarmed = json.loads(cli("plugins", "disarm", "--name", "chase-sim-chaser",
-                                          "--step", "proposal", "--plugin", "prototype", "--json").stdout)
+                disarmed = json.loads(run_automa("plugins", "disarm", "--host-name", "chase-sim-chaser",
+                                                 "--name", "proposal/prototype", "--json",
+                                                 runtime_root=runtime, extra_env=env).stdout)
                 self.assertTrue(disarmed["ok"])
                 deadline = time.monotonic() + 5
                 while True:

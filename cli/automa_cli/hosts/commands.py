@@ -29,7 +29,7 @@ from .runtime_hosts import RUNTIME_ROOT as HOSTS_RUNTIME_ROOT
 from .perception import get_host_perception_info
 from .workbench import run_workbench_replay
 from .workbench_plugins import WORKBENCH_SELECTABLE_STEPS
-from ..plugins.catalog import disarm_plugins, upload_plugin
+from ..plugins.catalog import upload_plugin
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .viability import (
     run_memory_viability_measurement,
@@ -58,10 +58,10 @@ def register_hosts(subcommands: argparse._SubParsersAction) -> None:
 
 
 def _register_hosts_plugins(host_commands: argparse._SubParsersAction) -> None:
-    plugins = host_commands.add_parser("plugins", help="Upload and disarm plugins in a live catalog.")
+    plugins = host_commands.add_parser("plugins", help="Upload plugins to a live catalog.")
     plugins.set_defaults(handler=_handle_hosts_plugins_help)
     plugin_commands = plugins.add_subparsers(dest="plugin_command")
-    plugins_help = plugin_commands.add_parser("help", help="Show upload and disarming usage.")
+    plugins_help = plugin_commands.add_parser("help", help="Show upload usage.")
     plugins_help.set_defaults(handler=_handle_hosts_plugins_help)
     upload = plugin_commands.add_parser(
         "upload", help="Register a plugin file; optionally arm it on a runtime host.",
@@ -79,22 +79,6 @@ def _register_hosts_plugins(host_commands: argparse._SubParsersAction) -> None:
     upload.add_argument("--arm", action="store_true", help="After registration, add/update this ID in the runtime host's requested selection; other plugins stay selected.")
     upload.add_argument("--json", dest="json_output", action="store_true", help="Print the registration receipt as JSON.")
     upload.set_defaults(handler=_handle_hosts_plugins_upload)
-
-    disarm = plugin_commands.add_parser(
-        "disarm", help="Deselect plugins without deleting them from the live catalog.",
-        description=f"Deselect plugins on an existing runtime host. A one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) keeps its plugin; arm a replacement instead. The host resets disarmed instances and applies the selection at its next cycle; retained plugins keep their state. Catalog entries remain available to arm again.",
-        epilog="Use --step with repeatable --plugin IDs, --selection with a JSON step-to-ID-list map, or --all to clear one step (with --step) or every step that can run without plugins. Empty batch lists remove nothing. Disarming does not start or stop automation, change control mode, or edit staged activations.",
-    )
-    disarm_target = disarm.add_mutually_exclusive_group(required=True)
-    disarm_target.add_argument("--name", dest="host_name", help="Host receiving the request.")
-    disarm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
-    disarm_input = disarm.add_mutually_exclusive_group()
-    disarm.add_argument("--step", choices=STEPS, help="Step whose plugins to disarm; combine with --plugin or --all.")
-    disarm_input.add_argument("--selection", type=Path, help="JSON map of supported steps to plugin-ID lists to disarm together.")
-    disarm_input.add_argument("--all", dest="all_plugins", action="store_true", help="Disarm every plugin in --step, or in every step that can run without plugins.")
-    disarm.add_argument("--plugin", action="append", dest="plugins", help="Plugin ID to disarm from --step; repeat to name several.")
-    disarm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
-    disarm.set_defaults(handler=_handle_hosts_plugins_disarm)
 
 
 def _register_hosts_viewer(host_commands: argparse._SubParsersAction) -> None:
@@ -889,9 +873,8 @@ def _handle_hosts_plugins_help(args: argparse.Namespace) -> int:
     print("\n".join([
         "automa hosts plugins commands", "",
         "- upload  store a file and register an available plugin revision",
-        "- disarm  deselect named plugins or clear steps on a runtime host",
         "- help    show this summary", "",
-        "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; uploading, arming and disarming do not start automation.",
+        "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; uploading and arming do not start automation.",
         "Use ./cli/automa hosts status --name <host> to see the host's state.",
         "Use ./cli/automa plugins list --host-name <host> to see what it has armed; add --long for its whole catalog.",
         "Use --url <runtime-or-workbench-url> to address an existing catalog directly.", "",
@@ -908,11 +891,7 @@ def _handle_hosts_plugins_help(args: argparse.Namespace) -> int:
         "Other plugins retain their definitions/configs. The host loads the selection before answering;",
         "a load error exits 2 and keeps the previous selection. A loaded selection applies at the next cycle.",
         "plugins list exits 2 while the host's last arming failed.",
-        "Disarming supports the same steps; a one-plugin step keeps its plugin. Use --step with --plugin IDs,",
-        "or --selection for grouped removals. Use disarm --all to clear every step that can run without",
-        "plugins, or disarm --step <step> --all to clear one step.",
-        "./cli/automa plugins disarm --host-name <host> --all clears the same steps as disarm --all.",
-        "The next cycle resets disarmed instances; catalog entries remain available to arm again.",
+        "Disarm with ./cli/automa plugins disarm --host-name <host> --name <step>/<plugin>, --step <step> or --all.",
         "Arm and disarm change the current host only; staged selections are restored when the host restarts.",
         "Neither changes control mode or starts or stops automation. Workbench catalogs support upload only.", "",
         "Runtime viewer: open Plugins from its home page. Workbench: catalogs refresh in the step panels.", "",
@@ -927,19 +906,6 @@ def _handle_hosts_plugins_upload(args: argparse.Namespace) -> int:
         plugin_id=args.plugin_id, entrypoint=args.entrypoint, config=args.config, arm=args.arm,
         json_output=args.json_output,
     )
-    print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_plugins_disarm(args: argparse.Namespace) -> int:
-    named = bool(args.step and args.plugins)
-    if args.selection and (args.step or args.plugins) or args.all_plugins and args.plugins or not (
-            args.selection or args.all_plugins or named):
-        print("Use --step with --plugin IDs, --selection alone, or --all with an optional --step.")
-        return 2
-    result = disarm_plugins(url=args.url, host_name=args.host_name, step=args.step,
-                            plugins=args.plugins, selection=args.selection,
-                            all_plugins=args.all_plugins, json_output=args.json_output)
     print(result.message)
     return result.exit_code
 

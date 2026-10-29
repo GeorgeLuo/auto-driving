@@ -166,8 +166,9 @@ Without a host, `plugins list` lists the packaged catalog in
 `implementations/decision_cycle/catalog.py` and marks each step's defaults; no
 host is needed.
 The former `hosts plugins list` alias and `hosts plugins status` command are
-removed, and `hosts plugins arm` is now `plugins arm`. `hosts plugins help`
-describes the file identity arguments and the existing-host precondition.
+removed, and `hosts plugins arm` and `hosts plugins disarm` are now `plugins arm`
+and `plugins disarm`. `hosts plugins help` describes the file identity arguments
+and the existing-host precondition.
 Open **Plugins** in the runtime viewer to see the available
 revision. Upload does not change the selected or running plugins. Source that
 does not compile is refused with its file and line. The file is not imported,

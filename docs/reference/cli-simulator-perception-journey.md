@@ -187,7 +187,7 @@ After uploading, request the available revision without restarting the worker:
 ```sh
 ./cli/automa plugins arm --host-name chase-sim-chaser --name perception/prototype
 ./cli/automa plugins list --host-name chase-sim-chaser --step perception
-./cli/automa hosts stream perception --name chase-sim-chaser --once
+./cli/automa plugins stream --step perception --host-name chase-sim-chaser --once
 ```
 
 The host imports and constructs the selection before answering. The receipt

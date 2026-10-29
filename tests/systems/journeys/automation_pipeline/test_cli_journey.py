@@ -56,8 +56,8 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     ))),
                 }
                 with subprocess.Popen(
-                    [sys.executable, str(AUTOMA_PATH), "hosts", "stream", "perception",
-                     "--name", "chase-sim-chaser", "--json"],
+                    [sys.executable, str(AUTOMA_PATH), "plugins", "stream", "--step", "perception",
+                     "--host-name", "chase-sim-chaser", "--json"],
                     cwd=WORKSPACE_ROOT, env=stream_env,
                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                 ) as stream:
@@ -133,7 +133,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
 
                     for step in ("perception", "memory"):
                         probe = json.loads(invoke_automa(
-                            "hosts", "stream", step, "--name", "chase-sim-chaser",
+                            "plugins", "stream", "--step", step, "--host-name", "chase-sim-chaser",
                             "--once", "--json", runtime_root=runtime_root, extra_env=env,
                         ).stdout)
                         self.assertEqual(probe["status"], "live")

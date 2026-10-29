@@ -3,15 +3,26 @@
 from __future__ import annotations
 
 import argparse
+import sys
+from functools import partial
 from pathlib import Path
 
-from autonomy.decision_cycle.activation import STEPS
+from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS, ONE_PLUGIN_STEPS
 
+from ..hosts.decision_steps import stream_host_step
+from ..hosts.streaming import stream_host_memory, stream_host_perception
 from ..hosts.workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ..shared.selection_args import add_selection_args
 from .catalog import arm_plugins, disarm_plugins, list_plugins, upload_plugin
 from .step_inspect import INSPECT_STEPS, inspect_step
+
+# Each step a host streams, in cycle order.
+_STREAMS = {
+    "perception": stream_host_perception,
+    "memory": stream_host_memory,
+    **{step: partial(stream_host_step, step) for step in DECISION_STEPS},
+}
 
 
 def _step_plugin(value: str) -> tuple[str, str]:
@@ -26,7 +37,7 @@ def _step_plugin(value: str) -> tuple[str, str]:
 def register_plugins(subcommands: argparse._SubParsersAction) -> None:
     step_plugins = subcommands.add_parser(
         "plugins",
-        help="List a plugin catalog or what a host has armed, upload, arm and disarm a host's plugins, or inspect plugins from images and recordings.",
+        help="List a plugin catalog or what a host has armed, upload, arm and disarm a host's plugins, stream a step on a host, or inspect plugins from images and recordings.",
     )
     step_plugins.set_defaults(handler=_handle_plugins_help)
     step_plugin_commands = step_plugins.add_subparsers(dest="plugin_command")
@@ -120,6 +131,32 @@ def register_plugins(subcommands: argparse._SubParsersAction) -> None:
     disarm.add_argument("--json", action="store_true", help="Print the request receipt and selection state as JSON.")
     disarm.set_defaults(handler=_handle_plugins_disarm)
 
+    stream = step_plugin_commands.add_parser(
+        "stream", help="Show a step's latest output on a host, replacing the terminal view as it updates.",
+        description=(
+            "Poll a running host for one step's latest output. perception reads the host's latest "
+            "observation; memory shows each applied plugin's health, epoch and record count and the "
+            "evidence publisher; proposal, plan and action print the step's record from the latest fresh "
+            "cycle whose generation matches the step selections, with the observation and memory a "
+            "proposal read and the host's application of an action. A running terminal stream serves "
+            "the local runtime view and shows its URLs: the perception view, memory map and action view."
+        ),
+        epilog="Streaming never starts automation or changes what a host has armed.",
+    )
+    stream.add_argument("--host-name", required=True, help="Host name from hosts status.")
+    stream.add_argument("--step", required=True, choices=tuple(_STREAMS), help="Cycle step to stream.")
+    stream.add_argument("--refresh-s", type=float, default=0.5, help="Refresh cadence for the replacing terminal view.")
+    stream.add_argument("--once", action="store_true",
+                        help="Render once without a local view and exit; exit 2 unless the step is live.")
+    stream.add_argument("--no-clear", action="store_true",
+                        help="Print each render below the previous one, keeping earlier renders in scrollback.")
+    stream.add_argument("--json", action="store_true", help=(
+        "Print one JSON probe per refresh in place of the terminal and local views: host_perception_live, "
+        "host_memory_live or host_<step>_stream, each with a status. A host that cannot be found prints an "
+        "unavailable probe and exits 2."
+    ))
+    stream.set_defaults(handler=_handle_plugins_stream)
+
     inspect_control = step_plugin_commands.add_parser(
         "inspect", help="Replay images or a recorded run and report a step's plugins.",
     )
@@ -195,6 +232,7 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "- upload   register a plugin file in a host's or workbench's catalog",
         "- arm      arm catalog plugins on a host by step/plugin",
         "- disarm   deselect a host's plugins by step/plugin, or clear a step or every step",
+        "- stream   show a step's latest output on a host as it updates",
         "- inspect  report a step's plugins from images or a recorded run",
         "- help     show this summary", "",
         "Packaged catalog: ./cli/automa plugins list",
@@ -203,6 +241,7 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "Upload to a host: ./cli/automa plugins upload --host-name <host> --file <file> --name <step>/<plugin> --entrypoint <module>:<Class>",
         "Arm on a host: ./cli/automa plugins arm --host-name <host> --name <step>/<plugin>",
         "Disarm on a host: ./cli/automa plugins disarm --host-name <host> --name <step>/<plugin>",
+        "Stream on a host: ./cli/automa plugins stream --host-name <host> --step <step>",
         "Detailed help: ./cli/automa plugins <command> --help",
     ]))
     return 0
@@ -233,6 +272,14 @@ def _handle_plugins_disarm(args: argparse.Namespace) -> int:
     result = disarm_plugins(url=args.url, host_name=args.host_name, plugins=args.plugins, step=args.step,
                             json_output=args.json)
     print(result.message)
+    return result.exit_code
+
+
+def _handle_plugins_stream(args: argparse.Namespace) -> int:
+    result = _STREAMS[args.step](host_name=args.host_name, refresh_s=args.refresh_s, once=args.once,
+                                 no_clear=args.no_clear, json_output=args.json, output=sys.stdout)
+    if result.message:
+        print(result.message)
     return result.exit_code
 
 

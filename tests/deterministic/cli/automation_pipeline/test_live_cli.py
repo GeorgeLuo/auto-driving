@@ -56,15 +56,19 @@ class LiveCommandsTests(LiveHostTestCase):
     def automa(self, *args: str):
         return invoke_automa("hosts", *args, "--name", HOST_NAME, runtime_root=self.runtime_root, check=False)
 
+    def stream(self, step: str, *flags: str):
+        return invoke_automa("plugins", "stream", "--step", step, "--host-name", HOST_NAME, *flags,
+                             runtime_root=self.runtime_root, check=False)
+
     def test_streams_are_live_only_while_a_session_runs(self) -> None:
-        idle = self.automa("stream", "perception", "--once", "--json")
+        idle = self.stream("perception", "--once", "--json")
         self.assertEqual(idle.returncode, 2, idle.stdout)
         self.assertNotEqual(json.loads(idle.stdout)["status"], "live")
 
         self.observe()
         for step in ("perception", "memory"):
             with self.subTest(step=step):
-                result = self.automa("stream", step, "--once", "--json")
+                result = self.stream(step, "--once", "--json")
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 live = json.loads(result.stdout)
                 self.assertEqual(live["status"], "live")
@@ -72,7 +76,7 @@ class LiveCommandsTests(LiveHostTestCase):
                     # The memory stream reads the live step probe. Perception's
                     # stream is the observation publication.
                     self.assertIsInstance(live["last_duration_ms"], float)
-        terminal = self.automa("stream", "perception", "--once", "--no-clear")
+        terminal = self.stream("perception", "--once", "--no-clear")
         self.assertEqual(terminal.returncode, 0, terminal.stdout + terminal.stderr)
         self.assertIn(f"host: {self.host.base_url}", terminal.stdout)
 
@@ -175,16 +179,16 @@ class NoRuntimeHostTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             _stage(runtime_root)
-            for args in (
-                ("stream", "perception", "--once", "--json"),
-                ("stream", "memory", "--once", "--json"),
+            # Each command ends with the flag that names its host.
+            streams = [("plugins", "stream", "--step", step, "--once", "--json", "--host-name")
+                       for step in ("perception", "memory", "proposal")]
+            hosts = [("hosts", *args, "--name") for args in (
                 ("memory", "reset"),
                 ("viewer",),
-            ):
+            )]
+            for args in (*streams, *hosts):
                 with self.subTest(args=args):
-                    result = invoke_automa(
-                        "hosts", *args, "--name", HOST_NAME, runtime_root=runtime_root, check=False
-                    )
+                    result = invoke_automa(*args, HOST_NAME, runtime_root=runtime_root, check=False)
                     self.assertEqual(result.returncode, 2)
                     self.assertIn(START_HOST, result.stdout + result.stderr)
 

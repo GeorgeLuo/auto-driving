@@ -22,7 +22,7 @@ from typing import Any
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
-from autonomy.serialization import ensure_strict_json_value
+from autonomy.serialization import canonical_json_size_bytes, ensure_strict_json_value
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     DEFAULT_MAX_PROPERTY_BYTES,
     DEFAULT_MAX_SERIALIZED_BYTES,
@@ -30,7 +30,6 @@ from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import 
     LedgerBounds,
     empty_ledger,
     serialized_ledger_bytes,
-    serialized_mapping_bytes,
 )
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
@@ -292,7 +291,7 @@ class BoundedEvidenceReducer:
         limit = self.bounds.max_property_bytes
         if limit is None:
             return True
-        return serialized_mapping_bytes(properties) <= limit
+        return canonical_json_size_bytes(properties) <= limit
 
     def _expire(self, *, now_ms: int) -> None:
         max_age_ms = self.bounds.max_age_ms

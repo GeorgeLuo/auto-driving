@@ -16,9 +16,9 @@ from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
 
 from .host_publications import host_state
 from .runtime_hosts import local_hosts
-from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S, _require_positive_timeout, chase_operator_url
+from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S, chase_operator_url, require_positive_timeout
 from ..vehicles.providers import CHASE_SIM, PROVIDERS
-from ..vehicles.status import _indented
+from ..vehicles.status import indented
 
 
 def host_statuses(
@@ -40,7 +40,7 @@ def read_hosts(
     not running or not found has no read.
     """
 
-    deadline = time.monotonic() + _require_positive_timeout(timeout_s)
+    deadline = time.monotonic() + require_positive_timeout(timeout_s)
 
     def remaining() -> float:
         # The client refuses a zero timeout; a spent budget times out at once instead.
@@ -141,7 +141,7 @@ def host_block(host: dict[str, Any]) -> str:
     ]
     if any(activity):
         lines.append("  " + ", ".join(part for part in activity if part))
-    lines += _indented(host.get("error"))
+    lines += indented(host.get("error"))
     attachment = _attachment_text(host)
     if attachment:
         lines.append(f"  {attachment}")

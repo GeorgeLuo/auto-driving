@@ -9,7 +9,9 @@ from implementations.vehicle.chase_sim.defaults import (
     DEFAULT_CHASE_UI_WS_URL,
 )
 
+from ..hosts.runtime_hosts import discovered_vehicles, write_discovered_vehicles
 from ..shared.command_result import CommandResult
+from ..simulators.created import created_simulators
 from .probes import (
     DEFAULT_READINESS_TIMEOUT_S,
     Candidate,
@@ -34,14 +36,10 @@ def listed_vehicles() -> list[Candidate]:
 
 
 def _created_candidates() -> list[Candidate]:
-    from ..simulators.created import created_simulators
-
     return [Candidate(CHASE_SIM.name, simulator["url"], "created") for simulator in created_simulators()]
 
 
 def _discovered_candidates() -> list[Candidate]:
-    from ..hosts.runtime_hosts import discovered_vehicles
-
     return [Candidate(vehicle["provider"], vehicle["url"], "discovered") for vehicle in discovered_vehicles()]
 
 
@@ -59,8 +57,6 @@ def _dedupe_candidates(candidates: list[Candidate]) -> list[Candidate]:
 
 def discover_vehicle(*, provider: str, url: str, force: bool = False) -> CommandResult:
     """List a vehicle in vehicles status once it can take a host, or regardless with ``force``."""
-
-    from ..hosts.runtime_hosts import discovered_vehicles, write_discovered_vehicles
 
     vehicle = PROVIDERS[provider]
     try:
@@ -82,8 +78,6 @@ def discover_vehicle(*, provider: str, url: str, force: bool = False) -> Command
 
 def remove_vehicle(*, url: str) -> CommandResult:
     """Stop listing a discovered vehicle; the default simulator stays."""
-
-    from ..hosts.runtime_hosts import discovered_vehicles, write_discovered_vehicles
 
     def normalized(provider: str) -> str | None:
         try:

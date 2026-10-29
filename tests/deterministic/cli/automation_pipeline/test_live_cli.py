@@ -15,7 +15,7 @@ from urllib.error import HTTPError
 from urllib.request import urlopen
 
 from cli.automa_cli.hosts.host_publications import fetch_observation_sample
-from cli.automa_cli.hosts.streaming import _ViewFeed, _read_publication
+from cli.automa_cli.hosts.streaming import ViewFeed, _read_publication
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import HOST_NAME
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.integration.live_host import LiveHostTestCase, stage_runtime as _stage, wait_until
@@ -28,7 +28,7 @@ class LiveCommandsTests(LiveHostTestCase):
     def test_the_perception_view_stays_live_while_the_decision_is_unavailable(self) -> None:
         self.observe()
         with patch("cli.automa_cli.hosts.streaming.runtime_view_dir", return_value=self.runtime_root / "view"):
-            feed = _ViewFeed(HOST_NAME, base_url=self.host.base_url, timeout_s=3.0)
+            feed = ViewFeed(HOST_NAME, base_url=self.host.base_url, timeout_s=3.0)
         self.addCleanup(feed.stop)
         feed.decision.refresh = Mock(side_effect=ConnectionError("decision route down"))
         publication = _read_publication(self.host.base_url, timeout_s=3.0)[0]
@@ -98,7 +98,7 @@ class LiveCommandsTests(LiveHostTestCase):
 
         with patch("cli.automa_cli.hosts.streaming.open_view_message",
                    side_effect=lambda url: opened.append(url) or f"Browser opened: {url}"), \
-             patch("cli.automa_cli.hosts.streaming._pause_s", side_effect=interrupt):
+             patch("cli.automa_cli.hosts.streaming.pause_s", side_effect=interrupt):
             result = self.viewer(*target)
         self.assertEqual(result.returncode, 130, result.stdout + result.stderr)
         return result, opened[0], served[0]

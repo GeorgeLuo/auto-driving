@@ -11,13 +11,14 @@ from implementations.vehicle.chase_sim.defaults import (
     DEFAULT_CHASE_UI_WS_URL,
 )
 
+from ..hosts.automation_status import collect_automation_status
 from ..vehicles.probes import (
     DEFAULT_READINESS_TIMEOUT_S,
     Candidate,
-    _probe_chase,
-    _require_positive_timeout,
     chase_operator_url,
     normalize_chase_url,
+    probe_chase,
+    require_positive_timeout,
 )
 from ..vehicles.providers import CHASE_SIM
 
@@ -36,7 +37,7 @@ def get_vehicle_status(
 
     if chase_url is not None and chase_ws_url is not None:
         raise ValueError("--chase-url and --chase-ws-url cannot be used together")
-    operation_timeout = _require_positive_timeout(timeout_s)
+    operation_timeout = require_positive_timeout(timeout_s)
     operator_url = (
         chase_url
         or chase_ws_url
@@ -46,7 +47,7 @@ def get_vehicle_status(
     display_url = chase_operator_url(endpoint)
     started = time.monotonic()
     candidate = Candidate(CHASE_SIM.name, endpoint, "cli")
-    probe = _probe_chase(candidate, timeout_s=operation_timeout)
+    probe = probe_chase(candidate, timeout_s=operation_timeout)
     discovery = {
         "schema": "automa_vehicle_discovery_v0",
         "checked_at_ms": int(time.time() * 1000),
@@ -60,11 +61,8 @@ def get_vehicle_status(
         },
     }
 
-    # Imported lazily because automation consumes vehicle discovery.
-    from ..hosts.automation_status import _collect_automation_status
-
     remaining = operation_timeout - (time.monotonic() - started)
-    automation = _collect_automation_status(
+    automation = collect_automation_status(
         host_name=host_name,
         view_timeout_s=remaining if remaining >= 0.05 else 0.0,
     )

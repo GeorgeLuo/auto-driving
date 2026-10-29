@@ -13,7 +13,7 @@ from ..shared.command_result import CommandResult
 from ..shared.paths import RUNTIME_ROOT
 from .step_activations import host_bundle
 from .step_schema import format_staged_step, staged_step_info
-from .streaming import _format_live_memory_screen, probe_live_memory
+from .streaming import format_live_memory_screen, probe_live_memory
 
 
 def get_host_memory_info(
@@ -48,5 +48,5 @@ def _format_memory_info(payload: dict[str, Any]) -> str:
     live = payload.get("live")
     if isinstance(live, dict):
         lines.append("")
-        lines.append(_format_live_memory_screen(host_name=payload["host_name"], live=live))
+        lines.append(format_live_memory_screen(host_name=payload["host_name"], live=live))
     return "\n".join(lines)

@@ -156,7 +156,7 @@ def get_hosts_status(
     if long or json_output:
         runs = {
             run["host_name"]: run
-            for run in _collect_automation_status(
+            for run in collect_automation_status(
                 host_name=host_name,
                 host_reads={host["host_name"]: read for host, read in reads if read is not None},
             )
@@ -170,7 +170,7 @@ def get_hosts_status(
 
 
 
-def _collect_automation_status(
+def collect_automation_status(
     *,
     host_name: str | None,
     view_timeout_s: float | None = None,

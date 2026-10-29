@@ -18,8 +18,9 @@ from pathlib import Path
 from typing import Any
 
 from ..shared.command_result import CommandResult
-from ..hosts.runtime_hosts import RUNTIME_ROOT, RuntimeHostError, _log_tail
+from ..hosts.runtime_hosts import RUNTIME_ROOT, RuntimeHostError, local_hosts, log_tail
 from ..shared.processes import pid_alive
+from ..vehicles.probes import chase_operator_url, normalize_chase_url
 from ..vehicles.providers import CHASE_SIM
 
 
@@ -65,9 +66,6 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Command
 
 def delete_simulator(*, url: str) -> CommandResult:
     """End a simulator ``simulators create`` started, unless a host was created at it."""
-
-    from ..hosts.runtime_hosts import local_hosts
-    from ..vehicles.probes import chase_operator_url, normalize_chase_url
 
     try:
         ws_url = normalize_chase_url(url)
@@ -168,11 +166,11 @@ def _wait_for_simulator(log_path: Path, process: subprocess.Popen[Any], timeout_
         if process.poll() is not None:
             raise RuntimeHostError(
                 f"The simulator exited with code {process.returncode} before it was ready.\n"
-                + _log_tail(log_path, "Simulator")
+                + log_tail(log_path, "Simulator")
             )
         if time.monotonic() >= deadline:
             raise RuntimeHostError(
-                f"The simulator was not ready within {timeout_s:g} s.\n" + _log_tail(log_path, "Simulator")
+                f"The simulator was not ready within {timeout_s:g} s.\n" + log_tail(log_path, "Simulator")
             )
         time.sleep(0.1)
 

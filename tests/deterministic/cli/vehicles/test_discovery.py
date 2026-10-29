@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 from cli.automa_cli.vehicles.probes import (
     Candidate,
-    _probe_picar,
+    probe_picar,
 )
 from tests.shared.cli.invoke import invoke_automa
 
@@ -28,7 +28,7 @@ class VehicleDiscoveryTests(unittest.TestCase):
                 },
             ),
         ):
-            result = _probe_picar(
+            result = probe_picar(
                 Candidate("picar", "http://piracer.local:8887", "default"),
                 timeout_s=0.1,
             )
@@ -54,7 +54,7 @@ class VehicleDiscoveryTests(unittest.TestCase):
                 },
             ),
         ):
-            result = _probe_picar(
+            result = probe_picar(
                 Candidate("picar", "http://piracer.local:8887", "default"),
                 timeout_s=0.1,
             )

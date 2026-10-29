@@ -29,7 +29,7 @@ class LiveViewCopyTests(unittest.TestCase):
             patch.object(streaming.RuntimeViewServer, "start", side_effect=OSError("port taken")),
             patch.object(streaming, "fetch_observation_sample", side_effect=ConnectionError("offline")),
         ):
-            feed = streaming._ViewFeed("fixture", base_url="http://host.invalid", timeout_s=0.1)
+            feed = streaming.ViewFeed("fixture", base_url="http://host.invalid", timeout_s=0.1)
             self.assertIsNone(feed.server)
             publication, error = feed.read_observation()
             self.assertIsNone(publication)
@@ -49,10 +49,10 @@ class LiveViewCopyTests(unittest.TestCase):
                          "cycle": {"plan": {}}},
         }
         with (
-            patch.object(decision_steps, "_require_valid_activations"),
+            patch.object(decision_steps, "require_valid_activations"),
             patch.object(decision_steps, "runtime_base_url", return_value="http://host.invalid"),
-            patch.object(decision_steps, "_ViewFeed", return_value=feed),
-            patch.object(decision_steps, "_poll_stream", side_effect=one_pass),
+            patch.object(decision_steps, "ViewFeed", return_value=feed),
+            patch.object(decision_steps, "poll_stream", side_effect=one_pass),
             patch.object(decision_steps, "fetch_decision_publication", return_value={}),
             patch.object(decision_steps, "accept_decision_publication", return_value=normalized),
         ):

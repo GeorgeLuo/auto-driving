@@ -166,7 +166,7 @@ def host_record(host_name: str) -> dict[str, Any] | None:
     return record if pid_alive(record.get("pid")) else None
 
 
-def _log_tail(path: Path, name: str) -> str:
+def log_tail(path: Path, name: str) -> str:
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
@@ -175,7 +175,7 @@ def _log_tail(path: Path, name: str) -> str:
 
 
 def host_log_tail(host_name: str) -> str:
-    return _log_tail(automation_dir(host_name) / HOST_LOG, "Host")
+    return log_tail(automation_dir(host_name) / HOST_LOG, "Host")
 
 
 def _free_port() -> int:

@@ -19,6 +19,7 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation
 from autonomy.runtime.layout import RuntimeLayout
 
 from ..shared.command_result import CommandResult
+from .automation_stop import stop_host_automation
 from .bundles import (
     controller_bundle_paths,
     controller_bundle_source_summary,
@@ -46,6 +47,16 @@ from .step_activations import (
 )
 from .host_publications import host_state
 from .host_status import host_block
+from .runtime_hosts import (
+    RuntimeHostError,
+    automation_dir,
+    ensure_chase_host,
+    host_record,
+    release_code_dir,
+    running_base_url,
+    staged_host,
+    stop_chase_host,
+)
 from ..vehicles.probes import Candidate
 from ..vehicles.providers import PROVIDERS
 
@@ -426,7 +437,6 @@ def _update_local_autonomy(
     """Package a release for a locally hosted vehicle; ``restart`` moves its host onto it."""
 
     from autonomy.runtime.client import RuntimeClient
-    from .runtime_hosts import RuntimeHostError, host_record, release_code_dir, staged_host
 
     bundle = host_bundle(host_name, RUNTIME_ROOT)
     source_summary = controller_bundle_source_summary()
@@ -508,8 +518,6 @@ def create_host(
     drive_args: str | None = None, dry_run: bool = False, json_output: bool = False,
     verbose: bool = False, output: TextIO | None = None,
 ) -> CommandResult:
-    from .runtime_hosts import ensure_chase_host, stop_chase_host
-
     if host_name in {".", ".."} or safe_path_part(host_name) != host_name or not host_name:
         return CommandResult(2, "Host names may contain letters, digits, dots, underscores and hyphens, excluding . and ..")
     if provider not in PROVIDERS:
@@ -592,15 +600,11 @@ def _vehicle_label(configuration: dict[str, Any]) -> str:
 
 
 def delete_host(*, host_name: str, verbose: bool = False, output: TextIO | None = None) -> CommandResult:
-    from .automation_stop import stop_host_automation
-    from .runtime_hosts import stop_chase_host
-
     configuration, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
     if error:
         return CommandResult(2, error)
     directory = RUNTIME_ROOT / safe_path_part(host_name)
     # Stop an active local run before stopping its host. An idle Pi may have no HTTP listener.
-    from .runtime_hosts import automation_dir, running_base_url
     process = automation_dir(host_name) / "process.json"
     base_url = running_base_url(host_name)
     state = host_state(base_url, host_name=host_name, timeout_s=1.0) if base_url else {}

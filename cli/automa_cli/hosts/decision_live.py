@@ -18,11 +18,11 @@ from .host_publications import (
 )
 from .host_telemetry import (
     HostTelemetryError,
+    decision_publication_identity,
     host_telemetry_failure,
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,
-    decision_publication_identity,
 )
 from ..frontend.server import RuntimeViewServer
 from .memory_report import evidence_records

@@ -14,16 +14,24 @@ from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, ModeAc
 from ..shared.command_result import CommandResult
 from .decision import (
     DecisionSurfaceError,
-    _require_valid_activations,
     accept_decision_publication,
     decision_error_payload,
+    require_valid_activations,
 )
 from .host_publications import fetch_decision_publication
 from .runtime_hosts import RuntimeHostError, bundle_paths, runtime_base_url
 from .step_activations import decision_identity
 from .step_formatting import format_step_record, format_step_timing
 from .step_schema import format_staged_step, staged_step_info
-from .streaming import _poll_stream, _unavailable_probe, _view_lines, _ViewFeed, stream_preflight_outcome
+from .streaming import (
+    ViewFeed,
+    format_live_step_screen,
+    poll_stream,
+    probe_live_step,
+    stream_preflight_outcome,
+    unavailable_probe,
+    view_page_lines,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -46,7 +54,7 @@ def get_host_step_info(
     if error is not None:
         return CommandResult(2, error)
     try:
-        _require_valid_activations(bundle, host_name=host_name, steps=DECISION_STEPS)
+        require_valid_activations(bundle, host_name=host_name, steps=DECISION_STEPS)
     except DecisionSurfaceError as exc:
         return CommandResult(exc.exit_code, exc.message_text)
     identity = decision_identity(bundle)
@@ -68,8 +76,6 @@ def get_host_step_info(
         "live": None,
     }
     if include_live:
-        from .streaming import probe_live_step
-
         payload["live"] = probe_live_step(step, host_name=host_name, timeout_s=timeout_s)
     if json_output:
         return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
@@ -119,8 +125,6 @@ def _format_step_info(step: str, payload: dict[str, Any]) -> str:
     ]
     live = payload.get("live")
     if isinstance(live, dict):
-        from .streaming import format_live_step_screen
-
         lines.extend(["", format_live_step_screen(step, host_name=payload["host_name"], live=live)])
     return "\n".join(lines)
 
@@ -150,7 +154,7 @@ def stream_host_step(
     timeout_s = max(0.1, float(timeout_s))
     try:
         # Broken staging is the first thing to fix; it names the command that replaces it.
-        _require_valid_activations(bundle_paths(host_name), host_name=host_name, steps=DECISION_STEPS)
+        require_valid_activations(bundle_paths(host_name), host_name=host_name, steps=DECISION_STEPS)
         base_url = runtime_base_url(host_name)
     except DecisionSurfaceError as exc:
         return CommandResult(*stream_preflight_outcome(
@@ -159,13 +163,13 @@ def stream_host_step(
         ))
     except RuntimeHostError as exc:
         return CommandResult(*stream_preflight_outcome(
-            step=step, live=_unavailable_probe(f"host_{step}_stream", host_name, str(exc)),
+            step=step, live=unavailable_probe(f"host_{step}_stream", host_name, str(exc)),
             message=str(exc), json_output=json_output, stream=output,
         ))
 
     # A running terminal stream hosts the runtime view; its decision page shows
     # the evidence, candidates and selection behind each record.
-    view = None if json_output or once else _ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
+    view = None if json_output or once else ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
 
     def read_frame() -> dict[str, Any]:
         try:
@@ -210,10 +214,10 @@ def stream_host_step(
         text = _format_stream_frame(step, live) if live["status"] == "live" else live["message"]
         if view is None:
             return text
-        return "\n".join([text, "", *_view_lines(view, ("perception view", "/perception"))])
+        return "\n".join([text, "", *view_page_lines(view, ("perception view", "/perception"))])
 
     try:
-        return _poll_stream(
+        return poll_stream(
             step=step,
             probe=probe,
             render=render,

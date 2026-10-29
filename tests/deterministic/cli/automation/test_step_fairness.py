@@ -15,7 +15,7 @@ from unittest import mock
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import builtin_activation
 from cli.automa_cli.hosts.automation import run_host_automation
-from cli.automa_cli.hosts.automation_status import _collect_automation_status
+from cli.automa_cli.hosts.automation_status import collect_automation_status
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.runtime_fixtures import stage_step, write_json
 
@@ -52,7 +52,7 @@ class StepFairnessTests(unittest.TestCase):
                 yield root
 
     def _status(self) -> dict:
-        (status,) = _collect_automation_status(host_name=VEHICLE, view_timeout_s=0)
+        (status,) = collect_automation_status(host_name=VEHICLE, view_timeout_s=0)
         return status
 
     def test_a_run_starts_with_any_single_step_staged(self) -> None:

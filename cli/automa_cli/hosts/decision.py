@@ -159,7 +159,7 @@ def decision_error_payload(
     }
 
 
-def _require_valid_activations(
+def require_valid_activations(
     bundle: dict[str, str],
     *,
     host_name: str,

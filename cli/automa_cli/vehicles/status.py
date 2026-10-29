@@ -6,8 +6,9 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from ..simulators.created import created_simulators
 from .discovery import listed_vehicles
-from .probes import DEFAULT_READINESS_TIMEOUT_S, _require_positive_timeout
+from .probes import DEFAULT_READINESS_TIMEOUT_S, require_positive_timeout
 from .providers import CHASE_SIM, PROVIDERS
 
 
@@ -21,9 +22,7 @@ def get_vehicles_status(*, timeout_s: float = DEFAULT_READINESS_TIMEOUT_S) -> di
     one deadline.
     """
 
-    from ..simulators.created import created_simulators
-
-    deadline = time.monotonic() + _require_positive_timeout(timeout_s)
+    deadline = time.monotonic() + require_positive_timeout(timeout_s)
 
     def remaining() -> float:
         # The client refuses a zero timeout; a spent budget times out at once instead.
@@ -58,11 +57,11 @@ def _vehicle_block(vehicle: dict[str, Any]) -> str:
         lines.append(f"  frontend connected, game {vehicle['game']}")
     elif vehicle.get("frontend"):
         lines.append(f"  frontend {vehicle['frontend']}")
-    lines += _indented(vehicle.get("error"))
+    lines += indented(vehicle.get("error"))
     if vehicle.get("pid"):
         lines.append(f"  created by simulators create, pid {vehicle['pid']}")
     return "\n".join(lines)
 
 
-def _indented(text: Any) -> list[str]:
+def indented(text: Any) -> list[str]:
     return [f"  {line}" for line in str(text).splitlines()] if text else []

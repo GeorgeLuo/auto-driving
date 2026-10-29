@@ -60,7 +60,7 @@ class ProbeResult:
         return data
 
 
-def _simulator_status(candidate: Candidate, remaining: Callable[[], float]) -> dict[str, Any]:
+def simulator_status(candidate: Candidate, remaining: Callable[[], float]) -> dict[str, Any]:
     """One simulator's state; listing its agents is the second query that shows it runs."""
 
     client = MetricsUiWsClient(candidate.url, timeout_s=remaining())
@@ -107,7 +107,7 @@ def _simulator_status(candidate: Candidate, remaining: Callable[[], float]) -> d
     return status
 
 
-def _picar_state(probe: ProbeResult) -> str:
+def picar_state(probe: ProbeResult) -> str:
     if probe.active:
         return "answering"
     reachable = probe.diagnostics.get("runtime_state") in {"server_not_listening", "http_unhealthy"}
@@ -157,7 +157,7 @@ def normalize_chase_url(url: str) -> str:
     return urlunparse((scheme, parsed.netloc, path, "", parsed.query, ""))
 
 
-def _require_positive_timeout(value: float) -> float:
+def require_positive_timeout(value: float) -> float:
     timeout = float(value)
     if not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("timeout must be a finite number greater than zero")
@@ -172,7 +172,7 @@ def chase_operator_url(ws_url: str) -> str:
     return urlunparse((scheme, parsed.netloc, "/", "", "", ""))
 
 
-def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
+def probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     deadline = time.monotonic() + timeout_s
     base_url = candidate.url.rstrip("/")
     car = create_picar(base_url=base_url, timeout_s=timeout_s)
@@ -224,7 +224,7 @@ def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     )
 
 
-def _probe_chase(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
+def probe_chase(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     car = ChaseSimCar(ws_url=candidate.url, timeout_s=timeout_s)
     diagnostics: dict[str, Any] = {
         "ws_server": False,

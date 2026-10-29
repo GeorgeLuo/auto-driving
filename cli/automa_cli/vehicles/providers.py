@@ -17,12 +17,12 @@ from implementations.vehicle.picar.car import VEHICLE_KIND as PICAR_VEHICLE_KIND
 from .probes import (
     Candidate,
     ProbeResult,
-    _picar_state,
-    _probe_chase,
-    _probe_picar,
-    _simulator_status,
     chase_operator_url,
     normalize_chase_url,
+    picar_state,
+    probe_chase,
+    probe_picar,
+    simulator_status,
 )
 
 
@@ -65,7 +65,7 @@ def _normalize_picar_url(url: str) -> str:
 
 def _picar_status(candidate: Candidate, remaining: Callable[[], float]) -> dict[str, Any]:
     probe = PROVIDERS[candidate.provider].probe(candidate, timeout_s=remaining())
-    return {"provider": candidate.provider, "url": candidate.url, "state": _picar_state(probe), "error": probe.error}
+    return {"provider": candidate.provider, "url": candidate.url, "state": picar_state(probe), "error": probe.error}
 
 
 CHASE_SIM = Provider(
@@ -79,8 +79,8 @@ CHASE_SIM = Provider(
     local_host=True,
     normalize_url=normalize_chase_url,
     operator_url=chase_operator_url,
-    probe=_probe_chase,
-    status=_simulator_status,
+    probe=probe_chase,
+    status=simulator_status,
     can_take_host=lambda probe: probe.active,
 )
 PICAR = Provider(
@@ -94,8 +94,8 @@ PICAR = Provider(
     local_host=False,
     normalize_url=_normalize_picar_url,
     operator_url=lambda url: url,
-    probe=_probe_picar,
+    probe=probe_picar,
     status=_picar_status,
-    can_take_host=lambda probe: _picar_state(probe) != "unreachable",
+    can_take_host=lambda probe: picar_state(probe) != "unreachable",
 )
 PROVIDERS = {provider.name: provider for provider in (CHASE_SIM, PICAR)}

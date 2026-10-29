@@ -35,7 +35,7 @@ from .host_publications import (
 from ..plugins.catalog import PluginCatalogClient
 from .run_record import timestamp_ms
 from .runtime_hosts import RuntimeHostError, local_hosts, runtime_base_url
-from .runtime_monitor import PERCEPTION_COPY_INTERVAL_S, _pause_s
+from .runtime_monitor import PERCEPTION_COPY_INTERVAL_S, pause_s
 from ..frontend.server import RuntimeViewServer
 from ..runtime_view import open_view_message, runtime_view_server
 from .step_activations import absent_step_error
@@ -80,10 +80,10 @@ def stream_host_perception(
         base_url = runtime_base_url(host_name)
     except RuntimeHostError as exc:
         return CommandResult(*stream_preflight_outcome(
-            step="perception", live=_unavailable_probe(PERCEPTION_LIVE_SCHEMA, host_name, str(exc)),
+            step="perception", live=unavailable_probe(PERCEPTION_LIVE_SCHEMA, host_name, str(exc)),
             message=str(exc), json_output=json_output, stream=output,
         ))
-    view = None if json_output or once else _ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
+    view = None if json_output or once else ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
 
     def probe() -> tuple[dict[str, Any], Any]:
         publication, fetch_error = (view.read_observation() if view is not None
@@ -108,7 +108,7 @@ def stream_host_perception(
         )
 
     try:
-        return _poll_stream(
+        return poll_stream(
             step="perception",
             probe=probe,
             render=render,
@@ -123,7 +123,7 @@ def stream_host_perception(
             view.stop()
 
 
-def _unavailable_probe(schema: str, host_name: str, error: str) -> dict[str, Any]:
+def unavailable_probe(schema: str, host_name: str, error: str) -> dict[str, Any]:
     return {
         "schema": schema,
         "host_name": host_name,
@@ -179,7 +179,7 @@ def once_stream_outcome(
     return 2, "" if stream is not None else (line or diagnostic)
 
 
-def _poll_stream(
+def poll_stream(
     *,
     step: str,
     probe: Callable[[], tuple[dict[str, Any], Any]],
@@ -235,7 +235,7 @@ def serve_host_viewer(
             names = ", ".join(f"{host['host_name']} at {host['url']}" for host in hosts)
             return CommandResult(2, f"No host at {host_url}. " + (f"Hosts: {names}." if names else "None is running."))
         host_name, base_url = matched[0]["host_name"], matched[0]["url"]
-    view = _ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
+    view = ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
     try:
         publication, error = view.read_observation()
         if view.url is None or error is not None:
@@ -249,14 +249,14 @@ def serve_host_viewer(
         while True:
             started = time.monotonic()
             view.publish(view.read_observation()[0])
-            time.sleep(_pause_s(started, PERCEPTION_COPY_INTERVAL_S))
+            time.sleep(pause_s(started, PERCEPTION_COPY_INTERVAL_S))
     except KeyboardInterrupt:
         return CommandResult(130, "")
     finally:
         view.stop()
 
 
-class _ViewFeed:
+class ViewFeed:
     """A loopback runtime view a terminal stream feeds from the host's publications.
 
     As the view of ``hosts run`` does, its decision page aggregates the
@@ -365,7 +365,7 @@ def _view_line(label: str, url: str | None, error: str | None, route: str = "") 
     return f"{label}: unavailable ({error})" if error else f"{label}: unavailable"
 
 
-def _view_lines(view: _ViewFeed | None, *pages: tuple[str, str]) -> list[str]:
+def view_page_lines(view: ViewFeed | None, *pages: tuple[str, str]) -> list[str]:
     """Each ``(label, route)`` page of a stream's local view, then its action view.
 
     A stream without a view, as with ``--once``, shows none.
@@ -470,7 +470,7 @@ def _perception_screen(
     live: dict[str, Any],
     base_url: str,
     publication: dict[str, Any] | None,
-    view: _ViewFeed | None,
+    view: ViewFeed | None,
 ) -> str:
     """The perception screen: the probe verdict and the host's latest cycle."""
 
@@ -506,7 +506,7 @@ def _perception_screen(
             f"signals={_shown(len(signals) if isinstance(signals, list) else None)}  "
             f"things={_shown(len(things) if isinstance(things, list) else None)}"
         ),
-        *_view_lines(view, ("view", "")),
+        *view_page_lines(view, ("view", "")),
         (
             f"publication: {publication.get('health') or 'unavailable'}  "
             f"json: {LATEST_JSON_PATH}  frame: {LATEST_FRAME_PATH}"
@@ -546,10 +546,10 @@ def stream_host_memory(
         base_url = runtime_base_url(host_name)
     except RuntimeHostError as exc:
         return CommandResult(*stream_preflight_outcome(
-            step="memory", live=_unavailable_probe(MEMORY_LIVE_SCHEMA, host_name, str(exc)),
+            step="memory", live=unavailable_probe(MEMORY_LIVE_SCHEMA, host_name, str(exc)),
             message=str(exc), json_output=json_output, stream=output,
         ))
-    view = None if json_output or once else _ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
+    view = None if json_output or once else ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
 
     def render(live: dict[str, Any], _source: Any) -> str:
         publication, fetch_error = (view.read_observation() if view is not None
@@ -559,13 +559,13 @@ def stream_host_memory(
         return _memory_screen(
             host_name=host_name,
             live=live,
-            view_lines=_view_lines(view, ("memory map", "/memory"), ("perception view", "/perception")),
+            view_lines=view_page_lines(view, ("memory map", "/memory"), ("perception view", "/perception")),
             report=publication.get("memory") if isinstance(publication, dict) else None,
             report_error=fetch_error,
         )
 
     try:
-        return _poll_stream(
+        return poll_stream(
             step="memory",
             probe=lambda: (
                 _probe_step("memory", host_name=host_name, base_url=base_url, timeout_s=timeout_s),
@@ -595,7 +595,7 @@ def _memory_screen(
     report its latest cycle published."""
 
     lines = [
-        _format_live_memory_screen(host_name=host_name, live=live),
+        format_live_memory_screen(host_name=host_name, live=live),
         "",
         *view_lines,
     ]
@@ -622,7 +622,7 @@ def probe_live_step(step: str, *, host_name: str, timeout_s: float = 3.0) -> dic
     try:
         base_url = runtime_base_url(host_name)
     except RuntimeHostError as exc:
-        return _unavailable_probe(LIVE_STEP_SCHEMAS[step], host_name, str(exc))
+        return unavailable_probe(LIVE_STEP_SCHEMAS[step], host_name, str(exc))
     return _probe_step(step, host_name=host_name, base_url=base_url, timeout_s=timeout_s)
 
 
@@ -708,7 +708,7 @@ def _live_plugins(live: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
-def _format_live_memory_screen(*, host_name: str, live: dict[str, Any]) -> str:
+def format_live_memory_screen(*, host_name: str, live: dict[str, Any]) -> str:
     return format_live_step_screen("memory", host_name=host_name, live=live)
 
 

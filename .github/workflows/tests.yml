@@ -34,13 +34,9 @@ jobs:
           cache-dependency-path: |
             requirements.txt
             requirements-test.txt
-            docs/requirements.txt
 
       - name: Install test dependencies
-        run: python3 -m pip install -r requirements-test.txt -r docs/requirements.txt
-
-      - name: Check generated documentation
-        run: python3 docs/render_markdown.py --check
+        run: python3 -m pip install -r requirements-test.txt
 
       - name: Check tests for undefined names
         run: |

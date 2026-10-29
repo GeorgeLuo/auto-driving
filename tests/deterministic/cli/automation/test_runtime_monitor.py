@@ -155,7 +155,9 @@ class RuntimeMonitorTests(unittest.TestCase):
             [line for line in lines if not line.startswith("Runtime view: ")],
             [
                 f"Run started on host {HOST_NAME}.",
-                "Perception: lane-preset (lanes)",
+                # The lines name what the host runs, not what was staged:
+                # it reports no perception step.
+                "Perception: (no plugins)",
                 "Memory: recent",
                 "Proposal: (no plugins)",
                 "Recording: off; latest frame and perception are overwritten each iteration",

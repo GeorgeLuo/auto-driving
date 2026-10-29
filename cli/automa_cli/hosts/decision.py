@@ -190,7 +190,7 @@ def _require_valid_activations(
     host_name: str,
     steps: tuple[str, ...],
 ) -> None:
-    """Refuse invalid staged documents with each owning step's restage command."""
+    """Refuse invalid staged documents with the command that replaces them."""
 
     problems = bundle_activation_problems(bundle, host_name, steps=steps)
     if problems:
@@ -220,7 +220,7 @@ def _require_identity_steps(identity: object, *, error: str) -> dict[str, Any]:
         raise DecisionSurfaceError(
             error,
             "The decision identity has no proposal step. "
-            "Run: ./cli/automa hosts stage proposal --name <host>",
+            "Arm one with: ./cli/automa plugins arm --host-name <host> --name proposal/<plugin>",
         )
     try:
         expected = activation_generation_id(activations_from_payloads(steps), prefix="decision")

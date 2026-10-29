@@ -124,8 +124,6 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles discover` | Lists the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url` in `vehicles status` once it can take a host; `--force` lists it regardless. The default simulator (`CHASE_UI_WS_URL`, else `http://localhost:5050`) is always listed. |
 | `vehicles remove` | Stops listing the discovered vehicle at `--url`. The default simulator cannot be removed. |
 | `hosts viewer` | Serves the runtime viewer (Perception, Memory, Action and Plugins) fed from the host named by `--name`, or at `--host-url` (the URL `hosts status` shows for it), and opens it in the browser until interrupted. Exits 2 when no such host exists, it is not running, or it does not answer. |
-| `hosts stage perception\|memory\|proposal\|plan` | Packages code and stages that step's preset or plugin selection locally (`--preset`, or repeatable `--plugin`; default presets `lightweight_observer`, `recency_ledger`, `obstruction_avoidance` and `most_confident`). |
-| `hosts stage observation\|action` | Packages code and stages that step's plugins locally (repeatable `--plugin`; without it, the step's default plugins and configs). |
 | `hosts info perception\|memory\|proposal\|plan\|action` | Reads that step's staged activation, enabled plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception, memory, proposal and plan also show their preset. Each reports its view; memory, proposal, plan and action include live runner status. Proposal, plan and action also show the decision generation, each decision step's plugins, and the action authority. |
 | `plugins list` | Offline: lists the packaged catalog, `implementations/decision_cycle/catalog.py`, by step, defaults first and marked; `--step` filters and `--json` adds each definition's entrypoint, default config and description. With `--host-name` (or a runtime `--url`), lists what that host has armed instead; `--long` lists the host's whole catalog, packaged and uploaded, with its version and the armed plugins marked. A workbench `--url` arms nothing and lists only with `--long`. Exits 2 while the host's last arming failed. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
 | `plugins upload` | With `--host-name` (or a runtime or workbench `--url`), stores `--file` in that existing catalog as `--name <step>/<plugin>` with its `--entrypoint` and optional `--config`, refusing source that does not compile. `--arm` also arms it through the same operation as `plugins arm`. |
@@ -134,7 +132,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `plugins inspect <step>` | Offline: replays an image, image directory, or recorded run through the whole cycle and reports perception, memory, proposal, plan, or action. Restores recorded selections; `--preset` or `--plugin` overrides the inspected step. `--frame N` reports one frame after replaying its history. `--record` saves `report.json` and copied frames under `runtime/<step>-inspections/`. See [Plugin inspection](#plugin-inspection). |
 | `hosts create` | Creates a named host for the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url`, installs its release, and starts it. `vehicles status` names each vehicle's provider and URL. |
 | `hosts delete` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. |
-| `hosts update` | Packages the staged steps as a versioned release for the vehicle's host: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
+| `hosts update` | Packages a versioned release for the vehicle's host and stages every step's default with it, replacing whatever each step had staged (`plugins list` marks the defaults): a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `hosts run\|stop\|restart\|status` | Starts, stops, restarts or inspects a run on the host. Status includes the vehicle endpoint, host URL and simulator attachment. `stop` ends the run; the host stays attached until `hosts delete`. |
 | `hosts stream perception` | Displays rolling latest perception from the runtime host's `/host/observation/latest` and serves a local frame-matched `/perception` view (link to Memory map) whose URL the terminal shows. |
 | `hosts stream memory` | Inspects live memory as a key→value ledger. The terminal shows health and counts and serves a local `/memory` map page whose URL it shows. Keys are `record_id`s; click a key to see the retained value. |
@@ -143,8 +141,6 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `hosts operation ...` | Runs a bounded, explicitly requested vehicle operation. |
 | `simulators create` | Starts a headless Chase simulator from the Metrics UI checkout at `AUTOMA_METRICS_UI_DIR`, with its launcher's default configuration, on the first free port from 5051, and prints its URL. It runs until `simulators delete --url` ends it, which refuses while a host was created at it. |
 | `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
-
-With `--plugin`, each `stage` step keeps the staged config of every plugin that stays selected. When a restage changes a plugin's spec or config, the command names those plugins and prints the `--restart` command that applies them, since a running host only adopts a changed plugin list live.
 
 The runtime viewer's **Plugins** table refreshes every 500 ms. Revision columns
 are hidden by default; **Show revisions** reveals them for debugging. **Enabled**
@@ -165,7 +161,7 @@ refreshes with the table, dims with it on a polling failure, and shows
 Uploaded plugins stay in the host's catalog until that host restarts; `plugins upload`
 and `plugins list --long` print the host run beside the catalog version. A
 restart onto a new release clears them: `hosts update --restart` on a PiCar,
-and on a simulator vehicle the next `hosts run` after a restage, which
+and on a simulator vehicle the next `hosts run` after a `hosts update`, which
 moves an idle host onto the latest release. Upload them again after either.
 
 `plugins arm` and `plugins disarm` change the existing host's selections without
@@ -227,12 +223,12 @@ that plugin's `health`, `epoch_id`, `record_count`, and `bounds` alongside it;
 Use the nested perception result and plugin reports to inspect plugin outcomes;
 `live` describes availability rather than promising that every plugin succeeded.
 
-Every `hosts stage <step>` requires a host created with `hosts create --name`.
-Its configuration record identifies the host and the vehicle endpoint; staging
-reads that record without probing the vehicle. A directory or an old activation
-alone does not create a host. `--dry-run` validates staging without writing it.
+`hosts update` requires a host created with `hosts create --name`. Its
+configuration record identifies the host and the vehicle endpoint. A directory
+or an old activation alone does not create a host. `--dry-run` prints the
+deployment plan without writing it.
 
-Every step update records `metadata.controller_bundle` with `root_dir`,
+Every staged step records `metadata.controller_bundle` with `root_dir`,
 `autonomy_dir`, `implementations_dir`, `runtime_dir`, and `release`.
 `hosts info perception|memory|proposal --json` exposes those same bundle keys.
 The paths identify the staged code; `release` identifies the packaged source
@@ -245,17 +241,10 @@ archive from `runtime/hosts/<host-name>/bundle/releases/` and ignores whatever i
 staged now. If the archive is gone, replay exits 2 naming the release and
 `hosts update`.
 
-Every step's update returns the same `host_step_update` payload under
-`--json`: `step`, `preset`, `plugins`, the staged `manifest`, and the `apply`
-commands. Staging does not check readiness; `hosts run` does before
-it starts, and `hosts status --long` reports invalid staged steps. An
-unknown-host failure under `--json` returns `host_step_update_error`
-with `host_name`, `step`, `error: unknown_host`, and the diagnostic in `message`; the command exits 2 and stages nothing.
-
 Use `help` at a command-group level and `--help` for final command options:
 
 ```sh
-./cli/automa hosts stage help
+./cli/automa hosts help
 ./cli/automa hosts update --help
 ```
 
@@ -263,18 +252,12 @@ Use `help` at a command-group level and `--help` for final command options:
 
 A host exists only after `hosts create` writes its `host-configuration.json` record.
 Choose any name; every later `--name` refers to that name. Existing directories
-without a record can be adopted, preserving staged steps. The passive path
+without a record can be adopted. The passive path
 preserves the operator's simulator session:
 
 ```sh
 ./cli/automa vehicles status
 ./cli/automa hosts create --name chase-sim-chaser --provider chase-sim --url http://localhost:5050
-./cli/automa hosts stage memory \
-  --name chase-sim-chaser \
-  --preset recency_ledger
-./cli/automa hosts stage perception \
-  --name chase-sim-chaser \
-  --preset lightweight_observer
 ./cli/automa hosts run \
   --name chase-sim-chaser \
   --observe-only \
@@ -285,28 +268,28 @@ preserves the operator's simulator session:
 ./cli/automa hosts status --name chase-sim-chaser
 ```
 
-The memory update stages the Memory view's ledger; without a memory or
-perception activation, the live cycle runs no plugins for that step. Each update replaces only its named
-step's selection/configs. For an existing tuned deployment, use your intended
-selection instead of copying these default presets; a preset/plugin selection
-uses its packaged configs.
+Creating the host stages every step's default, which `plugins list` marks:
+the `lightweight_observer` perception, `recency_ledger` memory,
+`obstruction_avoidance` proposal and `most_confident` plan presets, and the
+default observation and action plugins. `hosts update` stages them again with
+each new release. To run other plugins, arm them on the running host with
+`plugins arm`.
 
 `runtime/` survives Git branch changes. Old per-step schemas, including
 `automa_memory_activation_v0`, are incompatible with the shared
 `automa_step_activation_v0` documents. `hosts status --long` reports an
-invalid deployment and the affected step's `hosts stage <step>` command.
-Restage that step with your intended selection, then check it again. Every command that reads
-staged documents checks them first and prints the same step, path, reason, and
-restage command: startup and restart before launching or stopping a worker,
-`hosts update` before packaging or writing, and `hosts info` and
-`hosts stream proposal|plan|action` before reporting. An invalid optional step blocks startup;
+invalid deployment and `hosts update`, which replaces every step with its
+default. Run it, then check again. Every command that reads staged documents
+checks them first and prints the same step, path, reason, and update command:
+startup and restart before launching or stopping a worker, and `hosts info`
+and `hosts stream proposal|plan|action` before reporting. An invalid optional step blocks startup;
 an absent optional step keeps its built-in or empty behavior.
 
 See the
 [Chase simulator-to-perception CLI journey](docs/reference/cli-simulator-perception-journey.md)
 for the layer vocabulary, timeout semantics, and exact recovery behavior.
 
-`vehicles status`, staging, observation-only startup, viewing, and cleanup do
+`vehicles status`, `hosts update`, observation-only startup, viewing, and cleanup do
 not select a scenario, change playback or control/input state, or apply vehicle
 movement. To explicitly prepare the repository's known demonstration
 environment, opt into the configuration-changing command:
@@ -384,34 +367,34 @@ Useful run options:
   `Decisions recorded` and `Decisions completed` counts.
 - `--log` persists worker output to `automation.log`.
 
-After changing perception or shared autonomy code, stage a fresh bundle before
-restarting the worker:
+After changing perception or shared autonomy code, package a fresh release
+before restarting the worker:
 
 ```sh
-./cli/automa hosts stage perception --name chase-sim-chaser --preset sim_debug
+./cli/automa hosts update --name chase-sim-chaser
 ./cli/automa hosts restart --name chase-sim-chaser --observe-only --num-decisions 0 --open-view
 ```
 
 ### Perception Plugins
 
-`--plugin` selects packaged perception plugins by catalog key, in order, with
-their default configs from `implementations/decision_cycle/perception/catalog.py`.
-`--preset` selects a named preset from
-`implementations/decision_cycle/perception/presets.py`. The two are exclusive,
-and a plugin list is recorded as the preset it equals, else `custom`.
+Packaged perception plugins and their default configs are in
+`implementations/decision_cycle/perception/catalog.py`, and named presets in
+`implementations/decision_cycle/perception/presets.py`. A staged plugin list is
+recorded as the preset it equals, else `custom`.
 
 `./cli/automa plugins list --step perception` lists the packaged perception
 plugins. `hosts info perception` reports the staged preset, its enabled plugins,
 and the staged runner's `perception_schema_v3` contract.
 `--json` returns `host_perception_info` with that contract under
-`perception_schema`. Staging replaces the selection. A running worker applies a
-changed plugin list at its next frame and changed plugin configs when it
-restarts; a stopped one uses the selection the next time it starts:
+`perception_schema`. `hosts update` replaces the staged selection with the
+default. A running worker applies a changed plugin list at its next frame and
+changed plugin configs when it restarts; a stopped one uses the selection the
+next time it starts. `plugins arm` changes a running host's selection at its
+next cycle without staging it:
 
 ```sh
 ./cli/automa hosts info perception --name chase-sim-chaser
-./cli/automa hosts stage perception --name chase-sim-chaser --plugin frame --plugin floor_plane
-./cli/automa hosts stage perception --name chase-sim-chaser --preset visual_observer
+./cli/automa plugins arm --host-name chase-sim-chaser --name perception/classical_regions
 ```
 
 `lightweight_observer` is the production-oriented frame and floor-boundary
@@ -547,11 +530,10 @@ to start another invocation from that history.
 
 ### Memory Plugins
 
-`--plugin` selects packaged memory plugins by catalog key, in order, with their
-default configs from `implementations/decision_cycle/memory/catalog.py`.
-`--preset` selects a named preset from
-`implementations/decision_cycle/memory/presets.py`. The two are exclusive,
-and a plugin list is recorded as the preset it equals, else `custom`.
+Packaged memory plugins and their default configs are in
+`implementations/decision_cycle/memory/catalog.py`, and named presets in
+`implementations/decision_cycle/memory/presets.py`. A staged plugin list is
+recorded as the preset it equals, else `custom`.
 
 `./cli/automa plugins list --step memory` lists the packaged memory plugins.
 `hosts info memory` reports the staged preset, its enabled plugins, and the
@@ -561,14 +543,13 @@ Perception, memory, and proposal (`hosts info proposal`) describe inputs,
 plugins, output, composition and failure policy;
 memory's contract also names the ledger fields the CLI and viewers project from
 each plugin's status. The report itself preserves that status, including absent
-ledger keys. Staging replaces the selection. A running worker applies a
-changed plugin list at its next frame and changed plugin configs when it
-restarts; a stopped one uses the selection the next time it starts:
+ledger keys. As with perception, `hosts update` stages the default and
+`plugins arm` changes a running host's selection:
 
 ```sh
 ./cli/automa hosts info memory --name chase-sim-chaser
-./cli/automa hosts stage memory --name chase-sim-chaser --plugin bounded_evidence
-./cli/automa hosts stage memory --name chase-sim-chaser --preset recency_ledger
+./cli/automa plugins disarm --host-name chase-sim-chaser --step memory
+./cli/automa plugins arm --host-name chase-sim-chaser --name memory/bounded_evidence
 ```
 
 `recency_ledger`, the default, keeps a bounded ledger of observation things and
@@ -576,11 +557,10 @@ signals with age expiry and oldest-first eviction.
 
 ### Proposal Plugins
 
-`--plugin` selects packaged proposal plugins by catalog key, in order, with
-their default configs from `implementations/decision_cycle/proposal/catalog.py`.
-Proposal follows perception and memory: `--preset obstruction_avoidance`
-selects its default recipe; without either flag it stages that default preset.
-Its default business logic is reached through
+Packaged proposal plugins and their default configs are in
+`implementations/decision_cycle/proposal/catalog.py`. Proposal follows
+perception and memory: `hosts update` stages its default preset,
+`obstruction_avoidance`. Its default business logic is reached through
 [`proposal/presets.py`](implementations/decision_cycle/proposal/presets.py),
 [`proposal/catalog.py`](implementations/decision_cycle/proposal/catalog.py), and
 [`plugins/avoid_recent_obstruction/plugin.py`](implementations/decision_cycle/proposal/plugins/avoid_recent_obstruction/plugin.py).
@@ -598,7 +578,8 @@ under `live` (`host_proposal_live`): the plugins it runs and its run and failure
 counts, from the runtime host's `/host/status`. That is the engine's step, not the proposals any view last
 rendered. A worker loads the staged proposals from the controller bundle when
 it starts, as it loads memory, and reports them under `proposal` in its state
-and `proposal_plugin_report` in each frame. Staging replaces the selection. A
+and `proposal_plugin_report` in each frame. `hosts update` replaces the staged
+selection with the default; `plugins arm` changes the host's selection. A
 running worker applies a changed plugin list at its next frame and changed
 plugin configs when it restarts; a stopped one uses the selection the next time
 it starts. Proposals are part of the decision generation: once the worker runs
@@ -611,7 +592,7 @@ decision frames until it restarts:
 
 ```sh
 ./cli/automa hosts info proposal --name chase-sim-chaser
-./cli/automa hosts stage proposal --name chase-sim-chaser --plugin avoid_recent_obstruction
+./cli/automa plugins arm --host-name chase-sim-chaser --name proposal/avoid_recent_obstruction
 ```
 
 ## Decision Playback Workbench
@@ -619,8 +600,7 @@ decision frames until it restarts:
 The workbench reads the same recorded frame order and timing. `hosts
 workbench replay` starts each step from `--perception-preset` or
 `--perception-plugin`, `--memory-preset` or `--memory-plugin`, and
-`--proposal-preset` or `--proposal-plugin`, as the inspect and update commands
-take them. With no flag, a step uses its default preset: proposal uses
+`--proposal-preset` or `--proposal-plugin`, as `plugins inspect` takes them. With no flag, a step uses its default preset: proposal uses
 `obstruction_avoidance`. The CLI and page show each step's preset, where it has one,
 and ordered plugins. Each frame's detail and timeline entry carry the cycle's
 `timing`: each step's and plugin's time for that frame.
@@ -691,7 +671,6 @@ Create the host once; its name is independent of the Pi's hostname:
 ./cli/automa vehicles discover --provider picar --url http://piracer.local:8887
 ./cli/automa vehicles status
 ./cli/automa hosts create --name piracer --provider picar --url http://piracer.local:8887
-./cli/automa hosts stage perception --name piracer --preset lightweight_observer
 ./cli/automa hosts update --name piracer --restart
 ./cli/automa hosts run --name piracer --observe-only --num-decisions 10
 ```
@@ -721,12 +700,10 @@ keeps the local record so deletion can be retried.
 
 ### Physical Activation State
 
-The first physical autonomy deployment stages each step's default where
-nothing is staged: the `lightweight_observer` perception, `recency_ledger`
-memory and `obstruction_avoidance` proposal presets, and the built-in
-observation/plan/action plugins. A selection staged as a named preset is
-rebuilt from the current catalog, including its configs; any other staged
-selection keeps its plugins, specs and configs. Every deployed step records the
+Every physical autonomy deployment stages each step's default, replacing
+whatever was staged: the `lightweight_observer` perception, `recency_ledger`
+memory, `obstruction_avoidance` proposal and `most_confident` plan presets, and
+the default observation and action plugins. Every deployed step records the
 same release and bundle paths. The Pi loads those activations. The Donkey assembly runs the
 shared autonomy cycle independently of `run_pilot`. The drive loop still runs at
 `DRIVE_LOOP_HZ` (20 Hz) and submits a detached sample every tick, so
@@ -745,22 +722,14 @@ harness changes, run core then autonomy with `--restart`. Autonomy `--restart`
 verification fails if a step was shipped but `/host/status` does not report
 it running the staged plugins.
 
-Step selections are local until the next autonomy deployment:
-
-```sh
-./cli/automa hosts stage proposal --name piracer
-./cli/automa hosts stage action --name piracer --plugin selected
-./cli/automa hosts stage memory --name piracer
-./cli/automa hosts update --name piracer --restart
-```
-
+`plugins arm` and `plugins disarm` change the running Pi host's selection, as
+on a simulator; a host restart restores the deployed defaults.
 `hosts info perception|memory|proposal --name piracer` inspects staged
-activation and release metadata. Local staging does not require the Pi to be
-online; the subsequent autonomy deploy does.
+activation and release metadata without the Pi online.
 
 ### Shared Movement Workflow
 
-Once the selected plugins are staged (and deployed for PiCar), the same commands
+Once the host is created (and its release deployed, for PiCar), the same commands
 control both vehicles. Change only the host name:
 
 ```sh
@@ -784,9 +753,8 @@ from lateral obstruction evidence; without qualifying evidence it requests idle.
 It does not implement target chasing just because the perception preset detects
 an evader.
 
-Existing staged action activations remain explicit selections. To migrate an
-old `hold` activation, stage `selected` on that vehicle. `hold` remains available
-as a deliberately idle plugin; a custom action plugin can change the requested
+`hosts update` replaces an old staged `hold` action with the default,
+`selected`. `hold` remains available as a deliberately idle plugin; a custom action plugin can change the requested
 command but cannot bypass runtime movement authority.
 
 Capture status uses only `frames_received` and `frames_dropped` on both vehicles

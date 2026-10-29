@@ -13,10 +13,11 @@ consistent with visible floor being interrupted there.
 The implementation uses the core NumPy and OpenCV runtime at 320x240 by
 default.
 
-Stage it on a host with the frame plugin:
+Arm it on a running host in place of the default `floor_plane`, after `frame`:
 
 ```sh
-./cli/automa hosts stage perception --name chase-sim-chaser --plugin frame --plugin floor_continuity
+./cli/automa plugins arm --host-name chase-sim-chaser --name perception/floor_continuity
+./cli/automa plugins disarm --host-name chase-sim-chaser --name perception/floor_plane
 ```
 
 Apply it to one archived image or a whole capture directory:

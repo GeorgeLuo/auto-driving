@@ -300,7 +300,7 @@ def ensure_simulator(
     payload["readiness"] = {
         "schema": "automa_cli_readiness_v1",
         "status": "ready" if usable else "blocked",
-        "ready_for": "inspect vehicle status and stage perception",
+        "ready_for": "inspect vehicle status and create a host",
         "checked_at_ms": int(time.time() * 1000),
         "gates": chase_readiness_gates,
         "blocking_layer": chase_blocking_layer,

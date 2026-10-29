@@ -7,7 +7,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import stage_step, write_host_fixture
 from unittest.mock import patch
 from urllib.request import urlopen
 
@@ -84,7 +84,8 @@ class PluginArmingFlows(unittest.TestCase):
                 with patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime):
                     return catalog(runtime_base_url("chase-sim-chaser"))
 
-            cli("stage", "perception", "--name", "chase-sim-chaser", "--preset", "lightweight_observer")
+            # Only perception is staged, so the uploaded proposal is the step's one plugin.
+            stage_step(runtime, "chase-sim-chaser", "perception")
             try:
                 cli("run", "--name", "chase-sim-chaser", "--observe-only", "--num-decisions", "0", "--record")
                 original = json.loads(cli("status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]

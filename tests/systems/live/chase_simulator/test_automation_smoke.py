@@ -37,8 +37,6 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
             cli("hosts", "create", "--name", "chase-sim-chaser", "--provider", "chase-sim",
                 "--url", simulator["url"])
             try:
-                cli("hosts", "stage", "perception", "--name", "chase-sim-chaser",
-                    "--preset", "lightweight_observer", "--timeout-s", "6")
                 try:
                     run = cli("hosts", "run", "--name", "chase-sim-chaser", "--observe-only",
                               "--num-decisions", "0", "--open-view", "--timeout-s", "6")

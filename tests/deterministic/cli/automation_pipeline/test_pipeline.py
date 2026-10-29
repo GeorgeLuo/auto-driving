@@ -6,7 +6,6 @@ from pathlib import Path
 from unittest.mock import patch
 from cli.automa_cli.hosts.automation import run_host_automation
 from cli.automa_cli.hosts.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.hosts.step_activations import stage_host_step
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     HOST_NAME,
     _SlowMapper,
@@ -14,10 +13,11 @@ from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     chase_runtime,
     staged_runners,
 )
+from tests.support.runtime_fixtures import stage_step
 
 
 class AutomationLivePipelineTests(unittest.TestCase):
-    def test_cli_plugin_update_changes_running_mapper_on_next_frame(self) -> None:
+    def test_a_restaged_selection_changes_the_running_mapper_on_next_frame(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             bundle = controller_bundle_paths(runtime_root / HOST_NAME)
@@ -25,30 +25,23 @@ class AutomationLivePipelineTests(unittest.TestCase):
             _write_activations(bundle, plugins=["frame"])
             applied_selections: list[tuple[str, ...]] = []
             frame_selections: dict[str, list[str]] = {}
-            cli_updates = []
 
             def wrap_perception(step, mapper):
                 if step != "perception":
                     return
                 perceive = mapper.perceive
 
-                def perceive_with_cli_updates(request):
+                def perceive_then_restage(request):
                     result = perceive(request)
                     applied_selections.append(tuple(mapper.plugin_ids))
                     frame_selections[request.sensor_frame.read_id] = list(mapper.plugin_ids)
                     if len(applied_selections) == 1:
-                        cli_updates.append(stage_host_step(
-                            host_name=HOST_NAME, step="perception", plugins=["frame", "floor_plane"],
-                            runtime_root=runtime_root, json_output=True,
-                        ))
+                        stage_step(runtime_root, HOST_NAME, "perception", plugins=["frame", "floor_plane"])
                     elif len(applied_selections) == 2:
-                        cli_updates.append(stage_host_step(
-                            host_name=HOST_NAME, step="perception", plugins=["floor_plane"],
-                            runtime_root=runtime_root, json_output=True,
-                        ))
+                        stage_step(runtime_root, HOST_NAME, "perception", plugins=["floor_plane"])
                     return result
 
-                mapper.perceive = perceive_with_cli_updates
+                mapper.perceive = perceive_then_restage
 
             with (
                 staged_runners(wrap=wrap_perception),
@@ -63,7 +56,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 applied_selections,
                 [("frame",), ("frame", "floor_plane"), ("floor_plane",)],
             )
-            self.assertEqual([code for code, _ in cli_updates], [0, 0])
             automation_dir = Path(bundle["runtime_dir"]) / "automation"
             state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
             self.assertEqual(state["steps"]["perception"]["plugin_ids"], ["floor_plane"])

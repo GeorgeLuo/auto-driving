@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
+from autonomy.decision_cycle.activation import DECISION_STEPS
 from autonomy.decision_cycle.steps import STEP_RUNNERS
 
 from ..shared.selection_args import add_selection_args
@@ -23,8 +23,7 @@ from .deploy import create_host, update_host, delete_host
 from .decision_steps import get_host_step_info, stream_host_step
 from .memory import get_host_memory_info, reset_host_memory
 from .operations import run_host_startup_check
-from .step_activations import HOST_PROVIDERS, stage_host_step
-from .runtime_hosts import RUNTIME_ROOT as HOSTS_RUNTIME_ROOT
+from .step_activations import HOST_PROVIDERS
 from .perception import get_host_perception_info
 from .workbench import run_workbench_replay
 from .workbench_plugins import WORKBENCH_SELECTABLE_STEPS
@@ -46,7 +45,6 @@ def register_hosts(subcommands: argparse._SubParsersAction) -> None:
     _register_hosts_memory(host_commands)
     _register_hosts_workbench(host_commands)
     _register_hosts_info(host_commands)
-    _register_hosts_staging(host_commands)
 
 
 def _register_hosts_viewer(host_commands: argparse._SubParsersAction) -> None:
@@ -60,7 +58,7 @@ def _register_hosts_viewer(host_commands: argparse._SubParsersAction) -> None:
         ),
     )
     viewer_target = viewer.add_mutually_exclusive_group(required=True)
-    viewer_target.add_argument("--name", dest="host_name", help=_STAGING_HOST_NAME_HELP)
+    viewer_target.add_argument("--name", dest="host_name", help=_HOST_NAME_HELP)
     viewer_target.add_argument("--host-url", help="The host's URL from hosts status.")
     viewer.set_defaults(handler=_handle_hosts_viewer)
 
@@ -101,7 +99,7 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
     run_target.add_argument(
         "--name",
         dest="host_name",
-        help=_STAGING_HOST_NAME_HELP,
+        help=_HOST_NAME_HELP,
     )
     run_target.add_argument(
         "--host-url",
@@ -188,7 +186,7 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
         "--name",
         required=True,
         dest="host_name",
-        help=_STAGING_HOST_NAME_HELP,
+        help=_HOST_NAME_HELP,
     )
     host_stop.add_argument(
         "--wait-s",
@@ -242,7 +240,7 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
         "--name",
         required=True,
         dest="host_name",
-        help=_STAGING_HOST_NAME_HELP,
+        help=_HOST_NAME_HELP,
     )
     host_restart.add_argument(
         "--timeout-s",
@@ -629,58 +627,6 @@ def _register_hosts_info(host_commands: argparse._SubParsersAction) -> None:
         step_info.set_defaults(handler=_handle_hosts_info_step, step=step_name)
 
 
-def _register_hosts_staging(host_commands: argparse._SubParsersAction) -> None:
-    update = host_commands.add_parser(
-        "stage",
-        help="Stage controller selections for a host.",
-    )
-    update.set_defaults(handler=_handle_hosts_stage_help)
-    update_commands = update.add_subparsers(dest="update_command")
-    update_help = update_commands.add_parser(
-        "help",
-        help="Show update-level commands.",
-    )
-    update_help.set_defaults(handler=_handle_hosts_stage_help)
-    for step_name in STEPS:
-        step_parser = update_commands.add_parser(
-            step_name,
-            help=f"Stage {step_name} plugins in the local controller bundle.",
-            description=(
-                f"Stage packaged {step_name} plugins in the local controller bundle "
-                f"(runtime/{step_name}/active.json). Omit a selection to stage the step's default."
-            ),
-        )
-        step_parser.add_argument(
-            "--name",
-            required=True,
-            dest="host_name",
-            help=_STAGING_HOST_NAME_HELP,
-        )
-        step_parser.add_argument(
-            "--timeout-s",
-            type=float,
-            default=DEFAULT_READINESS_TIMEOUT_S,
-            help=_STAGING_DISCOVERY_TIMEOUT_HELP,
-        )
-        add_selection_args(step_parser, step_name, verb="stage")
-        step_parser.add_argument(
-            "--dry-run",
-            action="store_true",
-            help="Print the activation manifest without writing it.",
-        )
-        step_parser.add_argument(
-            "--json",
-            action="store_true",
-            help=f"Print the full machine-readable {step_name} update payload.",
-        )
-        step_parser.add_argument(
-            "--verbose",
-            action="store_true",
-            help="Print controller release packaging details.",
-        )
-        step_parser.set_defaults(handler=_handle_hosts_stage_step, step=step_name)
-
-
 def _add_stream_args(
     parser: argparse.ArgumentParser, *, once_help: str, json_help: str,
 ) -> None:
@@ -743,7 +689,6 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "- restart     stop and start the run",
                 "- serve       serve a Chase host in the foreground",
                 "- status      show each host's state and attachment",
-                "- stage       stage controller selections for a host",
                 "- operation   run bounded vehicle checks through a host",
                 "- info        inspect staged controller configuration",
                 "- memory      reset live memory",
@@ -771,28 +716,6 @@ def _handle_hosts_operation_help(args: argparse.Namespace) -> int:
                 "",
                 "Detailed help:",
                 "- ./cli/automa hosts operation <command> --help",
-            ]
-        )
-    )
-    return 0
-
-
-def _handle_hosts_stage_help(args: argparse.Namespace) -> int:
-    print(
-        "\n".join(
-            [
-                "automa hosts stage commands",
-                "",
-                "- perception   stage a perception preset or plugin selection",
-                "- observation  stage observation plugins",
-                "- memory       stage a memory preset or plugin selection",
-                "- proposal     stage a proposal preset or plugin selection",
-                "- plan         stage a plan preset or plugin selection",
-                "- action       stage the action plugin (hold or mode)",
-                "- help         show this summary",
-                "",
-                "Detailed help:",
-                "- ./cli/automa hosts stage <command> --help",
             ]
         )
     )
@@ -841,15 +764,8 @@ def _handle_hosts_stream_help(args: argparse.Namespace) -> int:
     return 0
 
 
-# Every `hosts stage <step>` resolves its host configuration with `staging_host`.
-_STAGING_HOST_NAME_HELP = (
+_HOST_NAME_HELP = (
     "Name of a host created with hosts create."
-)
-
-
-_STAGING_DISCOVERY_TIMEOUT_HELP = (
-    "Request timeout in seconds; local staging reads the host record without probing "
-    f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
 )
 
 
@@ -1018,7 +934,7 @@ def _handle_hosts_memory_help(args: argparse.Namespace) -> int:
                 "",
                 "Inspect what a selection retains: ./cli/automa plugins inspect memory <source>",
                 "",
-                "Stage an implementation with: ./cli/automa hosts stage memory --name <host>",
+                "Arm a plugin with:            ./cli/automa plugins arm --host-name <host> --name memory/<plugin>",
                 "Inspect staged config with:   ./cli/automa hosts info memory --name <host>",
                 "Stream live state with:       ./cli/automa hosts stream memory --name <host>",
                 "",
@@ -1145,29 +1061,3 @@ def _handle_hosts_info_step(args: argparse.Namespace) -> int:
     if result.message:
         print(result.message)
     return result.exit_code
-
-
-def _handle_hosts_stage_step(args: argparse.Namespace) -> int:
-    if not validate_timeout_input(
-        args.timeout_s,
-        command=f"automa hosts stage {args.step}",
-        json_output=args.json,
-        human_stream=sys.stdout,
-    ):
-        return 2
-    exit_code, message = stage_host_step(
-        host_name=args.host_name,
-        step=args.step,
-        plugins=args.plugins,
-        preset=args.preset,
-        runtime_root=HOSTS_RUNTIME_ROOT,
-        timeout_s=args.timeout_s,
-        dry_run=args.dry_run,
-        json_output=args.json,
-        verbose=args.verbose,
-        # Progress stays off stdout when stdout carries the JSON payload.
-        output=sys.stderr if args.json else sys.stdout,
-    )
-    if message:
-        print(message)
-    return exit_code

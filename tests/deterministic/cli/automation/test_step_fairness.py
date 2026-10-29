@@ -16,7 +16,7 @@ from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import builtin_activation
 from cli.automa_cli.hosts.automation import _collect_automation_status, run_host_automation
 from tests.shared.cli.invoke import invoke_automa
-from tests.support.runtime_fixtures import write_json
+from tests.support.runtime_fixtures import stage_step, write_json
 
 VEHICLE = "chase-sim-chaser"
 UNSTAGED = {step: "builtin" if builtin_activation(step) else "none" for step in STEPS}
@@ -31,20 +31,17 @@ def _invoke(*args: str) -> tuple[int, str]:
 class StepFairnessTests(unittest.TestCase):
     @contextlib.contextmanager
     def _runtime(self, *staged: str, released: bool = True) -> Iterator[Path]:
-        """A vehicle runtime with ``staged`` steps updated. An update builds a
+        """A vehicle runtime with ``staged`` steps written with a packaged
         release; with nothing staged, ``released`` writes one."""
 
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
-            with mock.patch("cli.automa_cli.hosts.commands.HOSTS_RUNTIME_ROOT", root), mock.patch(
-                "cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", root
-            ), mock.patch(
+            with mock.patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", root), mock.patch(
                 "cli.automa_cli.hosts.automation.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
             ):
                 for step in staged:
-                    code, stdout = _invoke("hosts", "stage", step, "--name", VEHICLE, "--json")
-                    self.assertEqual(code, 0, stdout)
+                    stage_step(root, VEHICLE, step)
                 (root / VEHICLE / "bundle").mkdir(parents=True, exist_ok=True)
                 if released and not staged:
                     write_json(

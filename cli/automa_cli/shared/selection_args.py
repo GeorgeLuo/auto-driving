@@ -1,4 +1,4 @@
-"""The ``--preset``/``--plugin`` selection a step takes in ``hosts`` and ``plugins inspect``."""
+"""The ``--preset``/``--plugin`` selection a step takes in ``hosts workbench replay`` and ``plugins inspect``."""
 
 from __future__ import annotations
 

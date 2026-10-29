@@ -126,7 +126,7 @@ class SimulatorEnsureTests(unittest.TestCase):
             {
                 "schema": "automa_cli_readiness_v1",
                 "status": "ready",
-                "ready_for": "inspect vehicle status and stage perception",
+                "ready_for": "inspect vehicle status and create a host",
                 "checked_at_ms": payload["readiness"]["checked_at_ms"],
                 "gates": payload["chase_readiness"]["layers"],
                 "blocking_layer": None,

@@ -9,7 +9,7 @@ from PIL import Image
 from cli.automa_cli.hosts.decision_records import DecisionRunners
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.hosts.memory_report import evidence_records
-from cli.automa_cli.hosts.step_activations import decision_identity, stage_host_step, host_bundle
+from cli.automa_cli.hosts.step_activations import decision_identity, host_bundle
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
     published_cycle,
     frame_inputs,
@@ -34,16 +34,9 @@ class LiveRuntimeDecisionViewFixture:
         self.addCleanup(self._temporary.cleanup)
         self.runtime_root = Path(self._temporary.name) / "vehicles"
         self.runtime_root.mkdir()
-        from tests.support.runtime_fixtures import write_host_fixture
-        write_host_fixture(self.runtime_root, "chase-sim-chaser")
+        from tests.support.runtime_fixtures import stage_step
         for step in ("proposal", "action"):
-            code, message = stage_host_step(
-                host_name="chase-sim-chaser",
-                step=step,
-                runtime_root=self.runtime_root,
-                json_output=True,
-            )
-            self.assertEqual(code, 0, message)
+            stage_step(self.runtime_root, "chase-sim-chaser", step)
         self.vehicle_runtime = self.runtime_root / "chase-sim-chaser"
         self.runtime_dir = self.vehicle_runtime / "bundle" / "runtime"
         self.automation_dir = self.runtime_dir / "automation"

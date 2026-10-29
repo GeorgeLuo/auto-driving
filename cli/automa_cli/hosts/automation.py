@@ -43,6 +43,7 @@ from .step_activations import (
 )
 from ..runtime_view import open_view_message
 from .run_record import (
+    applied_selections,
     control_application,
     control_source,
     decision_record,
@@ -157,25 +158,6 @@ def _decision_summary(identity: Any) -> dict[str, Any]:
     if not isinstance(identity, dict) or not isinstance(identity.get("steps"), dict):
         return {"deployed": False}
     return {"deployed": True, "generation_id": identity.get("generation_id")}
-
-
-def _applied_selections(
-    selections: dict[str, dict[str, Any]], steps: Any,
-) -> dict[str, dict[str, Any]] | None:
-    """``selections`` as a running host reports applying them, when it reports its steps."""
-
-    if not isinstance(steps, dict) or not any(step in steps for step in selections):
-        return None
-    applied = {}
-    for step, selection in selections.items():
-        report = steps.get(step) if isinstance(steps.get(step), dict) else {}
-        applied[step] = {
-            **selection,
-            "source": "applied",
-            "preset": report.get("preset"),
-            "plugins": list(report.get("plugin_ids") or []),
-        }
-    return applied
 
 
 def _normalize_host_url(value: str) -> str:
@@ -1211,7 +1193,7 @@ def _collect_automation_status(
                 "bundle_root": display_path(bundle_root),
                 "automation_runtime_exists": automation_dir.exists(),
                 "automation_dir": display_path(automation_dir),
-                "steps": _applied_selections(selections, state.get("steps") if pid_alive else None)
+                "steps": applied_selections(selections, state.get("steps") if pid_alive else None)
                 or selections,
                 "decision": {
                     "activation": display_path(Path(bundle["runtime_dir"])),
@@ -1283,7 +1265,7 @@ def _collect_automation_status(
                 read=(host_reads or {}).get(name),
             )
             applied = host.pop("applied_decision")
-            statuses[-1]["steps"] = _applied_selections(selections, host.pop("steps")) or selections
+            statuses[-1]["steps"] = applied_selections(selections, host.pop("steps")) or selections
             statuses[-1].update(host)
             if applied:
                 statuses[-1]["decision"].update(_decision_summary(applied))

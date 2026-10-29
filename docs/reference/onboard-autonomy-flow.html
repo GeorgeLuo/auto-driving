@@ -372,8 +372,8 @@
       <p class="source-line">
         Create a named host with <code>hosts create --name car --provider picar --url http://piracer.local:8887</code>
         after <code>vehicles discover --provider picar --url http://piracer.local:8887</code> lists it in
-        <code>vehicles status</code>. Stage selections with <code>hosts stage &lt;step&gt;</code>,
-        deploy with <code>hosts update --name car --restart</code>, then use <code>hosts run</code>.
+        <code>vehicles status</code>. Deploy every step's default with <code>hosts update --name car --restart</code>,
+        then use <code>hosts run</code>; <code>plugins arm</code> changes the running host's selection.
         <code>hosts delete --name car</code> stops the service and removes its local record.
         <br>
         Source points: <code>autonomy/decision_cycle/cycle.py</code>,

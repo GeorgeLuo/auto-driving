@@ -24,12 +24,12 @@ scripts under `scripts/perception/multi_obstruction_tracks/`.
 
 `obstruction_tracks` has been retired. Use this plugin for explicit selections.
 Existing staged selections containing `obstruction_tracks`, including previously
-staged `obstruction_observer` presets, must be restaged. Activations store plugin
-IDs and entrypoints; the preset name in metadata does not rewrite them. To
-restage the preset:
+staged `obstruction_observer` presets, must be replaced. Activations store plugin
+IDs and entrypoints; the preset name in metadata does not rewrite them.
+`hosts update` replaces them with the step's default:
 
 ```sh
-./cli/automa hosts stage perception --name VEHICLE --preset obstruction_observer
+./cli/automa hosts update --name VEHICLE
 ```
 
 The preset keeps its name and tuning and now selects `multi_obstruction_tracks`.

@@ -6,12 +6,11 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import stage_step, write_host_fixture
 from unittest.mock import patch
 
 from autonomy.runtime.client import RuntimeClient
 from cli.automa_cli.hosts.runtime_hosts import stop_chase_host
-from tests.shared.cli.invoke import invoke_automa
 from tests.support.cli_runner import run_automa
 from tests.support import fake_metrics_ui
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
@@ -44,10 +43,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             env = {"CHASE_UI_WS_URL": ws_url}
             write_host_fixture(root, "chase-sim-chaser", url=ws_url)
             # Staging builds the controller release the car's runtime host runs.
-            invoke_automa(
-                "hosts", "stage", "perception", "--name", "chase-sim-chaser",
-                "--plugin", "frame", runtime_root=root, extra_env=env,
-            )
+            stage_step(root, "chase-sim-chaser", "perception", plugins=["frame"])
             try:
                 run = run_automa(
                     "hosts", "run", "--name", "chase-sim-chaser",
@@ -73,8 +69,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             vehicle = "chase-sim-chaser"
             env = {"CHASE_UI_WS_URL": ws_url}
             write_host_fixture(root, "chase-sim-chaser", url=ws_url)
-            run_automa("hosts", "stage", "perception", "--name", vehicle,
-                       "--plugin", "frame", runtime_root=root, extra_env=env)
+            stage_step(root, vehicle, "perception", plugins=["frame"])
             automation = root / vehicle / "bundle/runtime/automation"
             try:
                 for verb in ("run", "restart"):

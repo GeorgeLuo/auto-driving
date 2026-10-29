@@ -66,7 +66,7 @@ A test whose behavior needs another program goes under `systems/`, in the group 
 
 | Group | Covers | Starts |
 |---|---|---|
-| `commands/<family>/` | `automa` commands whose behavior needs another program: `help` through the executable, `simulators` against a fake `simeval`, and `automation` recovery around a running process | `cli/automa`, `simeval`, or a child process |
+| `commands/<family>/` | `automa` commands whose behavior needs another program: `help` through the executable, `simulators` against a fake headless launcher, and `automation` recovery around a running process | `cli/automa` or a child process |
 | `journeys/` | Flows that cross commands and hosts: the automation pipeline, plugin upload and arming, and the runtime host lifecycle | `cli/automa`, runtime hosts, and Chromium for one upload test |
 | `frontend/` | Runtime viewer and workbench page scripts in `cli/automa_cli/frontend/pages/`. Each test keeps its `.js` driver beside it | `node`; skipped when it is missing |
 | `packaging/` | Fresh-interpreter import order, source visibility, and the Pi installer, service, and runner scripts | A fresh Python, `bash`, and `git` |
@@ -98,7 +98,7 @@ Support code must not call internal command handlers, calculate expected applica
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-sim
 ```
 
-This command runs the systems suite. It may launch local simulator and UI processes. It first requires a usable Chase frontend, then enables one bounded automation smoke test. That test stays skipped in `python3 tests/run.py --systems`.
+This command runs the systems suite and enables one bounded automation smoke test against the Chase simulator already running at `CHASE_UI_WS_URL` (default `ws://localhost:5050/ws/control`). That test stays skipped in `python3 tests/run.py --systems`.
 
 ## Live Pi Boundary
 

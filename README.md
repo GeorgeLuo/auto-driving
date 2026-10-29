@@ -50,7 +50,7 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --systems
 
 Before pushing, run only the tests your change reaches. [`tests/README.md`](tests/README.md#validating-a-change) explains how to choose them with a group and `-k`.
 
-Include the live Chase simulator smoke test, or check a powered-on Pi without moving it. Both commands run the systems suite:
+Include the live smoke test against the Chase simulator at `CHASE_UI_WS_URL`, or check a powered-on Pi without moving it. Both commands run the systems suite:
 
 ```sh
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-sim
@@ -138,7 +138,6 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `hosts update` | Packages a versioned release for the vehicle's host and stages each step's `plugins save` selection with it, else the step's default (`plugins list` marks the defaults), replacing whatever else each step had staged: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `hosts run\|stop\|restart\|status` | Starts, stops, restarts or inspects a run on the host. Status includes the vehicle endpoint, host URL and simulator attachment. `stop` ends the run; the host stays attached until `hosts delete`. |
 | `simulators create` | Starts a headless Chase simulator from the Metrics UI checkout at `AUTOMA_METRICS_UI_DIR`, with its launcher's default configuration, on the first free port from 5051, and prints its URL. It runs until `simulators delete --url` ends it, which refuses while a host was created at it. |
-| `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
 
 The runtime viewer's **Plugins** table refreshes every 500 ms. Revision columns
 are hidden by default; **Show revisions** reveals them for debugging. **Enabled**
@@ -293,12 +292,7 @@ for the layer vocabulary, timeout semantics, and exact recovery behavior.
 
 `vehicles status`, `hosts update`, observation-only startup, viewing, and cleanup do
 not select a scenario, change playback or control/input state, or apply vehicle
-movement. To explicitly prepare the repository's known demonstration
-environment, opt into the configuration-changing command:
-
-```sh
-./cli/automa simulators ensure --scenario chaser-depth-obstacles
-```
+movement.
 
 Compare each step's staged selection with the one the running host applied,
 and list the catalog the host can arm:
@@ -840,8 +834,8 @@ Run the optional local DonkeyCar frontend with:
 ./frontend/donkeycar/start.sh
 ```
 
-Then open `http://localhost:8088/`. Chase simulator UI is owned by Metrics UI
-and is prepared through `./cli/automa simulators ensure`.
+Then open `http://localhost:8088/`. Chase simulator UI is owned by Metrics UI;
+`./cli/automa simulators create` starts a headless one.
 
 ## Architecture and Planning
 

@@ -284,15 +284,14 @@ def probe_chase(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
         )
         recovery = {
             "simulator_unreachable": (
-                "No passive session exists. Explicit configuration-changing option: "
-                "./cli/automa simulators ensure --scenario chaser-depth-obstacles"
+                "No simulator answers here. ./cli/automa simulators create starts a headless one."
             ),
             "frontend_disconnected": (
                 f"Open or reload {chase_operator_url(candidate.url)}, then rerun discovery."
             ),
             "wrong_game": (
-                "The current game was preserved. Select Chase yourself, or explicitly "
-                "run ./cli/automa simulators ensure --scenario chaser-depth-obstacles."
+                "The current game was preserved. Select Chase yourself, or start a headless "
+                "simulator with ./cli/automa simulators create."
             ),
         }.get(exc.code)
         return ProbeResult(

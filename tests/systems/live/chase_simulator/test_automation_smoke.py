@@ -31,8 +31,10 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
                 return run_automa(*args, runtime_root=runtime_root, check=check)
 
             vehicles = json.loads(cli("vehicles", "status", "--json").stdout)["vehicles"]
-            simulator = next(vehicle for vehicle in vehicles
-                             if vehicle["provider"] == "chase-sim" and vehicle["state"] == "running")
+            simulator = next((vehicle for vehicle in vehicles
+                              if vehicle["provider"] == "chase-sim" and vehicle["state"] == "running"), None)
+            if simulator is None:
+                self.fail("no Chase simulator runs at CHASE_UI_WS_URL; set it to the URL simulators create printed")
             _assert_passive_preserved()
             cli("hosts", "create", "--name", "chase-sim-chaser", "--provider", "chase-sim",
                 "--url", simulator["url"])

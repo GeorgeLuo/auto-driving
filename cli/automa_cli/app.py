@@ -62,7 +62,7 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "- hosts      Create, configure, and operate vehicle controller hosts.",
                 "- workbench  Replay a local image directory through the controller steps.",
                 "- plugins    List a plugin catalog or what a host has armed, upload, arm and disarm a host's plugins, stream what each step outputs on a host, and inspect what each step reports.",
-                "- simulators Create headless simulators, or prepare and inspect SimEval environments.",
+                "- simulators Create and delete headless simulators.",
                 "",
                 "Open the runtime viewer. It does not require a host:",
                 "- ./cli/automa",

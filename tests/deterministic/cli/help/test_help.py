@@ -107,6 +107,25 @@ class HelpCommandTests(unittest.TestCase):
                     parser.parse_args(args)
                 self.assertEqual(caught.exception.code, 2)
 
+    def test_plugin_arm_parses_step_plugin_names(self) -> None:
+        parser = build_parser()
+        armed = parser.parse_args(["plugins", "arm", "--host-name", "one",
+                                   "--name", "perception/classical_regions", "--name", "memory/x"])
+        self.assertEqual((armed.command, armed.plugin_command, armed.host_name), ("plugins", "arm", "one"))
+        self.assertEqual(armed.plugins, [("perception", "classical_regions"), ("memory", "x")])
+        for args in (
+            ["hosts", "plugins", "arm", "--name", "one", "--step", "perception", "--plugin", "x"],
+            ["plugins", "arm", "--host-name", "one"],
+            ["plugins", "arm", "--name", "perception/x"],
+            ["plugins", "arm", "--host-name", "one", "--name", "classical_regions"],
+            ["plugins", "arm", "--host-name", "one", "--name", "sensing/x"],
+            ["plugins", "arm", "--host-name", "one", "--name", "perception/"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+
     def test_plugin_disarm_parses_against_a_host(self) -> None:
         parser = build_parser()
         disarmed = parser.parse_args(["plugins", "disarm", "--host-name", "one", "--all"])

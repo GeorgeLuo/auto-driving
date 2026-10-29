@@ -105,20 +105,22 @@ def _request_arm(client: PluginCatalogClient, selections: dict[str, Any]) -> dic
     return client({"operation": "arm", "selections": selections}, timeout_s=ARM_TIMEOUT_S)
 
 
-def arm_plugins(*, url: str | None, host_name: str | None, step: str | None = None,
-                plugins: list[str] | None = None, selection: Path | None = None,
+def arm_plugins(*, url: str | None, host_name: str | None, plugins: list[tuple[str, str]],
                 json_output: bool = False) -> CommandResult:
+    """Arm ``(step, plugin_id)`` pairs as one request, each step's IDs in the order given."""
+
     endpoint = url
-    recovery = f"Check the selection document: {selection}" if selection else _catalog_recovery(url, host_name)
+    recovery = _catalog_recovery(url, host_name)
+    selections: dict[str, list[str]] = {}
+    for step, plugin_id in plugins:
+        selections.setdefault(step, []).append(plugin_id)
     try:
-        selections = json.loads(selection.read_text()) if selection else {step: plugins}
-        recovery = _catalog_recovery(url, host_name)
         endpoint = url or catalog_url(host_name)
         result = _request_arm(PluginCatalogClient(endpoint), selections)
         recovery = f"./cli/automa plugins list {_target_args(url, host_name)}"
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
-    return _result(result, operation="arm", url=endpoint, host_name=host_name, step=step,
+    return _result(result, operation="arm", url=endpoint, host_name=host_name, step=None,
                    recovery=recovery, json_output=json_output)
 
 

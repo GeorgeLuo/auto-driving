@@ -10,14 +10,23 @@ from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS
 
 from ..hosts.workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ..shared.selection_args import add_selection_args
-from .catalog import disarm_plugins, list_plugins
+from .catalog import arm_plugins, disarm_plugins, list_plugins
 from .step_inspect import INSPECT_STEPS, inspect_step
+
+
+def _step_plugin(value: str) -> tuple[str, str]:
+    """``step/plugin``, as ``plugins list --long`` names a plugin, as ``(step, plugin)``."""
+
+    step, _, plugin_id = value.partition("/")
+    if step not in STEPS or not plugin_id:
+        raise argparse.ArgumentTypeError(f"expected <step>/<plugin> with a step from {', '.join(STEPS)}: {value!r}")
+    return step, plugin_id
 
 
 def register_plugins(subcommands: argparse._SubParsersAction) -> None:
     step_plugins = subcommands.add_parser(
         "plugins",
-        help="List a plugin catalog or what a host has armed, disarm a host's plugins, or inspect plugins from images and recordings.",
+        help="List a plugin catalog or what a host has armed, arm and disarm a host's plugins, or inspect plugins from images and recordings.",
     )
     step_plugins.set_defaults(handler=_handle_plugins_help)
     step_plugin_commands = step_plugins.add_subparsers(dest="plugin_command")
@@ -43,6 +52,25 @@ def register_plugins(subcommands: argparse._SubParsersAction) -> None:
     listing.add_argument("--step", choices=STEPS, help="Show only this cycle step.")
     listing.add_argument("--json", action="store_true", help="Print the catalog and each step's defaults, or the host's armed plugins, as JSON.")
     listing.set_defaults(handler=_handle_plugins_list)
+
+    arm = step_plugin_commands.add_parser(
+        "arm", help="Add/update a host's catalog plugins without restarting automation.",
+        description=(
+            "Request the latest catalog definitions together. New IDs append; existing IDs update in place; "
+            f"on a one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) the ID replaces the plugin. The host loads "
+            "them before answering: an import or construction error exits 2 and keeps the previous selection. "
+            "A loaded selection applies at the host's next cycle."
+        ),
+        epilog="Arming never starts automation or changes its control mode.",
+    )
+    arm_target = arm.add_mutually_exclusive_group(required=True)
+    arm_target.add_argument("--host-name", help="Host name from hosts status.")
+    arm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
+    arm.add_argument("--name", dest="plugins", action="append", required=True, type=_step_plugin,
+                     metavar="STEP/PLUGIN",
+                     help="Plugin to arm, named as plugins list --host-name <host> --long lists it; repeat to arm several together, in order.")
+    arm.add_argument("--json", action="store_true", help="Print the request receipt and selection state as JSON.")
+    arm.set_defaults(handler=_handle_plugins_arm)
 
     disarm = step_plugin_commands.add_parser(
         "disarm", help="Deselect a host's plugins without deleting them from its catalog.",
@@ -133,13 +161,15 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
     print("\n".join([
         "automa plugins commands", "",
         "- list     show the packaged catalog or what a host has armed",
+        "- arm      arm catalog plugins on a host by step/plugin",
         "- disarm   clear every step on a host that can run without plugins",
         "- inspect  report a step's plugins from images or a recorded run",
         "- help     show this summary", "",
-        "Upload, arm and disarm individual plugins: ./cli/automa hosts plugins", "",
+        "Upload and disarm individual plugins: ./cli/automa hosts plugins", "",
         "Packaged catalog: ./cli/automa plugins list",
         "Armed on a host: ./cli/automa plugins list --host-name <host>",
         "A host's catalog: ./cli/automa plugins list --host-name <host> --long",
+        "Arm on a host: ./cli/automa plugins arm --host-name <host> --name <step>/<plugin>",
         "Disarm on a host: ./cli/automa plugins disarm --host-name <host> --all",
         "Detailed help: ./cli/automa plugins <command> --help",
     ]))
@@ -149,6 +179,12 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
 def _handle_plugins_list(args: argparse.Namespace) -> int:
     result = list_plugins(host_name=args.host_name, url=args.url, step=args.step, long=args.long,
                           json_output=args.json)
+    print(result.message)
+    return result.exit_code
+
+
+def _handle_plugins_arm(args: argparse.Namespace) -> int:
+    result = arm_plugins(url=args.url, host_name=args.host_name, plugins=args.plugins, json_output=args.json)
     print(result.message)
     return result.exit_code
 

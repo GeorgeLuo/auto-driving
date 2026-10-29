@@ -92,9 +92,9 @@ def catalog(base):
 
 
 def arm_step(base, step, *ids):
-    command = ["hosts", "plugins", "arm", "--url", base, "--step", step, "--json"]
+    command = ["plugins", "arm", "--url", base, "--json"]
     for plugin_id in ids:
-        command.extend(["--plugin", plugin_id])
+        command.extend(["--name", f"{step}/{plugin_id}"])
     return json.loads(invoke_automa(*command).stdout)
 
 

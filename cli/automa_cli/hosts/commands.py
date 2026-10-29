@@ -29,7 +29,7 @@ from .runtime_hosts import RUNTIME_ROOT as HOSTS_RUNTIME_ROOT
 from .perception import get_host_perception_info
 from .workbench import run_workbench_replay
 from .workbench_plugins import WORKBENCH_SELECTABLE_STEPS
-from ..plugins.catalog import arm_plugins, disarm_plugins, upload_plugin
+from ..plugins.catalog import disarm_plugins, upload_plugin
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .viability import (
     run_memory_viability_measurement,
@@ -58,10 +58,10 @@ def register_hosts(subcommands: argparse._SubParsersAction) -> None:
 
 
 def _register_hosts_plugins(host_commands: argparse._SubParsersAction) -> None:
-    plugins = host_commands.add_parser("plugins", help="Upload, arm and disarm plugins in a live catalog.")
+    plugins = host_commands.add_parser("plugins", help="Upload and disarm plugins in a live catalog.")
     plugins.set_defaults(handler=_handle_hosts_plugins_help)
     plugin_commands = plugins.add_subparsers(dest="plugin_command")
-    plugins_help = plugin_commands.add_parser("help", help="Show upload, arming and disarming usage.")
+    plugins_help = plugin_commands.add_parser("help", help="Show upload and disarming usage.")
     plugins_help.set_defaults(handler=_handle_hosts_plugins_help)
     upload = plugin_commands.add_parser(
         "upload", help="Register a plugin file; optionally arm it on a runtime host.",
@@ -79,21 +79,6 @@ def _register_hosts_plugins(host_commands: argparse._SubParsersAction) -> None:
     upload.add_argument("--arm", action="store_true", help="After registration, add/update this ID in the runtime host's requested selection; other plugins stay selected.")
     upload.add_argument("--json", dest="json_output", action="store_true", help="Print the registration receipt as JSON.")
     upload.set_defaults(handler=_handle_hosts_plugins_upload)
-
-    arm = plugin_commands.add_parser(
-        "arm", help="Add/update uploaded or packaged plugins without restarting automation.",
-        description=f"Request the latest catalog definitions together. New IDs append; existing IDs update in place; on a one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) the ID replaces the plugin. The host loads them before answering: an import or construction error exits 2 and keeps the previous selection. A loaded selection applies at the host's next cycle.",
-        epilog="With --selection, use a JSON map such as {\"perception\": [\"prototype\"], \"memory\": [\"helper\"]}. Arming never starts automation or changes its control mode.",
-    )
-    arm_target = arm.add_mutually_exclusive_group(required=True)
-    arm_target.add_argument("--name", dest="host_name", help="Host receiving the request.")
-    arm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
-    arm_input = arm.add_mutually_exclusive_group(required=True)
-    arm_input.add_argument("--step", choices=STEPS, help="Step receiving the ordered --plugin IDs.")
-    arm_input.add_argument("--selection", type=Path, help="JSON map of supported steps to ordered plugin-ID lists; arm the group together.")
-    arm.add_argument("--plugin", action="append", dest="plugins", help="Plugin ID to add/update; repeat in the desired append order with --step.")
-    arm.add_argument("--json", dest="json_output", action="store_true", help="Print the request receipt and selection state as JSON.")
-    arm.set_defaults(handler=_handle_hosts_plugins_arm)
 
     disarm = plugin_commands.add_parser(
         "disarm", help="Deselect plugins without deleting them from the live catalog.",
@@ -904,10 +889,9 @@ def _handle_hosts_plugins_help(args: argparse.Namespace) -> int:
     print("\n".join([
         "automa hosts plugins commands", "",
         "- upload  store a file and register an available plugin revision",
-        "- arm     add/update named plugins together on a runtime host",
         "- disarm  deselect named plugins or clear steps on a runtime host",
         "- help    show this summary", "",
-        "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; upload, arm and disarm do not start automation.",
+        "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; uploading, arming and disarming do not start automation.",
         "Use ./cli/automa hosts status --name <host> to see the host's state.",
         "Use ./cli/automa plugins list --host-name <host> to see what it has armed; add --long for its whole catalog.",
         "Use --url <runtime-or-workbench-url> to address an existing catalog directly.", "",
@@ -917,7 +901,8 @@ def _handle_hosts_plugins_help(args: argparse.Namespace) -> int:
         "Upload refuses source that does not compile; imports and dependencies load when armed.",
         "Re-uploading an ID leaves the running revision unchanged. Restart restoration is not guaranteed.",
         "Use upload --config '<JSON object>' to store constructor settings with the revision; arming uses them.", "",
-        "Use upload --arm for one-command registration and arming; it calls the same operation as arm.",
+        "Arm with ./cli/automa plugins arm --host-name <host> --name <step>/<plugin>; repeat --name to arm a group.",
+        "Use upload --arm for one-command registration and arming; it calls the same operation as plugins arm.",
         "Arming supports every step. New IDs append; existing IDs update in place.",
         f"On a one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) the armed ID replaces the plugin.",
         "Other plugins retain their definitions/configs. The host loads the selection before answering;",
@@ -942,16 +927,6 @@ def _handle_hosts_plugins_upload(args: argparse.Namespace) -> int:
         plugin_id=args.plugin_id, entrypoint=args.entrypoint, config=args.config, arm=args.arm,
         json_output=args.json_output,
     )
-    print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_plugins_arm(args: argparse.Namespace) -> int:
-    if (args.step and not args.plugins) or (args.selection and args.plugins):
-        print("Use --step with one or more --plugin IDs, or --selection without --plugin.")
-        return 2
-    result = arm_plugins(url=args.url, host_name=args.host_name, step=args.step,
-                         plugins=args.plugins, selection=args.selection, json_output=args.json_output)
     print(result.message)
     return result.exit_code
 

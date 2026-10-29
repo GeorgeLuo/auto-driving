@@ -45,12 +45,10 @@ class PluginArmingFlows(unittest.TestCase):
                 available = catalog(base)
                 self.assertEqual(available["arming"], before["arming"])
                 self.assertEqual(available["applied_decision"], before["applied_decision"])
-                selection = root / "selection.json"
-                selection.write_text(json.dumps({step: [f"prototype-{step}"] for step in PRESET_STEPS}))
+                names = [option for step in PRESET_STEPS for option in ("--name", f"{step}/prototype-{step}")]
                 # Through the executable once; the worker journey below covers
                 # upload, plugins list and disarm the same way.
-                receipt = json.loads(run_automa("hosts", "plugins", "arm", "--url", base,
-                                                "--selection", str(selection), "--json").stdout)
+                receipt = json.loads(run_automa("plugins", "arm", "--url", base, *names, "--json").stdout)
                 self.assertEqual(receipt["status"], "requested")
                 self.assertEqual(receipt["outcome"]["status"], "requested")
                 self.assertEqual(host.session_status(), session)

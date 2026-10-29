@@ -14,6 +14,38 @@ var seekTarget = null;
 var loopDraft = null;
 var pendingLoop = null;
 var loopInFlight = false;
+var statePollGeneration = 0;
+function beginStateRequest(action) {
+  var exclusive = action && !playbackControlAction(action) && action !== "set_loop";
+  if (exclusive) stateRequestGeneration += 1;
+  if (action) statePollGeneration += 1;
+  return {
+    action: action,
+    exclusive: exclusive,
+    generation: stateRequestGeneration,
+    pollGeneration: statePollGeneration,
+    runId: (state && state.run_id) || null
+  };
+}
+function stateRequestIsCurrent(request, next) {
+  if (request.generation !== stateRequestGeneration) return false;
+  if (!request.action) return request.pollGeneration === statePollGeneration;
+  var currentRun = (state && state.run_id) || null;
+  if (request.action === "start" || request.action === "reset") {
+    return currentRun === request.runId || (next && currentRun === (next.run_id || null));
+  }
+  return currentRun === request.runId && (!next || (next.run_id || null) === request.runId);
+}
+function acceptStateResponse(request, next) {
+  if (!stateRequestIsCurrent(request, next)) return false;
+  if (request.action) {
+    // Invalidate earlier polls and controls when a frame-boundary action commits.
+    // Lightweight controls must leave a pending plugin selection current.
+    statePollGeneration += 1;
+    if (request.exclusive) request.generation = ++stateRequestGeneration;
+  }
+  return true;
+}
 function parseCadence(raw) {
   var value = String(raw || "").trim().toLowerCase();
   if (value === "realtime" || value === "real") return { pace: "realtime" };
@@ -44,6 +76,7 @@ function flushLoop() {
   var on = pendingLoop;
   pendingLoop = null;
   loopInFlight = true;
+  var request = beginStateRequest("set_loop");
   var body = { action: "set_loop", loop: on };
   var runId = selectedRunId("set_loop");
   if (runId) body.run_id = runId;
@@ -60,6 +93,10 @@ function flushLoop() {
   }).then(function (result) {
     loopInFlight = false;
     var next = result.payload && result.payload.state;
+    if (!acceptStateResponse(request, next)) {
+      if (pendingLoop !== null) flushLoop();
+      return;
+    }
     var controls = next && next.controls;
     if (controls && typeof controls.loop === "boolean") {
       if (state && state.controls) state.controls.loop = controls.loop;
@@ -78,7 +115,7 @@ function flushLoop() {
     if (pendingLoop !== null) flushLoop();
   }).catch(function (error) {
     loopInFlight = false;
-    setNotice("Workbench connection failed: " + error);
+    if (stateRequestIsCurrent(request)) setNotice("Workbench connection failed: " + error);
     if (pendingLoop !== null) flushLoop();
   });
 }
@@ -91,6 +128,7 @@ var controlInFlight = false;
 async function controlAction(action, extra) {
   if (controlInFlight) return;
   controlInFlight = true;
+  var request = beginStateRequest(action);
   var body = { action: action };
   var runId = selectedRunId(action);
   if (runId) body.run_id = runId;
@@ -102,6 +140,7 @@ async function controlAction(action, extra) {
       body: JSON.stringify(body)
     });
     var payload = await response.json();
+    if (!acceptStateResponse(request, payload.state)) return;
     if (!response.ok || payload.ok === false) {
       setNotice((payload && payload.message) || "Action was rejected.");
       return;
@@ -115,7 +154,7 @@ async function controlAction(action, extra) {
     }
     render(payload.state, { skipViewer: true });
   } catch (error) {
-    setNotice("Workbench connection failed: " + error);
+    if (stateRequestIsCurrent(request)) setNotice("Workbench connection failed: " + error);
   } finally {
     controlInFlight = false;
     flushSeek();
@@ -126,7 +165,7 @@ async function action(action, extra) {
   if (action === "resume" && seekInFlight) { pendingResume = true; return; }
   if (playbackControlAction(action)) return controlAction(action, extra);
   if (actionInFlight) return;
-  var requestGeneration = ++stateRequestGeneration;
+  var request = beginStateRequest(action);
   actionInFlight = true;
   var skipViewer = playbackControlAction(action);
   if (action === "reset" && seekInFlight) {
@@ -153,17 +192,13 @@ async function action(action, extra) {
       body: JSON.stringify(body)
     });
     var payload = await response.json();
-    if (requestGeneration === stateRequestGeneration) {
-      // Polls that started before this commit read the previous state.
-      stateRequestGeneration += 1;
-      requestGeneration = stateRequestGeneration;
-    }
-    if (payload.state && requestGeneration === stateRequestGeneration) {
+    if (!acceptStateResponse(request, payload.state)) return;
+    if (payload.state) {
       actionInFlight = false;
       render(payload.state, { skipViewer: skipViewer });
     }
     if (!response.ok || payload.ok === false) {
-      if (requestGeneration === stateRequestGeneration) {
+      if (stateRequestIsCurrent(request, payload.state)) {
         if (action === "select_plugins") {
           revertPluginDraft(extra && extra.step);
           if (payload.state) render(payload.state);
@@ -172,7 +207,7 @@ async function action(action, extra) {
       }
       return;
     }
-    if (requestGeneration === stateRequestGeneration) {
+    if (stateRequestIsCurrent(request, payload.state)) {
       if (action === "validate") setNotice("Source and plugin configuration validated.");
       if (action === "select_plugins") setNotice("Plugin selection applied.");
       if (action === "select_plugins") {
@@ -183,7 +218,7 @@ async function action(action, extra) {
       if (action === "start") settlePluginDraft();
     }
   } catch (error) {
-    if (requestGeneration === stateRequestGeneration) {
+    if (stateRequestIsCurrent(request)) {
       if (action === "select_plugins") {
         revertPluginDraft(extra && extra.step);
         render();
@@ -192,7 +227,7 @@ async function action(action, extra) {
     }
   } finally {
     actionInFlight = false;
-    if (requestGeneration === stateRequestGeneration) renderControls();
+    if (stateRequestIsCurrent(request)) renderControls();
     schedulePoll(pollDelay());
     flushSeek();
     flushResume();
@@ -311,7 +346,7 @@ function flushSeek() {
   seekTarget = position;
   seekInFlight = true;
   var id = ++seekRequestId;
-  var requestGeneration = ++stateRequestGeneration;
+  var request = beginStateRequest("seek");
   setNotice("Processing frames to " + position + "…", true);
   fetch("api/action", {
     method: "POST",
@@ -321,10 +356,9 @@ function flushSeek() {
     return response.json().then(function (payload) { return {ok: response.ok, payload: payload}; });
   }).then(function (result) {
     if (id !== seekRequestId) return;
-    // Ignore polls started before the seek completed.
-    if (requestGeneration === stateRequestGeneration) stateRequestGeneration += 1;
     seekInFlight = false;
     seekTarget = null;
+    if (!acceptStateResponse(request, result.payload.state)) return;
     if (result.payload.state) render(result.payload.state);
     if (!result.ok || result.payload.ok === false) {
       pendingResume = false;
@@ -337,7 +371,7 @@ function flushSeek() {
     seekInFlight = false;
     seekTarget = null;
     pendingResume = false;
-    setNotice("Workbench connection failed: " + error);
+    if (stateRequestIsCurrent(request)) setNotice("Workbench connection failed: " + error);
   }).finally(function () {
     if (id !== seekRequestId) return;
     flushSeek();

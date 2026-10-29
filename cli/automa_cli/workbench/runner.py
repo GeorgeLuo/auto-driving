@@ -15,7 +15,6 @@ from typing import Any, Callable
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
 from implementations.decision_cycle.catalog import CUSTOM_PRESET
 from autonomy.plugins import LocalPluginCatalog
-from autonomy.decision_cycle.runner import StepRunner, reset_plugin
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.recording import recorded_selections
@@ -408,24 +407,23 @@ class ImageReplayRunner:
         # wait it out. Plugin changes keep the action lock, which is the
         # frame boundary.
         if action in {"pause", "resume", "set_cadence", "set_loop"}:
-            with self._lock:
+            with self._condition:
                 self._check_run_id_locked(action, run_id)
-            if action == "set_cadence":
-                if cadence_ms is None and pace is None:
-                    raise ReplayActionError(
-                        "set_cadence requires cadence_ms or pace",
-                        status_code=400,
-                        boundary="input",
+                if action == "set_cadence":
+                    if cadence_ms is None and pace is None:
+                        raise ReplayActionError(
+                            "set_cadence requires cadence_ms or pace",
+                            status_code=400,
+                            boundary="input",
+                        )
+                    value = (
+                        self._validate_cadence(cadence_ms)
+                        if cadence_ms is not None
+                        else None
                     )
-                value = (
-                    self._validate_cadence(cadence_ms)
-                    if cadence_ms is not None
-                    else None
-                )
-                selected_pace = (
-                    self._validate_pace(pace) if pace is not None else self._pace
-                )
-                with self._lock:
+                    selected_pace = (
+                        self._validate_pace(pace) if pace is not None else self._pace
+                    )
                     if self._state["phase"] not in {"running", "paused"}:
                         raise ReplayActionError(
                             "cadence can only change while replay is running or paused",
@@ -440,12 +438,12 @@ class ImageReplayRunner:
                         pace=self._pace,
                     )
                     self._condition.notify_all()
-                return self.state()
-            if action == "set_loop":
-                return self._set_loop(loop)
-            if action == "pause":
-                return self._pause()
-            return self._resume()
+                    return self.state()
+                if action == "set_loop":
+                    return self._set_loop(loop)
+                if action == "pause":
+                    return self._pause()
+                return self._resume()
         # A newer seek invalidates an older catch-up without waiting for it.
         # The work itself still takes the frame lock one frame at a time.
         if action == "seek":
@@ -625,7 +623,8 @@ class ImageReplayRunner:
         """Commit a live selection without resetting retained plugin state."""
         runner = self._steps.get(step)
         checkpoint = copy.deepcopy(self._frame_checkpoint)
-        if isinstance(runner, StepRunner):
+        # Staged runners forward this protocol inside their bundle context.
+        if getattr(runner, "plugin_manager", None) is not None:
             manager = runner.plugin_manager
             previous = manager.selected
             retained = {definition.plugin_id: definition for definition, _ in runner.applied}
@@ -639,7 +638,7 @@ class ImageReplayRunner:
                 if checkpoint is not None:
                     for definition, plugin in runner.applied:
                         if definition not in definitions:
-                            reset_plugin(plugin, checkpoint["memory"])
+                            runner._reset_plugin(plugin, checkpoint["memory"])
                 runner.commit_selection(self._shared_memory)
                 runner.adopt_activation(activation)
             except Exception:

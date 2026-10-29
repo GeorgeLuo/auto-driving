@@ -80,13 +80,13 @@ async function poll() {
     return;
   }
   pollInFlight = true;
-  var requestGeneration = stateRequestGeneration;
+  var request = beginStateRequest();
   try {
     var response = await fetch("api/state", { cache: "no-store" });
     var payload = response.ok ? await response.json() : null;
-    if (payload && requestGeneration === stateRequestGeneration) render(payload);
+    if (payload && acceptStateResponse(request, payload)) render(payload);
   } catch (error) {
-    if (requestGeneration === stateRequestGeneration) {
+    if (stateRequestIsCurrent(request)) {
       setNotice("Workbench connection failed: " + error);
     }
   } finally {

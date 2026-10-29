@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import copy
+import tempfile
 import unittest
 from dataclasses import replace
+from pathlib import Path
 from unittest import mock
 
+from autonomy.runtime.plugin_loader import StagedStep
 from cli.automa_cli.workbench import runner as replay
 from cli.automa_cli.frontend.workbench_contract import ReplayActionError
+from cli.automa_cli.hosts.bundles import controller_bundle_paths, sync_controller_bundle
 from implementations.decision_cycle.catalog import selection_activation
-from tests.shared.cli.workbench_fixtures import ImageReplayRunner, image_source, _wait_until
+from tests.shared.cli.workbench_fixtures import ImageReplayRunner, image_source, write_manifest, _wait_until
 
 
 class LiveSelectionTests(unittest.TestCase):
@@ -22,6 +26,51 @@ class LiveSelectionTests(unittest.TestCase):
 
     def select(self, runner, run_id, plugins, step="perception"):
         return runner.dispatch("select_plugins", run_id=run_id, step=step, active_plugin_ids=plugins)
+
+    def test_bundled_selection_keeps_retained_instances_and_loads_additions_in_bundle(self):
+        with tempfile.TemporaryDirectory() as directory, image_source(3) as root:
+            bundle = controller_bundle_paths(Path(directory) / "vehicle")
+            sync_controller_bundle(bundle, output=None)
+            code = Path(bundle["root_dir"])
+            (code / "implementations/recorded_frame.py").write_text(
+                "from implementations.decision_cycle.perception.plugins.frame.plugin import FrameObservationPlugin\n"
+                "class RecordedFrame(FrameObservationPlugin):\n"
+                "    def __init__(self):\n"
+                "        self.reset_count = 0\n"
+                "    def reset(self, shared_memory=None):\n"
+                "        from implementations.recorded_frame import RESET_KEY\n"
+                "        self.reset_count += 1\n"
+                "        shared_memory.pop(RESET_KEY, None)\n"
+                "RESET_KEY = 'recorded.frame'\n",
+                encoding="utf-8",
+            )
+            activation = replace(
+                selection_activation("perception", plugins=["frame"]),
+                plugin_specs={"frame": "implementations.recorded_frame:RecordedFrame"},
+                metadata={"controller_bundle": {"root_dir": str(code)}},
+            )
+            write_manifest(root, {"frames": [
+                {"frame_id": f"frame-{index}", "image_path": f"frame_{index:02d}.png",
+                 "steps": {"perception": activation.to_payload()}}
+                for index in range(3)
+            ]})
+            runner, run_id = self.paused(root)
+            step = runner._steps["perception"]
+            self.assertIsInstance(step, StagedStep)
+            plugin = step.plugins["frame"]
+            self.select(runner, run_id, ["frame", "floor_plane"])
+            self.assertIs(runner._steps["perception"], step)
+            self.assertIs(step.plugins["frame"], plugin)
+            self.assertEqual(plugin.reset_count, 0)
+            self.assertEqual(step.plugin_ids, ("frame", "floor_plane"))
+            self.assertTrue(Path(step.plugins["floor_plane"].perceive.__code__.co_filename).is_relative_to(code))
+            # Removed plugins reset both maps inside the same bundle context.
+            runner._shared_memory["recorded.frame"] = True
+            runner._frame_checkpoint["memory"]["recorded.frame"] = True
+            self.select(runner, run_id, ["floor_plane"])
+            self.assertNotIn("recorded.frame", runner._shared_memory)
+            self.assertNotIn("recorded.frame", runner._frame_checkpoint["memory"])
+            self.assertEqual(plugin.reset_count, 2)
 
     def test_running_addition_keeps_history_instances_and_tuned_configs(self):
         activation = selection_activation("perception", plugins=["motion_tracks"])

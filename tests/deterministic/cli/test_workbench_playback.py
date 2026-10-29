@@ -62,6 +62,70 @@ class SharedMemoryProbe:
 
 
 class WorkbenchTests(unittest.TestCase):
+    def test_reset_start_cannot_interleave_control_validation_and_mutation(self):
+        for action, method, extra in (
+            ("pause", "_pause", {}),
+            ("resume", "_resume", {}),
+            ("set_cadence", "_validate_cadence", {"cadence_ms": 1000}),
+            ("set_loop", "_set_loop", {"loop": True}),
+        ):
+            with self.subTest(action=action), image_source(3) as root:
+                runner = ImageReplayRunner(root, cadence_ms=30000)
+                self.addCleanup(runner.close)
+                old_id = runner.start()["run_id"]
+                _wait_until(lambda: runner.state()["current_frame"] is not None)
+                if action == "resume":
+                    runner.dispatch("pause", run_id=old_id)
+                entered = threading.Event()
+                replacing = threading.Event()
+                replaced = threading.Event()
+                results, failures, restarted = [], [], []
+                original = getattr(runner, method)
+
+                def gated(*args, **kwargs):
+                    if threading.current_thread() is control:
+                        entered.set()
+                        if not replacing.wait(2):
+                            raise TimeoutError("replacement did not start")
+                        # Let Reset/Start finish if validation released the lock.
+                        replaced.wait(0.15)
+                    return original(*args, **kwargs)
+
+                def mutate():
+                    try:
+                        results.append(runner.dispatch(action, run_id=old_id, **extra))
+                    except Exception as exc:
+                        failures.append(exc)
+
+                def restart():
+                    replacing.set()
+                    try:
+                        runner.dispatch("reset", run_id=old_id)
+                        restarted.append(runner.start())
+                    except Exception as exc:
+                        failures.append(exc)
+                    finally:
+                        replaced.set()
+
+                control = threading.Thread(target=mutate)
+                replacement = threading.Thread(target=restart)
+                with mock.patch.object(runner, method, side_effect=gated):
+                    control.start()
+                    self.assertTrue(entered.wait(2))
+                    replacement.start()
+                    control.join(3)
+                    replacement.join(3)
+                self.assertFalse(control.is_alive())
+                self.assertFalse(replacement.is_alive())
+                self.assertEqual(failures, [])
+                self.assertEqual(results[0]["run_id"], old_id)
+                self.assertNotEqual(restarted[0]["run_id"], old_id)
+                before = runner.state()
+                with self.assertRaisesRegex(ReplayActionError, "stale"):
+                    runner.dispatch(action, run_id=old_id, **extra)
+                self.assertEqual(runner.state()["phase"], before["phase"])
+                self.assertEqual(runner.state()["controls"], before["controls"])
+
     def test_new_seek_interrupts_uncached_catch_up_after_current_frame(self):
         with image_source(8) as root:
             mapper = BlockingSecondMapper()

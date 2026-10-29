@@ -38,12 +38,13 @@ class TimeoutInputTests(unittest.TestCase):
             self.assertEqual(stderr, "")
             self.assertNotIn("Traceback", stdout)
             payload = json.loads(stdout)
-            self.assertEqual(payload["schema"], "automa_cli_error_v1")
-            self.assertEqual(payload["error"], "timeout_invalid")
+            self.assertEqual(payload["schema"], "automa_cli_error")
+            self.assertEqual(payload["error_code"], "timeout_invalid")
             self.assertEqual(payload["layer"], "input")
             self.assertEqual(payload["exit_code"], 2)
             self.assertEqual(payload["details"]["argument"], "--timeout-s")
-            self.assertIn(TIMEOUT_MESSAGE, payload["message"])
+            self.assertIn(TIMEOUT_MESSAGE, payload["error"])
+            self.assertNotIn("message", payload)
             get_status.assert_not_called()
 
     def test_invalid_status_values_use_the_existing_human_error_channel(self) -> None:

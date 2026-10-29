@@ -65,7 +65,7 @@ class ComposedPlanDecodeTests(unittest.TestCase):
         legacy["schema"] = "action_plan_v0"
         with self.assertRaises(DecisionSurfaceError) as raised:
             _strict_decode_plan(legacy, field="cycle.plan")
-        self.assertEqual(raised.exception.error, "latest_frame_invalid")
+        self.assertEqual(raised.exception.error_code, "latest_frame_invalid")
         self.assertIn("action_plan_v1", str(raised.exception))
 
     def test_a_junk_command_or_reason_is_rejected_by_field(self) -> None:

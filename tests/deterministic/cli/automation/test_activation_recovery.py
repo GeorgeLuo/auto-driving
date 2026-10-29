@@ -103,7 +103,8 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                         runtime_root=runtime_root, extra_env=env, check=False,
                     )
                     payload = json.loads(machine.stdout)
-                    self.assertEqual(payload["error"], "activation_invalid")
+                    self.assertEqual(payload["error_code"], "activation_invalid")
+                    self.assertIn(f"Invalid {step} activation:", payload["error"])
                     self.assertEqual(payload["details"]["activation_problems"][0]["command"], command)
 
 

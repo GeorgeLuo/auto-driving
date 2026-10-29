@@ -61,7 +61,7 @@ def get_vehicle_status(
     }
 
     # Imported lazily because automation consumes vehicle discovery.
-    from ..hosts.automation import _collect_automation_status
+    from ..hosts.automation_status import _collect_automation_status
 
     remaining = operation_timeout - (time.monotonic() - started)
     automation = _collect_automation_status(

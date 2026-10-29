@@ -592,7 +592,7 @@ def _vehicle_label(configuration: dict[str, Any]) -> str:
 
 
 def delete_host(*, host_name: str, verbose: bool = False, output: TextIO | None = None) -> CommandResult:
-    from .automation import stop_host_automation
+    from .automation_stop import stop_host_automation
     from .runtime_hosts import stop_chase_host
 
     configuration, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)

@@ -2,8 +2,8 @@
 
 - ``commands``: the ``hosts`` parser and its handlers.
 - ``create``, ``update``, ``delete``: ``deploy``, with ``donkeycar_vendor`` and ``bundles``.
-- ``run``, ``stop``, ``restart``, ``status``: ``automation``, with ``runtime_monitor``,
-  ``run_record`` and ``host_status``.
+- ``run``, ``restart``: ``automation``; ``stop``: ``automation_stop``; ``status``:
+  ``automation_status``; with ``runtime_monitor``, ``run_record`` and ``host_status``.
 - ``info``, ``viewer``: ``perception``, ``memory``, ``decision_steps`` and
   ``streaming``, with ``stream_output``, ``decision_live`` and ``view_discovery``.
 - ``memory``: ``memory`` for reset.

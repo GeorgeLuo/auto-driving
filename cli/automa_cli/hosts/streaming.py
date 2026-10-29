@@ -33,6 +33,7 @@ from .host_publications import (
     fetch_observation_publication,
 )
 from ..plugins.catalog import PluginCatalogClient
+from .run_record import timestamp_ms
 from .runtime_hosts import RuntimeHostError, local_hosts, runtime_base_url
 from .runtime_monitor import PERCEPTION_COPY_INTERVAL_S, _pause_s
 from ..frontend.server import RuntimeViewServer
@@ -128,7 +129,7 @@ def _unavailable_probe(schema: str, host_name: str, error: str) -> dict[str, Any
         "host_name": host_name,
         "status": "unavailable",
         "error": error,
-        "probed_at_ms": _timestamp_ms(),
+        "probed_at_ms": timestamp_ms(),
     }
 
 
@@ -402,7 +403,7 @@ def _probe_perception(
         "schema": PERCEPTION_LIVE_SCHEMA,
         "host_name": host_name,
         "endpoint": f"{base_url}{LATEST_JSON_PATH}",
-        "probed_at_ms": _timestamp_ms(),
+        "probed_at_ms": timestamp_ms(),
     }
     if fetch_error is not None or publication is None:
         return {**probe, "status": "error", "error": fetch_error or "No publication was read."}
@@ -522,10 +523,6 @@ def _shown(value: Any, default: str = "unknown") -> Any:
     return default if value is None else value
 
 
-def _timestamp_ms() -> int:
-    return int(time.time() * 1000)
-
-
 def stream_host_memory(
     *,
     host_name: str,
@@ -634,7 +631,7 @@ def _probe_step(step: str, *, host_name: str, base_url: str, timeout_s: float) -
         "schema": LIVE_STEP_SCHEMAS[step],
         "host_name": host_name,
         "endpoint": f"{base_url}/host/status",
-        "probed_at_ms": _timestamp_ms(),
+        "probed_at_ms": timestamp_ms(),
     }
     try:
         status = fetch_autonomy_status(base_url, timeout_s=timeout_s)

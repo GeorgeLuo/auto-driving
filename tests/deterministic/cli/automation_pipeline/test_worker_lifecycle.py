@@ -15,8 +15,8 @@ from cli.automa_cli.hosts.automation import (
     _wait_for_automation_startup,
     record_host_automation_terminal_result,
     start_host_automation_background,
-    stop_host_automation,
 )
+from cli.automa_cli.hosts.automation_stop import stop_host_automation
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     _ExitedProcess,
     _RunningProcess,

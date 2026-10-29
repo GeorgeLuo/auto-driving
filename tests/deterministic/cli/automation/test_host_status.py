@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from cli.automa_cli.hosts.automation import _host_runtime_status
+from cli.automa_cli.hosts.automation_status import _host_runtime_status
 from tests.support.fake_hosts import answering
 
 

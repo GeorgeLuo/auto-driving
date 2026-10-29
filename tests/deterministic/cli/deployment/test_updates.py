@@ -118,7 +118,7 @@ class HostLifecycleTests(unittest.TestCase):
     def test_delete_aborts_when_an_active_run_cannot_stop(self):
         write_host_fixture(self.root, "car", provider="picar")
         with patch.object(deploy, "host_state", return_value={"state": "running"}), \
-             patch("cli.automa_cli.hosts.automation.stop_host_automation",
+             patch("cli.automa_cli.hosts.automation_stop.stop_host_automation",
                    return_value=CommandResult(2, "could not release control")), \
              patch.object(deploy, "_run_step") as remote:
             result = deploy.delete_host(host_name="car")

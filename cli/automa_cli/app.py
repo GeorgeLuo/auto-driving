@@ -6,7 +6,7 @@ from typing import Any
 
 from autonomy.plugins import DuplicatePluginIdError
 
-from .hosts.automation import get_hosts_status
+from .hosts.automation_status import get_hosts_status
 from .hosts.commands import register_hosts
 from .plugins.commands import register_plugins
 from .simulators.commands import register_simulators

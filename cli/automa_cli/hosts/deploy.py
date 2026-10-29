@@ -15,7 +15,7 @@ from urllib import error as urllib_error
 from urllib import request as urllib_request
 from urllib.parse import urlparse
 
-from autonomy.decision_cycle.activation import STEPS, activation_presets
+from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
 
 from ..shared.command_result import CommandResult
@@ -58,7 +58,8 @@ DONKEY_READY_TIMEOUT_S = 30.0
 DEFAULT_PI_HOME = "/home/piracer"
 DEFAULT_PI_USER = "piracer"
 
-_REMOTE_AUTONOMY_INSTALL_SCRIPT = r"""
+# The script runs on the Pi without the repository, so it receives STEPS as source.
+_REMOTE_AUTONOMY_INSTALL_SCRIPT = f"STEPS = {STEPS!r}\n" + r"""
 import hashlib
 import json
 import os
@@ -75,7 +76,6 @@ expected_sha256 = sys.argv[4]
 release_id = sys.argv[5]
 # <step>-active.json files and identity.json, from the artifact directory.
 sources = [Path(item) for item in sys.argv[6:]]
-STEPS = ("perception", "observation", "memory", "proposal", "plan", "action")
 
 digest = hashlib.sha256()
 with archive.open("rb") as handle:
@@ -351,7 +351,7 @@ def _deploy_picar_release(
 
     deployed_steps = {step: list(activation.plugins) for step, activation in activations.items()}
     generation_id = decision_generation_id(
-        {step: activations.get(step) for step in ("proposal", "plan", "action")}
+        {step: activations.get(step) for step in DECISION_STEPS}
     )
     if restart:
         try:
@@ -473,7 +473,7 @@ def _update_local_autonomy(
         "presets": activation_presets(activations),
         "steps": steps,
         "generation_id": decision_generation_id(
-            {step: activations.get(step) for step in ("proposal", "plan", "action")}
+            {step: activations.get(step) for step in DECISION_STEPS}
         ),
         "restarted": restarted,
     }

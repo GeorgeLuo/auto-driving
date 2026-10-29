@@ -14,6 +14,7 @@ import math
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
+from functools import partial
 from copy import deepcopy
 from typing import Any
 from urllib.parse import urlencode
@@ -42,6 +43,7 @@ from implementations.runtime.picar.host_telemetry import (
     HOST_TELEMETRY_MODES,
     HOST_TELEMETRY_REASONS,
 )
+from ..shared.publication_fields import PublicationError, require_id, require_mapping
 
 HOST_TELEMETRY_RECORDS_SCHEMA = "automa_host_boundary_telemetry_records"
 HOST_TELEMETRY_PANEL_SCHEMA = "automa_host_boundary_telemetry_panel"
@@ -49,36 +51,12 @@ HOST_TELEMETRY_NORMALIZED_SCHEMA = "automa_host_boundary_telemetry_normalized"
 HOST_TELEMETRY_RECORDS_NORMALIZED_SCHEMA = "automa_host_boundary_telemetry_records_normalized"
 
 
-class DecisionPublicationError(ValueError):
+class DecisionPublicationError(PublicationError):
     """A decision publication is absent or fails normalization."""
 
-    def __init__(
-        self,
-        reason: str,
-        message: str,
-        *,
-        details: dict[str, Any] | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.reason = reason
-        self.message_text = message
-        self.details = details or {}
 
-
-class HostTelemetryError(ValueError):
+class HostTelemetryError(PublicationError):
     """A host-boundary telemetry publication fails its consumer contract."""
-
-    def __init__(
-        self,
-        reason: str,
-        message: str,
-        *,
-        details: dict[str, Any] | None = None,
-    ) -> None:
-        super().__init__(message)
-        self.reason = reason
-        self.message_text = message
-        self.details = details or {}
 
 
 @dataclass
@@ -450,25 +428,12 @@ def _required_int(
     return number
 
 
-def _required_id(value: object, *, field: str) -> str:
-    try:
-        return require_ascii_id(value, field_name=field)
-    except ValueError as exc:
-        raise _publication_error(
-            "incomplete",
-            f"Decision publication {field} is not a valid identity.",
-            field=field,
-        ) from exc
+def _decision_field_error(text: str, field: str) -> DecisionPublicationError:
+    return _publication_error("incomplete", f"Decision publication {text}", field=field)
 
 
-def _require_mapping(value: object, *, field: str) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise _publication_error(
-            "incomplete",
-            f"Decision publication {field} must be an object.",
-            field=field,
-        )
-    return value
+_required_id = partial(require_id, invalid=_decision_field_error)
+_require_mapping = partial(require_mapping, invalid=_decision_field_error)
 
 
 def _host_telemetry_error(
@@ -486,25 +451,12 @@ def _host_telemetry_error(
     return HostTelemetryError(reason, message, details=error_details)
 
 
-def _host_require_mapping(value: object, *, field: str) -> dict[str, Any]:
-    if not isinstance(value, dict):
-        raise _host_telemetry_error(
-            "field_invalid",
-            f"Host telemetry {field} must be an object.",
-            field=field,
-        )
-    return value
+def _telemetry_field_error(text: str, field: str) -> HostTelemetryError:
+    return _host_telemetry_error("field_invalid", f"Host telemetry {text}", field=field)
 
 
-def _host_require_id(value: object, *, field: str) -> str:
-    try:
-        return require_ascii_id(value, field_name=field)
-    except ValueError as exc:
-        raise _host_telemetry_error(
-            "field_invalid",
-            f"Host telemetry {field} is not a valid identity.",
-            field=field,
-        ) from exc
+_host_require_mapping = partial(require_mapping, invalid=_telemetry_field_error)
+_host_require_id = partial(require_id, invalid=_telemetry_field_error)
 
 
 def _host_require_epoch_ms(value: object, *, field: str) -> int:
@@ -519,7 +471,14 @@ def _host_require_epoch_ms(value: object, *, field: str) -> int:
 
 
 def _host_require_nonnegative_int(value: object, *, field: str) -> int:
-    return _host_require_epoch_ms(value, field=field)
+    try:
+        return require_safe_int(value, field_name=field)
+    except ValueError as exc:
+        raise _host_telemetry_error(
+            "field_invalid",
+            f"Host telemetry {field} must be a non-negative integer.",
+            field=field,
+        ) from exc
 
 
 def _host_require_number(value: object, *, field: str) -> float:

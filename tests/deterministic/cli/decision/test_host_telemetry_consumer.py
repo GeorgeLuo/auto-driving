@@ -514,6 +514,19 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             normalize_host_telemetry_record(invalid_sequence, now_ms=NOW_MS)
         self.assertEqual(raised.exception.reason, "field_invalid")
 
+    def test_a_negative_count_reports_an_integer_not_an_epoch(self) -> None:
+        for path, key in (("limits", "max_gap_ms"), ("host_tick", "source_age_ms")):
+            record = _record()
+            record[path][key] = -1
+            with self.subTest(field=f"{path}.{key}"):
+                with self.assertRaises(ValueError) as raised:
+                    normalize_host_telemetry_record(record, now_ms=NOW_MS)
+                self.assertEqual(raised.exception.reason, "field_invalid")
+                self.assertEqual(
+                    raised.exception.message_text,
+                    f"Host telemetry {path}.{key} must be a non-negative integer.",
+                )
+
     def test_records_route_distinguishes_contiguous_coverage_from_gap(self) -> None:
         second = _record(
             sequence=2,

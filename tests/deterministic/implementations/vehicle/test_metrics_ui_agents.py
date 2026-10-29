@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import struct
+import threading
 import unittest
 from unittest import mock
 
@@ -83,6 +84,38 @@ class PresenceTests(unittest.TestCase):
             [f"WARNING:implementations.vehicle.chase_sim.presence:Not attached to Metrics UI at "
              f"{server.url}: unexpected registration reply; retrying every 0.05s"],
         )
+
+
+class CloseAgentsTests(unittest.TestCase):
+    def test_a_dropped_client_does_not_stop_close_of_the_agents_still_up(self) -> None:
+        class Socket:
+            def __init__(self, error: OSError | None = None) -> None:
+                self.error = error
+                self.sent: list[bytes] = []
+
+            def sendall(self, data: bytes) -> None:
+                if self.error is not None:
+                    raise self.error
+                self.sent.append(data)
+
+        class Handler:
+            def __init__(self, error: OSError | None = None) -> None:
+                self.send_lock = threading.Lock()
+                self.request = Socket(error)
+
+        dropped = Handler(BrokenPipeError())
+        closed = Handler(OSError(9, "Bad file descriptor"))
+        live = Handler()
+        with fake_metrics_ui() as server:
+            with server._agents_lock:
+                server._agents[dropped] = {}
+                server._agents[closed] = {}
+                server._agents[live] = {}
+            server.close_agents("server shutdown (api)")
+        self.assertEqual(len(live.request.sent), 1)
+        frame = live.request.sent[0]
+        self.assertEqual(frame[0], 0x88)
+        self.assertIn(b"server shutdown (api)", frame)
 
 
 if __name__ == "__main__":

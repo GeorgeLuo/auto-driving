@@ -136,8 +136,6 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `hosts update` | Packages a versioned release for the vehicle's host and stages every step's default with it, replacing whatever each step had staged (`plugins list` marks the defaults): a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `hosts run\|stop\|restart\|status` | Starts, stops, restarts or inspects a run on the host. Status includes the vehicle endpoint, host URL and simulator attachment. `stop` ends the run; the host stays attached until `hosts delete`. |
 | `hosts memory reset` | Clears live retained evidence on the runtime host and starts a new epoch. Exits 0 once the host's answer shows every plugin on a new epoch or empty, even while a running session refills memory. Does not move the vehicle. |
-| `hosts memory viability` | Memory health check: 60s poll of the runtime host's live memory step (update cadence, duration, failures, health, epoch stability). Saves `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
-| `hosts perception viability` | Perception health check: 60s cadence/freshness measurement of the runtime host's observation publication that also requires that no cycle's control was applied (host RSS/CPU when the vehicle supplies an `ssh_target`). Saves `report.json` and `summary.md` under `lab/runs/perception-viability/` unless `--no-record`. |
 | `hosts operation ...` | Runs a bounded, explicitly requested vehicle operation. |
 | `simulators create` | Starts a headless Chase simulator from the Metrics UI checkout at `AUTOMA_METRICS_UI_DIR`, with its launcher's default configuration, on the first free port from 5051, and prints its URL. It runs until `simulators delete --url` ends it, which refuses while a host was created at it. |
 | `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
@@ -224,14 +222,6 @@ that plugin's `health`, `epoch_id`, `record_count`, and `bounds` alongside it;
 `last_error` and counters report the step's update health.
 Use the nested perception result and plugin reports to inspect plugin outcomes;
 `live` describes availability rather than promising that every plugin succeeded.
-
-Both viability commands exit 0 for a passed measurement, 1 for failed
-measurement gates, and 2 when no runtime host can be addressed. Under `--json`,
-that failure returns `host_step_viability_error` with `host_name`,
-`step`, `error` (`no_runtime_host`), and the diagnostic in `message`. Reports
-are also saved in JSON mode; use `--json --no-record` for a report printed only
-to stdout. The `control_never_applied` gate fails if any sampled cycle applied
-control, so measure a running host in manual or observe-only mode.
 
 `hosts update` requires a host created with `hosts create --name`. Its
 configuration record identifies the host and the vehicle endpoint. A directory

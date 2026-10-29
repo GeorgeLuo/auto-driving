@@ -58,8 +58,8 @@ class LiveHostTestCase(unittest.TestCase):
         self.host = stack.enter_context(chase_runtime(self.runtime_root))
         self.client = RuntimeClient(self.host.base_url, timeout_s=3.0)
 
-    def observe(self, mode: str = "observe_only") -> None:
-        self.client.start(RunConfiguration(mode=mode, num_decisions=0))
+    def observe(self) -> None:
+        self.client.start(RunConfiguration(mode="observe_only", num_decisions=0))
         self.addCleanup(self.client.stop)
         wait_until(
             lambda: any(

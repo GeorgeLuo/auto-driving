@@ -8,7 +8,7 @@
 - ``stage``: ``step_activations``, ``step_schema`` and ``step_hosting``.
 - ``info``, ``viewer``: ``perception``, ``memory``, ``decision_steps`` and
   ``streaming``, with ``stream_output``, ``decision_live`` and ``view_discovery``.
-- ``memory``, ``perception``: ``viability`` for the viability measurements, ``memory`` for reset.
+- ``memory``: ``memory`` for reset.
 - ``plugins``: ``plugins.catalog`` (shared with top-level ``plugins list``).
 - ``operation``: ``operations``.
 - ``workbench``: ``workbench`` and the ``workbench_*`` modules.

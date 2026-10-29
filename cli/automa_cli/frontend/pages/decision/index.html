@@ -698,7 +698,7 @@
           throw new Error(payload.reason || `HTTP ${response.status}`);
         }
         if (supersededPayload(payload)) return;
-        if (!nonExpiredPayload(payload)) throw new Error("action snapshot expired");
+        if (!nonExpiredPayload(payload)) throw new Error("decision expired");
         const imageUrl = payload.current_image?.url;
         if (!imageUrl) throw new Error("exact action image is unavailable");
         if (imageUrl !== loadedImageUrl) {
@@ -706,7 +706,7 @@
         }
         if (requestToken !== refreshToken || paused) return;
         if (!nonExpiredPayload(payload, Date.now()) || supersededPayload(payload)) {
-          throw new Error("action snapshot expired or superseded");
+          throw new Error("decision expired or superseded");
         }
         if (imageUrl !== loadedImageUrl) {
           frameImage.src = imageUrl;
@@ -719,7 +719,7 @@
       } catch (error) {
         if (requestToken !== refreshToken) return;
         if (latest !== null && loadedImageUrl !== null) {
-          setStatus(`Frozen/stale snapshot | ${error.message}`, "stale");
+          setStatus(`Showing last decision | ${error.message}`, "stale");
         } else {
           setStatus(`Waiting: ${error.message}`, "error");
         }
@@ -736,9 +736,9 @@
     pauseButton.addEventListener("click", () => {
       paused = !paused;
       pauseButton.textContent = paused ? "Resume" : "Pause";
-      const hasSnapshot = latest !== null && loadedImageUrl !== null;
-      const pausedStatus = hasSnapshot ? "Paused | frozen snapshot" : "Paused | waiting for snapshot";
-      setStatus(paused ? pausedStatus : "Live", paused && hasSnapshot ? "stale" : "live");
+      const hasDecision = latest !== null && loadedImageUrl !== null;
+      const pausedStatus = hasDecision ? "Paused | last decision" : "Paused | waiting for decision";
+      setStatus(paused ? pausedStatus : "Live", paused && hasDecision ? "stale" : "live");
       if (!paused) refresh();
     });
     window.addEventListener("resize", drawOverlays);

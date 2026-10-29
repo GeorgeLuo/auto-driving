@@ -105,7 +105,7 @@ function cells(plugin) {
   await poll();
   assert(nodes.get('catalog').classList.contains('stale'));
   assert.strictEqual(nodes.get('status').hidden, false);
-  assert(nodes.get('status').textContent.includes('Showing stale snapshot'));
+  assert(nodes.get('status').textContent.includes('Showing stale catalog'));
   for (const row of nodes.get('plugins').children) assert.strictEqual(row.children[2].children[0].ariaLabel, 'Unknown');
   failure = null;
   httpOk = false;

@@ -149,7 +149,7 @@ changes selections for all six steps. **Origin** identifies the available entry 
 uploaded, independently of which revision is applied. Uploads add rows or
 replace an available revision without editing the packaged catalog files.
 Enabled uses green and red dots, with an amber **Unknown** dot when selection
-data is unavailable. A polling failure marks the last rows as a stale snapshot
+data is unavailable. A polling failure marks the last rows as stale catalog data
 until a successful refresh. Messages above the table appear only for errors.
 Above the table, the page lays out the six steps left to right in run order,
 each listing its applied plugins top to bottom in the order they run. It

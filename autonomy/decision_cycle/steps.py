@@ -71,7 +71,7 @@ def step_runner(activation: StepActivation) -> Any:
     return STEP_RUNNERS[activation.step].from_activation(activation)
 
 
-def snapshot_runner_activation(runner: Any, step: str) -> StepActivation | None:
+def applied_runner_activation(runner: Any, step: str) -> StepActivation | None:
     """Preserve staged context while describing the definitions actually applied."""
 
     loaded = getattr(runner, "activation", None)
@@ -91,22 +91,22 @@ def snapshot_runner_activation(runner: Any, step: str) -> StepActivation | None:
                    plugin_specs=specs, plugin_configs=configs)
 
 
-def snapshot_step_activations(steps: DecisionSteps) -> dict[str, Any]:
+def applied_step_activations(steps: DecisionSteps) -> dict[str, Any]:
     """Detached executable selections actually applied by the frame's runners.
 
     A pending selection is not a running selection. Unconfigured callables
     have no executable activation and are omitted.
     """
-    snapshot: dict[str, Any] = {}
+    activations: dict[str, Any] = {}
     for step in STEPS:
         runner = getattr(steps, step)
         if runner is None:
-            snapshot[step] = None
+            activations[step] = None
             continue
-        activation = snapshot_runner_activation(runner, step)
+        activation = applied_runner_activation(runner, step)
         if activation is not None:
-            snapshot[step] = activation.to_payload()
-    return snapshot
+            activations[step] = activation.to_payload()
+    return activations
 
 
 def decision_steps(

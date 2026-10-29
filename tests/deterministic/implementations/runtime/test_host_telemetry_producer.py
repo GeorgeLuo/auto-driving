@@ -377,7 +377,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
         )
         self.assertEqual(result["record"]["host_tick"]["published_at_ms"], 10_001)
 
-    def test_latest_and_history_are_atomic_detached_snapshots(self) -> None:
+    def test_latest_and_history_are_atomic_detached_records(self) -> None:
         store = _store()
         for index in range(3):
             _observe(store, index)

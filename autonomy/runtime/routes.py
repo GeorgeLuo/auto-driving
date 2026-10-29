@@ -225,7 +225,7 @@ class RuntimeRoutes:
 
     def _transaction(self, kind: str, query: dict[str, list[str]], body: bytes,
                      request_headers: Mapping[str, str]) -> Response:
-        publication, capture, revision = self.loop.transaction_snapshot(kind)
+        publication, capture, revision = self.loop.read_transaction(kind)
         usable = (publication.get("status") == "ready" if kind == "decision"
                   else publication.get("health") in {"healthy", "stale"})
         state = publication.get("status") if kind == "decision" else publication.get("health")

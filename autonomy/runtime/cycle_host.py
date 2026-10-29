@@ -36,7 +36,7 @@ from autonomy.decision_cycle.cycle import (
     timestamp_ms,
 )
 from autonomy.decision_cycle.steps import (
-    STEP_RUNNERS, decision_steps, load_decision_steps, snapshot_step_activations,
+    STEP_RUNNERS, decision_steps, load_decision_steps, applied_step_activations,
 )
 from autonomy.decision_cycle.action.publication import write_host_inputs
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
@@ -142,7 +142,7 @@ class AutonomyCycleHost:
         for step in STEPS:
             if step in activations:
                 self.watch_selection(step, step_activation_path(runtime_root, step), activations[step])
-        loaded = snapshot_step_activations(self.steps)
+        loaded = applied_step_activations(self.steps)
         decision = {step: loaded[step] for step in DECISION_STEPS}
         self.use_applied_decision({
             "generation_id": activation_generation_id(decision, prefix="decision"),
@@ -169,7 +169,7 @@ class AutonomyCycleHost:
             return requested
 
     def arm(self, selections: Mapping[str, Any]) -> dict[str, Any]:
-        """Add/update named definitions from one catalog snapshot and load them now.
+        """Add/update named definitions from one catalog read and load them now.
 
         A step that runs exactly one plugin swaps it for the named definition.
         Loading between cycles answers the request with any import or
@@ -180,7 +180,7 @@ class AutonomyCycleHost:
         if not isinstance(selections, Mapping) or not selections:
             raise ValueError("arming requires a selection map of steps to ordered plugin IDs")
         with self._lock:
-            _, available = self.catalog.snapshot()
+            _, available = self.catalog.read()
             definitions = {(item.step, item.plugin_id): item for item in available}
             requested = {}
             for step, ids in selections.items():
@@ -208,7 +208,7 @@ class AutonomyCycleHost:
         if not isinstance(selections, Mapping) or not selections:
             raise ValueError("disarming requires a selection map of steps to ordered plugin IDs")
         with self._lock:
-            _, available = self.catalog.snapshot()
+            _, available = self.catalog.read()
             known = {(item.step, item.plugin_id) for item in available}
             requested = {}
             for step, ids in selections.items():
@@ -345,10 +345,10 @@ class AutonomyCycleHost:
         if applied is None:
             return
         steps = dict(applied["steps"])
-        snapshot = snapshot_step_activations(self.steps)
+        activations = applied_step_activations(self.steps)
         for step in DECISION_STEPS:
-            if step in snapshot:
-                steps[step] = snapshot[step]
+            if step in activations:
+                steps[step] = activations[step]
         try:
             generation_id = activation_generation_id(steps, prefix="decision")
         except (TypeError, ValueError):
@@ -424,7 +424,7 @@ class AutonomyCycleHost:
     def _record_frame_context(self, context: DecisionFrameContext) -> DecisionFrameContext:
         """Retain the applied selections even when a frame produces no cycle result."""
         self.last_context = replace(context, metadata={
-            **context.metadata, "step_activations": snapshot_step_activations(self.steps),
+            **context.metadata, "step_activations": applied_step_activations(self.steps),
         })
         return self.last_context
 

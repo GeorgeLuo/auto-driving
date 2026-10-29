@@ -132,7 +132,7 @@ class ControlExecution:
         self.last_application = ControlApplication(
             None, "manual", False, "not-started", AutonomyControl(reason="not-started")
         )
-        self._status_snapshot: dict[str, Any] = {}
+        self._status: dict[str, Any] = {}
         self._publish_status()
 
     @property
@@ -304,7 +304,7 @@ class ControlExecution:
                 self._publish_status()
 
     def _publish_status(self) -> None:
-        self._status_snapshot = {
+        self._status = {
             "mode": self._mode, "generation": self._generation,
             "closed": self._closed, "max_control_age_s": CONTROL_MAX_AGE_S,
             "application": self.last_application.to_dict(),
@@ -312,10 +312,10 @@ class ControlExecution:
 
     def status(self) -> dict[str, Any]:
         # Transport writes/acquisition can hold the authority lock. Inspection
-        # uses the last complete snapshot and never waits on those round trips.
+        # uses the last complete status and never waits on those round trips.
         if self._lock.acquire(blocking=False):
             try:
                 self._publish_status()
             finally:
                 self._lock.release()
-        return deepcopy(self._status_snapshot)
+        return deepcopy(self._status)

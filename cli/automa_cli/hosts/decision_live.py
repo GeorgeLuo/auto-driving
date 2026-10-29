@@ -114,7 +114,7 @@ def _accepted_pair(
     timeout_s: float,
     cache: TransactionCache | None = None,
 ) -> tuple[dict[str, Any], tuple[bytes, str]]:
-    """Accept the decision and image the host published as one snapshot."""
+    """Accept the decision and image the host published as one transaction."""
 
     deadline = time.monotonic() + min(1.0, max(0.2, float(timeout_s)))
     last_error = "matched decision image is unavailable"
@@ -338,7 +338,7 @@ def _with_host_telemetry_interval_coverage(
         # A live producer can publish the joined point between those reads, so
         # give the bounded history route one short retry before reporting an
         # honest coverage gap.  This only applies to the normal latest-point
-        # path; the identity-matching fallback already has a history snapshot.
+        # path; the identity-matching fallback already has a history response.
         point_present = any(
             isinstance(record, dict)
             and isinstance(record.get("host_tick"), dict)

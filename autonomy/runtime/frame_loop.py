@@ -352,8 +352,8 @@ class FrameLoop:
         with self._lock:
             return self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
 
-    def transaction_snapshot(self, kind: str) -> tuple[dict[str, Any], LatestObservationState | None, str]:
-        """Snapshot publication, capture and content revision before JPEG work."""
+    def read_transaction(self, kind: str) -> tuple[dict[str, Any], LatestObservationState | None, str]:
+        """Read publication, capture and content revision together before JPEG work."""
         with self._lock:
             publication = (self._decision_publication_from_locked_state(read_at_ms=timestamp_ms())
                            if kind == "decision" else self._publication_from_locked_state(read_at_ms=timestamp_ms()))

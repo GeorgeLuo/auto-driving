@@ -3,7 +3,7 @@
 The producer observes the values that the host has already selected at the
 post-``DriveMode``/pre-drivetrain boundary.  It never participates in command
 selection, performs network I/O, or reports actuator feedback.  Publications
-are detached in-memory snapshots so route readers cannot mutate the state that
+are detached in-memory records so route readers cannot mutate the state that
 the next reader or the next host tick observes.
 """
 
@@ -171,7 +171,7 @@ class HostTelemetryStore:
 
     ``observe`` is intentionally synchronous and memory-only.  The default
     ring retains 256 records, and every read returns a deep copy while holding
-    the same lock used by publication, so a reader sees one complete snapshot
+    the same lock used by publication, so a reader sees one complete record
     rather than a mixture of two host ticks.
     """
 

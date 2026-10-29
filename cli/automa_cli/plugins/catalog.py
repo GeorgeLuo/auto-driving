@@ -186,10 +186,10 @@ def list_plugins(*, host_name: str | None = None, url: str | None = None, step: 
     lines = [f"Host: {host_name}"] if host_name else []
     try:
         payload["url"] = url or catalog_url(host_name)
-        snapshot = PluginCatalogClient(payload["url"])()
-        if not snapshot.get("ok"):
-            raise RuntimeError(snapshot.get("error") or "Host plugin catalog is unavailable.")
-        arming = snapshot.get("arming")
+        catalog = PluginCatalogClient(payload["url"])()
+        if not catalog.get("ok"):
+            raise RuntimeError(catalog.get("error") or "Host plugin catalog is unavailable.")
+        arming = catalog.get("arming")
         if arming is None and not long:
             raise ValueError("This catalog does not arm plugins; add --long to list it.")
         if arming is not None:
@@ -200,9 +200,9 @@ def list_plugins(*, host_name: str | None = None, url: str | None = None, step: 
                            arming_error=arming.get("error"))
         if long:
             payload["catalog"] = {
-                "source": payload["url"], "version": snapshot["catalog_version"],
-                "host_run_id": snapshot.get("host_run_id"),
-                "plugins": [plugin for name in steps for plugin in snapshot["plugins"] if plugin["step"] == name],
+                "source": payload["url"], "version": catalog["catalog_version"],
+                "host_run_id": catalog.get("host_run_id"),
+                "plugins": [plugin for name in steps for plugin in catalog["plugins"] if plugin["step"] == name],
             }
         payload["ok"] = True
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
@@ -213,7 +213,7 @@ def list_plugins(*, host_name: str | None = None, url: str | None = None, step: 
 
     armed = payload["armed"] or []
     if long:
-        lines.extend([f"Catalog: {payload['url']}", _catalog_version(snapshot),
+        lines.extend([f"Catalog: {payload['url']}", _catalog_version(catalog),
                       *_plugin_rows(_armed_first(payload["catalog"]["plugins"], armed),
                                     {_plugin_key(plugin) for plugin in armed}, "armed")])
     else:
@@ -244,10 +244,10 @@ def save_plugins(*, host_name: str, step: str | None = None, json_output: bool =
         if problems:
             raise ValueError(format_activation_problems(problems))
         payload["url"] = catalog_url(host_name)
-        snapshot = PluginCatalogClient(payload["url"])()
-        if not snapshot.get("ok"):
-            raise RuntimeError(snapshot.get("error") or "Host plugin catalog is unavailable.")
-        arming = snapshot.get("arming")
+        catalog = PluginCatalogClient(payload["url"])()
+        if not catalog.get("ok"):
+            raise RuntimeError(catalog.get("error") or "Host plugin catalog is unavailable.")
+        arming = catalog.get("arming")
         requested = arming.get("requested") if isinstance(arming, dict) else None
         if not isinstance(requested, dict) or any(not isinstance(requested.get(name), list) for name in steps):
             raise ValueError("Host did not report its armed plugins.")

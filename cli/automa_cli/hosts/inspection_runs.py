@@ -1,6 +1,6 @@
 """Executable selections shared by vehicle recordings and offline replay.
 
-Per-frame ``steps`` snapshots retain restaging, disabled steps, plugin
+Per-frame ``steps`` activations retain restaging, disabled steps, plugin
 entrypoints and constructor configs with their IDs.
 A selection a vehicle ran is rebuilt from the release it records, not from
 whatever is checked out or staged now.

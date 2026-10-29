@@ -30,13 +30,14 @@ from .donkeycar_vendor import (
     ensure_donkeycar_vendor,
     load_donkeycar_vendor_manifest,
 )
-from ..shared.paths import display_path, safe_path_part
+from ..shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
 from .step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     HOST_PROVIDERS,
     bundle_activation_path,
     decision_generation_id,
     ensure_step_activations,
+    host_bundle,
     read_bundle_activation,
     step_lines,
     staging_host,
@@ -49,14 +50,12 @@ from ..vehicles.discovery import normalize_vehicle_url
 from ..vehicles.probes import Candidate, _probe_chase, chase_operator_url
 
 
-ROOT = Path(__file__).resolve().parents[3]
 DEPLOY_DIR = ROOT / "deploy" / "targets" / "donkeycar"
 DONKEY_SERVICE_NAME = "automa-donkey.service"
 DONKEY_SERVICE_DIR = DEPLOY_DIR / "systemd"
 DONKEY_READY_TIMEOUT_S = 30.0
 DEFAULT_PI_HOME = "/home/piracer"
 DEFAULT_PI_USER = "piracer"
-RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))
 
 _REMOTE_AUTONOMY_INSTALL_SCRIPT = r"""
 import hashlib
@@ -429,7 +428,7 @@ def _update_local_autonomy(
     from autonomy.runtime.client import RuntimeClient
     from .runtime_hosts import RuntimeHostError, host_record, release_code_dir, staged_host
 
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(host_name))
+    bundle = host_bundle(host_name, RUNTIME_ROOT)
     source_summary = controller_bundle_source_summary()
     if dry_run:
         payload = {"host_name": host_name, "dry_run": True, "restart": restart, "source": source_summary}

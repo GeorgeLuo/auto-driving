@@ -7,17 +7,13 @@ Offline inspect lives in ``step_inspect``. Stream and probe live in
 from __future__ import annotations
 
 import json
-import os
-from pathlib import Path
 from typing import Any
 
 from ..shared.command_result import CommandResult
-from .bundles import controller_bundle_paths
-from ..shared.paths import ROOT, safe_path_part
+from ..shared.paths import RUNTIME_ROOT
+from .step_activations import host_bundle
 from .step_schema import format_staged_step, staged_step_info
 from .streaming import _format_live_memory_screen, probe_live_memory
-
-RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))
 
 
 def get_host_memory_info(
@@ -27,7 +23,7 @@ def get_host_memory_info(
     include_live: bool = True,
     timeout_s: float = 3.0,
 ) -> CommandResult:
-    bundle = controller_bundle_paths(RUNTIME_ROOT / safe_path_part(host_name))
+    bundle = host_bundle(host_name, RUNTIME_ROOT)
     staged, error = staged_step_info(bundle, host_name, "memory")
     if error is not None:
         return CommandResult(2, error)

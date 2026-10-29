@@ -2,19 +2,16 @@
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Callable
 
-from .bundles import controller_bundle_paths
-from ..shared.paths import ROOT, safe_path_part
-
-RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))
+from ..shared.paths import RUNTIME_ROOT
+from .step_activations import host_bundle
 
 
 def runtime_view_dir(host_name: str, *, runtime_root: Path = RUNTIME_ROOT) -> Path:
     """A standalone view uses the same bundle runtime layout for every vehicle."""
-    bundle = controller_bundle_paths(runtime_root / safe_path_part(host_name))
+    bundle = host_bundle(host_name, runtime_root)
     return Path(bundle["runtime_dir"]) / "view"
 
 

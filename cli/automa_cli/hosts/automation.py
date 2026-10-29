@@ -20,7 +20,7 @@ from ..shared.command_result import CommandResult
 from .vehicle_access import create_vehicle_access
 from .staged_bundle import write_json_atomically
 from .bundles import controller_bundle_paths
-from ..shared.paths import display_path, safe_path_part
+from ..shared.paths import ROOT, display_path, safe_path_part
 from . import runtime_hosts
 from .runtime_hosts import (
     bundle_paths,
@@ -59,7 +59,6 @@ from ..frontend.perception_view import (
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
 
 
-ROOT = Path(__file__).resolve().parents[3]
 AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
 MAX_STATUS_REASON_CHARS = 240
 

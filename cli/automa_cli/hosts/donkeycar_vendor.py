@@ -9,8 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
+from ..shared.paths import ROOT, display_path
 
-ROOT = Path(__file__).resolve().parents[3]
+
 VENDOR_MANIFEST_PATH = ROOT / "deploy" / "targets" / "donkeycar" / "donkeycar-vendor.json"
 VENDOR_STATE_FILE = ".automa-vendor-state.json"
 
@@ -41,7 +42,7 @@ def ensure_donkeycar_vendor(*, output: TextIO | None = None, verbose: bool = Fal
     desired_state = _desired_state(manifest)
 
     if state_path.exists() and _state_matches(_read_json(state_path), desired_state):
-        _emit(output, f"DonkeyCar vendor ready: {_display_path(checkout_dir)}")
+        _emit(output, f"DonkeyCar vendor ready: {display_path(checkout_dir)}")
         return DonkeyCarVendorResult(checkout_dir, "reused", revision, state_path)
 
     if checkout_dir.exists():
@@ -49,16 +50,16 @@ def ensure_donkeycar_vendor(*, output: TextIO | None = None, verbose: bool = Fal
         patches = _patch_paths(manifest)
         if existing_head == revision and _patches_are_applied(checkout_dir, patches):
             _write_json(state_path, desired_state)
-            _emit(output, f"Registered existing DonkeyCar vendor: {_display_path(checkout_dir)}")
+            _emit(output, f"Registered existing DonkeyCar vendor: {display_path(checkout_dir)}")
             return DonkeyCarVendorResult(checkout_dir, "registered-existing", revision, state_path)
 
         if existing_head == revision and _git_tree_is_clean(checkout_dir):
             _apply_patches(checkout_dir, patches, output=output, verbose=verbose)
             _write_json(state_path, desired_state)
-            _emit(output, f"Patched existing DonkeyCar vendor: {_display_path(checkout_dir)}")
+            _emit(output, f"Patched existing DonkeyCar vendor: {display_path(checkout_dir)}")
             return DonkeyCarVendorResult(checkout_dir, "patched-existing", revision, state_path)
 
-        _emit(output, f"Replacing stale DonkeyCar vendor checkout: {_display_path(checkout_dir)}")
+        _emit(output, f"Replacing stale DonkeyCar vendor checkout: {display_path(checkout_dir)}")
         shutil.rmtree(checkout_dir)
 
     checkout_dir.parent.mkdir(parents=True, exist_ok=True)
@@ -66,19 +67,19 @@ def ensure_donkeycar_vendor(*, output: TextIO | None = None, verbose: bool = Fal
     _run(["git", "checkout", revision], cwd=checkout_dir, output=output, verbose=verbose)
     _apply_patches(checkout_dir, _patch_paths(manifest), output=output, verbose=verbose)
     _write_json(state_path, desired_state)
-    _emit(output, f"Prepared DonkeyCar vendor: {_display_path(checkout_dir)}")
+    _emit(output, f"Prepared DonkeyCar vendor: {display_path(checkout_dir)}")
     return DonkeyCarVendorResult(checkout_dir, "created", revision, state_path)
 
 
 def _desired_state(manifest: dict[str, Any]) -> dict[str, Any]:
     return {
         "schema": "automa_donkeycar_vendor_state_v0",
-        "manifest": _display_path(VENDOR_MANIFEST_PATH),
+        "manifest": display_path(VENDOR_MANIFEST_PATH),
         "repo_url": manifest["source"]["repo_url"],
         "revision": manifest["source"]["revision"],
         "patches": [
             {
-                "path": _display_path(path),
+                "path": display_path(path),
                 "sha256": _sha256_file(path),
             }
             for path in _patch_paths(manifest)
@@ -193,10 +194,3 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 def _emit(output: TextIO | None, message: str) -> None:
     if output is not None:
         print(message, file=output, flush=True)
-
-
-def _display_path(path: Path) -> str:
-    try:
-        return str(path.resolve().relative_to(ROOT))
-    except ValueError:
-        return str(path)

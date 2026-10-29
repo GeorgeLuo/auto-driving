@@ -338,14 +338,15 @@ class AutonomyCycleHost:
         applied = self._applied_decision
         return None if applied is None else deepcopy(applied)
 
-    def _record_applied_decision(self) -> None:
+    def _record_applied_decision(self, activations: dict[str, Any] | None = None) -> None:
         """Derive identity from applied definitions, including uploaded revisions."""
 
         applied = self._applied_decision
         if applied is None:
             return
         steps = dict(applied["steps"])
-        activations = applied_step_activations(self.steps)
+        if activations is None:
+            activations = applied_step_activations(self.steps)
         for step in DECISION_STEPS:
             if step in activations:
                 steps[step] = activations[step]
@@ -353,7 +354,7 @@ class AutonomyCycleHost:
             generation_id = activation_generation_id(steps, prefix="decision")
         except (TypeError, ValueError):
             return
-        self._applied_decision = {"generation_id": generation_id, "steps": steps}
+        self._applied_decision = {"generation_id": generation_id, "steps": deepcopy(steps)}
 
     def run(
         self, context: DecisionFrameContext, *, mode: str | None = None,
@@ -399,7 +400,6 @@ class AutonomyCycleHost:
                     self._refresh_session_view()
                 self.cycle_count += 1
                 self.last_result = result
-                self._record_applied_decision()
             except Exception as exc:
                 self._cycle_in_progress = None
                 self._record_frame_context(context)
@@ -423,8 +423,10 @@ class AutonomyCycleHost:
 
     def _record_frame_context(self, context: DecisionFrameContext) -> DecisionFrameContext:
         """Retain the applied selections even when a frame produces no cycle result."""
+        activations = applied_step_activations(self.steps)
+        self._record_applied_decision(activations)
         self.last_context = replace(context, metadata={
-            **context.metadata, "step_activations": applied_step_activations(self.steps),
+            **context.metadata, "step_activations": activations,
         })
         return self.last_context
 

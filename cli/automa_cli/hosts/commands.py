@@ -109,63 +109,6 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
         ),
     )
     host_run.add_argument(
-        "--timeout-s",
-        type=float,
-        default=DEFAULT_READINESS_TIMEOUT_S,
-        help=(
-            "Runtime readiness deadline in seconds "
-            f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
-        ),
-    )
-    host_run.add_argument(
-        "--num-decisions",
-        type=int,
-        default=0,
-        help=(
-            "Number of decision cycles to complete. Movement requires a positive count "
-            "unless --unbounded is set; 0 remains unbounded with --observe-only."
-        ),
-    )
-    host_run.add_argument(
-        "--unbounded",
-        action="store_true",
-        help=(
-            "Run until stopped, overriding --num-decisions. "
-            "Stop with hosts stop."
-        ),
-    )
-    host_run.add_argument(
-        "--observe-only",
-        action="store_true",
-        help=(
-            "Run plugins without applying their output. The same mode works on every vehicle."
-        ),
-    )
-    host_run.add_argument(
-        "--open-view",
-        action="store_true",
-        help=(
-            "Open the local Automa runtime views after the first correlated "
-            "camera/perception publication is healthy."
-        ),
-    )
-    host_run.add_argument(
-        "--record",
-        action="store_true",
-        help="Save per-frame images and cycle records under a timestamped run directory.",
-    )
-    host_run.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print every frame's detail when output is connected.",
-    )
-    host_run.add_argument(
-        "--log",
-        action="store_true",
-        dest="log_to_disk",
-        help="Persist background run output to automation.log.",
-    )
-    host_run.add_argument(
         "--foreground",
         action="store_true",
         help=argparse.SUPPRESS,
@@ -186,12 +129,6 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
         required=True,
         dest="host_name",
         help=_HOST_NAME_HELP,
-    )
-    host_stop.add_argument(
-        "--wait-s",
-        type=float,
-        default=3.0,
-        help="Seconds to wait for graceful stop before forcing termination.",
     )
     host_stop.set_defaults(handler=_handle_hosts_stop)
 
@@ -241,81 +178,68 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
         dest="host_name",
         help=_HOST_NAME_HELP,
     )
-    host_restart.add_argument(
-        "--timeout-s",
-        type=float,
-        default=DEFAULT_READINESS_TIMEOUT_S,
-        help=(
-            "Runtime readiness deadline in seconds "
-            f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
-        ),
-    )
-    host_restart.add_argument(
-        "--num-decisions",
-        type=int,
-        default=0,
-        help=(
-            "Number of decision cycles to complete. Movement requires a positive count "
-            "unless --unbounded is set; 0 remains unbounded with --observe-only."
-        ),
-    )
-    host_restart.add_argument(
-        "--unbounded",
-        action="store_true",
-        help=(
-            "Run until stopped, overriding --num-decisions. "
-            "Stop with hosts stop."
-        ),
-    )
-    host_restart.add_argument(
-        "--observe-only",
-        action="store_true",
-        help=(
-            "Run plugins without applying their output. The same mode works on every vehicle."
-        ),
-    )
-    host_restart.add_argument(
-        "--open-view",
-        action="store_true",
-        help=(
-            "Open the local Automa runtime views after the first correlated "
-            "camera/perception publication is healthy."
-        ),
-    )
-    host_restart.add_argument(
-        "--record",
-        action="store_true",
-        help="Save per-frame images and cycle records under a timestamped run directory.",
-    )
-    host_restart.add_argument(
-        "--verbose",
-        action="store_true",
-        help="Print every frame's detail when output is connected.",
-    )
-    host_restart.add_argument(
-        "--log",
-        action="store_true",
-        dest="log_to_disk",
-        help="Persist background run output to automation.log.",
-    )
-    host_restart.add_argument(
-        "--wait-s",
-        type=float,
-        default=3.0,
-        help="Seconds to wait for graceful stop before forcing termination.",
-    )
     host_restart.set_defaults(handler=_handle_hosts_restart)
-    host_serve = host_commands.add_parser(
-        "serve",
-        help="Serve a Chase car's runtime host in the foreground (hosts create and hosts run start one).",
-        description=(
-            "Serve the runtime routes for a Chase car from its latest controller release, "
-            "and relaunch on a restart command. `hosts create` and `hosts run` start this in the background; "
-            "its log is runtime/hosts/<host-name>/bundle/runtime/automation/host.log."
-        ),
-    )
-    host_serve.add_argument("--name", required=True, dest="host_name", help="Chase host name.")
-    host_serve.set_defaults(handler=_handle_hosts_serve)
+
+    for command in (host_run, host_restart):
+        command.add_argument(
+            "--timeout-s",
+            type=float,
+            default=DEFAULT_READINESS_TIMEOUT_S,
+            help=(
+                "Runtime readiness deadline in seconds "
+                f"(default: {DEFAULT_READINESS_TIMEOUT_S:g})."
+            ),
+        )
+        command.add_argument(
+            "--num-decisions",
+            type=int,
+            default=0,
+            help=(
+                "Number of decision cycles to complete. Movement requires a positive count "
+                "unless --unbounded is set; 0 remains unbounded with --observe-only."
+            ),
+        )
+        command.add_argument(
+            "--unbounded",
+            action="store_true",
+            help="Run until stopped, overriding --num-decisions. Stop with hosts stop.",
+        )
+        command.add_argument(
+            "--observe-only",
+            action="store_true",
+            help="Run plugins without applying their output. The same mode works on every vehicle.",
+        )
+        command.add_argument(
+            "--open-view",
+            action="store_true",
+            help=(
+                "Open the local Automa runtime views after the first correlated "
+                "camera/perception publication is healthy."
+            ),
+        )
+        command.add_argument(
+            "--record",
+            action="store_true",
+            help="Save per-frame images and cycle records under a timestamped run directory.",
+        )
+        command.add_argument(
+            "--verbose",
+            action="store_true",
+            help="Print every frame's detail when output is connected.",
+        )
+        command.add_argument(
+            "--log",
+            action="store_true",
+            dest="log_to_disk",
+            help="Persist background run output to automation.log.",
+        )
+    for command in (host_stop, host_restart):
+        command.add_argument(
+            "--wait-s",
+            type=float,
+            default=3.0,
+            help="Seconds to wait for graceful stop before forcing termination.",
+        )
 
 
 def _register_hosts_operations(host_commands: argparse._SubParsersAction) -> None:
@@ -589,7 +513,6 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "- run         start a run and verify camera + perception + current view",
                 "- stop        stop the run; the host stays attached until hosts delete",
                 "- restart     stop and start the run",
-                "- serve       serve a Chase host in the foreground",
                 "- status      show each host's state and attachment",
                 "- operation   run bounded vehicle checks through a host",
                 "- info        inspect staged controller configuration",
@@ -719,12 +642,6 @@ def _handle_hosts_status(args: argparse.Namespace) -> int:
     if result.message:
         print(result.message)
     return result.exit_code
-
-
-def _handle_hosts_serve(args: argparse.Namespace) -> int:
-    from .runtime_hosts import serve_chase_host
-
-    return serve_chase_host(args.host_name)
 
 
 def _handle_hosts_restart(args: argparse.Namespace) -> int:

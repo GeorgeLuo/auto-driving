@@ -2,7 +2,7 @@ const fs = require("fs"), vm = require("vm");
 const sent = [], replies = [];
 const node = () => ({ addEventListener() {}, getAttribute() { return "false"; }, setAttribute() {}, replaceWith() {} });
 const elements = new Proxy({}, { get: (t, k) => (k in t ? t[k] : (t[k] = node())) });
-const snapshot = (phase) => ({ phase, run_id: "run-1", controls: { allowed_actions: [] } });
+const makeState = (phase) => ({ phase, run_id: "run-1", controls: { allowed_actions: [] } });
 let pluginToggleWaiting = false;
 const ctx = {
   elements, state: null, actionInFlight: false, stateRequestGeneration: 0,
@@ -22,7 +22,7 @@ const ctx = {
     const body = JSON.parse(init.body);
     sent.push(body.action === "seek" ? "seek:" + body.position : body.action);
     return new Promise((resolve) => replies.push((phase) => resolve({
-      ok: true, json: async () => ({ ok: true, state: snapshot(phase) }),
+      ok: true, json: async () => ({ ok: true, state: makeState(phase) }),
     })));
   },
 };
@@ -36,7 +36,7 @@ elements.seekBar.max = "9";
 
 (async () => {
   // a seek made during an unrelated request is sent once that request settles
-  ctx.state = snapshot("paused");
+  ctx.state = makeState("paused");
   ctx.action("step");
   ctx.beginScrub(); scrubTo(4); ctx.endScrub();
   eq(sent, ["step"], "seek waits for the request in flight");
@@ -47,7 +47,7 @@ elements.seekBar.max = "9";
 
   // a resume waiting behind the seek survives a plugin selection sent first
   sent.length = 0;
-  ctx.state = snapshot("running");
+  ctx.state = makeState("running");
   ctx.beginScrub(); scrubTo(3);
   eq(sent, ["pause"], "scrubbing a running replay pauses it first");
   await reply("paused");
@@ -66,7 +66,7 @@ elements.seekBar.max = "9";
   // A second drag supersedes an unfinished catch-up; an old answer cannot
   // replace the newer frame or leave the seek marked in flight.
   sent.length = 0;
-  ctx.state = snapshot("paused");
+  ctx.state = makeState("paused");
   ctx.beginScrub(); scrubTo(8); ctx.endScrub();
   ctx.beginScrub(); scrubTo(2); ctx.endScrub();
   eq(sent, ["seek:8", "seek:2"], "new seek is sent without waiting for catch-up");
@@ -78,7 +78,7 @@ elements.seekBar.max = "9";
   // pause is sent even while a slower action still owns actionInFlight
   sent.length = 0;
   ctx.actionInFlight = true;
-  ctx.state = snapshot("running");
+  ctx.state = makeState("running");
   ctx.action("pause");
   eq(sent, ["pause"], "pause is sent while another action is in flight");
   ctx.actionInFlight = false;

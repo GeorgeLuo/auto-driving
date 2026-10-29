@@ -182,7 +182,7 @@
       const status = document.getElementById('status');
       status.hidden = false;
       status.textContent = 'Catalog unavailable · ' + error.message +
-        (document.getElementById('plugins').children.length ? ' · Showing stale snapshot' : '') +
+        (document.getElementById('plugins').children.length ? ' · Showing stale catalog' : '') +
         ' · Retrying automatically';
     }
     setTimeout(refresh, 500);

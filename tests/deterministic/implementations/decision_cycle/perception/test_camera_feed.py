@@ -13,7 +13,6 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from implementations.decision_cycle.catalog import step_plugins
 from implementations.decision_cycle.perception.feeds.camera import (
     FRONT_CAMERA_RGB_INPUT,
-    camera_feed_id,
     provide_camera_frame,
 )
 
@@ -21,9 +20,6 @@ from implementations.decision_cycle.perception.feeds.camera import (
 _PERCEPTION_SPECS = {
     plugin_id: entry["spec"] for plugin_id, entry in step_plugins("perception").items()
 }
-
-
-FRONT_CAMERA_FEED = camera_feed_id(FRONT_CAMERA_SENSOR_ID)
 
 
 def _mapper(plugin_id: str) -> PerceptionRunner:
@@ -106,15 +102,6 @@ class CameraFeedTests(unittest.TestCase):
         self.assertIn("unsupported camera value type", result.plugin_runs[0].error or "")
         self.assertEqual(result.signals, ())
         self.assertEqual(result.things, ())
-
-    def test_schema_is_generated_from_plugin_contracts(self) -> None:
-        schema = _mapper("frame").describe_schema()
-
-        self.assertEqual(schema["inputs"][0]["feed_id"], FRONT_CAMERA_FEED)
-        self.assertEqual(schema["inputs"][0]["required_by"], ["frame"])
-        self.assertEqual(schema["plugins"][0]["plugin_id"], "frame")
-        self.assertEqual(schema["plugins"][0]["plugin_id"], "frame")
-        self.assertEqual(schema["plugins"][0]["contract"]["inputs"][0]["name"], "frame")
 
 
 if __name__ == "__main__":

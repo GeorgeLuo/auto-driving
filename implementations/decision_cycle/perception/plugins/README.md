@@ -18,9 +18,10 @@ plugin lives in `plugins/frame/`.
 - Emit only the perception evidence types from
   `autonomy/decision_cycle/perception/evidence/`: `PerceivedThing`,
   `PerceptionSignal` and `ViewLocation`, in a `PerceptionEvidenceBatch`.
-- How several plugins share one frame, and what a failure does, is declared in
-  `autonomy/decision_cycle/perception/interface.py`: `composition_declaration`
-  and `FAILURE_POLICY`. `PerceptionRunner` reads those values. A plugin error
+- Several plugins share one frame in selection order. What a failure does is
+  declared as `FAILURE_POLICY` in
+  `autonomy/decision_cycle/perception/interface.py`, and `PerceptionRunner`
+  reads it. A plugin error
   is isolated, a missing feed skips that plugin, and an explicit reset or
   selection-removal reset error propagates. Missing feeds also reset stateful
   plugins inside frame execution; an error in that reset is isolated as the

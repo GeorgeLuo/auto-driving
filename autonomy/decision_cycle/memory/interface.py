@@ -1,9 +1,9 @@
 """The memory step's contract, report, and the ledger summary tooling reads.
 
 ``MemoryBackend`` is the runner boundary, as ``PerceptionBackend`` is for
-perception. ``FAILURE_POLICY`` and ``composition_declaration`` are the values
-``MemoryRunner`` and ``describe_schema`` read. The evidence slot stays one
-value per key, last write wins for evidence and beliefs.
+perception. ``FAILURE_POLICY`` is what ``MemoryRunner`` does when a plugin
+fails. The evidence slot stays one value per key, last write wins for evidence
+and beliefs.
 
 ``MemoryReport`` is the diagnostics record for one run, with one
 ``MemoryPluginReport`` per applied plugin in selection order, and
@@ -20,11 +20,9 @@ from dataclasses import asdict, dataclass
 from typing import Any, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.memory.publication import BELIEF_KEY_PREFIX, EVIDENCE_KEY
 from autonomy.decision_cycle.runner import FailurePolicy
 from autonomy.shared_memory import SharedMemory
 
-MEMORY_SCHEMA = "memory_schema_v1"
 MEMORY_REPORT_SCHEMA = "memory_report_v1"
 
 # A memory plugin that raises stops the cycle, a reset failure is recorded,
@@ -36,18 +34,6 @@ FAILURE_POLICY = FailurePolicy(
 )
 
 
-def composition_declaration() -> dict[str, str]:
-    """How several memory plugins share one host map."""
-
-    return {
-        "order": "selection_order",
-        "evidence_key": EVIDENCE_KEY,
-        "evidence": "one_value_last_write_wins",
-        "belief_key_prefix": BELIEF_KEY_PREFIX,
-        "beliefs": "one_value_per_key_last_write_wins",
-    }
-
-
 @runtime_checkable
 class MemoryBackend(Protocol):
     """Run memory on the cycle context and its host map, returning a report."""
@@ -56,9 +42,6 @@ class MemoryBackend(Protocol):
 
     def reset(self, shared_memory: SharedMemory | None = None) -> dict[str, Any]:
         """Reset each plugin. Return the keys written during the reset."""
-
-    def describe_schema(self) -> dict[str, Any]:
-        ...
 
     def update(
         self,

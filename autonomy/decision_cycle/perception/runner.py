@@ -20,7 +20,6 @@ from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.runner import (
     StepRunner,
     describe_exception,
-    describe_plugin,
     reset_plugin,
 )
 from autonomy.decision_cycle.timing import clock, elapsed_ms
@@ -35,12 +34,10 @@ from autonomy.decision_cycle.perception.evidence.values import (
 )
 from autonomy.decision_cycle.perception.interface import (
     FAILURE_POLICY,
-    PERCEPTION_SCHEMA,
     PERCEPTION_TEXT_SCHEMA,
     PerceptionPluginRun,
     PerceptionText,
     PluginResultStatus,
-    composition_declaration,
 )
 from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginContract,
@@ -69,8 +66,6 @@ class PerceptionRunner(StepRunner[Any]):
 
     step: ClassVar[str] = "perception"
     plugin_id: ClassVar[str] = "autonomy.perception.plugin-runner-v0"
-    schema_name = PERCEPTION_SCHEMA
-    failure_policy = FAILURE_POLICY
 
     def __init__(
         self,
@@ -157,65 +152,6 @@ class PerceptionRunner(StepRunner[Any]):
             self.last_output = None
             self.last_frame_index = None
             super().reset(shared_memory)
-
-    def _describe_schema(self) -> dict[str, Any]:
-        feed_consumers: dict[str, list[str]] = {}
-        feed_providers: dict[str, str] = {}
-        plugin_schemas = []
-        for definition, plugin in self.applied:
-            contract = plugin.contract
-            for item in contract.inputs:
-                feed_consumers.setdefault(item.feed_id, []).append(
-                    definition.plugin_id
-                )
-                feed_providers[item.feed_id] = item.provider_spec
-            plugin_schemas.append(
-                {**describe_plugin(definition), "contract": contract.to_dict()}
-            )
-        return {
-            **super()._describe_schema(),
-            "plugin_id": self.plugin_id,
-            "inputs": [
-                {
-                    "feed_id": feed_id,
-                    "provider_spec": feed_providers[feed_id],
-                    "required": True,
-                    "required_by": plugin_ids,
-                    "source": "resolved once by the framework and injected by plugin-local name",
-                    "missing_behavior": (
-                        "framework skips perceive and resets stateful plugins; "
-                        "the plugin is unavailable unless its reset fails, "
-                        "which is isolated as that plugin's frame error"
-                    ),
-                }
-                for feed_id, plugin_ids in sorted(feed_consumers.items())
-            ],
-            "plugins": plugin_schemas,
-            "output": {
-                "schema": PERCEPTION_TEXT_SCHEMA,
-                "format": "structured signals and spatial evidence with a derived text view",
-                "records": [
-                    {
-                        "record": "signals[]",
-                        "meaning": "structured boolean or scalar evidence signals",
-                    },
-                    {
-                        "record": "things[]",
-                        "meaning": "structured spatial evidence with source-plugin provenance",
-                    },
-                    {
-                        "record": "plugin_runs[]",
-                        "meaning": "framework-derived status, timing, counts, and errors",
-                    },
-                ],
-                "limits": [
-                    "plugin outputs are current evidence, not durable world facts",
-                    "confidence remains local to each evidence record",
-                    "no calibrated metric geometry unless a plugin states otherwise",
-                ],
-            },
-            "composition": composition_declaration(),
-        }
 
     def perceive(self, request: PerceptionRequest) -> PerceptionText:
         with self._runtime_lock:

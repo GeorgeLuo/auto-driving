@@ -271,27 +271,21 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual([run.status for run in perception.plugin_runs], ["ok", "unavailable"])
         self.assertEqual(mapper.plugins["unavailable"].invocations, 0)
 
-    def test_schema_uses_full_manager_catalog_without_constructing_unselected_plugins(self) -> None:
+    def test_report_uses_full_manager_catalog_without_constructing_unselected_plugins(self) -> None:
         manager = PluginManager.from_specs("perception", {
             "working": f"{__name__}:WorkingPlugin",
             "broken": f"{__name__}:ConstructionFailurePlugin",
         })
         mapper = PerceptionRunner(plugin_manager=manager)
-        self.assertEqual(
-            mapper.describe_schema()["configuration"]["available_plugins"], ["broken", "working"],
-        )
+        self.assertEqual(mapper.plugin_report()["available_plugin_ids"], ["broken", "working"])
         self.assertEqual(mapper.plugins, {})
         manager.add("working")
         mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
-        self.assertEqual(
-            mapper.describe_schema()["configuration"]["available_plugins"], ["broken", "working"],
-        )
+        self.assertEqual(mapper.plugin_report()["available_plugin_ids"], ["broken", "working"])
         self.assertEqual(set(mapper.plugin_specs), {"broken", "working"})
         manager.remove("working")
         mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
-        self.assertEqual(
-            mapper.describe_schema()["configuration"]["available_plugins"], ["broken", "working"],
-        )
+        self.assertEqual(mapper.plugin_report()["available_plugin_ids"], ["broken", "working"])
         self.assertEqual(mapper.plugins, {})
 
     def test_manager_selection_is_applied_by_apply_selection(self) -> None:

@@ -14,8 +14,6 @@ from implementations.vehicle.picar import create_picar
 @dataclass(frozen=True)
 class VehicleAccess:
     car: CarInterface
-    image_extension: str
-    front_camera_endpoint: str
     control: ControlTarget | None = None
 
 
@@ -30,8 +28,6 @@ def create_vehicle_access(vehicle: dict[str, Any], *, timeout_s: float) -> Vehic
         car = ChaseSimCar(ws_url=ws_url, timeout_s=timeout_s, **({"vehicle_id": vehicle_id} if vehicle_id else {}))
         return VehicleAccess(
             car=car,
-            image_extension="png",
-            front_camera_endpoint="atomic-evaluation-capture",
             control=ChaseControlTarget(car),
         )
     if provider == "picar":
@@ -41,8 +37,6 @@ def create_vehicle_access(vehicle: dict[str, Any], *, timeout_s: float) -> Vehic
         car = create_picar(base_url=base_url, timeout_s=timeout_s, vehicle_id=vehicle_id)
         return VehicleAccess(
             car=car,
-            image_extension="jpg",
-            front_camera_endpoint="/frame.jpg",
             control=PiCarHttpControlTarget(car),
         )
     raise ValueError(f"Vehicle has unsupported provider {provider!r}.")

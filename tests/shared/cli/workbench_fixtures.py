@@ -94,9 +94,6 @@ class FixtureMapper:
     def reset(self, shared_memory=None) -> None:
         self.reset_count += 1
 
-    def describe_schema(self) -> dict[str, object]:
-        return {"plugin_id": self.plugin_id}
-
     def __call__(self, context) -> PerceptionText | None:
         if context.sensor_frame is None:
             self.reset(context.shared_memory)

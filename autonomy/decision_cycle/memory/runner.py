@@ -22,19 +22,16 @@ from typing import Any, ClassVar
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.interface import (
-    LEDGER_SUMMARY_KEYS,
     MEMORY_REPORT_SCHEMA,
     FAILURE_POLICY,
-    MEMORY_SCHEMA,
     MemoryPluginReport,
     MemoryReport,
-    composition_declaration,
 )
 from autonomy.decision_cycle.memory.beliefs import Belief
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, MemoryPluginContract, plugin_status
 from autonomy.decision_cycle.memory.publication import BELIEF_KEY_PREFIX, EVIDENCE_KEY, belief_key
-from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY, read_observation
-from autonomy.decision_cycle.runner import StepRunner, describe_plugin, reset_plugin
+from autonomy.decision_cycle.observation.publication import read_observation
+from autonomy.decision_cycle.runner import StepRunner, reset_plugin
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition, PluginManager
 from autonomy.shared_memory import SharedMemory
@@ -151,8 +148,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
 
     step: ClassVar[str] = "memory"
     plugin_id: ClassVar[str] = "autonomy.memory.plugin-runner-v0"
-    schema_name = MEMORY_SCHEMA
-    failure_policy = FAILURE_POLICY
 
     def __init__(
         self,
@@ -298,55 +293,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
             if _evidence(self._shared_memory) is not self._published_evidence:
                 return None
             return self._publisher
-
-    def _describe_schema(self) -> dict[str, Any]:
-        """The step's contract: configuration, inputs, plugins, output, composition, failure."""
-
-        missing_observation = (
-            "plugins are still called"
-            if FAILURE_POLICY.missing_input == "invoke"
-            else "plugins are skipped"
-        )
-        return {
-            **super()._describe_schema(),
-            "plugin_id": self.plugin_id,
-            "plugins": [
-                {**describe_plugin(definition), "contract": plugin.implementation.contract.to_dict()}
-                for definition, plugin in self.applied
-            ],
-            "inputs": [
-                {
-                    "name": "observation",
-                    "required": False,
-                    "source": f"{OBSERVATION_KEY} in the host map",
-                    "missing_behavior": (
-                        "the key is absent, read_observation returns None, and "
-                        f"{missing_observation}"
-                    ),
-                },
-                {
-                    "name": "shared_memory",
-                    "required": True,
-                    "source": "the host map on the frame context",
-                    "missing_behavior": (
-                        "update calls the plugin with the map as given; "
-                        "reset records a failure when the plugin has no map"
-                    ),
-                },
-            ],
-            "output": {
-                "schema": MEMORY_REPORT_SCHEMA,
-                "ledger_summary_keys": list(LEDGER_SUMMARY_KEYS),
-                "missing_field_behavior": (
-                    "the report preserves plugin status without adding missing keys; "
-                    "the framework does not reject the plugin; live CLI ledger "
-                    "projections return null for missing keys; inspect and workbench "
-                    "frame rows default a missing record_count to 0, preserve an "
-                    "explicit null, and omit bounds"
-                ),
-            },
-            "composition": composition_declaration(),
-        }
 
     def report(self) -> dict[str, Any]:
         """Each applied plugin's own state summary, as the cycle records it."""

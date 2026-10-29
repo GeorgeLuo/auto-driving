@@ -21,8 +21,3 @@ and agent operating guidance.
 | `guidance/orchestration/` | Operator-selected, versioned orchestration policies |
 | `reference/` | Living architecture and contracts |
 | `synthesis/` | Research evidence without commitment |
-| `deprecated/` | Historical delivery records. Do not use. |
-
-## Deprecated
-
-Do not use [deprecated/](deprecated/). Its first file is the warning.

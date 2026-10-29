@@ -77,8 +77,7 @@ directory:
    boundaries.
 4. Use [`docs/README.md`](docs/README.md) for documentation navigation,
    architecture references, and research notes. Optional change inspection:
-   `python3 -m qca`. Historical delivery files are under `docs/deprecated/`;
-   do not use them.
+   `python3 -m qca`.
 5. Treat `runtime/` and `lab/` as generated state. Start from tracked source and
    the CLI rather than using files in those directories as an API.
 
@@ -851,8 +850,6 @@ and is prepared through `./cli/automa simulators ensure`.
   the onboard perception, decision, and action flow.
 - [`docs/reference/donkey-server-functionality.html`](docs/reference/donkey-server-functionality.html)
   describes the physical Donkey server boundary.
-- [`docs/deprecated/`](docs/deprecated/) is historical delivery record. Do not
-  use it.
 
 Dependency direction is intentional:
 

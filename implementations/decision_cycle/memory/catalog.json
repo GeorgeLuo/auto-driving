@@ -1,0 +1,25 @@
+{
+  "default": {"preset": "recency_ledger"},
+  "presets": {
+    "recency_ledger": {
+      "description": "Bounded recency ledger of observation things and signals, with age expiry and oldest-first eviction.",
+      "plugins": ["bounded_evidence"]
+    }
+  },
+  "plugins": [
+    {
+      "spec": "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger",
+      "description": "Bounded recency ledger of observation things and signals with origin, age expiry, and oldest-first eviction. Does not claim semantic object identity or world truth.",
+      "default_config": {
+        "max_records": 32,
+        "max_age_ms": 10000,
+        "eviction_policy": "oldest_first",
+        "min_confidence": 0.0,
+        "retain_things": true,
+        "retain_signals": true,
+        "max_property_bytes": 4096,
+        "max_serialized_bytes": 262144
+      }
+    }
+  ]
+}

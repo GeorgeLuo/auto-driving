@@ -80,7 +80,7 @@
                 "path": "implementations/decision_cycle/perception/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Perception plugins that derive evidence from sensor data, their feeds, and shared library code. catalog.py lists the plugins; presets.py names ordered selections of them, and the default is a preset.",
+                "responsibility": "Perception plugins that derive evidence from sensor data, their feeds, and shared library code. catalog.json lists the plugins, presets (named, ordered selections of them), and the default, a preset.",
                 "children": [
                   {
                     "path": "implementations/decision_cycle/perception/feeds/",
@@ -111,10 +111,16 @@
                 ]
               },
               {
+                "path": "implementations/decision_cycle/observation/",
+                "category": "implementation",
+                "commit_policy": "source",
+                "responsibility": "The observation catalog: catalog.json lists the plugins and the default. Its plugin, perception_summary, lives in autonomy/decision_cycle/observation/."
+              },
+              {
                 "path": "implementations/decision_cycle/memory/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Memory plugins that retain evidence, and library code they share. catalog.py lists the plugins; presets.py names ordered selections of them, and the default is a preset. Values, protocol, and activation loading live under autonomy/decision_cycle/memory/.",
+                "responsibility": "Memory plugins that retain evidence, and library code they share. catalog.json lists the plugins, presets (named, ordered selections of them), and the default, a preset. Values, protocol, and activation loading live under autonomy/decision_cycle/memory/.",
                 "children": [
                   {
                     "path": "implementations/decision_cycle/memory/plugins/",
@@ -134,7 +140,7 @@
                 "path": "implementations/decision_cycle/proposal/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Proposal plugins that propose a command. catalog.py lists the plugins; presets.py names ordered selections of them, and the default is a preset. One folder per plugin holds its business logic. The protocol, runner, and record values live under autonomy/decision_cycle/proposal/.",
+                "responsibility": "Proposal plugins that propose a command. catalog.json lists the plugins, presets (named, ordered selections of them), and the default, a preset. One folder per plugin holds its business logic. The protocol, runner, and record values live under autonomy/decision_cycle/proposal/.",
                 "children": [
                   {
                     "path": "implementations/decision_cycle/proposal/plugins/",
@@ -148,7 +154,7 @@
                 "path": "implementations/decision_cycle/plan/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Plan plugins that select one candidate. catalog.py lists the plugins; presets.py names ordered selections of them, and the default is a preset. One folder per plugin holds its business logic. The protocol, runner, and record values live under autonomy/decision_cycle/plan/.",
+                "responsibility": "Plan plugins that select one candidate. catalog.json lists the plugins, presets (named, ordered selections of them), and the default, a preset. One folder per plugin holds its business logic. The protocol, runner, and record values live under autonomy/decision_cycle/plan/.",
                 "children": [
                   {
                     "path": "implementations/decision_cycle/plan/plugins/",
@@ -162,7 +168,7 @@
                 "path": "implementations/decision_cycle/action/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Packaged action plugins and the action catalog. mode applies the plan's selected command only in live drive modes; the hold action lives in autonomy/decision_cycle/action/."
+                "responsibility": "Packaged action plugins and the action catalog: catalog.json lists the plugins and the default. mode applies the plan's selected command only in live drive modes; the hold action lives in autonomy/decision_cycle/action/."
               }
             ]
           },

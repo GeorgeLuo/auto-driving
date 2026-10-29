@@ -8,8 +8,7 @@ from tests.support.runtime_fixtures import write_host_fixture
 
 from autonomy.decision_cycle.activation import read_step_activation
 from cli.automa_cli.hosts.workbench_runner import ImageReplayRunner
-from implementations.decision_cycle.catalog import PRESET_STEPS
-from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PRESET
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PRESETS, PRESET_STEPS
 from tests.shared.cli.invoke import invoke_automa
 
 
@@ -32,7 +31,7 @@ class MemoryCommandTests(unittest.TestCase):
             )
 
             update_payload = json.loads(update.stdout)
-            self.assertEqual(update_payload["presets"]["memory"], DEFAULT_MEMORY_PRESET)
+            self.assertEqual(update_payload["presets"]["memory"], DEFAULT_STEP_PRESETS["memory"])
             self.assertEqual(update_payload["steps"]["memory"], ["bounded_evidence"])
             self.assertIsNotNone(update_payload["release"]["tree_sha256"])
 
@@ -115,7 +114,7 @@ class MemoryCommandTests(unittest.TestCase):
                 staged[step] = read_step_activation(activation["path"], step)
                 presets[step] = preset
 
-            self.assertEqual(presets["memory"], DEFAULT_MEMORY_PRESET)
+            self.assertEqual(presets["memory"], DEFAULT_STEP_PRESETS["memory"])
             runner = ImageReplayRunner(activations=staged)
             try:
                 pipeline = runner.state()["machine_detail"]["pipeline"]

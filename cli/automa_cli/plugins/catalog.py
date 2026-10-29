@@ -13,8 +13,7 @@ from urllib.request import Request, urlopen
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH, describe_plugin
-from implementations.decision_cycle import catalog as packaged_catalog
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, catalog_path
 
 from ..shared.command_result import CommandResult
 from ..shared.paths import display_path
@@ -161,9 +160,11 @@ def list_plugins(*, host_name: str | None = None, url: str | None = None, step: 
                                "step": step, "ok": False}
     if host_name is None and url is None:
         defaults = {name: list(DEFAULT_STEP_PLUGINS[name]) for name in steps}
+        # The listed step's file, or for every step the pattern matching each one's file.
+        source = catalog_path(step or "*")
         payload.update(
             ok=True, defaults=defaults,
-            catalog={"source": display_path(Path(packaged_catalog.__file__)),
+            catalog={"source": display_path(source),
                      "plugins": [describe_plugin(plugin) for name in steps
                                  for plugin in packaged_plugin_definitions(name)]},
         )

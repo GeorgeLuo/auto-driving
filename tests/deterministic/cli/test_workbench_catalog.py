@@ -5,8 +5,7 @@ from autonomy.decision_cycle.memory.interface import MEMORY_REPORT_SCHEMA
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.vehicle import SensorFrame
-from implementations.decision_cycle.catalog import selection_activation, step_plugins
-from implementations.decision_cycle.perception.presets import PERCEPTION_PRESETS
+from implementations.decision_cycle.catalog import STEP_PRESETS, selection_activation, step_plugins
 from cli.automa_cli.hosts.workbench_plugins import packaged_plugin_catalog
 from cli.automa_cli.hosts.workbench import ReplayActionError
 from tests.shared.cli.workbench_fixtures import (
@@ -401,7 +400,7 @@ class WorkbenchStartingSelectionTests(unittest.TestCase):
     def test_perception_preset_activation_equals_update_perception_selection(self) -> None:
         # `hosts update` stages the default preset's activation this same way.
         with image_source(2) as root:
-            for preset in PERCEPTION_PRESETS:
+            for preset in STEP_PRESETS["perception"]:
                 activation = selection_activation("perception", preset=preset)
                 runner = ImageReplayRunner(
                     root, activations={"perception": activation}, cadence_ms=30000

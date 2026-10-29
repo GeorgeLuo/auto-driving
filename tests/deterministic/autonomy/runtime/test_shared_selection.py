@@ -123,7 +123,7 @@ class SharedSelectionTests(unittest.TestCase):
                 "        return None\n",
                 encoding="utf-8",
             )
-            host_catalog = sys.modules["implementations.decision_cycle.proposal.catalog"]
+            host_catalog = sys.modules["implementations.decision_cycle.catalog"]
             host_activation = sys.modules["autonomy.decision_cycle.activation"]
             lazy = step_activation(
                 "proposal",
@@ -139,7 +139,7 @@ class SharedSelectionTests(unittest.TestCase):
             )
             loaded = chase.step("proposal")
             self.assertNotIn(LAZY_MODULE, sys.modules)
-            self.assertIs(sys.modules["implementations.decision_cycle.proposal.catalog"], host_catalog)
+            self.assertIs(sys.modules["implementations.decision_cycle.catalog"], host_catalog)
             self.assertIs(sys.modules["autonomy.decision_cycle.activation"], host_activation)
             self.assertEqual(loaded.plugins["lazy_only"].__class__.__module__, LAZY_MODULE)
             self.assertEqual(Path(loaded.import_context.bundle_root), bundle_root)

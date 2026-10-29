@@ -38,7 +38,7 @@ def register_plugins(subcommands: argparse._SubParsersAction) -> None:
     listing = step_plugin_commands.add_parser(
         "list", help="Show the packaged catalog, or what a host has armed, in cycle order.",
         description=(
-            "Without a host, list the packaged catalog in implementations/decision_cycle/catalog.py "
+            "Without a host, list the packaged catalog in implementations/decision_cycle/<step>/catalog.json "
             "and mark each step's defaults. With --host-name or --url, list the plugins the host has "
             "armed; --long lists the host's whole catalog, packaged and uploaded, and marks the armed "
             "plugins. Exits 2 while the host's last arming failed. "

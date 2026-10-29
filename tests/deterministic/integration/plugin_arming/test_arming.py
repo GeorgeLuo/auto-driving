@@ -139,8 +139,8 @@ class PluginArmingFlows(unittest.TestCase):
             before = catalog(base)
             for command in (
                 ("plugins", "arm", "--name", "proposal/prototype-proposal"),
-                ("hosts", "plugins", "upload", "--file", str(file), "--step", "proposal",
-                 "--plugin-id", "prototype-proposal", "--entrypoint", "prototype:Prototype", "--arm"),
+                ("plugins", "upload", "--file", str(file), "--name", "proposal/prototype-proposal",
+                 "--entrypoint", "prototype:Prototype", "--arm"),
             ):
                 with self.subTest(command=command[-1]):
                     refused = invoke_automa(*command, "--url", base, check=False)

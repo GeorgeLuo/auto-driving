@@ -79,8 +79,8 @@ def name_host(runtime_root: Path, base: str, provider: str) -> None:
 
 
 def upload(base, file, step, plugin_id, *, arm=False, check=True):
-    command = ["hosts", "plugins", "upload", "--url", base, "--file", str(file),
-               "--step", step, "--plugin-id", plugin_id, "--entrypoint", "prototype:Prototype", "--json"]
+    command = ["plugins", "upload", "--url", base, "--file", str(file),
+               "--name", f"{step}/{plugin_id}", "--entrypoint", "prototype:Prototype", "--json"]
     if arm:
         command.append("--arm")
     result = invoke_automa(*command, check=check)

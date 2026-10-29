@@ -4,10 +4,9 @@ from __future__ import annotations
 
 import argparse
 import sys
-from pathlib import Path
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
-from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS, STEP_RUNNERS
+from autonomy.decision_cycle.steps import STEP_RUNNERS
 
 from ..shared.selection_args import add_selection_args
 from ..shared.timeout_input import validate_timeout_input
@@ -29,7 +28,6 @@ from .runtime_hosts import RUNTIME_ROOT as HOSTS_RUNTIME_ROOT
 from .perception import get_host_perception_info
 from .workbench import run_workbench_replay
 from .workbench_plugins import WORKBENCH_SELECTABLE_STEPS
-from ..plugins.catalog import upload_plugin
 from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .viability import (
     run_memory_viability_measurement,
@@ -45,7 +43,6 @@ def register_hosts(subcommands: argparse._SubParsersAction) -> None:
     host_help = host_commands.add_parser("help", help="Show host-level commands.")
     host_help.set_defaults(handler=_handle_hosts_help)
 
-    _register_hosts_plugins(host_commands)
     _register_hosts_viewer(host_commands)
     _register_hosts_lifecycle(host_commands)
     _register_hosts_operations(host_commands)
@@ -55,30 +52,6 @@ def register_hosts(subcommands: argparse._SubParsersAction) -> None:
     _register_hosts_info(host_commands)
     _register_hosts_perception(host_commands)
     _register_hosts_staging(host_commands)
-
-
-def _register_hosts_plugins(host_commands: argparse._SubParsersAction) -> None:
-    plugins = host_commands.add_parser("plugins", help="Upload plugins to a live catalog.")
-    plugins.set_defaults(handler=_handle_hosts_plugins_help)
-    plugin_commands = plugins.add_subparsers(dest="plugin_command")
-    plugins_help = plugin_commands.add_parser("help", help="Show upload usage.")
-    plugins_help.set_defaults(handler=_handle_hosts_plugins_help)
-    upload = plugin_commands.add_parser(
-        "upload", help="Register a plugin file; optionally arm it on a runtime host.",
-        description="Store a file in an existing live catalog. Upload success means available; source that does not compile is refused. Selection stays unchanged unless --arm, which loads it on the host and fails with its import or construction error.",
-        epilog="Verify registration with: ./cli/automa plugins list --host-name <host> --step <step> --long. Use --url for an existing workbench catalog.",
-    )
-    target = upload.add_mutually_exclusive_group(required=True)
-    target.add_argument("--name", dest="host_name", help="Host whose catalog receives the upload.")
-    target.add_argument("--url", help="Runtime or workbench URL; bypass host lookup.")
-    upload.add_argument("--file", type=Path, required=True, help="Local source file to upload; it must compile but is not imported until armed.")
-    upload.add_argument("--step", choices=STEPS, required=True, help="Cycle step whose catalog receives the file.")
-    upload.add_argument("--plugin-id", required=True, help="Plugin ID within the step; repeat an ID to make a new revision available.")
-    upload.add_argument("--entrypoint", required=True, help="Registered module:Class name, for example prototype:Prototype; resolved when armed.")
-    upload.add_argument("--config", metavar="JSON", help="JSON object of constructor settings stored with this revision, for example '{\"throttle\": -0.6}'; arming constructs the plugin with it. Default: {}.")
-    upload.add_argument("--arm", action="store_true", help="After registration, add/update this ID in the runtime host's requested selection; other plugins stay selected.")
-    upload.add_argument("--json", dest="json_output", action="store_true", help="Print the registration receipt as JSON.")
-    upload.set_defaults(handler=_handle_hosts_plugins_upload)
 
 
 def _register_hosts_viewer(host_commands: argparse._SubParsersAction) -> None:
@@ -869,47 +842,6 @@ def _add_info_args(
     )
 
 
-def _handle_hosts_plugins_help(args: argparse.Namespace) -> int:
-    print("\n".join([
-        "automa hosts plugins commands", "",
-        "- upload  store a file and register an available plugin revision",
-        "- help    show this summary", "",
-        "Requires an existing host or workbench catalog. Plain upload leaves selection unchanged; uploading and arming do not start automation.",
-        "Use ./cli/automa hosts status --name <host> to see the host's state.",
-        "Use ./cli/automa plugins list --host-name <host> to see what it has armed; add --long for its whole catalog.",
-        "Use --url <runtime-or-workbench-url> to address an existing catalog directly.", "",
-        "Example:",
-        "  ./cli/automa hosts plugins upload --name chase-sim-chaser --file ./prototype.py --step perception --plugin-id prototype --entrypoint prototype:Prototype",
-        "  ./cli/automa plugins list --host-name chase-sim-chaser --step perception --long", "",
-        "Upload refuses source that does not compile; imports and dependencies load when armed.",
-        "Re-uploading an ID leaves the running revision unchanged. Restart restoration is not guaranteed.",
-        "Use upload --config '<JSON object>' to store constructor settings with the revision; arming uses them.", "",
-        "Arm with ./cli/automa plugins arm --host-name <host> --name <step>/<plugin>; repeat --name to arm a group.",
-        "Use upload --arm for one-command registration and arming; it calls the same operation as plugins arm.",
-        "Arming supports every step. New IDs append; existing IDs update in place.",
-        f"On a one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) the armed ID replaces the plugin.",
-        "Other plugins retain their definitions/configs. The host loads the selection before answering;",
-        "a load error exits 2 and keeps the previous selection. A loaded selection applies at the next cycle.",
-        "plugins list exits 2 while the host's last arming failed.",
-        "Disarm with ./cli/automa plugins disarm --host-name <host> --name <step>/<plugin>, --step <step> or --all.",
-        "Arm and disarm change the current host only; staged selections are restored when the host restarts.",
-        "Neither changes control mode or starts or stops automation. Workbench catalogs support upload only.", "",
-        "Runtime viewer: open Plugins from its home page. Workbench: catalogs refresh in the step panels.", "",
-        "Detailed help: ./cli/automa hosts plugins <command> --help",
-    ]))
-    return 0
-
-
-def _handle_hosts_plugins_upload(args: argparse.Namespace) -> int:
-    result = upload_plugin(
-        url=args.url, host_name=args.host_name, file=args.file, step=args.step,
-        plugin_id=args.plugin_id, entrypoint=args.entrypoint, config=args.config, arm=args.arm,
-        json_output=args.json_output,
-    )
-    print(result.message)
-    return result.exit_code
-
-
 def _handle_hosts_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
@@ -925,7 +857,6 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "- serve       serve a Chase host in the foreground",
                 "- status      show each host's state and attachment",
                 "- stage       stage controller selections for a host",
-                "- plugins     manage plugins in a live host catalog",
                 "- operation   run bounded vehicle checks through a host",
                 "- info        inspect staged controller configuration",
                 "- memory      measure and reset memory",

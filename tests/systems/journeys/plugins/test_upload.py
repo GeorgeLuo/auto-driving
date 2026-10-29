@@ -26,8 +26,8 @@ from tests.support.cli_runner import AUTOMA_PATH
 
 def upload(base: str, file: Path, plugin_id: str, *, step: str = "perception", check=True):
     result = invoke_automa(
-        "hosts", "plugins", "upload", "--url", base, "--file", str(file),
-        "--step", step, "--plugin-id", plugin_id, "--entrypoint", "prototype:Prototype", "--json",
+        "plugins", "upload", "--url", base, "--file", str(file),
+        "--name", f"{step}/{plugin_id}", "--entrypoint", "prototype:Prototype", "--json",
         check=check,
     )
     return result, json.loads(result.stdout)

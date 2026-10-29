@@ -55,7 +55,7 @@ def _automa(*args: str, runtime_root: Path, env: dict, check: bool = True):
     # The run starts a worker; replay needs a fresh import of recorded plugin code.
     own_process = args[:1] in (("run",), ("inspect",))
     run = run_automa if own_process else invoke_automa
-    group = "plugins" if args[:1] == ("inspect",) else "hosts"
+    group = "plugins" if args[:1] in (("inspect",), ("upload",)) else "hosts"
     return run(group, *args, runtime_root=runtime_root, extra_env=env, check=check)
 
 
@@ -118,8 +118,8 @@ class ReplayByReleaseTests(unittest.TestCase):
             try:
                 automa("run", "--name", HOST_NAME, "--observe-only",
                        "--num-decisions", "1")
-                automa("plugins", "upload", "--name", HOST_NAME, "--file", str(plugin), "--step", "perception",
-                       "--plugin-id", "uploaded", "--entrypoint", "prototype:Prototype", "--arm")
+                automa("upload", "--host-name", HOST_NAME, "--file", str(plugin), "--name", "perception/uploaded",
+                       "--entrypoint", "prototype:Prototype", "--arm")
                 automa("run", "--name", HOST_NAME, "--observe-only",
                        "--num-decisions", "2", "--record")
             finally:

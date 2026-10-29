@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import tempfile
 import unittest
@@ -28,8 +29,8 @@ from tests.shared.cli.workbench_fixtures import (
 
 def upload(base: str, file: Path, plugin_id: str, *options: str, step: str = "perception", check=True):
     result = invoke_automa(
-        "hosts", "plugins", "upload", "--url", base, "--file", str(file),
-        "--step", step, "--plugin-id", plugin_id, "--entrypoint", "prototype:Prototype", *options, "--json",
+        "plugins", "upload", "--url", base, "--file", str(file),
+        "--name", f"{step}/{plugin_id}", "--entrypoint", "prototype:Prototype", *options, "--json",
         check=check,
     )
     return result, json.loads(result.stdout)
@@ -54,10 +55,10 @@ class PluginUploadFlows(unittest.TestCase):
             runner = ImageReplayRunner(root, activations=perception_activations("frame"),
                                        cadence_ms=30000, loop=True)
             base = serve_workbench(self, runner)
-            guidance = invoke_automa("hosts", "plugins", "help").stdout
-            self.assertIn("list", guidance)
+            guidance = " ".join(invoke_automa("plugins", "upload", "--help").stdout.split())
+            self.assertIn("plugins list", guidance)
             self.assertIn("existing host or workbench catalog", guidance)
-            self.assertIn("module", invoke_automa("hosts", "plugins", "upload", "--help").stdout)
+            self.assertIn("module", guidance)
             file = root / "prototype.py"
             # An unavailable dependency is not an upload gate.
             sources = [b"from not_uploaded_yet import Helper\n", b"raise RuntimeError('loaded later')\n"]
@@ -242,11 +243,13 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(get_json(base, "/api/plugins"), before)
             file = root / "prototype.py"
             file.write_text("class Prototype:\n    pass\n")
-            result, receipt = upload(base, file, "", check=False)
-            self.assertNotEqual(result.returncode, 0)
-            self.assertFalse(receipt["ok"])
-            self.assertEqual(receipt["status"], "failed")
-            self.assertTrue(receipt["error"])
+            unnamed = invoke_automa("plugins", "upload", "--url", base, "--file", str(file), "--name", "perception/",
+                                    "--entrypoint", "prototype:Prototype", "--json", check=False)
+            self.assertEqual((unnamed.returncode, unnamed.stdout), (2, ""))
+            empty = PluginCatalogClient(base)({"step": "perception", "plugin_id": "", "entrypoint": "prototype:Prototype",
+                                               "filename": file.name, "source_base64": base64.b64encode(file.read_bytes()).decode()})
+            self.assertEqual((empty["ok"], empty["status"]), (False, "failed"))
+            self.assertTrue(empty["error"])
             self.assertEqual(get_json(base, "/api/plugins"), before)
             rejected = PluginCatalogClient(base)({"plugin_id": "prototype"})
             self.assertEqual(rejected["error"], "missing field: step")
@@ -291,9 +294,9 @@ class PluginUploadFlows(unittest.TestCase):
             self.addCleanup(viewer.stop)
             file = root / "prototype.py"
             file.write_text("from dependency_can_arrive_later import Prototype\n")
-            result = invoke_automa("hosts", "plugins", "upload", "--name", "chase-sim-chaser",
-                                "--file", str(file), "--step", "memory", "--plugin-id", "prototype",
-                                "--entrypoint", "prototype:Prototype", runtime_root=runtime_root)
+            result = invoke_automa("plugins", "upload", "--host-name", "chase-sim-chaser",
+                                   "--file", str(file), "--name", "memory/prototype",
+                                   "--entrypoint", "prototype:Prototype", runtime_root=runtime_root)
             self.assertIn("Upload: uploaded", result.stdout)
             self.assertIn("Plugin: prototype", result.stdout)
             self.assertIn("Selection: unchanged", result.stdout)
@@ -328,9 +331,9 @@ class PluginUploadFlows(unittest.TestCase):
                 return result.stdout
 
             with chase_runtime(runtime_root) as first:
-                uploaded = invoke_automa("hosts", "plugins", "upload", "--name", "chase-sim-chaser",
-                                      "--file", str(file), "--step", "memory", "--plugin-id", "prototype",
-                                      "--entrypoint", "prototype:Prototype", runtime_root=runtime_root)
+                uploaded = invoke_automa("plugins", "upload", "--host-name", "chase-sim-chaser",
+                                         "--file", str(file), "--name", "memory/prototype",
+                                         "--entrypoint", "prototype:Prototype", runtime_root=runtime_root)
                 self.assertIn(f"(host run {first.loop.run_id})", uploaded.stdout)
                 self.assertIn("memory/prototype", listed(first.loop.run_id))
             with chase_runtime(runtime_root) as restarted:

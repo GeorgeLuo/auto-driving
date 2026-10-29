@@ -58,7 +58,7 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "- status     Show hosts status and vehicles status.",
                 "- vehicles   Discover and inspect vehicle environments.",
                 "- hosts      Create, configure, and operate vehicle controller hosts.",
-                "- plugins    List a plugin catalog or what a host has armed, arm and disarm a host's plugins, and inspect what each step reports.",
+                "- plugins    List a plugin catalog or what a host has armed, upload, arm and disarm a host's plugins, and inspect what each step reports.",
                 "- simulators Create headless simulators, or prepare and inspect SimEval environments.",
                 "",
                 "Open the runtime viewer. It does not require a host:",

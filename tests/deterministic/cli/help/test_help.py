@@ -107,6 +107,27 @@ class HelpCommandTests(unittest.TestCase):
                     parser.parse_args(args)
                 self.assertEqual(caught.exception.code, 2)
 
+    def test_plugin_upload_parses_a_step_plugin_name(self) -> None:
+        parser = build_parser()
+        file = ["--file", "p.py", "--entrypoint", "prototype:Prototype"]
+        uploaded = parser.parse_args(["plugins", "upload", "--host-name", "one", *file,
+                                      "--name", "perception/prototype", "--arm"])
+        self.assertEqual((uploaded.command, uploaded.plugin_command, uploaded.host_name), ("plugins", "upload", "one"))
+        self.assertEqual((uploaded.name, uploaded.arm, uploaded.json), (("perception", "prototype"), True, False))
+        for args in (
+            ["hosts", "plugins"],
+            ["hosts", "plugins", "upload", "--name", "one", *file, "--step", "perception", "--plugin-id", "prototype"],
+            ["plugins", "upload", "--host-name", "one", *file, "--step", "perception", "--plugin-id", "prototype"],
+            ["plugins", "upload", "--host-name", "one", *file, "--name", "prototype"],
+            ["plugins", "upload", "--host-name", "one", "--entrypoint", "prototype:Prototype", "--name", "perception/x"],
+            ["plugins", "upload", "--host-name", "one", "--file", "p.py", "--name", "perception/x"],
+            ["plugins", "upload", *file, "--name", "perception/x"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+
     def test_plugin_arm_parses_step_plugin_names(self) -> None:
         parser = build_parser()
         armed = parser.parse_args(["plugins", "arm", "--host-name", "one",

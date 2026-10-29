@@ -10,7 +10,7 @@ from autonomy.decision_cycle.steps import CLEARABLE_STEPS, ONE_PLUGIN_STEPS
 
 from ..hosts.workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ..shared.selection_args import add_selection_args
-from .catalog import arm_plugins, disarm_plugins, list_plugins
+from .catalog import arm_plugins, disarm_plugins, list_plugins, upload_plugin
 from .step_inspect import INSPECT_STEPS, inspect_step
 
 
@@ -26,7 +26,7 @@ def _step_plugin(value: str) -> tuple[str, str]:
 def register_plugins(subcommands: argparse._SubParsersAction) -> None:
     step_plugins = subcommands.add_parser(
         "plugins",
-        help="List a plugin catalog or what a host has armed, arm and disarm a host's plugins, or inspect plugins from images and recordings.",
+        help="List a plugin catalog or what a host has armed, upload, arm and disarm a host's plugins, or inspect plugins from images and recordings.",
     )
     step_plugins.set_defaults(handler=_handle_plugins_help)
     step_plugin_commands = step_plugins.add_subparsers(dest="plugin_command")
@@ -52,6 +52,32 @@ def register_plugins(subcommands: argparse._SubParsersAction) -> None:
     listing.add_argument("--step", choices=STEPS, help="Show only this cycle step.")
     listing.add_argument("--json", action="store_true", help="Print the catalog and each step's defaults, or the host's armed plugins, as JSON.")
     listing.set_defaults(handler=_handle_plugins_list)
+
+    upload = step_plugin_commands.add_parser(
+        "upload", help="Register a plugin file; optionally arm it on a runtime host.",
+        description=(
+            "Store a file in an existing host or workbench catalog. A successful upload makes the plugin "
+            "available; source that does not compile is refused, and its imports and dependencies load only when armed. "
+            "Re-uploading a name makes a new revision available and leaves the running revision unchanged; "
+            "uploads last until the host restarts. Selection stays unchanged unless --arm, which arms the "
+            "plugin as plugins arm does and fails with its import or construction error."
+        ),
+        epilog=(
+            "Verify registration with: ./cli/automa plugins list --host-name <host> --step <step> --long. "
+            "Uploading never starts automation."
+        ),
+    )
+    upload_target = upload.add_mutually_exclusive_group(required=True)
+    upload_target.add_argument("--host-name", help="Host name from hosts status.")
+    upload_target.add_argument("--url", help="Runtime or workbench URL; bypass host lookup.")
+    upload.add_argument("--file", type=Path, required=True, help="Local source file to upload; it must compile but is not imported until armed.")
+    upload.add_argument("--name", required=True, type=_step_plugin, metavar="STEP/PLUGIN",
+                        help="Plugin to register, named as plugins list --long will list it; upload the same name again to make a new revision available.")
+    upload.add_argument("--entrypoint", required=True, help="Registered module:Class name, for example prototype:Prototype; resolved when armed.")
+    upload.add_argument("--config", metavar="JSON", help="JSON object of constructor settings stored with this revision, for example '{\"throttle\": -0.6}'; arming constructs the plugin with it. Default: {}.")
+    upload.add_argument("--arm", action="store_true", help="After registration, add/update this plugin in the runtime host's requested selection; other plugins stay selected.")
+    upload.add_argument("--json", action="store_true", help="Print the registration receipt as JSON.")
+    upload.set_defaults(handler=_handle_plugins_upload)
 
     arm = step_plugin_commands.add_parser(
         "arm", help="Add/update a host's catalog plugins without restarting automation.",
@@ -166,14 +192,15 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
     print("\n".join([
         "automa plugins commands", "",
         "- list     show the packaged catalog or what a host has armed",
+        "- upload   register a plugin file in a host's or workbench's catalog",
         "- arm      arm catalog plugins on a host by step/plugin",
         "- disarm   deselect a host's plugins by step/plugin, or clear a step or every step",
         "- inspect  report a step's plugins from images or a recorded run",
         "- help     show this summary", "",
-        "Upload plugins: ./cli/automa hosts plugins", "",
         "Packaged catalog: ./cli/automa plugins list",
         "Armed on a host: ./cli/automa plugins list --host-name <host>",
         "A host's catalog: ./cli/automa plugins list --host-name <host> --long",
+        "Upload to a host: ./cli/automa plugins upload --host-name <host> --file <file> --name <step>/<plugin> --entrypoint <module>:<Class>",
         "Arm on a host: ./cli/automa plugins arm --host-name <host> --name <step>/<plugin>",
         "Disarm on a host: ./cli/automa plugins disarm --host-name <host> --name <step>/<plugin>",
         "Detailed help: ./cli/automa plugins <command> --help",
@@ -184,6 +211,14 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
 def _handle_plugins_list(args: argparse.Namespace) -> int:
     result = list_plugins(host_name=args.host_name, url=args.url, step=args.step, long=args.long,
                           json_output=args.json)
+    print(result.message)
+    return result.exit_code
+
+
+def _handle_plugins_upload(args: argparse.Namespace) -> int:
+    step, plugin_id = args.name
+    result = upload_plugin(url=args.url, host_name=args.host_name, file=args.file, step=step, plugin_id=plugin_id,
+                           entrypoint=args.entrypoint, config=args.config, arm=args.arm, json_output=args.json)
     print(result.message)
     return result.exit_code
 

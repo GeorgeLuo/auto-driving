@@ -92,9 +92,9 @@ class PluginArmingFlows(unittest.TestCase):
                 file = root / "proposal.py"
                 for revision in (1, 2):
                     write_plugin(file, "proposal", "prototype", revision)
-                    receipt = json.loads(cli("plugins", "upload", "--name", "chase-sim-chaser", "--file", str(file),
-                                             "--step", "proposal", "--plugin-id", "prototype", "--entrypoint", "prototype:Prototype",
-                                             "--arm", "--json").stdout)
+                    receipt = json.loads(run_automa("plugins", "upload", "--host-name", "chase-sim-chaser", "--file", str(file),
+                                                    "--name", "proposal/prototype", "--entrypoint", "prototype:Prototype",
+                                                    "--arm", "--json", runtime_root=runtime, extra_env=env).stdout)
                     self.assertTrue(receipt["ok"])
                     deadline = time.monotonic() + 5
                     while True:

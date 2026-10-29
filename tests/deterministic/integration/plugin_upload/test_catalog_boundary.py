@@ -43,7 +43,7 @@ class CatalogWriteBoundaryFlows(unittest.TestCase):
                         {"operation": "arm", "selections": {"proposal": ["existing"]}},
                         {"operation": "disarm", "selections": {"proposal": []}, "all": True},
                     )
-                    # The request `automa hosts plugins upload` sends: JSON with no Origin.
+                    # The request `automa plugins upload` sends: JSON with no Origin.
                     request = Request(base + "api/plugins", data=json.dumps({**payloads[0], "plugin_id": "existing"}).encode(),
                                       headers={"Content-Type": "application/json"})
                     with urlopen(request, timeout=3) as response:

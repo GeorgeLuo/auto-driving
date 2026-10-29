@@ -144,11 +144,10 @@ With a Chase worker and its viewer open, upload a local plugin file separately
 from selecting it:
 
 ```sh
-./cli/automa hosts plugins upload \
-  --name chase-sim-chaser \
+./cli/automa plugins upload \
+  --host-name chase-sim-chaser \
   --file ./prototype.py \
-  --step perception \
-  --plugin-id prototype \
+  --name perception/prototype \
   --entrypoint prototype:Prototype
 
 ./cli/automa plugins list --host-name chase-sim-chaser --step perception --long
@@ -165,9 +164,10 @@ Use `--step perception` to filter or `--json` for their definitions and configs.
 Without a host, `plugins list` lists the packaged catalog in
 `implementations/decision_cycle/catalog.py` and marks each step's defaults; no
 host is needed.
-The former `hosts plugins list` alias and `hosts plugins status` command are
-removed. `hosts plugins help` describes the file identity arguments and the
-existing-host precondition.
+The `hosts plugins` group is removed: its `list` alias and `status` command are
+gone, and `upload`, `arm` and `disarm` are now `plugins upload`, `plugins arm`
+and `plugins disarm`. `plugins upload --help` describes the file identity
+arguments and the existing-host precondition.
 Open **Plugins** in the runtime viewer to see the available
 revision. Upload does not change the selected or running plugins. Source that
 does not compile is refused with its file and line. The file is not imported,
@@ -194,7 +194,7 @@ worker exits. Keeping that host alive between runs is separate work.
 After uploading, request the available revision without restarting the worker:
 
 ```sh
-./cli/automa hosts plugins arm --name chase-sim-chaser --step perception --plugin prototype
+./cli/automa plugins arm --host-name chase-sim-chaser --name perception/prototype
 ./cli/automa plugins list --host-name chase-sim-chaser --step perception
 ./cli/automa hosts stream perception --name chase-sim-chaser --once
 ```
@@ -215,15 +215,12 @@ For one-command registration and arming, add `--arm` to the upload command.
 It uses the same arm operation and reports upload and arming outcomes separately;
 the upload remains available if arming fails.
 
-For dependent plugins, upload each file first, then arm the group with a JSON
-selection document:
-
-```json
-{"perception": ["prototype"], "memory": ["prototype-memory"], "proposal": ["prototype-proposal"]}
-```
+For dependent plugins, upload each file first, then arm the group in one
+command by repeating `--name`:
 
 ```sh
-./cli/automa hosts plugins arm --name chase-sim-chaser --selection ./selection.json
+./cli/automa plugins arm --host-name chase-sim-chaser \
+  --name perception/prototype --name memory/prototype-memory --name proposal/prototype-proposal
 ./cli/automa plugins list --host-name chase-sim-chaser
 ```
 
@@ -234,7 +231,7 @@ neither starts automation nor changes its control mode. An idle or completed
 host can accept a request while its catalog exists; it stays requested until the
 next cycle. A Chase worker exiting ends that catalog and its uploaded selections.
 The replay workbench continues to use its existing selection controls and
-supports upload only through this command group.
+supports upload only, through `plugins upload`.
 
 Uploads currently support self-contained plugin files using installed imports.
 Uploading Python modules that import other uploaded files needs a later loader

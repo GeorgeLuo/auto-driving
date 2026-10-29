@@ -33,8 +33,8 @@ class LiveCommandsTests(LiveHostTestCase):
         file = self.runtime_root.parent / "highest_confidence.py"
         file.write_bytes(source)
         invoke_automa(
-            "hosts", "plugins", "upload", "--name", HOST_NAME, "--file", str(file), "--step", "plan",
-            "--plugin-id", "highest_confidence", "--entrypoint", "highest_confidence:HighestConfidencePlan",
+            "plugins", "upload", "--host-name", HOST_NAME, "--file", str(file), "--name", "plan/highest_confidence",
+            "--entrypoint", "highest_confidence:HighestConfidencePlan",
             "--arm", runtime_root=self.runtime_root,
         )
         self.observe()

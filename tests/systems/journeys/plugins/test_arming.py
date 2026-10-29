@@ -45,12 +45,10 @@ class PluginArmingFlows(unittest.TestCase):
                 available = catalog(base)
                 self.assertEqual(available["arming"], before["arming"])
                 self.assertEqual(available["applied_decision"], before["applied_decision"])
-                selection = root / "selection.json"
-                selection.write_text(json.dumps({step: [f"prototype-{step}"] for step in PRESET_STEPS}))
+                names = [option for step in PRESET_STEPS for option in ("--name", f"{step}/prototype-{step}")]
                 # Through the executable once; the worker journey below covers
                 # upload, plugins list and disarm the same way.
-                receipt = json.loads(run_automa("hosts", "plugins", "arm", "--url", base,
-                                                "--selection", str(selection), "--json").stdout)
+                receipt = json.loads(run_automa("plugins", "arm", "--url", base, *names, "--json").stdout)
                 self.assertEqual(receipt["status"], "requested")
                 self.assertEqual(receipt["outcome"]["status"], "requested")
                 self.assertEqual(host.session_status(), session)
@@ -94,9 +92,9 @@ class PluginArmingFlows(unittest.TestCase):
                 file = root / "proposal.py"
                 for revision in (1, 2):
                     write_plugin(file, "proposal", "prototype", revision)
-                    receipt = json.loads(cli("plugins", "upload", "--name", "chase-sim-chaser", "--file", str(file),
-                                             "--step", "proposal", "--plugin-id", "prototype", "--entrypoint", "prototype:Prototype",
-                                             "--arm", "--json").stdout)
+                    receipt = json.loads(run_automa("plugins", "upload", "--host-name", "chase-sim-chaser", "--file", str(file),
+                                                    "--name", "proposal/prototype", "--entrypoint", "prototype:Prototype",
+                                                    "--arm", "--json", runtime_root=runtime, extra_env=env).stdout)
                     self.assertTrue(receipt["ok"])
                     deadline = time.monotonic() + 5
                     while True:
@@ -134,8 +132,9 @@ class PluginArmingFlows(unittest.TestCase):
                     self.assertEqual(current["state"]["action_policy"], "observe_only")
                     self.assertEqual(current["decision"]["generation_id"], streamed["generation_id"])
                     self.assertNotEqual(streamed["generation_id"], before["applied_decision"]["generation_id"])
-                disarmed = json.loads(cli("plugins", "disarm", "--name", "chase-sim-chaser",
-                                          "--step", "proposal", "--plugin", "prototype", "--json").stdout)
+                disarmed = json.loads(run_automa("plugins", "disarm", "--host-name", "chase-sim-chaser",
+                                                 "--name", "proposal/prototype", "--json",
+                                                 runtime_root=runtime, extra_env=env).stdout)
                 self.assertTrue(disarmed["ok"])
                 deadline = time.monotonic() + 5
                 while True:

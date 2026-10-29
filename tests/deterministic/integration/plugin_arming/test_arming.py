@@ -14,6 +14,7 @@ from tests.shared.integration.plugin_flow_fixtures import (
     arm_step,
     catalog,
     frame,
+    name_host,
     plugin_host,
     proposal,
     selected,
@@ -73,6 +74,41 @@ class PluginArmingFlows(unittest.TestCase):
             self.assertEqual(proposal(second, "first").metadata["memory"]["count"], 2)
             self.assertEqual(catalog(base)["applied_decision"], identity)
 
+    def test_plugins_arm_names_a_group_on_a_named_host(self):
+        # A host's catalog holds its staged plugins and uploads.
+        staged = {"perception": packaged_activation("perception", ["frame", "classical_regions"])}
+        for vehicle, provider in (("chase", "chase-sim"), ("picar", "picar")):
+            with (self.subTest(vehicle=vehicle), image_source(1) as root,
+                  plugin_host(root, vehicle, staged) as (host, base)):
+                for step in ("perception", "memory", "proposal"):
+                    file = root / f"{step}.py"
+                    write_plugin(file, step, f"prototype-{step}", 1)
+                    upload(base, file, step, f"prototype-{step}")
+                runtime_root = root / "hosts"
+                name_host(runtime_root, base, provider)
+
+                def arm(*names, check=True):
+                    options = [option for name in names for option in ("--name", name)]
+                    return invoke_automa("plugins", "arm", "--host-name", "one", *options, "--json",
+                                         runtime_root=runtime_root, check=check)
+
+                # One request arms the group across steps, so it adopts on one frame.
+                receipt = json.loads(arm("perception/prototype-perception", "memory/prototype-memory",
+                                         "proposal/prototype-proposal").stdout)
+                self.assertEqual((receipt["schema"], receipt["host_name"], receipt["outcome"]["status"]),
+                                 ("automa_plugin_arm", "one", "requested"))
+                result = host.run(frame(root, 1))
+                self.assertEqual(proposal(result, "prototype-proposal").metadata["memory"]["count"], 1)
+                # After disarm --all, a packaged plugin arms again by the name plugins list --long gives it.
+                invoke_automa("plugins", "disarm", "--host-name", "one", "--all", runtime_root=runtime_root)
+                self.assertEqual(json.loads(arm("perception/classical_regions").stdout)["status"], "requested")
+                listed = invoke_automa("plugins", "list", "--host-name", "one", "--step", "perception",
+                                       runtime_root=runtime_root).stdout
+                self.assertEqual(listed.splitlines(), ["Host: one", "Armed:", "- perception/classical_regions: packaged"])
+                unknown = arm("perception/missing", check=False)
+                self.assertEqual(unknown.returncode, 2)
+                self.assertIn("unknown plugin id 'missing'", json.loads(unknown.stdout)["error"])
+
     def test_arming_before_during_and_after_completion_does_not_start_or_change_mode(self):
         with image_source(1) as root, plugin_host(root) as (host, base):
             file = root / "proposal.py"
@@ -102,12 +138,12 @@ class PluginArmingFlows(unittest.TestCase):
             upload(base, file, "proposal", "prototype-proposal")
             before = catalog(base)
             for command in (
-                ("arm", "--step", "proposal", "--plugin", "prototype-proposal"),
-                ("upload", "--file", str(file), "--step", "proposal", "--plugin-id", "prototype-proposal",
+                ("plugins", "arm", "--name", "proposal/prototype-proposal"),
+                ("plugins", "upload", "--file", str(file), "--name", "proposal/prototype-proposal",
                  "--entrypoint", "prototype:Prototype", "--arm"),
             ):
-                with self.subTest(command=command[0]):
-                    refused = invoke_automa("hosts", "plugins", *command, "--url", base, check=False)
+                with self.subTest(command=command[-1]):
+                    refused = invoke_automa(*command, "--url", base, check=False)
                     self.assertEqual(refused.returncode, 2, refused.stdout)
                     self.assertIn("Arming: failed", refused.stdout)
                     self.assertIn("ModuleNotFoundError: No module named 'not_uploaded_yet'", refused.stdout)

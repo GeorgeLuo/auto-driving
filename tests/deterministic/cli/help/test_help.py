@@ -107,6 +107,71 @@ class HelpCommandTests(unittest.TestCase):
                     parser.parse_args(args)
                 self.assertEqual(caught.exception.code, 2)
 
+    def test_plugin_upload_parses_a_step_plugin_name(self) -> None:
+        parser = build_parser()
+        file = ["--file", "p.py", "--entrypoint", "prototype:Prototype"]
+        uploaded = parser.parse_args(["plugins", "upload", "--host-name", "one", *file,
+                                      "--name", "perception/prototype", "--arm"])
+        self.assertEqual((uploaded.command, uploaded.plugin_command, uploaded.host_name), ("plugins", "upload", "one"))
+        self.assertEqual((uploaded.name, uploaded.arm, uploaded.json), (("perception", "prototype"), True, False))
+        for args in (
+            ["hosts", "plugins"],
+            ["hosts", "plugins", "upload", "--name", "one", *file, "--step", "perception", "--plugin-id", "prototype"],
+            ["plugins", "upload", "--host-name", "one", *file, "--step", "perception", "--plugin-id", "prototype"],
+            ["plugins", "upload", "--host-name", "one", *file, "--name", "prototype"],
+            ["plugins", "upload", "--host-name", "one", "--entrypoint", "prototype:Prototype", "--name", "perception/x"],
+            ["plugins", "upload", "--host-name", "one", "--file", "p.py", "--name", "perception/x"],
+            ["plugins", "upload", *file, "--name", "perception/x"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+
+    def test_plugin_arm_parses_step_plugin_names(self) -> None:
+        parser = build_parser()
+        armed = parser.parse_args(["plugins", "arm", "--host-name", "one",
+                                   "--name", "perception/classical_regions", "--name", "memory/x"])
+        self.assertEqual((armed.command, armed.plugin_command, armed.host_name), ("plugins", "arm", "one"))
+        self.assertEqual(armed.plugins, [("perception", "classical_regions"), ("memory", "x")])
+        for args in (
+            ["hosts", "plugins", "arm", "--name", "one", "--step", "perception", "--plugin", "x"],
+            ["plugins", "arm", "--host-name", "one"],
+            ["plugins", "arm", "--name", "perception/x"],
+            ["plugins", "arm", "--host-name", "one", "--name", "classical_regions"],
+            ["plugins", "arm", "--host-name", "one", "--name", "sensing/x"],
+            ["plugins", "arm", "--host-name", "one", "--name", "perception/"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+
+    def test_plugin_disarm_parses_against_a_host(self) -> None:
+        parser = build_parser()
+        disarmed = parser.parse_args(["plugins", "disarm", "--host-name", "one", "--all"])
+        self.assertEqual((disarmed.command, disarmed.plugin_command, disarmed.host_name, disarmed.all_plugins),
+                         ("plugins", "disarm", "one", True))
+        self.assertFalse(disarmed.json)
+        named = parser.parse_args(["plugins", "disarm", "--host-name", "one",
+                                   "--name", "proposal/x", "--name", "memory/y"])
+        self.assertEqual((named.plugins, named.step), ([("proposal", "x"), ("memory", "y")], None))
+        cleared = parser.parse_args(["plugins", "disarm", "--host-name", "one", "--step", "memory"])
+        self.assertEqual((cleared.plugins, cleared.step, cleared.all_plugins), (None, "memory", False))
+        for args in (
+            ["hosts", "plugins", "disarm", "--name", "one", "--all"],
+            ["plugins", "disarm", "--all"],
+            ["plugins", "disarm", "--host-name", "one"],
+            ["plugins", "disarm", "--host-name", "one", "--url", "http://127.0.0.1:5051", "--all"],
+            ["plugins", "disarm", "--host-name", "one", "--all", "--name", "proposal/x"],
+            ["plugins", "disarm", "--host-name", "one", "--step", "memory", "--all"],
+            ["plugins", "disarm", "--host-name", "one", "--step", "plan"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+
     def test_removed_flags_are_rejected_before_execution(self) -> None:
         parser = build_parser()
         for args in (

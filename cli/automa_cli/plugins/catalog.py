@@ -105,39 +105,45 @@ def _request_arm(client: PluginCatalogClient, selections: dict[str, Any]) -> dic
     return client({"operation": "arm", "selections": selections}, timeout_s=ARM_TIMEOUT_S)
 
 
-def arm_plugins(*, url: str | None, host_name: str | None, step: str | None = None,
-                plugins: list[str] | None = None, selection: Path | None = None,
+def _selections(plugins: list[tuple[str, str]]) -> dict[str, list[str]]:
+    """Group ``(step, plugin_id)`` pairs by step, each step's IDs in the order given."""
+
+    selections: dict[str, list[str]] = {}
+    for step, plugin_id in plugins:
+        selections.setdefault(step, []).append(plugin_id)
+    return selections
+
+
+def arm_plugins(*, url: str | None, host_name: str | None, plugins: list[tuple[str, str]],
                 json_output: bool = False) -> CommandResult:
+    """Arm ``(step, plugin_id)`` pairs as one request, each step's IDs in the order given."""
+
     endpoint = url
-    recovery = f"Check the selection document: {selection}" if selection else _catalog_recovery(url, host_name)
+    recovery = _catalog_recovery(url, host_name)
     try:
-        selections = json.loads(selection.read_text()) if selection else {step: plugins}
-        recovery = _catalog_recovery(url, host_name)
         endpoint = url or catalog_url(host_name)
-        result = _request_arm(PluginCatalogClient(endpoint), selections)
+        result = _request_arm(PluginCatalogClient(endpoint), _selections(plugins))
         recovery = f"./cli/automa plugins list {_target_args(url, host_name)}"
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
         result = {"ok": False, "status": "failed", "error": str(exc)}
-    return _result(result, operation="arm", url=endpoint, host_name=host_name, step=step,
+    return _result(result, operation="arm", url=endpoint, host_name=host_name, step=None,
                    recovery=recovery, json_output=json_output)
 
 
-def disarm_plugins(*, url: str | None, host_name: str | None, step: str | None = None,
-                   plugins: list[str] | None = None, selection: Path | None = None,
-                   all_plugins: bool = False, json_output: bool = False) -> CommandResult:
+def disarm_plugins(*, url: str | None, host_name: str | None, plugins: list[tuple[str, str]] | None = None,
+                   step: str | None = None, json_output: bool = False) -> CommandResult:
+    """Disarm ``(step, plugin_id)`` pairs as one request; otherwise clear ``step``, or every clearable step."""
+
     endpoint = url
-    recovery = f"Check the selection document: {selection}" if selection else _catalog_recovery(url, host_name)
+    recovery = _catalog_recovery(url, host_name)
+    if plugins:
+        selections, clear = _selections(plugins), False
+    else:
+        selections, clear = {name: [] for name in ((step,) if step else CLEARABLE_STEPS)}, True
     try:
-        if selection is not None:
-            selections = json.loads(selection.read_text())
-        elif all_plugins:
-            selections = {name: [] for name in ((step,) if step else CLEARABLE_STEPS)}
-        else:
-            selections = {step: plugins}
-        recovery = _catalog_recovery(url, host_name)
         endpoint = url or catalog_url(host_name)
         result = PluginCatalogClient(endpoint)(
-            {"operation": "disarm", "selections": selections, "all": all_plugins}, timeout_s=ARM_TIMEOUT_S,
+            {"operation": "disarm", "selections": selections, "all": clear}, timeout_s=ARM_TIMEOUT_S,
         )
         recovery = f"./cli/automa plugins list {_target_args(url, host_name)}"
     except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:

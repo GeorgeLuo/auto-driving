@@ -3,29 +3,19 @@
 from __future__ import annotations
 
 import json
-import os
 import tempfile
 import unittest
 from pathlib import Path
 
 from autonomy.decision_cycle.activation import STEPS
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, step_plugins
-from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import (
-    arm_step, catalog, frame, plugin_host, upload, write_plugin,
+    arm_step, catalog, frame, name_host, plugin_host, upload, write_plugin,
 )
 from tests.support.fake_hosts import answering, closed_url
-from tests.support.runtime_fixtures import write_host_fixture, write_json
-
-
-def name_host(runtime_root: Path, base: str, provider: str) -> None:
-    write_host_fixture(runtime_root, "one", provider=provider, url=base)
-    if provider == "chase-sim":
-        write_json(runtime_root / "one/bundle/runtime/automation/host.json", {
-            "schema": HOST_RECORD_SCHEMA, "host_name": "one", "pid": os.getpid(), "base_url": base,
-        })
+from tests.support.runtime_fixtures import write_host_fixture
 
 
 def row(plugin, mark=""):

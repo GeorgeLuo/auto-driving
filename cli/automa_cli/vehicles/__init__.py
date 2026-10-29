@@ -4,4 +4,5 @@
 - ``status``: ``vehicles status``.
 - ``discovery``: ``vehicles discover`` and ``remove``, and the vehicles status lists.
 - ``probes``: how each vehicle is probed.
+- ``providers``: what differs between a simulator and a PiCar, one entry per ``--provider``.
 """

@@ -8,14 +8,14 @@ from ..shared.command_result import CommandResult
 from .simeval import (
     DEFAULT_TIMEOUT_MS,
     DEFAULT_UI_HTTP_URL,
-    _base_payload,
-    _result,
-    _run_simeval,
-    _run_ui_verify,
-    _simeval_executable,
-    _skipped_summary,
-    _summarize_frontend_run,
-    _summarize_status_run,
+    base_payload,
+    run_simeval,
+    run_ui_verify,
+    simeval_executable,
+    simulator_result,
+    skipped_summary,
+    summarize_frontend_run,
+    summarize_status_run,
 )
 
 
@@ -24,15 +24,15 @@ def get_simulator_status(
     timeout_ms: int = DEFAULT_TIMEOUT_MS,
     json_output: bool = False,
 ) -> CommandResult:
-    executable = _simeval_executable()
-    payload = _base_payload("automa_simulator_status_v0", executable=executable)
+    executable = simeval_executable()
+    payload = base_payload("automa_simulator_status_v0", executable=executable)
     if executable is None:
         error = "simeval was not found on PATH. Set AUTOMA_SIMEVAL_BIN or install simeval."
         payload["status"] = {
             "online": False,
             "error": error,
         }
-        payload["frontend"] = _skipped_summary("simeval is unavailable")
+        payload["frontend"] = skipped_summary("simeval is unavailable")
         payload["result"] = {
             "status": "unavailable",
             "reason_code": "simeval_missing",
@@ -44,20 +44,20 @@ def get_simulator_status(
             ),
         }
         payload["commands"] = []
-        return _result(payload, json_output=json_output, exit_code=2)
+        return simulator_result(payload, json_output=json_output, exit_code=2)
 
-    status_run = _run_simeval(executable, ["status", "--all", "--timeout", str(timeout_ms)])
-    summary = _summarize_status_run(status_run)
-    frontend_run = _run_ui_verify(executable, auto_serve=False, observe_ms=500)
+    status_run = run_simeval(executable, ["status", "--all", "--timeout", str(timeout_ms)])
+    summary = summarize_status_run(status_run)
+    frontend_run = run_ui_verify(executable, auto_serve=False, observe_ms=500)
     payload["status"] = summary
-    payload["frontend"] = _summarize_frontend_run(frontend_run)
+    payload["frontend"] = summarize_frontend_run(frontend_run)
     payload["result"] = _simulator_status_result(
         status=summary,
         frontend=payload["frontend"],
     )
     payload["commands"] = [status_run.to_dict(), frontend_run.to_dict()]
 
-    return _result(payload, json_output=json_output, exit_code=0)
+    return simulator_result(payload, json_output=json_output, exit_code=0)
 
 
 def _simulator_status_result(

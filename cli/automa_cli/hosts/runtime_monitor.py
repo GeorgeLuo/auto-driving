@@ -20,9 +20,8 @@ from autonomy.vehicle.vehicle import FRONT_CAMERA_SENSOR_ID
 from autonomy.runtime.client import RuntimeClient
 from ..shared.paths import display_path
 from ..frontend.perception_view import perception_view_ready
-from .host_publications import (
-    fetch_observation_sample, TransactionCache, publication_to_frame_record, perception_text_from_publication,
-)
+from .decision_publication import perception_text_from_publication, publication_to_frame_record
+from .host_publications import fetch_observation_sample, TransactionCache
 from .run_record import (
     control_source, finish_run, frame_line, frame_readiness,
     new_run_state, record_host_status, reports_frame, run_result, startup_lines,
@@ -31,7 +30,7 @@ from .run_record import (
 from ..frontend.server import RuntimeViewServer
 from ..runtime_view import runtime_view_server
 from .decision_live import DecisionViewAdapter
-from .staged_bundle import write_json_atomically
+from ..shared.json_files import write_json_atomically
 from ..plugins.catalog import PluginCatalogClient
 
 MONITOR_POLL_INTERVAL_S = 0.1
@@ -42,7 +41,7 @@ DECISION_COPY_INTERVAL_S = 1 / 30
 MAX_POLL_GAP_S = 0.1
 
 
-def _pause_s(started: float, interval_s: float) -> float:
+def pause_s(started: float, interval_s: float) -> float:
     """Target the interval on fast hosts; back off after slower passes.
 
     A 30 ms pass waits 30 ms (~16.7 Hz); a 200 ms pass waits 100 ms.
@@ -100,7 +99,7 @@ def _copy_latest_decision(
             server.decision.invalidate_latest()
             published, reason = False, f"{type(exc).__name__}: {exc}"
         copied["result"] = (published, reason)
-        stop.wait(_pause_s(started, DECISION_COPY_INTERVAL_S))
+        stop.wait(pause_s(started, DECISION_COPY_INTERVAL_S))
 
 
 def _copy_latest_perception(
@@ -141,7 +140,7 @@ def _copy_latest_perception(
                 copied["error"] = f"{type(exc).__name__}: {exc}"
             finally:
                 copied["ready"].set()
-            stop.wait(_pause_s(started, PERCEPTION_COPY_INTERVAL_S))
+            stop.wait(pause_s(started, PERCEPTION_COPY_INTERVAL_S))
     finally:
         copied["ready"].set()
 
@@ -249,7 +248,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
             if session["status"] in {"starting", "stopping"}:
                 state["updated_at_ms"] = timestamp_ms()
                 write_json_atomically(state_path, state)
-                time.sleep(_pause_s(poll_started, MONITOR_POLL_INTERVAL_S))
+                time.sleep(pause_s(poll_started, MONITOR_POLL_INTERVAL_S))
                 continue
             if session["status"] != "running":
                 perception_copy["ready"].clear()
@@ -315,7 +314,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
             write_json_atomically(state_path, state)
             if session["status"] != "running":
                 break
-            time.sleep(_pause_s(poll_started, MONITOR_POLL_INTERVAL_S))
+            time.sleep(pause_s(poll_started, MONITOR_POLL_INTERVAL_S))
     except KeyboardInterrupt:
         stop_error = _stop(client, state, run_dir=run_dir, recording_id=recording_id)
         _join_decision_copy(copier, stop_copy)

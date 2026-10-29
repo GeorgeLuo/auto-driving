@@ -41,7 +41,7 @@ class SimevalRun:
         }
 
 
-def _base_payload(schema: str, *, executable: str | None) -> dict[str, Any]:
+def base_payload(schema: str, *, executable: str | None) -> dict[str, Any]:
     return {
         "schema": schema,
         "checked_at_ms": int(time.time() * 1000),
@@ -53,23 +53,23 @@ def _base_payload(schema: str, *, executable: str | None) -> dict[str, Any]:
     }
 
 
-def _simeval_executable() -> str | None:
+def simeval_executable() -> str | None:
     override = os.environ.get("AUTOMA_SIMEVAL_BIN")
     if override:
         return override
     return shutil.which("simeval")
 
 
-def _run_simeval(
+def run_simeval(
     executable: str,
     args: list[str],
     *,
     timeout_s: float = 20,
 ) -> SimevalRun:
-    return _run_process([executable, *args], timeout_s=timeout_s)
+    return run_process([executable, *args], timeout_s=timeout_s)
 
 
-def _run_process(command: list[str], *, timeout_s: float = 20) -> SimevalRun:
+def run_process(command: list[str], *, timeout_s: float = 20) -> SimevalRun:
     started = time.perf_counter()
     try:
         process = subprocess.run(
@@ -106,13 +106,13 @@ def _run_process(command: list[str], *, timeout_s: float = 20) -> SimevalRun:
         )
 
 
-def _run_ui_verify(
+def run_ui_verify(
     executable: str,
     *,
     auto_serve: bool,
     observe_ms: int,
 ) -> SimevalRun:
-    return _run_simeval(
+    return run_simeval(
         executable,
         [
             "ui",
@@ -128,8 +128,8 @@ def _run_ui_verify(
     )
 
 
-def _summarize_status_run(run: SimevalRun) -> dict[str, Any]:
-    parsed = _parse_json(run.stdout)
+def summarize_status_run(run: SimevalRun) -> dict[str, Any]:
+    parsed = parse_json(run.stdout)
     if not isinstance(parsed, dict):
         return {
             "online": False,
@@ -189,8 +189,8 @@ def _deployment_summary(item: dict[str, Any], *, source: str) -> dict[str, Any]:
     }
 
 
-def _summarize_frontend_run(run: SimevalRun) -> dict[str, Any]:
-    parsed = _parse_json(run.stdout)
+def summarize_frontend_run(run: SimevalRun) -> dict[str, Any]:
+    parsed = parse_json(run.stdout)
     if not isinstance(parsed, dict):
         return {
             "ok": False,
@@ -256,7 +256,7 @@ def _normalize_error(error: Any) -> str | None:
     return text
 
 
-def _skipped_summary(reason: str) -> dict[str, Any]:
+def skipped_summary(reason: str) -> dict[str, Any]:
     return {
         "ok": False,
         "skipped": True,
@@ -264,7 +264,7 @@ def _skipped_summary(reason: str) -> dict[str, Any]:
     }
 
 
-def _parse_json(text: str) -> Any:
+def parse_json(text: str) -> Any:
     text = text.strip()
     if not text:
         return None
@@ -284,7 +284,7 @@ def _list_items(value: Any) -> list[dict[str, Any]]:
     return [item for item in value if isinstance(item, dict)]
 
 
-def _result(payload: dict[str, Any], *, json_output: bool, exit_code: int) -> CommandResult:
+def simulator_result(payload: dict[str, Any], *, json_output: bool, exit_code: int) -> CommandResult:
     if json_output:
         return CommandResult(exit_code, json.dumps(payload, indent=2, sort_keys=True))
     if payload["schema"] == "automa_simulator_status_v0":

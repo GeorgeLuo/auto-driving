@@ -9,6 +9,8 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
+from autonomy.runtime.frame_loop import DECISION_PUBLICATION_SCHEMA
+from autonomy.runtime.routes import TELEMETRY_SCHEMA
 from cli.automa_cli.hosts.decision_live import (
     DecisionViewAdapter,
     _accepted_pair,
@@ -16,14 +18,12 @@ from cli.automa_cli.hosts.decision_live import (
 )
 from cli.automa_cli.hosts.decision import DecisionSurfaceError
 from cli.automa_cli.hosts.decision_records import DecisionRunners
-from cli.automa_cli.hosts.host_publications import (
-    DECISION_PUBLICATION_SCHEMA,
-    HOST_TELEMETRY_SCHEMA,
+from cli.automa_cli.hosts.decision_publication import normalize_decision_publication
+from cli.automa_cli.hosts.host_telemetry import (
+    decision_publication_identity,
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,
-    normalize_decision_publication,
-    decision_publication_identity,
 )
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
     frame_inputs,
@@ -53,7 +53,7 @@ def _record(
     skipped_since_previous: int | None = None,
 ) -> dict:
     return {
-        "schema": HOST_TELEMETRY_SCHEMA,
+        "schema": TELEMETRY_SCHEMA,
         "status": "healthy",
         "host_name": "piracer",
         "source_id": "donkeycar:piracer",
@@ -513,6 +513,19 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         with self.assertRaises(ValueError) as raised:
             normalize_host_telemetry_record(invalid_sequence, now_ms=NOW_MS)
         self.assertEqual(raised.exception.reason, "field_invalid")
+
+    def test_a_negative_count_reports_an_integer_not_an_epoch(self) -> None:
+        for path, key in (("limits", "max_gap_ms"), ("host_tick", "source_age_ms")):
+            record = _record()
+            record[path][key] = -1
+            with self.subTest(field=f"{path}.{key}"):
+                with self.assertRaises(ValueError) as raised:
+                    normalize_host_telemetry_record(record, now_ms=NOW_MS)
+                self.assertEqual(raised.exception.reason, "field_invalid")
+                self.assertEqual(
+                    raised.exception.message_text,
+                    f"Host telemetry {path}.{key} must be a non-negative integer.",
+                )
 
     def test_records_route_distinguishes_contiguous_coverage_from_gap(self) -> None:
         second = _record(

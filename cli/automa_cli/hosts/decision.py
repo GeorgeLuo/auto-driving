@@ -53,7 +53,7 @@ from .step_activations import (
     format_activation_problems,
     proposal_plugin_ids,
 )
-from .host_publications import (
+from .decision_publication import (
     DecisionPublicationError,
     normalize_decision_publication,
 )
@@ -159,7 +159,7 @@ def decision_error_payload(
     }
 
 
-def _require_valid_activations(
+def require_valid_activations(
     bundle: dict[str, str],
     *,
     host_name: str,

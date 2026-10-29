@@ -1,8 +1,4 @@
-"""Activation writes, and the staged-bundle import swap the shared loader owns.
-
-``StagedBundleImport`` lives in ``autonomy.runtime.plugin_loader``. This module
-re-exports it for callers that already import it with the JSON writer.
-"""
+"""JSON files the CLI writes beside a vehicle's runtime and reads back."""
 
 from __future__ import annotations
 
@@ -13,18 +9,15 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from autonomy.runtime.plugin_loader import StagedBundleImport
 
-__all__ = ["StagedBundleImport", "write_json_atomically"]
-
-
-def write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
+def write_json_atomically(path: Path, payload: Any) -> None:
     """Replace a JSON file in one step so a reader never sees a partial write.
 
-    An existing file keeps its permission bits. The parent directory must
-    already exist.
+    The parent directory is created when missing. An existing file keeps its
+    permission bits.
     """
 
+    path.parent.mkdir(parents=True, exist_ok=True)
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
     )
@@ -41,3 +34,14 @@ def write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
         os.replace(temporary_path, path)
     finally:
         temporary_path.unlink(missing_ok=True)
+
+
+def read_json(path: Path) -> Any:
+    """A JSON file's value, or ``None`` when it is missing or not valid JSON."""
+
+    if not path.exists():
+        return None
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None

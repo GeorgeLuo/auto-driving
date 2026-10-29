@@ -89,11 +89,11 @@ class VehicleStatusTests(unittest.TestCase):
                 {"CHASE_UI_WS_URL": endpoint},
             ),
             patch(
-                "cli.automa_cli.simulators.readiness._probe_chase",
+                "cli.automa_cli.simulators.readiness.probe_chase",
                 return_value=probe_result,
             ) as probe,
             patch(
-                "cli.automa_cli.hosts.automation._collect_automation_status",
+                "cli.automa_cli.simulators.readiness.collect_automation_status",
                 return_value=[],
             ),
         ):
@@ -123,10 +123,10 @@ class VehicleStatusTests(unittest.TestCase):
             },
         )
         with patch(
-            "cli.automa_cli.simulators.readiness._probe_chase",
+            "cli.automa_cli.simulators.readiness.probe_chase",
             return_value=probe,
         ), patch(
-            "cli.automa_cli.hosts.automation._collect_automation_status",
+            "cli.automa_cli.simulators.readiness.collect_automation_status",
             return_value=[],
         ):
             payload = get_vehicle_status(
@@ -225,10 +225,10 @@ class VehicleStatusTests(unittest.TestCase):
             },
         }
         with patch(
-            "cli.automa_cli.simulators.readiness._probe_chase",
+            "cli.automa_cli.simulators.readiness.probe_chase",
             return_value=probe,
         ), patch(
-            "cli.automa_cli.hosts.automation._collect_automation_status",
+            "cli.automa_cli.simulators.readiness.collect_automation_status",
             return_value=[automation],
         ):
             payload = get_vehicle_status(host_name="chase-sim-chaser")
@@ -281,9 +281,9 @@ class VehicleStatusTests(unittest.TestCase):
             "cli.automa_cli.vehicles.probes.ChaseSimCar.inspect_passive_capture",
             side_effect=_raise_frontend_unresponsive,
         ):
-            from cli.automa_cli.vehicles.probes import _probe_chase
+            from cli.automa_cli.vehicles.probes import probe_chase
 
-            probe = _probe_chase(candidate, timeout_s=1.0)
+            probe = probe_chase(candidate, timeout_s=1.0)
 
         self.assertFalse(probe.active)
         self.assertFalse(probe.diagnostics["frontend_connected"])
@@ -292,10 +292,10 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertNotIn("atomic-evaluation-capture", probe.error or "")
 
         with patch(
-            "cli.automa_cli.simulators.readiness._probe_chase",
+            "cli.automa_cli.simulators.readiness.probe_chase",
             return_value=probe,
         ), patch(
-            "cli.automa_cli.hosts.automation._collect_automation_status",
+            "cli.automa_cli.simulators.readiness.collect_automation_status",
             return_value=[],
         ):
             payload = get_vehicle_status(

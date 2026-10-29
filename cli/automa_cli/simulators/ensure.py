@@ -15,21 +15,23 @@ from implementations.vehicle.chase_sim.defaults import (
 )
 
 from ..shared.command_result import CommandResult
+from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
+from .readiness import get_vehicle_status
 from .simeval import (
     DEFAULT_SCENARIO_ID,
     DEFAULT_TIMEOUT_MS,
     DEFAULT_UI_HTTP_URL,
     SimevalRun,
-    _base_payload,
-    _parse_json,
-    _result,
-    _run_process,
-    _run_simeval,
-    _run_ui_verify,
-    _simeval_executable,
-    _skipped_summary,
-    _summarize_frontend_run,
-    _summarize_status_run,
+    base_payload,
+    parse_json,
+    run_process,
+    run_simeval,
+    run_ui_verify,
+    simeval_executable,
+    simulator_result,
+    skipped_summary,
+    summarize_frontend_run,
+    summarize_status_run,
 )
 
 
@@ -43,8 +45,8 @@ def ensure_simulator(
     scenario_id: str = DEFAULT_SCENARIO_ID,
     json_output: bool = False,
 ) -> CommandResult:
-    executable = _simeval_executable()
-    payload = _base_payload("automa_simulator_ensure_v0", executable=executable)
+    executable = simeval_executable()
+    payload = base_payload("automa_simulator_ensure_v0", executable=executable)
     payload["desired"] = {
         "deployment": "default simeval local deployment",
         "ui_app": "play",
@@ -67,33 +69,33 @@ def ensure_simulator(
             ),
         }
         payload["commands"] = []
-        return _result(payload, json_output=json_output, exit_code=2)
+        return simulator_result(payload, json_output=json_output, exit_code=2)
 
     commands: list[dict[str, Any]] = []
-    initial_run = _run_simeval(executable, ["status", "--all", "--timeout", str(timeout_ms)])
-    initial_status = _summarize_status_run(initial_run)
+    initial_run = run_simeval(executable, ["status", "--all", "--timeout", str(timeout_ms)])
+    initial_status = summarize_status_run(initial_run)
     commands.append(initial_run.to_dict())
 
     launched = False
     launch_run: SimevalRun | None = None
     if not initial_status["online"]:
         launched = True
-        launch_run = _run_simeval(executable, ["deploy", "start"], timeout_s=60)
+        launch_run = run_simeval(executable, ["deploy", "start"], timeout_s=60)
         commands.append(launch_run.to_dict())
 
     browser_open_run: SimevalRun | None = None
     launch_failed = launch_run is not None and launch_run.exit_code != 0
     if launch_failed:
-        frontend_before = _skipped_summary("simulator backend launch failed")
-        frontend_after = _skipped_summary("simulator backend launch failed")
+        frontend_before = skipped_summary("simulator backend launch failed")
+        frontend_after = skipped_summary("simulator backend launch failed")
         frontend_ready = False
-        ui_summary = _skipped_summary("simulator backend launch failed")
-        scenario_summary = _skipped_summary("simulator backend launch failed")
+        ui_summary = skipped_summary("simulator backend launch failed")
+        scenario_summary = skipped_summary("simulator backend launch failed")
         scenario_summary["scenario"] = scenario_id
-        play_debug_summary = _skipped_summary("simulator backend launch failed")
+        play_debug_summary = skipped_summary("simulator backend launch failed")
     else:
-        frontend_before_run = _run_ui_verify(executable, auto_serve=True, observe_ms=500)
-        frontend_before = _summarize_frontend_run(frontend_before_run)
+        frontend_before_run = run_ui_verify(executable, auto_serve=True, observe_ms=500)
+        frontend_before = summarize_frontend_run(frontend_before_run)
         commands.append(frontend_before_run.to_dict())
 
         frontend_after = frontend_before
@@ -132,20 +134,20 @@ def ensure_simulator(
                     )
                     commands.extend(run.to_dict() for run in setup_runs)
         else:
-            ui_summary = _skipped_summary("frontend tab is not connected")
-            scenario_summary = _skipped_summary("frontend tab is not connected")
+            ui_summary = skipped_summary("frontend tab is not connected")
+            scenario_summary = skipped_summary("frontend tab is not connected")
             scenario_summary["scenario"] = scenario_id
-            play_debug_summary = _skipped_summary("frontend tab is not connected")
+            play_debug_summary = skipped_summary("frontend tab is not connected")
 
     if frontend_ready and _play_frontend_ready(ui_summary, scenario_summary, play_debug_summary):
-        stability_frontend_run = _run_ui_verify(
+        stability_frontend_run = run_ui_verify(
             executable,
             auto_serve=False,
             observe_ms=DEFAULT_FRONTEND_STABILITY_OBSERVE_MS,
         )
-        stability_frontend = _summarize_frontend_run(stability_frontend_run)
+        stability_frontend = summarize_frontend_run(stability_frontend_run)
         commands.append(stability_frontend_run.to_dict())
-        stability_debug_run = _run_simeval(executable, ["ui", "play-debug", "--summary"])
+        stability_debug_run = run_simeval(executable, ["ui", "play-debug", "--summary"])
         stability_debug = _summarize_play_debug_run(stability_debug_run)
         commands.append(stability_debug_run.to_dict())
         stability_summary = {
@@ -155,10 +157,10 @@ def ensure_simulator(
             "play_debug": stability_debug,
         }
     else:
-        stability_summary = _skipped_summary("initial Play frontend setup did not complete")
+        stability_summary = skipped_summary("initial Play frontend setup did not complete")
 
-    final_run = _run_simeval(executable, ["status", "--all", "--timeout", str(timeout_ms)])
-    final_status = _summarize_status_run(final_run)
+    final_run = run_simeval(executable, ["status", "--all", "--timeout", str(timeout_ms)])
+    final_status = summarize_status_run(final_run)
     commands.append(final_run.to_dict())
 
     browser_open_failed = browser_open_run is not None and browser_open_run.exit_code != 0
@@ -174,9 +176,6 @@ def ensure_simulator(
     chase_status: dict[str, Any] | None = None
     chase_gate_ready = False
     if configured_usable:
-        from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
-        from .readiness import get_vehicle_status
-
         chase_status = get_vehicle_status(
             host_name="chase-sim-chaser",
             chase_ws_url=get_default_chase_ui_ws_url(),
@@ -348,7 +347,7 @@ def ensure_simulator(
     }
     payload["commands"] = commands
 
-    return _result(payload, json_output=json_output, exit_code=0 if usable else 2)
+    return simulator_result(payload, json_output=json_output, exit_code=0 if usable else 2)
 
 
 def _simulator_ensure_result_status(
@@ -409,11 +408,11 @@ def _wait_for_frontend(
 ) -> tuple[dict[str, Any], list[SimevalRun]]:
     deadline = time.monotonic() + max(0.5, timeout_ms / 1000.0)
     runs: list[SimevalRun] = []
-    latest: dict[str, Any] = _skipped_summary("frontend check did not run")
+    latest: dict[str, Any] = skipped_summary("frontend check did not run")
     while True:
-        run = _run_ui_verify(executable, auto_serve=True, observe_ms=500)
+        run = run_ui_verify(executable, auto_serve=True, observe_ms=500)
         runs.append(run)
-        latest = _summarize_frontend_run(run)
+        latest = summarize_frontend_run(run)
         if latest["frontend_connected"] or time.monotonic() >= deadline:
             return latest, runs
         time.sleep(0.5)
@@ -426,11 +425,11 @@ def _configure_play_frontend(
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], list[SimevalRun]]:
     runs: list[SimevalRun] = []
 
-    ui_run = _run_simeval(executable, ["ui", "subapp", "--app", "play"])
+    ui_run = run_simeval(executable, ["ui", "subapp", "--app", "play"])
     ui_summary = _summarize_ui_run(ui_run)
     runs.append(ui_run)
 
-    scenario_run = _run_simeval(
+    scenario_run = run_simeval(
         executable,
         [
             "ui",
@@ -445,7 +444,7 @@ def _configure_play_frontend(
     scenario_summary["scenario"] = scenario_id
     runs.append(scenario_run)
 
-    debug_run = _run_simeval(executable, ["ui", "play-debug", "--summary"])
+    debug_run = run_simeval(executable, ["ui", "play-debug", "--summary"])
     play_debug_summary = _summarize_play_debug_run(debug_run)
     runs.append(debug_run)
 
@@ -470,7 +469,7 @@ def _open_frontend_browser(url: str) -> SimevalRun:
             stderr="No browser opener found for this platform.",
             duration_ms=0,
         )
-    return _run_process(command, timeout_s=8)
+    return run_process(command, timeout_s=8)
 
 
 def _browser_open_command(url: str) -> list[str] | None:
@@ -488,7 +487,7 @@ def _browser_open_command(url: str) -> list[str] | None:
 
 
 def _summarize_ui_run(run: SimevalRun) -> dict[str, Any]:
-    parsed = _parse_json(run.stdout)
+    parsed = parse_json(run.stdout)
     if isinstance(parsed, dict):
         return {
             "ok": run.exit_code == 0 and parsed.get("status") == "success",
@@ -507,7 +506,7 @@ def _summarize_ui_run(run: SimevalRun) -> dict[str, Any]:
 
 
 def _summarize_ui_action_run(run: SimevalRun) -> dict[str, Any]:
-    parsed = _parse_json(run.stdout)
+    parsed = parse_json(run.stdout)
     if isinstance(parsed, dict):
         return {
             "ok": run.exit_code == 0 and parsed.get("status") == "success",
@@ -522,7 +521,7 @@ def _summarize_ui_action_run(run: SimevalRun) -> dict[str, Any]:
 
 
 def _summarize_play_debug_run(run: SimevalRun) -> dict[str, Any]:
-    parsed = _parse_json(run.stdout)
+    parsed = parse_json(run.stdout)
     if isinstance(parsed, dict):
         return {
             "ok": run.exit_code == 0,

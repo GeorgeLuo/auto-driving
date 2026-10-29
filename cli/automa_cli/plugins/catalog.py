@@ -15,9 +15,20 @@ from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH, describe_plugin
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, catalog_path
 
+from ..hosts.runtime_hosts import runtime_base_url
+from ..hosts.step_activations import (
+    bundle_activation_path,
+    bundle_activation_problems,
+    format_activation_problems,
+    host_bundle,
+    save_selections,
+    staging_host,
+    step_lines,
+)
 from ..shared.command_result import CommandResult
-from ..shared.paths import display_path
+from ..shared.paths import RUNTIME_ROOT, display_path
 from ..shared.plugin_catalog import packaged_plugin_definitions
+from ..vehicles.providers import PROVIDERS
 
 # Arming waits for the host's current cycle and for the selection to load.
 ARM_TIMEOUT_S = 60.0
@@ -51,8 +62,6 @@ class PluginCatalogClient:
 
 def catalog_url(host_name: str) -> str:
     """The host's catalog; every host serves ``/api/plugins``."""
-
-    from ..hosts.runtime_hosts import runtime_base_url
 
     return runtime_base_url(host_name)
 
@@ -222,12 +231,6 @@ def save_plugins(*, host_name: str, step: str | None = None, json_output: bool =
     must be packaged in the release the host has staged.
     """
 
-    from ..hosts.runtime_hosts import RUNTIME_ROOT
-    from ..hosts.step_activations import (
-        bundle_activation_path, bundle_activation_problems, format_activation_problems, host_bundle,
-        save_selections, staging_host, step_lines,
-    )
-
     steps = (step,) if step is not None else STEPS
     payload: dict[str, Any] = {"schema": "automa_plugin_save", "host_name": host_name, "step": step,
                                "url": None, "ok": False, "steps": None}
@@ -276,7 +279,7 @@ def save_plugins(*, host_name: str, step: str | None = None, json_output: bool =
     rows = step_lines({name: entry["plugins"] for name, entry in selections.items()},
                       {name: entry["preset"] for name, entry in selections.items() if entry["preset"]})
     startup = (f"{host_name} starts with these plugins; hosts update keeps the saved steps."
-               if configuration["provider"] == "chase-sim" else
+               if PROVIDERS[configuration["provider"]].local_host else
                f"{host_name} starts with these plugins once they ship: "
                f"./cli/automa hosts update --name {shlex.quote(host_name)}")
     return CommandResult(0, "\n".join([

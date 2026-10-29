@@ -11,14 +11,16 @@ from implementations.vehicle.chase_sim.defaults import (
     DEFAULT_CHASE_UI_WS_URL,
 )
 
+from ..hosts.automation_status import collect_automation_status
 from ..vehicles.probes import (
     DEFAULT_READINESS_TIMEOUT_S,
     Candidate,
-    _probe_chase,
-    _require_positive_timeout,
     chase_operator_url,
     normalize_chase_url,
+    probe_chase,
+    require_positive_timeout,
 )
+from ..vehicles.providers import CHASE_SIM
 
 STATUS_SCHEMA = "automa_host_readiness"
 READINESS_SCHEMA = "automa_cli_readiness_v1"
@@ -35,7 +37,7 @@ def get_vehicle_status(
 
     if chase_url is not None and chase_ws_url is not None:
         raise ValueError("--chase-url and --chase-ws-url cannot be used together")
-    operation_timeout = _require_positive_timeout(timeout_s)
+    operation_timeout = require_positive_timeout(timeout_s)
     operator_url = (
         chase_url
         or chase_ws_url
@@ -44,8 +46,8 @@ def get_vehicle_status(
     endpoint = normalize_chase_url(operator_url)
     display_url = chase_operator_url(endpoint)
     started = time.monotonic()
-    candidate = Candidate("chase-sim", endpoint, "cli")
-    probe = _probe_chase(candidate, timeout_s=operation_timeout)
+    candidate = Candidate(CHASE_SIM.name, endpoint, "cli")
+    probe = probe_chase(candidate, timeout_s=operation_timeout)
     discovery = {
         "schema": "automa_vehicle_discovery_v0",
         "checked_at_ms": int(time.time() * 1000),
@@ -54,16 +56,13 @@ def get_vehicle_status(
         "inactive": [] if probe.active else [probe.to_dict()],
         "discovery": {
             "candidate_count": 1,
-            "providers": ["chase-sim"],
+            "providers": [CHASE_SIM.name],
             "timeout_s": operation_timeout,
         },
     }
 
-    # Imported lazily because automation consumes vehicle discovery.
-    from ..hosts.automation import _collect_automation_status
-
     remaining = operation_timeout - (time.monotonic() - started)
-    automation = _collect_automation_status(
+    automation = collect_automation_status(
         host_name=host_name,
         view_timeout_s=remaining if remaining >= 0.05 else 0.0,
     )
@@ -84,7 +83,7 @@ def get_vehicle_status(
             for item in discovery.get("inactive", [])
             if isinstance(item, dict)
             and isinstance(item.get("candidate"), dict)
-            and item["candidate"].get("provider") == "chase-sim"
+            and item["candidate"].get("provider") == CHASE_SIM.name
             and item["candidate"].get("url") == endpoint
         ),
         None,

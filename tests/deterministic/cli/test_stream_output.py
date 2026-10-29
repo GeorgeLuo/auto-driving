@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from cli.automa_cli.hosts import decision_steps
-from cli.automa_cli.hosts.streaming import _poll_stream
+from cli.automa_cli.hosts.streaming import poll_stream
 
 
 # A fresh cycle whose plan record is empty.
@@ -24,9 +24,9 @@ def _stream_plan(fetch, *, feed=None, **kwargs):
     """Stream plan from a fixture host whose decision reads are ``fetch``; also return the view factory."""
 
     with (
-        patch.object(decision_steps, "_require_valid_activations"),
+        patch.object(decision_steps, "require_valid_activations"),
         patch.object(decision_steps, "runtime_base_url", return_value="http://host.invalid"),
-        patch.object(decision_steps, "_ViewFeed", return_value=feed) as view,
+        patch.object(decision_steps, "ViewFeed", return_value=feed) as view,
         patch.object(decision_steps, "fetch_decision_publication", side_effect=fetch),
         patch.object(decision_steps, "accept_decision_publication", return_value=NORMALIZED),
     ):
@@ -50,7 +50,7 @@ class StreamOutputTests(unittest.TestCase):
                 probes = [{"status": "unavailable", "error": "offline"}, {"status": "live"}]
                 probe = Mock(side_effect=[(item, None) for item in probes])
                 with patch("cli.automa_cli.hosts.streaming.time.sleep", side_effect=[None, KeyboardInterrupt]) as sleep:
-                    result = _poll_stream(
+                    result = poll_stream(
                         step="memory", probe=probe, render=lambda live, _: live["status"],
                         refresh_s=0, once=False, no_clear=no_clear,
                         json_output=json_output, stream=output,
@@ -69,7 +69,7 @@ class StreamOutputTests(unittest.TestCase):
                     output = FlushedOutput() if connected else None
                     live = {"status": status}
                     with patch("cli.automa_cli.hosts.streaming.time.sleep") as sleep:
-                        result = _poll_stream(
+                        result = poll_stream(
                             step="perception", probe=lambda: (live, None),
                             render=Mock(side_effect=AssertionError("JSON must not render")),
                             refresh_s=1, once=True, no_clear=False, json_output=True, stream=output,

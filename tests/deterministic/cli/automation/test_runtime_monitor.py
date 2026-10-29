@@ -254,7 +254,7 @@ class MonitorPacingTests(unittest.TestCase):
             with self.subTest(elapsed_ms=elapsed_ms), mock.patch.object(
                 runtime_monitor.time, "monotonic", return_value=10 + elapsed_ms / 1000,
             ):
-                self.assertAlmostEqual(runtime_monitor._pause_s(10, 1 / 30) * 1000, expected_ms)
+                self.assertAlmostEqual(runtime_monitor.pause_s(10, 1 / 30) * 1000, expected_ms)
 
 
 if __name__ == "__main__":

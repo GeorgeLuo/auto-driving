@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
 from urllib.parse import urlparse, urlunparse
 
+from autonomy.runtime.routes import STATUS_PATH
 from implementations.vehicle.chase_sim import (
     ChaseCaptureValidationError,
     ChasePassiveCaptureError,
@@ -59,13 +60,13 @@ class ProbeResult:
         return data
 
 
-def _simulator_status(endpoint: str, remaining: Callable[[], float]) -> dict[str, Any]:
+def simulator_status(candidate: Candidate, remaining: Callable[[], float]) -> dict[str, Any]:
     """One simulator's state; listing its agents is the second query that shows it runs."""
 
-    client =MetricsUiWsClient(endpoint, timeout_s=remaining())
+    client = MetricsUiWsClient(candidate.url, timeout_s=remaining())
     status: dict[str, Any] = {
-        "provider": "chase-sim",
-        "url": chase_operator_url(endpoint),
+        "provider": candidate.provider,
+        "url": chase_operator_url(candidate.url),
         "state": "unreachable",
         "error": None,
         "frontend": None,
@@ -106,12 +107,7 @@ def _simulator_status(endpoint: str, remaining: Callable[[], float]) -> dict[str
     return status
 
 
-def _picar_status(url: str, remaining: Callable[[], float]) -> dict[str, Any]:
-    probe = _probe_picar(Candidate("picar", url, "discovered"), timeout_s=remaining())
-    return {"provider": "picar", "url": url, "state": _picar_state(probe), "error": probe.error}
-
-
-def _picar_state(probe: ProbeResult) -> str:
+def picar_state(probe: ProbeResult) -> str:
     if probe.active:
         return "answering"
     reachable = probe.diagnostics.get("runtime_state") in {"server_not_listening", "http_unhealthy"}
@@ -123,18 +119,6 @@ def _frontend_code(exc: BaseException | None) -> str | None:
 
     code = getattr(exc, "code", None)
     return code if code in FRONTEND_DELIVERY_PROTOCOL_CODES else None
-
-
-def _probe_candidate(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
-    if candidate.provider == "picar":
-        return _probe_picar(candidate, timeout_s=timeout_s)
-    if candidate.provider == "chase-sim":
-        return _probe_chase(candidate, timeout_s=timeout_s)
-    return ProbeResult(
-        active=False,
-        candidate=candidate,
-        error=f"unknown provider {candidate.provider!r}",
-    )
 
 
 def _normalize_http_url(url: str) -> str:
@@ -173,7 +157,7 @@ def normalize_chase_url(url: str) -> str:
     return urlunparse((scheme, parsed.netloc, path, "", parsed.query, ""))
 
 
-def _require_positive_timeout(value: float) -> float:
+def require_positive_timeout(value: float) -> float:
     timeout = float(value)
     if not math.isfinite(timeout) or timeout <= 0:
         raise ValueError("timeout must be a finite number greater than zero")
@@ -188,13 +172,13 @@ def chase_operator_url(ws_url: str) -> str:
     return urlunparse((scheme, parsed.netloc, "/", "", "", ""))
 
 
-def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
+def probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     deadline = time.monotonic() + timeout_s
     base_url = candidate.url.rstrip("/")
     car = create_picar(base_url=base_url, timeout_s=timeout_s)
     capabilities = car.capabilities.to_dict()
 
-    status, error = _get_json(base_url, "/host/status", timeout_s=timeout_s)
+    status, error = _get_json(base_url, STATUS_PATH, timeout_s=timeout_s)
     if status is not None:
         return ProbeResult(
             active=True,
@@ -202,10 +186,10 @@ def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
             vehicle={
                 "vehicle_id": capabilities["vehicle_id"],
                 "vehicle_kind": capabilities["vehicle_kind"],
-                "provider": "picar",
+                "provider": candidate.provider,
                 "connection": {
                     "base_url": base_url,
-                    "status_endpoint": "/host/status",
+                    "status_endpoint": STATUS_PATH,
                     "source": candidate.source,
                 },
                 "capabilities": capabilities,
@@ -240,7 +224,7 @@ def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     )
 
 
-def _probe_chase(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
+def probe_chase(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     car = ChaseSimCar(ws_url=candidate.url, timeout_s=timeout_s)
     diagnostics: dict[str, Any] = {
         "ws_server": False,
@@ -346,7 +330,7 @@ def _probe_chase(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
         vehicle={
             "vehicle_id": capabilities["vehicle_id"],
             "vehicle_kind": capabilities["vehicle_kind"],
-            "provider": "chase-sim",
+            "provider": candidate.provider,
             "connection": {
                 "ws_url": candidate.url,
                 "source": candidate.source,

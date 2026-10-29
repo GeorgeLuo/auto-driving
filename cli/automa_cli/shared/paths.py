@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import os
 import re
 from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[3]
+RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))
 
 
 def safe_path_part(value: str) -> str:

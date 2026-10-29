@@ -87,7 +87,7 @@ class PluginArmingFlows(unittest.TestCase):
             # Only perception is staged, so the uploaded proposal is the step's one plugin.
             stage_step(runtime, "chase-sim-chaser", "perception")
             try:
-                cli("run", "--name", "chase-sim-chaser", "--observe-only", "--num-decisions", "0", "--record")
+                cli("run", "--name", "chase-sim-chaser", "--observe-only", "--record")
                 original = json.loads(cli("status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                 before = host_catalog()
                 file = root / "proposal.py"

@@ -38,10 +38,10 @@ class CaptureCloseoutTests(unittest.TestCase):
             raise ValueError("old stream closed")
 
         try:
-            loop.start(RunConfiguration(mode="observe_only"))
+            loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
             loop.submit(None, frame_id="old", image_loader=old_loader)
             self.assertTrue(entered.wait(1))
-            loop.start(RunConfiguration(mode="observe_only"))
+            loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
             loop.submit(np.zeros((4, 4, 3), dtype=np.uint8), frame_id="new")
         finally:
             release.set()
@@ -86,7 +86,7 @@ class CaptureCloseoutTests(unittest.TestCase):
                         worker = threading.Thread(target=loop.serve_captures, args=(stop,), daemon=True)
                         worker.start()
                         try:
-                            loop.start(RunConfiguration(mode=mode))
+                            loop.start(RunConfiguration(mode=mode, num_decisions=None))
                             wait_until(lambda: loop.processed_count == 1, message="first stream decision missing")
                             frame = _frame(43)
                             if field == "simulation_epoch":
@@ -169,7 +169,7 @@ class CaptureCloseoutTests(unittest.TestCase):
 
         def start():
             try:
-                chase.start(RunConfiguration(mode="autonomy"))
+                chase.start(RunConfiguration(mode="autonomy", num_decisions=None))
             except Exception as exc:
                 errors.append(exc)
 

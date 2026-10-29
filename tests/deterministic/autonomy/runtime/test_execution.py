@@ -172,7 +172,7 @@ class ControlExecutionTests(unittest.TestCase):
     def test_close_after_a_failed_acquire_records_the_failed_stop(self) -> None:
         host = AutonomyCycleHost(target=_UnreachableTarget())
         with self.assertRaises(ConnectionError):
-            host.start(RunConfiguration(mode="autonomy"))
+            host.start(RunConfiguration(mode="autonomy", num_decisions=None))
 
         host.close()
 

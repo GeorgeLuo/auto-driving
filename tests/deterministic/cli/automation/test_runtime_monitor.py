@@ -237,8 +237,8 @@ class RuntimeMonitorTests(unittest.TestCase):
 
 class ControlRecordTests(unittest.TestCase):
     def test_every_vehicle_runs_on_its_host_and_applies_only_autonomy(self) -> None:
-        autonomy = RunConfiguration(mode="autonomy")
-        observe = RunConfiguration(mode="observe_only")
+        autonomy = RunConfiguration(mode="autonomy", num_decisions=None)
+        observe = RunConfiguration(mode="observe_only", num_decisions=None)
 
         self.assertEqual([control_source(autonomy), control_source(observe)], ["runtime_host"] * 2)
         self.assertEqual(

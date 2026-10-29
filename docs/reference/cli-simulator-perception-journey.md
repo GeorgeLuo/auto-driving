@@ -29,7 +29,6 @@ are replaced by the `hosts update` that `hosts status --long` prints.
 ./cli/automa hosts run \
   --name chase-sim-chaser \
   --observe-only \
-  --num-decisions 0 \
   --open-view
 
 ./cli/automa hosts status --name chase-sim-chaser
@@ -118,12 +117,12 @@ failure leaves the healthy worker running and prints the URL for manual use.
 `--num-decisions`. The launch command returns once the correlated view is ready
 and prints `hosts stop`, which stops the worker. Without `--unbounded`,
 a movement-enabled run requires a positive `--num-decisions N`.
-Observation-only runs also retain `--num-decisions 0` as an unbounded option.
+An observation-only run without a count is unbounded.
 Ctrl-C in a terminal stream stops that stream, not the worker. For a passive
 restart, keep `--observe-only` explicit:
 
 ```sh
-./cli/automa hosts restart --name chase-sim-chaser --observe-only --num-decisions 0 --open-view
+./cli/automa hosts restart --name chase-sim-chaser --observe-only --open-view
 ```
 
 Stopping the worker keeps its local deployment staged and makes its previous

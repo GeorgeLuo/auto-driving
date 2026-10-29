@@ -38,7 +38,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             bundle = controller_bundle_paths(Path(tmp) / "chase-sim-chaser")
             _write_activations(bundle)
             with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]), host_name="chase-sim-chaser") as host:
-                host.loop.start(RunConfiguration(mode="observe_only"))
+                host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 _wait(lambda: host.loop.host.run_state == "error", message="startup failure was hidden")
                 self.assertIn("simulator_capability_missing", host.loop.host.last_error)
                 self.assertNotIn("Camera stream is not ready", host.loop.host.last_error)
@@ -143,7 +143,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             loop = ChaseFrameLoop(car=car, host=create_host(car, steps=decision_steps()), recording_root=Path(tmp), host_name="fixture")
             self.addCleanup(loop.shutdown)
-            loop.start(RunConfiguration(mode="observe_only"), record=True)
+            loop.start(RunConfiguration(mode="observe_only", num_decisions=None), record=True)
             encoder = loop.host.recording.encode_image
             def encode(image):
                 entered.set()
@@ -157,7 +157,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             def restart():
                 try:
                     start_locked.set()
-                    loop.start(RunConfiguration(mode="observe_only"))
+                    loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 except Exception as exc:
                     errors.append(exc)
             worker = threading.Thread(target=restart, daemon=True)
@@ -201,9 +201,9 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             _write_activations(bundle)
             with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]),
                                   host_name="chase-sim-chaser") as host:
-                host.loop.start(RunConfiguration(mode="observe_only"))
+                host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 _wait(lambda: len(streams) == 1, message="first stream did not open")
-                host.loop.start(RunConfiguration(mode="observe_only"))
+                host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 _wait(lambda: len(streams) == 2, message="restart stream did not open")
                 self.assertTrue(streams[0].closed.is_set())
                 _wait(lambda: host.loop.frames_received == 2, message="second capture was not offered")
@@ -224,7 +224,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             bundle = controller_bundle_paths(Path(tmp) / "chase-sim-chaser")
             _write_activations(bundle)
             with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]), host_name="chase-sim-chaser") as host:
-                host.loop.start(RunConfiguration(mode="observe_only"))
+                host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 _wait(lambda: host.loop.host.run_state == "error", message="missing stream accepted")
                 self.assertIn("simulator_capability_missing", host.loop.host.last_error)
                 self.assertEqual(host.loop.frames_received, 0)
@@ -240,7 +240,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             _write_activations(bundle)
             with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]),
                                   host_name="chase-sim-chaser") as host:
-                host.loop.start(RunConfiguration(mode="observe_only"))
+                host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 _wait(lambda: host.loop.host.run_state == "error", message="timeout was hidden")
                 self.assertIn("capability timed out", host.loop.host.last_error)
                 self.assertEqual(car.capture_count, 0)
@@ -266,11 +266,11 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                         raise MetricsUiWebSocketError("Frontend not connected")
                     return set_mode(mode)
                 with patch.object(cycle_host, "set_mode", side_effect=disconnected):
-                    host.loop.start(RunConfiguration(mode="observe_only"))
+                    host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                     _wait(lambda: cycle_host.run_state == "error", message="the ended stream was hidden")
                 self.assertEqual(cycle_host.last_error, "RuntimeError: Camera stream ended; "
                                                         "stop failed: MetricsUiWebSocketError: Frontend not connected")
-                host.loop.start(RunConfiguration(mode="observe_only"))
+                host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 _wait(lambda: len(opened) == 2, message="the next run opened no stream")
 
 

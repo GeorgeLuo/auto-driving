@@ -1,6 +1,6 @@
 """One run configuration for local and onboard decision hosts.
 
-num_decisions bounds completed decision cycles; zero keeps the run unbounded.
+num_decisions bounds completed decision cycles; None runs until stopped.
 """
 from __future__ import annotations
 
@@ -11,13 +11,15 @@ from autonomy.runtime.execution import require_mode
 
 @dataclass(frozen=True)
 class RunConfiguration:
-    mode: str = "autonomy"
-    num_decisions: int = 0
+    mode: str
+    num_decisions: int | None
 
     def __post_init__(self) -> None:
         require_mode(self.mode)
-        if type(self.num_decisions) is not int or self.num_decisions < 0:
-            raise ValueError("num_decisions must be a nonnegative integer")
+        if self.num_decisions is not None and (
+            type(self.num_decisions) is not int or self.num_decisions < 1
+        ):
+            raise ValueError("num_decisions must be a positive integer, or None to run until stopped")
 
     def to_dict(self) -> dict:
         return asdict(self)

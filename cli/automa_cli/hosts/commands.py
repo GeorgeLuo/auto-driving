@@ -9,9 +9,7 @@ from ..shared.timeout_input import validate_timeout_input
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
 from ..vehicles.providers import PROVIDERS
 from .automation import (
-    record_host_automation_terminal_result,
     restart_host_automation,
-    run_host_automation,
     start_host_automation_background,
 )
 from .automation_status import get_hosts_status
@@ -92,11 +90,6 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
             "Base URL of a runtime host that is already running. "
             "Run that host instead of starting one. The host reports its host name."
         ),
-    )
-    host_run.add_argument(
-        "--foreground",
-        action="store_true",
-        help=argparse.SUPPRESS,
     )
     host_run.set_defaults(handler=_handle_hosts_run)
 
@@ -179,10 +172,9 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
         command.add_argument(
             "--num-decisions",
             type=int,
-            default=0,
             help=(
-                "Number of decision cycles to complete. Movement requires a positive count "
-                "unless --unbounded is set; 0 remains unbounded with --observe-only."
+                "Number of decision cycles to complete (N > 0). Movement requires a count "
+                "unless --unbounded is set; --observe-only without one runs until stopped."
             ),
         )
         command.add_argument(
@@ -265,38 +257,20 @@ def _handle_hosts_run(args: argparse.Namespace) -> int:
         human_stream=sys.stdout,
     ):
         return 2
-    if args.foreground:
-        result = run_host_automation(
-            host_name=args.host_name,
-            host_url=args.host_url,
-            timeout_s=args.timeout_s,
-            num_decisions=args.num_decisions,
-            unbounded=args.unbounded,
-            take_control=not args.observe_only,
-            record=args.record,
-            verbose=args.verbose,
-            output=sys.stdout,
-        )
-    else:
-        result = start_host_automation_background(
-            host_name=args.host_name,
-            host_url=args.host_url,
-            timeout_s=args.timeout_s,
-            num_decisions=args.num_decisions,
-            unbounded=args.unbounded,
-            take_control=not args.observe_only,
-            record=args.record,
-            verbose=args.verbose,
-            log_to_disk=args.log_to_disk,
-            open_view=args.open_view,
-        )
+    result = start_host_automation_background(
+        host_name=args.host_name,
+        host_url=args.host_url,
+        timeout_s=args.timeout_s,
+        num_decisions=args.num_decisions,
+        unbounded=args.unbounded,
+        take_control=not args.observe_only,
+        record=args.record,
+        verbose=args.verbose,
+        log_to_disk=args.log_to_disk,
+        open_view=args.open_view,
+    )
     if result.message:
         print(result.message)
-    if args.foreground and args.host_name:
-        record_host_automation_terminal_result(
-            host_name=args.host_name,
-            result=result,
-        )
     return result.exit_code
 
 

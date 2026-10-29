@@ -53,8 +53,8 @@ class RuntimeClient:
             raise RuntimeError(response.get("error") or f"runtime rejected {command}")
         return response
 
-    def start(self, configuration: RunConfiguration | None = None, *, record: bool = False) -> dict[str, Any]:
-        return self._command("run", configuration=(configuration or RunConfiguration()).to_dict(), record=record)
+    def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
+        return self._command("run", configuration=configuration.to_dict(), record=record)
 
     def read_recording(self, run_id: str, *, after: int) -> dict[str, Any]:
         return self._command("read_recording", run_id=run_id, after=after)["recording"]

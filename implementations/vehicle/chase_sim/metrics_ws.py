@@ -414,27 +414,6 @@ class MetricsUiWsClient:
         payload = response.payload
         return payload if isinstance(payload, dict) else {}
 
-    def get_play_front_view_snapshot(
-        self,
-        *,
-        actor_id: str = "chaser",
-        width: int = 640,
-        height: int = 480,
-        timeout_s: float | None = None,
-    ) -> dict[str, Any]:
-        response = self.command(
-            {
-                "type": "get_play_front_view_snapshot",
-                "actorId": actor_id,
-                "width": int(width),
-                "height": int(height),
-            },
-            response_type="play_front_view_snapshot",
-            timeout_s=timeout_s,
-        )
-        payload = response.payload
-        return payload if isinstance(payload, dict) else {}
-
     def _next_request_id(self, command_type: object) -> str:
         self._counter += 1
         prefix = str(command_type or "command").replace("_", "-")

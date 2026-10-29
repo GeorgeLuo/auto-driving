@@ -17,7 +17,6 @@ for path in (ROOT / "cli", ROOT):
         sys.path.insert(0, path_text)
 
 from automa_cli.hosts.deploy import inspect_picar_autonomy_runtime
-from automa_cli.simulators.ensure import ensure_simulator
 from implementations.vehicle.picar.defaults import DEFAULT_LOCAL_CAR_BASE_URL, LOCAL_CAR_BASE_URL_ENV
 
 SYSTEMS_GROUPS = ("commands", "journeys", "frontend", "packaging", "qca", "live")
@@ -68,13 +67,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--live-sim",
         action="store_true",
-        help="Ensure the Chase simulator is usable, then run the systems suite with its live simulator smoke test.",
-    )
-    parser.add_argument(
-        "--sim-timeout-ms",
-        type=int,
-        default=2000,
-        help="Simulator readiness probe timeout in milliseconds for --live-sim.",
+        help=(
+            "Run the systems suite, including the live simulator smoke test against the running "
+            "Chase simulator at $CHASE_UI_WS_URL (default: ws://localhost:5050/ws/control)."
+        ),
     )
     parser.add_argument(
         "--live-pi",
@@ -196,14 +192,6 @@ def main(argv: list[str] | None = None) -> int:
     if args.live_pi and args.pi_timeout_s <= 0:
         parser.error("--pi-timeout-s must be greater than zero")
     if args.live_sim:
-        print("Ensuring simulator is ready for live tests...", flush=True)
-        ensure_result = ensure_simulator(
-            timeout_ms=args.sim_timeout_ms, json_output=False
-        )
-        if ensure_result.message:
-            print(ensure_result.message, flush=True)
-        if ensure_result.exit_code != 0:
-            return ensure_result.exit_code
         os.environ["AUTOMA_TEST_LIVE_SIM"] = "1"
     if args.live_pi and not prepare_live_pi(
         base_url=args.picar_url,

@@ -277,15 +277,15 @@ it from a slow frontend.
 
 ## Recovery
 
-The automation commands and `simulators ensure` print the recovery when a
-required layer is blocked. Run the command as printed, or perform the named
+The automation commands print the recovery when a required layer is
+blocked. Run the command as printed, or perform the named
 external change.
 
 | Condition | Recovery |
 | --- | --- |
-| Server unreachable | `./cli/automa simulators ensure --scenario chaser-depth-obstacles` is an explicit configuration-changing option |
+| Server unreachable | `./cli/automa simulators create` starts a headless simulator |
 | Frontend disconnected | Open or reload the exact Metrics UI HTTP URL, then rerun the command |
-| Wrong game | Preserve it unless you explicitly choose the configuration-changing `simulators ensure --scenario ...` command |
+| Wrong game | The current game is preserved; select Chase yourself, or start a headless simulator with `simulators create` |
 | Capture identity/image invalid | Repair the exact field named by `capture_identity_invalid` or `capture_image_invalid` |
 | Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it |
 | Deployment absent | Run the printed `hosts update` command, which stages every step's default |
@@ -296,16 +296,6 @@ external change.
 `vehicles status` exits 1 when no listed vehicle is reachable. `hosts status
 --name <host>` exits 1 when that host is not found, not running, not answering,
 or in error. Invalid arguments exit 2.
-
-Simulator preparation is deliberately outside passive attachment:
-
-```sh
-./cli/automa simulators ensure --scenario chaser-depth-obstacles
-```
-
-That command may launch a browser, select Play, and select a scenario. Status,
-staging, observation-only automation, viewing, and cleanup never invoke it
-implicitly.
 
 Metrics UI's passive-observation capability request is tracked in
 [metrics-ui#150](https://github.com/GeorgeLuo/metrics-ui/issues/150), with the

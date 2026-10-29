@@ -282,7 +282,7 @@
             "path": "cli/automa_cli/simulators/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa simulators commands: the SimEval checks, the Chase environment ensure prepares, and the simulators create starts."
+            "responsibility": "The automa simulators commands, and the headless simulators simulators create starts."
           }
         ]
       },

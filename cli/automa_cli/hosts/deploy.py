@@ -31,6 +31,7 @@ from .donkeycar_vendor import (
     load_donkeycar_vendor_manifest,
 )
 from ..shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
+from ..shared.processes import pid_alive
 from .step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     HOST_PROVIDERS,
@@ -601,7 +602,7 @@ def delete_host(*, host_name: str, verbose: bool = False, output: TextIO | None 
         return CommandResult(2, error)
     directory = RUNTIME_ROOT / safe_path_part(host_name)
     # Stop an active local run before stopping its host. An idle Pi may have no HTTP listener.
-    from .runtime_hosts import _pid_alive, automation_dir, running_base_url
+    from .runtime_hosts import automation_dir, running_base_url
     process = automation_dir(host_name) / "process.json"
     base_url = running_base_url(host_name)
     state = host_state(base_url, host_name=host_name, timeout_s=1.0) if base_url else {}
@@ -609,7 +610,7 @@ def delete_host(*, host_name: str, verbose: bool = False, output: TextIO | None 
         process_record = json.loads(process.read_text())
     except (OSError, ValueError):
         process_record = {}
-    active_run = (isinstance(process_record, dict) and _pid_alive(process_record.get("pid"))) or state.get("state") in {"starting", "running", "stopping"}
+    active_run = (isinstance(process_record, dict) and pid_alive(process_record.get("pid"))) or state.get("state") in {"starting", "running", "stopping"}
     if active_run:
         result = stop_host_automation(host_name=host_name)
         if result.exit_code:

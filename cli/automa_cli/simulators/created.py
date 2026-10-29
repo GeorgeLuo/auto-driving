@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from ..shared.command_result import CommandResult
-from ..hosts.runtime_hosts import RUNTIME_ROOT, RuntimeHostError, _log_tail, _pid_alive
+from ..hosts.runtime_hosts import RUNTIME_ROOT, RuntimeHostError, _log_tail
+from ..shared.processes import pid_alive
 
 
 # simulators create runs Metrics UI's headless launcher from this checkout.
@@ -129,7 +130,7 @@ def created_simulators() -> list[dict[str, Any]]:
             record = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if isinstance(record, dict) and record.get("schema") == SIMULATOR_SCHEMA and _pid_alive(record.get("pid")):
+        if isinstance(record, dict) and record.get("schema") == SIMULATOR_SCHEMA and pid_alive(record.get("pid")):
             records.append(record)
     return sorted(records, key=lambda record: record["port"])
 
@@ -142,7 +143,7 @@ def _ended(pid: int) -> bool:
             return True
     except ChildProcessError:
         pass
-    return not _pid_alive(pid)
+    return not pid_alive(pid)
 
 
 def _end_process_group(pid: int, *, wait_s: float = 3.0) -> bool:

@@ -25,7 +25,9 @@ from autonomy.runtime.client import RuntimeClient
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, RESTART_EXIT_CODE
 
 from .bundles import controller_bundle_paths
+from ..shared.json_files import write_json_atomically
 from ..shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
+from ..shared.processes import pid_alive
 from .step_activations import host_names, staging_host
 
 HOST_RECORD = "host.json"
@@ -151,18 +153,6 @@ def release_code_dir(
 
 # The Chase host ------------------------------------------------------------
 
-def _pid_alive(pid: Any) -> bool:
-    if type(pid) is not int or pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except ProcessLookupError:
-        return False
-    except PermissionError:
-        return True
-    return True
-
-
 def host_record(host_name: str) -> dict[str, Any] | None:
     """The running Chase host's record; ``None`` once its process is gone."""
 
@@ -172,7 +162,7 @@ def host_record(host_name: str) -> dict[str, Any] | None:
         return None
     if not isinstance(record, dict) or record.get("schema") != HOST_RECORD_SCHEMA:
         return None
-    return record if _pid_alive(record.get("pid")) else None
+    return record if pid_alive(record.get("pid")) else None
 
 
 def _log_tail(path: Path, name: str) -> str:
@@ -323,15 +313,15 @@ def stop_chase_host(host_name: str, *, wait_s: float = 3.0) -> bool:
     record = host_record(host_name)
     if record is None:
         return False
-    pids = [pid for pid in (record.get("supervisor_pid"), record["pid"]) if _pid_alive(pid)]
+    pids = [pid for pid in (record.get("supervisor_pid"), record["pid"]) if pid_alive(pid)]
     for pid in pids:
         os.kill(pid, signal.SIGTERM)
     deadline = time.monotonic() + wait_s
-    while time.monotonic() < deadline and any(_pid_alive(pid) for pid in pids):
+    while time.monotonic() < deadline and any(pid_alive(pid) for pid in pids):
         time.sleep(0.05)
     killed = False
     for pid in pids:
-        if _pid_alive(pid):
+        if pid_alive(pid):
             os.kill(pid, signal.SIGKILL)
             killed = True
     (automation_dir(host_name) / HOST_RECORD).unlink(missing_ok=True)
@@ -402,9 +392,7 @@ def discovered_vehicles() -> list[dict[str, str]]:
 
 
 def write_discovered_vehicles(vehicles: list[dict[str, str]]) -> None:
-    path = RUNTIME_ROOT / DISCOVERED
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"schema": DISCOVERED_SCHEMA, "vehicles": vehicles}, indent=2) + "\n", encoding="utf-8")
+    write_json_atomically(RUNTIME_ROOT / DISCOVERED, {"schema": DISCOVERED_SCHEMA, "vehicles": vehicles})
 
 
 def runtime_base_url(host_name: str, *, start: bool = False, timeout_s: float = HOST_START_TIMEOUT_S) -> str:

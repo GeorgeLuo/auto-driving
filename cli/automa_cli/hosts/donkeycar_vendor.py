@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
+from ..shared.json_files import write_json_atomically
 from ..shared.paths import ROOT, display_path
 
 
@@ -188,7 +189,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     payload = {**payload, "prepared_at_ms": int(time.time() * 1000)}
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    write_json_atomically(path, payload)
 
 
 def _emit(output: TextIO | None, message: str) -> None:

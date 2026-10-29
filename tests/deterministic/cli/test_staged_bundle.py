@@ -8,7 +8,8 @@ import types
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.hosts.staged_bundle import StagedBundleImport, write_json_atomically
+from autonomy.runtime.plugin_loader import StagedBundleImport
+from cli.automa_cli.shared.json_files import read_json, write_json_atomically
 
 
 HOST_NAME = "bundle_probe_host.marker"
@@ -77,6 +78,15 @@ class StagedBundleTests(unittest.TestCase):
             self.assertEqual(path.read_text(encoding="utf-8"), '{\n  "a": 2,\n  "b": 1\n}')
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o640)
             self.assertEqual(list(Path(tmp).glob(".active.json.*.tmp")), [])
+
+    def test_atomic_write_creates_the_parent_and_reads_back(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "automation" / "state.json"
+            self.assertIsNone(read_json(path))
+            write_json_atomically(path, {"state": "running"})
+            self.assertEqual(read_json(path), {"state": "running"})
+            path.write_text("{", encoding="utf-8")
+            self.assertIsNone(read_json(path))
 
 
 if __name__ == "__main__":

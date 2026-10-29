@@ -18,9 +18,10 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
 from ..shared.command_result import CommandResult
 from .vehicle_access import create_vehicle_access
-from .staged_bundle import write_json_atomically
 from .bundles import controller_bundle_paths
+from ..shared.json_files import read_json, write_json_atomically
 from ..shared.paths import ROOT, display_path, safe_path_part
+from ..shared.processes import pid_alive
 from . import runtime_hosts
 from .runtime_hosts import (
     bundle_paths,
@@ -307,10 +308,10 @@ def start_host_automation_background(
     if problems:
         return CommandResult(2, format_activation_problems(problems))
 
-    existing = _read_json(process_path)
+    existing = read_json(process_path)
     existing_pid = existing.get("pid") if isinstance(existing, dict) else None
-    if isinstance(existing_pid, int) and _pid_alive(existing_pid):
-        existing_state = _read_json(automation_dir / "state.json")
+    if isinstance(existing_pid, int) and pid_alive(existing_pid):
+        existing_state = read_json(automation_dir / "state.json")
         existing_status = (
             existing_state.get("status") if isinstance(existing_state, dict) else "unknown"
         )
@@ -493,7 +494,7 @@ def start_host_automation_background(
         "latest_perception_text": display_path(automation_dir / "latest_perception.txt"),
         "stream_command": f"./cli/automa plugins stream --step perception --host-name {host_name}",
     }
-    _write_json(process_path, process_record)
+    write_json_atomically(process_path, process_record)
     startup = _wait_for_automation_startup(
         process=process,
         automation_dir=automation_dir,
@@ -502,7 +503,7 @@ def start_host_automation_background(
     process_record["startup"] = {
         key: value for key, value in startup.items() if key != "state"
     }
-    _write_json(process_path, process_record)
+    write_json_atomically(process_path, process_record)
 
     startup_status = startup["status"]
     if startup_status == "ready":
@@ -566,11 +567,11 @@ def record_host_automation_terminal_result(
         return
     automation_dir = host_automation_dir(host_name)
     state_path = automation_dir / "state.json"
-    state = _read_json(state_path)
+    state = read_json(state_path)
     if not isinstance(state, dict) or state.get("status") not in {"launching", "starting"}:
         return
     completed_at_ms = _timestamp_ms()
-    _write_json(
+    write_json_atomically(
         state_path,
         {
             **state,
@@ -613,7 +614,7 @@ def _initialize_automation_startup(
         starting_text + "\n",
         encoding="utf-8",
     )
-    _write_json(
+    write_json_atomically(
         automation_dir / "latest_perception.json",
         {
             "schema": "automa_latest_perception_placeholder",
@@ -624,7 +625,7 @@ def _initialize_automation_startup(
             "perception": {"confidence": 0.0, "things": []},
         },
     )
-    _write_json(
+    write_json_atomically(
         automation_dir / "state.json",
         new_run_state(
             host_name=host_name,
@@ -659,7 +660,7 @@ def _wait_for_automation_startup(
     state_path = automation_dir / "state.json"
     deadline = time.monotonic() + max(0.1, float(timeout_s))
     while True:
-        state = _read_json(state_path)
+        state = read_json(state_path)
         state = state if isinstance(state, dict) else {}
         status = state.get("status")
         published_view = (
@@ -741,7 +742,7 @@ def _wait_for_automation_startup(
 
         exit_code = process.poll()
         if exit_code is not None:
-            state = _read_json(state_path)
+            state = read_json(state_path)
             state = state if isinstance(state, dict) else {}
             reason = state.get("error")
             if not isinstance(reason, str) or not reason:
@@ -751,7 +752,7 @@ def _wait_for_automation_startup(
                     error=reason,
                     exit_code=exit_code,
                 )
-                state = _read_json(state_path)
+                state = read_json(state_path)
             return {"status": "failed", "reason": reason, "state": state}
 
         if time.monotonic() >= deadline:
@@ -800,10 +801,10 @@ def _mark_automation_startup_error(
     exit_code: int | None = None,
 ) -> None:
     state_path = automation_dir / "state.json"
-    state = _read_json(state_path)
+    state = read_json(state_path)
     state = state if isinstance(state, dict) else {}
     completed_at_ms = _timestamp_ms()
-    _write_json(
+    write_json_atomically(
         state_path,
         {
             **state,
@@ -880,7 +881,7 @@ def stop_host_automation(
     automation_dir = host_automation_dir(host_name)
     process_path = automation_dir / "process.json"
     state_path = automation_dir / "state.json"
-    process = _read_json(process_path)
+    process = read_json(process_path)
     pid = process.get("pid") if isinstance(process, dict) else None
 
     if not isinstance(pid, int):
@@ -895,7 +896,7 @@ def stop_host_automation(
             ),
         )
 
-    if not _pid_alive(pid):
+    if not pid_alive(pid):
         _mark_process_stopped(process_path, process, stopped_by="stop_command_already_dead")
         _mark_state_stopped(state_path, stopped_by="stop_command_already_dead")
         return CommandResult(
@@ -926,7 +927,7 @@ def stop_host_automation(
     _terminate_pid(pid, signal.SIGINT, process_group=False)
     deadline = time.monotonic() + max(0.0, float(wait_s))
     while time.monotonic() < deadline:
-        if not _pid_alive(pid):
+        if not pid_alive(pid):
             _mark_process_stopped(process_path, process, stopped_by="stop_command")
             _mark_state_stopped(state_path, stopped_by="stop_command")
             return CommandResult(
@@ -944,7 +945,7 @@ def stop_host_automation(
     _terminate_pid(pid, signal.SIGKILL)
     forced_deadline = time.monotonic() + 1.0
     while time.monotonic() < forced_deadline:
-        if not _pid_alive(pid):
+        if not pid_alive(pid):
             _mark_process_stopped(process_path, process, stopped_by="stop_command_forced")
             _mark_state_stopped(state_path, stopped_by="stop_command_forced")
             return CommandResult(
@@ -1095,13 +1096,13 @@ def _collect_automation_status(
         state_path = automation_dir / "state.json"
         latest_perception_path = automation_dir / "latest_perception.txt"
 
-        process = _read_json(process_path)
-        state = _read_json(state_path)
+        process = read_json(process_path)
+        state = read_json(state_path)
         process = process if isinstance(process, dict) else {}
         state = state if isinstance(state, dict) else {}
 
         pid = process.get("pid") if isinstance(process.get("pid"), int) else state.get("pid")
-        pid_alive = _pid_alive(pid) if isinstance(pid, int) else False
+        alive = pid_alive(pid) if isinstance(pid, int) else False
         state_pid = state.get("pid") if isinstance(state.get("pid"), int) else None
         process_pid = process.get("pid") if isinstance(process.get("pid"), int) else None
         generation_matches = (
@@ -1130,7 +1131,7 @@ def _collect_automation_status(
         else:
             worker_status = _worker_status(
                 pid=pid,
-                pid_alive=pid_alive,
+                pid_alive=alive,
                 run_status=state.get("status"),
             )
             worker_reason = _worker_reason(
@@ -1143,7 +1144,7 @@ def _collect_automation_status(
             # capture does not withdraw a completed result whose image remains.
             if (
                 worker_status == "running"
-                and pid_alive
+                and alive
                 and not published_view.get("available")
                 and published_view.get("status") in {None, "warming", "unavailable"}
                 and _remaining_view_budget() > 0
@@ -1174,7 +1175,7 @@ def _collect_automation_status(
         # run their built-ins or nothing.
         selections = staged_selections(bundle)
         try:
-            identity = state.get("decision") if pid_alive else None
+            identity = state.get("decision") if alive else None
             decision = _decision_summary(identity) if identity else _decision_summary(decision_identity(bundle))
         except (OSError, TypeError, ValueError):
             decision = {"deployed": False}
@@ -1192,7 +1193,7 @@ def _collect_automation_status(
                 "bundle_root": display_path(bundle_root),
                 "automation_runtime_exists": automation_dir.exists(),
                 "automation_dir": display_path(automation_dir),
-                "steps": applied_selections(selections, state.get("steps") if pid_alive else None)
+                "steps": applied_selections(selections, state.get("steps") if alive else None)
                 or selections,
                 "decision": {
                     "activation": display_path(Path(bundle["runtime_dir"])),
@@ -1200,8 +1201,8 @@ def _collect_automation_status(
                 },
                 "process": {
                     "pid": pid,
-                    "running": pid_alive,
-                    "pid_state": "alive" if pid_alive else ("not_running" if isinstance(pid, int) else "none"),
+                    "running": alive,
+                    "pid_state": "alive" if alive else ("not_running" if isinstance(pid, int) else "none"),
                     "status": worker_status,
                     "generation_matches": generation_matches,
                     "reason": worker_reason,
@@ -1258,7 +1259,7 @@ def _collect_automation_status(
                 "published_view": published_view,
             }
         )
-        if host_url is not None and not pid_alive:
+        if host_url is not None and not alive:
             host = _host_runtime_status(
                 name, host_url, timeout_s=_remaining_view_budget() or 0.5,
                 read=(host_reads or {}).get(name),
@@ -1435,16 +1436,6 @@ def _status_log_label(process: dict[str, Any]) -> str:
     return process.get("log_path") or "enabled"
 
 
-def _pid_alive(pid: int) -> bool:
-    if pid <= 0:
-        return False
-    try:
-        os.kill(pid, 0)
-    except OSError:
-        return False
-    return True
-
-
 def _pid_matches_automation(pid: int, host_name: str) -> bool:
     """Return whether *pid* looks like this host's automation monitor.
 
@@ -1515,20 +1506,6 @@ def _int_or_none(value: Any) -> int | None:
     return None
 
 
-def _write_json(path: Path, payload: Any) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    write_json_atomically(path, payload)
-
-
-def _read_json(path: Path) -> Any:
-    if not path.exists():
-        return None
-    try:
-        return json.loads(path.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        return None
-
-
 def _mark_process_stopped(path: Path, process: Any, *, stopped_by: str) -> None:
     record = process if isinstance(process, dict) else {}
     updated = {
@@ -1537,11 +1514,11 @@ def _mark_process_stopped(path: Path, process: Any, *, stopped_by: str) -> None:
         "stopped_by": stopped_by,
         "stopped_at_ms": _timestamp_ms(),
     }
-    _write_json(path, updated)
+    write_json_atomically(path, updated)
 
 
 def _mark_state_stopped(path: Path, *, stopped_by: str) -> None:
-    state = _read_json(path)
+    state = read_json(path)
     if not isinstance(state, dict):
         return
     if state.get("status") not in ("starting", "running", "error"):
@@ -1554,7 +1531,7 @@ def _mark_state_stopped(path: Path, *, stopped_by: str) -> None:
         "updated_at_ms": _timestamp_ms(),
         "readiness": stopped_readiness(),
     }
-    _write_json(path, updated)
+    write_json_atomically(path, updated)
 
 
 def _log_status_line(process: Any, log_path: Path) -> str:

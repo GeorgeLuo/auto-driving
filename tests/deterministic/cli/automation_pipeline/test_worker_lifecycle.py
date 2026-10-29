@@ -88,7 +88,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             "perception_frame_buffered": True,
         }
         with (
-            patch("cli.automa_cli.hosts.automation._read_json", return_value=state),
+            patch("cli.automa_cli.hosts.automation.read_json", return_value=state),
             patch("cli.automa_cli.hosts.automation.get_perception_view_status", return_value=view) as status,
         ):
             result = _wait_for_automation_startup(
@@ -252,7 +252,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
             with (
                 patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.hosts.automation._pid_alive", return_value=True),
+                patch("cli.automa_cli.hosts.automation.pid_alive", return_value=True),
                 patch(
                     "cli.automa_cli.hosts.automation.get_perception_view_status",
                     return_value=view,
@@ -308,7 +308,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
             with (
                 patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.hosts.automation._pid_alive", return_value=True),
+                patch("cli.automa_cli.hosts.automation.pid_alive", return_value=True),
                 patch(
                     "cli.automa_cli.hosts.automation.get_perception_view_status",
                     side_effect=AssertionError(

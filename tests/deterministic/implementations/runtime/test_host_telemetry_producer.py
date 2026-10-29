@@ -10,12 +10,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from autonomy.decision_cycle.steps import decision_steps
+from autonomy.runtime.routes import TELEMETRY_SCHEMA
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from implementations.runtime.picar.host_telemetry import (
     HOST_TELEMETRY_BOUNDARY,
     HOST_TELEMETRY_LIMITS,
-    HOST_TELEMETRY_SCHEMA,
     DriveModeTelemetryAdapter,
     HostTelemetryStore,
     identity_tuple,
@@ -98,7 +98,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
         result = _observe(store, 1)
 
         self.assertTrue(result["ok"])
-        self.assertEqual(result["schema"], HOST_TELEMETRY_SCHEMA)
+        self.assertEqual(result["schema"], TELEMETRY_SCHEMA)
         record = result["record"]
         self.assertEqual(
             (

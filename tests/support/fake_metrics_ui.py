@@ -95,7 +95,12 @@ class _ThreadingWebSocketServer(socketserver.ThreadingTCPServer):
             handlers = list(self._agents)
         for handler in handlers:
             with handler.send_lock:
-                _send_close(handler.request, 1001, reason)
+                try:
+                    _send_close(handler.request, 1001, reason)
+                except OSError:
+                    # The client already left, or the handler thread already
+                    # closed this socket. Keep closing the others.
+                    pass
 
 
 class _MetricsUiHandler(socketserver.BaseRequestHandler):

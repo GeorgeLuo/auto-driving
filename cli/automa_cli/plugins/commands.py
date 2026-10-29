@@ -14,7 +14,7 @@ from ..hosts.decision_steps import stream_host_step
 from ..hosts.streaming import stream_host_memory, stream_host_perception
 from ..hosts.workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ..shared.selection_args import add_selection_args
-from .catalog import arm_plugins, disarm_plugins, list_plugins, upload_plugin
+from .catalog import arm_plugins, disarm_plugins, list_plugins, save_plugins, upload_plugin
 from .step_inspect import INSPECT_STEPS, inspect_step
 
 # Each step a host streams, in cycle order.
@@ -37,7 +37,7 @@ def _step_plugin(value: str) -> tuple[str, str]:
 def register_plugins(subcommands: argparse._SubParsersAction) -> None:
     step_plugins = subcommands.add_parser(
         "plugins",
-        help="List a plugin catalog or what a host has armed, upload, arm and disarm a host's plugins, stream a step on a host, or inspect plugins from images and recordings.",
+        help="List a plugin catalog or what a host has armed, upload, arm, disarm and save a host's plugins, stream a step on a host, or inspect plugins from images and recordings.",
     )
     step_plugins.set_defaults(handler=_handle_plugins_help)
     step_plugin_commands = step_plugins.add_subparsers(dest="plugin_command")
@@ -130,6 +130,23 @@ def register_plugins(subcommands: argparse._SubParsersAction) -> None:
                               help="Disarm every plugin in every step that can run without plugins.")
     disarm.add_argument("--json", action="store_true", help="Print the request receipt and selection state as JSON.")
     disarm.set_defaults(handler=_handle_plugins_disarm)
+
+    save = step_plugin_commands.add_parser(
+        "save", help="Make what a host has armed the plugins it starts with.",
+        description=(
+            "Stage the plugins a running host has armed, in every step or one, as the selection it loads "
+            "when it starts. hosts update keeps a saved step, with the catalog's current specs and configs, "
+            "instead of staging its default; saving a step's default makes it follow the catalog's default "
+            "again. A Chase host loads the saved plugins each time it starts; a PiCar once hosts update "
+            "ships them. Uploaded plugins cannot be saved, and nothing is saved while the host's last arming "
+            "has failed."
+        ),
+        epilog="Saving does not change what the host runs now.",
+    )
+    save.add_argument("--host-name", required=True, help="Host name from hosts status.")
+    save.add_argument("--step", choices=STEPS, help="Save only this cycle step.")
+    save.add_argument("--json", action="store_true", help="Print each saved step's activation, preset and plugins as JSON.")
+    save.set_defaults(handler=_handle_plugins_save)
 
     stream = step_plugin_commands.add_parser(
         "stream", help="Show a step's latest output on a host, replacing the terminal view as it updates.",
@@ -232,6 +249,7 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "- upload   register a plugin file in a host's or workbench's catalog",
         "- arm      arm catalog plugins on a host by step/plugin",
         "- disarm   deselect a host's plugins by step/plugin, or clear a step or every step",
+        "- save     make what a host has armed the plugins it starts with",
         "- stream   show a step's latest output on a host as it updates",
         "- inspect  report a step's plugins from images or a recorded run",
         "- help     show this summary", "",
@@ -241,6 +259,7 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "Upload to a host: ./cli/automa plugins upload --host-name <host> --file <file> --name <step>/<plugin> --entrypoint <module>:<Class>",
         "Arm on a host: ./cli/automa plugins arm --host-name <host> --name <step>/<plugin>",
         "Disarm on a host: ./cli/automa plugins disarm --host-name <host> --name <step>/<plugin>",
+        "Start a host with what it has armed: ./cli/automa plugins save --host-name <host>",
         "Stream on a host: ./cli/automa plugins stream --host-name <host> --step <step>",
         "Detailed help: ./cli/automa plugins <command> --help",
     ]))
@@ -271,6 +290,12 @@ def _handle_plugins_arm(args: argparse.Namespace) -> int:
 def _handle_plugins_disarm(args: argparse.Namespace) -> int:
     result = disarm_plugins(url=args.url, host_name=args.host_name, plugins=args.plugins, step=args.step,
                             json_output=args.json)
+    print(result.message)
+    return result.exit_code
+
+
+def _handle_plugins_save(args: argparse.Namespace) -> int:
+    result = save_plugins(host_name=args.host_name, step=args.step, json_output=args.json)
     print(result.message)
     return result.exit_code
 

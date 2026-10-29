@@ -214,6 +214,79 @@ def list_plugins(*, host_name: str | None = None, url: str | None = None, step: 
     return _listing(payload, lines, json_output)
 
 
+def save_plugins(*, host_name: str, step: str | None = None, json_output: bool = False) -> CommandResult:
+    """Stage what a host has armed in ``step``, or every step, as the plugins it starts with.
+
+    Nothing is saved unless every step can be: the host must report its
+    armed plugins, its last arming must have succeeded, and each plugin
+    must be packaged in the release the host has staged.
+    """
+
+    from ..hosts.runtime_hosts import RUNTIME_ROOT
+    from ..hosts.step_activations import (
+        bundle_activation_path, bundle_activation_problems, format_activation_problems, host_bundle,
+        save_selections, staging_host, step_lines,
+    )
+
+    steps = (step,) if step is not None else STEPS
+    payload: dict[str, Any] = {"schema": "automa_plugin_save", "host_name": host_name, "step": step,
+                               "url": None, "ok": False, "steps": None}
+    lines = [f"Host: {host_name}"]
+    try:
+        configuration, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
+        if error:
+            raise ValueError(error)
+        bundle = host_bundle(host_name, RUNTIME_ROOT)
+        problems = bundle_activation_problems(bundle, host_name, steps=steps)
+        if problems:
+            raise ValueError(format_activation_problems(problems))
+        payload["url"] = catalog_url(host_name)
+        snapshot = PluginCatalogClient(payload["url"])()
+        if not snapshot.get("ok"):
+            raise RuntimeError(snapshot.get("error") or "Host plugin catalog is unavailable.")
+        arming = snapshot.get("arming")
+        requested = arming.get("requested") if isinstance(arming, dict) else None
+        if not isinstance(requested, dict) or any(not isinstance(requested.get(name), list) for name in steps):
+            raise ValueError("Host did not report its armed plugins.")
+        if arming.get("error"):
+            raise ValueError(f"The host's last arming failed: {arming['error']}\n"
+                             "Arm the plugins again, then save them.")
+        uploaded = [f"{plugin['step']}/{plugin['id']}" for name in steps for plugin in requested[name]
+                    if plugin.get("metadata", {}).get("revision")]
+        if uploaded:
+            raise ValueError(f"{', '.join(uploaded)} {'is' if len(uploaded) == 1 else 'are'} uploaded, and "
+                             "uploads last until the host restarts. Arm packaged plugins in their place, "
+                             "or save the other steps with --step.")
+        saved = save_selections(bundle, {name: requested[name] for name in steps},
+                                host_name=host_name, vehicle=configuration)
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError) as exc:
+        payload["error"] = str(exc)
+        lines.extend(["Save: failed", f"Reason: {payload['error']}"])
+        return CommandResult(2, json.dumps(payload, indent=2, sort_keys=True) if json_output else "\n".join(lines))
+
+    payload.update(ok=True, steps={
+        name: {"activation": display_path(bundle_activation_path(bundle, name)),
+               "preset": activation.metadata.get("preset"), "plugins": list(activation.plugins),
+               "saved": bool(activation.metadata.get("saved"))}
+        for name, activation in saved.items()
+    })
+    if json_output:
+        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
+    selections = payload["steps"]
+    rows = step_lines({name: entry["plugins"] for name, entry in selections.items()},
+                      {name: entry["preset"] for name, entry in selections.items() if entry["preset"]})
+    startup = (f"{host_name} starts with these plugins; hosts update keeps the saved steps."
+               if configuration["provider"] == "chase-sim" else
+               f"{host_name} starts with these plugins once they ship: "
+               f"./cli/automa hosts update --name {shlex.quote(host_name)}")
+    return CommandResult(0, "\n".join([
+        *lines,
+        *(f"{row} ({'saved' if entry['saved'] else 'default'})" for row, entry in zip(rows, selections.values())),
+        f"Activations: {display_path(Path(bundle['runtime_dir']))}",
+        f"Startup: {startup}",
+    ]))
+
+
 def _listing(payload: dict[str, Any], lines: list[str], json_output: bool) -> CommandResult:
     # A host whose last arming failed lists what it has armed but exits 2 until an arm succeeds.
     exit_code = 0 if payload["ok"] and not payload.get("arming_error") else 2

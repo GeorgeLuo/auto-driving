@@ -129,11 +129,12 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `plugins upload` | With `--host-name` (or a runtime or workbench `--url`), stores `--file` in that existing catalog as `--name <step>/<plugin>` with its `--entrypoint` and optional `--config`, refusing source that does not compile. `--arm` also arms it through the same operation as `plugins arm`. |
 | `plugins arm` | With `--host-name` (or a runtime `--url`), loads the plugins named by `--name <step>/<plugin>`, as `plugins list --long` names them, and applies them at the host's next cycle without restarting automation. Repeat `--name` to arm several plugins, across steps, together and in order. On observation, plan and action, which run one plugin, the armed plugin replaces the current one. An import or construction error fails the command (exit 2) and keeps the previous selection. |
 | `plugins disarm` | With `--host-name` (or a runtime `--url`), deselects the plugins named by `--name <step>/<plugin>`; repeat `--name` to disarm several, across steps, together. `--step <step>` clears perception, memory or proposal, and `--all` clears all three. Observation, plan and action keep their one plugin (arm a replacement instead). The next cycle resets disarmed instances; catalog entries remain available. |
+| `plugins save` | With `--host-name`, stages what the running host has armed, in every step or the `--step` given, as the plugins it starts with; it does not change what the host runs now. `hosts update` keeps a saved step, with the catalog's current specs and configs, instead of staging its default, and saving a step's default makes it follow the default again. A Chase host loads the saved plugins each time it starts; a PiCar once `hosts update` ships them. Refuses (exit 2), saving nothing, while the host's last arming has failed, for uploaded plugins, which last until the host restarts, and for plugins its staged release does not package. |
 | `plugins stream` | With `--host-name`, polls the `--step` (perception, memory, proposal, plan or action) on a running host, redrawing the terminal as it updates. Perception shows the latest perception from the host's `/host/observation/latest`; memory shows each applied plugin's health and counts; proposal, plan and action print that step's record from the latest cycle the host published, with its age, generation, plugins, and the step's and each plugin's time, and action also shows how the host applied control. A running terminal stream serves the local runtime view: a frame-matched `/perception` page, a `/memory` map whose keys are `record_id`s (click a key to see the retained value), and the action view below. |
 | `plugins inspect <step>` | Offline: replays an image, image directory, or recorded run through the whole cycle and reports perception, memory, proposal, plan, or action. Restores recorded selections; `--preset` or `--plugin` overrides the inspected step. `--frame N` reports one frame after replaying its history. `--record` saves `report.json` and copied frames under `runtime/<step>-inspections/`. See [Plugin inspection](#plugin-inspection). |
 | `hosts create` | Creates a named host for the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url`, installs its release, and starts it. `vehicles status` names each vehicle's provider and URL. |
 | `hosts delete` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. |
-| `hosts update` | Packages a versioned release for the vehicle's host and stages every step's default with it, replacing whatever each step had staged (`plugins list` marks the defaults): a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
+| `hosts update` | Packages a versioned release for the vehicle's host and stages each step's `plugins save` selection with it, else the step's default (`plugins list` marks the defaults), replacing whatever else each step had staged: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `hosts run\|stop\|restart\|status` | Starts, stops, restarts or inspects a run on the host. Status includes the vehicle endpoint, host URL and simulator attachment. `stop` ends the run; the host stays attached until `hosts delete`. |
 | `hosts memory reset` | Clears live retained evidence on the runtime host and starts a new epoch. Exits 0 once the host's answer shows every plugin on a new epoch or empty, even while a running session refills memory. Does not move the vehicle. |
 | `hosts operation ...` | Runs a bounded, explicitly requested vehicle operation. |
@@ -697,10 +698,11 @@ keeps the local record so deletion can be retried.
 
 ### Physical Activation State
 
-Every physical autonomy deployment stages each step's default, replacing
-whatever was staged: the `lightweight_observer` perception, `recency_ledger`
-memory, `obstruction_avoidance` proposal and `most_confident` plan presets, and
-the default observation and action plugins. Every deployed step records the
+Every physical autonomy deployment stages each step's saved plugins
+(`plugins save`), else its default, replacing whatever was staged. The defaults
+are the `lightweight_observer` perception, `recency_ledger` memory,
+`obstruction_avoidance` proposal and `most_confident` plan presets, and the
+default observation and action plugins. Every deployed step records the
 same release and bundle paths. The Pi loads those activations. The Donkey assembly runs the
 shared autonomy cycle independently of `run_pilot`. The drive loop still runs at
 `DRIVE_LOOP_HZ` (20 Hz) and submits a detached sample every tick, so

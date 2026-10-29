@@ -167,6 +167,24 @@ class HelpCommandTests(unittest.TestCase):
                     parser.parse_args(args)
                 self.assertEqual(caught.exception.code, 2)
 
+    def test_plugin_save_parses_against_a_named_host(self) -> None:
+        parser = build_parser()
+        saved = parser.parse_args(["plugins", "save", "--host-name", "one"])
+        self.assertEqual((saved.command, saved.plugin_command, saved.host_name, saved.step, saved.json),
+                         ("plugins", "save", "one", None, False))
+        self.assertEqual(parser.parse_args(["plugins", "save", "--host-name", "one", "--step", "action"]).step,
+                         "action")
+        for args in (
+            ["plugins", "save"],
+            ["plugins", "save", "--url", "http://127.0.0.1:5051"],
+            ["plugins", "save", "--host-name", "one", "--step", "sensing"],
+            ["plugins", "save", "--host-name", "one", "--name", "perception/frame"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+
     def test_plugin_stream_parses_a_step_against_a_host(self) -> None:
         parser = build_parser()
         streamed = parser.parse_args(["plugins", "stream", "--host-name", "one", "--step", "plan", "--once"])

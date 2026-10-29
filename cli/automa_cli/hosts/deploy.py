@@ -17,7 +17,6 @@ from urllib.parse import urlparse
 
 from autonomy.decision_cycle.activation import STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
-from implementations.decision_cycle.catalog import selection_activation
 
 from ..shared.command_result import CommandResult
 from .bundles import (
@@ -41,6 +40,7 @@ from .step_activations import (
     read_bundle_activation,
     step_lines,
     staging_host,
+    startup_activations,
     write_host_configuration,
 )
 from .host_publications import host_state
@@ -270,6 +270,10 @@ def _deploy_picar_release(
     host_dir = RUNTIME_ROOT / safe_path_part(host_name)
     bundle = controller_bundle_paths(host_dir)
     source_summary = controller_bundle_source_summary()
+    try:
+        startup = startup_activations(bundle, host_name)
+    except ValueError as exc:
+        return CommandResult(2, str(exc))
 
     if dry_run:
         release_id = f"autonomy-{source_summary['tree_sha256'][:12]}-preview"
@@ -283,7 +287,6 @@ def _deploy_picar_release(
             deploy_files=[preview_dir / f"{step}-active.json" for step in STEPS]
             + [preview_dir / "identity.json"],
         )
-        defaults = {step: selection_activation(step) for step in STEPS}
         payload = _autonomy_update_payload(
             target=target,
             dry_run=True,
@@ -293,8 +296,8 @@ def _deploy_picar_release(
             commands=commands,
             restart=restart,
             drive_args=drive_args,
-            presets=activation_presets(defaults),
-            steps={step: list(activation.plugins) for step, activation in defaults.items()},
+            presets=activation_presets(startup),
+            steps={step: list(activation.plugins) for step, activation in startup.items()},
             generation_id=None,
             runtime_verification=None,
         )
@@ -302,11 +305,12 @@ def _deploy_picar_release(
             return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
         return CommandResult(0, _format_autonomy_dry_run(payload))
 
-    # The deployment stages and ships every step's default, replacing
-    # whatever each step had staged, an unreadable document included.
+    # The deployment stages and ships each step's saved plugins, else its
+    # default, replacing whatever it had staged, an unreadable document included.
     release = sync_controller_bundle(bundle, output=output)
     ensure_step_activations(
-        host_name=host_name, bundle=bundle, release=release, vehicle=dict(target.configuration),
+        host_name=host_name, bundle=bundle, release=release, activations=startup,
+        vehicle=dict(target.configuration),
     )
     activations = {
         step: activation
@@ -403,7 +407,7 @@ def _deploy_picar_release(
                     []
                     if restart
                     else [
-                        "A running runtime selects changed default plugins on its next frame; "
+                        "A running runtime selects changed staged plugins on its next frame; "
                         "changed plugin specs or configs need --restart."
                     ]
                 ),
@@ -437,9 +441,14 @@ def _update_local_autonomy(
             f"Restart the host onto it: {'yes' if restart else 'no'}",
         ]))
     try:
+        startup = startup_activations(bundle, host_name)
+    except ValueError as exc:
+        return CommandResult(2, str(exc))
+    try:
         configuration = staged_host(host_name)
         release = sync_controller_bundle(bundle, output=output)
-        ensure_step_activations(host_name=host_name, bundle=bundle, release=release, vehicle=configuration)
+        ensure_step_activations(host_name=host_name, bundle=bundle, release=release, activations=startup,
+                                vehicle=configuration)
         _, summary = release_code_dir(host_name, release["archive"]["sha256"])
     except RuntimeHostError as exc:
         return CommandResult(2, str(exc))
@@ -927,7 +936,7 @@ def _format_autonomy_dry_run(payload: dict[str, Any]) -> str:
             "outcome: plan only; no files written and no remote connection attempted",
             f"source tree SHA-256: {payload['source']['tree_sha256']}",
             f"source files: {payload['source']['file_count']}",
-            "activation defaults: " + " ".join(
+            "activation: " + " ".join(
                 f"{step}={payload['activation']['presets'].get(step) or ','.join(plugins) or '-'}"
                 for step, plugins in payload["activation"]["steps"].items()
             ),

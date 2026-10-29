@@ -12,14 +12,26 @@ class RunConfigurationTests(unittest.TestCase):
         self.assertEqual(RunConfiguration.from_dict(configuration.to_dict()), configuration)
 
     def test_request_decoding_requires_every_setting(self) -> None:
-        for data in ({}, {"mode": "autonomy"}):
+        # A missing mode would otherwise default to autonomy, which takes control.
+        for data, reason in (
+            (None, "configuration must name mode, num_decisions"),
+            ({}, "configuration must name mode, num_decisions"),
+            ({"mode": "autonomy"}, "configuration must name num_decisions"),
+            ({"num_decisions": 3}, "configuration must name mode"),
+        ):
             with self.subTest(data=data):
-                with self.assertRaisesRegex(ValueError, "num_decisions"):
+                with self.assertRaisesRegex(ValueError, f"^{reason}$"):
                     RunConfiguration.from_dict(data)
 
-    def test_request_decoding_requires_an_object(self) -> None:
-        with self.assertRaisesRegex(ValueError, "configuration must be an object"):
-            RunConfiguration.from_dict(None)
+    def test_request_decoding_refuses_other_shapes(self) -> None:
+        for data, reason in (
+            ([], "configuration must be an object"),
+            ({"mode": "autonomy", "num_decisions": 2, "interval_s": 1},
+             "configuration has unknown keys interval_s"),
+        ):
+            with self.subTest(data=data):
+                with self.assertRaisesRegex(ValueError, f"^{reason}$"):
+                    RunConfiguration.from_dict(data)
 
 
 if __name__ == "__main__":

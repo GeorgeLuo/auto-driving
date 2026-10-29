@@ -89,9 +89,9 @@ class RuntimeRoutesTests(unittest.TestCase):
     def test_run_without_named_settings_is_refused(self) -> None:
         _, routes = _routes()
         for request, reason in (
-            ({"command": "run"}, "configuration must be an object"),
-            ({"command": "run", "configuration": {"mode": "autonomy"}},
-             "configuration must name num_decisions"),
+            ({"command": "run"}, "configuration must name mode, num_decisions"),
+            ({"command": "run", "configuration": {"num_decisions": 3}},
+             "configuration must name mode"),
         ):
             with self.subTest(request=request):
                 status, payload = _json(routes.handle("POST", RUNTIME_PATH, json.dumps(request).encode()))

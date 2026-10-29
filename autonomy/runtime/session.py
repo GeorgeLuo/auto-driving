@@ -5,7 +5,6 @@ num_decisions bounds completed decision cycles; zero keeps the run unbounded.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass, fields
-from typing import Any
 
 from autonomy.runtime.execution import require_mode
 
@@ -24,12 +23,18 @@ class RunConfiguration:
         return asdict(self)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> RunConfiguration:
+    def from_dict(cls, data: object) -> RunConfiguration:
         """Decode a requested run; a client names every setting, so none defaults."""
 
+        if data is None:
+            data = {}
         if not isinstance(data, dict):
             raise ValueError("configuration must be an object")
-        missing = [field.name for field in fields(cls) if field.name not in data]
+        names = [field.name for field in fields(cls)]
+        missing = [name for name in names if name not in data]
         if missing:
             raise ValueError(f"configuration must name {', '.join(missing)}")
+        unknown = sorted(set(data) - set(names))
+        if unknown:
+            raise ValueError(f"configuration has unknown keys {', '.join(unknown)}")
         return cls(**data)

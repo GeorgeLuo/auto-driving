@@ -1,6 +1,6 @@
 const assert = require("assert/strict");
 const fs = require("fs"), vm = require("vm");
-const snapshot = (phase, runId = "run-a", extra = {}) => ({
+const makeState = (phase, runId = "run-a", extra = {}) => ({
   phase, run_id: runId, controls: { allowed_actions: [], loop: false }, ...extra,
 });
 const settle = async () => {
@@ -12,7 +12,7 @@ async function page() {
   const node = () => ({ addEventListener() {}, getAttribute() { return "false"; }, setAttribute() {} });
   const elements = new Proxy({}, { get: (target, key) => target[key] || (target[key] = node()) });
   const ctx = {
-    elements, state: snapshot("running"), actionInFlight: false, stateRequestGeneration: 0,
+    elements, state: makeState("running"), actionInFlight: false, stateRequestGeneration: 0,
     pollInFlight: false, pollTimer: null,
     window: { addEventListener() {}, setTimeout() { return 1; }, clearTimeout() {} },
     setText() {}, setButton() {}, renderPlugins() {}, clearRecordSelection() {},
@@ -54,20 +54,20 @@ async function page() {
     ctx.action("pause");
     const pause = take("pause");
     ctx.action("reset");
-    await reply(take("reset"), snapshot("idle", null));
+    await reply(take("reset"), makeState("idle", null));
     if (restart) {
       ctx.action("start");
-      await reply(take("start"), snapshot("running", "run-b"));
+      await reply(take("start"), makeState("running", "run-b"));
     }
     const expected = ctx.state;
-    await reply(pause, snapshot("paused"));
+    await reply(pause, makeState("paused"));
     assert.equal(ctx.state, expected);
     assert.equal(ctx.controlInFlight, false);
     if (restart) {
       ctx.action("set_cadence", { cadence_ms: 10 });
       const cadence = take("set_cadence");
       assert.equal(cadence.body.run_id, "run-b");
-      await reply(cadence, snapshot("running", "run-b"));
+      await reply(cadence, makeState("running", "run-b"));
     }
   }
 
@@ -78,14 +78,14 @@ async function page() {
     ctx.action("pause");
     const pause = take("pause");
     ctx.poll();
-    await reply(take("poll"), snapshot("running", "run-b"));
+    await reply(take("poll"), makeState("running", "run-b"));
     ctx.action("select_plugins", { step: "perception", active_plugin_ids: ["frame"] });
     const expected = ctx.state;
-    await reply(pause, snapshot("paused"));
+    await reply(pause, makeState("paused"));
     assert.equal(ctx.state, expected);
     assert.equal(ctx.state.phase, "running");
     assert.equal(ctx.actionInFlight, true);
-    await reply(take("select_plugins"), snapshot("running", "run-b"));
+    await reply(take("select_plugins"), makeState("running", "run-b"));
   }
 
   // Pause remains concurrent with a slow selection and cannot cancel its result.
@@ -96,12 +96,12 @@ async function page() {
     ctx.action("pause");
     const pause = take("pause");
     if (controlFirst) {
-      await reply(pause, snapshot("paused"));
+      await reply(pause, makeState("paused"));
       assert.equal(ctx.state.phase, "paused");
       assert.equal(ctx.actionInFlight, true);
     }
-    await reply(selection, snapshot("paused", "run-a", { active_perception_plugin_ids: ["frame"] }));
-    if (!controlFirst) await reply(pause, snapshot("running"));
+    await reply(selection, makeState("paused", "run-a", { active_perception_plugin_ids: ["frame"] }));
+    if (!controlFirst) await reply(pause, makeState("running"));
     assert.equal(ctx.state.phase, "paused");
     assert.deepEqual(ctx.state.active_perception_plugin_ids, ["frame"]);
     assert.deepEqual(settledPlugins, ["perception"]);
@@ -115,8 +115,8 @@ async function page() {
     ctx.action("pause");
     if (!pollFirst) ctx.poll();
     const poll = take("poll");
-    await reply(take("pause"), snapshot("paused"));
-    await reply(poll, snapshot("running"));
+    await reply(take("pause"), makeState("paused"));
+    await reply(poll, makeState("running"));
     assert.equal(ctx.state.phase, "paused");
   }
 
@@ -128,9 +128,9 @@ async function page() {
     ctx.action("pause");
     const pause = take("pause");
     ctx.action("reset");
-    await reply(take("reset"), snapshot("idle", null));
-    await reply(loop, snapshot("running", "run-a", { controls: { loop: true } }));
-    await reply(pause, snapshot("paused"), false);
+    await reply(take("reset"), makeState("idle", null));
+    await reply(loop, makeState("running", "run-a", { controls: { loop: true } }));
+    await reply(pause, makeState("paused"), false);
     assert.equal(ctx.state.run_id, null);
     assert.equal(ctx.state.controls.loop, false);
     assert.equal(notices.includes("stale rejection"), false);
@@ -139,12 +139,12 @@ async function page() {
   // A catch-up response from a run replaced by polling cannot replace its state.
   {
     const { ctx, take, reply } = await page();
-    ctx.state = snapshot("paused");
+    ctx.state = makeState("paused");
     ctx.queueSeek(2);
     const seek = take("seek");
     ctx.poll();
-    await reply(take("poll"), snapshot("running", "run-b"));
-    await reply(seek, snapshot("paused"));
+    await reply(take("poll"), makeState("running", "run-b"));
+    await reply(seek, makeState("paused"));
     assert.equal(ctx.state.run_id, "run-b");
     assert.equal(ctx.state.phase, "running");
     assert.equal(ctx.seekInFlight, false);

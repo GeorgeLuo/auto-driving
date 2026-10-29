@@ -8,7 +8,7 @@ from qca import AnalysisError, AnalyzerConfig, analyze_sources, analyze_tree, re
 
 
 class QuantitativeChangeAnalysisTests(unittest.TestCase):
-    def test_snapshot_classifies_and_excludes_non_code_from_core_measurements(self) -> None:
+    def test_tree_classifies_and_excludes_non_code_from_core_measurements(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             (root / "app.py").write_text(

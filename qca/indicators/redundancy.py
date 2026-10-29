@@ -1,4 +1,4 @@
-"""Independent redundancy indicators for Python AST snapshots.
+"""Independent redundancy indicators for Python syntax trees.
 
 The public :func:`analyze` entry point consumes the shared AST context used by
 the QCA indicator registry.  The lower-level tree pass accepts a plain

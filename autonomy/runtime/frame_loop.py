@@ -337,7 +337,7 @@ class FrameLoop:
         """Return one bounded latest frame/result publication computed at read time."""
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
-            return self._publication_from_locked_state(read_at_ms=read_at_ms)
+            return deepcopy(self._publication_from_locked_state(read_at_ms=read_at_ms))
 
     def publish_decision_latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
         """Return the current action result at read time.
@@ -350,10 +350,16 @@ class FrameLoop:
 
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
-            return self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
+            return deepcopy(self._decision_publication_from_locked_state(read_at_ms=read_at_ms))
 
     def read_transaction(self, kind: str) -> tuple[dict[str, Any], LatestObservationState | None, str]:
-        """Read publication, capture and content revision together before JPEG work."""
+        """Borrow publication data and its retained frame for HTTP serialization.
+
+        Completed frame data is replaced, rather than updated in place. The
+        route may retain these references across JPEG work without copying
+        report contents, including when an ETag avoids serialization entirely.
+        Callers must only read the borrowed nested values.
+        """
         with self._lock:
             publication = (self._decision_publication_from_locked_state(read_at_ms=timestamp_ms())
                            if kind == "decision" else self._publication_from_locked_state(read_at_ms=timestamp_ms()))
@@ -365,7 +371,7 @@ class FrameLoop:
         read_at_ms = timestamp_ms()
         with self._lock:
             latest = self.latest_state
-            publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
+            publication = deepcopy(self._publication_from_locked_state(read_at_ms=read_at_ms))
         return self._jpeg(latest, publication)
 
     def publish_latest_camera(self, *, now_ms: int | None = None) -> dict[str, Any]:
@@ -604,7 +610,7 @@ class FrameLoop:
         self._queue_generation += 1
 
     def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
-        """Build a publication from the currently locked state and counters."""
+        """Build a read-only publication view borrowing completed frame data."""
         latest = self.latest_state
         processed_count = self.processed_count
         presets = dict(self.presets)
@@ -653,11 +659,11 @@ class FrameLoop:
         else:
             health = PUBLICATION_HEALTH_HEALTHY
 
-        perception = None if latest.cycle is None else deepcopy(latest.cycle.get("perception"))
-        observation = None if latest.cycle is None else deepcopy(latest.cycle.get("observation"))
-        timing = None if latest.cycle is None else deepcopy(latest.cycle.get("timing"))
+        perception = None if latest.cycle is None else latest.cycle.get("perception")
+        observation = None if latest.cycle is None else latest.cycle.get("observation")
+        timing = None if latest.cycle is None else latest.cycle.get("timing")
         # Republish the memory report through the cycle publication.
-        memory = None if latest.cycle is None else deepcopy(latest.cycle.get("memory"))
+        memory = None if latest.cycle is None else latest.cycle.get("memory")
         context = latest.context or (latest.cycle or {}).get("context") or {}
         selections = (context.get("metadata") or {}).get("step_activations")
         if isinstance(selections, dict) and all(step in selections for step in DECISION_STEPS):
@@ -678,7 +684,7 @@ class FrameLoop:
             "processed_count": processed_count,
             "presets": dict(latest.presets),
             "generation_id": generation_id,
-            "step_activations": deepcopy(selections),
+            "step_activations": selections,
             "context": recorded_context(context),
             "frame": {
                 "frame_id": latest.frame_id,
@@ -688,7 +694,7 @@ class FrameLoop:
                 "has_image": latest.image is not None,
                 "frame_path": LATEST_FRAME_PATH,
             },
-            "control": deepcopy(latest.control),
+            "control": latest.control,
             "mode": latest.mode,
             "status": latest.status,
             "error": latest.error,
@@ -845,7 +851,7 @@ class FrameLoop:
         }
 
     def _decision_publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
-        """Build the decision wire payload, fail-closed at read time."""
+        """Borrow the decision record, failing closed at read time."""
 
         latest = self.latest_state
         if latest is None:
@@ -895,7 +901,7 @@ class FrameLoop:
             "read_at_ms": read_at_ms,
             "result_age_ms": age_ms,
             "stale_after_ms": threshold_ms,
-            "decision": deepcopy(decision),
+            "decision": decision,
         }
 
     def _decision_worker(self) -> None:

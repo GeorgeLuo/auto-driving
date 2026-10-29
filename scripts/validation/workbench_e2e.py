@@ -165,10 +165,10 @@ def check_parity() -> list[str]:
 def check_selector() -> list[str]:
     """Change the selection the way the page does.
 
-    A paused selection starts the pass over and runs up to the displayed frame
-    again, seeking shows earlier frames with the current selection, seeking
-    past the recorded frames lands there, a running selection shows the new
-    selection when it returns, and a loop pass runs with the current selection.
+    A paused selection refreshes only the displayed frame. Earlier frames keep
+    the selection they were computed with. Seeking past those frames processes
+    the new ones with the current selection. A running selection applies on a
+    later frame, and a loop pass runs with the current selection.
     """
 
     problems: list[str] = []
@@ -178,6 +178,7 @@ def check_selector() -> list[str]:
             wait_for = workbench.wait_for
             current = wait_for(lambda s: s["position"] >= 3)
             run_id = current["run_id"]
+            original = list(current["active_perception_plugin_ids"])
             paused = act(action="pause", run_id=run_id)
             frame_id = paused["current_frame"]["frame_id"]
             selected = act(
@@ -185,13 +186,18 @@ def check_selector() -> list[str]:
                 active_plugin_ids=["floor_continuity"],
             )
             if selected["current_frame"]["frame_id"] != frame_id or runs(selected) != ["floor_continuity"]:
-                problems.append(f"paused selection did not reprocess {frame_id}: {runs(selected)}")
+                problems.append(f"paused selection did not refresh {frame_id}: {runs(selected)}")
             if len(selected["timeline"]) != paused["position"]:
                 problems.append(f"timeline holds {len(selected['timeline'])} of {paused['position']} frames")
             sought = act(action="seek", run_id=run_id, position=0)
-            if runs(sought) != ["floor_continuity"]:
-                problems.append(f"seek to a frame recorded earlier showed {runs(sought)}")
-            target = len(sought["timeline"]) + 10
+            if runs(sought) != original:
+                problems.append(f"earlier frame was rewritten to {runs(sought)}")
+            if "select_plugins" in sought["controls"]["allowed_actions"]:
+                problems.append("historical frame still allows plugin edits")
+            latest = act(action="seek", run_id=run_id, position=selected["latest_processed_position"])
+            if latest["phase"] != "paused" or runs(latest) != ["floor_continuity"]:
+                problems.append(f"return to latest showed {runs(latest)} in phase {latest['phase']}")
+            target = len(latest["timeline"]) + 10
             ahead = act(action="seek", run_id=run_id, position=target)
             if ahead["position"] != target + 1 or runs(ahead) != ["floor_continuity"]:
                 problems.append(f"seek past recorded frames to {target} landed at {ahead['position'] - 1}")
@@ -200,8 +206,8 @@ def check_selector() -> list[str]:
                 action="select_plugins", run_id=run_id, step="perception",
                 active_plugin_ids=["classical_regions"],
             )
-            if runs(running) != ["classical_regions"]:
-                problems.append(f"running selection returned {runs(running)}")
+            if running["active_perception_plugin_ids"] != ["classical_regions"]:
+                problems.append(f"running selection stayed {running['active_perception_plugin_ids']}")
             if running["phase"] != "running":
                 problems.append(f"running selection left phase {running['phase']}")
             act(action="set_loop", run_id=run_id, loop=True)
@@ -220,8 +226,7 @@ def check_selector() -> list[str]:
 def check_memory_selector() -> list[str]:
     """Select memory plugins the way the page does and compare with ``plugins list``'s default.
 
-    Memory is built from the frames before the displayed one, so a selection
-    while paused rebuilds it over those frames and keeps the displayed frame.
+    A selection while paused keeps the displayed frame and applies on that frame.
     """
 
     problems: list[str] = []

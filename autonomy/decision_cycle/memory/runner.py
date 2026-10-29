@@ -283,6 +283,13 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
             self._publisher = plugin_id if after is not _ABSENT else None
             self._published_evidence = after
 
+    def restore_shared_memory(self, shared_memory: SharedMemory, *, publisher: str | None) -> None:
+        """Rebind reporting to a replay checkpoint without resetting plugin history."""
+        with self._runtime_lock:
+            self._shared_memory = shared_memory
+            self._publisher = publisher if publisher in self.plugin_ids else None
+            self._published_evidence = _evidence(shared_memory) if self._publisher else _ABSENT
+
     @property
     def evidence_publisher(self) -> str | None:
         """The applied plugin whose value ``EVIDENCE_KEY`` holds, or None."""

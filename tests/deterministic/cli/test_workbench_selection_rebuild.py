@@ -1,257 +1,119 @@
 from __future__ import annotations
 
-import json
+import copy
 import unittest
-from pathlib import Path
+from dataclasses import replace
+from unittest import mock
 
-from cli.automa_cli.workbench.plugins import WORKBENCH_SELECTABLE_STEPS
-from tests.shared.cli.invoke import invoke_automa
-from tests.shared.cli.memory.frame_fixtures import write_frames
-from tests.shared.cli.workbench_fixtures import (
-    ImageReplayRunner,
-    _wait_until,
-    image_source,
-    perception_activations,
-    post_action,
-    serve_workbench,
-    write_manifest,
-)
-
-# A recording that ran no plan. Plan has one packaged plugin, so selecting it
-# is a change only from a recording that ran none.
-NO_PLAN = {"plan": None}
+from cli.automa_cli.workbench import runner as replay
+from cli.automa_cli.frontend.workbench_contract import ReplayActionError
+from implementations.decision_cycle.catalog import selection_activation
+from tests.shared.cli.workbench_fixtures import ImageReplayRunner, image_source, _wait_until
 
 
-def _write_recording(root: Path, images: list[str], steps: dict | None = None) -> None:
-    """A manifest over ``images``; ``steps`` is each frame's recorded selection."""
-    frames = [
-        {"frame_id": f"frame-{index}", "image_path": image, "timestamp_ms": index * 1000}
-        for index, image in enumerate(images)
-    ]
-    if steps is not None:
-        for entry in frames:
-            entry["steps"] = steps
-    write_manifest(root, {"source_id": "selection-fixture", "frames": frames})
+class LiveSelectionTests(unittest.TestCase):
+    def paused(self, root, *, loop=False, activations=None):
+        runner = ImageReplayRunner(root, cadence_ms=30000, loop=loop, activations=activations)
+        self.addCleanup(runner.close)
+        run_id = runner.start()["run_id"]
+        _wait_until(lambda: runner.state()["current_frame"] is not None)
+        runner.dispatch("pause", run_id=run_id)
+        return runner, run_id
 
+    def select(self, runner, run_id, plugins, step="perception"):
+        return runner.dispatch("select_plugins", run_id=run_id, step=step, active_plugin_ids=plugins)
 
-class SelectionRebuildTests(unittest.TestCase):
+    def test_running_addition_keeps_history_instances_and_tuned_configs(self):
+        activation = selection_activation("perception", plugins=["motion_tracks"])
+        activation = replace(activation, plugin_configs={"motion_tracks": {"max_features": 12}})
+        with image_source(6) as root:
+            runner, run_id = self.paused(root, activations={"perception": activation})
+            runner.dispatch("seek", run_id=run_id, position=3)
+            step = runner._steps["perception"]
+            plugin = step.plugins["motion_tracks"]
+            history = runner._shared_memory["perception.motion_tracks.history"]
+            memory = runner._steps["memory"]
+            # Keep the worker asleep while exercising the running action boundary.
+            with runner._action_lock:
+                runner.dispatch("resume", run_id=run_id)
+                with mock.patch.object(replay, "run_frame", wraps=replay.run_frame) as frames:
+                    selected = self.select(runner, run_id, ["motion_tracks", "frame"])
+                    frames.assert_not_called()
+                self.assertEqual(selected["position"], 4)
+                self.assertIs(step.plugins["motion_tracks"], plugin)
+                self.assertEqual(plugin.max_features, 12)
+                self.assertIs(runner._shared_memory["perception.motion_tracks.history"], history)
+                self.assertIs(runner._steps["memory"], memory)
+                runner.dispatch("pause", run_id=run_id)
+            next_frame = runner.dispatch("step", run_id=run_id)
+            self.assertEqual([p["plugin_id"] for p in next_frame["steps"]["perception"]["plugin_runs"]],
+                             ["motion_tracks", "frame"])
 
-    def test_each_step_replays_the_displayed_frame_between_loop_passes(self) -> None:
-        for phase in ("running", "paused"):
-            for step in WORKBENCH_SELECTABLE_STEPS:
-                with self.subTest(phase=phase, step=step), image_source(1) as root:
-                    if step == "plan":
-                        _write_recording(root, ["frame_00.png"], NO_PLAN)
-                    runner = ImageReplayRunner(
-                        root,
-                        activations=perception_activations("frame"),
-                        cadence_ms=30000,
-                        loop=True,
-                    )
-                    base = serve_workbench(self, runner)
-                    if step == "memory":
-                        post_action(
-                            base,
-                            {
-                                "action": "select_plugins",
-                                "step": "memory",
-                                "active_plugin_ids": [],
-                            },
-                        )
-                    started = post_action(base, {"action": "start"})["state"]
-                    run_id = started["run_id"]
-                    _wait_until(
-                        lambda owner=runner: owner.state()["current_frame"] is not None
-                    )
-                    shown = runner.state()
-                    if phase == "paused":
-                        shown = post_action(
-                            base,
-                            {
-                                "action": "pause",
-                                "run_id": run_id,
-                            },
-                        )["state"]
-                    # The next pass is at zero, but the previous frame is displayed.
-                    self.assertEqual(shown["position"], 0)
-                    self.assertEqual(shown["timeline"], [])
-                    if step == "plan":
-                        self.assertEqual(shown["active_plan_plugin_ids"], [])
-                        self.assertEqual(
-                            shown["machine_detail"]["pipeline"]["plan_preset"], "custom"
-                        )
-                    frame_id = shown["current_frame"]["frame_id"]
-                    selected_ids = {
-                        "perception": ["frame", "floor_plane"],
-                        "memory": ["bounded_evidence"],
-                        "proposal": [],
-                        "plan": ["highest_confidence"],
-                    }[step]
-                    selected = post_action(
-                        base,
-                        {
-                            "action": "select_plugins",
-                            "run_id": run_id,
-                            "step": step,
-                            "active_plugin_ids": selected_ids,
-                        },
-                    )["state"]
+    def test_paused_refresh_executes_only_latest_frame_without_advancing_memory_twice(self):
+        with image_source(6) as root:
+            runner, run_id = self.paused(root)
+            before = runner.dispatch("seek", run_id=run_id, position=3)
+            prefix = copy.deepcopy(before["timeline"][:3])
+            memory = runner._steps["memory"]
+            with mock.patch.object(replay, "run_frame", wraps=replay.run_frame) as frames:
+                self.select(runner, run_id, ["frame"])
+                refreshed = self.select(runner, run_id, ["frame", "floor_plane"])
+                self.assertEqual([c.args[0].position for c in frames.call_args_list], [3, 3])
+                self.select(runner, run_id, ["frame", "floor_plane"])
+                self.assertEqual(frames.call_count, 2)
+            self.assertIs(runner._steps["memory"], memory)
+            self.assertEqual(refreshed["phase"], "paused")
+            self.assertEqual(refreshed["position"], 4)
+            self.assertEqual(refreshed["timeline"][:3], prefix)
+            self.assertEqual(len(refreshed["timeline"]), 4)
+            # Domain memory matches one execution of the frame with this selection.
+            self.assertEqual(refreshed["steps"]["memory"], before["steps"]["memory"])
+            self.assertEqual(refreshed["steps"]["memory"]["evidence_publisher"], "bounded_evidence")
 
-                    self.assertEqual(selected["phase"], phase)
-                    self.assertEqual(selected["current_frame"]["frame_id"], frame_id)
-                    self.assertIsNotNone(selected["steps"]["perception"])
-                    self.assertIsNotNone(selected["steps"]["observation"])
-                    self.assertIsNotNone(selected["steps"]["memory"])
-                    self.assertIsNotNone(selected["steps"]["decision"])
-                    self.assertEqual(
-                        [
-                            run["plugin_id"]
-                            for run in selected["steps"]["perception"]["plugin_runs"]
-                        ],
-                        selected_ids
-                        if step == "perception"
-                        else shown["active_perception_plugin_ids"],
-                    )
-                    for other in set(WORKBENCH_SELECTABLE_STEPS) - {step}:
-                        self.assertEqual(
-                            selected[f"active_{other}_plugin_ids"],
-                            shown[f"active_{other}_plugin_ids"],
-                        )
-                    self.assertEqual(
-                        [
-                            item["plugin_id"]
-                            for item in selected["steps"]["decision"]["proposal"]["candidates"]
-                        ],
-                        selected_ids if step == "proposal" else shown["active_proposal_plugin_ids"],
-                    )
-                    report = selected["machine_detail"]["pipeline"][f"{step}_plugin_report"]
-                    self.assertEqual(report["selected_plugin_ids"], selected_ids)
-                    self.assertEqual(report["applied_plugin_ids"], selected_ids)
-                    self.assertEqual(
-                        selected["steps"]["memory"]["plugins"][0]["plugin_id"],
-                        "bounded_evidence",
-                    )
-                    if phase == "paused":
-                        self.assertEqual(selected["position"], 1)
-                        self.assertEqual(len(selected["timeline"]), 1)
-                        self.assertEqual(runner._steps["memory"].update_count, 1)
-                        unchanged_step = runner._steps["perception"]
-                        unchanged = post_action(
-                            base,
-                            {
-                                "action": "select_plugins",
-                                "run_id": run_id,
-                                "step": step,
-                                "active_plugin_ids": selected_ids,
-                            },
-                        )["state"]
-                        self.assertIs(runner._steps["perception"], unchanged_step)
-                        self.assertEqual(unchanged["position"], 1)
-                    post_action(base, {"action": "reset", "run_id": run_id})
+    def test_new_motion_plugin_warms_up_and_reenabled_plugin_does_not_restore_old_history(self):
+        with image_source(6) as root:
+            runner, run_id = self.paused(root)
+            runner.dispatch("seek", run_id=run_id, position=2)
+            selected = self.select(runner, run_id, ["frame", "motion_tracks"])
+            motion = selected["steps"]["perception"]["plugin_runs"][-1]
+            self.assertEqual(motion["status"], "warming_up")
+            runner.dispatch("step", run_id=run_id)
+            self.select(runner, run_id, ["frame"])
+            self.assertNotIn("perception.motion_tracks.history", runner._shared_memory)
+            selected = self.select(runner, run_id, ["frame", "motion_tracks"])
+            self.assertEqual(selected["steps"]["perception"]["plugin_runs"][-1]["status"], "warming_up")
 
-    def test_each_step_discards_future_tracking_and_retention_after_a_backward_seek(
-        self,
-    ) -> None:
-        tracked = ["frame", "floor_plane", "multi_obstruction_tracks"]
-        for step in WORKBENCH_SELECTABLE_STEPS:
-            with self.subTest(step=step), image_source(0) as root:
-                write_frames(root, count=6)
-                images = [f"frame_{index}.png" for index in range(6)]
-                # Memory and proposal are cleared below; plan starts from a
-                # recording that ran none.
-                _write_recording(root, images, NO_PLAN if step == "plan" else None)
-                runner = ImageReplayRunner(
-                    root,
-                    activations=perception_activations(
-                        *(tracked if step != "perception" else ["frame", "floor_plane"])
-                    ),
-                    cadence_ms=30000,
-                )
-                base = serve_workbench(self, runner)
-                if step not in {"perception", "plan"}:
-                    post_action(
-                        base,
-                        {
-                            "action": "select_plugins",
-                            "step": step,
-                            "active_plugin_ids": [],
-                        },
-                    )
-                run_id = post_action(base, {"action": "start"})["state"]["run_id"]
-                _wait_until(lambda owner=runner: owner.state()["position"] == 1)
-                post_action(base, {"action": "pause", "run_id": run_id})
-                post_action(base, {"action": "seek", "run_id": run_id, "position": 4})
-                shown = post_action(
-                    base,
-                    {
-                        "action": "seek",
-                        "run_id": run_id,
-                        "position": 1,
-                    },
-                )["state"]
-                self.assertEqual(len(shown["timeline"]), 5)
-                runner._shared_memory["future-marker"] = True
-                selected = post_action(
-                    base,
-                    {
-                        "action": "select_plugins",
-                        "run_id": run_id,
-                        "step": step,
-                        "active_plugin_ids": {
-                            "perception": tracked,
-                            "memory": ["bounded_evidence"],
-                            "proposal": ["avoid_recent_obstruction"],
-                            "plan": ["highest_confidence"],
-                        }[step],
-                    },
-                )["state"]
-                self.assertEqual(selected["phase"], "paused")
-                self.assertEqual(selected["position"], 2)
-                self.assertEqual(len(selected["timeline"]), 2)
-                self.assertNotIn("future-marker", runner._shared_memory)
-                self.assertEqual(runner._steps["memory"].update_count, 2)
-                # The reference replays the default plan, which the selection now matches.
-                if step == "plan":
-                    _write_recording(root, images)
+    def test_historical_results_keep_their_selection_and_edits_require_latest_frame(self):
+        with image_source(6) as root:
+            runner, run_id = self.paused(root)
+            runner.dispatch("seek", run_id=run_id, position=3)
+            self.select(runner, run_id, ["frame"])
+            old = runner.dispatch("seek", run_id=run_id, position=0)
+            self.assertEqual(old["active_perception_plugin_ids"], ["frame"])
+            self.assertEqual(old["latest_processed_position"], 3)
+            self.assertNotIn("select_plugins", old["controls"]["allowed_actions"])
+            self.assertEqual([p["plugin_id"] for p in old["steps"]["perception"]["plugin_runs"]],
+                             ["frame", "floor_plane"])
+            with self.assertRaisesRegex(ReplayActionError, "latest processed frame"):
+                self.select(runner, run_id, [])
+            latest = runner.dispatch("seek", run_id=run_id, position=3)
+            self.assertEqual(latest["phase"], "paused")
+            self.assertIn("select_plugins", latest["controls"]["allowed_actions"])
+            self.select(runner, run_id, [])
 
-                reference = ImageReplayRunner(
-                    root, activations=perception_activations(*tracked), cadence_ms=30000
-                )
-                self.addCleanup(reference.close)
-                reference_id = reference.start()["run_id"]
-                _wait_until(lambda owner=reference: owner.state()["position"] == 1)
-                reference.dispatch("pause", run_id=reference_id)
-                expected = reference.dispatch("seek", run_id=reference_id, position=1)
-                for key in ("signals", "things", "status", "limits"):
-                    self.assertEqual(
-                        selected["steps"]["perception"][key],
-                        json.loads(json.dumps(expected["steps"]["perception"][key])),
-                        key,
-                    )
-                self.assertEqual(
-                    selected["steps"]["memory"],
-                    json.loads(json.dumps(expected["steps"]["memory"])),
-                )
-                # Observation prose includes execution timings. Compare the
-                # structured evidence and every decision field without it.
-                decision = selected["steps"]["decision"]
-                reference_decision = json.loads(
-                    json.dumps(expected["steps"]["decision"])
-                )
-                self.assertEqual(decision, reference_decision)
-                post_action(base, {"action": "reset", "run_id": run_id})
-
-    def test_cli_help_describes_selection_replay_for_every_step(self) -> None:
-        help_text = " ".join(
-            invoke_automa("workbench", "--help").stdout.split()
-        )
-        self.assertIn("Changing a step's plugins", help_text)
-        self.assertIn("rebuilds every step's pipeline", help_text)
-        self.assertIn("displayed frame before returning", help_text)
-        self.assertIn("append newly checked plugins", help_text)
-        self.assertIn("changed ordered selection uses default configs for that step", help_text)
-        self.assertIn("other steps keep their selections and configs", help_text)
-        self.assertIn("same ordered selection keeps the current configs and pass", help_text)
+    def test_last_frame_remains_refreshable_before_next_loop(self):
+        with image_source(1) as root:
+            runner, run_id = self.paused(root, loop=True)
+            with mock.patch.object(replay, "run_frame", wraps=replay.run_frame) as frames:
+                selected = self.select(runner, run_id, ["frame"])
+                self.assertEqual([c.args[0].position for c in frames.call_args_list], [0])
+            self.assertEqual(selected["position"], 1)
+            self.assertEqual(selected["latest_processed_position"], 0)
+            runner.dispatch("step", run_id=run_id)
+            self.assertEqual(len(runner.state()["timeline"]), 1)
+            runner.dispatch("reset", run_id=run_id)
+            self.assertIsNone(runner._frame_checkpoint)
+            self.assertIsNone(runner.state()["latest_processed_position"])
 
 
 if __name__ == "__main__":

@@ -618,18 +618,17 @@ at `/workbench/`; `--open` also opens that page in a browser.
 button. It opens an empty workbench with each step's default preset. Enter an
 image directory, then press Start. The Automa icon returns to the viewer's home page.
 
-A preset keeps its plugin configs until that step's ordered selection changes.
-A changed selection uses catalog defaults for every selected plugin; it does
-not restore a recording's step configs or a tuned preset just because its ids
-match. Start with the named preset again to restore its tuning. The other
-steps keep their selections and configs. Submitting the same ordered list again
-keeps the current configs and pass.
+Changing plugins preserves unchanged plugins, their configs, and their state.
+Newly enabled plugins start with catalog defaults; removed plugins clear their own
+state. Other steps retain their accumulated evidence under normal retention rules.
+Submitting the same ordered selection again does no extra processing.
 
-Perception tracks and memory evidence carry state across frames, and proposals
-read them, so changing any step's selection during a running or paused replay
-rebuilds every step's pipeline with a fresh shared map and runs from the first
-frame to the displayed frame before the action returns. This includes the last frame still displayed
-between loop passes.
+While playing, selections apply at the next frame boundary without replaying history.
+While paused, a change refreshes only the displayed frame from its pre-frame state,
+so tracks and memory do not advance twice. Earlier results keep the selection they
+were computed with. After seeking backward, use **Return to latest frame** before
+editing plugins. **Reset**, then **Start**, replays from the beginning with the selected
+plugins. A currently executing plugin finishes before a change takes effect.
 
 For workbench API integrations, the page and its API sit under `/workbench/`
 on the viewer. `GET /workbench/api/state` reports schema

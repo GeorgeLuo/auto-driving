@@ -84,6 +84,7 @@ function renderFrame() {
   elements.emptyState.hidden = true;
   drawOverlay();
 }
+var overlayDrawnKey = "";
 function drawOverlay() {
   var frame = currentFrame();
   var image = elements.frameImage;
@@ -92,9 +93,19 @@ function drawOverlay() {
     ? text(state && state.run_id, "") + ":" + text(frame.frame_id, "")
     : "";
   if (!frame || frame.absent || loadedImageKey !== imageKey || !image.naturalWidth || elements.overlayToggle.value === "off") {
-    canvas.width = 1; canvas.height = 1;
+    if (overlayDrawnKey !== "") {
+      overlayDrawnKey = "";
+      canvas.width = 1; canvas.height = 1;
+    }
     return;
   }
+  // Setting the canvas size clears it. Polls of an unchanged frame must not
+  // allocate a new bitmap; Chrome stalls the tab when that happens continuously.
+  var drawnKey = imageKey + ":" + text(state && state.steps_revision, "") + ":" +
+    image.naturalWidth + "x" + image.naturalHeight;
+  if (drawnKey === overlayDrawnKey && canvas.width === image.naturalWidth &&
+      canvas.height === image.naturalHeight) return;
+  overlayDrawnKey = drawnKey;
   canvas.width = image.naturalWidth;
   canvas.height = image.naturalHeight;
   var context = canvas.getContext("2d");

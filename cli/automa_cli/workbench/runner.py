@@ -8,12 +8,15 @@ import threading
 import time
 import uuid
 from collections.abc import Mapping
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
 from implementations.decision_cycle.catalog import CUSTOM_PRESET
 from autonomy.plugins import LocalPluginCatalog
+from autonomy.decision_cycle.runner import StepRunner, reset_plugin
+from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.recording import recorded_selections
 
@@ -103,6 +106,8 @@ class ImageReplayRunner:
         self._steps: dict[str, Any] = {}
         self._shared_memory: dict[str, Any] = {}
         self._history: dict[str, dict[str, Any]] = {}
+        self._frame_checkpoint: dict[str, Any] | None = None
+        self._seek_generation = 0
         self._generation = 0
         self._cadence_ms = self._validate_cadence(cadence_ms)
         self._pace = self._validate_pace(pace)
@@ -192,6 +197,7 @@ class ImageReplayRunner:
 
     def _apply_plugin_configuration_locked(self) -> None:
         self._state.update(self._plugin_configuration())
+        self._state["selection_presets"] = self._selection_presets()
         self._state["machine_detail"]["pipeline"].update(self._selection_presets())
 
     def frame_bytes(
@@ -397,6 +403,66 @@ class ImageReplayRunner:
                 status_code=400,
                 boundary="action",
             )
+        # Pause, resume, cadence, and loop only flip worker flags. A frame
+        # already executing still finishes and publishes; the page does not
+        # wait it out. Plugin changes keep the action lock, which is the
+        # frame boundary.
+        if action in {"pause", "resume", "set_cadence", "set_loop"}:
+            with self._lock:
+                self._check_run_id_locked(action, run_id)
+            if action == "set_cadence":
+                if cadence_ms is None and pace is None:
+                    raise ReplayActionError(
+                        "set_cadence requires cadence_ms or pace",
+                        status_code=400,
+                        boundary="input",
+                    )
+                value = (
+                    self._validate_cadence(cadence_ms)
+                    if cadence_ms is not None
+                    else None
+                )
+                selected_pace = (
+                    self._validate_pace(pace) if pace is not None else self._pace
+                )
+                with self._lock:
+                    if self._state["phase"] not in {"running", "paused"}:
+                        raise ReplayActionError(
+                            "cadence can only change while replay is running or paused",
+                            boundary="lifecycle",
+                        )
+                    if value is not None:
+                        self._cadence_ms = value
+                    self._pace = selected_pace
+                    self._record_action_locked(
+                        action,
+                        cadence_ms=self._cadence_ms,
+                        pace=self._pace,
+                    )
+                    self._condition.notify_all()
+                return self.state()
+            if action == "set_loop":
+                return self._set_loop(loop)
+            if action == "pause":
+                return self._pause()
+            return self._resume()
+        # A newer seek invalidates an older catch-up without waiting for it.
+        # The work itself still takes the frame lock one frame at a time.
+        if action == "seek":
+            with self._condition:
+                self._check_run_id_locked(action, run_id)
+                if step is not None or active_plugin_ids is not None:
+                    raise ReplayActionError(
+                        "step and active_plugin_ids are only accepted by select_plugins",
+                        status_code=400, boundary="input",
+                    )
+                self._seek_generation += 1
+                seek_generation = self._seek_generation
+            return self._seek(position, seek_generation=seek_generation)
+        if action == "reset":
+            with self._condition:
+                self._check_run_id_locked(action, run_id)
+                self._seek_generation += 1
         with self._action_lock:
             with self._lock:
                 self._check_run_id_locked(action, run_id)
@@ -460,47 +526,8 @@ class ImageReplayRunner:
                         boundary="source",
                         state=self.state(),
                     ) from exc
-            if action == "set_cadence":
-                if cadence_ms is None and pace is None:
-                    raise ReplayActionError(
-                        "set_cadence requires cadence_ms or pace",
-                        status_code=400,
-                        boundary="input",
-                    )
-                value = (
-                    self._validate_cadence(cadence_ms)
-                    if cadence_ms is not None
-                    else None
-                )
-                selected_pace = (
-                    self._validate_pace(pace) if pace is not None else self._pace
-                )
-                with self._lock:
-                    if self._state["phase"] not in {"running", "paused"}:
-                        raise ReplayActionError(
-                            "cadence can only change while replay is running or paused",
-                            boundary="lifecycle",
-                        )
-                    if value is not None:
-                        self._cadence_ms = value
-                    self._pace = selected_pace
-                    self._record_action_locked(
-                        action,
-                        cadence_ms=self._cadence_ms,
-                        pace=self._pace,
-                    )
-                    self._condition.notify_all()
-                return self.state()
-            if action == "set_loop":
-                return self._set_loop(loop)
-            if action == "pause":
-                return self._pause()
-            if action == "resume":
-                return self._resume()
             if action == "step":
                 return self._step()
-            if action == "seek":
-                return self._seek(position)
             if action == "reset":
                 return self._reset()
         raise AssertionError(f"unhandled action {action}")
@@ -523,7 +550,9 @@ class ImageReplayRunner:
                 boundary="input",
             )
         catalog = self._catalogs[step]
-        with self._lock:
+        # The action lock is the frame boundary: a plugin already executing
+        # finishes, and publishes, before this selection changes anything.
+        with self._action_lock, self._lock:
             active_phase = self._state["phase"] in {"running", "paused"}
             try:
                 normalized = catalog.normalize_selection(active_plugin_ids)
@@ -537,73 +566,103 @@ class ImageReplayRunner:
                     state=self.state(),
                 ) from exc
 
-            # The action lock serializes this boundary with frame processing.
-            # Perception tracks and memory evidence are built up in the shared
-            # map from the frames before the displayed one, and proposals read
-            # them, so any step's selection changes by starting the pass over
-            # (see below). The same plugins again keep the step's activation,
-            # configs included.
-            catch_up: list[ReplayFrame] = []
-            self._selection_overrides.add(step)
+            if active_phase and not self._viewing_latest():
+                raise ReplayActionError(
+                    "Return to the latest processed frame before changing plugins.",
+                    boundary="lifecycle", state=self.state(),
+                )
+            refresh = False
             if normalized != self._activations[step].plugins:
                 activation = catalog.activation(normalized)
-                if active_phase:
-                    catch_up = self._restart_with_selection_locked(step, activation)
-                else:
+                previous = self._activations[step]
+                # Keep the definitions/configs of retained plugins, including
+                # recorded selections and uploaded source revisions.
+                retained = set(previous.plugins) & set(normalized)
+                activation = replace(
+                    activation,
+                    plugin_specs={**activation.plugin_specs, **{
+                        key: previous.plugin_specs[key] for key in retained
+                        if key in previous.plugin_specs
+                    }},
+                    plugin_configs={**activation.plugin_configs, **{
+                        key: previous.plugin_configs.get(key, {}) for key in retained
+                    }},
+                )
+                try:
+                    if active_phase:
+                        self._apply_selection_locked(step, activation)
+                        refresh = self._state["phase"] == "paused" and self._frame_checkpoint is not None
                     self._activations[step] = activation
+                except Exception as exc:
+                    message = str(exc)
+                    self._state["failure"] = {"message": message, "boundary": "plugin_catalog"}
+                    self._state["failure_boundary"] = "plugin_catalog"
+                    raise ReplayActionError(
+                        message, status_code=422, boundary="plugin_catalog", state=self.state(),
+                    ) from exc
+            self._selection_overrides.add(step)
             self._apply_plugin_configuration_locked()
-            if active_phase:
-                pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
-                pipeline.update(self._step_reports())
             self._state["failure"] = None
             self._state["failure_boundary"] = None
             self._record_action_locked("select_plugins")
             self._condition.notify_all()
             run_id = str(self._state["run_id"])
             generation = self._generation
-        # The replay worker waits on the action lock until the displayed frame
-        # is shown again, whether the replay is running or paused.
-        for frame in catch_up:
-            self._process_one(run_id, generation, frame, allow_paused=True)
-            with self._lock:
-                if self._state["phase"] not in {"running", "paused"}:
-                    break
+            if refresh:
+                frame = self._image_source.frames[self._state["latest_processed_position"]]
+                self._restore_frame_checkpoint()
+                self._history.pop(frame.frame_id)
+                self._state["position"] = frame.position
+        if refresh:
+            self._process_one(run_id, generation, frame, allow_paused=True, refresh=True)
         return self.state()
 
-    def _restart_with_selection_locked(
-        self, step: str, activation: StepActivation
-    ) -> list[ReplayFrame]:
-        """Start the pass over under a new selection for ``step``.
+    def _viewing_latest(self) -> bool:
+        frame = self._state.get("current_frame")
+        return frame is None or frame["position"] == self._state["latest_processed_position"]
 
-        Perception tracks and memory evidence are built from every frame
-        before the displayed one, and proposals read them, so no selection
-        can be swapped under recorded frames. The pipelines are rebuilt with
-        it, the recorded frames and shared map dropped, and the frames up to
-        the displayed one returned to run again. A selection that cannot be built leaves the
-        replay as it was.
-        """
+    def _apply_selection_locked(self, step: str, activation: StepActivation) -> None:
+        """Commit a live selection without resetting retained plugin state."""
+        runner = self._steps.get(step)
+        checkpoint = copy.deepcopy(self._frame_checkpoint)
+        if isinstance(runner, StepRunner):
+            manager = runner.plugin_manager
+            previous = manager.selected
+            retained = {definition.plugin_id: definition for definition, _ in runner.applied}
+            definitions = activation.plugin_manager().selected
+            definitions = tuple(retained.get(item.plugin_id, item) for item in definitions)
+            try:
+                manager.select(definitions)
+                runner.prepare_selection()
+                # Also clear removed state from the pre-frame checkpoint so a
+                # later paused refresh cannot resurrect a deselected plugin.
+                if checkpoint is not None:
+                    for definition, plugin in runner.applied:
+                        if definition not in definitions:
+                            reset_plugin(plugin, checkpoint["memory"])
+                runner.commit_selection(self._shared_memory)
+                runner.adopt_activation(activation)
+            except Exception:
+                runner.discard_selection()
+                manager.select(previous)
+                raise
+        else:
+            # A recording can have no runner for a selectable step.
+            replacement = self._catalogs[step].build(activation)
+            if runner is not None:
+                if checkpoint is not None:
+                    runner.reset(checkpoint["memory"])
+                runner.reset(self._shared_memory)
+            self._steps[step] = replacement
+        self._frame_checkpoint = checkpoint
+        self._replay_activations[step] = activation
 
-        # A loop resets the next position to zero while its last frame stays
-        # displayed. Catch up to that frame, rather than the next-pass counter.
-        current_frame = self._state.get("current_frame")
-        displayed = int(current_frame["position"]) + 1 if current_frame else 0
-        previous = self._activations[step]
-        self._activations[step] = activation
-        try:
-            self._rebuild_pipelines_locked()
-        except Exception as exc:  # noqa: BLE001 - selection boundary
-            self._activations[step] = previous
-            message = str(exc)
-            self._state["failure"] = {"message": message, "boundary": "plugin_catalog"}
-            self._state["failure_boundary"] = "plugin_catalog"
-            raise ReplayActionError(
-                message,
-                status_code=422,
-                boundary="plugin_catalog",
-                state=self.state(),
-            ) from exc
-        self._set_steps_locked(empty_steps())
-        return list(self._image_source.frames[:displayed]) if self._image_source else []
+    def _restore_frame_checkpoint(self) -> None:
+        checkpoint = self._frame_checkpoint
+        self._shared_memory = copy.deepcopy(checkpoint["memory"])
+        memory = self._steps.get("memory")
+        if isinstance(memory, MemoryRunner):
+            memory.restore_shared_memory(self._shared_memory, publisher=checkpoint["publisher"])
 
     def _restart_capture_locked(self) -> None:
         """Start another pass over the capture with fresh pipelines.
@@ -628,6 +687,8 @@ class ImageReplayRunner:
         self._shared_memory = {}
         self._history.clear()
         self._state["timeline"] = []
+        self._state["latest_processed_position"] = None
+        self._state["current_frame"] = None
         self._set_position_locked(0)
 
     def _set_position_locked(self, position: int) -> None:
@@ -691,8 +752,7 @@ class ImageReplayRunner:
         if image_source is None or int(self._state["position"]) < len(image_source.frames):
             return
         if self._loop:
-            if self._state["phase"] == "running":
-                self._restart_capture_locked()
+            # Keep the final frame editable until the next pass begins.
             return
         self._complete_locked()
 
@@ -738,50 +798,42 @@ class ImageReplayRunner:
             self._record_action_locked("step")
             return copy.deepcopy(self._state)
 
-    def _seek(self, position: int | None) -> dict[str, Any]:
+    def _seek(self, position: int | None, *, seek_generation: int) -> dict[str, Any]:
         if isinstance(position, bool) or not isinstance(position, int):
-            raise ReplayActionError(
-                "seek requires an integer position",
-                status_code=400,
-                boundary="input",
-            )
-        with self._condition:
+            raise ReplayActionError("seek requires an integer position", status_code=400, boundary="input")
+        with self._action_lock, self._condition:
+            if seek_generation != self._seek_generation:
+                return self.state()
             if self._state["phase"] not in {"running", "paused"} or self._image_source is None:
-                raise ReplayActionError(
-                    "seek requires a running or paused replay",
-                    boundary="lifecycle",
-                )
-            total = len(self._image_source.frames)
-            if position < 0 or position >= total:
-                raise ReplayActionError(
-                    "seek position is outside the loaded source",
-                    status_code=400,
-                    boundary="input",
-                    state=copy.deepcopy(self._state),
-                )
-            if self._state["phase"] == "running":
-                self._state["phase"] = "paused"
-                self._condition.notify_all()
+                raise ReplayActionError("seek requires a running or paused replay", boundary="lifecycle")
+            if position < 0 or position >= len(self._image_source.frames):
+                raise ReplayActionError("seek position is outside the loaded source", status_code=400,
+                                        boundary="input", state=copy.deepcopy(self._state))
+            self._state["phase"] = "paused"
+            self._condition.notify_all()
             run_id = str(self._state["run_id"])
             generation = self._generation
-            frame = self._image_source.frames[position]
-            cached = self._history.get(frame.frame_id)
-            if cached is not None:
-                self._apply_cached_frame_locked(frame, cached)
-                self._record_action_locked("seek", position=position)
-                return copy.deepcopy(self._state)
-            # A future seek must advance the live steps through every
-            # unseen source frame so their state matches the displayed result.
-            self._set_position_locked(len(self._history))
-            unseen = self._image_source.frames[len(self._history):position + 1]
-        for next_frame in unseen:
-            self._process_one(run_id, generation, next_frame, allow_paused=True)
-            with self._lock:
-                if self._state["phase"] not in {"running", "paused"}:
-                    break
-        with self._lock:
-            self._record_action_locked("seek", position=position)
-            return copy.deepcopy(self._state)
+            source = self._image_source
+
+        while True:
+            with self._action_lock:
+                with self._condition:
+                    if (seek_generation != self._seek_generation or generation != self._generation
+                            or self._state["phase"] not in {"running", "paused"}):
+                        return self.state()
+                    frame = source.frames[position]
+                    cached = self._history.get(frame.frame_id)
+                    if cached is not None:
+                        self._apply_cached_frame_locked(frame, cached)
+                        self._record_action_locked("seek", position=position)
+                        return copy.deepcopy(self._state)
+                    next_position = len(self._history)
+                    self._set_position_locked(next_position)
+                    next_frame = source.frames[next_position]
+                # Release the condition while executing a frame; its reentrant
+                # action lock is released between frames for other requests.
+                if not self._process_one(run_id, generation, next_frame, allow_paused=True):
+                    return self.state()
 
     def _apply_cached_frame_locked(
         self,
@@ -790,7 +842,7 @@ class ImageReplayRunner:
     ) -> None:
         self._state["current_frame"] = frame.to_dict()
         self._set_steps_locked(copy.deepcopy(cached["steps"]))
-        self._state.update(copy.deepcopy(cached.get("configuration", {})))
+        # Execution selections stay live while cached results show their own pipeline.
         if "pipeline" in cached:
             self._state["machine_detail"]["pipeline"] = copy.deepcopy(cached["pipeline"])
         completed = frame.position + 1
@@ -810,6 +862,7 @@ class ImageReplayRunner:
     def _reset(self) -> dict[str, Any]:
         with self._condition:
             self._generation += 1
+            self._seek_generation += 1
             self._cleanup_locked()
             self._shared_memory = {}
             image_source = self._image_source
@@ -858,13 +911,18 @@ class ImageReplayRunner:
                 if image_source is None:
                     self._complete_locked()
                     return
-                if position >= len(image_source.frames):
+                frame = image_source.frames[position] if position < len(image_source.frames) else None
+            if frame is None:
+                with self._action_lock, self._condition:
+                    if generation != self._generation or self._state["phase"] != "running":
+                        continue
+                    if self._state["position"] < len(image_source.frames):
+                        continue
                     if self._loop:
                         self._restart_capture_locked()
                         continue
                     self._complete_locked()
                     return
-                frame = image_source.frames[position]
             processing_started = time.monotonic()
             if not self._process_one(run_id, generation, frame):
                 continue
@@ -905,6 +963,7 @@ class ImageReplayRunner:
         frame: ReplayFrame,
         *,
         allow_paused: bool = False,
+        refresh: bool = False,
     ) -> bool:
         with self._action_lock:
             with self._condition:
@@ -933,6 +992,13 @@ class ImageReplayRunner:
                     for step in changed:
                         self._store_recorded_activation(step, self._replay_activations[step])
                     self._apply_plugin_configuration_locked()
+                    if not refresh:
+                        memory = steps.get("memory")
+                        self._frame_checkpoint = {
+                            "memory": copy.deepcopy(self._shared_memory),
+                            "publisher": memory.evidence_publisher if isinstance(memory, MemoryRunner) else None,
+                            "previous_memory": copy.deepcopy(self._state["steps"]["memory"]),
+                        }
                 outcome = run_frame(frame, steps=steps, shared_memory=self._shared_memory)
                 result = outcome.result
                 presented_steps = displayed_steps(outcome)
@@ -971,7 +1037,7 @@ class ImageReplayRunner:
         """Publish a processed frame and cache its presentation under the condition lock."""
 
         result = outcome.result
-        previous_memory = self._state["steps"]["memory"]
+        previous_memory = self._frame_checkpoint["previous_memory"]
         self._state["current_frame"] = frame.to_dict()
         self._set_steps_locked(steps)
         self._state["progress"]["completed"] = frame.position + 1
@@ -1009,6 +1075,8 @@ class ImageReplayRunner:
         self._history[frame.frame_id] = detail
         self._upsert_timeline_locked(detail)
         self._state["position"] = frame.position + 1
+        self._state["latest_processed_position"] = frame.position
+        self._state["controls"] = self._controls()
 
     def _complete_locked(self) -> None:
         if self._state["phase"] in {"running", "paused"}:
@@ -1057,6 +1125,7 @@ class ImageReplayRunner:
             "recording_enabled": False,
         }
         self._steps = {}
+        self._frame_checkpoint = None
         return cleanup
 
     def _check_run_id_locked(self, action: str, run_id: str | None) -> None:
@@ -1124,6 +1193,8 @@ class ImageReplayRunner:
             **self._plugin_configuration(),
             "current_frame": None,
             "position": 0,
+            "latest_processed_position": None,
+            "selection_presets": self._selection_presets(),
             "progress": {"completed": 0, "total": 0, "percent": 0.0},
             "summary": frame_summary(frames_completed=0, frames_total=0),
             "machine_detail": self._machine_detail(),
@@ -1140,11 +1211,14 @@ class ImageReplayRunner:
     def _controls(self, *, phase: str | None = None) -> dict[str, Any]:
         current_state = getattr(self, "_state", {})
         current_phase = phase or str(current_state.get("phase", "idle"))
+        allowed = _state_action_set(current_phase)
+        if current_phase in {"running", "paused"} and not self._viewing_latest():
+            allowed.remove("select_plugins")
         return {
             "cadence_ms": self._cadence_ms,
             "pace": self._pace,
             "loop": bool(getattr(self, "_loop", WORKBENCH_DEFAULT_LOOP)),
-            "allowed_actions": _state_action_set(current_phase),
+            "allowed_actions": allowed,
         }
 
     def _machine_detail(self) -> dict[str, Any]:

@@ -54,7 +54,7 @@ function queuePluginSelection(step, ids) {
   flushPluginSelection();
 }
 function flushPluginSelection() {
-  if (actionInFlight) return;
+  if (actionInFlight || (typeof seekInFlight !== "undefined" && seekInFlight)) return;
   Object.keys(pluginPanels).some(function (step) {
     var panel = pluginPanels[step];
     if (panel.queued === null) return false;
@@ -96,7 +96,8 @@ function selectedPluginIdsFromView(panel) {
 }
 function renderPluginSummary(panel, catalog, plugins, active) {
   var pipeline = state && state.machine_detail && state.machine_detail.pipeline;
-  var preset = panel.draft !== null ? "selection pending" : pipeline && pipeline[panel.presetKey];
+  var presets = state && state.selection_presets || pipeline;
+  var preset = panel.draft !== null ? "selection pending" : presets && presets[panel.presetKey];
   var counts = active.length + " active · " + plugins.length + " available";
   setText(panel.summaryId, preset ? preset + " · " + counts : counts);
   setText(panel.orderId, active.length ? "Run order: " + active.join(" → ")
@@ -116,7 +117,7 @@ function renderPluginPanel(step) {
   var active = panel.draft || stateActive;
   var allowed = state && state.controls && state.controls.allowed_actions
     ? state.controls.allowed_actions : [];
-  var selectionAllowed = allowed.indexOf("select_plugins") >= 0;
+  var selectionAllowed = allowed.indexOf("select_plugins") >= 0 && (typeof seekInFlight === "undefined" || !seekInFlight);
   var renderKey = catalog ? "catalog:" + text(catalog.digest, "") : "empty";
   // Keep the choice nodes through state polls so an in-progress click is not detached.
   if (renderKey === panel.renderKey) {

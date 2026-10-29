@@ -149,7 +149,8 @@ class RecordedPluginFlows(unittest.TestCase):
                     self.assertEqual(restored["metadata"]["memory"]["count"], position)
                 # Seeking back must survive state polling and a live availability change.
                 earlier = post_action(base, {"action": "seek", "run_id": run_id, "position": 0})["state"]
-                self.assertEqual(earlier["active_perception_plugin_ids"], [])
+                self.assertEqual(earlier["active_perception_plugin_ids"], ["prototype-perception"])
+                self.assertIsNone(earlier["steps"]["perception"])
                 write_plugin(root / "unselected.py", "perception", "unselected", 3)
                 upload(base, root / "unselected.py", "perception", "unselected")
                 for _ in range(3):

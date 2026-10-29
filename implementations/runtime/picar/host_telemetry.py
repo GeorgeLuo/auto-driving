@@ -14,6 +14,7 @@ import threading
 import time
 from collections import deque
 from copy import deepcopy
+from itertools import islice
 from typing import Any, Callable, Mapping, cast
 
 from autonomy.runtime.routes import TELEMETRY_SCHEMA
@@ -276,7 +277,7 @@ class HostTelemetryStore:
             elif not self._records:
                 status, reason = "warming", "warming"
             else:
-                envelope = self._envelope_for_record_locked(
+                envelope = self._record_status_locked(
                     self._records[-1], read_at_ms
                 )
                 status, reason = envelope["status"], envelope["reason"]
@@ -454,7 +455,7 @@ class HostTelemetryStore:
                     "boundary": HOST_TELEMETRY_BOUNDARY,
                     "actuator_feedback": "unavailable",
                 },
-                "limits": deepcopy(self.limits),
+                "limits": dict(self.limits),
             }
             if coverage_reason is not None:
                 record["coverage_reason"] = coverage_reason
@@ -646,11 +647,8 @@ class HostTelemetryStore:
                     "records": [],
                 }
 
-            selected = [
-                deepcopy(record)
-                for record in self._records
-                if record["host_tick"]["sequence"] > after
-            ][:bounded_limit]
+            records = (record for record in self._records if record["host_tick"]["sequence"] > after)
+            selected = [deepcopy(record) for record in islice(records, bounded_limit)]
             payload: dict[str, Any] = {
                 "schema": TELEMETRY_SCHEMA,
                 "ok": True,
@@ -750,16 +748,12 @@ class HostTelemetryStore:
         except Exception:
             return None
 
-    def _envelope_for_record_locked(
-        self,
-        record: Mapping[str, Any],
-        read_at_ms: int,
-    ) -> dict[str, Any]:
-        copy = deepcopy(dict(record))
-        tick = copy["host_tick"]
+    def _record_status_locked(self, record: Mapping[str, Any], read_at_ms: int) -> dict[str, Any]:
+        """Calculate read-time health without exporting the retained record."""
+        tick = record["host_tick"]
         publication_age = read_at_ms - tick["published_at_ms"]
-        status = copy.get("status", "error")
-        reason = copy.get("reason") or ""
+        status = record.get("status", "error")
+        reason = record.get("reason") or ""
         ok = status == "healthy"
         if publication_age < -self.limits["future_skew_tolerance_ms"]:
             status, reason, ok = "error", "future_dated", False
@@ -768,17 +762,23 @@ class HostTelemetryStore:
         elif status == "stale":
             ok = False
             reason = reason or "source_stale"
-        elif status != "healthy" or copy.get("coverage_reason"):
+        elif status != "healthy" or record.get("coverage_reason"):
             status, ok = "unavailable", False
-            reason = reason or copy.get("coverage_reason") or "coverage_gap"
+            reason = reason or record.get("coverage_reason") or "coverage_gap"
         return {
-            **copy,
-            "ok": ok,
-            "status": status,
-            "reason": reason,
-            "record": copy,
-            "read_at_ms": read_at_ms,
+            "ok": ok, "status": status, "reason": reason,
             "publication_age_ms": max(0, publication_age),
+        }
+
+    def _envelope_for_record_locked(
+        self, record: Mapping[str, Any], read_at_ms: int,
+    ) -> dict[str, Any]:
+        exported = deepcopy(dict(record))
+        return {
+            **exported,
+            **self._record_status_locked(record, read_at_ms),
+            "record": exported,
+            "read_at_ms": read_at_ms,
         }
 
 

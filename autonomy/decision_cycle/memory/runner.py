@@ -249,11 +249,9 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
 
         Memory overrides ``StepRunner.reset`` to count resets, record each
         plugin's reset failure by ``FAILURE_POLICY.reset``, and track the
-        evidence publisher. A host that clears its map at a reset restores the
-        returned keys so plugins keep the fresh state (for example a new
-        epoch) they started. A plugin whose reset leaves a new value at
-        ``EVIDENCE_KEY`` becomes the evidence publisher, as in an update; a
-        key the host drops leaves none.
+        evidence publisher. The returned keys identify fresh state (for
+        example a new epoch). A plugin whose reset leaves a new value at
+        ``EVIDENCE_KEY`` becomes the evidence publisher, as in an update.
         """
 
         with self._runtime_lock:

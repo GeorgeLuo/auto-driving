@@ -12,8 +12,6 @@ from unittest.mock import patch
 import numpy as np
 from PIL import Image
 
-from autonomy.decision_cycle.activation import step_activation
-from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.frame_loop import FrameLoop
@@ -30,9 +28,6 @@ class _Target:
 
     def release(self):
         pass
-
-
-RECORDING_MEMORY = "tests.shared.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
 
 
 def _routes(steps=None, **kwargs) -> tuple[FrameLoop, RuntimeRoutes]:
@@ -85,6 +80,8 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertEqual(_json(routes.handle("GET", "/host/nothing"))[0], 404)
         self.assertEqual(_json(routes.handle("POST", "/host/status"))[0], 405)
         self.assertEqual(_json(routes.handle("POST", "/host/mode", b"{}"))[0], 404)
+        self.assertFalse(routes.handles("/host/memory/reset"))
+        self.assertEqual(_json(routes.handle("POST", "/host/memory/reset", b"{}"))[0], 404)
 
     def test_restart_stops_then_replaces_the_process(self) -> None:
         restarted = threading.Event()
@@ -199,27 +196,10 @@ class RuntimeRoutesTests(unittest.TestCase):
             perception.release_all()
             loop.wait_for_cycle()
 
-    def test_decision_and_memory_routes_fail_closed_with_a_reason(self) -> None:
+    def test_decision_route_fails_closed_with_a_reason(self) -> None:
         _, routes = _routes()
         status, payload = _json(routes.handle("GET", "/host/decision/latest"))
         self.assertEqual((status, payload["reason"]), (503, "missing"))
-        status, payload = _json(routes.handle("POST", "/host/memory/reset", b""))
-        self.assertEqual((status, payload["status"]), (503, "absent"))
-        self.assertEqual(payload["schema"], "automa_memory_reset_v0")
-
-    def test_memory_reset_reports_the_step_and_a_step_that_cannot_reset_is_a_server_error(self) -> None:
-        memory = MemoryRunner.from_activation(
-            step_activation("memory", ["recording_test"], {"recording_test": RECORDING_MEMORY})
-        )
-        _, routes = _routes(steps=replace(decision_steps(), memory=memory))
-        status, payload = _json(routes.handle("POST", "/host/memory/reset", b""))
-        self.assertEqual((status, payload["status"]), (200, "reset"))
-        self.assertEqual(payload["memory"]["plugin_ids"], ["recording_test"])
-
-        _, routes = _routes(steps=replace(decision_steps(), memory=lambda context: None))
-        status, payload = _json(routes.handle("POST", "/host/memory/reset", b""))
-        self.assertEqual((status, payload["status"]), (500, "error"))
-        self.assertEqual(payload["error"], "TypeError: configured memory step does not support reset")
 
     def test_catalog_reads_and_rejects_malformed_writes(self) -> None:
         _, routes = _routes()

@@ -30,7 +30,6 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost, sync_live_selection
 from autonomy.runtime.execution import ControlExecution
 from implementations.decision_cycle.catalog import packaged_activation
-from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from tests.support.action_fixtures import action_runner, plan_runner, proposal_runner
 
 RECORDING_SPEC = "tests.shared.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
@@ -164,7 +163,7 @@ class CycleHostMemoryTests(unittest.TestCase):
         self.assertEqual(host.execution.ticket().control_applications[-1].mode, "manual")
         self.assertFalse(result.application.applied)
 
-    def test_new_runs_and_memory_resets_preserve_prior_applications(self):
+    def test_new_runs_preserve_prior_applications(self):
         host, _ = _host()
         host.execution = ControlExecution(Mock(write=Mock(return_value={})))
         self.addCleanup(host.close)
@@ -176,10 +175,8 @@ class CycleHostMemoryTests(unittest.TestCase):
         self.assertEqual([item.reason for item in current], [
             "awaiting-fresh-decision", "mode-changed", "awaiting-fresh-decision",
         ])
-        host.reset_memory()
-        self.assertEqual(host.execution.ticket().control_applications, current)
         self.assertNotIn(CONTROL_APPLICATIONS_KEY, host.shared_memory)
-        result = host.run(DecisionFrameContext("after-reset", 0, int(time.time() * 1000)))
+        result = host.run(DecisionFrameContext("new-run", 0, int(time.time() * 1000)))
         self.assertEqual(result.context.shared_memory[CONTROL_APPLICATIONS_KEY], current)
 
     def test_failed_start_reports_its_error_instead_of_the_previous_run_error(self):
@@ -308,37 +305,6 @@ class CycleHostMemoryTests(unittest.TestCase):
             self.assertEqual(result.plan.status, "idle")
             self.assertIsNotNone(result.memory)
 
-    def test_host_reset_memory_clears_the_map_but_keeps_fresh_plugin_state(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            step = _memory_step(Path(tmp))
-            host, _ = _host(memory=step)
-            host.run(DecisionFrameContext("frame_fill", 1, 100))
-            host.shared_memory[OBSERVATION_KEY] = Observation("obs_fill", 90, {})
-            step.update(
-                DecisionFrameContext("frame_fill", 1, 100, shared_memory=host.shared_memory),
-            )
-            host.shared_memory["perception.history"] = "from an earlier frame"
-            self.assertEqual(_state(step.report())["record_count"], 1)
-
-            report = host.reset_memory()
-
-            self.assertEqual(_state(report)["record_count"], 0)
-            self.assertEqual(_state(report)["epoch_id"], "epoch-2")
-            self.assertEqual(set(host.shared_memory), {STATE_KEY})
-            self.assertEqual(
-                host.status()["steps"]["memory"]["plugins"][0]["state"]["record_count"], 0
-            )
-
-    def test_host_reset_before_first_update_advances_the_ledger_epoch(self) -> None:
-        step = MemoryRunner.from_activation(packaged_activation("memory"))
-        host = AutonomyCycleHost(steps=replace(decision_steps(), memory=step))
-        self.assertEqual(_state(step.report())["epoch_id"], "epoch-1")
-        self.assertEqual(_state(host.reset_memory())["epoch_id"], "epoch-2")
-        self.assertEqual(_state(host.reset_memory())["epoch_id"], "epoch-3")
-        result = host.run(DecisionFrameContext("f1", 1, 100))
-        self.assertEqual(_state(result.memory)["epoch_id"], "epoch-3")
-        self.assertEqual(host.shared_memory[LEDGER_KEY].epoch_id, "epoch-3")
-
     def test_host_shares_the_map_across_cycles_and_delivers_the_observation(self) -> None:
         seen = []
 
@@ -356,12 +322,6 @@ class CycleHostMemoryTests(unittest.TestCase):
             self.assertIs(proposal.last_observation, result.observation)
             self.assertEqual(result.memory["plugins"], [])
         self.assertEqual(seen, [None, "frame-0"])
-
-    def test_host_reset_memory_without_step_returns_none(self) -> None:
-        host = AutonomyCycleHost()
-        host.shared_memory["stale"] = True
-        self.assertIsNone(host.reset_memory())
-        self.assertEqual(host.shared_memory, {})
 
 
 class CycleHostStepTests(unittest.TestCase):

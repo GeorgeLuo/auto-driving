@@ -6,12 +6,10 @@ import unittest
 
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.plugins import PluginManager
-from autonomy.runtime.cycle_host import AutonomyCycleHost
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import (
     RECORDING_SPEC,
     _RecordingMemory,
@@ -153,24 +151,27 @@ class EvidencePublisherTests(unittest.TestCase):
         self.assertIsNone(runner.report()["evidence_publisher"])
         self.assertIsNone(runner.status()["evidence_publisher"])
 
-    def test_host_reset_names_the_publisher_only_when_the_key_is_kept(self) -> None:
+    def test_reset_names_the_publisher_while_the_key_is_kept(self) -> None:
         runner = _runner(_RecordingMemory(), _EvidenceMemory(plugin_id="evidence"))
-        host = AutonomyCycleHost(steps=DecisionSteps(memory=runner))
-        _update(runner, host.shared_memory)
-        self.assertTrue(host.shared_memory[EVIDENCE_KEY])
+        shared: dict = {}
+        _update(runner, shared)
+        self.assertTrue(shared[EVIDENCE_KEY])
 
-        report = host.reset_memory()
+        fresh = runner.reset(shared)
+        report = runner.report()
 
-        # The reset replaced the records with a new empty tuple, which the host keeps.
-        self.assertEqual(host.shared_memory[EVIDENCE_KEY], ())
+        self.assertEqual(fresh[EVIDENCE_KEY], ())
+        self.assertEqual(shared[EVIDENCE_KEY], ())
         self.assertEqual(report["evidence_publisher"], "evidence")
         self.assertEqual([entry["plugin_id"] for entry in report["plugins"]], ["recording_test", "evidence"])
 
-        report = host.reset_memory()
+        fresh = runner.reset(shared)
 
-        # The second reset stored the same empty tuple, so the host dropped the key.
-        self.assertNotIn(EVIDENCE_KEY, host.shared_memory)
-        self.assertIsNone(report["evidence_publisher"])
+        # The second reset stored the same empty tuple; it is not fresh state.
+        self.assertNotIn(EVIDENCE_KEY, fresh)
+        self.assertEqual(runner.report()["evidence_publisher"], "evidence")
+        shared.pop(EVIDENCE_KEY)
+        self.assertIsNone(runner.report()["evidence_publisher"])
 
     def test_the_publisher_leaving_the_selection_clears_it(self) -> None:
         manager = PluginManager.from_specs(

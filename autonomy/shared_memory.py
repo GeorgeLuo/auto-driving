@@ -37,8 +37,7 @@ history. Set a value a step publishes through its producer's state key.
 
 Steps reset plugins through ``reset_plugin``. A plugin's reset may omit the
 map and may leave fresh state behind, such as ``bounded_evidence``'s new
-epoch. ``MemoryRunner.reset`` returns that fresh state, and
-``CycleHost.reset_memory`` keeps it after clearing the map. A perception
+epoch. ``MemoryRunner.reset`` returns that fresh state. A perception
 plugin's ``memory_required`` flag means that plugin needs this map to perceive.
 
 A memory plugin's belief at ``memory.beliefs.<belief_id>`` is both that

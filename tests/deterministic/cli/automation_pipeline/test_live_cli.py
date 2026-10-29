@@ -1,7 +1,7 @@
 """The public live commands against a running runtime host.
 
 Every vehicle's host serves the same routes and the CLI finds it only by
-``base_url``, so streams and memory reset run here against an
+``base_url``, so streams and inspection run here against an
 in-process host; a PiCar differs only in where its ``base_url`` comes from.
 """
 from __future__ import annotations
@@ -160,16 +160,6 @@ class LiveCommandsTests(LiveHostTestCase):
         self.assertEqual(plan.returncode, 0, plan.stdout + plan.stderr)
         self.assertIsInstance(json.loads(plan.stdout)["live"]["last_duration_ms"], float)
 
-    def test_memory_reset_is_confirmed_while_the_session_refills_memory(self) -> None:
-        self.observe()
-        result = self.automa("memory", "reset", "--json")
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        payload = json.loads(result.stdout)
-        epochs = [
-            [plugin["epoch_id"] for plugin in payload[side]["plugins"]] for side in ("before", "after")
-        ]
-        self.assertNotEqual(*epochs)
-
 
 START_HOST = "Host 'chase-sim-chaser' is not running."
 
@@ -182,11 +172,7 @@ class NoRuntimeHostTests(unittest.TestCase):
             # Each command ends with the flag that names its host.
             streams = [("plugins", "stream", "--step", step, "--once", "--json", "--host-name")
                        for step in ("perception", "memory", "proposal")]
-            hosts = [("hosts", *args, "--name") for args in (
-                ("memory", "reset"),
-                ("viewer",),
-            )]
-            for args in (*streams, *hosts):
+            for args in (*streams, ("hosts", "viewer", "--name")):
                 with self.subTest(args=args):
                     result = invoke_automa(*args, HOST_NAME, runtime_root=runtime_root, check=False)
                     self.assertEqual(result.returncode, 2)

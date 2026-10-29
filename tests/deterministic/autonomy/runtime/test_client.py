@@ -19,15 +19,15 @@ class RuntimeClientTests(unittest.TestCase):
         thread.start()
         client = RuntimeClient(f"http://127.0.0.1:{server.server_address[1]}", timeout_s=3.0)
         try:
-            # A host without a memory step answers 503 with why.
-            self.assertEqual(client.reset_memory()["status"], "absent")
+            # A host without a decision publication answers 503 with why.
+            self.assertEqual(client.request("GET", "/host/decision/latest")["reason"], "missing")
         finally:
             server.shutdown()
             server.server_close()
             thread.join(3.0)
 
-        with self.assertRaisesRegex(RuntimeError, r"^POST http://127\.0\.0\.1:\d+/host/memory/reset failed: "):
-            client.reset_memory()
+        with self.assertRaisesRegex(RuntimeError, r"^GET http://127\.0\.0\.1:\d+/host/decision/latest failed: "):
+            client.request("GET", "/host/decision/latest")
 
     def test_a_reply_that_is_not_a_json_object_raises_a_runtime_error(self) -> None:
         for body, status, reason in (

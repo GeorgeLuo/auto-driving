@@ -583,29 +583,6 @@ class AutonomyCycleHost:
         self._step_reports_wanted = False
         return steps
 
-    def reset_memory(self) -> dict[str, Any] | None:
-        """Reset the memory step when present.
-
-        Clears the host map and keeps only the fresh state memory plugins
-        wrote while resetting (such as a new epoch). Returns the memory report
-        after the reset, or ``None`` when no memory step is configured.
-        """
-
-        with self._lock:
-            memory = self.cycle.steps.memory
-            if memory is None:
-                self.shared_memory.clear()
-                return None
-            if not callable(getattr(memory, "reset", None)) or not callable(
-                getattr(memory, "report", None)
-            ):
-                raise TypeError("configured memory step does not support reset")
-            fresh = memory.reset(self.shared_memory)
-            self.shared_memory.clear()
-            self.shared_memory.update(fresh)
-            self._refresh_step_reports()
-            return memory.report()
-
 
 def sync_live_selection(
     runner: Any, activation_path: Path, loaded: StepActivation, *,

@@ -25,8 +25,8 @@ from autonomy.runtime.recording import (
     write_recorded_frame,
 )
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from cli.automa_cli.hosts.workbench_frames import run_frame
-from cli.automa_cli.hosts.workbench_source import SourceValidationError, load_image_source
+from cli.automa_cli.workbench.frames import run_frame
+from cli.automa_cli.workbench.source import SourceValidationError, load_image_source
 from implementations.runtime.picar.control import DonkeyControlTarget
 from tests.shared.cli.workbench_fixtures import image_source, write_manifest
 

@@ -8,9 +8,9 @@ from typing import Any
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
 
-from .memory_report import evidence_publisher, plugin_states, plugin_summaries
-from .workbench_frames import FrameOutcome
-from .workbench_source import ReplayFrame
+from ..hosts.memory_report import evidence_publisher, plugin_states, plugin_summaries
+from .frames import FrameOutcome
+from .source import ReplayFrame
 
 
 def empty_steps() -> dict[str, Any]:

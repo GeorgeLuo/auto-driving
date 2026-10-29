@@ -4,7 +4,7 @@ import json
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.hosts.workbench_plugins import WORKBENCH_SELECTABLE_STEPS
+from cli.automa_cli.workbench.plugins import WORKBENCH_SELECTABLE_STEPS
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.memory.frame_fixtures import write_frames
 from tests.shared.cli.workbench_fixtures import (
@@ -243,7 +243,7 @@ class SelectionRebuildTests(unittest.TestCase):
 
     def test_cli_help_describes_selection_replay_for_every_step(self) -> None:
         help_text = " ".join(
-            invoke_automa("hosts", "workbench", "replay", "--help").stdout.split()
+            invoke_automa("workbench", "--help").stdout.split()
         )
         self.assertIn("Changing a step's plugins", help_text)
         self.assertIn("rebuilds every step's pipeline", help_text)

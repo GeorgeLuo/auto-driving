@@ -18,7 +18,7 @@ from cli.automa_cli.hosts.step_activations import (
     read_bundle_activation,
     stage_activation,
 )
-from cli.automa_cli.hosts.workbench_runner import ImageReplayRunner
+from cli.automa_cli.workbench.runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PRESETS,
     PRESET_STEPS,

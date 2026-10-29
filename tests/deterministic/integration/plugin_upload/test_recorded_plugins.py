@@ -139,7 +139,7 @@ class RecordedPluginFlows(unittest.TestCase):
                 moved = root / "moved"
                 shutil.move(recording.root, moved)
                 self.assertEqual(json.loads((moved / "manifest.json").read_text()), before)
-                cli = invoke_automa("hosts", "workbench", "replay", str(moved), "--cadence-ms", "0")
+                cli = invoke_automa("workbench", str(moved), "--cadence-ms", "0")
                 self.assertIn("phase: completed", cli.stdout)
                 base, run_id = replay(self, moved)
                 for position, revision in ((1, 1), (2, 2)):

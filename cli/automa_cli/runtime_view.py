@@ -8,7 +8,7 @@ from typing import Any
 
 from .frontend.server import RuntimeViewServer, VIEWER_PORT
 from .hosts.host_status import host_state_text, host_statuses
-from .hosts.workbench_runner import ImageReplayRunner
+from .workbench.runner import ImageReplayRunner
 
 
 def runtime_view_server(**options: Any) -> RuntimeViewServer:

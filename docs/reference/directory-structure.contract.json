@@ -264,7 +264,13 @@
             "path": "cli/automa_cli/hosts/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa hosts commands, and the host deploy, runs, staging, streams, plugins and workbench they drive."
+            "responsibility": "The automa hosts commands, and the host deploy, runs, staging, streams and plugins they drive."
+          },
+          {
+            "path": "cli/automa_cli/workbench/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "The automa workbench command, its replay runner, image sources, frame execution, plugin selections and presentation. The runtime viewer and plugins inspect share its replay code."
           },
           {
             "path": "cli/automa_cli/plugins/",

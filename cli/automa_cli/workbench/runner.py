@@ -17,8 +17,8 @@ from autonomy.plugins import LocalPluginCatalog
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.recording import recorded_selections
 
-from .step_hosting import plugin_report
-from .inspection_runs import (
+from ..hosts.step_hosting import plugin_report
+from ..hosts.inspection_runs import (
     default_selection, recorded_runner,
     resolve_replay_activations, restage_replay_steps,
 )
@@ -32,17 +32,17 @@ from ..frontend.workbench_contract import (
     WORKBENCH_SEQUENCE_ID,
     WORKBENCH_STATE_SCHEMA,
 )
-from .workbench_frames import FrameOutcome, run_frame
-from .workbench_presentation import (
+from .frames import FrameOutcome, run_frame
+from .presentation import (
     displayed_steps, empty_steps, frame_detail, frame_summary, timeline_item,
 )
-from .workbench_plugins import (
+from .plugins import (
     WORKBENCH_SELECTABLE_STEPS,
     PluginCatalog,
     PluginCatalogError,
     packaged_plugin_catalog,
 )
-from .workbench_source import (
+from .source import (
     ImageSource,
     ReplayFrame,
     SourceValidationError,

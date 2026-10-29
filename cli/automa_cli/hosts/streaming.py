@@ -18,12 +18,11 @@ from autonomy.decision_cycle.memory.interface import (
     RECORD_COUNT,
 )
 from autonomy.decision_cycle.timing import step_timing
+from autonomy.runtime.frame_loop import LATEST_FRAME_PATH, LATEST_JSON_PATH
 from ..shared.command_result import CommandResult
 from .decision_live import DecisionViewAdapter
 from .memory_report import evidence_publisher, ledger_summary, plugin_ledgers
 from .host_publications import (
-    LATEST_FRAME_PATH,
-    LATEST_JSON_PATH,
     fetch_autonomy_status,
     fetch_observation_sample, TransactionCache,
     fetch_observation_publication,

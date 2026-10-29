@@ -3,18 +3,14 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from autonomy.runtime.frame_loop import LATEST_FRAME_PATH, LATEST_JSON_PATH
 from ..shared.command_result import CommandResult
 from .step_activations import host_bundle
 from .step_schema import format_staged_step, staged_step_info
 from ..shared.paths import RUNTIME_ROOT
 from ..frontend.perception_view import get_perception_view_status
 from .view_discovery import discover_runtime_view
-from .host_publications import (
-    LATEST_FRAME_PATH,
-    LATEST_JSON_PATH,
-    fetch_observation_publication,
-    presets_text,
-)
+from .host_publications import fetch_observation_publication, presets_text
 from .runtime_hosts import RuntimeHostError, runtime_base_url
 
 

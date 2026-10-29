@@ -9,6 +9,8 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
+from autonomy.runtime.frame_loop import DECISION_PUBLICATION_SCHEMA
+from autonomy.runtime.routes import TELEMETRY_SCHEMA
 from cli.automa_cli.hosts.decision_live import (
     DecisionViewAdapter,
     _accepted_pair,
@@ -17,8 +19,6 @@ from cli.automa_cli.hosts.decision_live import (
 from cli.automa_cli.hosts.decision import DecisionSurfaceError
 from cli.automa_cli.hosts.decision_records import DecisionRunners
 from cli.automa_cli.hosts.host_publications import (
-    DECISION_PUBLICATION_SCHEMA,
-    HOST_TELEMETRY_SCHEMA,
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,
@@ -53,7 +53,7 @@ def _record(
     skipped_since_previous: int | None = None,
 ) -> dict:
     return {
-        "schema": HOST_TELEMETRY_SCHEMA,
+        "schema": TELEMETRY_SCHEMA,
         "status": "healthy",
         "host_name": "piracer",
         "source_id": "donkeycar:piracer",

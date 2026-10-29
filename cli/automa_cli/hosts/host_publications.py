@@ -22,52 +22,31 @@ from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
     require_safe_int,
 )
+from autonomy.runtime.frame_loop import (
+    DECISION_LATEST_PATH,
+    DECISION_PUBLICATION_SCHEMA,
+    DECISION_TRANSACTION_PATH,
+    LATEST_JSON_PATH,
+    OBSERVATION_TRANSACTION_PATH,
+    OBSERVATION_TRANSACTION_SCHEMA,
+)
 from autonomy.runtime.report import HostReport, diagnostic_ceiling
+from autonomy.runtime.routes import (
+    STATUS_PATH,
+    TELEMETRY_LATEST_PATH,
+    TELEMETRY_RECORDS_PATH,
+    TELEMETRY_SCHEMA,
+)
+from implementations.runtime.picar.host_telemetry import (
+    HOST_TELEMETRY_LIMITS,
+    HOST_TELEMETRY_MODES,
+    HOST_TELEMETRY_REASONS,
+)
 
-LATEST_JSON_PATH = "/host/observation/latest"
-LATEST_FRAME_PATH = "/host/observation/latest/frame.jpg"
-OBSERVATION_TRANSACTION_PATH = "/host/observation/transaction"
-OBSERVATION_TRANSACTION_SCHEMA = "automa_observation_transaction_v0"
-DECISION_LATEST_PATH = "/host/decision/latest"
-DECISION_TRANSACTION_PATH = "/host/decision/transaction"
-STATUS_JSON_PATH = "/host/status"
-HOST_TELEMETRY_LATEST_PATH = "/host/telemetry/latest"
-HOST_TELEMETRY_RECORDS_PATH = "/host/telemetry/records"
-DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
-HOST_TELEMETRY_SCHEMA = "automa_host_boundary_telemetry"
 HOST_TELEMETRY_RECORDS_SCHEMA = "automa_host_boundary_telemetry_records"
 HOST_TELEMETRY_PANEL_SCHEMA = "automa_host_boundary_telemetry_panel"
 HOST_TELEMETRY_NORMALIZED_SCHEMA = "automa_host_boundary_telemetry_normalized"
 HOST_TELEMETRY_RECORDS_NORMALIZED_SCHEMA = "automa_host_boundary_telemetry_records_normalized"
-
-HOST_TELEMETRY_LIMITS: dict[str, int] = {
-    "max_source_age_ms": 1_500,
-    "max_publication_age_ms": 1_500,
-    "max_gap_ms": 1_000,
-    "future_skew_tolerance_ms": 250,
-}
-HOST_TELEMETRY_MODES = frozenset({"user", "local_angle", "local"})
-HOST_TELEMETRY_REASONS = frozenset(
-    {
-        "publisher_missing",
-        "warming",
-        "producer_stopped",
-        "schema_invalid",
-        "field_invalid",
-        "identity_mismatch",
-        "future_dated",
-        "source_stale",
-        "publication_stale",
-        "sequence_regressed",
-        "sequence_duplicate",
-        "sequence_gap",
-        "coverage_gap",
-        "observer_error",
-        "method_not_allowed",
-        "query_invalid",
-        "redirect_rejected",
-    }
-)
 
 
 class DecisionPublicationError(ValueError):
@@ -205,7 +184,7 @@ def _get_transaction(base_url: str, path: str, *, timeout_s: float,
 def fetch_autonomy_status(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:
     """GET /host/status from a runtime host."""
 
-    return _get_json(base_url, STATUS_JSON_PATH, timeout_s=timeout_s)
+    return _get_json(base_url, STATUS_PATH, timeout_s=timeout_s)
 
 
 def host_state(base_url: str, *, host_name: str | None = None, timeout_s: float) -> dict[str, Any]:
@@ -221,7 +200,7 @@ def host_state(base_url: str, *, host_name: str | None = None, timeout_s: float)
         "state": "not answering", "mode": None, "decision_count": None, "error_count": None,
         "last_frame_at_ms": None, "error": None, "reply": None,
     }
-    url = f"{base_url.rstrip('/')}{STATUS_JSON_PATH}"
+    url = f"{base_url.rstrip('/')}{STATUS_PATH}"
     try:
         status_code, _headers, body = _request(url, timeout_s=timeout_s)
     except ConnectionError as exc:
@@ -412,7 +391,7 @@ def fetch_host_telemetry_latest(
 ) -> dict[str, Any]:
     """GET the latest host-boundary telemetry point without following redirects."""
 
-    url = f"{base_url.rstrip('/')}{HOST_TELEMETRY_LATEST_PATH}"
+    url = f"{base_url.rstrip('/')}{TELEMETRY_LATEST_PATH}"
     return _fetch_host_telemetry_json(url, timeout_s=timeout_s, query_route=False)
 
 
@@ -436,7 +415,7 @@ def fetch_host_telemetry_records(
             "limit must be an integer from 1 through 128.",
         )
     query = urlencode({"after_sequence": after_sequence, "limit": limit})
-    url = f"{base_url.rstrip('/')}{HOST_TELEMETRY_RECORDS_PATH}?{query}"
+    url = f"{base_url.rstrip('/')}{TELEMETRY_RECORDS_PATH}?{query}"
     return _fetch_host_telemetry_json(url, timeout_s=timeout_s, query_route=True)
 
 
@@ -755,10 +734,10 @@ def normalize_host_telemetry_record(
             "schema_invalid",
             "Host telemetry latest publication must be an object.",
         )
-    if record.get("schema") != HOST_TELEMETRY_SCHEMA:
+    if record.get("schema") != TELEMETRY_SCHEMA:
         raise _host_telemetry_error(
             "schema_invalid",
-            f"Host telemetry schema must be {HOST_TELEMETRY_SCHEMA!r}.",
+            f"Host telemetry schema must be {TELEMETRY_SCHEMA!r}.",
             field="schema",
         )
     _host_status_error(record)
@@ -1152,7 +1131,7 @@ def normalize_host_telemetry_records(
             "Host telemetry records publication must be an object.",
         )
     schema = publication.get("schema")
-    if schema not in {HOST_TELEMETRY_RECORDS_SCHEMA, HOST_TELEMETRY_SCHEMA}:
+    if schema not in {HOST_TELEMETRY_RECORDS_SCHEMA, TELEMETRY_SCHEMA}:
         raise _host_telemetry_error(
             "schema_invalid",
             "Host telemetry records schema is invalid.",
@@ -1496,7 +1475,7 @@ def join_host_telemetry_to_decision(
 ) -> dict[str, Any]:
     """Join a normalized/latest telemetry point to a decision exactly."""
 
-    if isinstance(telemetry, dict) and telemetry.get("schema") == HOST_TELEMETRY_SCHEMA:
+    if isinstance(telemetry, dict) and telemetry.get("schema") == TELEMETRY_SCHEMA:
         if now_ms is None:
             raise ValueError("now_ms is required when joining a raw telemetry record")
         telemetry = normalize_host_telemetry_record(

@@ -13,6 +13,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
 from urllib.parse import urlparse, urlunparse
 
+from autonomy.runtime.routes import STATUS_PATH
 from implementations.vehicle.chase_sim import (
     ChaseCaptureValidationError,
     ChasePassiveCaptureError,
@@ -194,7 +195,7 @@ def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
     car = create_picar(base_url=base_url, timeout_s=timeout_s)
     capabilities = car.capabilities.to_dict()
 
-    status, error = _get_json(base_url, "/host/status", timeout_s=timeout_s)
+    status, error = _get_json(base_url, STATUS_PATH, timeout_s=timeout_s)
     if status is not None:
         return ProbeResult(
             active=True,
@@ -205,7 +206,7 @@ def _probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:
                 "provider": "picar",
                 "connection": {
                     "base_url": base_url,
-                    "status_endpoint": "/host/status",
+                    "status_endpoint": STATUS_PATH,
                     "source": candidate.source,
                 },
                 "capabilities": capabilities,

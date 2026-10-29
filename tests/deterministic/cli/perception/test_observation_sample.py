@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
+from autonomy.runtime.frame_loop import OBSERVATION_TRANSACTION_SCHEMA
 from cli.automa_cli.hosts import host_publications as publications, streaming
 
 
@@ -27,7 +28,7 @@ def _publication(frame_id="first"):
 
 def _transaction():
     return {
-        "schema": publications.OBSERVATION_TRANSACTION_SCHEMA,
+        "schema": OBSERVATION_TRANSACTION_SCHEMA,
         "publication": _publication(),
         "image_frame_id": "first",
         "image_content_type": "image/jpeg",
@@ -51,7 +52,7 @@ class ObservationSampleTests(unittest.TestCase):
     def test_unavailable_transaction_invalidates_image_cache_and_can_recover(self):
         cache = publications.TransactionCache()
         unavailable = HTTPError("http://host.invalid", 503, "bad image", {}, io.BytesIO(json.dumps({
-            "schema": publications.OBSERVATION_TRANSACTION_SCHEMA,
+            "schema": OBSERVATION_TRANSACTION_SCHEMA,
             "publication": {"health": "error", "error": "bad image"}, "image_base64": None,
         }).encode()))
         # Availability failures invalidate the whole cached pair.

@@ -1,4 +1,0 @@
-Automation is not running for chase-sim-chaser.
-Recorded PID: 47195
-State: runtime/vehicles/chase-sim-chaser/bundle/runtime/automation/state.json
-Ready for: inspect stopped deployment

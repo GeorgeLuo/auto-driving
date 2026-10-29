@@ -17,7 +17,7 @@ from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.frame_loop import FrameLoop
-from autonomy.runtime.routes import RuntimeRoutes
+from autonomy.runtime.routes import RUNTIME_PATH, RuntimeRoutes
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 
 
@@ -85,6 +85,18 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertEqual(_json(routes.handle("GET", "/autonomy/nothing"))[0], 404)
         self.assertEqual(_json(routes.handle("POST", "/autonomy/status"))[0], 405)
         self.assertEqual(_json(routes.handle("POST", "/autonomy/mode", b"{}"))[0], 404)
+
+    def test_run_without_named_settings_is_refused(self) -> None:
+        _, routes = _routes()
+        for request, reason in (
+            ({"command": "run"}, "configuration must be an object"),
+            ({"command": "run", "configuration": {"mode": "autonomy"}},
+             "configuration must name num_decisions"),
+        ):
+            with self.subTest(request=request):
+                status, payload = _json(routes.handle("POST", RUNTIME_PATH, json.dumps(request).encode()))
+                self.assertEqual((status, payload["error"]), (400, reason))
+                self.assertEqual(_json(routes.handle("GET", RUNTIME_PATH))[1]["session"]["status"], "pre_start")
 
     def test_restart_stops_then_replaces_the_process(self) -> None:
         restarted = threading.Event()

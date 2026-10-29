@@ -155,10 +155,9 @@ class RuntimeRoutes:
             data = self._json_body(body)
             command = data.get("command")
             if command == "run":
-                configuration = data.get("configuration") or {}
-                if not isinstance(configuration, dict):
-                    raise ValueError("configuration must be an object")
-                self.loop.start(RunConfiguration(**configuration), record=bool(data.get("record", False)))
+                self.loop.start(
+                    RunConfiguration.from_dict(data.get("configuration")), record=bool(data.get("record", False))
+                )
             elif command == "read_recording":
                 recording = self.host.recording
                 if recording is None:

@@ -1,7 +1,7 @@
 """Replay runs the code a recording names, not today's code.
 
 The Chase host runs from a release whose frame plugin differs from this
-checkout, as one built from another commit would. After a restage from the
+checkout, as one built from another commit would. After an update from the
 checkout, replaying the recording must still show that release's behaviour.
 A plugin uploaded to the host is outside every release; the recording carries
 its source, so a fresh process replays it.
@@ -15,7 +15,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import stage_step, write_host_fixture
 from unittest import mock
 
 from cli.automa_cli.hosts import bundles
@@ -60,7 +60,7 @@ def _automa(*args: str, runtime_root: Path, env: dict, check: bool = True):
 
 
 class ReplayByReleaseTests(unittest.TestCase):
-    def test_a_recording_replays_on_its_release_after_a_restage(self) -> None:
+    def test_a_recording_replays_on_its_release_after_an_update(self) -> None:
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
             runtime_root = Path(tmp) / "vehicles"
             env = {"CHASE_UI_WS_URL": ws_url}
@@ -68,7 +68,7 @@ class ReplayByReleaseTests(unittest.TestCase):
 
             automa = partial(_automa, runtime_root=runtime_root, env=env)
 
-            automa("stage", "perception", "--name", HOST_NAME, "--plugin", "frame")
+            stage_step(runtime_root, HOST_NAME, "perception", plugins=["frame"])
             release = _package_release_with_frame_label(runtime_root, Path(tmp) / "source", "release camera frame")
             try:
                 automa(
@@ -80,7 +80,7 @@ class ReplayByReleaseTests(unittest.TestCase):
             runs = runtime_root / HOST_NAME / "bundle/runtime/automation/runs"
             (recording,) = [path for path in runs.iterdir() if (path / "manifest.json").is_file()]
 
-            automa("stage", "perception", "--name", HOST_NAME, "--plugin", "frame")
+            automa("update", "--name", HOST_NAME)
             replay = automa("inspect", "perception", str(recording), "--json")
             self.assertEqual(_frame_label(json.loads(replay.stdout)), "release camera frame")
 
@@ -101,7 +101,7 @@ class ReplayByReleaseTests(unittest.TestCase):
 
             automa = partial(_automa, runtime_root=runtime_root, env=env)
 
-            automa("stage", "perception", "--name", HOST_NAME, "--plugin", "frame")
+            stage_step(runtime_root, HOST_NAME, "perception", plugins=["frame"])
             bundles.package_controller_bundle(bundles.controller_bundle_paths(runtime_root / HOST_NAME))
             plugin = Path(tmp) / "prototype.py"
             plugin.write_text(

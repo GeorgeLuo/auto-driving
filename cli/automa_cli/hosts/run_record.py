@@ -167,8 +167,32 @@ def step_status(host_status: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def applied_selections(
+    selections: dict[str, dict[str, Any]], steps: Any,
+) -> dict[str, dict[str, Any]] | None:
+    """``selections`` as a running host reports applying them, when it reports its steps."""
+
+    if not isinstance(steps, dict) or not any(step in steps for step in selections):
+        return None
+    applied = {}
+    for step, selection in selections.items():
+        report = steps.get(step) if isinstance(steps.get(step), dict) else {}
+        applied[step] = {
+            **selection,
+            "source": "applied",
+            "preset": report.get("preset"),
+            "plugins": list(report.get("plugin_ids") or []),
+        }
+    return applied
+
+
 def record_host_status(state: dict[str, Any], host_status: dict[str, Any]) -> None:
-    """Record the steps, each selection's report, and the decision the host applied."""
+    """Record the steps and selections the host applied, each selection's report, and its decision.
+
+    A run starts with the staged selections; once the host reports its
+    steps, the selections are what it runs, plugins armed since it started
+    included.
+    """
 
     steps = host_status.get("steps") if isinstance(host_status.get("steps"), dict) else {}
     state["steps"] = step_status(host_status)
@@ -182,6 +206,7 @@ def record_host_status(state: dict[str, Any], host_status: dict[str, Any]) -> No
         state["arming"] = host_status["arming"]
     for step, selection in state["selections"].items():
         selection["status"] = steps.get(step) or "absent"
+    state["selections"] = applied_selections(state["selections"], steps) or state["selections"]
 
 
 def startup_lines(state: dict[str, Any]) -> list[str]:

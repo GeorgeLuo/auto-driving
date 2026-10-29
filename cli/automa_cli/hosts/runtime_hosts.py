@@ -65,7 +65,7 @@ def automation_dir(host_name: str) -> Path:
 
 
 def staged_host(host_name: str) -> dict[str, Any]:
-    vehicle, error = staging_host(host_name, runtime_root=RUNTIME_ROOT, timeout_s=1.0)
+    vehicle, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
     if vehicle is None:
         raise RuntimeHostError(error or f"Host {host_name!r} is not staged.")
     return vehicle
@@ -343,7 +343,7 @@ def stop_chase_host(host_name: str, *, wait_s: float = 3.0) -> bool:
 # Any vehicle ----------------------------------------------------------------
 
 def staged_connection(host_name: str) -> dict[str, Any]:
-    """The connection ``hosts stage`` staged for the vehicle, without discovery."""
+    """The connection ``hosts create`` recorded for the vehicle, without discovery."""
 
     vehicle = staged_host(host_name)
     connection = vehicle.get("connection")

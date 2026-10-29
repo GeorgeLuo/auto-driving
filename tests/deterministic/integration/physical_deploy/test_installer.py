@@ -14,7 +14,6 @@ from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
     DEFAULT_STEP_PRESETS,
     PRESET_STEPS,
-    STEP_PRESETS,
     selection_activation,
 )
 
@@ -49,7 +48,7 @@ def _status_response(mode: str, steps: dict[str, list[str]]) -> MagicMock:
 
 
 class PhysicalDeployTests(unittest.TestCase):
-    def test_deploy_stages_every_step_and_rebuilds_named_presets_from_the_catalog(self) -> None:
+    def test_deploy_stages_every_step_default_over_what_was_staged(self) -> None:
         """Regression: deploy staged no proposal, so a fresh vehicle held instead of proposing."""
 
         def staged(paths: dict[str, Path], step: str) -> dict:
@@ -75,20 +74,12 @@ class PhysicalDeployTests(unittest.TestCase):
                 stale["plugins"] = []
                 paths[step].write_text(json.dumps(stale), encoding="utf-8")
             stage_activation(bundle, selection_activation("action", plugins=["hold"]), host_name="piracer")
+            paths["memory"].write_text("{", encoding="utf-8")
             paths = ensure()
-            for step in PRESET_STEPS:
-                with self.subTest(step=step, staged="named preset"):
-                    self.assertEqual(
-                        staged(paths, step)["plugins"],
-                        list(STEP_PRESETS[step][DEFAULT_STEP_PRESETS[step]]["plugins"]),
-                    )
-
-            custom = selection_activation("proposal", plugins=[])
-            self.assertEqual(custom.metadata["preset"], "custom")
-            stage_activation(bundle, custom, host_name="piracer")
-            paths = ensure()
-            self.assertEqual(staged(paths, "proposal")["plugins"], [])
-            self.assertEqual(staged(paths, "action")["plugins"], ["hold"])
+            # A deploy replaces whatever each step had staged with its default.
+            for step in STEPS:
+                with self.subTest(step=step, staged="replaced"):
+                    self.assertEqual(staged(paths, step)["plugins"], list(DEFAULT_STEP_PLUGINS[step]))
             for step in STEPS:
                 with self.subTest(step=step, staged="release"):
                     self.assertEqual(

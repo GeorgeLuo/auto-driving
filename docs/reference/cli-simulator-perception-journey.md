@@ -17,23 +17,14 @@ Use `help` to descend through command groups and `--help` for the final command:
 ## Primary Journey
 
 Run these commands from the repository root with the environment from
-[README Setup](../../README.md#setup) activated. This example selects packaged
-perception and memory presets. For an existing tuned deployment, stage your
-intended selections instead: each update replaces its named step's configs.
-`runtime/` persists across branch changes; incompatible activations must be
-explicitly restaged using the recovery that `hosts status --long` prints.
+[README Setup](../../README.md#setup) activated. Creating the host stages every step's
+default (`plugins list` marks them); `plugins arm` changes a running host's
+selection. `runtime/` persists across branch changes; incompatible activations
+are replaced by the `hosts update` that `hosts status --long` prints.
 
 ```sh
 ./cli/automa vehicles status
 ./cli/automa hosts create --name chase-sim-chaser --provider chase-sim --url http://localhost:5050
-
-./cli/automa hosts stage memory \
-  --name chase-sim-chaser \
-  --preset recency_ledger
-
-./cli/automa hosts stage perception \
-  --name chase-sim-chaser \
-  --preset lightweight_observer
 
 ./cli/automa hosts run \
   --name chase-sim-chaser \
@@ -297,8 +288,8 @@ external change.
 | Wrong game | Preserve it unless you explicitly choose the configuration-changing `simulators ensure --scenario ...` command |
 | Capture identity/image invalid | Repair the exact field named by `capture_identity_invalid` or `capture_image_invalid` |
 | Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it |
-| Deployment absent | Run the printed `hosts stage perception` command; stage memory separately when you want its ledger |
-| Staged step invalid (including a retired schema) | `hosts status --long`, startup, `hosts info`, and the autonomy update identify its step, activation path, and restage command. Run its `hosts stage <step>` command with your intended selection, then rerun `hosts status --long`. Checking never rewrites configs, and known invalid documents prevent worker startup, restart, and physical deployment |
+| Deployment absent | Run the printed `hosts update` command, which stages every step's default |
+| Staged step invalid (including a retired schema) | `hosts status --long`, startup, and `hosts info` identify its step, activation path, and the `hosts update` command that replaces it with the step's default. Run it, then rerun `hosts status --long`. Checking never rewrites configs, and known invalid documents prevent worker startup and restart |
 | Worker stopped | Run the printed observation-only `hosts run --open-view` command |
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 

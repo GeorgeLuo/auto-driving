@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
 from autonomy.decision_cycle.activation import (
@@ -12,11 +11,9 @@ from autonomy.decision_cycle.activation import (
     write_step_activation,
 )
 from autonomy.decision_cycle.steps import load_decision_steps
-from implementations.decision_cycle.catalog import step_plugins
 from cli.automa_cli.hosts.decision_steps import get_host_step_info
 from cli.automa_cli.hosts.step_activations import (
     bundle_activation_path,
-    stage_host_step,
     host_bundle,
 )
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
@@ -120,41 +117,6 @@ class ProposalInfoTests(DecisionSurfaceFixture, unittest.TestCase):
             "Failure policy:",
         ):
             self.assertIn(expected, human)
-
-    def test_stage_unknown_plugin_and_invalid_config(self) -> None:
-        code, message = stage_host_step(
-            host_name="chase-sim-chaser",
-            step="action",
-            plugins=["ghost"],
-            runtime_root=self.runtime_root,
-            json_output=True,
-        )
-        self.assertEqual(code, 2)
-        payload = json.loads(message)
-        self.assertEqual(payload["error"], "invalid_selection")
-        self.assertIn("hold", payload["available_plugins"])
-
-        # Invalid catalog config fails closed before write.
-        entry = step_plugins("proposal")["avoid_recent_obstruction"]
-        bad_config = {**entry["default_config"], "steer_magnitude": 0.0}
-        with patch.dict(entry, {"default_config": bad_config}):
-            code, message = stage_host_step(
-                host_name="chase-sim-chaser",
-                step="proposal",
-                runtime_root=self.runtime_root,
-                json_output=True,
-            )
-        self.assertEqual(code, 2, message)
-        self.assertEqual(json.loads(message)["error"], "invalid_selection")
-        activation = (
-            self.runtime_root
-            / "chase-sim-chaser"
-            / "bundle"
-            / "runtime"
-            / "proposal"
-            / "active.json"
-        )
-        self.assertFalse(activation.exists())
 
     def test_info_missing_activation(self) -> None:
         result = get_host_step_info("proposal", host_name="missing", json_output=True)

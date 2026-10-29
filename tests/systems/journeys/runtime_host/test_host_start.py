@@ -8,13 +8,12 @@ import tempfile
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import stage_step, write_host_fixture
 from typing import Iterator
 from unittest import mock
 
 from cli.automa_cli.hosts import runtime_hosts
 from cli.automa_cli.hosts.runtime_hosts import RuntimeHostError, ensure_chase_host
-from tests.shared.cli.invoke import invoke_automa
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
@@ -36,7 +35,7 @@ def _staged_vehicle() -> Iterator[list[subprocess.Popen]]:
         root = Path(tmp) / "vehicles"
         env = {"CHASE_UI_WS_URL": ws_url}
         write_host_fixture(root, "chase-sim-chaser", url=ws_url)
-        invoke_automa("hosts", "stage", "perception", "--name", HOST_NAME, runtime_root=root, extra_env=env)
+        stage_step(root, HOST_NAME, "perception")
         try:
             with (
                 mock.patch.dict(os.environ, {"AUTOMA_RUNTIME_ROOT": str(root), **env}),

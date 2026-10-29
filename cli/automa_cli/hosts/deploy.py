@@ -36,10 +36,8 @@ from .step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     HOST_PROVIDERS,
     bundle_activation_path,
-    bundle_activation_problems,
     decision_generation_id,
     ensure_step_activations,
-    format_activation_problems,
     read_bundle_activation,
     step_lines,
     staging_host,
@@ -304,12 +302,8 @@ def _deploy_picar_release(
             return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
         return CommandResult(0, _format_autonomy_dry_run(payload))
 
-    # The deployment refreshes and ships every staged step. Validate the
-    # documents it reads before packaging or writing.
-    problems = bundle_activation_problems(bundle, host_name)
-    if problems:
-        return CommandResult(2, format_activation_problems(problems))
-
+    # The deployment stages and ships every step's default, replacing
+    # whatever each step had staged, an unreadable document included.
     release = sync_controller_bundle(bundle, output=output)
     ensure_step_activations(
         host_name=host_name, bundle=bundle, release=release, vehicle=dict(target.configuration),
@@ -409,7 +403,7 @@ def _deploy_picar_release(
                     []
                     if restart
                     else [
-                        "A running runtime selects restaged plugins on its next frame; "
+                        "A running runtime selects changed default plugins on its next frame; "
                         "changed plugin specs or configs need --restart."
                     ]
                 ),
@@ -442,9 +436,6 @@ def _update_local_autonomy(
             f"(tree {source_summary['tree_sha256'][:12]}, {source_summary['file_count']} files)",
             f"Restart the host onto it: {'yes' if restart else 'no'}",
         ]))
-    problems = bundle_activation_problems(bundle, host_name)
-    if problems:
-        return CommandResult(2, format_activation_problems(problems))
     try:
         configuration = staged_host(host_name)
         release = sync_controller_bundle(bundle, output=output)

@@ -5,13 +5,10 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from autonomy.decision_cycle.activation import STEPS
 from tests.shared.cli.invoke import invoke_automa
 
 
 INVALID_TIMEOUTS = ("0", "-1", "nan", "-nan", "inf", "+inf", "-inf")
-# Every `hosts stage <step>` command dispatches to the shared update.
-UPDATE_STEP = "cli.automa_cli.hosts.commands.stage_host_step"
 TIMEOUT_MESSAGE = "--timeout-s must be a finite number greater than zero"
 # Each status command and the function its timeout reaches.
 STATUS_COMMANDS = {
@@ -84,49 +81,6 @@ class TimeoutInputTests(unittest.TestCase):
                 run_automation.assert_not_called()
                 start_automation.assert_not_called()
                 record_result.assert_not_called()
-
-    def test_invalid_values_stop_every_step_update_before_local_staging(self) -> None:
-        """Regression: a non-finite timeout reached discovery for a step that kept its own handler."""
-
-        for step in STEPS:
-            for value in INVALID_TIMEOUTS:
-                with self.subTest(step=step, value=value), patch(UPDATE_STEP) as update:
-                    code, stdout, stderr = _invoke(
-                        "hosts", "stage", step, "--name", "chase-sim-chaser",
-                        *_timeout_args(value), "--dry-run", "--json",
-                    )
-
-                self.assertEqual(code, 2)
-                self.assertEqual(stderr, "")
-                payload = json.loads(stdout)
-                self.assertEqual(payload["schema"], "automa_cli_error_v1")
-                self.assertEqual(payload["error"], "timeout_invalid")
-                self.assertEqual(payload["exit_code"], 2)
-                self.assertIn(f"automa hosts stage {step}", payload["message"])
-                update.assert_not_called()
-
-    def test_invalid_values_use_the_human_output_channel_for_every_step(self) -> None:
-        for step in STEPS:
-            with self.subTest(step=step), patch(UPDATE_STEP) as update:
-                code, stdout, stderr = _invoke(
-                    "hosts", "stage", step, "--name", "chase-sim-chaser", "--timeout-s", "0", "--dry-run",
-                )
-
-            self.assertEqual(code, 2)
-            self.assertIn(f"automa hosts stage {step}", stdout)
-            self.assertIn(TIMEOUT_MESSAGE, stdout)
-            self.assertEqual(stderr, "")
-            update.assert_not_called()
-
-    def test_every_step_update_passes_the_discovery_timeout_to_staging(self) -> None:
-        for step in STEPS:
-            for args, expected in ((("--timeout-s", "1.25"), 1.25), ((), 5.0)):
-                with self.subTest(step=step, args=args), patch(UPDATE_STEP, return_value=(0, "ok")) as update:
-                    code, _, _ = _invoke(
-                        "hosts", "stage", step, "--name", "chase-sim-chaser", *args, "--dry-run"
-                    )
-                self.assertEqual(code, 0)
-                self.assertEqual(update.call_args.kwargs["timeout_s"], expected)
 
     def test_valid_positive_timeout_reaches_each_consumer_unchanged(self) -> None:
         with patch(

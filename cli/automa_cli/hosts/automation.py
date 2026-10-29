@@ -76,7 +76,7 @@ def _host_runtime_status(
     While a monitor runs, its state record holds these rows; otherwise the
     host reports the same cycle counters from its observation status
     provider. ``read`` is the host's ``host_state`` when the caller already
-    has it. The local view is the one a terminal ``hosts stream`` hosts.
+    has it. The local view is the one a terminal ``plugins stream`` hosts.
     """
 
     endpoint = f"{base_url}/host/status"
@@ -101,7 +101,7 @@ def _host_runtime_status(
     if not view.get("available"):
         view = {
             **view,
-            "reason": f"start `./cli/automa hosts stream perception --name {host_name}` to host it",
+            "reason": f"start `./cli/automa plugins stream --step perception --host-name {host_name}` to host it",
         }
     return {
         "process": {
@@ -410,7 +410,7 @@ def start_host_automation_background(
                     *([browser_line] if browser_line else []),
                     f"State: {display_path(automation_dir / 'state.json')}",
                     _log_status_line(existing, log_path),
-                    f"Stream: ./cli/automa hosts stream perception --name {host_name}",
+                    f"Stream: ./cli/automa plugins stream --step perception --host-name {host_name}",
                 ]
             ),
         )
@@ -492,7 +492,7 @@ def start_host_automation_background(
         "log_path": display_path(log_path) if log_to_disk else None,
         "state_path": display_path(automation_dir / "state.json"),
         "latest_perception_text": display_path(automation_dir / "latest_perception.txt"),
-        "stream_command": f"./cli/automa hosts stream perception --name {host_name}",
+        "stream_command": f"./cli/automa plugins stream --step perception --host-name {host_name}",
     }
     _write_json(process_path, process_record)
     startup = _wait_for_automation_startup(
@@ -549,7 +549,7 @@ def start_host_automation_background(
         [
             f"State: {display_path(automation_dir / 'state.json')}",
             _log_status_line(process_record, log_path),
-            f"Stream: ./cli/automa hosts stream perception --name {host_name}",
+            f"Stream: ./cli/automa plugins stream --step perception --host-name {host_name}",
             f"View: ./cli/automa hosts info perception --name {host_name}",
         ]
     )

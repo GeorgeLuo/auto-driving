@@ -1,4 +1,5 @@
-"""Stream policies keep their output contracts while sharing terminal writing."""
+"""Every step stream polls on one loop: each refresh is a probe with a status,
+and ``--once`` writes one frame without a view and exits 0 only when live."""
 from __future__ import annotations
 
 import io
@@ -6,9 +7,30 @@ import json
 import unittest
 from unittest.mock import Mock, patch
 
-from cli.automa_cli.hosts.decision import DecisionSurfaceError
-from cli.automa_cli.hosts.decision_steps import _poll
+from cli.automa_cli.hosts import decision_steps
 from cli.automa_cli.hosts.streaming import _poll_stream
+
+
+# A fresh cycle whose plan record is empty.
+NORMALIZED = {
+    "result_age_ms": 0, "max_age_ms": 1000,
+    "decision": {"host_name": "fixture", "frame_id": "next",
+                 "values": {"activation": {"steps": {"plan": {"plugins": []}}}}, "cycle": {"plan": {}}},
+}
+OFFLINE = "Could not read the decision publication at http://host.invalid: offline"
+
+
+def _stream_plan(fetch, *, feed=None, **kwargs):
+    """Stream plan from a fixture host whose decision reads are ``fetch``; also return the view factory."""
+
+    with (
+        patch.object(decision_steps, "_require_valid_activations"),
+        patch.object(decision_steps, "runtime_base_url", return_value="http://host.invalid"),
+        patch.object(decision_steps, "_ViewFeed", return_value=feed) as view,
+        patch.object(decision_steps, "fetch_decision_publication", side_effect=fetch),
+        patch.object(decision_steps, "accept_decision_publication", return_value=NORMALIZED),
+    ):
+        return decision_steps.stream_host_step("plan", host_name="fixture", **kwargs), view
 
 
 class FlushedOutput(io.StringIO):
@@ -59,53 +81,48 @@ class StreamOutputTests(unittest.TestCase):
                         self.assertEqual(output.frames, [line + "\n"])
                     sleep.assert_not_called()
 
-    def test_decision_stream_flushes_errors_and_recovers_with_its_footer(self):
-        error = DecisionSurfaceError("unavailable", "offline", host_name="fixture")
-        for json_output, no_clear in ((False, False), (False, True), (True, False)):
-            with self.subTest(json=json_output, no_clear=no_clear):
+    def test_decision_stream_flushes_errors_and_recovers_with_its_view(self):
+        for json_output in (False, True):
+            with self.subTest(json=json_output):
                 output = FlushedOutput()
-                with patch("cli.automa_cli.hosts.decision_steps.time.sleep", side_effect=[None, KeyboardInterrupt]) as sleep:
-                    result = _poll(
-                        host_name="fixture", accept=Mock(side_effect=[error, {"frame_id": "next"}]),
-                        render=lambda frame: frame["frame_id"], footer=lambda: ["view"],
-                        refresh_s=0, once=False, no_clear=no_clear,
-                        json_output=json_output, output=output,
-                    )
+                feed = Mock(url="http://view/", error=None)
+                feed.read_observation.return_value = None, None
+                feed.decision_line.return_value = "action view: http://view/decision"
+                with patch("cli.automa_cli.hosts.streaming.time.sleep", side_effect=[None, KeyboardInterrupt]):
+                    result, view = _stream_plan([ConnectionError("offline"), {}], feed=feed,
+                                                json_output=json_output, output=output)
                 self.assertEqual((result.exit_code, result.message), (130, ""))
                 self.assertEqual(len(output.frames), 2)
                 if json_output:
-                    lines = output.getvalue().splitlines()
-                    self.assertEqual(json.loads(lines[0])["message"], "offline")
-                    self.assertEqual(lines[1], '{"frame_id": "next"}')
-                    self.assertEqual(output.frames[0], lines[0] + "\n")
+                    error, live = map(json.loads, output.getvalue().splitlines())
+                    self.assertEqual((error["status"], error["error"], error["message"]),
+                                     ("error", "runtime_decision_unavailable", OFFLINE))
+                    self.assertEqual((live["schema"], live["status"], live["frame_id"]), ("host_plan_stream", "live", "next"))
+                    view.assert_not_called()
                 else:
-                    prefix = "" if no_clear else "\033[2J\033[H"
-                    first = prefix + "offline\n\nview\n"
-                    self.assertEqual(output.frames, [first, first + prefix + "next\n\nview\n"])
-                self.assertEqual([call.args for call in sleep.call_args_list], [(0.05,), (0.05,)])
+                    footer = "\n\nperception view: http://view/perception\naction view: http://view/decision\n"
+                    first = "\033[2J\033[H" + OFFLINE + footer
+                    self.assertEqual(output.frames[0], first)
+                    recovered = output.frames[1].removeprefix(first)
+                    self.assertTrue(recovered.startswith("\033[2J\033[HPlan stream: fixture frame=next "), recovered)
+                    self.assertTrue(recovered.endswith(footer), recovered)
+                    feed.stop.assert_called_once_with()
 
-    def test_decision_interrupt_retains_the_last_error_without_output(self):
-        with patch("cli.automa_cli.hosts.decision_steps.time.sleep", side_effect=KeyboardInterrupt):
-            result = _poll(
-                host_name="fixture",
-                accept=Mock(side_effect=DecisionSurfaceError("unavailable", "offline")),
-                render=str, refresh_s=0, once=False, no_clear=False, json_output=False, output=None,
-            )
-        self.assertEqual((result.exit_code, result.message), (130, "offline"))
-
-    def test_decision_once_returns_pretty_json_without_writing_or_sleeping(self):
-        for fail in (False, True):
-            with self.subTest(fail=fail):
-                output = FlushedOutput()
-                accept = (Mock(side_effect=DecisionSurfaceError("unavailable", "offline"))
-                          if fail else Mock(return_value={"frame_id": "one"}))
-                with patch("cli.automa_cli.hosts.decision_steps.time.sleep") as sleep:
-                    result = _poll(
-                        host_name="fixture", accept=accept, render=str,
-                        refresh_s=1, once=True, no_clear=False, json_output=True, output=output,
-                    )
-                self.assertEqual(result.exit_code, 2 if fail else 0)
-                payload = json.loads(result.message)
-                self.assertEqual(result.message, json.dumps(payload, indent=2, sort_keys=True))
-                self.assertEqual(output.frames, [])
-                sleep.assert_not_called()
+    def test_decision_once_writes_one_frame_without_a_view(self):
+        for json_output in (False, True):
+            for fetch, code in ((ConnectionError("offline"), 2), ({}, 0)):
+                with self.subTest(json=json_output, live=not code):
+                    output = FlushedOutput()
+                    with patch("cli.automa_cli.hosts.streaming.time.sleep") as sleep:
+                        result, view = _stream_plan([fetch], once=True, json_output=json_output, output=output)
+                    self.assertEqual((result.exit_code, result.message), (code, ""))
+                    line = output.getvalue()
+                    self.assertEqual(output.frames, [line])
+                    if json_output:
+                        payload = json.loads(line)
+                        self.assertEqual(line, json.dumps(payload, sort_keys=True) + "\n")
+                        self.assertEqual(payload["status"], "error" if code else "live")
+                    else:
+                        self.assertTrue(line.startswith(OFFLINE if code else "Plan stream: fixture"), line)
+                    view.assert_not_called()
+                    sleep.assert_not_called()

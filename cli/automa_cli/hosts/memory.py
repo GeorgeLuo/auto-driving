@@ -74,8 +74,8 @@ def reset_host_memory(
     its cycles, before any later frame refills memory. The reset is confirmed
     when, in that answer, every applied plugin started a new epoch or holds
     no records; ``unconfirmed_plugin_ids`` names any that did neither.
-    Operators can check with ``info memory``, ``stream memory``, or the
-    Memory map.
+    Operators can check with ``info memory``, ``plugins stream --step memory``,
+    or the Memory map.
     """
 
     before = probe_live_memory(host_name=host_name, timeout_s=timeout_s)

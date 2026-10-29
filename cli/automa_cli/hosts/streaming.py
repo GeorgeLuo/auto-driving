@@ -77,17 +77,11 @@ def stream_host_perception(
     try:
         base_url = runtime_base_url(host_name)
     except RuntimeHostError as exc:
-        return CommandResult(
-            *unavailable_stream_outcome(
-                step="perception",
-                schema=PERCEPTION_LIVE_SCHEMA,
-                host_name=host_name,
-                message=str(exc),
-                json_output=json_output,
-                stream=output,
-            )
-        )
-    view = None if json_output else _ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
+        return CommandResult(*stream_preflight_outcome(
+            step="perception", live=_unavailable_probe(PERCEPTION_LIVE_SCHEMA, host_name, str(exc)),
+            message=str(exc), json_output=json_output, stream=output,
+        ))
+    view = None if json_output or once else _ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
 
     def probe() -> tuple[dict[str, Any], Any]:
         publication, fetch_error = (view.read_observation() if view is not None
@@ -101,8 +95,8 @@ def stream_host_perception(
         return live, publication
 
     def render(live: dict[str, Any], publication: Any) -> str:
-        assert view is not None
-        view.publish(publication)
+        if view is not None:
+            view.publish(publication)
         return _perception_screen(
             host_name=host_name,
             live=live,
@@ -137,26 +131,24 @@ def _unavailable_probe(schema: str, host_name: str, error: str) -> dict[str, Any
     }
 
 
-def unavailable_stream_outcome(
+def stream_preflight_outcome(
     *,
     step: str,
-    schema: str,
-    host_name: str,
+    live: dict[str, Any],
     message: str,
     json_output: bool,
     stream: TextIO | None,
 ) -> tuple[int, str]:
-    """Preserve JSON stream output when no runtime host can be addressed.
+    """Preserve JSON stream output when a stream cannot start polling.
 
-    Preflight failures terminate with exit 2 in either mode. JSON mode emits
-    one unavailable probe under the step's live probe ``schema``, including
-    with ``--once`` omitted; terminal mode returns the diagnostic for the CLI
-    handler to print.
+    Preflight failures, such as no addressable runtime host, terminate with
+    exit 2 in either mode. JSON mode emits the one non-live probe ``live``,
+    including with ``--once`` omitted; terminal mode returns ``message`` for
+    the CLI handler to print.
     """
 
     if not json_output:
         return 2, message
-    live = _unavailable_probe(schema, host_name, message)
     line = json.dumps(live, sort_keys=True)
     if stream is not None:
         print(line, file=stream, flush=True)
@@ -196,18 +188,19 @@ def _poll_stream(
     json_output: bool,
     stream: TextIO | None,
 ) -> CommandResult:
-    """The polling loop behind every vehicle's step stream.
+    """The polling loop behind every step stream.
 
     ``probe`` returns the live probe and the source material it read;
     ``render`` turns both into the terminal screen. JSON mode prints the
-    probe alone.
+    probe alone. ``once`` writes one frame without clearing the terminal and
+    exits 0 only when the probe is live.
     """
 
     try:
         while True:
             live, source = probe()
             line = json.dumps(live, sort_keys=True) if json_output else render(live, source)
-            write_stream_frame(stream, line, clear=not no_clear and not json_output)
+            write_stream_frame(stream, line, clear=not (no_clear or once or json_output))
             if once:
                 return CommandResult(
                     *once_stream_outcome(step=step, live=live, line=line, stream=stream)
@@ -370,6 +363,17 @@ def _view_line(label: str, url: str | None, error: str | None, route: str = "") 
     return f"{label}: unavailable ({error})" if error else f"{label}: unavailable"
 
 
+def _view_lines(view: _ViewFeed | None, *pages: tuple[str, str]) -> list[str]:
+    """Each ``(label, route)`` page of a stream's local view, then its action view.
+
+    A stream without a view, as with ``--once``, shows none.
+    """
+
+    if view is None:
+        return []
+    return [*(_view_line(label, view.url, view.error, route) for label, route in pages), view.decision_line()]
+
+
 def _health_error(publication: dict[str, Any]) -> str | None:
     """Why the host's observation ``publication`` is not live; None while it is healthy."""
 
@@ -464,7 +468,7 @@ def _perception_screen(
     live: dict[str, Any],
     base_url: str,
     publication: dict[str, Any] | None,
-    view: _ViewFeed,
+    view: _ViewFeed | None,
 ) -> str:
     """The perception screen: the probe verdict and the host's latest cycle."""
 
@@ -500,8 +504,7 @@ def _perception_screen(
             f"signals={_shown(len(signals) if isinstance(signals, list) else None)}  "
             f"things={_shown(len(things) if isinstance(things, list) else None)}"
         ),
-        _view_line("view", view.url, view.error),
-        view.decision_line(),
+        *_view_lines(view, ("view", "")),
         (
             f"publication: {publication.get('health') or 'unavailable'}  "
             f"json: {LATEST_JSON_PATH}  frame: {LATEST_FRAME_PATH}"
@@ -544,28 +547,21 @@ def stream_host_memory(
     try:
         base_url = runtime_base_url(host_name)
     except RuntimeHostError as exc:
-        return CommandResult(
-            *unavailable_stream_outcome(
-                step="memory",
-                schema=MEMORY_LIVE_SCHEMA,
-                host_name=host_name,
-                message=str(exc),
-                json_output=json_output,
-                stream=output,
-            )
-        )
-    view = None if json_output else _ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
+        return CommandResult(*stream_preflight_outcome(
+            step="memory", live=_unavailable_probe(MEMORY_LIVE_SCHEMA, host_name, str(exc)),
+            message=str(exc), json_output=json_output, stream=output,
+        ))
+    view = None if json_output or once else _ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
 
     def render(live: dict[str, Any], _source: Any) -> str:
-        assert view is not None
-        publication, fetch_error = view.read_observation()
-        view.publish(publication)
+        publication, fetch_error = (view.read_observation() if view is not None
+                                    else _read_publication(base_url, timeout_s=timeout_s))
+        if view is not None:
+            view.publish(publication)
         return _memory_screen(
             host_name=host_name,
             live=live,
-            view_url=view.url,
-            view_error=view.error,
-            decision_line=view.decision_line(),
+            view_lines=_view_lines(view, ("memory map", "/memory"), ("perception view", "/perception")),
             report=publication.get("memory") if isinstance(publication, dict) else None,
             report_error=fetch_error,
         )
@@ -593,9 +589,7 @@ def _memory_screen(
     *,
     host_name: str,
     live: dict[str, Any],
-    view_url: str | None,
-    view_error: str | None,
-    decision_line: str,
+    view_lines: list[str],
     report: Any,
     report_error: str | None,
 ) -> str:
@@ -605,9 +599,7 @@ def _memory_screen(
     lines = [
         _format_live_memory_screen(host_name=host_name, live=live),
         "",
-        _view_line("memory map", view_url, view_error, "/memory"),
-        _view_line("perception view", view_url, view_error, "/perception"),
-        decision_line,
+        *view_lines,
     ]
     if report_error:
         lines.append(f"publication memory: {report_error}")

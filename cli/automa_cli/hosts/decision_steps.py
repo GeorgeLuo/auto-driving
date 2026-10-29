@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import time
-from typing import Any, Callable, TextIO
+from typing import Any, TextIO
 
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON, HoldAction
 from autonomy.decision_cycle.action.selected import SelectedAction
@@ -14,7 +14,6 @@ from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, ModeAc
 from ..shared.command_result import CommandResult
 from .decision import (
     DecisionSurfaceError,
-    _error_result,
     _require_valid_activations,
     accept_decision_publication,
     decision_error_payload,
@@ -24,8 +23,7 @@ from .runtime_hosts import RuntimeHostError, bundle_paths, runtime_base_url
 from .step_activations import decision_identity
 from .step_formatting import format_step_record, format_step_timing
 from .step_schema import format_staged_step, staged_step_info
-from .streaming import _view_line, _ViewFeed
-from .stream_output import write_stream_frame
+from .streaming import _poll_stream, _unavailable_probe, _view_lines, _ViewFeed, stream_preflight_outcome
 
 
 # ---------------------------------------------------------------------------
@@ -143,7 +141,11 @@ def stream_host_step(
     output: TextIO | None = None,
     timeout_s: float = 3.0,
 ) -> CommandResult:
-    """Poll the step's record in the latest cycle the host published."""
+    """Poll the step's record in the latest cycle the host published.
+
+    Each probe is the ``host_<step>_stream`` frame with ``status: live``, or
+    the decision error that kept it from one with ``status: error``.
+    """
 
     timeout_s = max(0.1, float(timeout_s))
     try:
@@ -151,19 +153,21 @@ def stream_host_step(
         _require_valid_activations(bundle_paths(host_name), host_name=host_name, steps=DECISION_STEPS)
         base_url = runtime_base_url(host_name)
     except DecisionSurfaceError as exc:
-        return _error_result(exc, json_output=json_output)
+        return CommandResult(*stream_preflight_outcome(
+            step=step, live=_error_probe(exc), message=exc.message_text,
+            json_output=json_output, stream=output,
+        ))
     except RuntimeHostError as exc:
-        return _error_result(DecisionSurfaceError(
-            "runtime_unavailable", str(exc), host_name=host_name, details={"reason": "missing"},
-        ), json_output=json_output)
+        return CommandResult(*stream_preflight_outcome(
+            step=step, live=_unavailable_probe(f"host_{step}_stream", host_name, str(exc)),
+            message=str(exc), json_output=json_output, stream=output,
+        ))
 
     # A running terminal stream hosts the runtime view; its decision page shows
     # the evidence, candidates and selection behind each record.
     view = None if json_output or once else _ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
 
-    def accept() -> dict[str, Any]:
-        if view is not None:
-            view.publish(view.read_observation()[0])
+    def read_frame() -> dict[str, Any]:
         try:
             publication = fetch_decision_publication(base_url, timeout_s=timeout_s)
         except (ConnectionError, OSError) as exc:
@@ -194,68 +198,46 @@ def stream_host_step(
                if step == "proposal" else {}),
         }
 
+    def probe() -> tuple[dict[str, Any], None]:
+        if view is not None:
+            view.publish(view.read_observation()[0])
+        try:
+            return {**read_frame(), "status": "live"}, None
+        except DecisionSurfaceError as exc:
+            return _error_probe(exc), None
+
+    def render(live: dict[str, Any], _source: None) -> str:
+        text = _format_stream_frame(step, live) if live["status"] == "live" else live["message"]
+        if view is None:
+            return text
+        return "\n".join([text, "", *_view_lines(view, ("perception view", "/perception"))])
+
     try:
-        return _poll(
-            host_name=host_name,
-            accept=accept,
-            render=lambda frame: _format_stream_frame(step, frame),
-            footer=(lambda: [
-                view.decision_line(), _view_line("perception view", view.url, view.error, "/perception"),
-            ]) if view is not None else None,
+        return _poll_stream(
+            step=step,
+            probe=probe,
+            render=render,
             refresh_s=refresh_s,
             once=once,
             no_clear=no_clear,
             json_output=json_output,
-            output=output,
+            stream=output,
         )
     finally:
         if view is not None:
             view.stop()
 
 
-def _poll(
-    *,
-    host_name: str,
-    accept: Callable[[], dict[str, Any]],
-    render: Callable[[dict[str, Any]], str],
-    footer: Callable[[], list[str]] | None = None,
-    refresh_s: float,
-    once: bool,
-    no_clear: bool,
-    json_output: bool,
-    output: TextIO | None,
-) -> CommandResult:
-    """``accept`` returns one stream frame or raises DecisionSurfaceError,
-    which the loop prints and keeps polling past; ``--once`` exits with it.
-    ``footer`` lines follow each terminal frame, the error ones too."""
+def _error_probe(exc: DecisionSurfaceError) -> dict[str, Any]:
+    """A decision error as a stream probe; ``error`` keeps its code."""
 
-    if once:
-        try:
-            accepted = accept()
-        except DecisionSurfaceError as exc:
-            return _error_result(exc, json_output=json_output)
-        if json_output:
-            return CommandResult(0, json.dumps(accepted, indent=2, sort_keys=True))
-        return CommandResult(0, render(accepted))
-
-    last_error: str | None = None
-    try:
-        while True:
-            try:
-                accepted = accept()
-                last_error = None
-                text = json.dumps(accepted, sort_keys=True) if json_output else render(accepted)
-            except DecisionSurfaceError as exc:
-                last_error = exc.message_text
-                text = json.dumps(decision_error_payload(
-                    error=exc.error, message=exc.message_text, host_name=host_name, details=exc.details,
-                ), sort_keys=True) if json_output else last_error
-            if footer is not None and not json_output:
-                text = "\n".join([text, "", *footer()])
-            write_stream_frame(output, text, clear=not no_clear and not json_output)
-            time.sleep(max(0.05, float(refresh_s)))
-    except KeyboardInterrupt:
-        return CommandResult(130, last_error or "")
+    return {
+        **decision_error_payload(
+            error=exc.error, message=exc.message_text, exit_code=exc.exit_code,
+            host_name=exc.host_name, details=exc.details,
+        ),
+        "status": "error",
+    }
 
 
 def _format_stream_frame(step: str, frame: dict[str, Any]) -> str:

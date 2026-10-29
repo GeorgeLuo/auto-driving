@@ -108,7 +108,8 @@ class PluginArmingFlows(unittest.TestCase):
                     armed = json.loads(run_automa("plugins", "list", "--host-name", "chase-sim-chaser", "--step", "proposal",
                                                   "--json", runtime_root=runtime, extra_env=env).stdout)["armed"]
                     self.assertEqual(armed, [receipt["plugin"]])
-                    streamed = json.loads(cli("stream", "proposal", "--name", "chase-sim-chaser", "--once", "--json").stdout)
+                    streamed = json.loads(run_automa("plugins", "stream", "--step", "proposal", "--host-name", "chase-sim-chaser",
+                                                     "--once", "--json", runtime_root=runtime, extra_env=env).stdout)
                     self.assertEqual(streamed["plugins"], ["prototype"])
                     self.assertEqual(streamed["generation_id"], shown["applied_decision"]["generation_id"])
                     self.assertEqual(streamed["record"]["candidates"][0]["metadata"]["revision"], revision)
@@ -146,7 +147,8 @@ class PluginArmingFlows(unittest.TestCase):
                     time.sleep(0.05)
                 self.assertEqual(selected(shown, "applied", "proposal"), [])
                 self.assertIn(receipt["plugin"], shown["plugins"])
-                streamed = json.loads(cli("stream", "proposal", "--name", "chase-sim-chaser", "--once", "--json").stdout)
+                streamed = json.loads(run_automa("plugins", "stream", "--step", "proposal", "--host-name", "chase-sim-chaser",
+                                                 "--once", "--json", runtime_root=runtime, extra_env=env).stdout)
                 self.assertEqual(streamed["plugins"], [])
                 self.assertEqual(streamed["generation_id"], shown["applied_decision"]["generation_id"])
                 deadline = time.monotonic() + 5

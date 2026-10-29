@@ -20,7 +20,7 @@ from .automation import (
     stop_host_automation,
 )
 from .deploy import create_host, update_host, delete_host
-from .decision_steps import get_host_step_info, stream_host_step
+from .decision_steps import get_host_step_info
 from .memory import get_host_memory_info, reset_host_memory
 from .operations import run_host_startup_check
 from .step_activations import HOST_PROVIDERS
@@ -32,7 +32,7 @@ from .viability import (
     run_memory_viability_measurement,
     run_perception_viability_measurement,
 )
-from .streaming import serve_host_viewer, stream_host_memory, stream_host_perception
+from .streaming import serve_host_viewer
 
 
 def register_hosts(subcommands: argparse._SubParsersAction) -> None:
@@ -45,7 +45,6 @@ def register_hosts(subcommands: argparse._SubParsersAction) -> None:
     _register_hosts_viewer(host_commands)
     _register_hosts_lifecycle(host_commands)
     _register_hosts_operations(host_commands)
-    _register_hosts_streams(host_commands)
     _register_hosts_memory(host_commands)
     _register_hosts_workbench(host_commands)
     _register_hosts_info(host_commands)
@@ -381,72 +380,6 @@ def _register_hosts_operations(host_commands: argparse._SubParsersAction) -> Non
     startup_check.set_defaults(handler=_handle_hosts_operation_startup_check)
 
 
-def _register_hosts_streams(host_commands: argparse._SubParsersAction) -> None:
-    stream = host_commands.add_parser("stream", help="Read a host's rolling outputs.")
-    stream_commands = stream.add_subparsers(dest="stream_command", required=True)
-    stream_help = stream_commands.add_parser(
-        "help",
-        help="Show stream-level commands.",
-    )
-    stream_help.set_defaults(handler=_handle_hosts_stream_help)
-    perception_stream = stream_commands.add_parser(
-        "perception",
-        help="Show the latest perception output, replacing the terminal view as it updates.",
-        description=(
-            "Show the latest perception output, replacing the terminal view as it updates. "
-            "Chase uses the local automation worker; PiCar polls onboard "
-            "/host/observation/latest and serves a local frame-matched view whose "
-            "URL the terminal shows."
-        ),
-    )
-    _add_stream_args(
-        perception_stream,
-        once_help="Render once and exit; exit 2 unless perception is live.",
-        json_help="Print one host_perception_live JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
-    )
-    perception_stream.set_defaults(handler=_handle_hosts_stream_perception)
-
-    memory_stream = stream_commands.add_parser(
-        "memory",
-        help="Inspect live memory as a key→value ledger (terminal + local map page).",
-        description=(
-            "Inspect live memory as a key→value ledger, replacing the terminal view as it updates. "
-            "Terminal shows each applied plugin's health, epoch and record count, the evidence "
-            "publisher, and the step's counters. Chase reads automation worker state; PiCar "
-            "serves a local map page, whose URL the terminal shows, listing record_id keys "
-            "and the selected value."
-        ),
-    )
-    _add_stream_args(
-        memory_stream,
-        once_help="Render once and exit; exit 2 unless memory is live.",
-        json_help="Print one host_memory_live JSON probe per refresh in place of the terminal view and local view; discovery failures emit an unavailable probe and exit 2.",
-    )
-    memory_stream.set_defaults(handler=_handle_hosts_stream_memory)
-
-    for step_name in DECISION_STEPS:
-        step_stream = stream_commands.add_parser(
-            step_name,
-            help=f"Show the {step_name} record of the latest cycle the host published.",
-            description=(
-                f"Read the host's latest cycle and print its {step_name} record"
-                + {
-                    "proposal": ", with the observation and memory it read and its candidates",
-                    "plan": ", with the selected candidate and contributions",
-                    "action": ", with its authority and the host's application of the output",
-                }[step_name]
-                + ". Accepts only a fresh cycle whose generation matches its step selections, "
-                "replacing the terminal view as each arrives."
-            ),
-        )
-        _add_stream_args(
-            step_stream,
-            once_help="Accept one cycle and exit; exit 2 when none is available.",
-            json_help=f"Print one host_{step_name}_stream JSON object per refresh.",
-        )
-        step_stream.set_defaults(handler=_handle_hosts_stream_step, step=step_name)
-
-
 def _register_hosts_memory(host_commands: argparse._SubParsersAction) -> None:
     memory_control = host_commands.add_parser(
         "memory",
@@ -740,38 +673,6 @@ def _register_hosts_perception(host_commands: argparse._SubParsersAction) -> Non
     perception_viability.set_defaults(handler=_handle_hosts_perception_viability)
 
 
-def _add_stream_args(
-    parser: argparse.ArgumentParser, *, once_help: str, json_help: str,
-) -> None:
-    parser.add_argument(
-        "--name",
-        required=True,
-        dest="host_name",
-        help="Host name from `automa hosts status`.",
-    )
-    parser.add_argument(
-        "--refresh-s",
-        type=float,
-        default=0.5,
-        help="Refresh cadence for the replacing terminal view.",
-    )
-    parser.add_argument(
-        "--once",
-        action="store_true",
-        help=once_help,
-    )
-    parser.add_argument(
-        "--no-clear",
-        action="store_true",
-        help="Print each render below the previous one, keeping earlier renders in scrollback.",
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help=json_help,
-    )
-
-
 def _add_info_args(
     parser: argparse.ArgumentParser, *, json_help: str,
 ) -> None:
@@ -807,7 +708,6 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "- memory      measure and reset memory",
                 "- perception  measure perception viability",
                 "- workbench   replay images through the controller steps",
-                "- stream      read a host's rolling outputs",
                 "- viewer      open a host's runtime viewer",
                 "- help        show this summary",
                 "",
@@ -870,27 +770,6 @@ def _handle_hosts_perception_help(args: argparse.Namespace) -> int:
                 "",
                 "Detailed help:",
                 "- ./cli/automa hosts perception <command> --help",
-            ]
-        )
-    )
-    return 0
-
-
-def _handle_hosts_stream_help(args: argparse.Namespace) -> int:
-    print(
-        "\n".join(
-            [
-                "automa hosts stream commands",
-                "",
-                "- perception  show latest local automation perception output",
-                "- memory      show live memory lifecycle health",
-                "- proposal    show the latest cycle's proposals and their inputs",
-                "- plan        show the latest cycle's plan and selected candidate",
-                "- action      show the latest cycle's authority and host application",
-                "- help        show this summary",
-                "",
-                "Detailed help:",
-                "- ./cli/automa hosts stream <command> --help",
             ]
         )
     )
@@ -1013,49 +892,6 @@ def _handle_hosts_operation_startup_check(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _handle_hosts_stream_perception(args: argparse.Namespace) -> int:
-    result = stream_host_perception(
-        host_name=args.host_name,
-        refresh_s=args.refresh_s,
-        once=args.once,
-        no_clear=args.no_clear,
-        json_output=args.json,
-        output=sys.stdout,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_stream_memory(args: argparse.Namespace) -> int:
-    result = stream_host_memory(
-        host_name=args.host_name,
-        refresh_s=args.refresh_s,
-        once=args.once,
-        no_clear=args.no_clear,
-        json_output=args.json,
-        output=sys.stdout,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_stream_step(args: argparse.Namespace) -> int:
-    result = stream_host_step(
-        args.step,
-        host_name=args.host_name,
-        refresh_s=args.refresh_s,
-        once=args.once,
-        no_clear=args.no_clear,
-        json_output=args.json,
-        output=sys.stdout,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
 def _handle_hosts_memory_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
@@ -1070,7 +906,7 @@ def _handle_hosts_memory_help(args: argparse.Namespace) -> int:
                 "",
                 "Arm a plugin with:            ./cli/automa plugins arm --host-name <host> --name memory/<plugin>",
                 "Inspect staged config with:   ./cli/automa hosts info memory --name <host>",
-                "Stream live state with:       ./cli/automa hosts stream memory --name <host>",
+                "Stream live state with:       ./cli/automa plugins stream --step memory --host-name <host>",
                 "",
                 "Detailed help:",
                 "- ./cli/automa hosts memory <command> --help",

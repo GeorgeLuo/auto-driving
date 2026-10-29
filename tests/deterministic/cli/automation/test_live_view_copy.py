@@ -41,7 +41,7 @@ class LiveViewCopyTests(unittest.TestCase):
         publication = {"frame": {"frame_id": "one"}}
         feed.read_observation.return_value = publication, None
         def one_pass(**kwargs):
-            kwargs["accept"]()
+            kwargs["probe"]()
             return CommandResult(0, "done")
         normalized = {
             "result_age_ms": 0, "max_age_ms": 1000,
@@ -52,7 +52,7 @@ class LiveViewCopyTests(unittest.TestCase):
             patch.object(decision_steps, "_require_valid_activations"),
             patch.object(decision_steps, "runtime_base_url", return_value="http://host.invalid"),
             patch.object(decision_steps, "_ViewFeed", return_value=feed),
-            patch.object(decision_steps, "_poll", side_effect=one_pass),
+            patch.object(decision_steps, "_poll_stream", side_effect=one_pass),
             patch.object(decision_steps, "fetch_decision_publication", return_value={}),
             patch.object(decision_steps, "accept_decision_publication", return_value=normalized),
         ):

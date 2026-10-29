@@ -8,7 +8,6 @@ aggregates, and generation agree with the step activations it names.
 
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any
@@ -48,7 +47,6 @@ from autonomy.runtime.report import (
     REPORT_SCHEMA,
 )
 
-from ..shared.command_result import CommandResult
 from .decision_records import DecisionRecords, activations_from_payloads
 from .step_activations import (
     bundle_activation_problems,
@@ -159,29 +157,6 @@ def decision_error_payload(
         "host_name": host_name,
         "details": details or {},
     }
-
-
-def _error_result(
-    exc: DecisionSurfaceError,
-    *,
-    json_output: bool,
-) -> CommandResult:
-    if json_output:
-        return CommandResult(
-            exc.exit_code,
-            json.dumps(
-                decision_error_payload(
-                    error=exc.error,
-                    message=exc.message_text,
-                    exit_code=exc.exit_code,
-                    host_name=exc.host_name,
-                    details=exc.details,
-                ),
-                indent=2,
-                sort_keys=True,
-            ),
-        )
-    return CommandResult(exc.exit_code, exc.message_text)
 
 
 def _require_valid_activations(

@@ -88,13 +88,12 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     env = {"CHASE_UI_WS_URL": ws_url}
                     command = f"./cli/automa hosts update --name {HOST_NAME}"
                     # Each step's info reads its own activation; a decision step's stream reads all three.
-                    surfaces = [("info", step)]
+                    surfaces = [("hosts", "info", step, "--name", HOST_NAME)]
                     if step in DECISION_STEPS:
-                        surfaces.append(("stream", step, "--once"))
+                        surfaces.append(("plugins", "stream", "--step", step, "--host-name", HOST_NAME, "--once"))
                     for surface in surfaces:
                         result = invoke_automa(
-                            "hosts", *surface, "--name", HOST_NAME,
-                            runtime_root=runtime_root, extra_env=env, check=False,
+                            *surface, runtime_root=runtime_root, extra_env=env, check=False,
                         )
                         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
                         self.assertEqual(result.stderr, "")
@@ -103,7 +102,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     if step not in DECISION_STEPS:
                         continue
                     machine = invoke_automa(
-                        "hosts", "stream", step, "--once", "--name", HOST_NAME, "--json",
+                        "plugins", "stream", "--step", step, "--host-name", HOST_NAME, "--once", "--json",
                         runtime_root=runtime_root, extra_env=env, check=False,
                     )
                     payload = json.loads(machine.stdout)

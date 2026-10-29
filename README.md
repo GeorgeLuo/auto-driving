@@ -129,14 +129,12 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `plugins upload` | With `--host-name` (or a runtime or workbench `--url`), stores `--file` in that existing catalog as `--name <step>/<plugin>` with its `--entrypoint` and optional `--config`, refusing source that does not compile. `--arm` also arms it through the same operation as `plugins arm`. |
 | `plugins arm` | With `--host-name` (or a runtime `--url`), loads the plugins named by `--name <step>/<plugin>`, as `plugins list --long` names them, and applies them at the host's next cycle without restarting automation. Repeat `--name` to arm several plugins, across steps, together and in order. On observation, plan and action, which run one plugin, the armed plugin replaces the current one. An import or construction error fails the command (exit 2) and keeps the previous selection. |
 | `plugins disarm` | With `--host-name` (or a runtime `--url`), deselects the plugins named by `--name <step>/<plugin>`; repeat `--name` to disarm several, across steps, together. `--step <step>` clears perception, memory or proposal, and `--all` clears all three. Observation, plan and action keep their one plugin (arm a replacement instead). The next cycle resets disarmed instances; catalog entries remain available. |
+| `plugins stream` | With `--host-name`, polls the `--step` (perception, memory, proposal, plan or action) on a running host, redrawing the terminal as it updates. Perception shows the latest perception from the host's `/host/observation/latest`; memory shows each applied plugin's health and counts; proposal, plan and action print that step's record from the latest cycle the host published, with its age, generation, plugins, and the step's and each plugin's time, and action also shows how the host applied control. A running terminal stream serves the local runtime view: a frame-matched `/perception` page, a `/memory` map whose keys are `record_id`s (click a key to see the retained value), and the action view below. |
 | `plugins inspect <step>` | Offline: replays an image, image directory, or recorded run through the whole cycle and reports perception, memory, proposal, plan, or action. Restores recorded selections; `--preset` or `--plugin` overrides the inspected step. `--frame N` reports one frame after replaying its history. `--record` saves `report.json` and copied frames under `runtime/<step>-inspections/`. See [Plugin inspection](#plugin-inspection). |
 | `hosts create` | Creates a named host for the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url`, installs its release, and starts it. `vehicles status` names each vehicle's provider and URL. |
 | `hosts delete` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. |
 | `hosts update` | Packages a versioned release for the vehicle's host and stages every step's default with it, replacing whatever each step had staged (`plugins list` marks the defaults): a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `hosts run\|stop\|restart\|status` | Starts, stops, restarts or inspects a run on the host. Status includes the vehicle endpoint, host URL and simulator attachment. `stop` ends the run; the host stays attached until `hosts delete`. |
-| `hosts stream perception` | Displays rolling latest perception from the runtime host's `/host/observation/latest` and serves a local frame-matched `/perception` view (link to Memory map) whose URL the terminal shows. |
-| `hosts stream memory` | Inspects live memory as a key→value ledger. The terminal shows health and counts and serves a local `/memory` map page whose URL it shows. Keys are `record_id`s; click a key to see the retained value. |
-| `hosts stream proposal\|plan\|action` | Prints that step's record from the latest cycle the host published, with its age, generation, plugins, and the step's and each plugin's time; action also shows how the host applied control. `--once` prints one and exits 2 with the reason when none is current; `--json` returns `host_<step>_stream`. A running terminal stream also serves the local action view below. |
 | `hosts memory reset` | Clears live retained evidence on the runtime host and starts a new epoch. Exits 0 once the host's answer shows every plugin on a new epoch or empty, even while a running session refills memory. Does not move the vehicle. |
 | `hosts memory viability` | Memory health check: 60s poll of the runtime host's live memory step (update cadence, duration, failures, health, epoch stability). Saves `report.json` under `lab/runs/memory-viability/` unless `--no-record`. |
 | `hosts perception viability` | Perception health check: 60s cadence/freshness measurement of the runtime host's observation publication that also requires that no cycle's control was applied (host RSS/CPU when the vehicle supplies an `ssh_target`). Saves `report.json` and `summary.md` under `lab/runs/perception-viability/` unless `--no-record`. |
@@ -193,17 +191,19 @@ Exit 0 acknowledges the request; the next cycle applies it. Exit 2 reports a
 failure. When no session is running, changes remain requested until a cycle
 runs; status never presents a pending deselection as applied.
 
-`stream perception` and `stream memory` take the same flags. By default each
+`plugins stream` takes the same flags for every step. By default each
 refresh redraws the terminal view and updates the local view whose URL it
 shows. `--json` prints one probe per refresh in place of both, for
-scripts: `host_perception_live` for perception and
-`host_memory_live` for memory.
-`--once` exits 2 unless the probe's `status` is `live`. Any other status
+scripts: `host_perception_live` for perception, `host_memory_live` for
+memory, and `host_<step>_stream` for proposal, plan and action, or the
+`host_decision_error` that kept the step from a matched cycle. Every probe has
+a `status`. `--once` prints one render or probe without a local view and exits
+2 unless its `status` is `live`. Any other status
 (`stopped`, `stale`, `absent`, `error`, `unavailable`) comes with an `error`.
-When no runtime host can be addressed, both emit one `unavailable` JSON probe
-and exit 2, even without `--once`; the error names the command that starts one.
-Terminal streams show the same probe verdict and reason, and perception labels
-the publication's health separately from that verdict.
+When no runtime host can be addressed, every step emits one `unavailable` JSON
+probe and exits 2, even without `--once`; the error names the command that
+starts one. Terminal streams show the same probe verdict and reason, and
+perception labels the publication's health separately from that verdict.
 
 Every running terminal stream (perception, memory, proposal, plan, action)
 also serves a `/decision` page and prints its URL as `action view:`. The page
@@ -292,7 +292,7 @@ invalid deployment and `hosts update`, which replaces every step with its
 default. Run it, then check again. Every command that reads staged documents
 checks them first and prints the same step, path, reason, and update command:
 startup and restart before launching or stopping a worker, and `hosts info`
-and `hosts stream proposal|plan|action` before reporting. An invalid optional step blocks startup;
+and `plugins stream --step proposal|plan|action` before reporting. An invalid optional step blocks startup;
 an absent optional step keeps its built-in or empty behavior.
 
 See the
@@ -321,8 +321,8 @@ Run the same staged plugins with movement enabled:
 ./cli/automa hosts run --name chase-sim-chaser
 ./cli/automa hosts status --name chase-sim-chaser
 ./cli/automa hosts info perception --name chase-sim-chaser
-./cli/automa hosts stream perception --name chase-sim-chaser
-./cli/automa hosts stream perception --name piracer
+./cli/automa plugins stream --step perception --host-name chase-sim-chaser
+./cli/automa plugins stream --step perception --host-name piracer
 ```
 
 `hosts run` waits for a camera frame, the completed perception result for

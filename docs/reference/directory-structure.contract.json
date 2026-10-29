@@ -278,7 +278,7 @@
             "path": "cli/automa_cli/plugins/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa plugins commands: list a catalog and what a host has armed, upload, arm and disarm a host's plugins, inspect plugins from images or recorded runs, and their catalog client."
+            "responsibility": "The automa plugins commands: list a catalog and what a host has armed, upload, arm and disarm a host's plugins, stream a step on a host, inspect plugins from images or recorded runs, and their catalog client."
           },
           {
             "path": "cli/automa_cli/simulators/",

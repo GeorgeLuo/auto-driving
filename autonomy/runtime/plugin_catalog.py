@@ -66,7 +66,7 @@ class PluginCatalogAPI:
                 )
                 return {"ok": True, "status": "uploaded", "plugin": describe_plugin(definition),
                         "catalog_version": self.catalog.version}
-            version, definitions = self.catalog.snapshot()
+            version, definitions = self.catalog.read()
             result = {
                 "ok": True, "schema": "automa_plugin_catalog_v0",
                 "catalog_version": version,

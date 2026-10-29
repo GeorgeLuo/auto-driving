@@ -53,13 +53,7 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
             car.client,
             "get_play_debug",
             side_effect=[_session_debug(), _session_debug()],
-        ) as get_debug, mock.patch.object(
-            car.client,
-            "get_play_front_view_snapshot",
-            side_effect=AssertionError(
-                "capture must not use the sequential snapshot path"
-            ),
-        ):
+        ) as get_debug:
             sensor_frame = car.read_sensors(
                 SensorReadRequest(
                     output_dir=Path(tmp),

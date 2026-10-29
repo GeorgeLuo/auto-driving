@@ -87,13 +87,13 @@ class PluginListFlows(unittest.TestCase):
                 self.assertIn("Armed:\n(none)\n", listed("--step", "memory").stdout)
 
                 long = listed("--long").stdout.splitlines()
-                snapshot = catalog(base)
+                response = catalog(base)
                 self.assertEqual(long[:2], ["Host: one", f"Catalog: {initial['url']}"])
-                self.assertTrue(long[2].startswith(f"Catalog version: {snapshot['catalog_version']}"))
-                for item in snapshot["plugins"]:
+                self.assertTrue(long[2].startswith(f"Catalog version: {response['catalog_version']}"))
+                for item in response["plugins"]:
                     self.assertIn(row(item, "armed" if item in initial["armed"] else ""), long)
                 self.assertEqual(json.loads(listed("--long", "--json").stdout)["catalog"]["plugins"],
-                                 [item for step in STEPS for item in snapshot["plugins"] if item["step"] == step])
+                                 [item for step in STEPS for item in response["plugins"] if item["step"] == step])
 
                 file = root / "proposal.py"
                 write_plugin(file, "proposal", "prototype", 1)

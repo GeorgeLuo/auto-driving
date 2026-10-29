@@ -41,7 +41,7 @@ a new-file addition until a stable callable-matching rule is justified.
 
 ## Factor reports (analyzer 0.3)
 
-Normal snapshots and diffs include `factors`, with numeric measurements,
+Tree analyses and diffs include `factors`, with numeric measurements,
 locations to inspect, and limitations. Diffs carry `base_metrics` and `delta`;
 their findings are restricted to changed files while their totals describe
 the full configured Python scope. The report stores the configuration as well

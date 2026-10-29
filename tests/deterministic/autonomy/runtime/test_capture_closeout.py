@@ -200,11 +200,30 @@ class CaptureCloseoutTests(unittest.TestCase):
             path = f"/host/{kind}/transaction"
             status, headers, body = routes.handle("GET", path)
             self.assertEqual(status, 200, body)
-            with patch.object(FrameLoop, "frame_jpeg", side_effect=AssertionError("unchanged image encoded")):
+            with (
+                patch.object(FrameLoop, "frame_jpeg", side_effect=AssertionError("unchanged image encoded")),
+                patch("autonomy.runtime.frame_loop.deepcopy", side_effect=AssertionError("unchanged report copied")),
+            ):
                 status, again, body = routes.handle("GET", path, headers={"If-None-Match": headers["ETag"]})
             self.assertEqual((status, body), (304, b""))
             self.assertEqual(again["ETag"], headers["ETag"])
             self.assertIn("X-Read-At-Ms", again)
+
+    def test_publication_exports_stay_detached_from_transaction_data(self):
+        loop, _ = _active_routes()
+        try:
+            loop.submit(np.zeros((4, 4, 3), dtype=np.uint8), frame_id="first")
+            loop.wait_for_cycle()
+            publication = loop.publish_latest()
+            publication["step_activations"]["action"]["plugins"].clear()
+            publication["control"]["metadata"]["changed"] = True
+            self.assertTrue(loop.publish_latest()["step_activations"]["action"]["plugins"])
+            self.assertNotIn("changed", loop.publish_latest()["control"]["metadata"])
+            decision = loop.publish_decision_latest()
+            decision["decision"]["values"]["activation"]["steps"]["action"]["plugins"].clear()
+            self.assertTrue(loop.publish_decision_latest()["decision"]["values"]["activation"]["steps"]["action"]["plugins"])
+        finally:
+            loop.shutdown()
 
     def test_conditional_decision_expires_even_when_its_image_is_cached(self):
         loop, routes = _active_routes()

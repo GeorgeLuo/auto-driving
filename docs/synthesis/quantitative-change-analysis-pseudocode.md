@@ -30,7 +30,7 @@ repository history.
 
 The first standalone run supports two modes:
 
-- `analyze <tree>` for a reproducible snapshot; and
+- `analyze <tree>` for reproducible tree measurements; and
 - `diff --base <ref> --head <ref>` for a base→candidate report.
 
 The deterministic report contains source classification, size/churn,
@@ -55,7 +55,7 @@ to these exact APIs.
 # -----------------------------
 
 class AnalysisRequest:
-    # Exactly one source mode is selected so a snapshot cannot be mistaken for
+    # Exactly one source mode is selected so a tree cannot be mistaken for
     # a revision comparison.
     mode: "tree" | "diff"
     tree_path: Path | None
@@ -82,7 +82,7 @@ class Report:
     # This is a measurement record. It deliberately has no "quality" field.
     identity: ReportIdentity
     source_inventory: list[SourceFile]
-    snapshot: SnapshotMetrics
+    head: TreeMetrics
     diff: DiffMetrics | None
     verification: VerificationMetrics | None
     experimental: ExperimentalMetrics | None
@@ -121,22 +121,22 @@ def run(request: AnalysisRequest) -> Report:
 
     # The same analyzer functions read both sides of a diff. This keeps a delta
     # from becoming a second, subtly different implementation of the metrics.
-    head_snapshot = measure_snapshot(included, revision=source.head)
-    base_snapshot = None
+    head_metrics = measure_tree(included, revision=source.head)
+    base_metrics = None
     git_delta = None
     if source.mode == "diff":
         base_inventory = classify_and_inventory(source.at_base, config)
         base_included = [
             item for item in base_inventory if item.include_in_core_metrics
         ]
-        base_snapshot = measure_snapshot(base_included, revision=source.base)
+        base_metrics = measure_tree(base_included, revision=source.base)
         git_delta = read_git_diff(source.base, source.head, config)
 
     # Map changed line ranges to parsed callables where possible. Unmapped lines
     # remain visible as file-level change rather than being silently discarded.
     diff_metrics = derive_diff_metrics(
-        base_snapshot=base_snapshot,
-        head_snapshot=head_snapshot,
+        base_metrics=base_metrics,
+        head_metrics=head_metrics,
         git_delta=git_delta,
     )
 
@@ -158,8 +158,8 @@ def run(request: AnalysisRequest) -> Report:
 
     observations = build_observations(
         inventory=inventory,
-        head=head_snapshot,
-        base=base_snapshot,
+        head=head_metrics,
+        base=base_metrics,
         diff=diff_metrics,
         verification=verification,
         experimental=experimental,
@@ -180,7 +180,7 @@ def run(request: AnalysisRequest) -> Report:
             tool_versions=tool_versions,
         ),
         source_inventory=sort_inventory(inventory),
-        snapshot=head_snapshot,
+        head=head_metrics,
         diff=diff_metrics,
         verification=verification,
         experimental=experimental,
@@ -213,10 +213,10 @@ def classify_and_inventory(source, config) -> list[SourceFile]:
     return result
 
 
-def measure_snapshot(files: list[SourceFile], revision) -> SnapshotMetrics:
+def measure_tree(files: list[SourceFile], revision) -> TreeMetrics:
     # v0 is Python-first. Other languages are reported as present but marked
     # unsupported rather than analyzed with a misleading Python parser.
-    metrics = empty_snapshot_metrics()
+    metrics = empty_tree_metrics()
     for file in files:
         if file.extension != ".py":
             metrics.unsupported_files.append(file.path)
@@ -238,7 +238,7 @@ def measure_snapshot(files: list[SourceFile], revision) -> SnapshotMetrics:
         max(0, callable.cyclomatic_complexity - 1)
         for callable in metrics.callables
     )
-    return normalize_snapshot_metrics(metrics)
+    return normalize_tree_metrics(metrics)
 
 
 def measure_callables(tree, path) -> list[CallableMetrics]:
@@ -261,28 +261,28 @@ def measure_callables(tree, path) -> list[CallableMetrics]:
     return result
 
 
-def derive_diff_metrics(base_snapshot, head_snapshot, git_delta):
+def derive_diff_metrics(base_metrics, head_metrics, git_delta):
     # Deltas are calculated by stable identity where possible. New/deleted
     # callables remain explicit; they are not forced into a false match.
-    delta = subtract_snapshots(base_snapshot, head_snapshot)
+    delta = subtract_metrics(base_metrics, head_metrics)
     delta.added_lines = git_delta.added_lines
     delta.deleted_lines = git_delta.deleted_lines
     delta.churn = delta.added_lines + delta.deleted_lines
     delta.changed_files = stable_unique(git_delta.changed_files)
     delta.changed_functions = map_hunks_to_callables(
         git_delta.hunks,
-        base_snapshot.callables,
-        head_snapshot.callables,
+        base_metrics.callables,
+        head_metrics.callables,
     )
-    delta.new_dependency_edges = set(head_snapshot.import_edges) - set(
-        base_snapshot.import_edges
+    delta.new_dependency_edges = set(head_metrics.import_edges) - set(
+        base_metrics.import_edges
     )
     delta.public_surface = compare_public_symbols(
-        base_snapshot.public_symbols,
-        head_snapshot.public_symbols,
+        base_metrics.public_symbols,
+        head_metrics.public_symbols,
     )
     delta.decision_burden_delta = (
-        head_snapshot.decision_burden - base_snapshot.decision_burden
+        head_metrics.decision_burden - base_metrics.decision_burden
     )
     return normalize_diff_metrics(delta)
 
@@ -359,7 +359,7 @@ def promote_signal(signal, calibration_log):
 The pseudocode intentionally leaves the first real implementation smaller than
 the issue's complete metric inventory:
 
-1. Python `ast`/`tokenize` snapshot metrics;
+1. Python `ast`/`tokenize` tree metrics;
 2. Git base→head hunks and changed-file mapping;
 3. LOC/churn, callable size, cyclomatic complexity, decision burden, imports,
    and public-symbol deltas;

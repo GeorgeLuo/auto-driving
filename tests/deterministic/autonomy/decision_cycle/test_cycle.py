@@ -14,7 +14,7 @@ from autonomy.decision_cycle.perception.interface import (
     PerceptionText,
 )
 from autonomy.runtime.control import AutonomyControl
-from autonomy.decision_cycle.steps import decision_steps, snapshot_step_activations
+from autonomy.decision_cycle.steps import decision_steps, applied_step_activations
 from tests.support.action_fixtures import fixed_action_runner, plan_runner, proposal_runner
 
 
@@ -232,18 +232,44 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertIsInstance(caught.exception.__cause__, TypeError)
 
 
-class StepSnapshotTests(unittest.TestCase):
-    def test_absent_steps_snapshot_as_none_and_empty_runners_as_disabled(self) -> None:
+class AppliedActivationTests(unittest.TestCase):
+    def test_applied_export_preserves_context_and_detaches_configs(self) -> None:
+        from types import SimpleNamespace
+        from autonomy.decision_cycle.activation import step_activation
+        from autonomy.plugins import PluginDefinition
+
+        loaded = step_activation(
+            "plan", ["pending"], {"pending": "example:Pending", "running": "example:Old"},
+            {"running": {"nested": {"value": 0}}}, metadata={"preset": {"label": "test"}},
+        )
+        definition = PluginDefinition(
+            "plan", "running", "example:Running", {"nested": {"value": 1}},
+            {"source_file": "revision.py"},
+        )
+        runner = SimpleNamespace(activation=loaded, applied=((definition, object()),))
+        payload = applied_step_activations(DecisionSteps(plan=runner))["plan"]
+        self.assertEqual(payload["plugins"], ["running"])
+        self.assertEqual(payload["plugin_specs"], {
+            "pending": "example:Pending", "running": "revision.py:Running",
+        })
+        self.assertEqual(payload["plugin_configs"]["running"]["nested"]["value"], 1)
+        payload["plugin_configs"]["running"]["nested"]["value"] = 99
+        payload["metadata"]["preset"]["label"] = "changed"
+        self.assertEqual(definition.config["nested"]["value"], 1)
+        self.assertEqual(loaded.metadata["preset"]["label"], "test")
+        self.assertNotIn("memory", applied_step_activations(DecisionSteps(memory=lambda context: None)))
+
+    def test_absent_steps_export_as_none_and_empty_runners_as_disabled(self) -> None:
         """A disarmed step keeps its runner with nothing applied; it must
         record as disabled so streams and replays run it empty."""
 
         steps = DecisionSteps(proposal=proposal_runner({}), plan=plan_runner())
 
-        snapshot = snapshot_step_activations(steps)
+        activations = applied_step_activations(steps)
 
-        self.assertEqual(snapshot["plan"]["plugins"], ["highest_confidence"])
-        self.assertEqual(snapshot["proposal"]["plugins"], [])
-        self.assertEqual({step: value for step, value in snapshot.items() if step not in ("plan", "proposal")},
+        self.assertEqual(activations["plan"]["plugins"], ["highest_confidence"])
+        self.assertEqual(activations["proposal"]["plugins"], [])
+        self.assertEqual({step: value for step, value in activations.items() if step not in ("plan", "proposal")},
                          dict.fromkeys(("perception", "observation", "memory", "action")))
 
 

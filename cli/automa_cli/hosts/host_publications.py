@@ -203,7 +203,7 @@ def fetch_observation_publication(base_url: str, *, timeout_s: float = 3.0) -> d
 def fetch_observation_sample(
     base_url: str, *, timeout_s: float = 3.0, cache: TransactionCache | None = None,
 ) -> tuple[dict[str, Any], bytes | None]:
-    """Read observation metadata and its image from one host snapshot."""
+    """Read observation metadata and its image from one host transaction."""
     payload = _get_transaction(base_url, OBSERVATION_TRANSACTION_PATH, timeout_s=timeout_s, cache=cache)
     publication = payload.get("publication")
     if payload.get("http_status") == 503:
@@ -244,7 +244,7 @@ def fetch_decision_publication(base_url: str, *, timeout_s: float = 3.0) -> dict
 
 def fetch_decision_transaction(base_url: str, *, timeout_s: float = 3.0,
                                cache: TransactionCache | None = None) -> dict[str, Any]:
-    """GET the current decision and its image from one host snapshot."""
+    """GET the current decision and its image from one host transaction."""
 
     return _get_transaction(base_url, DECISION_TRANSACTION_PATH, timeout_s=timeout_s, cache=cache)
 

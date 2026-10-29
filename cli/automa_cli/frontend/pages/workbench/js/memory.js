@@ -178,12 +178,12 @@ function renderMemory() {
     elements.memoryRecords.textContent = "";
     setText("memoryHealth", updateFailed ? "update failed" : disabled ? "disabled" : "no frame yet");
     clearMemoryLedger();
-    var noSnapshot = document.createElement("p");
-    noSnapshot.className = "memory-empty muted help";
-    noSnapshot.textContent = updateFailed
+    var noReport = document.createElement("p");
+    noReport.className = "memory-empty muted help";
+    noReport.textContent = updateFailed
       ? "Memory update stopped this replay. See Failure for details."
       : disabled ? "No memory plugins selected." : "";
-    elements.memoryRecords.appendChild(noSnapshot);
+    elements.memoryRecords.appendChild(noReport);
     elements.memorySelected.textContent = "";
     return;
   }

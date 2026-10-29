@@ -539,7 +539,7 @@
         <tbody>
           <tr>
             <td>Vehicle</td>
-            <td>Read request or bounded operation command.</td>
+            <td>Read request or pulse command.</td>
             <td><code>SensorFrame</code>, pulse result, and stop.</td>
             <td><code>autonomy/vehicle/vehicle.py</code></td>
           </tr>
@@ -578,12 +578,6 @@
             <td>The plan (or the reason there is none) and the drive mode.</td>
             <td><code>ActionResult</code>: the authority record and the <code>AutonomyControl</code> to apply.</td>
             <td><code>autonomy/decision_cycle/action/</code>, <code>implementations/decision_cycle/action/</code>, <code>autonomy/runtime/cycle_host.py</code></td>
-          </tr>
-          <tr>
-            <td>Operations</td>
-            <td><code>CarInterface</code> plus an explicitly invoked plan.</td>
-            <td>Bounded action results and optional reports.</td>
-            <td><code>implementations/operations/</code></td>
           </tr>
         </tbody>
       </table>

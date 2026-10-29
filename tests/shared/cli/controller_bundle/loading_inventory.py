@@ -184,18 +184,6 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "bounds_from_config", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "bounds_from_config"),
     ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "empty_ledger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "empty_ledger"),
 
-    # implementations.operations
-    ("implementations.operations", "CapturePulseStep", "implementations.operations.capture_pulse_sequence", "CapturePulseStep"),
-    ("implementations.operations", "StartupActionCheckInstruction", "implementations.operations.startup_action_check.types", "StartupActionCheckInstruction"),
-    ("implementations.operations", "StartupActionCheckPlan", "implementations.operations.startup_action_check.types", "StartupActionCheckPlan"),
-    ("implementations.operations", "build_basic_startup_action_check_plan", "implementations.operations.startup_action_check.plans", "build_basic_startup_action_check_plan"),
-    ("implementations.operations", "run_capture_pulse_sequence", "implementations.operations.capture_pulse_sequence", "run_capture_pulse_sequence"),
-    ("implementations.operations", "run_startup_action_check", "implementations.operations.startup_action_check.runner", "run_startup_action_check"),
-    ("implementations.operations.startup_action_check", "StartupActionCheckInstruction", "implementations.operations.startup_action_check.types", "StartupActionCheckInstruction"),
-    ("implementations.operations.startup_action_check", "StartupActionCheckPlan", "implementations.operations.startup_action_check.types", "StartupActionCheckPlan"),
-    ("implementations.operations.startup_action_check", "build_basic_startup_action_check_plan", "implementations.operations.startup_action_check.plans", "build_basic_startup_action_check_plan"),
-    ("implementations.operations.startup_action_check", "run_startup_action_check", "implementations.operations.startup_action_check.runner", "run_startup_action_check"),
-
     # Formerly exported by implementations.perception
     ("implementations.decision_cycle.perception.feeds.camera", "CameraFrame", "implementations.decision_cycle.perception.feeds.camera", "CameraFrame"),
     ("implementations.decision_cycle.perception.feeds.camera", "FRONT_CAMERA_RGB_INPUT", "implementations.decision_cycle.perception.feeds.camera", "FRONT_CAMERA_RGB_INPUT"),

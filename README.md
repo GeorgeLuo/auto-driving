@@ -88,7 +88,7 @@ directory:
   memory, decision, and runtime contracts plus generic orchestration. It contains no
   perception algorithms.
 - `implementations/` contains concrete vehicle adapters, perception plugins,
-  runtime hosts, and bounded operations.
+  and runtime hosts.
 - `cli/` contains the `automa` command and its implementation.
 - `tests/` holds the in-process `deterministic/` suite that CI runs and the
   local-only `systems/` suite, which starts other programs and holds the
@@ -137,7 +137,6 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `hosts update` | Packages a versioned release for the vehicle's host and stages each step's `plugins save` selection with it, else the step's default (`plugins list` marks the defaults), replacing whatever else each step had staged: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `hosts run\|stop\|restart\|status` | Starts, stops, restarts or inspects a run on the host. Status includes the vehicle endpoint, host URL and simulator attachment. `stop` ends the run; the host stays attached until `hosts delete`. |
 | `hosts memory reset` | Clears live retained evidence on the runtime host and starts a new epoch. Exits 0 once the host's answer shows every plugin on a new epoch or empty, even while a running session refills memory. Does not move the vehicle. |
-| `hosts operation ...` | Runs a bounded, explicitly requested vehicle operation. |
 | `simulators create` | Starts a headless Chase simulator from the Metrics UI checkout at `AUTOMA_METRICS_UI_DIR`, with its launcher's default configuration, on the first free port from 5051, and prints its URL. It runs until `simulators delete --url` ends it, which refuses while a host was created at it. |
 | `simulators ...` | Finds or prepares the SimEval and Metrics UI environment. |
 
@@ -803,25 +802,6 @@ record's legacy `proposed_applied` field describes plugin authorization only.
 Chase's current WS transport supports directional throttle at fixed scenario
 speed, so its receipt declares `directional_fixed_speed`; equal throttle values
 do not imply equal simulated and physical speed.
-
-## Bounded Startup Check
-
-The startup check captures a frame before and after each basic action
-combination and scores whether the command produced a visible change. A live
-check acquires that vehicle's control target and sends movement pulses, so
-raise the vehicle or clear its path first. `--dry-run` only captures frames:
-it does not acquire control or send pulses, and it does not switch simulator
-playback. A dry run reports the captured frame pairs unscored and exits 0; a
-live check exits 1 when a check fails.
-
-```sh
-./cli/automa hosts operation startup-check --name piracer
-./cli/automa hosts operation startup-check --name chase-sim-chaser
-```
-
-Results are written under `lab/runs/startup-check/<run-id>/`, including the
-plan, report, summary, before/after frames, diffs, and contact sheet.
-`report.json` lists the control `acquire` and `release` events of a live check.
 
 ## Generated Runtime State
 

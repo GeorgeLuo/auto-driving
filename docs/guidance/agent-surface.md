@@ -46,5 +46,3 @@ working-tree changes.
 Use ordinary version-control and hosting mechanics when the user asks for a
 branch or pull request. They are delivery tools, not a reason to add extra
 artifacts or delay an otherwise complete task.
-
-Do not use `docs/deprecated/`.

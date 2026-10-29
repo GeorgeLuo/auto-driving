@@ -19,5 +19,3 @@ Read another guide only when the current request clearly needs it.
 - Keep current task state out of reusable guidance.
 - Keep automatic operation routing in `AGENTS.md` and `agent-surface.md`.
 - Remove stale instructions instead of layering compatibility text onto them.
-
-Older delivery files are under `docs/deprecated/`. Do not use them.

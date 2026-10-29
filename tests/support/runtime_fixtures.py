@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.activation import step_activation
-from implementations.decision_cycle.catalog import preset_activation
+from implementations.decision_cycle.catalog import preset_activation, selection_activation
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -109,6 +109,25 @@ def write_host_fixture(runtime_root: Path, host_name: str, *, provider: str = "c
     write_host_configuration(runtime_root, {"host_name": host_name, "provider": provider,
         "vehicle_kind": "chase-sim-ws" if provider == "chase-sim" else "picar-donkey-http",
         "connection": connection})
+
+
+def stage_step(runtime_root: Path, host_name: str, step: str, *, preset: str | None = None,
+               plugins: list[str] | None = None) -> Path:
+    """Package the host's release and write one step's selection with it, as ``hosts update`` does.
+
+    With neither ``preset`` nor ``plugins`` the step's default is written.
+    """
+    from cli.automa_cli.hosts.bundles import sync_controller_bundle
+    from cli.automa_cli.hosts.step_activations import host_bundle, stage_activation, staging_host
+
+    write_host_fixture(runtime_root, host_name)
+    vehicle, unknown = staging_host(host_name, runtime_root=runtime_root)
+    assert unknown is None, unknown
+    bundle = host_bundle(host_name, runtime_root)
+    return stage_activation(
+        bundle, selection_activation(step, preset=preset, plugins=plugins),
+        host_name=host_name, release=sync_controller_bundle(bundle, output=None), vehicle=vehicle,
+    )
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:

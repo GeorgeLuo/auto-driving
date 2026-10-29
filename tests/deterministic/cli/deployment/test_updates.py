@@ -72,7 +72,7 @@ class HostLifecycleTests(unittest.TestCase):
 
     def test_unknown_host_commands_do_not_write(self):
         write_host_fixture(self.root, "test")
-        for words in (("update",), ("stage", "perception"), ("run",)):
+        for words in (("update",), ("run",)):
             result = invoke_automa("hosts", *words, "--name", "unknown", runtime_root=self.root, check=False)
             self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
             self.assertIn("No host 'unknown'. Hosts: test.", result.stdout)

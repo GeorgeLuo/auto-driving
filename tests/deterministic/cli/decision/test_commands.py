@@ -4,36 +4,19 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import stage_step
 
 from autonomy.decision_cycle.steps import STEP_RUNNERS
 from tests.shared.cli.invoke import invoke_automa
 
 
 class DecisionCommandTests(unittest.TestCase):
-    def test_update_steps_then_info_is_read_only(self) -> None:
+    def test_info_reports_the_staged_steps_and_is_read_only(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            write_host_fixture(runtime_root, "chase-sim-chaser")
             vehicle = ("--name", "chase-sim-chaser", "--json")
-            runtime = runtime_root / "chase-sim-chaser" / "bundle" / "runtime"
-
-            dry_run = invoke_automa(
-                "hosts", "stage", "action", *vehicle, "--plugin", "mode", "--dry-run",
-                runtime_root=runtime_root,
-            )
-            self.assertEqual(dry_run.returncode, 0, dry_run.stderr + dry_run.stdout)
-            self.assertFalse((runtime / "action" / "active.json").exists())
-
-            for step, plugins in (("proposal", ()), ("action", ("--plugin", "mode"))):
-                update = invoke_automa(
-                    "hosts", "stage", step, *vehicle, *plugins,
-                    runtime_root=runtime_root,
-                )
-                self.assertEqual(update.returncode, 0, update.stderr + update.stdout)
-                self.assertEqual(json.loads(update.stdout)["step"], step)
-            action = json.loads((runtime / "action" / "active.json").read_text())
-            self.assertEqual(action["plugins"], ["mode"])
+            stage_step(runtime_root, "chase-sim-chaser", "proposal")
+            stage_step(runtime_root, "chase-sim-chaser", "action", plugins=["mode"])
 
             def snapshot_files() -> dict[Path, bytes]:
                 return {
@@ -47,7 +30,7 @@ class DecisionCommandTests(unittest.TestCase):
                 "hosts", "info", "plan", *vehicle, runtime_root=runtime_root, check=False,
             )
             self.assertEqual(unstaged.returncode, 2, unstaged.stdout)
-            self.assertIn("./cli/automa hosts stage plan --name", unstaged.stdout)
+            self.assertIn("./cli/automa hosts update --name chase-sim-chaser", unstaged.stdout)
 
             for step, plugins in (("proposal", ["avoid_recent_obstruction"]), ("action", ["mode"])):
                 info = invoke_automa("hosts", "info", step, *vehicle, runtime_root=runtime_root)

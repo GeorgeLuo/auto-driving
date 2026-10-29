@@ -29,7 +29,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     "--observe-only", runtime_root=runtime_root, check=False,
                 )
                 self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-                self.assertIn("hosts stage memory", result.stdout)
+                self.assertIn(f"hosts update --name {HOST_NAME}", result.stdout)
                 self.assertIsNone(child.poll())
                 self.assertEqual(paths.automation_process.read_bytes(), process)
                 self.assertEqual(paths.automation_state.read_bytes(), state)

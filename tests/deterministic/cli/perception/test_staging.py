@@ -137,42 +137,6 @@ class PerceptionCommandTests(unittest.TestCase):
             text_result.stdout,
         )
 
-    def test_physical_perception_staging_reuses_local_metadata_while_offline(
-        self,
-    ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            from tests.support.runtime_fixtures import write_host_fixture
-            write_host_fixture(runtime_root, "piracer", provider="picar")
-            bundle = controller_bundle_paths(runtime_root / "piracer")
-            sync_controller_bundle(bundle, output=None)
-            write_json(
-                Path(bundle["perception_runtime_dir"]) / "active.json",
-                _activation(
-                    bundle,
-                    host_name="piracer",
-                    vehicle_kind="picar",
-                    provider="picar",
-                    runtime={"kind": "onboard_controller", "connection": {}},
-                ),
-            )
-
-            result = invoke_automa(
-                "hosts", "stage",
-                "perception",
-                "--name",
-                "piracer",
-                "--preset",
-                "visual_observer",
-                "--json",
-                runtime_root=runtime_root,
-            )
-
-        payload = json.loads(result.stdout)
-        self.assertEqual(payload["host_name"], "piracer")
-        self.assertEqual(payload["preset"], "visual_observer")
-        self.assertEqual(payload["manifest"]["metadata"]["provider"], "picar")
-
 
 if __name__ == "__main__":
     unittest.main()

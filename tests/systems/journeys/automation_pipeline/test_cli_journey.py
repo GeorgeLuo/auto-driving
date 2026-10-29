@@ -38,12 +38,9 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
             runtime_root = Path(tmp) / "vehicles"
             env = {"CHASE_UI_WS_URL": ws_url}
-            from tests.support.runtime_fixtures import write_host_fixture
+            from tests.support.runtime_fixtures import stage_step, write_host_fixture
             write_host_fixture(runtime_root, "chase-sim-chaser", url=ws_url)
-            invoke_automa(
-                "hosts", "stage", "perception", "--name", "chase-sim-chaser",
-                runtime_root=runtime_root, extra_env=env,
-            )
+            stage_step(runtime_root, "chase-sim-chaser", "perception")
             try:
                 run_automa(
                     "hosts", "run", "--name", "chase-sim-chaser",
@@ -110,22 +107,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                 initial_fingerprint = _session_fingerprint(ws_url)
                 invoke_automa("hosts", "create", "--name", "chase-sim-chaser", "--provider", "chase-sim",
                               "--url", ws_url, runtime_root=runtime_root, extra_env=env)
-
-                invoke_automa(
-                    "hosts", "stage", "memory", "--name", "chase-sim-chaser",
-                    "--preset", "recency_ledger", runtime_root=runtime_root, extra_env=env,
-                )
-
-                invoke_automa(
-                    "hosts", "stage",
-                    "perception",
-                    "--name",
-                    "chase-sim-chaser",
-                    "--preset",
-                    "lightweight_observer",
-                    runtime_root=runtime_root,
-                    extra_env=env,
-                )
+                # Creating the host stages every step's default.
                 staged = json.loads(invoke_automa(
                     "hosts", "status", "--name", "chase-sim-chaser", "--json",
                     runtime_root=runtime_root, extra_env=env,

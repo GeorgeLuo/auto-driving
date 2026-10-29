@@ -147,7 +147,7 @@ def stream_host_step(
 
     timeout_s = max(0.1, float(timeout_s))
     try:
-        # Broken staging is the first thing to fix; it names its restage command.
+        # Broken staging is the first thing to fix; it names the command that replaces it.
         _require_valid_activations(bundle_paths(host_name), host_name=host_name, steps=DECISION_STEPS)
         base_url = runtime_base_url(host_name)
     except DecisionSurfaceError as exc:

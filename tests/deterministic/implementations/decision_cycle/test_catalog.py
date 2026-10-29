@@ -47,7 +47,7 @@ class DeclaredIdTests(unittest.TestCase):
             contextlib.redirect_stderr(stderr),
         ):
             code = app.main(
-                ["hosts", "stage", "action", "--name", "chase-sim-chaser", "--plugin", "hold", "--dry-run"]
+                ["plugins", "list", "--step", "action"]
             )
         self.assertEqual(code, 2)
         self.assertIn("error: duplicate action plugin id 'selected'", stderr.getvalue())

@@ -41,12 +41,12 @@ def staged_step_info(
     """
 
     path = bundle_activation_path(bundle, step)
-    restage = f"Run: ./cli/automa hosts stage {step} --name <host_name>"
+    update = f"Run: ./cli/automa hosts update --name {host_name}"
     if not path.exists():
         return None, "\n".join([
             f"No active {step} activation found for {host_name!r}.",
             f"Expected activation: {display_path(path)}",
-            restage,
+            update,
         ])
     problems = bundle_activation_problems(bundle, host_name, steps=(step,))
     if problems:
@@ -64,7 +64,7 @@ def staged_step_info(
     if not Path(bundle_root).exists():
         return None, "\n".join([
             f"Controller bundle is missing for {host_name!r}: {display_path(Path(bundle_root))}",
-            restage,
+            update,
         ])
 
     def failure(verb: str, exc: Exception) -> str:
@@ -139,7 +139,7 @@ def format_staged_step(
             lines.append(f"Release manifest: {release['manifest']}")
     else:
         lines.append(
-            f"Release: not recorded; run `hosts stage {step}` "
+            f"Release: not recorded; run `hosts update --name {payload['host_name']}` "
             "to package and attach release metadata"
         )
     schema = payload.get(f"{step}_schema")

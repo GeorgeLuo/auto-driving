@@ -13,6 +13,7 @@ from autonomy.decision_cycle.activation import step_activation_from_payload
 from autonomy.plugins import uploaded_source
 from cli.automa_cli.hosts.bundles import controller_bundle_paths
 from cli.automa_cli.plugins.catalog import PluginCatalogClient
+from implementations.decision_cycle.catalog import selection_activation
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.shared.cli.invoke import invoke_automa
@@ -140,14 +141,10 @@ class PluginUploadFlows(unittest.TestCase):
 
     def test_catalog_updates_and_reselection_preserve_configs_and_report_matching_presets(self):
         with image_source(3) as root:
-            from tests.support.runtime_fixtures import write_host_fixture
-            write_host_fixture(root / "vehicles", "chase-sim-chaser")
-            staged = {}
-            for step, preset in (("perception", "obstruction_observer"), ("memory", "recency_ledger")):
-                staged[step] = json.loads(invoke_automa(
-                    "hosts", "stage", step, "--name", "chase-sim-chaser", "--preset", preset,
-                    "--dry-run", "--json", runtime_root=root / "vehicles",
-                ).stdout)["manifest"]
+            staged = {
+                step: selection_activation(step, preset=preset).to_payload()
+                for step, preset in (("perception", "obstruction_observer"), ("memory", "recency_ledger"))
+            }
             # A locally customized staged config must survive an unchanged selection.
             staged["perception"]["plugin_configs"]["multi_obstruction_tracks"]["floor_cutoff_y"] = 0.88
             runner = ImageReplayRunner(root, cadence_ms=30000, loop=True, activations={

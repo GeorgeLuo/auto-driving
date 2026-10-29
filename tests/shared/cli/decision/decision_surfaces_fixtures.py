@@ -27,7 +27,6 @@ from cli.automa_cli.hosts.decision_records import DecisionRecords, DecisionRunne
 from cli.automa_cli.hosts.step_activations import (
     decision_generation_id,
     decision_identity,
-    stage_host_step,
     host_bundle,
 )
 
@@ -207,20 +206,10 @@ class DecisionSurfaceFixture:
     ) -> dict:
         """Stage the packaged proposals (unless ``proposal`` is False) and ``action``."""
 
-        from tests.support.runtime_fixtures import write_host_fixture
-        write_host_fixture(self.runtime_root, host_name)
-        steps = [("action", [action])]
+        from tests.support.runtime_fixtures import stage_step
         if proposal:
-            steps.insert(0, ("proposal", None))
-        for step, plugins in steps:
-            code, message = stage_host_step(
-                host_name=host_name,
-                step=step,
-                plugins=plugins,
-                runtime_root=self.runtime_root,
-                json_output=True,
-            )
-            self.assertEqual(code, 0, message)
+            stage_step(self.runtime_root, host_name, "proposal")
+        stage_step(self.runtime_root, host_name, "action", plugins=[action])
         return self._identity(host_name)
 
     def _identity(self, host_name: str = "chase-sim-chaser") -> dict:

@@ -19,13 +19,7 @@ class MemoryCommandTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")
             update = invoke_automa(
-                "hosts", "stage",
-                "memory",
-                "--name",
-                "chase-sim-chaser",
-                "--plugin",
-                "bounded_evidence",
-                "--json",
+                "hosts", "update", "--name", "chase-sim-chaser", "--json",
                 runtime_root=runtime_root,
             )
             info = invoke_automa(
@@ -38,13 +32,8 @@ class MemoryCommandTests(unittest.TestCase):
             )
 
             update_payload = json.loads(update.stdout)
-            self.assertEqual(update_payload["schema"], "host_step_update")
-            self.assertEqual(update_payload["plugins"], ["bounded_evidence"])
-            self.assertEqual(update_payload["manifest"]["step"], "memory")
-            self.assertEqual(
-                update_payload["manifest"]["plugin_specs"]["bounded_evidence"],
-                "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger",
-            )
+            self.assertEqual(update_payload["presets"]["memory"], DEFAULT_MEMORY_PRESET)
+            self.assertEqual(update_payload["steps"]["memory"], ["bounded_evidence"])
             self.assertIsNotNone(update_payload["release"]["tree_sha256"])
 
             activation_path = (
@@ -66,6 +55,10 @@ class MemoryCommandTests(unittest.TestCase):
                 {"update", "reset", "missing_input"},
             )
             self.assertEqual(info_payload["activation"]["plugins"], ["bounded_evidence"])
+            self.assertEqual(
+                info_payload["activation"]["plugin_specs"]["bounded_evidence"],
+                "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger",
+            )
             # A step holds a list of plugins; none of them stands for the step.
             self.assertNotIn("plugin_id", info_payload["activation"])
             # Retention bounds belong to the plugin, not the activation.
@@ -75,7 +68,7 @@ class MemoryCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")
-            invoke_automa("hosts", "stage", "memory", "--name", "chase-sim-chaser", runtime_root=runtime_root)
+            invoke_automa("hosts", "update", "--name", "chase-sim-chaser", runtime_root=runtime_root)
             path = runtime_root / "chase-sim-chaser/bundle/runtime/memory/active.json"
             activation = json.loads(path.read_text())
             activation["plugin_specs"]["missing"] = "implementations.memory.not_installed:Plugin"
@@ -91,18 +84,10 @@ class MemoryCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")
+            invoke_automa("hosts", "update", "--name", "chase-sim-chaser", runtime_root=runtime_root)
             staged = {}
             presets = {}
             for step in PRESET_STEPS:
-                updated = invoke_automa(
-                    "hosts", "stage",
-                    step,
-                    "--name",
-                    "chase-sim-chaser",
-                    runtime_root=runtime_root,
-                    check=False,
-                )
-                self.assertIn(f"Staged {step}: chase-sim-chaser", updated.stdout)
                 info = ("hosts", "info", step, "--name", "chase-sim-chaser")
                 payload = json.loads(
                     invoke_automa(*info, "--json", runtime_root=runtime_root).stdout
@@ -153,7 +138,7 @@ class MemoryCommandTests(unittest.TestCase):
             )
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("No active memory activation found", result.stdout)
-        self.assertIn("hosts stage memory", result.stdout)
+        self.assertIn("hosts update --name chase-sim-chaser", result.stdout)
 
 
 if __name__ == "__main__":

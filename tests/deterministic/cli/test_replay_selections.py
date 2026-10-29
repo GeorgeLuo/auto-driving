@@ -9,12 +9,12 @@ from pathlib import Path
 from unittest.mock import patch
 
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from cli.automa_cli.hosts.workbench_frames import run_frame
+from cli.automa_cli.workbench.frames import run_frame
 from cli.automa_cli.plugins.step_replay import read_replay_source
 
 from cli.automa_cli.hosts.inspection_runs import default_selection
 from cli.automa_cli.plugins.step_inspect import inspect_step
-from cli.automa_cli.hosts.workbench_runner import ImageReplayRunner
+from cli.automa_cli.workbench.runner import ImageReplayRunner
 from tests.shared.cli.memory.frame_fixtures import write_frames
 
 

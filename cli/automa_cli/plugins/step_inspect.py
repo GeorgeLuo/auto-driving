@@ -17,7 +17,7 @@ from ..hosts.inspection_runs import add_seed_provenance, read_shared_memory_seed
 from ..hosts.memory_report import evidence_publisher, plugin_summaries
 from ..shared.paths import ROOT, display_path
 from .step_replay import StepReplay, inspect_run_id, read_replay_source, record_inspect_run
-from ..hosts.workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationError
+from ..workbench.source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationError
 
 INSPECT_STEPS = ("perception", "memory", *DECISION_STEPS)
 

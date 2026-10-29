@@ -26,14 +26,14 @@ from ..frontend.workbench_contract import (
     WORKBENCH_SEQUENCE_ID,
 )
 from ..runtime_view import open_view_message, runtime_view_server
-from .workbench_runner import ImageReplayRunner
-from .workbench_plugins import (
+from .runner import ImageReplayRunner
+from .plugins import (
     WORKBENCH_SELECTABLE_STEPS,
     PluginCatalog,
     PluginCatalogError,
     packaged_plugin_catalog,
 )
-from .workbench_source import (
+from .source import (
     ImageSource,
     ReplayFrame,
     SourceValidationError,

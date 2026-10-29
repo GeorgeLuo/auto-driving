@@ -120,6 +120,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 
 | Command | Reads or changes |
 |---|---|
+| `workbench <source_dir>` | Replays a local image directory or recorded run through the controller steps. `--serve` keeps the workbench available in the runtime viewer; `--open` also opens its page in a browser. |
 | `vehicles status` | Shows the default simulator, created simulators, and discovered vehicle environments with their reachability and endpoints. |
 | `vehicles discover` | Lists the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url` in `vehicles status` once it can take a host; `--force` lists it regardless. The default simulator (`CHASE_UI_WS_URL`, else `http://localhost:5050`) is always listed. |
 | `vehicles remove` | Stops listing the discovered vehicle at `--url`. The default simulator cannot be removed. |
@@ -428,7 +429,7 @@ images use filename order, ignoring case, and times 0, 1000, 2000, ... ms;
 file mtimes are not capture times. Operation reports preserve before/after
 capture order through the same source adapter. Images are validated before
 plugins run. Image directories and recordings default to a 512-frame limit;
-pass `--max-frames N` for larger sources, as with workbench replay.
+pass `--max-frames N` for larger sources, as with `workbench`.
 
 The terminal prints the source, every step's selection and each frame's record,
 followed by the step's, its plugins' and the cycle's timing. `--json` returns
@@ -594,8 +595,8 @@ decision frames until it restarts:
 
 ## Decision Playback Workbench
 
-The workbench reads the same recorded frame order and timing. `hosts
-workbench replay` starts each step from `--perception-preset` or
+The workbench reads the same recorded frame order and timing. `automa workbench`
+starts each step from `--perception-preset` or
 `--perception-plugin`, `--memory-preset` or `--memory-plugin`, and
 `--proposal-preset` or `--proposal-plugin`, as `plugins inspect` takes them. With no flag, a step uses its default preset: proposal uses
 `obstruction_avoidance`. The CLI and page show each step's preset, where it has one,
@@ -608,7 +609,7 @@ Recorded dropout positions remain seekable. The page labels perception as
 absent and shows the reason while memory can still show retained records.
 
 ```sh
-./cli/automa hosts workbench replay path/to/images --perception-preset multi_obstruction --memory-preset recency_ledger --serve
+./cli/automa workbench path/to/images --perception-preset multi_obstruction --memory-preset recency_ledger --serve
 ```
 
 `--serve` keeps the viewer available with this replay on its **Workbench** page

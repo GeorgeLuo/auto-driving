@@ -26,8 +26,8 @@ from ..hosts.inspection_runs import (
     default_selection, resolve_replay_activations, restage_replay_steps, selection_report,
 )
 from ..shared.paths import safe_path_part
-from ..hosts.workbench_frames import FrameOutcome, run_frame
-from ..hosts.workbench_source import (
+from ..workbench.frames import FrameOutcome, run_frame
+from ..workbench.source import (
     ImageSource,
     ReplayFrame,
     SourceValidationError,

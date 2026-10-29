@@ -13,6 +13,7 @@ from .simulators.commands import register_simulators
 from .runtime_view import serve_viewer
 from .vehicles.commands import register_vehicles
 from .vehicles.status import format_vehicles_status, get_vehicles_status
+from .workbench.commands import register_workbench
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -38,6 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_vehicles(subcommands)
     register_hosts(subcommands)
+    register_workbench(subcommands)
     register_plugins(subcommands)
     register_simulators(subcommands)
     return parser
@@ -58,6 +60,7 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "- status     Show hosts status and vehicles status.",
                 "- vehicles   Discover and inspect vehicle environments.",
                 "- hosts      Create, configure, and operate vehicle controller hosts.",
+                "- workbench  Replay a local image directory through the controller steps.",
                 "- plugins    List a plugin catalog or what a host has armed, upload, arm and disarm a host's plugins, stream what each step outputs on a host, and inspect what each step reports.",
                 "- simulators Create headless simulators, or prepare and inspect SimEval environments.",
                 "",
@@ -69,6 +72,7 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "Detailed help:",
                 "- ./cli/automa --help",
                 "- ./cli/automa <command> help",
+                "- ./cli/automa workbench --help",
             ]
         )
     )

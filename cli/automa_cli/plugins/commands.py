@@ -12,7 +12,7 @@ from autonomy.decision_cycle.steps import CLEARABLE_STEPS, ONE_PLUGIN_STEPS
 
 from ..hosts.decision_steps import stream_host_step
 from ..hosts.streaming import stream_host_memory, stream_host_perception
-from ..hosts.workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
+from ..workbench.source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ..shared.selection_args import add_selection_args
 from .catalog import arm_plugins, disarm_plugins, list_plugins, save_plugins, upload_plugin
 from .step_inspect import INSPECT_STEPS, inspect_step

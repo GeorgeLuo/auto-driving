@@ -9,6 +9,49 @@ from cli.automa_cli.app import build_parser
 
 class HelpCommandTests(unittest.TestCase):
 
+    def test_workbench_is_discoverable_at_the_top_level(self) -> None:
+        from tests.shared.cli.invoke import invoke_automa
+
+        for args in (("help",), ("--help",)):
+            with self.subTest(args=args):
+                self.assertIn("workbench", invoke_automa(*args).stdout)
+        for args in (("hosts", "help"), ("hosts", "--help")):
+            with self.subTest(args=args):
+                self.assertNotIn("workbench", invoke_automa(*args).stdout)
+        details = invoke_automa("workbench", "--help").stdout
+        self.assertIn("usage: automa workbench", details)
+        self.assertIn("source_dir", details)
+        self.assertIn("--serve", details)
+        self.assertIn("--perception-preset", details)
+
+    def test_workbench_parses_a_source_directly_with_replay_options(self) -> None:
+        parser = build_parser()
+        defaults = parser.parse_args(["workbench", "images"])
+        self.assertEqual((defaults.command, defaults.source_dir), ("workbench", "images"))
+        self.assertEqual((defaults.cadence_ms, defaults.pace, defaults.max_frames), (250, "fixed", 512))
+        self.assertEqual((defaults.host, defaults.port, defaults.serve, defaults.open_browser),
+                         ("127.0.0.1", 0, False, False))
+        selected = parser.parse_args([
+            "workbench", "recording", "--cadence-ms", "0", "--pace", "realtime",
+            "--max-frames", "1024", "--host", "localhost", "--port", "9000", "--serve", "--open",
+        ])
+        self.assertEqual((selected.source_dir, selected.cadence_ms, selected.pace, selected.max_frames),
+                         ("recording", 0, "realtime", 1024))
+        self.assertEqual((selected.host, selected.port, selected.serve, selected.open_browser),
+                         ("localhost", 9000, True, True))
+
+    def test_workbench_requires_a_source_and_rejects_the_old_command(self) -> None:
+        parser = build_parser()
+        for args in (
+            ["workbench"],
+            ["hosts", "workbench", "replay", "images"],
+            ["workbench", "replay", "images"],
+        ):
+            with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
+                with self.assertRaises(SystemExit) as caught:
+                    parser.parse_args(args)
+                self.assertEqual(caught.exception.code, 2)
+
     def test_operator_journey_parses(self) -> None:
         parser = build_parser()
         for args in (

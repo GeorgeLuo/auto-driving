@@ -6,7 +6,7 @@ from io import StringIO
 from unittest import mock
 from urllib.request import urlopen
 
-from cli.automa_cli.hosts.workbench import run_workbench_replay
+from cli.automa_cli.workbench.replay import run_workbench_replay
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
 
@@ -28,7 +28,7 @@ class WorkbenchTests(unittest.TestCase):
                     self.assertIn('<a class="nav" href="/workbench/">Workbench</a>', response.read().decode())
                 raise KeyboardInterrupt
 
-            with mock.patch("cli.automa_cli.hosts.workbench.open_view_message", side_effect=open_view) as launch:
+            with mock.patch("cli.automa_cli.workbench.replay.open_view_message", side_effect=open_view) as launch:
                 result = run_workbench_replay(root, cadence_ms=0, open_browser=True, output=output)
 
         launch.assert_called_once_with(opened[0])
@@ -39,8 +39,7 @@ class WorkbenchTests(unittest.TestCase):
     def test_cli_replay_human_output_names_recovery_and_cleanup(self) -> None:
         with image_source(1) as root:
             result = invoke_automa(
-                "hosts", "workbench",
-                "replay",
+                "workbench",
                 str(root),
                 "--cadence-ms",
                 "0",
@@ -66,7 +65,7 @@ class WorkbenchTests(unittest.TestCase):
                     for step, _, _ in cases}
 
         with image_source(1) as root:
-            command = ("hosts", "workbench", "replay", str(root), "--cadence-ms", "0")
+            command = ("workbench", str(root), "--cadence-ms", "0")
             implicit = selections(invoke_automa(*command).stdout)
             for step, preset, plugins in cases:
                 with self.subTest(step=step):
@@ -96,7 +95,7 @@ class WorkbenchTests(unittest.TestCase):
                 (("--memory-plugin", "missing"), "unknown memory plugin(s) missing"),
             ):
                 result = invoke_automa(
-                    "hosts", "workbench", "replay", str(root), *args, check=False
+                    "workbench", str(root), *args, check=False
                 )
                 self.assertEqual(result.returncode, 2, args)
                 self.assertIn(message, result.stdout + result.stderr, args)

@@ -1,0 +1,11 @@
+"""``automa workbench``: replay local images through the controller steps.
+
+- ``commands``: the top-level parser and replay handler.
+- ``replay``: CLI replay lifecycle and terminal output.
+- ``runner``: replay state and playback controls, also used by the runtime viewer.
+- ``source`` and ``frames``: image normalization and frame execution, shared with
+  ``plugins inspect``.
+- ``plugins`` and ``presentation``: selectable plugins and displayed step results.
+
+The viewer's server, contracts and page assets live in ``frontend``.
+"""

@@ -33,7 +33,7 @@ RUN_KEYS = ("plugin_id", "status", "error", "signal_count", "thing_count")
 
 
 def automa(*args: str) -> list[str]:
-    return [sys.executable, str(ROOT / "cli/automa"), "hosts", *args]
+    return [sys.executable, str(ROOT / "cli/automa"), *args]
 
 
 def inspect_report() -> dict:
@@ -86,7 +86,7 @@ def serve():
         probe.bind(("127.0.0.1", 0))
         port = probe.getsockname()[1]
     command = automa(
-        "workbench", "replay", str(SOURCE), "--serve", "--port", str(port), "--cadence-ms", "0",
+        "workbench", str(SOURCE), "--serve", "--port", str(port), "--cadence-ms", "0",
         "--perception-preset", PERCEPTION_PRESET,
     )
     server = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)

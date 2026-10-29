@@ -8,7 +8,6 @@ import sys
 from autonomy.decision_cycle.activation import DECISION_STEPS
 from autonomy.decision_cycle.steps import STEP_RUNNERS
 
-from ..shared.selection_args import add_selection_args
 from ..shared.timeout_input import validate_timeout_input
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
 from .automation import (
@@ -24,9 +23,6 @@ from .decision_steps import get_host_step_info
 from .memory import get_host_memory_info, reset_host_memory
 from .step_activations import HOST_PROVIDERS
 from .perception import get_host_perception_info
-from .workbench import run_workbench_replay
-from .workbench_plugins import WORKBENCH_SELECTABLE_STEPS
-from .workbench_source import WORKBENCH_DEFAULT_MAX_FRAMES
 from .streaming import serve_host_viewer
 
 
@@ -40,7 +36,6 @@ def register_hosts(subcommands: argparse._SubParsersAction) -> None:
     _register_hosts_viewer(host_commands)
     _register_hosts_lifecycle(host_commands)
     _register_hosts_memory(host_commands)
-    _register_hosts_workbench(host_commands)
     _register_hosts_info(host_commands)
 
 
@@ -281,98 +276,6 @@ def _register_hosts_memory(host_commands: argparse._SubParsersAction) -> None:
     memory_reset.set_defaults(handler=_handle_hosts_memory_reset)
 
 
-def _register_hosts_workbench(host_commands: argparse._SubParsersAction) -> None:
-    workbench = host_commands.add_parser(
-        "workbench",
-        help="Replay images through the decision playback workbench.",
-    )
-    workbench.set_defaults(handler=_handle_hosts_workbench_help)
-    workbench_commands = workbench.add_subparsers(
-        dest="workbench_command",
-        required=True,
-    )
-    workbench_help = workbench_commands.add_parser(
-        "help",
-        help="Show workbench-level commands.",
-    )
-    workbench_help.set_defaults(handler=_handle_hosts_workbench_help)
-    workbench_replay = workbench_commands.add_parser(
-        "replay",
-        help=(
-            "Replay an ordered image directory through perception, memory, "
-            "proposals, and decisions."
-        ),
-        description=(
-            "Run the bounded decision playback workbench against an ordered "
-            "local image directory. The server owns source ordering, perception, "
-            "observation, bounded memory, decision state, and any selected "
-            "packaged plugins. Recorded perception and memory runs preserve frame order "
-            "and timestamps. Perception, memory, proposal and plan each start from a packaged preset "
-            "or an ordered plugin list, as the inspect and update commands take "
-            "them; a preset keeps its plugin configs. Page checkboxes retain the order "
-            "of selected plugins and append newly checked plugins. A one-plugin step "
-            "is a single choice and cannot be cleared. A changed ordered "
-            "selection uses default configs for that step; the other steps keep their "
-            "selections and configs. The same ordered selection keeps the current "
-            "configs and pass. Without --serve, one replay runs "
-            "to a terminal state; --serve keeps the viewer's workbench page available for "
-            "pause, step, reset, and another run. Changing a step's plugins in a "
-            "running or paused served replay rebuilds every step's pipeline "
-            "and replays from the first frame to the displayed frame before returning."
-        ),
-    )
-    workbench_replay.add_argument(
-        "source_dir",
-        help="Directory containing supported images and optional ordered manifest.",
-    )
-    for step_name in WORKBENCH_SELECTABLE_STEPS:
-        add_selection_args(workbench_replay, step_name, verb="replay", flag_prefix=f"{step_name}-")
-    workbench_replay.add_argument(
-        "--cadence-ms",
-        type=int,
-        default=250,
-        help="Delay between frames in milliseconds (default: 250; zero means as fast as possible).",
-    )
-    workbench_replay.add_argument(
-        "--pace",
-        choices=("fixed", "realtime"),
-        default="fixed",
-        help="Playback pacing mode (realtime honors recorded frame timestamps; default: fixed).",
-    )
-    workbench_replay.add_argument(
-        "--max-frames",
-        type=int,
-        default=WORKBENCH_DEFAULT_MAX_FRAMES,
-        help=(
-            "Maximum normalized frames accepted from the source "
-            f"(default: {WORKBENCH_DEFAULT_MAX_FRAMES})."
-        ),
-    )
-    workbench_replay.add_argument(
-        "--host",
-        default="127.0.0.1",
-        help="Loopback host for --serve (default: 127.0.0.1).",
-    )
-    workbench_replay.add_argument(
-        "--port",
-        type=int,
-        default=0,
-        help="Loopback port for --serve (default: choose a free port).",
-    )
-    workbench_replay.add_argument(
-        "--serve",
-        action="store_true",
-        help="Keep serving the viewer, with this replay on its workbench page.",
-    )
-    workbench_replay.add_argument(
-        "--open",
-        dest="open_browser",
-        action="store_true",
-        help="Open the viewer's workbench page in a browser and imply --serve.",
-    )
-    workbench_replay.set_defaults(handler=_handle_hosts_workbench_replay)
-
-
 def _register_hosts_info(host_commands: argparse._SubParsersAction) -> None:
     info = host_commands.add_parser("info", help="Inspect locally staged controller configuration.")
     info_commands = info.add_subparsers(dest="info_command", required=True)
@@ -457,7 +360,6 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "- status      show each host's state and attachment",
                 "- info        inspect staged controller configuration",
                 "- memory      reset live memory",
-                "- workbench   replay images through the controller steps",
                 "- viewer      open a host's runtime viewer",
                 "- help        show this summary",
                 "",
@@ -613,47 +515,6 @@ def _handle_hosts_memory_reset(args: argparse.Namespace) -> int:
         host_name=args.host_name,
         timeout_s=args.timeout_s,
         json_output=args.json,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_workbench_help(args: argparse.Namespace) -> int:
-    print(
-        "\n".join(
-            [
-                "automa hosts workbench commands",
-                "",
-                (
-                    "- replay  replay an ordered image directory through perception, "
-                    "memory, proposals, and decisions"
-                ),
-                "- help    show this summary",
-                "",
-                "Detailed help:",
-                "- ./cli/automa hosts workbench replay --help",
-            ]
-        )
-    )
-    return 0
-
-
-def _handle_hosts_workbench_replay(args: argparse.Namespace) -> int:
-    result = run_workbench_replay(
-        args.source_dir,
-        selections={
-            step: (getattr(args, f"{step}_preset"), getattr(args, f"{step}_plugins"))
-            for step in WORKBENCH_SELECTABLE_STEPS
-        },
-        cadence_ms=args.cadence_ms,
-        pace=args.pace,
-        max_frames=args.max_frames,
-        host=args.host,
-        port=args.port,
-        serve=args.serve,
-        open_browser=args.open_browser,
-        output=sys.stdout,
     )
     if result.message:
         print(result.message)

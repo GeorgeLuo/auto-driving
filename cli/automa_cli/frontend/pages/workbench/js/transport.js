@@ -9,9 +9,43 @@ var pendingResume = false;
 var scrubPosition = null;
 var seekQueued = null;
 var seekInFlight = false;
+var seekRequestId = 0;
+var seekTarget = null;
 var loopDraft = null;
 var pendingLoop = null;
 var loopInFlight = false;
+var statePollGeneration = 0;
+function beginStateRequest(action) {
+  var exclusive = action && !playbackControlAction(action) && action !== "set_loop";
+  if (exclusive) stateRequestGeneration += 1;
+  if (action) statePollGeneration += 1;
+  return {
+    action: action,
+    exclusive: exclusive,
+    generation: stateRequestGeneration,
+    pollGeneration: statePollGeneration,
+    runId: (state && state.run_id) || null
+  };
+}
+function stateRequestIsCurrent(request, next) {
+  if (request.generation !== stateRequestGeneration) return false;
+  if (!request.action) return request.pollGeneration === statePollGeneration;
+  var currentRun = (state && state.run_id) || null;
+  if (request.action === "start" || request.action === "reset") {
+    return currentRun === request.runId || (next && currentRun === (next.run_id || null));
+  }
+  return currentRun === request.runId && (!next || (next.run_id || null) === request.runId);
+}
+function acceptStateResponse(request, next) {
+  if (!stateRequestIsCurrent(request, next)) return false;
+  if (request.action) {
+    // Invalidate earlier polls and controls when a frame-boundary action commits.
+    // Lightweight controls must leave a pending plugin selection current.
+    statePollGeneration += 1;
+    if (request.exclusive) request.generation = ++stateRequestGeneration;
+  }
+  return true;
+}
 function parseCadence(raw) {
   var value = String(raw || "").trim().toLowerCase();
   if (value === "realtime" || value === "real") return { pace: "realtime" };
@@ -42,6 +76,7 @@ function flushLoop() {
   var on = pendingLoop;
   pendingLoop = null;
   loopInFlight = true;
+  var request = beginStateRequest("set_loop");
   var body = { action: "set_loop", loop: on };
   var runId = selectedRunId("set_loop");
   if (runId) body.run_id = runId;
@@ -58,6 +93,10 @@ function flushLoop() {
   }).then(function (result) {
     loopInFlight = false;
     var next = result.payload && result.payload.state;
+    if (!acceptStateResponse(request, next)) {
+      if (pendingLoop !== null) flushLoop();
+      return;
+    }
     var controls = next && next.controls;
     if (controls && typeof controls.loop === "boolean") {
       if (state && state.controls) state.controls.loop = controls.loop;
@@ -76,25 +115,24 @@ function flushLoop() {
     if (pendingLoop !== null) flushLoop();
   }).catch(function (error) {
     loopInFlight = false;
-    setNotice("Workbench connection failed: " + error);
+    if (stateRequestIsCurrent(request)) setNotice("Workbench connection failed: " + error);
     if (pendingLoop !== null) flushLoop();
   });
 }
 function playbackControlAction(name) {
   return name === "pause" || name === "resume" || name === "set_cadence";
 }
-async function action(action, extra) {
-  if (actionInFlight) return;
-  var requestGeneration = ++stateRequestGeneration;
-  actionInFlight = true;
-  var skipViewer = playbackControlAction(action);
-  if (["start", "validate", "reset"].indexOf(action) >= 0) clearRecordSelection();
-  if (["start", "reset"].indexOf(action) >= 0) cadenceDraft = false;
+var controlInFlight = false;
+// Pause, resume, and cadence stay available while a plugin change waits out a
+// slow frame. They must not cancel that change or take its in-flight flag.
+async function controlAction(action, extra) {
+  if (controlInFlight) return;
+  controlInFlight = true;
+  var request = beginStateRequest(action);
   var body = { action: action };
   var runId = selectedRunId(action);
   if (runId) body.run_id = runId;
   if (extra) Object.keys(extra).forEach(function (key) { body[key] = extra[key]; });
-  if (!skipViewer) setNotice("");
   try {
     var response = await fetch("api/action", {
       method: "POST",
@@ -102,12 +140,65 @@ async function action(action, extra) {
       body: JSON.stringify(body)
     });
     var payload = await response.json();
-    if (payload.state && requestGeneration === stateRequestGeneration) {
+    if (!acceptStateResponse(request, payload.state)) return;
+    if (!response.ok || payload.ok === false) {
+      setNotice((payload && payload.message) || "Action was rejected.");
+      return;
+    }
+    if (!payload.state) return;
+    if (actionInFlight && state) {
+      state.phase = payload.state.phase;
+      state.controls = payload.state.controls;
+      renderControls();
+      return;
+    }
+    render(payload.state, { skipViewer: true });
+  } catch (error) {
+    if (stateRequestIsCurrent(request)) setNotice("Workbench connection failed: " + error);
+  } finally {
+    controlInFlight = false;
+    flushSeek();
+    flushResume();
+  }
+}
+async function action(action, extra) {
+  if (action === "resume" && seekInFlight) { pendingResume = true; return; }
+  if (playbackControlAction(action)) return controlAction(action, extra);
+  if (actionInFlight) return;
+  var request = beginStateRequest(action);
+  actionInFlight = true;
+  var skipViewer = playbackControlAction(action);
+  if (action === "reset" && seekInFlight) {
+    seekRequestId += 1;
+    seekInFlight = false;
+    seekQueued = null;
+    seekTarget = null;
+    pendingResume = false;
+  }
+  if (["start", "validate", "reset"].indexOf(action) >= 0) clearRecordSelection();
+  if (["start", "reset"].indexOf(action) >= 0) cadenceDraft = false;
+  var body = { action: action };
+  var runId = selectedRunId(action);
+  if (runId) body.run_id = runId;
+  if (extra) Object.keys(extra).forEach(function (key) { body[key] = extra[key]; });
+  if (!skipViewer) setNotice("");
+  if (action === "select_plugins") {
+    setNotice(state && state.phase === "paused" ? "Refreshing frame…" : "Applying selection…", true);
+  }
+  try {
+    var response = await fetch("api/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    var payload = await response.json();
+    if (!acceptStateResponse(request, payload.state)) return;
+    if (payload.state) {
       actionInFlight = false;
       render(payload.state, { skipViewer: skipViewer });
     }
     if (!response.ok || payload.ok === false) {
-      if (requestGeneration === stateRequestGeneration) {
+      if (stateRequestIsCurrent(request, payload.state)) {
         if (action === "select_plugins") {
           revertPluginDraft(extra && extra.step);
           if (payload.state) render(payload.state);
@@ -116,7 +207,7 @@ async function action(action, extra) {
       }
       return;
     }
-    if (requestGeneration === stateRequestGeneration) {
+    if (stateRequestIsCurrent(request, payload.state)) {
       if (action === "validate") setNotice("Source and plugin configuration validated.");
       if (action === "select_plugins") setNotice("Plugin selection applied.");
       if (action === "select_plugins") {
@@ -127,7 +218,7 @@ async function action(action, extra) {
       if (action === "start") settlePluginDraft();
     }
   } catch (error) {
-    if (requestGeneration === stateRequestGeneration) {
+    if (stateRequestIsCurrent(request)) {
       if (action === "select_plugins") {
         revertPluginDraft(extra && extra.step);
         render();
@@ -136,7 +227,7 @@ async function action(action, extra) {
     }
   } finally {
     actionInFlight = false;
-    if (requestGeneration === stateRequestGeneration) renderControls();
+    if (stateRequestIsCurrent(request)) renderControls();
     schedulePoll(pollDelay());
     flushSeek();
     flushResume();
@@ -162,8 +253,17 @@ function renderControls() {
   elements.cadence.disabled = !state;
   var liveReplay = Boolean(state) && (state.phase === "running" || state.phase === "paused");
   elements.sourceDir.disabled = liveReplay;
+  var frame = currentFrame();
+  var historical = liveReplay && frame && state.latest_processed_position != null &&
+    frame.position !== state.latest_processed_position;
+  elements.historicalSelection.hidden = !historical;
+  elements.latestFrameButton.hidden = !historical;
+  elements.latestFrameButton.disabled = actionInFlight;
   renderPlugins();
 }
+elements.latestFrameButton.addEventListener("click", function () {
+  queueSeek(state.latest_processed_position);
+});
 elements.startButton.addEventListener("click", function () {
   var cadence = cadencePayload();
   if (!cadence) {
@@ -237,21 +337,50 @@ function showScrubImage(position) {
 }
 function queueSeek(position) {
   seekQueued = position;
-  if (!seekInFlight && !actionInFlight) flushSeek();
+  if (!scrubbing) flushSeek();
 }
 function flushSeek() {
-  if (seekQueued == null || seekInFlight || actionInFlight) return;
+  if (seekQueued == null || scrubbing || actionInFlight || controlInFlight) return;
   var position = seekQueued;
   seekQueued = null;
+  seekTarget = position;
   seekInFlight = true;
-  action("seek", { position: position }).then(function () {
+  var id = ++seekRequestId;
+  var request = beginStateRequest("seek");
+  setNotice("Processing frames to " + position + "…", true);
+  fetch("api/action", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "seek", run_id: selectedRunId("seek"), position: position })
+  }).then(function (response) {
+    return response.json().then(function (payload) { return {ok: response.ok, payload: payload}; });
+  }).then(function (result) {
+    if (id !== seekRequestId) return;
     seekInFlight = false;
+    seekTarget = null;
+    if (!acceptStateResponse(request, result.payload.state)) return;
+    if (result.payload.state) render(result.payload.state);
+    if (!result.ok || result.payload.ok === false) {
+      pendingResume = false;
+      setNotice(result.payload.message || "Seek was rejected.");
+    } else {
+      setNotice("");
+    }
+  }).catch(function (error) {
+    if (id !== seekRequestId) return;
+    seekInFlight = false;
+    seekTarget = null;
+    pendingResume = false;
+    if (stateRequestIsCurrent(request)) setNotice("Workbench connection failed: " + error);
+  }).finally(function () {
+    if (id !== seekRequestId) return;
     flushSeek();
+    flushPluginSelection();
     flushResume();
   });
 }
 function flushResume() {
-  if (!pendingResume || scrubbing || seekInFlight || seekQueued != null || actionInFlight) return;
+  if (!pendingResume || scrubbing || seekInFlight || seekQueued != null || actionInFlight || controlInFlight) return;
   pendingResume = false;
   if (state && state.phase === "paused") action("resume");
 }
@@ -282,6 +411,7 @@ function onSeekInput() {
 function endScrub() {
   if (!scrubbing) return;
   scrubbing = false;
+  flushSeek();
   if (resumeAfterScrub) {
     pendingResume = true;
     flushResume();

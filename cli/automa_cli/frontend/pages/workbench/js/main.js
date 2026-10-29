@@ -38,7 +38,7 @@ function render(nextState, options) {
   elements.seekBar.max = String(lastIndex);
   elements.seekBar.disabled = total === 0 || !state ||
     (state.phase !== "running" && state.phase !== "paused" && !scrubbing);
-  if (!scrubbing && document.activeElement !== elements.seekBar) {
+  if (!scrubbing && !seekInFlight && document.activeElement !== elements.seekBar) {
     var frame = currentFrame();
     var position = frame && frame.position != null ? Number(frame.position) : Math.max(completed - 1, 0);
     elements.seekBar.value = String(Math.min(Math.max(position, 0), lastIndex));
@@ -57,13 +57,9 @@ function render(nextState, options) {
     paintLoopToggle(controls.loop);
   }
   if (!options.skipViewer) {
-    if (scrubbing) {
-      var live = state.current_frame;
-      if (live && Number(live.position) === scrubPosition) {
-        renderFrame();
-      }
-    } else {
-      renderFrame();
+    if (!scrubbing && !seekInFlight) renderFrame();
+    if (seekInFlight && seekTarget !== null) {
+      elements.notice.textContent = "Processing frames to " + seekTarget + " (" + text(state.latest_processed_position, "0") + ")…";
     }
     var stepsKey = text(state.run_id, "") + ":" + text(state.steps_revision, "");
     if (stepsKey !== renderedStepsKey) {
@@ -77,18 +73,20 @@ function render(nextState, options) {
   renderControls();
 }
 async function poll() {
-  if (pollInFlight || actionInFlight) {
+  // An action request can sit on the server for a whole frame. Keep reading
+  // state so the picture and the controls stay live while it does.
+  if (pollInFlight) {
     schedulePoll(pollDelay());
     return;
   }
   pollInFlight = true;
-  var requestGeneration = stateRequestGeneration;
+  var request = beginStateRequest();
   try {
     var response = await fetch("api/state", { cache: "no-store" });
     var payload = response.ok ? await response.json() : null;
-    if (payload && requestGeneration === stateRequestGeneration) render(payload);
+    if (payload && acceptStateResponse(request, payload)) render(payload);
   } catch (error) {
-    if (requestGeneration === stateRequestGeneration) {
+    if (stateRequestIsCurrent(request)) {
       setNotice("Workbench connection failed: " + error);
     }
   } finally {

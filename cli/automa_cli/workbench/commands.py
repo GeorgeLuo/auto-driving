@@ -28,13 +28,14 @@ def register_workbench(subcommands: argparse._SubParsersAction) -> None:
             "them; a preset keeps its plugin configs. Page checkboxes retain the order "
             "of selected plugins and append newly checked plugins. A one-plugin step "
             "is a single choice and cannot be cleared. A changed ordered "
-            "selection uses default configs for that step; the other steps keep their "
+            "selection preserves retained plugins and their configs; new plugins use defaults. Other steps keep their "
             "selections and configs. The same ordered selection keeps the current "
             "configs and pass. Without --serve, one replay runs "
             "to a terminal state; --serve keeps the viewer's workbench page available for "
             "pause, step, reset, and another run. Changing a step's plugins in a "
-            "running or paused served replay rebuilds every step's pipeline "
-            "and replays from the first frame to the displayed frame before returning."
+            "running replay applies on the next frame without replaying history. While paused, "
+            "it refreshes only the latest frame from its pre-frame state. Return to the latest "
+            "frame before editing plugins after a backward seek. Reset and Start replay from the beginning."
         ),
     )
     workbench.add_argument(

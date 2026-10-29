@@ -39,7 +39,11 @@
             <span>Plugins</span>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
           </summary>
-          <div class="sidebar-group-body plugin-sections" id="pluginSections"></div>
+          <div class="sidebar-group-body">
+            <div class="plugin-sections" id="pluginSections"></div>
+            <p id="historicalSelection" class="muted" hidden>Viewing historical results. Return to the latest frame to edit plugins.</p>
+            <button type="button" id="latestFrameButton" class="text-action" hidden>Return to latest frame</button>
+          </div>
         </details>
       </div>
     </aside>

@@ -179,7 +179,7 @@ class WorkbenchTests(unittest.TestCase):
                 urlopen(base + blocked, timeout=2)
             self.assertEqual(caught.exception.code, 404)
 
-    def test_loopback_api_selection_reprocesses_the_displayed_frame(self) -> None:
+    def test_loopback_api_selection_applies_on_the_next_frame(self) -> None:
         with image_source(3) as root:
             runner = ImageReplayRunner(cadence_ms=30000)
             base = serve_workbench(self, runner)
@@ -213,19 +213,25 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(
                 selected["state"]["active_perception_plugin_ids"], ["floor_continuity"]
             )
+            # A running change waits for the next frame. The displayed result
+            # stays the one already computed.
+            shown = selected["state"]
+            self.assertEqual(shown["phase"], "running")
+            self.assertEqual(shown["position"], 1)
+            self.assertEqual(shown["current_frame"]["frame_id"], first_id)
+            self.assertEqual(
+                [run["plugin_id"] for run in shown["steps"]["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
+            post({"action": "pause", "run_id": run_id})
+            stepped = post({"action": "step", "run_id": run_id})["state"]
+            self.assertEqual(
+                [run["plugin_id"] for run in stepped["steps"]["perception"]["plugin_runs"]],
+                ["floor_continuity"],
+            )
             post({"action": "reset", "run_id": run_id})
 
-        # The response already shows the displayed frame under the new
-        # selection, without waiting out the cadence.
-        reprocessed = selected["state"]
-        self.assertEqual(reprocessed["position"], 1)
-        self.assertEqual(reprocessed["current_frame"]["frame_id"], first_id)
-        self.assertEqual(
-            [run["plugin_id"] for run in reprocessed["steps"]["perception"]["plugin_runs"]],
-            ["floor_continuity"],
-        )
-
-    def test_running_empty_selection_reprocesses_the_displayed_frame(self) -> None:
+    def test_running_empty_selection_applies_on_the_next_frame(self) -> None:
         with image_source(3) as root:
             runner = ImageReplayRunner(
                 root,
@@ -250,8 +256,14 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(selected["active_perception_plugin_ids"], [])
             self.assertEqual(selected["position"], 1)
             self.assertEqual(selected["current_frame"]["frame_id"], first_id)
-            self.assertEqual(list(selected["steps"]["perception"]["plugin_runs"] or ()), [])
-            self.assertEqual(selected["steps"]["perception"]["status"], "empty")
+            self.assertEqual(
+                [run["plugin_id"] for run in selected["steps"]["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
+            runner.dispatch("pause", run_id=run_id)
+            stepped = runner.dispatch("step", run_id=run_id)
+            self.assertEqual(list(stepped["steps"]["perception"]["plugin_runs"] or ()), [])
+            self.assertEqual(stepped["steps"]["perception"]["status"], "empty")
             runner.dispatch("reset", run_id=run_id)
 
     def test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv(

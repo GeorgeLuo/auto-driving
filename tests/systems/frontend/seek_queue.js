@@ -9,6 +9,7 @@ const ctx = {
   imageRequestGeneration: 0, lastImageKey: "", loadedImageKey: "",
   Image: function () {}, window: { addEventListener() {} },
   text: (v) => String(v), setText() {}, setNotice() {}, setButton() {}, renderPlugins() {},
+  currentFrame() { return ctx.state && ctx.state.current_frame; },
   selectedRunId: () => "run-1", clearRecordSelection() {}, schedulePoll() {}, pollDelay: () => 0,
   settlePluginDraft() {}, revertPluginDraft() {},
   render(next) { if (next) ctx.state = next; },
@@ -50,8 +51,9 @@ elements.seekBar.max = "9";
   ctx.beginScrub(); scrubTo(3);
   eq(sent, ["pause"], "scrubbing a running replay pauses it first");
   await reply("paused");
-  eq(sent, ["pause", "seek:3"], "seek sent after the pause");
+  eq(sent, ["pause"], "dragging previews without sending intermediate seeks");
   ctx.endScrub();
+  eq(sent, ["pause", "seek:3"], "final seek sent on release");
   pluginToggleWaiting = true;
   await reply("paused");
   eq(sent, ["pause", "seek:3", "select_plugins"], "plugin selection goes out after the seek");
@@ -60,5 +62,25 @@ elements.seekBar.max = "9";
   eq(sent, ["pause", "seek:3", "select_plugins", "resume"], "resume sent once the selection settled");
   await reply("running");
   eq(ctx.pendingResume, false, "nothing left pending");
+
+  // A second drag supersedes an unfinished catch-up; an old answer cannot
+  // replace the newer frame or leave the seek marked in flight.
+  sent.length = 0;
+  ctx.state = snapshot("paused");
+  ctx.beginScrub(); scrubTo(8); ctx.endScrub();
+  ctx.beginScrub(); scrubTo(2); ctx.endScrub();
+  eq(sent, ["seek:8", "seek:2"], "new seek is sent without waiting for catch-up");
+  replies[1]("paused"); replies.splice(1, 1); await settle();
+  eq(ctx.seekInFlight, false, "latest seek is settled");
+  replies.shift()("running"); await settle();
+  eq(ctx.state.phase, "paused", "late old response cannot overwrite latest state");
+
+  // pause is sent even while a slower action still owns actionInFlight
+  sent.length = 0;
+  ctx.actionInFlight = true;
+  ctx.state = snapshot("running");
+  ctx.action("pause");
+  eq(sent, ["pause"], "pause is sent while another action is in flight");
+  ctx.actionInFlight = false;
   console.log("seek ok");
 })();

@@ -255,6 +255,7 @@ h3, .kicker {
   color: var(--fg);
 }
 .text-action:disabled { cursor: not-allowed; opacity: .38; }
+.text-action[hidden] { display: none; }
 .text-action.selected, .text-action[aria-pressed="true"] {
   border-color: rgba(255, 255, 255, 0.3);
   background: var(--fill);

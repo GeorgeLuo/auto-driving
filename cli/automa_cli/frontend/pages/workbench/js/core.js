@@ -18,7 +18,7 @@ var elements = {};
   "progressText", "seekBar", "perceptionSummary", "perceptionPluginRuns",
   "perceptionCounts", "perceptionLines", "sourceDir", "cadence", "loopToggle", "overlayToggle",
   "startButton", "pauseButton", "resumeButton", "stepButton",
-  "resetButton", "notice", "pluginSections",
+  "resetButton", "notice", "pluginSections", "historicalSelection", "latestFrameButton",
   "memorySelection", "memoryHealth", "memoryPlugins",
   "memoryPublisher", "memoryEpoch", "memoryCount", "memoryPolicy", "memoryDrops", "memoryDropsSummary", "memoryDropsText",
   "memorySearch", "memoryRecords", "failurePanel", "failureText",
@@ -27,14 +27,14 @@ var elements = {};
 ].forEach(function (id) { elements[id] = document.getElementById(id); });
 var noticeTimer = null;
 var SOURCE_DIR_KEY = "automa-workbench-source-dir";
-function setNotice(message) {
+function setNotice(message, persistent) {
   if (noticeTimer !== null) {
     window.clearTimeout(noticeTimer);
     noticeTimer = null;
   }
   elements.notice.classList.remove("is-fading");
   elements.notice.textContent = message || "";
-  if (!message) return;
+  if (!message || persistent) return;
   void elements.notice.offsetWidth;
   noticeTimer = window.setTimeout(function () {
     elements.notice.classList.add("is-fading");

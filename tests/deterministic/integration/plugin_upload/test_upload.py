@@ -287,7 +287,8 @@ class PluginUploadFlows(unittest.TestCase):
             bundle = controller_bundle_paths(runtime_root / "chase-sim-chaser")
             chase = self.enterContext(chase_runtime(runtime_root))
             viewer = RuntimeViewServer(host_name="chase-sim-chaser", automation_dir=Path(bundle["runtime_dir"]) / "automation",
-                                       port=0, plugin_catalog=PluginCatalogClient(chase.base_url)).start()
+                                       port=0, plugin_catalog=PluginCatalogClient(chase.base_url),
+                                       replay_runner_factory=ImageReplayRunner).start()
             self.addCleanup(viewer.stop)
             file = root / "prototype.py"
             file.write_text("from dependency_can_arrive_later import Prototype\n")

@@ -9,6 +9,7 @@ from pathlib import Path
 from PIL import Image
 
 from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.workbench.runner import ImageReplayRunner
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.cli_runner import WORKSPACE_ROOT as ROOT
 from tests.support.runtime_fixtures import write_runtime_fixture
@@ -34,6 +35,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 port=0,
                 run_id="test-run",
                 worker_pid=os.getpid(),
+                replay_runner_factory=ImageReplayRunner,
             ).start()
             frame_path = Path(tmp) / "current-frame.png"
             Image.new("RGB", (16, 12), (20, 40, 60)).save(frame_path)

@@ -52,7 +52,6 @@ RUNTIME_HOST_ROUTES = frozenset({
 })
 # The workbench page and API, answered from a replay runner whether or not a host is connected.
 WORKBENCH_PREFIX = "/workbench"
-WORKBENCH_UNAVAILABLE_ERROR = "no replay runner"
 HOME_PAGE_PATH = PAGES_DIR / "home" / "index.html"
 PERCEPTION_PAGE_PATH = PAGES_DIR / "perception" / "index.html"
 MEMORY_PAGE_PATH = PAGES_DIR / "memory" / "index.html"
@@ -64,8 +63,8 @@ class RuntimeViewServer:
     """Serve peer runtime pages; retain the existing discovery and health contract.
 
     ``hosts`` lists the hosts the home page shows. The workbench serves
-    ``replay_runner``, or one ``replay_runner_factory`` builds on the first
-    visit; with neither, its routes answer 503.
+    ``replay_runner``, or the one ``replay_runner_factory`` builds on the first
+    visit; the server needs one of the two.
     """
 
     def __init__(
@@ -85,6 +84,8 @@ class RuntimeViewServer:
         replay_runner_factory: Callable[[], ReplayRunner] | None = None,
     ) -> None:
         validate_loopback_host(host, owner="runtime view")
+        if replay_runner is None and replay_runner_factory is None:
+            raise TypeError("RuntimeViewServer needs replay_runner or replay_runner_factory")
         self.host_name = host_name
         self.connected = connected
         self.hosts = hosts
@@ -115,11 +116,11 @@ class RuntimeViewServer:
     def workbench_url(self) -> str | None:
         return f"{self.url}workbench/" if self.url is not None else None
 
-    def replay_runner(self) -> ReplayRunner | None:
+    def replay_runner(self) -> ReplayRunner:
         """Build the viewer's shared replay runner on the first workbench visit."""
 
         with self._replay_runner_lock:
-            if self._replay_runner is None and self._replay_runner_factory is not None:
+            if self._replay_runner is None:
                 self._replay_runner = self._replay_runner_factory()
             return self._replay_runner
 
@@ -274,9 +275,6 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         if not route.startswith(WORKBENCH_PREFIX + "/"):
             return False
         runner = self.server.publisher.replay_runner()
-        if runner is None:
-            self._send_json(503, {"ok": False, "error": WORKBENCH_UNAVAILABLE_ERROR}, include_body=include_body)
-            return True
         self.content_security_policy = WORKBENCH_CONTENT_SECURITY_POLICY
         if not serve_workbench_route(self, runner, route.removeprefix(WORKBENCH_PREFIX), include_body=include_body):
             self._send_json(404, {"error": "not found"}, include_body=include_body)

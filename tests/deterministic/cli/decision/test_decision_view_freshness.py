@@ -9,6 +9,7 @@ from unittest.mock import patch
 from cli.automa_cli.frontend.decision_view import MAX_RETAINED_TRANSACTIONS, DecisionViewError
 from cli.automa_cli.frontend.loopback_http import LoopbackHTTPRequestHandler
 from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.workbench.runner import ImageReplayRunner
 from tests.shared.cli.decision.decision_surfaces_fixtures import STALE_AFTER_MS
 from tests.deterministic.cli.decision.live_runtime_decision_view_fixtures import (
     LiveRuntimeDecisionViewFixture,
@@ -222,6 +223,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             port=old_port,
             run_id="run-replacement",
             decision_identity=self._producer("run-replacement"),
+            replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(replacement.stop)
         replacement_frame, replacement_image = self._publish_exact_transaction(

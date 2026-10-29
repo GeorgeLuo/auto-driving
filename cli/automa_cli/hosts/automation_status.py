@@ -1,7 +1,9 @@
-"""``automa hosts status``: each host's state, and its deployment, run and view.
+"""``automa hosts status``: each host's state, and its deployment, steps, run and view.
 
 A worker's state and process records say how its run went; the host's
-``/host/status`` reports the cycles it is running now.
+``/host/status`` reports the cycles it is running now. Each step's staged
+selection is reported beside the one its host applied and how its runs went,
+so either can be missing or invalid without hiding the other.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ from ..shared.json_files import read_json
 from ..shared.paths import display_path, safe_path_part
 from ..shared.processes import pid_alive
 from . import runtime_hosts
-from .runtime_hosts import RuntimeHostError, running_base_url
+from .runtime_hosts import RuntimeHostError, running_base_url, update_command
 from .host_publications import host_state
 from .host_status import host_block, read_hosts
 from .step_activations import (
@@ -27,7 +29,7 @@ from .step_activations import (
     selection_label,
     staged_selections,
 )
-from .run_record import applied_selections, timestamp_ms
+from .run_record import timestamp_ms
 from .view_discovery import discover_runtime_view
 from ..frontend.perception_view import get_perception_view_status
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
@@ -122,6 +124,7 @@ def _host_runtime_status(
         "published_view": view,
         "steps": autonomy.get("steps"),
         "applied_decision": autonomy.get("applied_decision"),
+        "host_state": host["state"],
     }
 
 
@@ -142,7 +145,7 @@ def get_hosts_status(
     long: bool = False,
     json_output: bool = False,
 ) -> CommandResult:
-    """Each host's state and attachment; ``long`` adds its deployment, run and view.
+    """Each host's state and attachment; ``long`` adds its deployment, release, steps, run and view.
 
     The JSON carries every host's run. With ``host_name``, exits 1 when that host
     is missing, stopped, not answering, or reports an error. Without it, no
@@ -297,31 +300,32 @@ def collect_automation_status(
         completed_at_ms = _int_or_none(last_frame.get("perception_completed_at_ms"))
         generated_at_ms = timestamp_ms()
 
-        # A running monitor records the steps and decision its host applied.
-        # Otherwise the staged steps are what a start deploys; unstaged ones
-        # run their built-ins or nothing.
+        # The staged steps are what a start deploys; unstaged ones run their
+        # built-ins or nothing. A running monitor records the steps and
+        # decision its host applied; otherwise the host reports them.
         selections = staged_selections(bundle)
+        reports, unreported = (
+            (state.get("steps"), "the run has not reported its steps") if alive else (None, "host not running")
+        )
         try:
             identity = state.get("decision") if alive else None
             decision = _decision_summary(identity) if identity else _decision_summary(decision_identity(bundle))
         except (OSError, TypeError, ValueError):
             decision = {"deployed": False}
         try:
-            runtime_hosts.release_manifest(name)
-            released = True
+            release = _release_summary(runtime_hosts.release_manifest(name))
         except RuntimeHostError:
-            released = False
+            release = None
 
         statuses.append(
             {
                 "host_name": name,
                 "activation_problems": activation_problems,
-                "deployed": released and decision["deployed"] and not activation_problems,
+                "deployed": release is not None and decision["deployed"] and not activation_problems,
+                "release": release,
                 "bundle_root": display_path(bundle_root),
                 "automation_runtime_exists": automation_dir.exists(),
                 "automation_dir": display_path(automation_dir),
-                "steps": applied_selections(selections, state.get("steps") if alive else None)
-                or selections,
                 "decision": {
                     "activation": display_path(Path(bundle["runtime_dir"])),
                     **decision,
@@ -392,11 +396,64 @@ def collect_automation_status(
                 read=(host_reads or {}).get(name),
             )
             applied = host.pop("applied_decision")
-            statuses[-1]["steps"] = applied_selections(selections, host.pop("steps")) or selections
+            reports, unreported = host.pop("steps"), f"host {host.pop('host_state')}"
             statuses[-1].update(host)
             if applied:
                 statuses[-1]["decision"].update(_decision_summary(applied))
+        statuses[-1].update(_compared_steps(selections, reports, unreported=unreported))
     return statuses
+
+
+def _compared_steps(
+    selections: dict[str, dict[str, Any]], reports: Any, *, unreported: str,
+) -> dict[str, Any]:
+    """Each staged selection with the one its host applied, and whether the host reported them.
+
+    Without the host's step reports every step's ``applied`` is ``None`` and
+    ``applied_steps`` says why; an invalid staged step keeps its host's report.
+    """
+
+    available = isinstance(reports, dict) and any(step in reports for step in selections)
+    return {
+        "steps": {
+            step: {**selection, "applied": _applied_step(reports.get(step)) if available else None}
+            for step, selection in selections.items()
+        },
+        "applied_steps": {"available": available, "reason": None if available else unreported},
+    }
+
+
+def _applied_step(report: Any) -> dict[str, Any]:
+    """A step as its host reports running it; a step it runs no runner for has no plugins.
+
+    ``plugin_configs`` is ``None`` when the host does not report them. ``error``
+    is set when the host could not read the step's report.
+    """
+
+    report = report if isinstance(report, dict) else {}
+    return {
+        "preset": report.get("preset"),
+        "plugins": list(report.get("plugin_ids") or []),
+        "plugin_configs": report.get("plugin_configs") if isinstance(report.get("plugin_configs"), dict) else None,
+        "run_count": _int_or_none(report.get("run_count")),
+        "failure_count": _int_or_none(report.get("failure_count")),
+        "last_error": report.get("last_error") if isinstance(report.get("last_error"), str) else None,
+        "error": report.get("error") if report.get("status") == "error" else None,
+    }
+
+
+def _release_summary(manifest: dict[str, Any]) -> dict[str, Any]:
+    """The packaged release a start deploys: its source tree, archive and manifest."""
+
+    archive = manifest.get("archive") if isinstance(manifest.get("archive"), dict) else {}
+    listed = manifest.get("manifest") if isinstance(manifest.get("manifest"), dict) else {}
+    return {
+        "tree_sha256": manifest.get("tree_sha256"),
+        "created_at_ms": manifest.get("created_at_ms"),
+        "archive_sha256": archive.get("sha256"),
+        "archive": display_path(Path(archive["path"])) if isinstance(archive.get("path"), str) else None,
+        "manifest": display_path(Path(listed["path"])) if isinstance(listed.get("path"), str) else None,
+    }
 
 
 
@@ -410,7 +467,7 @@ def _format_hosts_status(hosts: list[dict[str, Any]], *, long: bool) -> str:
 
 
 def _run_lines(item: dict[str, Any] | None) -> list[str]:
-    """A host's deployment, steps, worker, run and view, under its host block."""
+    """A host's deployment, release, steps, worker, run and view, under its host block."""
 
     if not isinstance(item, dict):
         return []
@@ -421,7 +478,8 @@ def _run_lines(item: dict[str, Any] | None) -> list[str]:
     last_frame = state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
     lines = [
         f"  deployment: {'deployed' if item.get('deployed') else 'not deployed'}",
-        *_selection_lines(item.get("steps")),
+        f"  release: {_release_label(item.get('release'), item.get('host_name'))}",
+        *_selection_lines(item),
         f"  decision: {_decision_label(decision)}",
         f"  worker: {_worker_label(process, state)}",
         f"  run: {_run_label(state)}",
@@ -445,19 +503,71 @@ def _run_lines(item: dict[str, Any] | None) -> list[str]:
 
 
 
-def _selection_lines(selections: Any) -> list[str]:
-    """Every step's selection, under where the selections come from."""
+def _release_label(release: Any, host_name: Any) -> str:
+    if not isinstance(release, dict):
+        return f"none (run `{update_command(str(host_name))}` to package one)"
+    fields = {"archive": release.get("archive"), "manifest": release.get("manifest")}
+    return "  ".join([
+        str(release.get("tree_sha256") or "unknown")[:12],
+        *(f"{name}={value}" for name, value in fields.items() if value),
+    ])
 
+
+
+def _selection_lines(item: dict[str, Any]) -> list[str]:
+    """Every step's staged selection and its source, over the selection its host applied."""
+
+    selections = item.get("steps")
     if not isinstance(selections, dict):
         return []
-    applied = any(item.get("source") == "applied" for item in selections.values())
-    return [
-        f"  steps: {'applied by the running host' if applied else 'staged'}",
-        *(
-            f"    {step}: {selection_label(item.get('preset'), item.get('plugins') or [])}"
-            for step, item in selections.items()
-        ),
+    applied = item.get("applied_steps") if isinstance(item.get("applied_steps"), dict) else {}
+    lines = [
+        "  steps: staged, and applied by the running host"
+        if applied.get("available")
+        else f"  steps: staged; applied unavailable ({applied.get('reason') or 'unknown'})"
     ]
+    for step, selection in selections.items():
+        lines.append(f"    {step}: {_staged_label(selection)}")
+        if isinstance(selection.get("applied"), dict):
+            lines.append(f"      applied: {_applied_label(selection, selection['applied'])}")
+    return lines
+
+
+
+def _staged_label(selection: dict[str, Any]) -> str:
+    source = selection.get("source")
+    if source == "invalid":
+        return "unreadable  source=invalid"
+    if source == "staged":
+        source = f"staged ({'saved' if selection.get('saved') else 'default'})"
+    return f"{selection_label(selection.get('preset'), selection.get('plugins') or [])}  source={source}"
+
+
+
+def _applied_label(selection: dict[str, Any], applied: dict[str, Any]) -> str:
+    """What the host applied beside the staged selection; restaged configs wait for a restart."""
+
+    if applied.get("error"):
+        return f"unavailable ({_status_reason(applied['error'], fallback='its report failed')})"
+    configs, staged = applied.get("plugin_configs"), selection.get("plugin_configs") or {}
+    if selection.get("source") == "invalid" or (
+        (applied.get("preset"), applied.get("plugins")) != (selection.get("preset"), selection.get("plugins"))
+    ):
+        label = selection_label(applied.get("preset"), applied.get("plugins") or [])
+    elif not isinstance(configs, dict):
+        label = "staged plugins, configs not reported"
+    elif configs != staged:
+        differ = [plugin for plugin in dict.fromkeys([*configs, *staged]) if configs.get(plugin) != staged.get(plugin)]
+        label = f"staged plugins, configs differ ({', '.join(differ)})"
+    else:
+        label = "as staged"
+    last_error = applied.get("last_error")
+    fields = {
+        "runs": applied.get("run_count"),
+        "failures": applied.get("failure_count"),
+        "last_error": _status_reason(last_error, fallback="") if last_error else None,
+    }
+    return "  ".join([label, *(f"{name}={value}" for name, value in fields.items() if value is not None)])
 
 
 

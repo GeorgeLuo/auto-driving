@@ -36,10 +36,12 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     )
                     self.assertIn(f"Invalid {step} activation:", human.stdout)
                     self.assertIn(f"Replace it with the step's default: {command}", human.stdout)
+                    self.assertIn(f"\n    {step}: unreadable  source=invalid\n", human.stdout)
                     self.assertNotIn("next:", human.stdout)
                     run = json.loads(invoke_automa(
                         "hosts", "status", "--json", runtime_root=runtime_root, extra_env=env,
                     ).stdout)["hosts"][0]["run"]
+                    self.assertEqual(run["steps"][step]["source"], "invalid")
                     self.assertEqual(run["activation_problems"][0]["step"], step)
                     self.assertEqual(run["activation_problems"][0]["command"], command)
                     self.assertNotIn("recovery", run["process"])
@@ -76,9 +78,9 @@ class StagedActivationRecoveryTests(unittest.TestCase):
             self.assertTrue(updated["deployed"])
             self.assertFalse(updated["process"]["running"])
 
-    def test_info_and_stream_name_the_invalid_step_and_the_update_that_replaces_it(self) -> None:
+    def test_a_decision_stream_names_the_invalid_step_and_the_update_that_replaces_it(self) -> None:
         with fake_metrics_ui_server() as ws_url:
-            for step in ("perception", "memory", *DECISION_STEPS):
+            for step in DECISION_STEPS:
                 with self.subTest(step=step), tempfile.TemporaryDirectory() as tmp:
                     runtime_root = Path(tmp) / "vehicles"
                     write_host_fixture(runtime_root, HOST_NAME)
@@ -87,20 +89,15 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     path.write_text(json.dumps({"schema": f"automa_{step}_activation_v0"}), encoding="utf-8")
                     env = {"CHASE_UI_WS_URL": ws_url}
                     command = f"./cli/automa hosts update --name {HOST_NAME}"
-                    # Each step's info reads its own activation; a decision step's stream reads all three.
-                    surfaces = [("hosts", "info", step, "--name", HOST_NAME)]
-                    if step in DECISION_STEPS:
-                        surfaces.append(("plugins", "stream", "--step", step, "--host-name", HOST_NAME, "--once"))
-                    for surface in surfaces:
-                        result = invoke_automa(
-                            *surface, runtime_root=runtime_root, extra_env=env, check=False,
-                        )
-                        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
-                        self.assertEqual(result.stderr, "")
-                        self.assertIn(f"Invalid {step} activation:", result.stdout)
-                        self.assertIn(f"Replace it with the step's default: {command}", result.stdout)
-                    if step not in DECISION_STEPS:
-                        continue
+                    # A decision step's stream reads all three decision activations.
+                    result = invoke_automa(
+                        "plugins", "stream", "--step", step, "--host-name", HOST_NAME, "--once",
+                        runtime_root=runtime_root, extra_env=env, check=False,
+                    )
+                    self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                    self.assertEqual(result.stderr, "")
+                    self.assertIn(f"Invalid {step} activation:", result.stdout)
+                    self.assertIn(f"Replace it with the step's default: {command}", result.stdout)
                     machine = invoke_automa(
                         "plugins", "stream", "--step", step, "--host-name", HOST_NAME, "--once", "--json",
                         runtime_root=runtime_root, extra_env=env, check=False,

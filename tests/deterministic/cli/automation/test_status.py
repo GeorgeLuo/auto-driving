@@ -174,12 +174,14 @@ class AutomationStatusTests(unittest.TestCase):
             "  chaser at http://localhost:5050/\n"
             "  local host record\n"
             "  deployment: deployed\n"
-            "  steps: staged\n"
+            f"  release: {run['release']['tree_sha256']}\n"
+            "  steps: staged; applied unavailable (the run has not reported its steps)\n"
         ), human.stdout)
+        self.assertEqual(run["applied_steps"], {"available": False, "reason": "the run has not reported its steps"})
         self.assertIn(f"    perception: {steps['perception']['preset']} (", human.stdout)
-        self.assertIn("    memory: (no plugins)\n", human.stdout)
-        self.assertIn("    plan: (no plugins)\n", human.stdout)
-        self.assertIn("    action: selected\n", human.stdout)
+        self.assertIn("    memory: (no plugins)  source=none\n", human.stdout)
+        self.assertIn("    plan: (no plugins)  source=none\n", human.stdout)
+        self.assertIn("    action: selected  source=builtin\n", human.stdout)
         self.assertIn(f"  decision: {run['decision']['generation_id']}\n", human.stdout)
         self.assertIn(f"worker: {run['process']['status']}", human.stdout)
         self.assertIn("log: disabled", human.stdout)

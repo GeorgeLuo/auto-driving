@@ -149,16 +149,55 @@ class LiveCommandsTests(LiveHostTestCase):
                 self.assertTrue(silent.stdout.startswith(f"Cannot view host piracer at {url}: "), silent.stdout)
                 open_view.assert_not_called()
 
-    def test_info_reports_the_hosts_live_state(self) -> None:
+    def test_status_reports_each_staged_step_beside_the_one_the_host_applied(self) -> None:
         self.observe()
-        result = self.automa("info", "perception", "--json")
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        live = json.loads(result.stdout)["live_observation"]
-        self.assertTrue(live["available"], live)
-        self.assertEqual(live["base_url"], self.host.base_url)
-        plan = self.automa("info", "plan", "--json")
-        self.assertEqual(plan.returncode, 0, plan.stdout + plan.stderr)
-        self.assertIsInstance(json.loads(plan.stdout)["live"]["last_duration_ms"], float)
+        machine = self.automa("status", "--json")
+        human = self.automa("status", "--long")
+        self.assertEqual((machine.returncode, human.returncode), (0, 0), human.stdout + human.stderr)
+        run = json.loads(machine.stdout)["hosts"][0]["run"]
+        self.assertEqual(run["applied_steps"], {"available": True, "reason": None})
+        memory = run["steps"]["memory"]
+        self.assertEqual(memory["applied"]["plugins"], memory["plugins"])
+        self.assertGreater(memory["applied"]["run_count"], 0)
+        self.assertIn("\n  steps: staged, and applied by the running host\n", human.stdout)
+        self.assertRegex(
+            human.stdout, r"\n    memory: .+  source=staged \(default\)\n      applied: as staged  runs=[1-9]\d*  failures=0\n"
+        )
+
+    def test_status_names_the_plugins_whose_restaged_configs_the_host_has_not_applied(self) -> None:
+        """Regression: a restaged config with the same plugins read ``as staged`` while the host kept the old one."""
+
+        path = self.runtime_root / HOST_NAME / "bundle/runtime/proposal/active.json"
+        activation = json.loads(path.read_text(encoding="utf-8"))
+        (plugin,) = activation["plugins"]
+        activation["plugin_configs"][plugin]["steer_magnitude"] = 0.9
+        path.write_text(json.dumps(activation), encoding="utf-8")
+        machine = self.automa("status", "--json")
+        human = self.automa("status", "--long")
+        self.assertEqual((machine.returncode, human.returncode), (0, 0), human.stdout + human.stderr)
+        proposal = json.loads(machine.stdout)["hosts"][0]["run"]["steps"]["proposal"]
+        self.assertEqual(
+            (proposal["plugin_configs"][plugin]["steer_magnitude"], proposal["applied"]["plugin_configs"][plugin]["steer_magnitude"]),
+            (0.9, 1.0),
+        )
+        self.assertIn(f"\n      applied: staged plugins, configs differ ({plugin})  runs=", human.stdout)
+
+    def test_status_keeps_an_invalid_staged_step_beside_the_one_the_host_applied(self) -> None:
+        path = self.runtime_root / HOST_NAME / "bundle/runtime/memory/active.json"
+        path.write_text(json.dumps({"schema": "automa_memory_activation_v0"}), encoding="utf-8")
+        machine = self.automa("status", "--json")
+        human = self.automa("status", "--long")
+        self.assertEqual((machine.returncode, human.returncode), (0, 0), human.stdout + human.stderr)
+        run = json.loads(machine.stdout)["hosts"][0]["run"]
+        memory = run["steps"]["memory"]
+        self.assertEqual((memory["source"], memory["plugins"]), ("invalid", []))
+        self.assertEqual(memory["applied"]["plugins"], ["bounded_evidence"])
+        self.assertFalse(run["deployed"])
+        self.assertIn("\n  deployment: not deployed\n", human.stdout)
+        self.assertIn("Invalid memory activation:", human.stdout)
+        self.assertIn(
+            "\n    memory: unreadable  source=invalid\n      applied: bounded_evidence  runs=0  failures=0\n", human.stdout
+        )
 
 
 START_HOST = "Host 'chase-sim-chaser' is not running."

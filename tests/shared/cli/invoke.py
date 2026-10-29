@@ -14,8 +14,6 @@ from unittest import mock
 from cli.automa_cli import app
 from cli.automa_cli.hosts import (
     deploy,
-    memory,
-    perception,
     runtime_hosts,
     view_discovery,
 )
@@ -29,8 +27,6 @@ from tests.support.offline.sitecustomize import offline_getaddrinfo
 IMPORT_TIME_ENV = {
     "AUTOMA_RUNTIME_ROOT": (
         (deploy, "RUNTIME_ROOT"),
-        (memory, "RUNTIME_ROOT"),
-        (perception, "RUNTIME_ROOT"),
         (runtime_hosts, "RUNTIME_ROOT"),
         (created, "RUNTIME_ROOT"),
         (catalog, "RUNTIME_ROOT"),

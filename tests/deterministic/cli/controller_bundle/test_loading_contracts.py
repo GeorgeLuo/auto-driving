@@ -18,9 +18,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from autonomy.runtime.plugin_loader import StagedBundleImport
+from autonomy.runtime.plugin_loader import BUNDLE_PREFIXES, StagedBundleImport, load_runner
 from cli.automa_cli.hosts.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.hosts.step_hosting import BUNDLE_PREFIXES, load_staged_runner
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.controller_bundle.loading_inventory import (
     LEGACY_EXPORTS,
@@ -134,8 +133,8 @@ class LoadingContractTests(unittest.TestCase):
             "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin"
         ).BoundedEvidenceLedger
         metadata = {"controller_bundle": {"root_dir": str(self.bundle_root)}}
-        perception = load_staged_runner(packaged_activation("perception", ["frame"], metadata=metadata))
-        memory = load_staged_runner(packaged_activation("memory", metadata=metadata))
+        perception = load_runner(packaged_activation("perception", ["frame"], metadata=metadata))
+        memory = load_runner(packaged_activation("memory", metadata=metadata))
 
         # Plugins come from the bundle copy; autonomy, and so every value class
         # the cycle passes between steps, stays the host's.

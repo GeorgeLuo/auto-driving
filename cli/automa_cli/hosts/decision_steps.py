@@ -1,15 +1,11 @@
-"""Live info and streams for proposal, plan, and action."""
+"""Live streams for proposal, plan, and action."""
 
 from __future__ import annotations
 
-import json
 import time
 from typing import Any, TextIO
 
-from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON, HoldAction
-from autonomy.decision_cycle.action.selected import SelectedAction
 from autonomy.decision_cycle.activation import DECISION_STEPS
-from implementations.decision_cycle.action.mode.plugin import LIVE_MODES, ModeAction
 
 from ..shared.command_result import CommandResult
 from .decision import (
@@ -20,118 +16,14 @@ from .decision import (
 )
 from .host_publications import fetch_decision_publication
 from .runtime_hosts import RuntimeHostError, bundle_paths, runtime_base_url
-from .step_activations import decision_identity
 from .step_formatting import format_step_record, format_step_timing
-from .step_schema import format_staged_step, staged_step_info
 from .streaming import (
     ViewFeed,
-    format_live_step_screen,
     poll_stream,
-    probe_live_step,
     stream_preflight_outcome,
     unavailable_probe,
     view_page_lines,
 )
-
-
-# ---------------------------------------------------------------------------
-# info
-# ---------------------------------------------------------------------------
-
-
-def get_host_step_info(
-    step: str,
-    *,
-    host_name: str,
-    json_output: bool = False,
-    include_live: bool = True,
-    timeout_s: float = 3.0,
-) -> CommandResult:
-    """The step's staged plugins and schema, the decision it belongs to, and its live runner."""
-
-    bundle = bundle_paths(host_name)
-    staged, error = staged_step_info(bundle, host_name, step)
-    if error is not None:
-        return CommandResult(2, error)
-    try:
-        require_valid_activations(bundle, host_name=host_name, steps=DECISION_STEPS)
-    except DecisionSurfaceError as exc:
-        return CommandResult(exc.exit_code, exc.message_text)
-    identity = decision_identity(bundle)
-    plugins = {
-        name: list((identity["steps"].get(name) or {}).get("plugins") or [])
-        for name in DECISION_STEPS
-    }
-    payload: dict[str, Any] = {
-        "schema": f"host_{step}_info",
-        "host_name": host_name,
-        **staged,
-        "decision": {
-            "generation_id": identity["generation_id"],
-            "plugins": plugins,
-            "authority": _action_authority_description(
-                plugins["action"][0] if plugins["action"] else None
-            ),
-        },
-        "live": None,
-    }
-    if include_live:
-        payload["live"] = probe_live_step(step, host_name=host_name, timeout_s=timeout_s)
-    if json_output:
-        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(0, _format_step_info(step, payload))
-
-
-def _action_authority_description(plugin_id: str | None) -> dict[str, Any]:
-    """How the staged action plugin authorizes control, for operator-facing summaries."""
-
-    if plugin_id == HoldAction.plugin_id:
-        return {
-            "gate_id": HoldAction.plugin_id,
-            "proposed_applied": False,
-            "authorized_idle_reason": HOLD_IDLE_REASON,
-        }
-    if plugin_id == SelectedAction.plugin_id:
-        return {
-            "gate_id": SelectedAction.plugin_id,
-            "proposed_applied": "when a plan candidate is selected",
-            "authorized_idle_reason": None,
-        }
-    if plugin_id == ModeAction.plugin_id:
-        return {
-            "gate_id": ModeAction.plugin_id,
-            "proposed_applied": f"in {'/'.join(sorted(LIVE_MODES))} drive modes",
-            "authorized_idle_reason": None,
-        }
-    return {"gate_id": plugin_id, "proposed_applied": None, "authorized_idle_reason": None}
-
-
-def _format_step_info(step: str, payload: dict[str, Any]) -> str:
-    decision = payload["decision"]
-    authority = decision["authority"]
-    lines = [
-        *format_staged_step(step, payload),
-        "",
-        f"Decision: generation={decision['generation_id']}",
-        *(
-            f"- {name}: {', '.join(plugins) or 'none'}"
-            for name, plugins in decision["plugins"].items()
-        ),
-        (
-            f"Authority: gate={authority.get('gate_id')} "
-            f"proposed_applied={authority.get('proposed_applied')} "
-            f"idle_reason={authority.get('authorized_idle_reason')}"
-        ),
-    ]
-    live = payload.get("live")
-    if isinstance(live, dict):
-        lines.extend(["", format_live_step_screen(step, host_name=payload["host_name"], live=live)])
-    return "\n".join(lines)
-
-
-# ---------------------------------------------------------------------------
-# stream
-# ---------------------------------------------------------------------------
 
 
 def stream_host_step(

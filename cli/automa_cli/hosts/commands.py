@@ -5,9 +5,6 @@ from __future__ import annotations
 import argparse
 import sys
 
-from autonomy.decision_cycle.activation import DECISION_STEPS
-from autonomy.decision_cycle.steps import STEP_RUNNERS
-
 from ..shared.timeout_input import validate_timeout_input
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
 from ..vehicles.providers import PROVIDERS
@@ -20,9 +17,6 @@ from .automation import (
 from .automation_status import get_hosts_status
 from .automation_stop import stop_host_automation
 from .deploy import create_host, update_host, delete_host
-from .decision_steps import get_host_step_info
-from .memory import get_host_memory_info
-from .perception import get_host_perception_info
 from .streaming import serve_host_viewer
 
 
@@ -35,7 +29,6 @@ def register_hosts(subcommands: argparse._SubParsersAction) -> None:
 
     _register_hosts_viewer(host_commands)
     _register_hosts_lifecycle(host_commands)
-    _register_hosts_info(host_commands)
 
 
 def _register_hosts_viewer(host_commands: argparse._SubParsersAction) -> None:
@@ -129,8 +122,9 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
         help="Show each host's state and attachment.",
         description=(
             "Show each host's state and whether its simulator lists it; --long adds "
-            "its deployment, run and view. Exits 1 when the --name host is missing, "
-            "stopped, unanswering, or errored."
+            "its deployment, release, run and view, and each step's staged selection "
+            "beside the one the running host applied with its runs and failures. "
+            "Exits 1 when the --name host is missing, stopped, unanswering, or errored."
         ),
     )
     host_status.add_argument(
@@ -142,7 +136,7 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
     host_status.add_argument(
         "--long",
         action="store_true",
-        help="Add each host's deployment, run and view under its block.",
+        help="Add each host's deployment, release, staged and applied steps, run and view under its block.",
     )
     host_status.add_argument(
         "--timeout-s",
@@ -234,75 +228,6 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
         )
 
 
-def _register_hosts_info(host_commands: argparse._SubParsersAction) -> None:
-    info = host_commands.add_parser("info", help="Inspect locally staged controller configuration.")
-    info_commands = info.add_subparsers(dest="info_command", required=True)
-    info_help = info_commands.add_parser(
-        "help",
-        help="Show info-level commands.",
-    )
-    info_help.set_defaults(handler=_handle_hosts_info_help)
-    perception_info = info_commands.add_parser(
-        "perception",
-        help="Show the staged perception preset and plugins, the runner schema and the published view URL.",
-        description="Show the staged perception preset and plugins, the runner schema and the published view URL.",
-    )
-    _add_info_args(
-        perception_info,
-        json_help="Print the full machine-readable perception info payload.",
-    )
-    perception_info.set_defaults(handler=_handle_hosts_info_perception)
-
-    memory_info = info_commands.add_parser(
-        "memory",
-        help="Show the staged memory preset and plugins, the runner schema and the live memory step state.",
-        description="Show the staged memory preset and plugins, the runner schema and the live memory step state.",
-    )
-    _add_info_args(
-        memory_info,
-        json_help="Print the full machine-readable memory info payload.",
-    )
-    memory_info.set_defaults(handler=_handle_hosts_info_memory)
-
-    for step_name in DECISION_STEPS:
-        runner_schema = (
-            " and the runner schema" if STEP_RUNNERS[step_name].schema_name else ""
-        )
-        step_info = info_commands.add_parser(
-            step_name,
-            help=f"Show the staged {step_name} plugins, the decision they belong to and the live {step_name} step state.",
-            description=(
-                f"Show the staged {step_name} plugins"
-                + runner_schema
-                + ", the proposal, plan and action plugins of the staged decision with its "
-                f"generation and authority, and the {step_name} step as the running autonomy "
-                "engine has it."
-            ),
-        )
-        _add_info_args(
-            step_info,
-            json_help=f"Print the full machine-readable {step_name} info payload.",
-        )
-        step_info.set_defaults(handler=_handle_hosts_info_step, step=step_name)
-
-
-
-def _add_info_args(
-    parser: argparse.ArgumentParser, *, json_help: str,
-) -> None:
-    parser.add_argument(
-        "--name",
-        required=True,
-        dest="host_name",
-        help="Host name from `automa hosts status`.",
-    )
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help=json_help,
-    )
-
-
 def _handle_hosts_help(args: argparse.Namespace) -> int:
     print(
         "\n".join(
@@ -316,33 +241,11 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "- stop        stop the run; the host stays attached until hosts delete",
                 "- restart     stop and start the run",
                 "- status      show each host's state and attachment",
-                "- info        inspect staged controller configuration",
                 "- viewer      open a host's runtime viewer",
                 "- help        show this summary",
                 "",
                 "Detailed help:",
                 "- ./cli/automa hosts <command> --help",
-            ]
-        )
-    )
-    return 0
-
-
-def _handle_hosts_info_help(args: argparse.Namespace) -> int:
-    print(
-        "\n".join(
-            [
-                "automa hosts info commands",
-                "",
-                "- perception  show staged perception schema and live view",
-                "- memory      show staged memory schema and live memory",
-                "- proposal    show staged proposal schema, the staged decision and live proposals",
-                "- plan        show staged plan plugins, the staged decision and the live plan step",
-                "- action      show staged action plugins, the staged decision and the live action step",
-                "- help        show this summary",
-                "",
-                "Detailed help:",
-                "- ./cli/automa hosts info <command> --help",
             ]
         )
     )
@@ -475,35 +378,4 @@ def _handle_hosts_update(args: argparse.Namespace) -> int:
 def _handle_hosts_delete(args: argparse.Namespace) -> int:
     result = delete_host(host_name=args.host_name, verbose=args.verbose, output=sys.stdout)
     print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_info_perception(args: argparse.Namespace) -> int:
-    result = get_host_perception_info(
-        host_name=args.host_name,
-        json_output=args.json,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_info_memory(args: argparse.Namespace) -> int:
-    result = get_host_memory_info(
-        host_name=args.host_name,
-        json_output=args.json,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_info_step(args: argparse.Namespace) -> int:
-    result = get_host_step_info(
-        args.step,
-        host_name=args.host_name,
-        json_output=args.json,
-    )
-    if result.message:
-        print(result.message)
     return result.exit_code

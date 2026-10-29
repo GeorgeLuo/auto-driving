@@ -10,7 +10,8 @@ from .step_schema import format_staged_step, staged_step_info
 from ..shared.paths import RUNTIME_ROOT
 from ..frontend.perception_view import get_perception_view_status
 from .view_discovery import discover_runtime_view
-from .host_publications import fetch_observation_publication, presets_text
+from .decision_publication import presets_text
+from .host_publications import fetch_observation_publication
 from .runtime_hosts import RuntimeHostError, runtime_base_url
 
 

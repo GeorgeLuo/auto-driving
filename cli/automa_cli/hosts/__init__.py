@@ -9,7 +9,8 @@
 - ``memory``: ``memory`` for reset.
 - Read by several commands: ``runtime_hosts``, which finds, starts and replaces the host
   behind each vehicle; ``step_activations``, ``step_schema``, ``step_hosting``,
-  ``host_publications``, ``vehicle_access``, ``decision``, ``decision_records``,
+  ``host_publications`` with ``decision_publication`` and ``host_telemetry``, which check
+  what it reads; ``vehicle_access``, ``decision``, ``decision_records``,
   ``memory_report``, ``step_formatting`` and ``inspection_runs``.
 
 Outside ``hosts``: ``automa`` serves ``host_status`` in its viewer,

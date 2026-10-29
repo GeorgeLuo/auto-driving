@@ -13,10 +13,12 @@ from .decision import (
 )
 from .host_publications import (
     fetch_decision_transaction, TransactionCache,
-    HostTelemetryError,
-    host_telemetry_failure,
     fetch_host_telemetry_latest,
     fetch_host_telemetry_records,
+)
+from .host_telemetry import (
+    HostTelemetryError,
+    host_telemetry_failure,
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,

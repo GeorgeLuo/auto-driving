@@ -20,9 +20,8 @@ from autonomy.vehicle.vehicle import FRONT_CAMERA_SENSOR_ID
 from autonomy.runtime.client import RuntimeClient
 from ..shared.paths import display_path
 from ..frontend.perception_view import perception_view_ready
-from .host_publications import (
-    fetch_observation_sample, TransactionCache, publication_to_frame_record, perception_text_from_publication,
-)
+from .decision_publication import perception_text_from_publication, publication_to_frame_record
+from .host_publications import fetch_observation_sample, TransactionCache
 from .run_record import (
     control_source, finish_run, frame_line, frame_readiness,
     new_run_state, record_host_status, reports_frame, run_result, startup_lines,

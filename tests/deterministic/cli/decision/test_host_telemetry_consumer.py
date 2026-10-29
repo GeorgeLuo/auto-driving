@@ -18,11 +18,11 @@ from cli.automa_cli.hosts.decision_live import (
 )
 from cli.automa_cli.hosts.decision import DecisionSurfaceError
 from cli.automa_cli.hosts.decision_records import DecisionRunners
-from cli.automa_cli.hosts.host_publications import (
+from cli.automa_cli.hosts.decision_publication import normalize_decision_publication
+from cli.automa_cli.hosts.host_telemetry import (
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,
-    normalize_decision_publication,
     decision_publication_identity,
 )
 from tests.shared.cli.decision.decision_surfaces_fixtures import (

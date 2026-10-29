@@ -53,7 +53,7 @@ from .step_activations import (
     format_activation_problems,
     proposal_plugin_ids,
 )
-from .host_publications import (
+from .decision_publication import (
     DecisionPublicationError,
     normalize_decision_publication,
 )

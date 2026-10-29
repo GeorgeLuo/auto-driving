@@ -152,8 +152,8 @@ plugin IDs, filenames, and revisions, marking the plugins the host has armed.
 Without `--long`, `./cli/automa plugins list --host-name chase-sim-chaser`
 lists only what the host has armed, grouped by step in the order they run.
 Use `--step perception` to filter or `--json` for their definitions and configs.
-Without a host, `plugins list` lists the packaged catalog in
-`implementations/decision_cycle/catalog.py` and marks each step's defaults; no
+Without a host, `plugins list` lists the packaged catalog in each step's
+`implementations/decision_cycle/<step>/catalog.json` and marks each step's defaults; no
 host is needed.
 The `hosts plugins` group is removed: its `list` alias and `status` command are
 gone, and `upload`, `arm` and `disarm` are now `plugins upload`, `plugins arm`

@@ -8,8 +8,7 @@ them lives in `autonomy/decision_cycle/proposal/`.
 
 | Path | Holds |
 |---|---|
-| `catalog.py` | `PROPOSAL_PLUGINS`: one entry per plugin, with its `spec`, description and default config. |
-| `presets.py` | `PROPOSAL_PRESETS`: named, ordered selections of catalog plugins. `DEFAULT_PROPOSAL_PRESET` names the default; `DEFAULT_PROPOSAL_PLUGINS` is its plugin list. |
+| `catalog.json` | `plugins`: one entry per plugin, with its `spec`, description and default config. `presets`: named, ordered selections of those plugins. `default`: the preset `hosts update` stages. |
 | `plugins/` | One folder per plugin, named for its `plugin_id`. See `plugins/README.md`. |
 
 ## Catalog and presets
@@ -18,11 +17,12 @@ The catalog says which plugins exist. A preset says which of them to run, and
 in what order. The default selection is a preset too, as in perception and
 memory.
 
-`implementations/decision_cycle/catalog.py` builds an activation from a preset
-with `preset_activation("proposal", name)`, and from a preset or a plugin list
-with `selection_activation("proposal", ...)`. The activation records the preset
-name in its `preset` metadata key; a plugin list is labeled with the preset it
-equals, else `custom`. `automa hosts update` stages the default.
+`implementations/decision_cycle/catalog.py` reads `catalog.json` and builds an
+activation from a preset with `preset_activation("proposal", name)`, and from a
+preset or a plugin list with `selection_activation("proposal", ...)`. The
+activation records the preset name in its `preset` metadata key; a plugin list
+is labeled with the preset it equals, else `custom`. `automa hosts update`
+stages the default.
 
 | Preset | Plugins |
 |---|---|
@@ -30,9 +30,9 @@ equals, else `custom`. `automa hosts update` stages the default.
 
 ## Finding the default business logic
 
-Start at [presets.py](presets.py): `DEFAULT_PROPOSAL_PRESET` selects
-`obstruction_avoidance`, which lists `avoid_recent_obstruction`.
-[catalog.py](catalog.py) names that plugin's entrypoint and default settings.
+Start at [catalog.json](catalog.json): its `default`, `obstruction_avoidance`,
+lists `avoid_recent_obstruction`, and that plugin's `plugins` entry names its
+entrypoint and default settings.
 [plugins/avoid_recent_obstruction/plugin.py](plugins/avoid_recent_obstruction/plugin.py)
 holds its `propose` function and `AvoidRecentObstruction` class. The plugin
 steers away from lateral obstruction evidence retained in shared memory;

@@ -15,8 +15,7 @@ from autonomy.decision_cycle.activation import (
 )
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from implementations.decision_cycle.catalog import packaged_activation, step_plugins
-from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PLUGINS
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, packaged_activation, step_plugins
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import (
     LEDGER_KEY,
     BoundedEvidenceLedger,
@@ -71,7 +70,7 @@ def _thing(
 
 class BoundedEvidenceLedgerTests(unittest.TestCase):
     def test_catalog_exposes_default_plugin(self) -> None:
-        self.assertEqual(DEFAULT_MEMORY_PLUGINS, ("bounded_evidence",))
+        self.assertEqual(DEFAULT_STEP_PLUGINS["memory"], ("bounded_evidence",))
         entry = step_plugins("memory")["bounded_evidence"]
         self.assertEqual(
             entry["spec"],

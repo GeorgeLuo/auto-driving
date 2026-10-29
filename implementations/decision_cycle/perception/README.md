@@ -7,8 +7,7 @@ evidence. The framework that runs them lives in `autonomy/decision_cycle/percept
 
 | Path | Holds |
 |---|---|
-| `catalog.py` | `PERCEPTION_PLUGINS`: one entry per plugin, with its `spec`, description and default config. |
-| `presets.py` | `PERCEPTION_PRESETS`: named, ordered selections of catalog plugins, with config overrides. `DEFAULT_PERCEPTION_PRESET` names the default. |
+| `catalog.json` | `plugins`: one entry per plugin, with its `spec`, description and default config. `presets`: named, ordered selections of those plugins, with config overrides (`plugin_configs`). `default`: the preset `hosts update` stages. |
 | `plugins/` | One folder per plugin, named for its `plugin_id`. See `plugins/README.md`. |
 | `feeds/` | Per-sensor adapters that turn a sensor reading into a typed plugin input. See `feeds/README.md`. |
 | `shared/` | Plain library code used by more than one plugin, by memory plugins, or by tools. See `shared/README.md`. |
@@ -17,14 +16,14 @@ evidence. The framework that runs them lives in `autonomy/decision_cycle/percept
 
 The catalog says which plugins exist. A preset says which of them to run, in
 what order, and with what config overrides. The default selection is a preset
-too: `DEFAULT_PERCEPTION_PLUGINS` is the plugin list of
-`DEFAULT_PERCEPTION_PRESET`.
+too, the one `default` names.
 
-`implementations/decision_cycle/catalog.py` builds an activation from a preset
-with `preset_activation("perception", name)`, and from a preset or a plugin
-list with `selection_activation("perception", ...)`. The activation records the
-preset name in its `preset` metadata key; a plugin list is labeled with the
-preset it equals, else `custom`. `automa hosts update` stages the default.
+`implementations/decision_cycle/catalog.py` reads `catalog.json` and builds an
+activation from a preset with `preset_activation("perception", name)`, and from
+a preset or a plugin list with `selection_activation("perception", ...)`. The
+activation records the preset name in its `preset` metadata key; a plugin list
+is labeled with the preset it equals, else `custom`. `automa hosts update`
+stages the default.
 
 | Preset | Plugins |
 |---|---|
@@ -37,9 +36,9 @@ preset it equals, else `custom`. `automa hosts update` stages the default.
 
 ## Finding the default business logic
 
-Start at [presets.py](presets.py): `DEFAULT_PERCEPTION_PRESET` selects
-`lightweight_observer`, which lists `frame` and `floor_plane`.
-[catalog.py](catalog.py) names those plugins' entrypoints and default settings.
+Start at [catalog.json](catalog.json): its `default`, `lightweight_observer`,
+lists `frame` and `floor_plane`, and their `plugins` entries name their
+entrypoints and default settings.
 [plugins/frame/plugin.py](plugins/frame/plugin.py) holds
 `FrameObservationPlugin`, which reports the front camera frame's dimensions and
 basic light statistics.

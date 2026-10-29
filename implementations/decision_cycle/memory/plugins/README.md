@@ -21,11 +21,11 @@ One folder per plugin, named for its `plugin_id`. For example, the
   no beliefs; readers then get `None`, never a score. The last write to each
   belief key wins. Belief values must be JSON data; constructing a non-JSON
   value raises in the plugin update and stops the cycle.
-- Register a plugin with one entry in `../catalog.py`: its `spec`
-  (`module.path:Class`), a description, and its default config.
-- Name ordered plugin selections and configuration recipes in `../presets.py`,
-  as in perception and proposal. `DEFAULT_MEMORY_PRESET` chooses the default;
-  the catalog lists available plugins independently of that selection.
+- Register a plugin with one entry in the `plugins` list of `../catalog.json`:
+  its `spec` (`module.path:Class`), a description, and its default config.
+- Name ordered plugin selections and configuration recipes under `presets` in
+  the same file, as in perception and proposal. `default` names the default preset;
+  `plugins` lists available plugins independently of that selection.
 - Keep cross-frame state in `context.shared_memory`, under keys the plugin
   owns. Publish what later steps read at the keys named in
   `autonomy/decision_cycle/memory/publication.py`: `EVIDENCE_KEY` for

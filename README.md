@@ -125,7 +125,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles remove` | Stops listing the discovered vehicle at `--url`. The default simulator cannot be removed. |
 | `hosts viewer` | Serves the runtime viewer (Perception, Memory, Action and Plugins) fed from the host named by `--name`, or at `--host-url` (the URL `hosts status` shows for it), and opens it in the browser until interrupted. Exits 2 when no such host exists, it is not running, or it does not answer. |
 | `hosts info perception\|memory\|proposal\|plan\|action` | Reads that step's staged activation, enabled plugins, bundle, and runner schema (inputs, output, composition and failure policy). Perception, memory, proposal and plan also show their preset. Each reports its view; memory, proposal, plan and action include live runner status. Proposal, plan and action also show the decision generation, each decision step's plugins, and the action authority. |
-| `plugins list` | Offline: lists the packaged catalog, `implementations/decision_cycle/catalog.py`, by step, defaults first and marked; `--step` filters and `--json` adds each definition's entrypoint, default config and description. With `--host-name` (or a runtime `--url`), lists what that host has armed instead; `--long` lists the host's whole catalog, packaged and uploaded, with its version and the armed plugins marked. A workbench `--url` arms nothing and lists only with `--long`. Exits 2 while the host's last arming failed. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
+| `plugins list` | Offline: lists the packaged catalog, each step's `implementations/decision_cycle/<step>/catalog.json`, by step, defaults first and marked; `--step` filters and `--json` adds each definition's entrypoint, default config and description. With `--host-name` (or a runtime `--url`), lists what that host has armed instead; `--long` lists the host's whole catalog, packaged and uploaded, with its version and the armed plugins marked. A workbench `--url` arms nothing and lists only with `--long`. Exits 2 while the host's last arming failed. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
 | `plugins upload` | With `--host-name` (or a runtime or workbench `--url`), stores `--file` in that existing catalog as `--name <step>/<plugin>` with its `--entrypoint` and optional `--config`, refusing source that does not compile. `--arm` also arms it through the same operation as `plugins arm`. |
 | `plugins arm` | With `--host-name` (or a runtime `--url`), loads the plugins named by `--name <step>/<plugin>`, as `plugins list --long` names them, and applies them at the host's next cycle without restarting automation. Repeat `--name` to arm several plugins, across steps, together and in order. On observation, plan and action, which run one plugin, the armed plugin replaces the current one. An import or construction error fails the command (exit 2) and keeps the previous selection. |
 | `plugins disarm` | With `--host-name` (or a runtime `--url`), deselects the plugins named by `--name <step>/<plugin>`; repeat `--name` to disarm several, across steps, together. `--step <step>` clears perception, memory or proposal, and `--all` clears all three. Observation, plan and action keep their one plugin (arm a replacement instead). The next cycle resets disarmed instances; catalog entries remain available. |
@@ -377,9 +377,8 @@ before restarting the worker:
 
 ### Perception Plugins
 
-Packaged perception plugins and their default configs are in
-`implementations/decision_cycle/perception/catalog.py`, and named presets in
-`implementations/decision_cycle/perception/presets.py`. A staged plugin list is
+Packaged perception plugins, their default configs, and named presets are in
+`implementations/decision_cycle/perception/catalog.json`. A staged plugin list is
 recorded as the preset it equals, else `custom`.
 
 `./cli/automa plugins list --step perception` lists the packaged perception
@@ -530,9 +529,8 @@ to start another invocation from that history.
 
 ### Memory Plugins
 
-Packaged memory plugins and their default configs are in
-`implementations/decision_cycle/memory/catalog.py`, and named presets in
-`implementations/decision_cycle/memory/presets.py`. A staged plugin list is
+Packaged memory plugins, their default configs, and named presets are in
+`implementations/decision_cycle/memory/catalog.json`. A staged plugin list is
 recorded as the preset it equals, else `custom`.
 
 `./cli/automa plugins list --step memory` lists the packaged memory plugins.
@@ -557,12 +555,11 @@ signals with age expiry and oldest-first eviction.
 
 ### Proposal Plugins
 
-Packaged proposal plugins and their default configs are in
-`implementations/decision_cycle/proposal/catalog.py`. Proposal follows
+Packaged proposal plugins, their default configs, and named presets are in
+`implementations/decision_cycle/proposal/catalog.json`. Proposal follows
 perception and memory: `hosts update` stages its default preset,
 `obstruction_avoidance`. Its default business logic is reached through
-[`proposal/presets.py`](implementations/decision_cycle/proposal/presets.py),
-[`proposal/catalog.py`](implementations/decision_cycle/proposal/catalog.py), and
+[`proposal/catalog.json`](implementations/decision_cycle/proposal/catalog.json) and
 [`plugins/avoid_recent_obstruction/plugin.py`](implementations/decision_cycle/proposal/plugins/avoid_recent_obstruction/plugin.py).
 
 `./cli/automa plugins list --step proposal` lists the packaged proposal plugins.

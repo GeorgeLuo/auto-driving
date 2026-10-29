@@ -1,0 +1,20 @@
+{
+  "default": {"preset": "obstruction_avoidance"},
+  "presets": {
+    "obstruction_avoidance": {
+      "description": "Propose steering away from lateral obstruction evidence retained in shared memory; otherwise propose nothing.",
+      "plugins": ["avoid_recent_obstruction"]
+    }
+  },
+  "plugins": [
+    {
+      "spec": "implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin:AvoidRecentObstruction",
+      "description": "Steer away from lateral obstruction evidence retained in shared memory; otherwise propose nothing.",
+      "default_config": {
+        "accepted_kinds": ["floor_boundary", "obstacle", "obstruction_evidence"],
+        "retained_max_age_ms": 1000,
+        "steer_magnitude": 1.0
+      }
+    }
+  ]
+}

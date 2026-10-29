@@ -8,11 +8,11 @@ plugin lives in `plugins/frame/`.
 - `plugin.py` holds the plugin class, which declares `plugin_id`. Ids are
   unique within the perception step: registering a second definition under an
   existing id raises `DuplicatePluginIdError`.
-- Register a plugin with one entry in `../catalog.py`: its `spec`
-  (`module.path:Class`), a description, and its default config.
-- Name ordered plugin selections and configuration recipes in `../presets.py`,
-  as in memory and proposal. `DEFAULT_PERCEPTION_PRESET` chooses the default;
-  the catalog lists available plugins independently of that selection.
+- Register a plugin with one entry in the `plugins` list of `../catalog.json`:
+  its `spec` (`module.path:Class`), a description, and its default config.
+- Name ordered plugin selections and configuration recipes under `presets` in
+  the same file, as in memory and proposal. `default` names the default preset;
+  `plugins` lists available plugins independently of that selection.
 - Declare each input through a feed, such as `FRONT_CAMERA_RGB_INPUT` from
   `../feeds/camera.py`. Never read sensors directly.
 - Emit only the perception evidence types from

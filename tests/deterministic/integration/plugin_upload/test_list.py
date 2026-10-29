@@ -36,7 +36,7 @@ class PluginListFlows(unittest.TestCase):
             self.assertTrue(payload["ok"])
             self.assertIsNone(payload["host_name"])
             self.assertNotIn("armed", payload)
-            self.assertEqual(payload["catalog"]["source"], "implementations/decision_cycle/catalog.py")
+            self.assertEqual(payload["catalog"]["source"], "implementations/decision_cycle/*/catalog.json")
             self.assertEqual(payload["defaults"], {step: list(ids) for step, ids in DEFAULT_STEP_PLUGINS.items()})
             plugins = payload["catalog"]["plugins"]
             packaged = {(step, plugin_id): entry for step in STEPS for plugin_id, entry in step_plugins(step).items()}
@@ -53,12 +53,13 @@ class PluginListFlows(unittest.TestCase):
                 self.assertEqual([item["id"] for item in plugins if item["step"] == step], ordered)
                 rows += [f"- {step}/{plugin_id}: packaged" + (" (default)" if plugin_id in defaults else "")
                          for plugin_id in ordered]
-            self.assertEqual(listed().stdout.splitlines(), ["Catalog: implementations/decision_cycle/catalog.py", *rows])
+            self.assertEqual(listed().stdout.splitlines(), ["Catalog: implementations/decision_cycle/*/catalog.json", *rows])
             # Without a host the listing is already the whole catalog.
             self.assertEqual(listed("--long").stdout, listed().stdout)
             action = json.loads(listed("--step", "action", "--json").stdout)
             self.assertEqual({item["step"] for item in action["catalog"]["plugins"]}, {"action"})
             self.assertEqual(list(action["defaults"]), ["action"])
+            self.assertEqual(action["catalog"]["source"], "implementations/decision_cycle/action/catalog.json")
             self.assertEqual(list(root.iterdir()), [])
 
     def test_named_hosts_list_what_is_armed_and_long_marks_it_in_the_catalog(self):

@@ -31,7 +31,7 @@ Apply it to one archived image or a whole capture directory:
 ```
 
 Its default config is the `floor_continuity` entry in
-`implementations/decision_cycle/perception/catalog.py`.
+`implementations/decision_cycle/perception/catalog.json`.
 
 Apply another strategy to the same recorded frames before comparing
 behavior. Simulator success validates the integration shape and controlled

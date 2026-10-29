@@ -11,7 +11,6 @@ from PIL import Image
 from dataclasses import replace
 from cli.automa_cli.hosts.inspection_runs import selection_report
 from cli.automa_cli.hosts.memory_report import plugin_summaries
-from implementations.decision_cycle.perception.presets import DEFAULT_PERCEPTION_PRESET
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
 from implementations.decision_cycle.catalog import selection_activation
 from cli.automa_cli.hosts.workbench_source import normalize_image_directory
@@ -22,7 +21,7 @@ from cli.automa_cli.hosts.step_formatting import format_step_record
 from cli.automa_cli.plugins.step_inspect import INSPECT_STEPS, inspect_step
 from cli.automa_cli.plugins.step_replay import StepReplay, default_selection
 from cli.automa_cli.hosts.workbench_source import ImageSource, ReplayFrame
-from implementations.decision_cycle.catalog import PRESET_STEPS
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PRESETS, PRESET_STEPS
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
     LedgerBounds,
@@ -469,7 +468,7 @@ class MemoryInspectTests(unittest.TestCase):
 
     def test_perception_restores_the_selection_a_recorded_run_names(self) -> None:
         plain = self.inspect()
-        self.assertEqual(plain["selections"]["perception"]["preset"], DEFAULT_PERCEPTION_PRESET)
+        self.assertEqual(plain["selections"]["perception"]["preset"], DEFAULT_STEP_PRESETS["perception"])
         self.assertNotIn("multi_obstruction_tracks", plain["selections"]["perception"]["plugins"])
 
         selection = selection_activation("perception", preset="multi_obstruction")

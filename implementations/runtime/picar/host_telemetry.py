@@ -16,10 +16,8 @@ from collections import deque
 from copy import deepcopy
 from typing import Any, Callable, Mapping, cast
 
+from autonomy.runtime.routes import TELEMETRY_SCHEMA
 
-HOST_TELEMETRY_SCHEMA = "automa_host_boundary_telemetry"
-HOST_TELEMETRY_LATEST_PATH = "/host/telemetry/latest"
-HOST_TELEMETRY_RECORDS_PATH = "/host/telemetry/records"
 HOST_TELEMETRY_LIMITS = {
     "max_source_age_ms": 1500,
     "max_publication_age_ms": 1500,
@@ -238,7 +236,7 @@ class HostTelemetryStore:
         with self._lock:
             if self._stopped:
                 return {
-                    "schema": HOST_TELEMETRY_SCHEMA,
+                    "schema": TELEMETRY_SCHEMA,
                     "status": "stopped",
                     "reason": "producer_stopped",
                     "record_count": len(self._records),
@@ -249,7 +247,7 @@ class HostTelemetryStore:
                 read_at_ms = self._clock_now_locked()
             except (TypeError, ValueError, OverflowError):
                 return {
-                    "schema": HOST_TELEMETRY_SCHEMA,
+                    "schema": TELEMETRY_SCHEMA,
                     "status": "error",
                     "reason": "field_invalid",
                     "record_count": len(self._records),
@@ -258,7 +256,7 @@ class HostTelemetryStore:
                 }
             except Exception:
                 return {
-                    "schema": HOST_TELEMETRY_SCHEMA,
+                    "schema": TELEMETRY_SCHEMA,
                     "status": "error",
                     "reason": "observer_error",
                     "record_count": len(self._records),
@@ -283,7 +281,7 @@ class HostTelemetryStore:
                 )
                 status, reason = envelope["status"], envelope["reason"]
             return {
-                "schema": HOST_TELEMETRY_SCHEMA,
+                "schema": TELEMETRY_SCHEMA,
                 "status": status,
                 "reason": reason,
                 "record_count": len(self._records),
@@ -429,7 +427,7 @@ class HostTelemetryStore:
                 reason = coverage_reason
 
             record: dict[str, Any] = {
-                "schema": HOST_TELEMETRY_SCHEMA,
+                "schema": TELEMETRY_SCHEMA,
                 "status": status,
                 "reason": reason,
                 "host_name": self.host_name,
@@ -639,7 +637,7 @@ class HostTelemetryStore:
             earliest = self._records[0]["host_tick"]["sequence"]
             if after < earliest - 1:
                 return {
-                    "schema": HOST_TELEMETRY_SCHEMA,
+                    "schema": TELEMETRY_SCHEMA,
                     "ok": False,
                     "status": "unavailable",
                     "reason": "coverage_gap",
@@ -654,7 +652,7 @@ class HostTelemetryStore:
                 if record["host_tick"]["sequence"] > after
             ][:bounded_limit]
             payload: dict[str, Any] = {
-                "schema": HOST_TELEMETRY_SCHEMA,
+                "schema": TELEMETRY_SCHEMA,
                 "ok": True,
                 "status": "healthy",
                 "reason": "",
@@ -724,7 +722,7 @@ class HostTelemetryStore:
             self._last_error_status = status
             self._last_error_reason = reason
         return {
-            "schema": HOST_TELEMETRY_SCHEMA,
+            "schema": TELEMETRY_SCHEMA,
             "ok": False,
             "status": status,
             "reason": reason,

@@ -23,7 +23,6 @@ class RuntimeLayout:
             "root_dir": str(self.root),
             "autonomy_dir": str(self.root / "autonomy"),
             "implementations_dir": str(implementations),
-            "perception_dir": str(implementations / "decision_cycle" / "perception"),
             "runtime_dir": str(self.runtime),
             **{f"{step}_runtime_dir": str(self.runtime / step) for step in STEPS},
         }

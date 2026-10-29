@@ -282,14 +282,6 @@ class ObservationPublicationTests(unittest.TestCase):
             part.host.status()["steps"]["memory"]["evidence_publisher"], "bounded_evidence",
         )
 
-        part.reset_memory()
-        report = part.publish_latest(now_ms=part.latest_state.completed_at_ms)["memory"]
-
-        states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
-        self.assertEqual(states["recording_test"]["record_count"], 0)
-        self.assertEqual(states["bounded_evidence"]["record_count"], 0)
-        self.assertEqual(report["evidence_publisher"], "bounded_evidence")
-
     def test_stale_and_error_health_states(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")

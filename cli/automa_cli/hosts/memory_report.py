@@ -19,7 +19,6 @@ from typing import Any
 from autonomy.decision_cycle.memory.interface import (
     EPOCH_ID,
     HEALTH,
-    LEDGER_HEALTH_EMPTY,
     LEDGER_SUMMARY_KEYS,
     RECORD_COUNT,
 )
@@ -111,17 +110,3 @@ def plugin_summaries(report: object) -> list[dict[str, Any]]:
         {"plugin_id": plugin_id, **memory_summary(state)}
         for plugin_id, state in plugin_states(report)
     ]
-
-
-def ledger_is_empty(summary: dict[str, Any]) -> bool:
-    """Whether one plugin's ledger summary shows nothing retained.
-
-    The ledger is empty when it reports no records (0 or no count), or
-    ``empty`` or ``unavailable`` health. A plugin that keeps no ledger
-    reports no count, so it counts as empty.
-    """
-
-    return summary.get(RECORD_COUNT) in {0, None} or summary.get(HEALTH) in {
-        LEDGER_HEALTH_EMPTY,
-        "unavailable",
-    }

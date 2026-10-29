@@ -20,7 +20,7 @@ from .automation import (
 )
 from .deploy import create_host, update_host, delete_host
 from .decision_steps import get_host_step_info
-from .memory import get_host_memory_info, reset_host_memory
+from .memory import get_host_memory_info
 from .step_activations import HOST_PROVIDERS
 from .perception import get_host_perception_info
 from .streaming import serve_host_viewer
@@ -35,7 +35,6 @@ def register_hosts(subcommands: argparse._SubParsersAction) -> None:
 
     _register_hosts_viewer(host_commands)
     _register_hosts_lifecycle(host_commands)
-    _register_hosts_memory(host_commands)
     _register_hosts_info(host_commands)
 
 
@@ -235,47 +234,6 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
         )
 
 
-def _register_hosts_memory(host_commands: argparse._SubParsersAction) -> None:
-    memory_control = host_commands.add_parser(
-        "memory",
-        help="Reset host memory.",
-    )
-    memory_control.set_defaults(handler=_handle_hosts_memory_help)
-    memory_commands = memory_control.add_subparsers(dest="memory_command")
-    memory_help = memory_commands.add_parser(
-        "help",
-        help="Show memory-level commands.",
-    )
-    memory_help.set_defaults(handler=_handle_hosts_memory_help)
-    memory_reset = memory_commands.add_parser(
-        "reset",
-        help="Reset live memory to a new empty epoch on the host.",
-        description=(
-            "POST /host/memory/reset to the host. Confirms that every "
-            "applied plugin started a new epoch or holds no records when the host answers. "
-            "Does not move the vehicle."
-        ),
-    )
-    memory_reset.add_argument(
-        "--name",
-        required=True,
-        dest="host_name",
-        help="Host name from `automa hosts status`.",
-    )
-    memory_reset.add_argument(
-        "--timeout-s",
-        type=float,
-        default=3.0,
-        help="HTTP timeout in seconds.",
-    )
-    memory_reset.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the full machine-readable reset payload.",
-    )
-    memory_reset.set_defaults(handler=_handle_hosts_memory_reset)
-
-
 def _register_hosts_info(host_commands: argparse._SubParsersAction) -> None:
     info = host_commands.add_parser("info", help="Inspect locally staged controller configuration.")
     info_commands = info.add_subparsers(dest="info_command", required=True)
@@ -359,7 +317,6 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "- restart     stop and start the run",
                 "- status      show each host's state and attachment",
                 "- info        inspect staged controller configuration",
-                "- memory      reset live memory",
                 "- viewer      open a host's runtime viewer",
                 "- help        show this summary",
                 "",
@@ -481,40 +438,6 @@ def _handle_hosts_restart(args: argparse.Namespace) -> int:
         log_to_disk=args.log_to_disk,
         open_view=args.open_view,
         wait_s=args.wait_s,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_memory_help(args: argparse.Namespace) -> int:
-    print(
-        "\n".join(
-            [
-                "automa hosts memory commands",
-                "",
-                "- reset  clear live retained evidence; start a new empty epoch",
-                "- help   show this summary",
-                "",
-                "Inspect what a selection retains: ./cli/automa plugins inspect memory <source>",
-                "",
-                "Arm a plugin with:            ./cli/automa plugins arm --host-name <host> --name memory/<plugin>",
-                "Inspect staged config with:   ./cli/automa hosts info memory --name <host>",
-                "Stream live state with:       ./cli/automa plugins stream --step memory --host-name <host>",
-                "",
-                "Detailed help:",
-                "- ./cli/automa hosts memory <command> --help",
-            ]
-        )
-    )
-    return 0
-
-
-def _handle_hosts_memory_reset(args: argparse.Namespace) -> int:
-    result = reset_host_memory(
-        host_name=args.host_name,
-        timeout_s=args.timeout_s,
-        json_output=args.json,
     )
     if result.message:
         print(result.message)

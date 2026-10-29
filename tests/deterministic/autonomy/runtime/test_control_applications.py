@@ -50,8 +50,6 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                         with patch("autonomy.runtime.execution.time.time", return_value=1.0):
                             host.execution._write_idle("same")
                             host.execution._write_idle("same")
-                    if index == 2:
-                        host.reset_memory()
                     sensors = SensorFrame(
                         read_id=f"f{index}", readings={FRONT_CAMERA_SENSOR_ID: SensorReading(
                             sensor_id=FRONT_CAMERA_SENSOR_ID, sensor_kind="camera",

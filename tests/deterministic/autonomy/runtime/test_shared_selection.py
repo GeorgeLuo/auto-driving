@@ -325,7 +325,7 @@ class SharedSelectionTests(unittest.TestCase):
                     self.assertEqual(host.applied_decision(), _identity(replacement))
                     self.assertEqual(host.status()["applied_decision"], _identity(replacement))
 
-    def test_status_reset_and_publication_use_the_host(self) -> None:
+    def test_status_and_publication_use_the_host(self) -> None:
         for vehicle in VEHICLES:
             with self.subTest(vehicle=vehicle):
                 proposal = packaged_activation("proposal")
@@ -346,10 +346,8 @@ class SharedSelectionTests(unittest.TestCase):
                     list(status["steps"]["proposal"]["plugin_ids"]),
                     list(host.step("proposal").plugin_ids),
                 )
-                report = host.reset_memory()
-                self.assertIsInstance(report, dict)
                 self.assertEqual(
-                    list(host.status()["steps"]["memory"]["plugin_ids"]),
+                    list(status["steps"]["memory"]["plugin_ids"]),
                     list(host.step("memory").plugin_ids),
                 )
 

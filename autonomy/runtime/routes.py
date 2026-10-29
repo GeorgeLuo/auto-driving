@@ -36,10 +36,8 @@ logger = logging.getLogger(__name__)
 STATUS_PATH = "/host/status"
 RUNTIME_PATH = "/host/runtime"
 PLUGINS_PATH = "/api/plugins"
-MEMORY_RESET_PATH = "/host/memory/reset"
 TELEMETRY_LATEST_PATH = "/host/telemetry/latest"
 TELEMETRY_RECORDS_PATH = "/host/telemetry/records"
-MEMORY_RESET_SCHEMA = "automa_memory_reset_v0"
 TELEMETRY_SCHEMA = "automa_host_boundary_telemetry"
 RESTART_DELAY_S = 0.2
 
@@ -83,7 +81,6 @@ class RuntimeRoutes:
             ("GET", DECISION_LATEST_PATH): self._decision,
             ("GET", OBSERVATION_TRANSACTION_PATH): partial(self._transaction, "observation"),
             ("GET", DECISION_TRANSACTION_PATH): partial(self._transaction, "decision"),
-            ("POST", MEMORY_RESET_PATH): self._memory_reset,
             ("GET", TELEMETRY_LATEST_PATH): self._telemetry_latest,
             ("GET", TELEMETRY_RECORDS_PATH): self._telemetry_records,
         }
@@ -259,20 +256,6 @@ class RuntimeRoutes:
         }
         status, json_headers, encoded = json_response(payload, 200 if jpeg is not None else 503)
         return status, {**json_headers, **headers}, encoded
-
-    def _memory_reset(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:
-        payload = {"schema": MEMORY_RESET_SCHEMA, **self.loop.reset_memory()}
-        autonomy = self.host.status()
-        payload["host"] = autonomy
-        steps = autonomy.get("steps")
-        if isinstance(steps, dict) and isinstance(steps.get("memory"), dict):
-            payload.setdefault("memory", steps["memory"])
-        status = 200 if payload.get("ok") else 409
-        if payload.get("status") == "absent":
-            status = 503
-        elif payload.get("status") == "error":
-            status = 500
-        return json_response(payload, status)
 
     def _telemetry_unavailable(self, field: str, reason: str, status: int) -> Response:
         return json_response({

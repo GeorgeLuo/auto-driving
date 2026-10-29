@@ -14,7 +14,7 @@ import secrets
 import threading
 import time
 from copy import deepcopy
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
@@ -359,43 +359,6 @@ class FrameLoop:
                            if kind == "decision" else self._publication_from_locked_state(read_at_ms=timestamp_ms()))
             revision = f"{self.run_id}:{kind}:{self._publication_revision}:{self._queue_generation}"
             return publication, self.latest_state, revision
-
-    def reset_memory(self) -> dict[str, Any]:
-        """Reset the live memory step under the same lock as observation cycles.
-
-        Clears retained memory on the step and detaches memory from the latest
-        published observation so operators see an empty map immediately.
-        """
-        with self._lock:
-            try:
-                report = self.host.reset_memory()
-            except Exception as exc:  # noqa: BLE001 - operator boundary
-                return {
-                    "ok": False,
-                    "status": "error",
-                    "error": f"{type(exc).__name__}: {exc}",
-                }
-            if report is None:
-                return {
-                    "ok": False,
-                    "status": "absent",
-                    "error": "no memory step is activated",
-                }
-            # Replace the published memory report until the next cycle.
-            if self.latest_state is not None and isinstance(self.latest_state.cycle, dict):
-                cycle = dict(self.latest_state.cycle)
-                cycle["memory"] = deepcopy(report)
-                self.latest_state = replace(self.latest_state, cycle=cycle)
-                self._publication_revision += 1
-            self._memory_update_halted = False
-            step = self.host.step("memory")
-            step_status = step.status() if step is not None and callable(getattr(step, "status", None)) else None
-            return {
-                "ok": True,
-                "status": "reset",
-                "report": deepcopy(report),
-                "memory": step_status,
-            }
 
     def publish_latest_frame_jpeg(self) -> tuple[bytes | None, dict[str, Any]]:
         """Return the exact processed frame JPEG with matching publication metadata."""

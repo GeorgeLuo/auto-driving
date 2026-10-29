@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from autonomy.runtime.routes import MEMORY_RESET_PATH, RUNTIME_PATH, STATUS_PATH
+from autonomy.runtime.routes import RUNTIME_PATH, STATUS_PATH
 from autonomy.runtime.session import RunConfiguration
 
 
@@ -70,9 +70,6 @@ class RuntimeClient:
 
     def host_status(self) -> dict[str, Any]:
         return self.request("GET", STATUS_PATH)
-
-    def reset_memory(self) -> dict[str, Any]:
-        return self.request("POST", MEMORY_RESET_PATH, {})
 
     def restart(self, *, timeout_s: float = 30.0) -> None:
         previous = self.status()["host_run_id"]

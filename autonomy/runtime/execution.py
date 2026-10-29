@@ -137,7 +137,7 @@ class ControlExecution:
 
     @property
     def mode(self) -> str:
-        return self.status()["mode"]
+        return self._status["mode"]
 
     def ticket(self) -> ExecutionTicket:
         with self._lock:

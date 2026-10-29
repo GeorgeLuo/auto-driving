@@ -367,7 +367,8 @@ def staged_selections(bundle: dict[str, str]) -> dict[str, dict[str, Any]]:
     """What a start runs for every step, and where each selection comes from.
 
     A step runs its staged activation, else its built-in, else nothing. An
-    unreadable document is ``invalid``; ``hosts update`` replaces it.
+    unreadable document is ``invalid``; ``hosts update`` replaces it. A staged
+    selection ``plugins save`` saved is ``saved``; any other is the step's default.
     """
 
     selections: dict[str, dict[str, Any]] = {}
@@ -376,12 +377,13 @@ def staged_selections(bundle: dict[str, str]) -> dict[str, dict[str, Any]]:
         try:
             staged = read_bundle_activation(bundle, step)
         except (OSError, ValueError, TypeError):
-            selections[step] = {"activation": path, "source": "invalid", "preset": None, "plugins": []}
+            selections[step] = {"activation": path, "source": "invalid", "saved": False, "preset": None, "plugins": []}
             continue
         activation = staged or builtin_activation(step)
         selections[step] = {
             "activation": path,
             "source": "staged" if staged is not None else "builtin" if activation is not None else "none",
+            "saved": staged is not None and bool(staged.metadata.get("saved")),
             "preset": activation_presets({step: activation}).get(step),
             "plugins": list(activation.plugins) if activation is not None else [],
         }

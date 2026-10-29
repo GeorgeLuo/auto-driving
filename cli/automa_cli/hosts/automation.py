@@ -449,7 +449,7 @@ def start_host_automation_background(
             f"State: {display_path(automation_dir / 'state.json')}",
             _log_status_line(process_record, log_path),
             f"Stream: ./cli/automa plugins stream --step perception --host-name {host_name}",
-            f"View: ./cli/automa hosts info perception --name {host_name}",
+            f"Status: ./cli/automa hosts status --name {host_name} --long",
         ]
     )
     return CommandResult(exit_code, "\n".join(lines))

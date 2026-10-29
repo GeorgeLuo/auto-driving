@@ -13,7 +13,7 @@ from cli.automa_cli.hosts.bundles import (
 from cli.automa_cli.hosts.step_activations import CONTROLLER_BUNDLE_KEYS
 from implementations.decision_cycle.catalog import preset_activation
 from tests.shared.cli.invoke import invoke_automa
-from tests.support.runtime_fixtures import write_json
+from tests.support.runtime_fixtures import write_host_fixture, write_json
 
 
 def _activation(
@@ -43,6 +43,7 @@ class PerceptionCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             host_name = "chase-sim-chaser"
+            write_host_fixture(runtime_root, host_name)
             host_dir = runtime_root / host_name
             bundle = controller_bundle_paths(host_dir)
             release = sync_controller_bundle(bundle, output=None)
@@ -85,55 +86,23 @@ class PerceptionCommandTests(unittest.TestCase):
             )
 
             json_result = invoke_automa(
-                "hosts", "info",
-                "perception",
-                "--name",
-                host_name,
-                "--json",
-                runtime_root=runtime_root,
+                "hosts", "status", "--json", runtime_root=runtime_root,
             )
             text_result = invoke_automa(
-                "hosts", "info",
-                "perception",
-                "--name",
-                host_name,
-                runtime_root=runtime_root,
+                "hosts", "status", "--long", runtime_root=runtime_root,
             )
 
-        payload = json.loads(json_result.stdout)
-        self.assertEqual(payload["activation"]["preset"], "visual_observer")
+        run = json.loads(json_result.stdout)["hosts"][0]["run"]
+        self.assertEqual(run["release"]["tree_sha256"], release_manifest["tree_sha256"])
+        self.assertEqual(run["release"]["archive_sha256"], release_manifest["archive"]["sha256"])
+        perception = run["steps"]["perception"]
         self.assertEqual(
-            payload["controller_bundle"]["release"]["tree_sha256"],
-            release_manifest["tree_sha256"],
+            (perception["source"], perception["preset"], perception["plugins"]),
+            ("staged", "visual_observer", ["frame", "floor_plane", "motion_tracks"]),
         )
-        self.assertEqual(set(payload["controller_bundle"]), set(CONTROLLER_BUNDLE_KEYS))
-        self.assertEqual(
-            payload["activation"]["plugins"],
-            ["frame", "floor_plane", "motion_tracks"],
-        )
-        chain = payload["perception_schema"]["plugins"]
-        self.assertEqual(
-            [plugin["plugin_id"] for plugin in chain],
-            [
-                "frame",
-                "floor_plane",
-                "motion_tracks",
-            ],
-        )
-        self.assertEqual(
-            [plugin["plugin_id"] for plugin in chain],
-            [
-                "frame",
-                "floor_plane",
-                "motion_tracks",
-            ],
-        )
+        self.assertIn(f"\n  release: {release_manifest['tree_sha256'][:12]}  archive=", text_result.stdout)
         self.assertIn(
-            "Enabled plugins: frame, floor_plane, motion_tracks", text_result.stdout
-        )
-        self.assertIn("Plugins:", text_result.stdout)
-        self.assertIn(
-            "  contract: stateless feeds=camera.rgb:front_camera",
+            "\n    perception: visual_observer (frame, floor_plane, motion_tracks)  source=staged (default)\n",
             text_result.stdout,
         )
 

@@ -289,7 +289,7 @@ external change.
 | Capture identity/image invalid | Repair the exact field named by `capture_identity_invalid` or `capture_image_invalid` |
 | Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it |
 | Deployment absent | Run the printed `hosts update` command, which stages every step's default |
-| Staged step invalid (including a retired schema) | `hosts status --long`, startup, and `hosts info` identify its step, activation path, and the `hosts update` command that replaces it with the step's default. Run it, then rerun `hosts status --long`. Checking never rewrites configs, and known invalid documents prevent worker startup and restart |
+| Staged step invalid (including a retired schema) | `hosts status --long` and startup identify its step, activation path, and the `hosts update` command that replaces it with the step's default. Run it, then rerun `hosts status --long`. Checking never rewrites configs, and known invalid documents prevent worker startup and restart |
 | Worker stopped | Run the printed observation-only `hosts run --open-view` command |
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 

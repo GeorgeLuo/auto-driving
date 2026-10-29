@@ -147,23 +147,29 @@ def decision_record(identity: dict[str, Any]) -> dict[str, Any]:
 
 
 def step_status(host_status: dict[str, Any]) -> dict[str, Any]:
-    """Each step's plugin IDs, preset and last error, without the per-cycle records."""
+    """Each step's plugin IDs, preset, run and failure counts and last error, without the per-cycle records.
+
+    A step whose report the host could not read keeps that error.
+    """
 
     steps = host_status.get("steps") if isinstance(host_status.get("steps"), dict) else {}
-    return {
-        step: (
-            None
-            if not isinstance(item, dict)
-            else {
-                "plugin_ids": item.get("plugin_ids"),
-                "preset": item.get("preset"),
-                "last_error": item.get("last_error"),
-            }
-        )
-        for step, item in steps.items()
-    } | {
+    return {step: _step_report(item) for step, item in steps.items()} | {
         "cycle_count": host_status.get("cycle_count"),
         "error_count": host_status.get("error_count"),
+    }
+
+
+def _step_report(item: Any) -> dict[str, Any] | None:
+    if not isinstance(item, dict):
+        return None
+    if item.get("status") == "error":
+        return {"status": "error", "error": item.get("error")}
+    return {
+        "plugin_ids": item.get("plugin_ids"),
+        "preset": item.get("preset"),
+        "run_count": item.get("run_count"),
+        "failure_count": item.get("failure_count"),
+        "last_error": item.get("last_error"),
     }
 
 

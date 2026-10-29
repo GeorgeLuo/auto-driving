@@ -34,8 +34,8 @@ def wait_until(predicate, *, timeout_s: float = 10.0, message: str):
 def stage_runtime(runtime_root: Path) -> None:
     """Stage the steps that have no built-in.
 
-    The bundle is not an extracted release, so plan names the source tree that
-    `hosts info plan` loads.
+    The bundle is not an extracted release, so plan names the source tree its
+    runner loads from.
     """
     bundle = controller_bundle_paths(runtime_root / HOST_NAME)
     _write_activations(bundle)

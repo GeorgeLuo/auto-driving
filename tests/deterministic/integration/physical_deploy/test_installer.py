@@ -9,7 +9,12 @@ from unittest.mock import MagicMock, patch
 from autonomy.decision_cycle.activation import STEPS
 from cli.automa_cli.hosts.bundles import controller_bundle_paths, sync_controller_bundle
 from cli.automa_cli.hosts.deploy import PicarTarget, _verify_picar_autonomy_runtime
-from cli.automa_cli.hosts.step_activations import ensure_step_activations, stage_activation
+from cli.automa_cli.hosts.step_activations import (
+    ensure_step_activations,
+    replace_metadata,
+    stage_activation,
+    startup_activations,
+)
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
     DEFAULT_STEP_PRESETS,
@@ -48,7 +53,7 @@ def _status_response(mode: str, steps: dict[str, list[str]]) -> MagicMock:
 
 
 class PhysicalDeployTests(unittest.TestCase):
-    def test_deploy_stages_every_step_default_over_what_was_staged(self) -> None:
+    def test_deploy_stages_each_saved_step_and_every_other_steps_default(self) -> None:
         """Regression: deploy staged no proposal, so a fresh vehicle held instead of proposing."""
 
         def staged(paths: dict[str, Path], step: str) -> dict:
@@ -58,7 +63,8 @@ class PhysicalDeployTests(unittest.TestCase):
             bundle = controller_bundle_paths(Path(tmp) / "runtime" / "hosts" / "piracer")
             release = sync_controller_bundle(bundle, output=None)
             ensure = lambda: ensure_step_activations(  # noqa: E731
-                host_name="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.configuration),
+                host_name="piracer", bundle=bundle, release=release,
+                activations=startup_activations(bundle, "piracer"), vehicle=dict(TARGET.configuration),
             )
             paths = ensure()
             self.assertEqual(set(paths), set(STEPS))
@@ -76,10 +82,27 @@ class PhysicalDeployTests(unittest.TestCase):
             stage_activation(bundle, selection_activation("action", plugins=["hold"]), host_name="piracer")
             paths["memory"].write_text("{", encoding="utf-8")
             paths = ensure()
-            # A deploy replaces whatever each step had staged with its default.
+            # A deploy replaces whatever each step had staged with its default, unless it was saved.
             for step in STEPS:
                 with self.subTest(step=step, staged="replaced"):
                     self.assertEqual(staged(paths, step)["plugins"], list(DEFAULT_STEP_PLUGINS[step]))
+            hold = selection_activation("action", plugins=["hold"])
+            stage_activation(bundle, replace_metadata(hold, {"saved": True}), host_name="piracer")
+            self.assertEqual(staged(ensure(), "action")["plugins"], ["hold"])
+            self.assertTrue(staged(paths, "action")["metadata"]["saved"])
+
+            # A saved plugin the catalog no longer has stops the deploy before anything is staged.
+            dropped = staged(paths, "action")
+            dropped["plugins"] = ["retired"]
+            dropped["plugin_specs"]["retired"] = "implementations.retired:Retired"
+            paths["action"].write_text(json.dumps(dropped), encoding="utf-8")
+            before = {step: path.read_bytes() for step, path in paths.items()}
+            with self.assertRaisesRegex(ValueError, "piracer's saved action plugins .*retired(.|\n)*"
+                                        "plugins save --host-name piracer --step action"):
+                ensure()
+            self.assertEqual({step: path.read_bytes() for step, path in paths.items()}, before)
+            stage_activation(bundle, hold, host_name="piracer")
+            paths = ensure()
             for step in STEPS:
                 with self.subTest(step=step, staged="release"):
                     self.assertEqual(

@@ -14,6 +14,7 @@ from cli.automa_cli.hosts.step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     bundle_activation_path,
     ensure_step_activations,
+    startup_activations,
 )
 
 TARGET = PicarTarget(
@@ -40,7 +41,8 @@ class PhysicalDeployTests(unittest.TestCase):
             bundle = controller_bundle_paths(host_dir)
             release = sync_controller_bundle(bundle, output=None)
             ensure_step_activations(
-                host_name="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.configuration),
+                host_name="piracer", bundle=bundle, release=release,
+                activations=startup_activations(bundle, "piracer"), vehicle=dict(TARGET.configuration),
             )
             steps = STEPS
             release_id = Path(release["archive"]["path"]).name.removesuffix(".tar.gz")

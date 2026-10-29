@@ -2,10 +2,11 @@
 
 Every cycle step is staged the same way: ``bundle/runtime/<step>/active.json``
 holds a ``StepActivation`` for a host ``staging_host`` knows. ``hosts update``
-writes each step's default selection there, and a host process loads it
-at startup. The CLI records who staged it (host, bundle, release, time) in
-the activation's ``metadata``. CLI hosts use its bundle path to load staged
-plugin code; the core step runners do not read it.
+writes each step's saved selection there, else its default, and a host
+process loads it at startup; ``plugins save`` stages what a running host has
+armed and marks it ``saved``. The CLI records who staged it (host, bundle,
+release, time) in the activation's ``metadata``. CLI hosts use its bundle
+path to load staged plugin code; the core step runners do not read it.
 The decision steps (proposal, plan, action) together identify a decision
 generation by the content of their activations.
 """
@@ -15,6 +16,7 @@ from __future__ import annotations
 import json
 import shlex
 import time
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
@@ -30,7 +32,12 @@ from autonomy.decision_cycle.activation import (
     write_step_activation,
 )
 from autonomy.decision_cycle.steps import builtin_activation
-from implementations.decision_cycle.catalog import selection_activation
+from implementations.decision_cycle.catalog import (
+    DEFAULT_STEP_PLUGINS,
+    PRESET_STEPS,
+    plugin_list_preset,
+    selection_activation,
+)
 
 from .bundles import controller_bundle_paths, release_activation_summary
 from ..shared.paths import display_path, safe_path_part
@@ -92,7 +99,8 @@ def absent_step_error(step: str, host_name: str) -> str:
     return (
         f"{host_name} runs no {step} step. Arm a plugin for it with "
         f"./cli/automa plugins arm --host-name {host_name} --name {step}/<plugin>, "
-        f"or restart onto the defaults: ./cli/automa hosts update --name {host_name} --restart"
+        f"or restart it with each step's saved plugins, else its default: "
+        f"./cli/automa hosts update --name {host_name} --restart"
     )
 
 
@@ -250,31 +258,111 @@ def replace_metadata(activation: StepActivation, metadata: dict[str, Any]) -> St
     )
 
 
+def startup_activations(bundle: dict[str, str], host_name: str) -> dict[str, StepActivation]:
+    """What each step starts with after ``hosts update``.
+
+    A step ``plugins save`` saved keeps its plugins, rebuilt from the catalog
+    with their current specs and configs. Every other step gets its default,
+    including one whose document cannot be read. Raises ``ValueError``,
+    before anything is packaged or written, when the catalog no longer has a
+    saved plugin.
+    """
+
+    activations: dict[str, StepActivation] = {}
+    for step in STEPS:
+        try:
+            staged = read_bundle_activation(bundle, step)
+        except (OSError, TypeError, ValueError):
+            staged = None
+        if staged is None or not staged.metadata.get("saved"):
+            activations[step] = selection_activation(step)
+            continue
+        try:
+            rebuilt = selection_activation(step, plugins=staged.plugins)
+        except ValueError as exc:
+            raise ValueError("\n".join([
+                f"{host_name}'s saved {step} plugins are not all in the catalog: {exc}",
+                "Change them on the running host with plugins arm or disarm, then save them again: "
+                f"./cli/automa plugins save --host-name {shlex.quote(host_name)} --step {step}",
+            ])) from exc
+        activations[step] = replace_metadata(rebuilt, {**rebuilt.metadata, "saved": True})
+    return activations
+
+
 def ensure_step_activations(
     *,
     host_name: str,
     bundle: dict[str, str],
     release: dict[str, Any],
+    activations: Mapping[str, StepActivation],
     vehicle: dict[str, Any] | None = None,
 ) -> dict[str, Path]:
-    """Stage every step's default selection, recording ``release`` on each.
+    """Stage each step's activation from ``startup_activations``, recording ``release`` on each.
 
-    The deploy ships the catalog's current defaults, plugins and configs
-    included. It replaces whatever a step had staged without reading it, so
-    an unreadable document is replaced too. A plugin armed on a running host
-    lasts until the host process restarts.
+    The deploy replaces whatever a step had staged. A plugin armed on a
+    running host lasts until the host process restarts, unless
+    ``plugins save`` saves it.
     """
 
     return {
         step: stage_activation(
             bundle,
-            selection_activation(step),
+            activations[step],
             host_name=host_name,
             release=release,
             vehicle=vehicle,
         )
         for step in STEPS
     }
+
+
+def save_selections(
+    bundle: dict[str, str],
+    armed: Mapping[str, Sequence[Mapping[str, Any]]],
+    *,
+    host_name: str,
+    vehicle: dict[str, Any],
+) -> dict[str, StepActivation]:
+    """Stage each step's ``armed`` plugins as the host's startup selection; return what was written.
+
+    ``armed`` lists each step's plugins as the host's catalog describes them
+    (``id``, ``entrypoint``, ``config``). The step keeps the specs, configs
+    and release ``hosts update`` staged, so each must match what the host
+    runs. A selection other than the step's default is marked ``saved``,
+    which ``hosts update`` keeps; a default is left to follow the catalog.
+    Raises ``ValueError``, having written nothing, when any step cannot be
+    saved.
+    """
+
+    restart = f"./cli/automa hosts update --name {shlex.quote(host_name)} --restart"
+    saved: dict[str, StepActivation] = {}
+    for step, plugins in armed.items():
+        staged = read_bundle_activation(bundle, step)
+        if staged is None:
+            raise ValueError(f"{host_name} has no staged {step} activation. Run: {restart}")
+        for plugin in plugins:
+            plugin_id = plugin["id"]
+            if (staged.plugin_specs.get(plugin_id) != plugin["entrypoint"]
+                    or dict(staged.plugin_configs.get(plugin_id, {})) != dict(plugin["config"])):
+                raise ValueError("\n".join([
+                    f"{host_name} runs a {step}/{plugin_id} its staged release does not package.",
+                    f"Restart it onto that release, arm the plugins again and save: {restart}",
+                ]))
+        ids = tuple(plugin["id"] for plugin in plugins)
+        metadata: dict[str, Any] = {"preset": plugin_list_preset(step, ids)} if step in PRESET_STEPS else {}
+        if ids != tuple(DEFAULT_STEP_PLUGINS[step]):
+            metadata["saved"] = True
+        selection = StepActivation(
+            step=step, plugins=ids, plugin_specs=staged.plugin_specs,
+            plugin_configs=staged.plugin_configs, metadata=metadata,
+        )
+        saved[step] = staged_activation(
+            bundle, selection, host_name=host_name, vehicle=vehicle,
+            release_summary=(staged.metadata.get("controller_bundle") or {}).get("release"),
+        )
+    for activation in saved.values():
+        write_step_activation(bundle_activation_path(bundle, activation.step), activation)
+    return saved
 
 
 def staged_selections(bundle: dict[str, str]) -> dict[str, dict[str, Any]]:
@@ -363,10 +451,12 @@ __all__ = [
     "CONTROLLER_BUNDLE_KEYS",
     "read_bundle_activation",
     "replace_metadata",
+    "save_selections",
     "stage_activation",
     "staged_activation",
     "staging_metadata",
     "staging_host",
+    "startup_activations",
     "host_names",
     "write_host_configuration",
     "host_bundle",

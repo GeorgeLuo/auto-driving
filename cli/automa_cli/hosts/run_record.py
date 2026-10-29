@@ -147,7 +147,7 @@ def decision_record(identity: dict[str, Any]) -> dict[str, Any]:
 
 
 def step_status(host_status: dict[str, Any]) -> dict[str, Any]:
-    """Each step's plugin IDs, preset, run and failure counts and last error, without the per-cycle records.
+    """Each step's plugin IDs and configs, preset, run and failure counts and last error, without the per-cycle records.
 
     A step whose report the host could not read keeps that error.
     """
@@ -166,6 +166,7 @@ def _step_report(item: Any) -> dict[str, Any] | None:
         return {"status": "error", "error": item.get("error")}
     return {
         "plugin_ids": item.get("plugin_ids"),
+        "plugin_configs": item.get("plugin_configs"),
         "preset": item.get("preset"),
         "run_count": item.get("run_count"),
         "failure_count": item.get("failure_count"),
@@ -188,6 +189,7 @@ def applied_selections(
             "source": "applied",
             "preset": report.get("preset"),
             "plugins": list(report.get("plugin_ids") or []),
+            "plugin_configs": report.get("plugin_configs"),
         }
     return applied
 

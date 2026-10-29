@@ -369,6 +369,7 @@ def staged_selections(bundle: dict[str, str]) -> dict[str, dict[str, Any]]:
     A step runs its staged activation, else its built-in, else nothing. An
     unreadable document is ``invalid``; ``hosts update`` replaces it. A staged
     selection ``plugins save`` saved is ``saved``; any other is the step's default.
+    ``plugin_configs`` holds what each selected plugin is configured with.
     """
 
     selections: dict[str, dict[str, Any]] = {}
@@ -377,7 +378,9 @@ def staged_selections(bundle: dict[str, str]) -> dict[str, dict[str, Any]]:
         try:
             staged = read_bundle_activation(bundle, step)
         except (OSError, ValueError, TypeError):
-            selections[step] = {"activation": path, "source": "invalid", "saved": False, "preset": None, "plugins": []}
+            selections[step] = {
+                "activation": path, "source": "invalid", "saved": False, "preset": None, "plugins": [], "plugin_configs": {},
+            }
             continue
         activation = staged or builtin_activation(step)
         selections[step] = {
@@ -386,6 +389,9 @@ def staged_selections(bundle: dict[str, str]) -> dict[str, dict[str, Any]]:
             "saved": staged is not None and bool(staged.metadata.get("saved")),
             "preset": activation_presets({step: activation}).get(step),
             "plugins": list(activation.plugins) if activation is not None else [],
+            "plugin_configs": {
+                plugin_id: dict(activation.plugin_configs.get(plugin_id, {})) for plugin_id in activation.plugins
+            } if activation is not None else {},
         }
     return selections
 

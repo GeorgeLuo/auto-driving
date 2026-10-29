@@ -164,6 +164,24 @@ class LiveCommandsTests(LiveHostTestCase):
             human.stdout, r"\n    memory: .+  source=staged \(default\)\n      applied: as staged  runs=[1-9]\d*  failures=0\n"
         )
 
+    def test_status_names_the_plugins_whose_restaged_configs_the_host_has_not_applied(self) -> None:
+        """Regression: a restaged config with the same plugins read ``as staged`` while the host kept the old one."""
+
+        path = self.runtime_root / HOST_NAME / "bundle/runtime/proposal/active.json"
+        activation = json.loads(path.read_text(encoding="utf-8"))
+        (plugin,) = activation["plugins"]
+        activation["plugin_configs"][plugin]["steer_magnitude"] = 0.9
+        path.write_text(json.dumps(activation), encoding="utf-8")
+        machine = self.automa("status", "--json")
+        human = self.automa("status", "--long")
+        self.assertEqual((machine.returncode, human.returncode), (0, 0), human.stdout + human.stderr)
+        proposal = json.loads(machine.stdout)["hosts"][0]["run"]["steps"]["proposal"]
+        self.assertEqual(
+            (proposal["plugin_configs"][plugin]["steer_magnitude"], proposal["applied"]["plugin_configs"][plugin]["steer_magnitude"]),
+            (0.9, 1.0),
+        )
+        self.assertIn(f"\n      applied: staged plugins, configs differ ({plugin})  runs=", human.stdout)
+
     def test_status_keeps_an_invalid_staged_step_beside_the_one_the_host_applied(self) -> None:
         path = self.runtime_root / HOST_NAME / "bundle/runtime/memory/active.json"
         path.write_text(json.dumps({"schema": "automa_memory_activation_v0"}), encoding="utf-8")

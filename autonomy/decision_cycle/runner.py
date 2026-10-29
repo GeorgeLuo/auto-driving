@@ -367,6 +367,11 @@ class StepRunner(Generic[PluginT]):
                 "available_plugins": sorted(self.plugin_manager.available_ids),
                 "selected_plugin_ids": list(self.plugin_manager.selected_ids),
                 "plugin_ids": list(self.plugin_ids),
+                # What each applied plugin runs with; a restaged config waits for a restart.
+                "plugin_configs": {
+                    definition.plugin_id: deepcopy(dict(definition.config))
+                    for definition, _plugin in self.applied
+                },
                 "plugin_report": self.plugin_report(),
                 "run_count": self.run_count,
                 "failure_count": self.failure_count,

@@ -78,7 +78,10 @@ def _host(camera: int, *, last_error: str | None = None) -> dict:
         "host": {
             "components": {"observation": {"frames_received": camera, "frames_dropped": 0}},
             "steps": {
-                "memory": {"plugin_ids": ["recent"], "run_count": 2, "failure_count": 0, "last_error": None},
+                "memory": {
+                    "plugin_ids": ["recent"], "plugin_configs": {"recent": {}}, "run_count": 2, "failure_count": 0,
+                    "last_error": None,
+                },
                 "proposal": None,
             },
             "cycle_count": camera,
@@ -194,7 +197,10 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(state["execution"]["mode"], "manual")
         self.assertEqual(
             state["steps"]["memory"],
-            {"plugin_ids": ["recent"], "preset": None, "run_count": 2, "failure_count": 0, "last_error": None},
+            {
+                "plugin_ids": ["recent"], "plugin_configs": {"recent": {}}, "preset": None, "run_count": 2,
+                "failure_count": 0, "last_error": None,
+            },
         )
         # Every selection records its step's host report, or that the host has none.
         self.assertEqual(state["selections"]["memory"]["status"]["plugin_ids"], ["recent"])

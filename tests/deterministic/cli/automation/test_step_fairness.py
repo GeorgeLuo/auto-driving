@@ -92,7 +92,7 @@ class StepFairnessTests(unittest.TestCase):
             self.assertEqual(status["applied_steps"], {"available": False, "reason": "host not running"})
             self.assertIn("  steps: staged; applied unavailable (host not running)\n", human)
             for name, item in steps.items():
-                self.assertEqual(set(item), {"activation", "source", "saved", "preset", "plugins", "applied"})
+                self.assertEqual(set(item), {"activation", "source", "saved", "preset", "plugins", "plugin_configs", "applied"})
                 self.assertTrue(item["activation"].endswith(f"bundle/runtime/{name}/active.json"))
                 self.assertIsNone(item["applied"])
                 self.assertRegex(human, rf"\n    {name}: .+  source={item['source']}( \(default\))?\n")
@@ -122,13 +122,39 @@ class StepFairnessTests(unittest.TestCase):
         for step, item in status["steps"].items():
             self.assertEqual(item["source"], {**UNSTAGED, "perception": "staged", "proposal": "staged"}[step])
             self.assertEqual(item["applied"], {
-                "preset": f"{step}_preset", "plugins": [f"{step}_plugin"], "run_count": 3,
+                "preset": f"{step}_preset", "plugins": [f"{step}_plugin"], "plugin_configs": None, "run_count": 3,
                 "failure_count": 1, "last_error": f"{step} timed out", "error": None,
             })
             self.assertIn(
                 f"\n      applied: {step}_preset ({step}_plugin)  runs=3  failures=1  last_error={step} timed out\n",
                 human,
             )
+
+    def test_status_says_as_staged_only_when_the_host_applies_the_staged_configs(self) -> None:
+        """Regression: a restaged config the host had not applied read ``as staged``."""
+
+        with self._runtime("memory") as root:
+            staged = self._status()["steps"]["memory"]
+            (plugin,) = staged["plugins"]
+            automation = root / VEHICLE / "bundle/runtime/automation"
+            write_json(automation / "process.json", {"pid": os.getpid()})
+            for configs, label in (
+                (staged["plugin_configs"], "as staged"),
+                ({plugin: {**staged["plugin_configs"][plugin], "max_age_ms": 1}}, f"staged plugins, configs differ ({plugin})"),
+                (None, "staged plugins, configs not reported"),
+            ):
+                with self.subTest(label=label):
+                    report = {"plugin_ids": staged["plugins"], "preset": staged["preset"], "run_count": 2, "failure_count": 0}
+                    if configs is not None:
+                        report["plugin_configs"] = configs
+                    write_json(automation / "state.json", {
+                        "pid": os.getpid(), "status": "running", "steps": step_status({"steps": {"memory": report}}),
+                    })
+                    applied = self._status()["steps"]["memory"]["applied"]
+                    code, human = _invoke("hosts", "status", "--long")
+                    self.assertEqual(code, 0, human)
+                    self.assertEqual(applied["plugin_configs"], configs)
+                    self.assertIn(f"\n      applied: {label}  runs=2  failures=0\n", human)
 
     def test_status_says_when_the_host_could_not_report_a_step(self) -> None:
         reports = {"memory": {"status": "error", "error": "status() raised"}}

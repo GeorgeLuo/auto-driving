@@ -426,13 +426,15 @@ def _compared_steps(
 def _applied_step(report: Any) -> dict[str, Any]:
     """A step as its host reports running it; a step it runs no runner for has no plugins.
 
-    ``error`` is set when the host could not read the step's report.
+    ``plugin_configs`` is ``None`` when the host does not report them. ``error``
+    is set when the host could not read the step's report.
     """
 
     report = report if isinstance(report, dict) else {}
     return {
         "preset": report.get("preset"),
         "plugins": list(report.get("plugin_ids") or []),
+        "plugin_configs": report.get("plugin_configs") if isinstance(report.get("plugin_configs"), dict) else None,
         "run_count": _int_or_none(report.get("run_count")),
         "failure_count": _int_or_none(report.get("failure_count")),
         "last_error": report.get("last_error") if isinstance(report.get("last_error"), str) else None,
@@ -543,21 +545,29 @@ def _staged_label(selection: dict[str, Any]) -> str:
 
 
 def _applied_label(selection: dict[str, Any], applied: dict[str, Any]) -> str:
+    """What the host applied beside the staged selection; restaged configs wait for a restart."""
+
     if applied.get("error"):
         return f"unavailable ({_status_reason(applied['error'], fallback='its report failed')})"
-    as_staged = selection.get("source") != "invalid" and (
-        (applied.get("preset"), applied.get("plugins")) == (selection.get("preset"), selection.get("plugins"))
-    )
+    configs, staged = applied.get("plugin_configs"), selection.get("plugin_configs") or {}
+    if selection.get("source") == "invalid" or (
+        (applied.get("preset"), applied.get("plugins")) != (selection.get("preset"), selection.get("plugins"))
+    ):
+        label = selection_label(applied.get("preset"), applied.get("plugins") or [])
+    elif not isinstance(configs, dict):
+        label = "staged plugins, configs not reported"
+    elif configs != staged:
+        differ = [plugin for plugin in dict.fromkeys([*configs, *staged]) if configs.get(plugin) != staged.get(plugin)]
+        label = f"staged plugins, configs differ ({', '.join(differ)})"
+    else:
+        label = "as staged"
     last_error = applied.get("last_error")
     fields = {
         "runs": applied.get("run_count"),
         "failures": applied.get("failure_count"),
         "last_error": _status_reason(last_error, fallback="") if last_error else None,
     }
-    return "  ".join([
-        "as staged" if as_staged else selection_label(applied.get("preset"), applied.get("plugins") or []),
-        *(f"{name}={value}" for name, value in fields.items() if value is not None),
-    ])
+    return "  ".join([label, *(f"{name}={value}" for name, value in fields.items() if value is not None)])
 
 
 

@@ -197,12 +197,6 @@ def serialized_ledger_bytes(ledger: EvidenceLedger) -> int:
     return canonical_json_size_bytes(ledger.to_dict())
 
 
-def serialized_mapping_bytes(value: Any) -> int:
-    """UTF-8 byte length of a compact strict JSON mapping (for property bags)."""
-
-    return canonical_json_size_bytes(value)
-
-
 def _require_non_negative_int(value: Any, *, field_name: str) -> int:
     try:
         normalized = int(value)

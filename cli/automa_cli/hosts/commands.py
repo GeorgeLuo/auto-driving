@@ -305,17 +305,6 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
         help="Seconds to wait for graceful stop before forcing termination.",
     )
     host_restart.set_defaults(handler=_handle_hosts_restart)
-    host_serve = host_commands.add_parser(
-        "serve",
-        help="Serve a Chase car's runtime host in the foreground (hosts create and hosts run start one).",
-        description=(
-            "Serve the runtime routes for a Chase car from its latest controller release, "
-            "and relaunch on a restart command. `hosts create` and `hosts run` start this in the background; "
-            "its log is runtime/hosts/<host-name>/bundle/runtime/automation/host.log."
-        ),
-    )
-    host_serve.add_argument("--name", required=True, dest="host_name", help="Chase host name.")
-    host_serve.set_defaults(handler=_handle_hosts_serve)
 
 
 def _register_hosts_operations(host_commands: argparse._SubParsersAction) -> None:
@@ -589,7 +578,6 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "- run         start a run and verify camera + perception + current view",
                 "- stop        stop the run; the host stays attached until hosts delete",
                 "- restart     stop and start the run",
-                "- serve       serve a Chase host in the foreground",
                 "- status      show each host's state and attachment",
                 "- operation   run bounded vehicle checks through a host",
                 "- info        inspect staged controller configuration",
@@ -719,12 +707,6 @@ def _handle_hosts_status(args: argparse.Namespace) -> int:
     if result.message:
         print(result.message)
     return result.exit_code
-
-
-def _handle_hosts_serve(args: argparse.Namespace) -> int:
-    from .runtime_hosts import serve_chase_host
-
-    return serve_chase_host(args.host_name)
 
 
 def _handle_hosts_restart(args: argparse.Namespace) -> int:

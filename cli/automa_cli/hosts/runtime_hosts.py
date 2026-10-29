@@ -29,7 +29,6 @@ from ..shared.paths import ROOT, display_path, safe_path_part
 from .step_activations import host_names, staging_host
 
 RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))
-AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
 HOST_RECORD = "host.json"
 HOST_LOG = "host.log"
 # Where vehicles status looks besides the default simulator.
@@ -195,11 +194,11 @@ def _free_port() -> int:
         return int(probe.getsockname()[1])
 
 
-def serve_chase_host(host_name: str) -> int:
+def supervise_chase_host(host_name: str) -> int:
     """Supervise the Chase host: start it from the latest release, again on restart.
 
-    Runs as the hidden ``hosts serve`` command. The port stays
-    the same across restarts so a client's ``base_url`` survives them.
+    Runs as this module's main, which ``ensure_chase_host`` starts. The port
+    stays the same across restarts so a client's ``base_url`` survives them.
     """
 
     vehicle = staged_host(host_name)
@@ -298,7 +297,7 @@ def ensure_chase_host(host_name: str, *, timeout_s: float = HOST_START_TIMEOUT_S
     (directory / HOST_RECORD).unlink(missing_ok=True)
     with (directory / HOST_LOG).open("a", encoding="utf-8") as log:
         process = subprocess.Popen(
-            [sys.executable, str(AUTOMA_EXECUTABLE), "hosts", "serve", "--name", host_name],
+            [sys.executable, "-m", "cli.automa_cli.hosts.runtime_hosts", host_name],
             cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
             start_new_session=True, env={**os.environ, "PYTHONUNBUFFERED": "1"},
         )
@@ -421,3 +420,7 @@ def runtime_base_url(host_name: str, *, start: bool = False, timeout_s: float = 
     if base_url is not None:
         return base_url
     raise RuntimeHostError(f"Host {host_name!r} is not running.")
+
+
+if __name__ == "__main__":
+    raise SystemExit(supervise_chase_host(sys.argv[1]))

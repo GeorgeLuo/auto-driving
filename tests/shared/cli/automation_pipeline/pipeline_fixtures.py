@@ -239,7 +239,7 @@ def staged_runners(*, perception=None, wrap=None):
 def chase_runtime(runtime_root: Path, *, car=None, host_name: str = HOST_NAME):
     """Serve the vehicle's staged runtime from an in-process Chase host.
 
-    The host writes the record a started ``hosts serve`` writes, so the
+    The host writes the record a started Chase host writes, so the
     CLI (in process or as a subprocess under ``runtime_root``) finds it by
     ``base_url``. Enter it inside ``staged_runners``: the host loads its steps
     when constructed.

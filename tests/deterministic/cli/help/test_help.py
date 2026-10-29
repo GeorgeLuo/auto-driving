@@ -67,6 +67,7 @@ class HelpCommandTests(unittest.TestCase):
             ["hosts", "perception", "viability", "--name", "demo"],
             ["hosts", "memory", "viability", "--name", "demo"],
             ["hosts", "serve", "--name", "demo"],
+            ["hosts", "operation", "startup-check", "--name", "demo"],
             ["vehicles", "delete", "host", "--name", "demo"],
         ):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):

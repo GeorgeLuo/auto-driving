@@ -15,7 +15,6 @@ from cli.automa_cli import app
 from cli.automa_cli.hosts import (
     deploy,
     memory,
-    operations,
     perception,
     runtime_hosts,
     view_discovery,
@@ -37,7 +36,6 @@ IMPORT_TIME_ENV = {
         (view_discovery.runtime_view_dir.__kwdefaults__, "runtime_root"),
         (view_discovery.discover_runtime_view.__kwdefaults__, "runtime_root"),
     ),
-    "AUTOMA_OPERATION_OUTPUT_ROOT": ((operations, "OPERATION_OUTPUT_ROOT"),),
 }
 LIVE_ENV = ("AUTOMA_TEST_LIVE_SIM", "AUTOMA_TEST_LIVE_PI")
 

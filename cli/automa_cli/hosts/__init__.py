@@ -7,7 +7,6 @@
 - ``info``, ``viewer``: ``perception``, ``memory``, ``decision_steps`` and
   ``streaming``, with ``stream_output``, ``decision_live`` and ``view_discovery``.
 - ``memory``: ``memory`` for reset.
-- ``operation``: ``operations``.
 - ``workbench``: ``workbench`` and the ``workbench_*`` modules.
 - Read by several commands: ``runtime_hosts``, which finds, starts and replaces the host
   behind each vehicle; ``step_activations``, ``step_schema``, ``step_hosting``,

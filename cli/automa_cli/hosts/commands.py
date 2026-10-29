@@ -22,7 +22,6 @@ from .automation import (
 from .deploy import create_host, update_host, delete_host
 from .decision_steps import get_host_step_info
 from .memory import get_host_memory_info, reset_host_memory
-from .operations import run_host_startup_check
 from .step_activations import HOST_PROVIDERS
 from .perception import get_host_perception_info
 from .workbench import run_workbench_replay
@@ -40,7 +39,6 @@ def register_hosts(subcommands: argparse._SubParsersAction) -> None:
 
     _register_hosts_viewer(host_commands)
     _register_hosts_lifecycle(host_commands)
-    _register_hosts_operations(host_commands)
     _register_hosts_memory(host_commands)
     _register_hosts_workbench(host_commands)
     _register_hosts_info(host_commands)
@@ -240,63 +238,6 @@ def _register_hosts_lifecycle(host_commands: argparse._SubParsersAction) -> None
             default=3.0,
             help="Seconds to wait for graceful stop before forcing termination.",
         )
-
-
-def _register_hosts_operations(host_commands: argparse._SubParsersAction) -> None:
-    operation = host_commands.add_parser("operation", help="Run bounded vehicle checks and setup tasks.")
-    operation.set_defaults(handler=_handle_hosts_operation_help)
-    operation_commands = operation.add_subparsers(dest="operation_command")
-    operation_help = operation_commands.add_parser(
-        "help",
-        help="Show operation-level commands.",
-    )
-    operation_help.set_defaults(handler=_handle_hosts_operation_help)
-    startup_check = operation_commands.add_parser(
-        "startup-check",
-        help="Send bounded action pulses and verify camera changes around each command.",
-        description="Send bounded action pulses and verify camera changes around each command.",
-    )
-    startup_check.add_argument(
-        "--name",
-        required=True,
-        dest="host_name",
-        help="Host name from `automa hosts status`.",
-    )
-    startup_check.add_argument(
-        "--timeout-s",
-        type=float,
-        default=8.0,
-        help="Vehicle discovery and operation timeout in seconds.",
-    )
-    startup_check.add_argument(
-        "--throttle",
-        type=float,
-        default=0.22,
-        help="Throttle magnitude for each movement pulse.",
-    )
-    startup_check.add_argument(
-        "--duration-s",
-        type=float,
-        default=0.3,
-        help="Duration of each movement pulse.",
-    )
-    startup_check.add_argument(
-        "--settle-s",
-        type=float,
-        default=0.35,
-        help="Delay after each pulse before the comparison capture.",
-    )
-    startup_check.add_argument(
-        "--dry-run",
-        action="store_true",
-        help="Capture every comparison without acquiring control or sending movement pulses.",
-    )
-    startup_check.add_argument(
-        "--json",
-        action="store_true",
-        help="Print the machine-readable operation result.",
-    )
-    startup_check.set_defaults(handler=_handle_hosts_operation_startup_check)
 
 
 def _register_hosts_memory(host_commands: argparse._SubParsersAction) -> None:
@@ -514,7 +455,6 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "- stop        stop the run; the host stays attached until hosts delete",
                 "- restart     stop and start the run",
                 "- status      show each host's state and attachment",
-                "- operation   run bounded vehicle checks through a host",
                 "- info        inspect staged controller configuration",
                 "- memory      reset live memory",
                 "- workbench   replay images through the controller steps",
@@ -523,23 +463,6 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "",
                 "Detailed help:",
                 "- ./cli/automa hosts <command> --help",
-            ]
-        )
-    )
-    return 0
-
-
-def _handle_hosts_operation_help(args: argparse.Namespace) -> int:
-    print(
-        "\n".join(
-            [
-                "automa hosts operation commands",
-                "",
-                "- startup-check  send bounded pulses and verify camera changes",
-                "- help           show this summary",
-                "",
-                "Detailed help:",
-                "- ./cli/automa hosts operation <command> --help",
             ]
         )
     )
@@ -656,21 +579,6 @@ def _handle_hosts_restart(args: argparse.Namespace) -> int:
         log_to_disk=args.log_to_disk,
         open_view=args.open_view,
         wait_s=args.wait_s,
-    )
-    if result.message:
-        print(result.message)
-    return result.exit_code
-
-
-def _handle_hosts_operation_startup_check(args: argparse.Namespace) -> int:
-    result = run_host_startup_check(
-        host_name=args.host_name,
-        timeout_s=args.timeout_s,
-        throttle=args.throttle,
-        duration_s=args.duration_s,
-        settle_s=args.settle_s,
-        dry_run=args.dry_run,
-        json_output=args.json,
     )
     if result.message:
         print(result.message)

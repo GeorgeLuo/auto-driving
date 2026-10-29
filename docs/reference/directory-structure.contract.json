@@ -185,20 +185,6 @@
                 "responsibility": "PiCar runtime host and DonkeyCar drive-loop integration."
               }
             ]
-          },
-          {
-            "path": "implementations/operations/",
-            "category": "implementation",
-            "commit_policy": "source",
-            "responsibility": "Concrete bounded operation plans and workflows.",
-            "children": [
-              {
-                "path": "implementations/operations/startup_action_check/",
-                "category": "operation-implementation",
-                "commit_policy": "source",
-                "responsibility": "Action-and-capture checks to confirm commands register."
-              }
-            ]
           }
         ]
       },

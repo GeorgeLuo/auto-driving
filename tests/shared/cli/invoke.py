@@ -16,7 +16,8 @@ from cli.automa_cli.hosts.deployment import picar_deploy, service
 from cli.automa_cli.hosts import staging
 from cli.automa_cli.hosts.views import view_discovery
 from cli.automa_cli.plugins.catalog import service as catalog
-from cli.automa_cli.vehicles import discovery
+from cli.automa_cli.simulators import store as simulator_store
+from cli.automa_cli.vehicles import store as vehicle_store
 from cli.automa_cli.releases import paths as release_paths
 from tests.support.cli_runner import WORKSPACE_ROOT, checked_result
 from tests.support.offline.sitecustomize import offline_getaddrinfo
@@ -29,7 +30,8 @@ IMPORT_TIME_ENV = {
         (picar_deploy, "RUNTIME_ROOT"),
         (staging, "RUNTIME_ROOT"),
         (release_paths, "RUNTIME_ROOT"),
-        (discovery, "RUNTIME_ROOT"),
+        (vehicle_store, "RUNTIME_ROOT"),
+        (simulator_store, "RUNTIME_ROOT"),
         (catalog, "RUNTIME_ROOT"),
         (view_discovery, "RUNTIME_ROOT"),
         (view_discovery.runtime_view_dir.__kwdefaults__, "runtime_root"),

@@ -16,7 +16,7 @@ from PIL import Image
 
 from autonomy.decision_cycle.activation import STEPS, step_activation_path, write_step_activation
 from autonomy.decision_cycle.steps import decision_steps
-from cli.automa_cli.shared.controller_releases import controller_bundle_paths
+from cli.automa_cli.releases.paths import controller_bundle_paths
 from cli.automa_cli.hosts.publications.decision import accept_decision_publication, decision_view_frame
 from cli.automa_cli.hosts.views.decision_live import DecisionViewAdapter, _provider_identity
 from cli.automa_cli.hosts.publications.decision_records import activations_from_payloads

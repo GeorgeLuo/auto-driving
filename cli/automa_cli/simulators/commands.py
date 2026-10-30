@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from .render import render_simulator_result
 
 from .service import create_simulator, delete_simulator
 
@@ -61,11 +62,11 @@ def _handle_simulators_help(args: argparse.Namespace) -> int:
 
 def _handle_simulators_create(args: argparse.Namespace) -> int:
     result = create_simulator()
-    print(result.message)
+    print(render_simulator_result(result))
     return result.exit_code
 
 
 def _handle_simulators_delete(args: argparse.Namespace) -> int:
     result = delete_simulator(url=args.url)
-    print(result.message)
+    print(render_simulator_result(result))
     return result.exit_code

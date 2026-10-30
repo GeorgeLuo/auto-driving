@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import json
 import math
 import socket
 import time
-import urllib.error
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
@@ -22,6 +19,8 @@ from implementations.vehicle.chase_sim import (
 from implementations.vehicle.chase_sim.car import FRONTEND_DELIVERY_PROTOCOL_CODES
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
 from implementations.vehicle.picar import create_picar
+
+from ..shared import http_json
 
 DEFAULT_READINESS_TIMEOUT_S = 5.0
 
@@ -414,38 +413,11 @@ def _probe_tcp_endpoint(base_url: str, *, timeout_s: float) -> dict[str, Any]:
 
 
 def _get_json(base_url: str, endpoint: str, *, timeout_s: float) -> tuple[dict[str, Any] | None, str | None]:
-    ok, body_or_error = _get(base_url, endpoint, timeout_s=timeout_s)
-    if not ok:
-        return None, body_or_error
-    try:
-        data = json.loads(body_or_error)
-    except json.JSONDecodeError as exc:
-        return None, f"invalid JSON from {endpoint}: {exc}"
-    if not isinstance(data, dict):
-        return None, f"expected JSON object from {endpoint}"
-    return data, None
-
-
-def _get(base_url: str, endpoint: str, *, timeout_s: float) -> tuple[bool, str]:
     url = f"{base_url.rstrip('/')}/{endpoint.lstrip('/')}"
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/json,text/html,*/*",
-            "User-Agent": "automa/0.1",
-        },
-        method="GET",
-    )
     try:
-        with urllib.request.urlopen(request, timeout=timeout_s) as response:
-            body = response.read()
-            return True, body.decode("utf-8", errors="replace")
-    except urllib.error.HTTPError as exc:
-        exc.close()
-        return False, f"GET {url} returned HTTP {exc.code}"
-    except urllib.error.URLError as exc:
-        if isinstance(exc.reason, TimeoutError):
-            return False, f"GET {url} did not answer within {timeout_s:g} s"
-        return False, f"GET {url} failed: {exc.reason}"
-    except TimeoutError:
-        return False, f"GET {url} did not answer within {timeout_s:g} s"
+        status, payload = http_json.request_json(url, timeout_s=timeout_s)
+    except ConnectionError as exc:
+        return None, str(exc)
+    if not 200 <= status < 300:
+        return None, f"GET {url} returned HTTP {status}"
+    return payload, None

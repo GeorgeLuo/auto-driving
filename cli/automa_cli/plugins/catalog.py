@@ -7,8 +7,6 @@ import json
 import shlex
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
@@ -25,6 +23,7 @@ from ..hosts.step_activations import (
     staging_host,
     step_lines,
 )
+from ..shared import http_json
 from ..shared.command_result import CommandResult
 from ..shared.paths import RUNTIME_ROOT, display_path
 from ..shared.plugin_catalog import packaged_plugin_definitions
@@ -42,22 +41,9 @@ class PluginCatalogClient:
         self.timeout_s = timeout_s
 
     def __call__(self, payload: dict[str, Any] | None = None, *, timeout_s: float | None = None) -> dict[str, Any]:
-        data = json.dumps(payload).encode() if payload is not None else None
-        request = Request(self.url, data=data, headers={"Content-Type": "application/json"})
+        """GET the catalog, or POST ``payload`` to it; a refusal's JSON body is the answer."""
         timeout_s = self.timeout_s if timeout_s is None else timeout_s
-        try:
-            with urlopen(request, timeout=timeout_s) as response:
-                return json.load(response)
-        except HTTPError as exc:
-            with exc:
-                try:
-                    return json.load(exc)
-                except (ValueError, UnicodeError):
-                    raise RuntimeError(f"catalog request failed: HTTP {exc.code}") from exc
-        except (TimeoutError, URLError) as exc:
-            if not isinstance(getattr(exc, "reason", exc), TimeoutError):
-                raise
-            raise TimeoutError(f"{self.url} did not answer within {timeout_s:g} s") from exc
+        return http_json.request_json(self.url, timeout_s=timeout_s, payload=payload)[1]
 
 
 def catalog_url(host_name: str) -> str:

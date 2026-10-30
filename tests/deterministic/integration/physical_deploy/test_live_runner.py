@@ -38,7 +38,7 @@ class PiLiveRunnerTests(unittest.TestCase):
         with (
             patch.dict(os.environ, {}, clear=True),
             patch(
-                "cli.automa_cli.hosts.deploy.urllib_request.urlopen",
+                "cli.automa_cli.shared.http_json.urllib.request.urlopen",
                 return_value=response,
             ) as urlopen,
             redirect_stdout(output),
@@ -69,7 +69,7 @@ class PiLiveRunnerTests(unittest.TestCase):
 
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch("cli.automa_cli.hosts.deploy.urllib_request.urlopen", return_value=response),
+            patch("cli.automa_cli.shared.http_json.urllib.request.urlopen", return_value=response),
             redirect_stdout(output),
         ):
             ready = prepare_live_pi(
@@ -92,7 +92,7 @@ class PiLiveRunnerTests(unittest.TestCase):
 
         with (
             patch.dict(os.environ, {}, clear=True),
-            patch("cli.automa_cli.hosts.deploy.urllib_request.urlopen", return_value=response),
+            patch("cli.automa_cli.shared.http_json.urllib.request.urlopen", return_value=response),
             redirect_stdout(output),
         ):
             ready = prepare_live_pi(

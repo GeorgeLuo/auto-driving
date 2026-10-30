@@ -16,7 +16,7 @@ from urllib.request import urlopen
 
 from cli.automa_cli.hosts.publications.host_publications import fetch_observation_sample
 from cli.automa_cli.hosts.views.view_feed import ViewFeed
-from cli.automa_cli.plugins.streaming import _read_publication
+from cli.automa_cli.plugins.stream.perception import read_publication as _read_publication
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import HOST_NAME
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.integration.live_host import LiveHostTestCase, stage_runtime as _stage, wait_until

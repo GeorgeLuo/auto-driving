@@ -1,6 +1,6 @@
 """Replay an image source through a prefix of the cycle's steps, offline.
 
-``step_inspect`` replays every step through this path: the source's recorded
+Inspection replays every step through this path: the source's recorded
 selections, restaged per frame, unless overridden;
 then a report of the inspected step after every frame, optionally recorded as a
 run that replays as a source again.
@@ -21,13 +21,13 @@ from autonomy.plugins import uploaded_source
 from autonomy.runtime.recording import recorded_selections, recording_frame_entry
 from autonomy.decision_cycle.activation import StepActivation
 
-from ..replay.selections import (
+from ...replay.selections import (
     SharedMemorySeed, recorded_runner,
     default_selection, resolve_replay_activations, restage_replay_steps, selection_report,
 )
-from ..shared.paths import safe_path_part
-from ..replay.frames import FrameOutcome, run_frame
-from ..replay.source import (
+from ...shared.paths import safe_path_part
+from ...replay.frames import FrameOutcome, run_frame
+from ...replay.source import (
     ImageSource,
     ReplayFrame,
     SourceValidationError,

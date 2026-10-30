@@ -288,7 +288,7 @@
             "path": "cli/automa_cli/plugins/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa plugins commands. plugins/catalog registers and performs list, upload, arm, disarm and save, and renders their text and JSON. Streaming a step and inspecting plugins from images or recorded runs stay beside that package."
+            "responsibility": "The automa plugins commands. catalog, stream and inspect each register their commands, perform the operation, and render text and JSON. Stream keeps perception, memory and decision interpretation separate. Inspect keeps its own replay and recording."
           },
           {
             "path": "cli/automa_cli/simulators/",

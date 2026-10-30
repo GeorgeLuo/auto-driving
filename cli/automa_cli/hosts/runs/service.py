@@ -51,8 +51,8 @@ from ...frontend.perception_view import (
     get_perception_view_status,
     perception_view_ready,
 )
-from ...vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
-from ...vehicles.providers import PROVIDERS
+from ...providers.catalog import PROVIDERS
+from ...providers.probes import DEFAULT_READINESS_TIMEOUT_S
 
 
 

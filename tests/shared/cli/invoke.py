@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 from cli.automa_cli import app
-from cli.automa_cli.hosts.deployment import deploy, picar_deploy
+from cli.automa_cli.hosts.deployment import picar_deploy, service
 from cli.automa_cli.hosts import staging
 from cli.automa_cli.hosts.views import view_discovery
 from cli.automa_cli.plugins.catalog import service as catalog
@@ -25,7 +25,7 @@ from tests.support.offline.sitecustomize import offline_getaddrinfo
 # run in this process sees a test's value only if the name is rebound.
 IMPORT_TIME_ENV = {
     "AUTOMA_RUNTIME_ROOT": (
-        (deploy, "RUNTIME_ROOT"),
+        (service, "RUNTIME_ROOT"),
         (picar_deploy, "RUNTIME_ROOT"),
         (staging, "RUNTIME_ROOT"),
         (release_paths, "RUNTIME_ROOT"),

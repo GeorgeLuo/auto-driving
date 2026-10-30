@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 import sys
 
-from ...vehicles.providers import PROVIDERS
-from .deploy import create_host, delete_host, update_host
+from ...providers.catalog import PROVIDERS
+from .render import present_deployment
+from .service import create_host, delete_host, update_host
 
 
 def register_host_deployment(host_commands: argparse._SubParsersAction) -> None:
@@ -37,24 +38,24 @@ def _handle_hosts_create(args: argparse.Namespace) -> int:
     result = create_host(
         host_name=args.host_name, provider=args.provider, url=args.url,
         ssh_target=args.ssh_target, pi_home=args.pi_home, drive_args=args.drive_args,
-        dry_run=args.dry_run, json_output=args.json, verbose=args.verbose,
+        dry_run=args.dry_run, verbose=args.verbose,
         output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
     )
-    print(result.message)
+    print(present_deployment(result, json_output=args.json))
     return result.exit_code
 
 
 def _handle_hosts_update(args: argparse.Namespace) -> int:
     result = update_host(
         host_name=args.host_name, dry_run=args.dry_run, restart=args.restart,
-        drive_args=args.drive_args, json_output=args.json, verbose=args.verbose,
+        drive_args=args.drive_args, verbose=args.verbose,
         output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
     )
-    print(result.message)
+    print(present_deployment(result, json_output=args.json))
     return result.exit_code
 
 
 def _handle_hosts_delete(args: argparse.Namespace) -> int:
     result = delete_host(host_name=args.host_name, verbose=args.verbose, output=sys.stdout)
-    print(result.message)
+    print(present_deployment(result, json_output=False))
     return result.exit_code

@@ -42,7 +42,7 @@ from implementations.decision_cycle.catalog import (
 from .bundles import release_activation_summary
 from ..releases.paths import controller_bundle_paths
 from ..shared.paths import display_path, safe_path_part
-from ..vehicles.providers import PROVIDERS
+from ..providers.catalog import PROVIDERS
 
 def host_bundle(host_name: str, runtime_root: Path) -> dict[str, str]:
     return controller_bundle_paths(Path(runtime_root) / safe_path_part(host_name))

@@ -31,7 +31,7 @@ from ..step_activations import (
 from ...shared.timestamps import timestamp_ms
 from ..views.view_discovery import discover_runtime_view
 from ...frontend.perception_view import get_perception_view_status
-from ...vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
+from ...providers.probes import DEFAULT_READINESS_TIMEOUT_S
 from .models import status_reason
 
 

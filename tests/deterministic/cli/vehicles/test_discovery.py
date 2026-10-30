@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from cli.automa_cli.vehicles.probes import (
+from cli.automa_cli.providers.probes import (
     Candidate,
     probe_picar,
 )
@@ -14,11 +14,11 @@ class VehicleDiscoveryTests(unittest.TestCase):
     def test_picar_probe_distinguishes_a_reachable_host_without_a_server(self) -> None:
         with (
             patch(
-                "cli.automa_cli.vehicles.probes._get_json",
+                "cli.automa_cli.providers.probes._get_json",
                 return_value=(None, "GET status failed"),
             ),
             patch(
-                "cli.automa_cli.vehicles.probes._probe_tcp_endpoint",
+                "cli.automa_cli.providers.probes._probe_tcp_endpoint",
                 return_value={
                     "runtime_state": "server_not_listening",
                     "tcp_listener": False,
@@ -42,11 +42,11 @@ class VehicleDiscoveryTests(unittest.TestCase):
     def test_picar_probe_reports_listener_without_http_readiness(self) -> None:
         with (
             patch(
-                "cli.automa_cli.vehicles.probes._get_json",
+                "cli.automa_cli.providers.probes._get_json",
                 return_value=(None, "GET status timed out"),
             ),
             patch(
-                "cli.automa_cli.vehicles.probes._probe_tcp_endpoint",
+                "cli.automa_cli.providers.probes._probe_tcp_endpoint",
                 return_value={
                     "runtime_state": "http_unhealthy",
                     "tcp_listener": True,

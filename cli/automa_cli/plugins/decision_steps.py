@@ -10,15 +10,15 @@ from autonomy.decision_cycle.activation import DECISION_STEPS
 from ..shared.command_result import CommandResult
 from ..shared.controller_releases import RuntimeHostError, bundle_paths
 from .step_formatting import format_step_record, format_step_timing
-from ..hosts.decision import (
+from ..hosts.publications.decision import (
     DecisionSurfaceError,
     accept_decision_publication,
     decision_error_payload,
     require_valid_activations,
 )
-from ..hosts.host_publications import fetch_decision_publication
+from ..hosts.publications.host_publications import fetch_decision_publication
 from ..hosts.runtime_hosts import runtime_base_url
-from ..hosts.view_feed import ViewFeed, view_page_lines
+from ..hosts.views.view_feed import ViewFeed, view_page_lines
 from .streaming import poll_stream, stream_preflight_outcome, unavailable_probe
 
 

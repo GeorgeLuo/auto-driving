@@ -140,6 +140,24 @@ class ModuleBoundaryTests(unittest.TestCase):
         ]
         self.assertEqual(violations, [])
 
+    def test_host_subpackages_form_no_cycle(self) -> None:
+        """Host subsystems stay independently navigable as their modules move."""
+        prefix = f"{PACKAGE}.hosts."
+        groups = {"deployment", "runs", "publications", "views"}
+        graph: dict[str, set[str]] = {group: set() for group in groups}
+        for module, targets in self._edges().items():
+            if not module.startswith(prefix):
+                continue
+            group = module[len(prefix):].partition(".")[0]
+            if group not in groups:
+                continue
+            for target in targets:
+                if target.startswith(prefix):
+                    target_group = target[len(prefix):].partition(".")[0]
+                    if target_group in groups and target_group != group:
+                        graph[group].add(target_group)
+        self.assertEqual(_cycles(graph), [])
+
     def test_package_imports_form_no_cycle(self) -> None:
         imports: dict[str, list[tuple[str, CliImport]]] = {_package(module): [] for module in self.modules}
         graph: dict[str, set[str]] = {package: set() for package in imports}

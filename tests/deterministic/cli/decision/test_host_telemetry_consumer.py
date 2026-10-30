@@ -11,15 +11,15 @@ from unittest.mock import patch
 
 from autonomy.runtime.frame_loop import DECISION_PUBLICATION_SCHEMA
 from autonomy.runtime.routes import TELEMETRY_SCHEMA
-from cli.automa_cli.hosts.decision_live import (
+from cli.automa_cli.hosts.views.decision_live import (
     DecisionViewAdapter,
     _accepted_pair,
     read_host_telemetry_panel,
 )
-from cli.automa_cli.hosts.decision import DecisionSurfaceError
-from cli.automa_cli.hosts.decision_records import DecisionRunners
-from cli.automa_cli.hosts.decision_publication import normalize_decision_publication
-from cli.automa_cli.hosts.host_telemetry import (
+from cli.automa_cli.hosts.publications.decision import DecisionSurfaceError
+from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
+from cli.automa_cli.hosts.publications.decision_publication import normalize_decision_publication
+from cli.automa_cli.hosts.publications.host_telemetry import (
     decision_publication_identity,
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
@@ -203,7 +203,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         with TemporaryDirectory() as temporary:
             view = FakeRuntimeView(Path(temporary))
             with patch(
-                "cli.automa_cli.hosts.decision_live.read_host_telemetry_panel",
+                "cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel",
                 return_value=joined,
             ) as read_panel:
                 adapter = DecisionViewAdapter(
@@ -237,10 +237,10 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         )
         matching = _record(sequence=1)
         with patch(
-            "cli.automa_cli.hosts.decision_live.fetch_host_telemetry_latest",
+            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest",
             return_value=latest,
         ), patch(
-            "cli.automa_cli.hosts.decision_live.fetch_host_telemetry_records",
+            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_records",
             return_value={
                 "schema": "automa_host_boundary_telemetry_records",
                 "status": "healthy",
@@ -277,10 +277,10 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             skipped_since_previous=0,
         )
         with patch(
-            "cli.automa_cli.hosts.decision_live.fetch_host_telemetry_latest",
+            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest",
             return_value=_record(),
         ), patch(
-            "cli.automa_cli.hosts.decision_live.fetch_host_telemetry_records",
+            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_records",
             return_value={
                 "schema": "automa_host_boundary_telemetry_records",
                 "status": "healthy",
@@ -311,10 +311,10 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             now_ms=NOW_MS,
         )
         with patch(
-            "cli.automa_cli.hosts.decision_live.fetch_host_telemetry_latest",
+            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest",
             return_value=_record(),
         ), patch(
-            "cli.automa_cli.hosts.decision_live.fetch_host_telemetry_records",
+            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_records",
             side_effect=[
                 {
                     "schema": "automa_host_boundary_telemetry_records",
@@ -350,19 +350,19 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         )
         normalized = {"frame_id": "frame-1"}
         with patch(
-            "cli.automa_cli.hosts.decision_live.fetch_decision_transaction",
+            "cli.automa_cli.hosts.views.decision_live.fetch_decision_transaction",
             side_effect=[
                 {"publication": {}, "image_base64": "anBlZw==", "image_content_type": "image/jpeg"},
                 {"publication": {}, "image_base64": "anBlZw==", "image_content_type": "image/jpeg"},
             ],
         ), patch(
-            "cli.automa_cli.hosts.decision_live.accept_decision_publication",
+            "cli.automa_cli.hosts.views.decision_live.accept_decision_publication",
             side_effect=[future_error, normalized],
         ), patch(
-            "cli.automa_cli.hosts.decision_live.time.time",
+            "cli.automa_cli.hosts.views.decision_live.time.time",
             return_value=10.0,
         ), patch(
-            "cli.automa_cli.hosts.decision_live.time.sleep",
+            "cli.automa_cli.hosts.views.decision_live.time.sleep",
         ) as sleep:
             normalized, _ = _accepted_pair(
                 "http://piracer.local:8887",

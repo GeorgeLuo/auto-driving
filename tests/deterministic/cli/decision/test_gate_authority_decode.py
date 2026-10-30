@@ -8,12 +8,12 @@ from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-from cli.automa_cli.hosts.decision import (
+from cli.automa_cli.hosts.publications.decision import (
     DecisionSurfaceError,
     _require_exact_cycle_export,
     _require_runner_plan_alignment,
 )
-from cli.automa_cli.hosts.decision_records import DecisionRunners
+from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
 from autonomy.decision_cycle.action.publication import MODE_KEY
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from tests.shared.cli.decision.decision_surfaces_fixtures import packaged_decision_steps

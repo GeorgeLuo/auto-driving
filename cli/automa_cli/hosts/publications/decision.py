@@ -48,7 +48,7 @@ from autonomy.runtime.report import (
 )
 
 from .decision_records import DecisionRecords, activations_from_payloads
-from .step_activations import (
+from ..step_activations import (
     bundle_activation_problems,
     format_activation_problems,
     proposal_plugin_ids,

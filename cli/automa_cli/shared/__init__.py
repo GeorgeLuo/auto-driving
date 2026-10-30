@@ -13,7 +13,7 @@
 - ``timeout_input``: the ``--timeout-s`` check of the status and run commands.
 - ``selection_args``: a step's ``--preset``/``--plugin`` selection, for ``workbench`` and ``plugins inspect``.
 - ``plugin_catalog``: the packaged plugin definitions, defaults first, for ``plugins list``
-  and ``workbench``; ``hosts.plugin_catalog`` reads a host's live catalog.
+  and ``workbench``; ``hosts.publications.plugin_catalog`` reads a host's live catalog.
 - ``replay``: image sources, frame execution and selections rebuilt from recorded releases.
 - ``step_hosting``: a hosted step runner's plugin report, for the worker and ``workbench``.
 - ``memory_report``: memory plugin state read from a memory report or memory step status.

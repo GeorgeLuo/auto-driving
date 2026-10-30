@@ -14,12 +14,12 @@ from autonomy.decision_cycle.plan.values import ACTION_PLAN_SCHEMA
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
 from autonomy.vehicle import SensorFrame
-from cli.automa_cli.hosts.decision import (
+from cli.automa_cli.hosts.publications.decision import (
     DecisionSurfaceError,
     _require_aggregate_cycle_alignment,
     _strict_decode_plan,
 )
-from cli.automa_cli.hosts.decision_records import DecisionRecords
+from cli.automa_cli.hosts.publications.decision_records import DecisionRecords
 from tests.deterministic.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     WeightedMeanPlan,
     _active_proposal,

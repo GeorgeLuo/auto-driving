@@ -9,8 +9,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from ..shared.io.json_files import write_json_atomically
-from ..shared.paths import ROOT, display_path
+from ...shared.io.json_files import write_json_atomically
+from ...shared.paths import ROOT, display_path
 
 
 VENDOR_MANIFEST_PATH = ROOT / "deploy" / "targets" / "donkeycar" / "donkeycar-vendor.json"

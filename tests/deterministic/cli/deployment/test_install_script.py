@@ -6,7 +6,7 @@ import ast
 import unittest
 
 from autonomy.decision_cycle.activation import STEPS
-from cli.automa_cli.hosts import picar_deploy
+from cli.automa_cli.hosts.deployment import picar_deploy
 
 
 class RemoteInstallScriptTests(unittest.TestCase):

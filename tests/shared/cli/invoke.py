@@ -12,7 +12,8 @@ from pathlib import Path
 from unittest import mock
 
 from cli.automa_cli import app
-from cli.automa_cli.hosts import deploy, picar_deploy, runtime_hosts
+from cli.automa_cli.hosts.deployment import deploy, picar_deploy
+from cli.automa_cli.hosts import runtime_hosts
 from cli.automa_cli.hosts.views import view_discovery
 from cli.automa_cli.plugins import catalog
 from cli.automa_cli.vehicles import discovery

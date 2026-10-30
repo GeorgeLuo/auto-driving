@@ -16,7 +16,7 @@ for path in (ROOT / "cli", ROOT):
     if path_text not in sys.path:
         sys.path.insert(0, path_text)
 
-from automa_cli.hosts.picar_deploy import inspect_picar_autonomy_runtime
+from automa_cli.hosts.deployment.picar_deploy import inspect_picar_autonomy_runtime
 from implementations.vehicle.picar.defaults import DEFAULT_LOCAL_CAR_BASE_URL, LOCAL_CAR_BASE_URL_ENV
 
 SYSTEMS_GROUPS = ("commands", "journeys", "frontend", "packaging", "qca", "live")

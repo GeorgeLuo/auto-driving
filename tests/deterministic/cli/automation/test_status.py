@@ -21,7 +21,7 @@ class AutomationStatusTests(unittest.TestCase):
     def test_view_warmup_polling_is_bounded_by_command_budget(self) -> None:
         """view_timeout_s is one wall-clock budget for probes and warm-up sleeps."""
 
-        from cli.automa_cli.hosts.runs.automation_status import collect_automation_status
+        from cli.automa_cli.hosts.runs.status import collect_automation_status
 
         warming = {
             "schema": "automa_perception_view",
@@ -41,13 +41,13 @@ class AutomationStatusTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             write_runtime_fixture(runtime_root, HOST_NAME, pid=os.getpid())
             with mock.patch(
-                "cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT",
+                "cli.automa_cli.hosts.staging.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
                 "cli.automa_cli.releases.paths.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
-                "cli.automa_cli.hosts.runs.automation_status.get_perception_view_status",
+                "cli.automa_cli.hosts.runs.status.get_perception_view_status",
                 side_effect=_probe,
             ):
                 started = time.monotonic()
@@ -71,7 +71,7 @@ class AutomationStatusTests(unittest.TestCase):
     def test_aggregate_view_probes_share_one_command_deadline(self) -> None:
         """Aggregate status must not restart view_timeout_s for each runtime."""
 
-        from cli.automa_cli.hosts.runs.automation_status import collect_automation_status
+        from cli.automa_cli.hosts.runs.status import collect_automation_status
 
         warming = {
             "schema": "automa_perception_view",
@@ -92,13 +92,13 @@ class AutomationStatusTests(unittest.TestCase):
             write_runtime_fixture(runtime_root, "chase-sim-chaser", pid=os.getpid())
             write_runtime_fixture(runtime_root, "chase-sim-runner", pid=os.getpid())
             with mock.patch(
-                "cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT",
+                "cli.automa_cli.hosts.staging.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
                 "cli.automa_cli.releases.paths.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
-                "cli.automa_cli.hosts.runs.automation_status.get_perception_view_status",
+                "cli.automa_cli.hosts.runs.status.get_perception_view_status",
                 side_effect=_probe,
             ):
                 started = time.monotonic()
@@ -119,6 +119,43 @@ class AutomationStatusTests(unittest.TestCase):
         self.assertLess(elapsed, 0.4)
         self.assertTrue(probe_calls)
         self.assertTrue(all(timeout <= 0.2 + 1e-9 for timeout in probe_calls))
+
+    def test_status_renderer_formats_supplied_hosts(self) -> None:
+        """Text and JSON come from the host data, including the release command."""
+
+        from cli.automa_cli.hosts.runs.render import render_hosts_status
+        from cli.automa_cli.releases.store import update_command
+
+        self.assertEqual(render_hosts_status([], host_name=None, json_output=False, long=False), "No hosts found")
+        self.assertEqual(
+            render_hosts_status([], host_name="car", json_output=True, long=True),
+            json.dumps(
+                {"schema": "automa_hosts_status", "host_name": "car", "hosts": []},
+                indent=2, sort_keys=True,
+            ),
+        )
+        host = {
+            "host_name": "car",
+            "state": "not running",
+            "run": {
+                "host_name": "car",
+                "deployed": False,
+                "release": None,
+                "steps": {},
+                "applied_steps": {"available": False, "reason": "host not running"},
+                "decision": {"deployed": False, "activation": "bundle"},
+                "process": {"status": "not_started", "pid_state": "none"},
+                "state": {},
+                "published_view": {},
+            },
+        }
+        text = render_hosts_status([host], host_name="car", json_output=False, long=True)
+        self.assertIn("Host car  not running", text)
+        self.assertIn("deployment: not deployed", text)
+        self.assertIn(update_command("car"), text)
+        rendered = json.loads(render_hosts_status([host], host_name="car", json_output=True, long=False))
+        self.assertEqual(rendered["schema"], "automa_hosts_status")
+        self.assertIsNone(rendered["hosts"][0]["run"]["release"])
 
     def test_no_hosts_are_found_in_human_and_json_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

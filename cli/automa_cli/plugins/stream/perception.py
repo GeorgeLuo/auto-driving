@@ -8,7 +8,7 @@ from autonomy.runtime.frame_loop import LATEST_JSON_PATH
 
 from ...hosts.publications.decision_publication import health_error, publication_to_frame_record
 from ...hosts.publications.host_publications import fetch_observation_publication
-from ...hosts.runtime_hosts import runtime_base_url
+from ...hosts.discovery import runtime_base_url
 from ...releases.errors import RuntimeHostError
 from ...shared.timestamps import timestamp_ms
 from .models import StreamEvent, StreamResult

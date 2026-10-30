@@ -13,7 +13,7 @@ TIMEOUT_MESSAGE = "--timeout-s must be a finite number greater than zero"
 # Each status command and the function its timeout reaches.
 STATUS_COMMANDS = {
     ("vehicles", "status"): "cli.automa_cli.vehicles.commands.get_vehicles_status",
-    ("hosts", "status"): "cli.automa_cli.hosts.commands.get_hosts_status",
+    ("hosts", "status"): "cli.automa_cli.hosts.runs.commands.get_hosts_status",
 }
 
 
@@ -60,7 +60,7 @@ class TimeoutInputTests(unittest.TestCase):
     def test_invalid_automation_values_stop_before_worker_dispatch(self) -> None:
         for value in INVALID_TIMEOUTS:
             with self.subTest(value=value):
-                with patch("cli.automa_cli.hosts.commands.start_host_automation_background") as start_automation:
+                with patch("cli.automa_cli.hosts.runs.commands.start_host_automation_background") as start_automation:
                     code, stdout, stderr = _invoke(
                         "hosts",
                         "run",
@@ -86,14 +86,14 @@ class TimeoutInputTests(unittest.TestCase):
         get_status.assert_called_once_with(timeout_s=1.25)
 
         with patch(
-            "cli.automa_cli.hosts.commands.get_hosts_status", return_value=SimpleNamespace(exit_code=0, message="ok"),
+            "cli.automa_cli.hosts.runs.commands.get_hosts_status", return_value=SimpleNamespace(exit_code=0, message="ok"),
         ) as get_hosts:
             code, _, _ = _invoke("hosts", "status", "--timeout-s", "1.25")
         self.assertEqual(code, 0)
         get_hosts.assert_called_once_with(host_name=None, timeout_s=1.25, long=False, json_output=False)
 
         with patch(
-            "cli.automa_cli.hosts.commands.start_host_automation_background",
+            "cli.automa_cli.hosts.runs.commands.start_host_automation_background",
             return_value=SimpleNamespace(exit_code=0, message="ok"),
         ) as run_automation:
             code, _, _ = _invoke(
@@ -119,7 +119,7 @@ class TimeoutInputTests(unittest.TestCase):
             self.assertEqual(get_status.call_args.kwargs["timeout_s"], 5.0)
 
         with patch(
-            "cli.automa_cli.hosts.commands.start_host_automation_background",
+            "cli.automa_cli.hosts.runs.commands.start_host_automation_background",
             return_value=SimpleNamespace(exit_code=0, message="ok"),
         ) as run_automation:
             code, _, _ = _invoke(

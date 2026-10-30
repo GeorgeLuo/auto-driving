@@ -11,12 +11,12 @@ from autonomy.runtime.session import RunConfiguration
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from unittest.mock import patch
 from cli.automa_cli.shared.command_result import CommandResult
-from cli.automa_cli.hosts.runs.automation import (
+from cli.automa_cli.hosts.runs.service import (
     _wait_for_automation_startup,
     record_host_automation_terminal_result,
     start_host_automation_background,
+    stop_host_automation,
 )
-from cli.automa_cli.hosts.runs.automation_stop import stop_host_automation
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     _ExitedProcess,
     _RunningProcess,
@@ -88,8 +88,8 @@ class AutomationLivePipelineTests(unittest.TestCase):
             "perception_frame_buffered": True,
         }
         with (
-            patch("cli.automa_cli.hosts.runs.automation.read_json", return_value=state),
-            patch("cli.automa_cli.hosts.runs.automation.get_perception_view_status", return_value=view) as status,
+            patch("cli.automa_cli.hosts.runs.service.read_json", return_value=state),
+            patch("cli.automa_cli.hosts.runs.service.get_perception_view_status", return_value=view) as status,
         ):
             result = _wait_for_automation_startup(
                 process=_RunningProcess(), automation_dir=Path("unused"), timeout_s=0.2,
@@ -104,10 +104,10 @@ class AutomationLivePipelineTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")
             with (
-                patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
                 patch(
-                    "cli.automa_cli.hosts.runs.automation.subprocess.Popen",
+                    "cli.automa_cli.hosts.runs.service.subprocess.Popen",
                     return_value=_ExitedProcess(),
                 ),
             ):
@@ -176,11 +176,11 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 return _RunningProcess()
 
             with (
-                patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.hosts.runs.automation.subprocess.Popen", side_effect=launch),
+                patch("cli.automa_cli.hosts.runs.service.subprocess.Popen", side_effect=launch),
                 patch(
-                    "cli.automa_cli.hosts.runs.automation.get_perception_view_status",
+                    "cli.automa_cli.hosts.runs.service.get_perception_view_status",
                     return_value={
                         "status": "running",
                         "available": True,
@@ -253,15 +253,15 @@ class AutomationLivePipelineTests(unittest.TestCase):
             }
 
             with (
-                patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.hosts.runs.automation.pid_alive", return_value=True),
+                patch("cli.automa_cli.hosts.runs.service.pid_alive", return_value=True),
                 patch(
-                    "cli.automa_cli.hosts.runs.automation.get_perception_view_status",
+                    "cli.automa_cli.hosts.runs.service.get_perception_view_status",
                     return_value=view,
                 ),
                 patch(
-                    "cli.automa_cli.hosts.runs.automation.subprocess.Popen",
+                    "cli.automa_cli.hosts.runs.service.subprocess.Popen",
                     side_effect=AssertionError("must not spawn a duplicate worker"),
                 ),
                 patch(
@@ -310,11 +310,11 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
 
             with (
-                patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.hosts.runs.automation.pid_alive", return_value=True),
+                patch("cli.automa_cli.hosts.runs.service.pid_alive", return_value=True),
                 patch(
-                    "cli.automa_cli.hosts.runs.automation.get_perception_view_status",
+                    "cli.automa_cli.hosts.runs.service.get_perception_view_status",
                     side_effect=AssertionError(
                         "mismatched authority is not inspectable"
                     ),
@@ -345,7 +345,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
 
             with (
-                patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
             ):
                 result = stop_host_automation(host_name="chase-sim-chaser")
@@ -375,7 +375,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with (
-                patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
             ):
                 record_host_automation_terminal_result(

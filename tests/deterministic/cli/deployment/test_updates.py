@@ -3,14 +3,18 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 from cli.automa_cli.shared.command_result import CommandResult
 from cli.automa_cli.hosts.deployment import picar_deploy, service
 from cli.automa_cli.hosts.deployment.models import DeploymentResult
+from cli.automa_cli.hosts.deployment.registry import BACKENDS, DeploymentBackend, register_backend
 from cli.automa_cli.hosts.deployment.render import present_deployment
+from cli.automa_cli.hosts.step_activations import write_host_configuration
 from cli.automa_cli.hosts import staging
+from cli.automa_cli.providers.catalog import PICAR, PROVIDERS
 from cli.automa_cli.providers.probes import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.vehicle_fixtures import probe_returning
@@ -148,6 +152,43 @@ class HostLifecycleTests(unittest.TestCase):
         )
         self.assertEqual(json.loads(present_deployment(DeploymentResult(0, receipt=receipt), json_output=True))["source"]["file_count"], 3)
         self.assertEqual(present_deployment(DeploymentResult(2, "missing"), json_output=True), "missing")
+
+    def test_a_third_provider_is_selected_by_registration(self):
+        probe = Mock(side_effect=AssertionError("bench probe"))
+        bench = replace(
+            PICAR, name="bench", heading="Bench", machine="Bench", label="bench",
+            vehicle_kind="bench", local_host=False, probe=probe,
+        )
+
+        def update_bench(configuration, *, dry_run, restart, drive_args, verbose, output):
+            return DeploymentResult(0, receipt={
+                "schema": "bench_update", "host_name": configuration["host_name"], "dry_run": dry_run,
+            })
+
+        register_backend("bench", DeploymentBackend(create=None, update=update_bench, delete=None))
+        self.addCleanup(BACKENDS.pop, "bench", None)
+        write_host_configuration(self.root, {
+            "host_name": "car", "provider": "bench", "vehicle_kind": "bench",
+            "connection": {"endpoint": "bench://local"},
+        })
+        with patch.dict(PROVIDERS, {"bench": bench}), \
+             patch.object(service, "install_picar_core", side_effect=AssertionError("picar install")), \
+             patch.object(service, "run_step", side_effect=AssertionError("remote step")), \
+             patch.object(service, "stop_chase_host", side_effect=AssertionError("chase stop")):
+            updated = service.update_host(host_name="car", dry_run=True)
+            self.assertEqual(updated.exit_code, 0, updated.message)
+            self.assertEqual(updated.receipt["schema"], "bench_update")
+            self.assertTrue(updated.receipt["dry_run"])
+            self.assertEqual(present_deployment(updated, json_output=True).count("bench_update"), 1)
+            removed = service.delete_host(host_name="car")
+            self.assertEqual(removed.message, "Provider 'bench' does not support hosts delete.")
+            self.assertEqual(removed.exit_code, 2)
+            self.assertTrue((self.root / "car" / "host-configuration.json").exists())
+            created = service.create_host(host_name="other", provider="bench", url="http://bench.example")
+            self.assertEqual(created.message, "Provider 'bench' does not support hosts create.")
+            self.assertEqual(created.exit_code, 2)
+            self.assertFalse((self.root / "other").exists())
+        probe.assert_not_called()
 
     def test_host_name_cannot_escape_runtime_root(self):
         for name in ("..", ".", "../car", "car/name"):

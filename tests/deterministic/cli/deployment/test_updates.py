@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from cli.automa_cli.shared.command_result import CommandResult
 from cli.automa_cli.hosts.deployment import deploy, picar_deploy
-from cli.automa_cli.hosts import runtime_hosts
+from cli.automa_cli.hosts import staging
 from cli.automa_cli.vehicles.probes import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.vehicle_fixtures import probe_returning
@@ -20,7 +20,7 @@ class HostLifecycleTests(unittest.TestCase):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory())) / "vehicles"
         self.enterContext(patch.object(deploy, "RUNTIME_ROOT", self.root))
         self.enterContext(patch.object(picar_deploy, "RUNTIME_ROOT", self.root))
-        self.enterContext(patch.object(runtime_hosts, "RUNTIME_ROOT", self.root))
+        self.enterContext(patch.object(staging, "RUNTIME_ROOT", self.root))
         self.enterContext(patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", self.root))
 
     def test_create_picar_dry_run_has_core_release_then_restart_without_writes(self):

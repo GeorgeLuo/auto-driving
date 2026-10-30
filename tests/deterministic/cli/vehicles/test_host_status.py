@@ -15,7 +15,7 @@ from unittest import mock
 
 from autonomy.decision_cycle.activation import step_activation
 from cli.automa_cli.releases.paths import controller_bundle_paths
-from cli.automa_cli.hosts.runtime_hosts import HOST_RECORD
+from cli.automa_cli.hosts.local import HOST_RECORD
 from cli.automa_cli.vehicles.probes import chase_operator_url
 from implementations.decision_cycle.catalog import preset_activation
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, write_host_record

@@ -104,7 +104,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")
             with (
-                patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
                 patch(
                     "cli.automa_cli.hosts.runs.automation.subprocess.Popen",
@@ -176,7 +176,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 return _RunningProcess()
 
             with (
-                patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.hosts.runs.automation.subprocess.Popen", side_effect=launch),
                 patch(
@@ -253,7 +253,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             }
 
             with (
-                patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.hosts.runs.automation.pid_alive", return_value=True),
                 patch(
@@ -310,7 +310,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
 
             with (
-                patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.hosts.runs.automation.pid_alive", return_value=True),
                 patch(
@@ -345,7 +345,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
 
             with (
-                patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
             ):
                 result = stop_host_automation(host_name="chase-sim-chaser")
@@ -375,7 +375,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with (
-                patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
             ):
                 record_host_automation_terminal_result(

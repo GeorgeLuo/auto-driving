@@ -41,7 +41,7 @@ class AutomationStatusTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             write_runtime_fixture(runtime_root, HOST_NAME, pid=os.getpid())
             with mock.patch(
-                "cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT",
+                "cli.automa_cli.hosts.staging.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
                 "cli.automa_cli.releases.paths.RUNTIME_ROOT",
@@ -92,7 +92,7 @@ class AutomationStatusTests(unittest.TestCase):
             write_runtime_fixture(runtime_root, "chase-sim-chaser", pid=os.getpid())
             write_runtime_fixture(runtime_root, "chase-sim-runner", pid=os.getpid())
             with mock.patch(
-                "cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT",
+                "cli.automa_cli.hosts.staging.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
                 "cli.automa_cli.releases.paths.RUNTIME_ROOT",

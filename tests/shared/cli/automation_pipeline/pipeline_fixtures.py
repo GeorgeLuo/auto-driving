@@ -250,12 +250,12 @@ def chase_runtime(runtime_root: Path, *, car=None, host_name: str = HOST_NAME):
     from implementations.runtime.chase_sim.service import (
         HOST_RECORD_SCHEMA, ChaseRuntimeHost, write_host_record,
     )
-    from cli.automa_cli.hosts.runtime_hosts import HOST_RECORD
+    from cli.automa_cli.hosts.local import HOST_RECORD
 
     write_host_fixture(runtime_root, host_name)
     bundle = controller_bundle_paths(runtime_root / host_name)
     with ExitStack() as stack:
-        stack.enter_context(patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root))
+        stack.enter_context(patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root))
         stack.enter_context(patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root))
         host = stack.enter_context(ChaseRuntimeHost(
             car=_FakeCar() if car is None else car,

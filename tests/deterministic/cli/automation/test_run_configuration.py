@@ -48,6 +48,7 @@ class RunConfigurationTests(unittest.TestCase):
         self.assertFalse(_automation_command_matches_host(f"{worker} --name car-2", "car"))
         self.assertFalse(_automation_command_matches_host(f"{worker} --host-url http://car", "car"))
         self.assertFalse(_automation_command_matches_host("python -m cli.automa_cli.hosts.runtime_hosts car", "car"))
+        self.assertFalse(_automation_command_matches_host("python -m cli.automa_cli.hosts.local car", "car"))
         self.assertFalse(_automation_command_matches_host(f"python {WORKER_MODULE} --name car", "car"))
         self.assertFalse(_automation_command_matches_host("python /tmp/cli/automa hosts run --name car", "car"))
 
@@ -144,7 +145,7 @@ class RunConfigurationTests(unittest.TestCase):
     def test_host_url_runs_that_host_and_reads_its_host_name(self):
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", Path(tmp)),
+            patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", Path(tmp)),
             patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)),
             patch("cli.automa_cli.hosts.runs.automation.runtime_base_url", side_effect=AssertionError("started a host")) as started,
             patch("cli.automa_cli.hosts.runs.automation.RuntimeClient", _HostClient),
@@ -198,7 +199,7 @@ class RunConfigurationTests(unittest.TestCase):
     def _background_command(self, **kwargs) -> list[str]:
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", Path(tmp)),
+            patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", Path(tmp)),
             patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)),
             patch("cli.automa_cli.hosts.runs.automation.RuntimeClient", _HostClient),
             patch("cli.automa_cli.hosts.runs.automation.subprocess.Popen") as popen,

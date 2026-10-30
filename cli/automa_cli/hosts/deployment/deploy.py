@@ -26,14 +26,9 @@ from ..publications.host_publications import host_state
 from ..host_status import host_block
 from ...releases.errors import RuntimeHostError
 from ...releases.store import release_code_dir
-from ..runtime_hosts import (
-    automation_dir,
-    ensure_chase_host,
-    host_record,
-    running_base_url,
-    staged_host,
-    stop_chase_host,
-)
+from ..discovery import running_base_url
+from ..local import ensure_chase_host, host_record, stop_chase_host
+from ..staging import automation_dir, staged_host
 from ...vehicles.probes import Candidate
 from ...vehicles.providers import PROVIDERS
 from .picar_deploy import (

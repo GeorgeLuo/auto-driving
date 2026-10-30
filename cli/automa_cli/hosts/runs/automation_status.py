@@ -17,11 +17,11 @@ from ...shared.command_result import CommandResult
 from ...shared.io.json_files import read_json
 from ...shared.paths import display_path, safe_path_part
 from ...shared.io.processes import pid_alive
-from .. import runtime_hosts
+from .. import staging
 from ...releases.errors import RuntimeHostError
 from ...releases.store import release_manifest, update_command
 from ...releases.paths import controller_bundle_paths
-from ..runtime_hosts import running_base_url
+from ..discovery import running_base_url
 from ..publications.host_publications import host_state
 from ..host_status import host_block, read_hosts
 from ..step_activations import (
@@ -73,7 +73,7 @@ def _host_runtime_status(
         lambda directory: get_perception_view_status(
             directory, timeout_s=min(0.25, max(0.0, timeout_s)),
         ),
-        runtime_root=runtime_hosts.RUNTIME_ROOT,
+        runtime_root=staging.RUNTIME_ROOT,
     )
     if not view.get("available"):
         view = {
@@ -183,10 +183,10 @@ def collect_automation_status(
 ) -> list[dict[str, Any]]:
     # ``host_reads`` holds each host's ``host_state`` the caller already read.
     if host_name is not None:
-        candidate = runtime_hosts.RUNTIME_ROOT / safe_path_part(host_name)
+        candidate = staging.RUNTIME_ROOT / safe_path_part(host_name)
         candidates = [candidate] if (candidate / "host-configuration.json").is_file() else []
-    elif runtime_hosts.RUNTIME_ROOT.exists():
-        candidates = sorted(path.parent for path in runtime_hosts.RUNTIME_ROOT.glob("*/host-configuration.json"))
+    elif staging.RUNTIME_ROOT.exists():
+        candidates = sorted(path.parent for path in staging.RUNTIME_ROOT.glob("*/host-configuration.json"))
     else:
         candidates = []
 

@@ -18,11 +18,11 @@ from ...shared.io.json_files import read_json, write_json_atomically
 from ...shared.paths import display_path
 from ...shared.io.processes import pid_alive
 from ...releases.errors import RuntimeHostError
-from ..runtime_hosts import (
+from ..discovery import running_base_url
+from ..local import stop_chase_host
+from ..staging import (
     automation_dir as host_automation_dir,
-    running_base_url,
     staged_host,
-    stop_chase_host,
 )
 from ...shared.timestamps import timestamp_ms
 from .run_record import stopped_readiness

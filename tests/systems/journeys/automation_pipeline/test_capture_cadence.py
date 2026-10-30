@@ -10,7 +10,7 @@ from tests.support.runtime_fixtures import stage_step, write_host_fixture
 from unittest.mock import patch
 
 from autonomy.runtime.client import RuntimeClient
-from cli.automa_cli.hosts.runtime_hosts import stop_chase_host
+from cli.automa_cli.hosts.local import stop_chase_host
 from tests.support.cli_runner import run_automa
 from tests.support import fake_metrics_ui
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
@@ -59,7 +59,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
                         break
                     time.sleep(.05)
             finally:
-                with patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", root), patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", root):
+                with patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", root), patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", root):
                     stop_chase_host("chase-sim-chaser")
             self.assertEqual(state["status"], "completed", run.stdout)
             self.assertEqual(state["num_decisions"], 3)
@@ -115,5 +115,5 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             finally:
                 run_automa("hosts", "stop", "--name", vehicle,
                            runtime_root=root, extra_env=env, check=False)
-                with patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", root), patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", root):
+                with patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", root), patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", root):
                     stop_chase_host(vehicle)

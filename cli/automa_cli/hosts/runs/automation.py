@@ -21,10 +21,9 @@ from ...shared.paths import ROOT, display_path
 from ...shared.io.processes import pid_alive
 from ...releases.errors import RuntimeHostError
 from ...releases.paths import bundle_paths
-from ..runtime_hosts import (
+from ..discovery import running_base_url, runtime_base_url
+from ..staging import (
     automation_dir as host_automation_dir,
-    running_base_url,
-    runtime_base_url,
     staged_host,
 )
 from .automation_stop import WORKER_MODULE, stop_host_automation

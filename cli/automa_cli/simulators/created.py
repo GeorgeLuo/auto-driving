@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from ..shared.command_result import CommandResult
-from ..hosts.runtime_hosts import local_hosts, log_tail
+from ..hosts.discovery import local_hosts
+from ..hosts.local import log_tail
 from ..releases.errors import RuntimeHostError
 from ..shared.io.processes import pid_alive
 from ..vehicles.discovery import SIMULATOR_RECORD, SIMULATOR_SCHEMA, created_simulators, simulator_dir

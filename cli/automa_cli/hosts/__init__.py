@@ -1,7 +1,8 @@
 """``automa hosts``: the commands, and the host code other commands share.
 
 - ``commands``: the ``hosts`` parser and its handlers.
-- ``create``, ``update``, ``delete``: ``deploy``, with ``donkeycar_vendor`` and ``bundles``.
+- ``create``, ``update``, ``delete``: ``deploy``, with ``picar_deploy`` for a PiCar,
+  ``donkeycar_vendor`` and ``bundles``.
 - ``run``, ``restart``: ``automation``; ``stop``: ``automation_stop``; ``status``:
   ``automation_status``; with ``runtime_monitor``, ``run_record`` and ``host_status``.
 - ``viewer``: ``viewer``, with ``decision_live`` and ``view_discovery``.

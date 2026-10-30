@@ -1,0 +1,1024 @@
+"""PiCar deployment behind ``hosts create``, ``update`` and ``delete``: the core Donkey install,
+the release deploy, SSH sync and the Donkey runtime service.
+"""
+
+from __future__ import annotations
+
+import base64
+import copy
+import json
+import shlex
+import subprocess
+import time
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, TextIO
+from urllib.parse import urlparse
+
+from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
+from autonomy.runtime.layout import RuntimeLayout
+
+from ..shared import http_json
+from ..shared.command_result import CommandResult
+from .bundles import (
+    controller_bundle_source_summary,
+    release_activation_summary,
+    sync_controller_bundle,
+)
+from .donkeycar_vendor import (
+    donkeycar_vendor_source_dir,
+    ensure_donkeycar_vendor,
+    load_donkeycar_vendor_manifest,
+)
+from ..shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
+from .step_activations import (
+    CONTROLLER_BUNDLE_KEYS,
+    bundle_activation_path,
+    decision_generation_id,
+    ensure_step_activations,
+    read_bundle_activation,
+    step_lines,
+    startup_activations,
+)
+from ..shared.controller_releases import controller_bundle_paths
+
+
+DEPLOY_DIR = ROOT / "deploy" / "targets" / "donkeycar"
+DONKEY_SERVICE_NAME = "automa-donkey.service"
+DONKEY_SERVICE_DIR = DEPLOY_DIR / "systemd"
+DONKEY_READY_TIMEOUT_S = 30.0
+DEFAULT_PI_HOME = "/home/piracer"
+DEFAULT_PI_USER = "piracer"
+
+# The script runs on the Pi without the repository, so it receives STEPS as source.
+_REMOTE_AUTONOMY_INSTALL_SCRIPT = f"STEPS = {STEPS!r}\n" + r"""
+import hashlib
+import json
+import os
+import shutil
+import sys
+import tarfile
+import time
+from pathlib import Path
+
+archive = Path(sys.argv[1])
+release_root = Path(sys.argv[2])
+app_root = Path(sys.argv[3])
+expected_sha256 = sys.argv[4]
+release_id = sys.argv[5]
+# <step>-active.json files and identity.json, from the artifact directory.
+sources = [Path(item) for item in sys.argv[6:]]
+
+digest = hashlib.sha256()
+with archive.open("rb") as handle:
+    for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+        digest.update(chunk)
+actual_sha256 = digest.hexdigest()
+if actual_sha256 != expected_sha256:
+    raise RuntimeError(
+        f"archive SHA-256 mismatch: expected {expected_sha256}, got {actual_sha256}"
+    )
+
+pending_root = release_root.with_name(f".{release_root.name}.pending")
+if pending_root.exists():
+    shutil.rmtree(pending_root)
+pending_root.mkdir(parents=True)
+pending_resolved = pending_root.resolve()
+with tarfile.open(archive, "r:gz") as bundle:
+    for member in bundle.getmembers():
+        if member.issym() or member.islnk():
+            raise RuntimeError(f"controller archive contains a link: {member.name}")
+        target = (pending_root / member.name).resolve()
+        if target != pending_resolved and pending_resolved not in target.parents:
+            raise RuntimeError(f"controller archive member escapes release: {member.name}")
+    bundle.extractall(pending_root)
+
+for required in ("autonomy", "implementations", "bundle-manifest.json"):
+    if not (pending_root / required).exists():
+        raise RuntimeError(f"controller archive is missing {required}")
+
+release_root.parent.mkdir(parents=True, exist_ok=True)
+if release_root.exists():
+    shutil.rmtree(release_root)
+pending_root.replace(release_root)
+
+backup_root = app_root / "runtime" / "controller-backups" / str(int(time.time() * 1000))
+for package_name in ("autonomy", "implementations"):
+    package_target = release_root / package_name
+    package_link = app_root / package_name
+    next_link = app_root / f".{package_name}.{release_id}.next"
+    if next_link.exists() or next_link.is_symlink():
+        next_link.unlink()
+    next_link.symlink_to(os.path.relpath(package_target, app_root), target_is_directory=True)
+    if package_link.exists() and not package_link.is_symlink():
+        backup_root.mkdir(parents=True, exist_ok=True)
+        shutil.move(str(package_link), str(backup_root / package_name))
+    os.replace(next_link, package_link)
+
+activation_targets = []
+deployed_steps = set()
+for source in sources:
+    if source.name == "identity.json":
+        activation_targets.append((source, app_root / "runtime" / "identity.json"))
+        continue
+    step = source.name.removesuffix("-active.json")
+    if step not in STEPS or source.name != f"{step}-active.json":
+        raise RuntimeError(f"unexpected activation file: {source}")
+    deployed_steps.add(step)
+    activation_targets.append((source, app_root / "runtime" / step / "active.json"))
+for source, target in activation_targets:
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    if not isinstance(payload.get("schema"), str):
+        raise RuntimeError(f"activation has no schema: {source}")
+    target.parent.mkdir(parents=True, exist_ok=True)
+    pending = target.with_name(f".{target.name}.{release_id}.pending")
+    shutil.copy2(source, pending)
+    os.replace(pending, target)
+# A step that is no longer staged must not keep running from an older deploy.
+for step in STEPS:
+    stale = app_root / "runtime" / step / "active.json"
+    if step not in deployed_steps and stale.exists():
+        stale.unlink()
+legacy = app_root / "runtime" / "decision" / "active.json"
+if legacy.exists():
+    legacy.unlink()
+
+status_path = app_root / "runtime" / "controller-release.json"
+status_pending = status_path.with_name(f".{status_path.name}.pending")
+status_pending.write_text(
+    json.dumps(
+        {
+            "schema": "automa_installed_controller_release_v0",
+            "release_id": release_id,
+            "archive_sha256": actual_sha256,
+            "release_root": str(release_root),
+            "activated_at_ms": int(time.time() * 1000),
+        },
+        indent=2,
+        sort_keys=True,
+    ),
+    encoding="utf-8",
+)
+os.replace(status_pending, status_path)
+print(status_path.read_text(encoding="utf-8"))
+""".strip()
+
+
+@dataclass(frozen=True)
+class PicarTarget:
+    host_name: str
+    configuration: dict[str, object]
+    provider: str
+    ssh_target: str
+    pi_home: str
+
+
+def install_picar_core(
+    target: PicarTarget, *, dry_run: bool = False, json_output: bool = False,
+    verbose: bool = False, output: TextIO | None = None,
+) -> CommandResult:
+    stream = output
+    host_name = target.host_name
+    _emit(stream, f"Selected {host_name} ({target.provider}) at {target.ssh_target}.")
+    _emit(stream, "Scope: core Donkey/harness bundle only.")
+    _emit(stream, f"Remote home: {target.pi_home}")
+
+    vendor_source_dir = donkeycar_vendor_source_dir()
+    commands = _core_sync_commands(
+        ssh_target=target.ssh_target,
+        pi_home=target.pi_home,
+        pi_user=_ssh_user_from_target(target.ssh_target),
+        donkeycar_source_dir=vendor_source_dir,
+    )
+    vendor_manifest = load_donkeycar_vendor_manifest()
+    if dry_run:
+        payload = _core_update_payload(
+            target=target,
+            dry_run=True,
+            vendor_manifest=vendor_manifest,
+            vendor_source_dir=vendor_source_dir,
+            commands=commands,
+            restart=False,
+            drive_args=None,
+            runtime_readiness=None,
+        )
+        if json_output:
+            return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
+        return CommandResult(0, _format_core_dry_run(payload))
+
+    try:
+        _emit(stream, "==> Ensure DonkeyCar vendor source")
+        ensure_donkeycar_vendor(output=stream, verbose=verbose)
+    except Exception as exc:
+        return CommandResult(2, f"Could not prepare DonkeyCar vendor source: {exc}")
+
+    steps = [
+        ("Prepare remote directories", commands[0], None),
+        ("Sync DonkeyCar vendor source", commands[1], None),
+        ("Sync mycar app harness", commands[2], None),
+        ("Sync Donkey runtime service", commands[3], None),
+        ("Install and enable Donkey runtime service", commands[4], None),
+    ]
+    for label, command, env in steps:
+        code = run_step(label, command, env=env, verbose=verbose, output=stream)
+        if code != 0:
+            return CommandResult(code, f"{label} failed with exit code {code}.")
+
+    _emit(stream, "Core deploy bundle synced.")
+
+    return CommandResult(0, "Core deploy bundle synced.")
+
+
+def deploy_picar_release(
+    target: PicarTarget, *, dry_run: bool, restart: bool, drive_args: str | None,
+    json_output: bool, verbose: bool, output: TextIO | None,
+) -> CommandResult:
+    host_name = target.host_name
+    _emit(output, f"Selected {host_name} ({target.provider}) at {target.ssh_target}.")
+    _emit(output, "Scope: versioned autonomy controller bundle and activation metadata only.")
+    _emit(output, f"Remote home: {target.pi_home}")
+
+    host_dir = RUNTIME_ROOT / safe_path_part(host_name)
+    bundle = controller_bundle_paths(host_dir)
+    source_summary = controller_bundle_source_summary()
+    try:
+        startup = startup_activations(bundle, host_name)
+    except ValueError as exc:
+        return CommandResult(2, str(exc))
+
+    if dry_run:
+        release_id = f"autonomy-{source_summary['tree_sha256'][:12]}-preview"
+        preview_dir = host_dir / "deploy" / "donkeycar" / release_id
+        preview_archive = Path(bundle["root_dir"]) / "releases" / f"{release_id}.tar.gz"
+        commands = _autonomy_sync_commands(
+            target=target,
+            release_id=release_id,
+            archive_path=preview_archive,
+            archive_sha256="<archive-sha256>",
+            deploy_files=[preview_dir / f"{step}-active.json" for step in STEPS]
+            + [preview_dir / "identity.json"],
+        )
+        payload = _autonomy_update_payload(
+            target=target,
+            dry_run=True,
+            source_summary=source_summary,
+            release=None,
+            release_id=release_id,
+            commands=commands,
+            restart=restart,
+            drive_args=drive_args,
+            presets=activation_presets(startup),
+            steps={step: list(activation.plugins) for step, activation in startup.items()},
+            generation_id=None,
+            runtime_verification=None,
+        )
+        if json_output:
+            return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
+        return CommandResult(0, _format_autonomy_dry_run(payload))
+
+    # The deployment stages and ships each step's saved plugins, else its
+    # default, replacing whatever it had staged, an unreadable document included.
+    release = sync_controller_bundle(bundle, output=output)
+    ensure_step_activations(
+        host_name=host_name, bundle=bundle, release=release, activations=startup,
+        vehicle=dict(target.configuration),
+    )
+    activations = {
+        step: activation
+        for step in STEPS
+        if (activation := read_bundle_activation(bundle, step)) is not None
+    }
+    release_id = Path(release["archive"]["path"]).name.removesuffix(".tar.gz")
+    deploy_files = _write_remote_activation_files(
+        target=target,
+        host_dir=host_dir,
+        release=release,
+        release_id=release_id,
+        activation_paths={step: bundle_activation_path(bundle, step) for step in activations},
+    )
+    commands = _autonomy_sync_commands(
+        target=target,
+        release_id=release_id,
+        archive_path=Path(release["archive"]["path"]),
+        archive_sha256=str(release["archive"]["sha256"]),
+        deploy_files=list(deploy_files.values()),
+    )
+
+    for label, command in commands:
+        code = run_step(label, command, env=None, verbose=verbose, output=output)
+        if code != 0:
+            return CommandResult(code, f"{label} failed with exit code {code}.")
+
+    runtime_verification: dict[str, Any] | None = None
+    if restart:
+        code = _restart_drive_service(
+            target=target,
+            drive_args=drive_args,
+            verbose=verbose,
+            output=output,
+        )
+        if code != 0:
+            return CommandResult(code, f"Restart failed with exit code {code}.")
+
+    deployed_steps = {step: list(activation.plugins) for step, activation in activations.items()}
+    generation_id = decision_generation_id(
+        {step: activations.get(step) for step in DECISION_STEPS}
+    )
+    if restart:
+        try:
+            runtime_verification = _verify_picar_autonomy_runtime(
+                target=target,
+                expected_steps=deployed_steps,
+                timeout_s=DONKEY_READY_TIMEOUT_S,
+            )
+        except RuntimeError as exc:
+            return CommandResult(
+                2,
+                "\n".join(
+                    [
+                        f"Autonomy release {release_id} was installed and restart was attempted,",
+                        f"but runtime verification failed: {exc}",
+                    ]
+                ),
+            )
+    payload = _autonomy_update_payload(
+        target=target,
+        dry_run=False,
+        source_summary=source_summary,
+        release=release,
+        release_id=release_id,
+        commands=commands,
+        restart=restart,
+        drive_args=drive_args,
+        presets=activation_presets(activations),
+        steps=deployed_steps,
+        generation_id=generation_id,
+        runtime_verification=runtime_verification,
+    )
+    if json_output:
+        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
+    verified_lines: list[str] = []
+    if runtime_verification is not None:
+        verified_lines.append(
+            "Runtime verified: every deployed step runs its staged plugins; "
+            "drive mode remains manual"
+        )
+    return CommandResult(
+        0,
+        "\n".join(
+            [
+                f"Host updated: {host_name} -> {target.ssh_target}",
+                f"Release: {release_id}",
+                f"Tree SHA-256: {release['tree_sha256']}",
+                *step_lines(payload["activation"]["steps"], payload["activation"]["presets"]),
+                f"Decision generation: {payload['activation']['generation_id']}",
+                f"Runtime restarted: {'yes' if restart else 'no'}",
+                *verified_lines,
+                *(
+                    []
+                    if restart
+                    else [
+                        "A running runtime selects changed staged plugins on its next frame; "
+                        "changed plugin specs or configs need --restart."
+                    ]
+                ),
+            ]
+        ),
+    )
+
+
+def resolve_picar_target(configuration: dict[str, Any]) -> PicarTarget:
+    connection = configuration["connection"]
+    return PicarTarget(configuration["host_name"], configuration, configuration["provider"],
+                       connection["ssh_target"], connection["pi_home"])
+
+
+def _write_remote_activation_files(
+    *,
+    target: PicarTarget,
+    host_dir: Path,
+    release: dict[str, Any],
+    release_id: str,
+    activation_paths: dict[str, Path],
+) -> dict[str, Path]:
+    """Write the Pi's copy of each staged activation and the runtime identity."""
+
+    deploy_dir = host_dir / "deploy" / "donkeycar" / release_id
+    deploy_dir.mkdir(parents=True, exist_ok=True)
+    remote_app_root = f"{target.pi_home}/mycar"
+    remote_release_root = f"{remote_app_root}/runtime/controller-releases/{release_id}"
+    remote_artifact_dir = f"{remote_app_root}/runtime/controller-artifacts/{release_id}"
+    remote_release = release_activation_summary(release)
+    remote_release["archive"] = f"{remote_artifact_dir}/{Path(release['archive']['path']).name}"
+    remote_release["manifest"] = f"{remote_release_root}/bundle-manifest.json"
+
+    # Same controller_bundle keys staging_metadata records locally, with the Pi's paths.
+    remote_values = RuntimeLayout(Path(remote_app_root)).bundle_paths()
+    remote_values["release"] = remote_release
+    remote_bundle = {key: remote_values[key] for key in CONTROLLER_BUNDLE_KEYS}
+
+    written: dict[str, Path] = {}
+    for step, path in activation_paths.items():
+        payload = copy.deepcopy(json.loads(path.read_text(encoding="utf-8")))
+        metadata = payload.setdefault("metadata", {})
+        metadata["controller_bundle"] = copy.deepcopy(remote_bundle)
+        if step == "perception":
+            # The Pi runs this activation onboard. Other steps keep the identity
+            # recorded when they were staged.
+            metadata["provider"] = target.provider
+            metadata["runtime"] = {
+                "kind": "onboard_controller",
+                "connection": target.configuration.get("connection"),
+            }
+        written[step] = deploy_dir / f"{step}-active.json"
+        written[step].write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")
+    identity_path = deploy_dir / "identity.json"
+    identity_path.write_text(
+        json.dumps(
+            {
+                "schema": "automa_runtime_identity",
+                "host_name": target.host_name,
+                "source_id": f"donkeycar:{target.host_name}",
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    written["identity"] = identity_path
+    (deploy_dir / "deployment.json").write_text(
+        json.dumps(
+            {
+                "schema": "automa_physical_autonomy_deployment",
+                "created_at_ms": int(time.time() * 1000),
+                "host_name": target.host_name,
+                "ssh_target": target.ssh_target,
+                "release_id": release_id,
+                "release": remote_release,
+                "activation": {name: str(path) for name, path in written.items()},
+            },
+            indent=2,
+            sort_keys=True,
+        ),
+        encoding="utf-8",
+    )
+    return written
+
+
+def _autonomy_sync_commands(
+    *,
+    target: PicarTarget,
+    release_id: str,
+    archive_path: Path,
+    archive_sha256: str,
+    deploy_files: list[Path],
+) -> list[tuple[str, list[str]]]:
+    remote_app_root = f"{target.pi_home}/mycar"
+    remote_runtime = f"{remote_app_root}/runtime"
+    remote_artifact_dir = f"{remote_runtime}/controller-artifacts/{release_id}"
+    remote_release_root = f"{remote_runtime}/controller-releases/{release_id}"
+    remote_archive = f"{remote_artifact_dir}/{archive_path.name}"
+    install_command = shlex.join(
+        [
+            "python3",
+            "-c",
+            _REMOTE_AUTONOMY_INSTALL_SCRIPT,
+            remote_archive,
+            remote_release_root,
+            remote_app_root,
+            archive_sha256,
+            release_id,
+            *(f"{remote_artifact_dir}/{path.name}" for path in deploy_files),
+        ]
+    )
+    return [
+        (
+            "Prepare remote autonomy release directories",
+            [
+                "ssh",
+                target.ssh_target,
+                "mkdir",
+                "-p",
+                remote_artifact_dir,
+                f"{remote_runtime}/controller-releases",
+                *(f"{remote_runtime}/{step}" for step in STEPS),
+            ],
+        ),
+        (
+            "Transfer autonomy release and activation metadata",
+            [
+                "rsync",
+                "-az",
+                str(archive_path),
+                *(str(path) for path in deploy_files),
+                f"{target.ssh_target}:{remote_artifact_dir}/",
+            ],
+        ),
+        (
+            "Verify and activate autonomy release",
+            ["ssh", target.ssh_target, install_command],
+        ),
+    ]
+
+
+def _autonomy_update_payload(
+    *,
+    target: PicarTarget,
+    dry_run: bool,
+    source_summary: dict[str, Any],
+    release: dict[str, Any] | None,
+    release_id: str,
+    commands: list[tuple[str, list[str]]],
+    restart: bool,
+    drive_args: str | None,
+    presets: dict[str, str],
+    steps: dict[str, list[str]],
+    generation_id: str | None,
+    runtime_verification: dict[str, Any] | None,
+) -> dict[str, Any]:
+    command_status = "planned" if dry_run else "completed"
+    command_entries = [
+        {
+            "step": label,
+            "command": _display_deploy_command(label, command),
+            "status": command_status,
+        }
+        for label, command in commands
+    ]
+    if restart:
+        command_entries.append(
+            {
+                "step": "Restart Donkey runtime service",
+                "command": _display_restart_command(target, drive_args),
+                "status": command_status,
+            }
+        )
+    return {
+        "schema": "host_autonomy_update",
+        "host_name": target.host_name,
+        "dry_run": dry_run,
+        "scope": {
+            "id": "autonomy",
+            "description": "versioned autonomy controller bundle and activation metadata",
+        },
+        "target": {
+            "provider": target.provider,
+            "ssh_target": target.ssh_target,
+            "pi_home": target.pi_home,
+        },
+        "source": source_summary,
+        "release_id": release_id,
+        "release": release_activation_summary(release) if release is not None else None,
+        "activation": {
+            "presets": presets,
+            "steps": steps,
+            "generation_id": generation_id,
+        },
+        "restart_requested": restart,
+        "runtime_verification": runtime_verification,
+        "result": _deployment_result(dry_run=dry_run),
+        "commands": command_entries,
+    }
+
+
+def _core_update_payload(
+    *,
+    target: PicarTarget,
+    dry_run: bool,
+    vendor_manifest: dict[str, Any],
+    vendor_source_dir: Path,
+    commands: list[list[str]],
+    restart: bool,
+    drive_args: str | None,
+    runtime_readiness: dict[str, Any] | None,
+) -> dict[str, Any]:
+    labels = (
+        "Prepare remote directories",
+        "Sync DonkeyCar vendor source",
+        "Sync mycar app harness",
+        "Sync Donkey runtime service",
+        "Install and enable Donkey runtime service",
+    )
+    command_status = "planned" if dry_run else "completed"
+    command_entries = [
+        {
+            "step": label,
+            "command": shlex.join(command),
+            "status": command_status,
+        }
+        for label, command in zip(labels, commands, strict=True)
+    ]
+    if restart:
+        command_entries.append(
+            {
+                "step": "Restart Donkey runtime service",
+                "command": _display_restart_command(target, drive_args),
+                "status": command_status,
+            }
+        )
+    return {
+        "schema": "host_core_update",
+        "host_name": target.host_name,
+        "dry_run": dry_run,
+        "scope": {
+            "id": "core",
+            "description": "DonkeyCar vendor source and mycar core harness",
+            "excluded": ["autonomy", "implementations", "runtime"],
+        },
+        "target": {
+            "provider": target.provider,
+            "ssh_target": target.ssh_target,
+            "pi_home": target.pi_home,
+        },
+        "source": {
+            "vendor": {
+                "repo_url": vendor_manifest["source"]["repo_url"],
+                "revision": vendor_manifest["source"]["revision"],
+                "checkout": display_path(vendor_source_dir),
+            },
+            "harness": display_path(DEPLOY_DIR / "app"),
+            "service": {
+                "name": DONKEY_SERVICE_NAME,
+                "source": display_path(DONKEY_SERVICE_DIR),
+                "boot_enabled": True,
+            },
+        },
+        "restart_requested": restart,
+        "runtime_readiness": runtime_readiness,
+        "result": _deployment_result(dry_run=dry_run),
+        "commands": command_entries,
+    }
+
+
+def _deployment_result(*, dry_run: bool) -> dict[str, Any]:
+    if not dry_run:
+        return {"status": "completed"}
+    return {
+        "status": "planned",
+        "local_writes_performed": False,
+        "remote_connection_attempted": False,
+        "remote_writes_performed": False,
+    }
+
+
+def _format_core_dry_run(payload: dict[str, Any]) -> str:
+    source = payload["source"]
+    vendor = source["vendor"]
+    return "\n".join(
+        [
+            f"Core update dry run for {payload['host_name']}",
+            (
+                f"target: {payload['target']['provider']} at "
+                f"{payload['target']['ssh_target']}; home={payload['target']['pi_home']}"
+            ),
+            f"scope: {payload['scope']['description']}",
+            "outcome: plan only; no files written and no remote connection attempted",
+            f"vendor: {vendor['repo_url']} @ {vendor['revision']}",
+            f"vendor checkout: {vendor['checkout']}",
+            f"harness: {source['harness']}",
+            (
+                f"service: {source['service']['name']} "
+                f"from {source['service']['source']} (enabled at boot)"
+            ),
+            "planned commands:",
+            *[f"- {entry['step']}: {entry['command']}" for entry in payload["commands"]],
+            f"restart requested: {'yes' if payload['restart_requested'] else 'no'}",
+        ]
+    )
+
+
+def _format_autonomy_dry_run(payload: dict[str, Any]) -> str:
+    return "\n".join(
+        [
+            f"Autonomy update dry run for {payload['host_name']}",
+            (
+                f"target: {payload['target']['provider']} at "
+                f"{payload['target']['ssh_target']}; home={payload['target']['pi_home']}"
+            ),
+            f"scope: {payload['scope']['description']}",
+            "outcome: plan only; no files written and no remote connection attempted",
+            f"source tree SHA-256: {payload['source']['tree_sha256']}",
+            f"source files: {payload['source']['file_count']}",
+            "activation: " + " ".join(
+                f"{step}={payload['activation']['presets'].get(step) or ','.join(plugins) or '-'}"
+                for step, plugins in payload["activation"]["steps"].items()
+            ),
+            "planned commands:",
+            *[f"- {entry['step']}: {entry['command']}" for entry in payload["commands"]],
+            f"restart requested: {'yes' if payload['restart_requested'] else 'no'}",
+        ]
+    )
+
+
+def _display_deploy_command(label: str, command: list[str]) -> str:
+    if label == "Verify and activate autonomy release":
+        return f"ssh {shlex.quote(command[1])} <verify-and-activate-controller-release>"
+    return shlex.join(command)
+
+
+def _display_restart_command(target: PicarTarget, drive_args: str | None) -> str:
+    remote_command = donkey_service_control_command(
+        pi_home=target.pi_home,
+        action="restart",
+        drive_args=drive_args,
+    )
+    return shlex.join(["ssh", target.ssh_target, remote_command])
+
+
+def _restart_drive_service(
+    *,
+    target: PicarTarget,
+    drive_args: str | None,
+    verbose: bool,
+    output: TextIO | None,
+) -> int:
+    remote_command = donkey_service_control_command(
+        pi_home=target.pi_home,
+        action="restart",
+        drive_args=drive_args,
+    )
+    code = run_step(
+        "Restart Donkey runtime service",
+        ["ssh", target.ssh_target, remote_command],
+        env=None,
+        verbose=verbose,
+        output=output,
+    )
+    if code != 0:
+        return code
+    try:
+        readiness = _wait_for_donkey_readiness(
+            target=target,
+            timeout_s=DONKEY_READY_TIMEOUT_S,
+        )
+    except RuntimeError as exc:
+        _emit(output, f"HTTP readiness failed: {exc}")
+        return 2
+    _emit(output, f"Donkey runtime ready: {readiness['status_url']}")
+    return 0
+
+
+def _verify_picar_autonomy_runtime(
+    *,
+    target: PicarTarget,
+    expected_steps: dict[str, list[str]],
+    timeout_s: float,
+) -> dict[str, Any]:
+    verification = inspect_picar_autonomy_runtime(
+        base_url=_target_base_url(target),
+        timeout_s=timeout_s,
+    )
+    status_url = str(verification["status_url"])
+    actual_steps = verification["steps"]
+    for step, plugins in expected_steps.items():
+        actual = actual_steps.get(step)
+        if actual is None:
+            host_name = target.host_name
+            raise RuntimeError(
+                f"{status_url} has no live {step} step, but {plugins!r} was deployed. "
+                "The step loader lives in the Donkey manage.py harness, which hosts create installs; "
+                f"{host_name}'s harness does not load steps."
+            )
+        if list(actual) != list(plugins):
+            raise RuntimeError(
+                f"{status_url} reported {step} plugins {actual!r}, expected {plugins!r}"
+            )
+    mode = verification["mode"]
+    if mode != "manual":
+        raise RuntimeError(
+            f"{status_url} reported mode {mode!r}; expected 'manual' for idle smoke verification"
+        )
+    return verification
+
+
+def inspect_picar_autonomy_runtime(
+    *,
+    base_url: str,
+    timeout_s: float,
+) -> dict[str, Any]:
+    """Read the deployed autonomy status without changing vehicle state."""
+    normalized_url = str(base_url).strip().rstrip("/")
+    if not normalized_url:
+        raise RuntimeError("PiCar base URL is required for runtime inspection")
+    status_url = f"{normalized_url}/host/status"
+    payload = _read_runtime_status(status_url, timeout_s=max(0.1, float(timeout_s)))
+    if payload.get("ok") is not True:
+        raise RuntimeError(
+            f"{status_url} did not report an available decision cycle: "
+            f"{payload.get('error') or 'no error reported'}"
+        )
+
+    autonomy = payload.get("host")
+    if not isinstance(autonomy, dict):
+        raise RuntimeError(f"{status_url} did not report autonomy runtime status")
+
+    reported = autonomy.get("steps")
+    if not isinstance(reported, dict):
+        raise RuntimeError(f"{status_url} did not report the cycle's steps")
+    steps: dict[str, list[str] | None] = {}
+    for step in STEPS:
+        status = reported.get(step)
+        plugin_ids = status.get("plugin_ids") if isinstance(status, dict) else None
+        steps[step] = list(plugin_ids) if isinstance(plugin_ids, list) else None
+    if steps["action"] is None:
+        raise RuntimeError(f"{status_url} did not report a loaded action step")
+
+    return {
+        "status_url": status_url,
+        "steps": steps,
+        "mode": payload.get("mode"),
+        "ok": True,
+    }
+
+
+def _read_runtime_status(status_url: str, *, timeout_s: float) -> dict[str, Any]:
+    """Read the status route, including the error body a 503 carries."""
+    try:
+        return http_json.request_json(status_url, timeout_s=timeout_s)[1]
+    except ConnectionError as exc:
+        raise RuntimeError(str(exc)) from exc
+
+
+def _wait_for_donkey_readiness(
+    *,
+    target: PicarTarget,
+    timeout_s: float,
+) -> dict[str, Any]:
+    base_url = _target_base_url(target)
+    status_url = f"{base_url.rstrip('/')}/host/status"
+    deadline = time.monotonic() + max(0.1, float(timeout_s))
+    last_error = "no response"
+    while time.monotonic() < deadline:
+        try:
+            payload = _read_runtime_status(status_url, timeout_s=1.0)
+            # Donkey answers even when the autonomy runtime failed to load;
+            # autonomy verification reports that error separately.
+            if payload.get("ok") is True and payload.get("mode") != "manual":
+                last_error = f"mode is {payload.get('mode')!r}, expected 'manual'"
+            else:
+                return {
+                    "ok": True,
+                    "status_url": status_url,
+                    "mode": payload.get("mode"),
+                    "autonomy_available": payload.get("ok") is True,
+                    "autonomy_error": payload.get("error"),
+                }
+        except RuntimeError as exc:
+            last_error = str(exc)
+        time.sleep(0.5)
+    raise RuntimeError(f"GET {status_url} was not ready within {timeout_s:g}s ({last_error})")
+
+
+def _target_base_url(target: PicarTarget) -> str:
+    connection = target.configuration.get("connection")
+    base_url = connection.get("base_url") if isinstance(connection, dict) else None
+    if isinstance(base_url, str) and base_url.strip():
+        return base_url.strip().rstrip("/")
+    host = target.ssh_target.rsplit("@", 1)[-1]
+    return f"http://{host}:8887"
+
+
+def _emit(output: TextIO | None, message: str) -> None:
+    if output is None:
+        return
+    print(message, file=output, flush=True)
+
+
+def run_step(
+    label: str,
+    command: list[str],
+    *,
+    env: dict[str, str] | None,
+    verbose: bool,
+    output: TextIO | None,
+    command_prefix: str | None = None,
+) -> int:
+    _emit(output, f"==> {label}")
+    if verbose:
+        prefix = f"{command_prefix} " if command_prefix else ""
+        _emit(output, f"$ {prefix}{shlex.join(command)}")
+
+    process = subprocess.Popen(
+        command,
+        cwd=ROOT,
+        env=env,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        bufsize=1,
+    )
+    assert process.stdout is not None
+    for line in process.stdout:
+        _emit(output, line.rstrip())
+    return process.wait()
+
+
+def ssh_target_from_vehicle(configuration: dict[str, object]) -> str | None:
+    connection = configuration.get("connection")
+    if not isinstance(connection, dict):
+        return None
+    base_url = connection.get("base_url")
+    if not isinstance(base_url, str):
+        return None
+    hostname = urlparse(base_url).hostname
+    if not hostname:
+        return None
+    return f"{DEFAULT_PI_USER}@{hostname}"
+
+
+def _ssh_user_from_target(ssh_target: str) -> str:
+    if "@" not in ssh_target:
+        return DEFAULT_PI_USER
+    user = ssh_target.split("@", 1)[0].strip()
+    return user or DEFAULT_PI_USER
+
+
+def _drive_args_token(drive_args: str | None) -> str:
+    if drive_args is None:
+        return "-"
+    encoded = base64.b64encode(drive_args.encode("utf-8")).decode("ascii")
+    return f"b64:{encoded}"
+
+
+def donkey_service_control_command(
+    *,
+    pi_home: str,
+    action: str,
+    drive_args: str | None,
+) -> str:
+    return shlex.join(
+        [
+            f"{pi_home}/.config/automa/systemd/control.sh",
+            pi_home,
+            action,
+            _drive_args_token(drive_args),
+        ]
+    )
+
+
+def _core_sync_commands(
+    *,
+    ssh_target: str,
+    pi_home: str,
+    pi_user: str,
+    donkeycar_source_dir: Path,
+) -> list[list[str]]:
+    common_excludes = [
+        "--exclude=*.bak.*",
+        "--exclude=__pycache__/",
+        "--exclude=*.pyc",
+        "--exclude=.DS_Store",
+    ]
+    return [
+        [
+            "ssh",
+            ssh_target,
+            "mkdir",
+            "-p",
+            f"{pi_home}/projects/donkeycar",
+            f"{pi_home}/mycar",
+            f"{pi_home}/.config/automa/systemd",
+        ],
+        [
+            "rsync",
+            "-az",
+            "--delete",
+            *common_excludes,
+            f"{donkeycar_source_dir}/",
+            f"{ssh_target}:{pi_home}/projects/donkeycar/",
+        ],
+        [
+            "rsync",
+            "-az",
+            "--delete",
+            *common_excludes,
+            "--exclude=data/",
+            "--exclude=logs/",
+            "--exclude=*.pid",
+            "--exclude=autonomy",
+            "--exclude=implementations",
+            "--exclude=runtime",
+            f"{DEPLOY_DIR / 'app'}/",
+            f"{ssh_target}:{pi_home}/mycar/",
+        ],
+        [
+            "rsync",
+            "-az",
+            "--delete",
+            *common_excludes,
+            f"{DONKEY_SERVICE_DIR}/",
+            f"{ssh_target}:{pi_home}/.config/automa/systemd/",
+        ],
+        [
+            "ssh",
+            ssh_target,
+            shlex.join(
+                [
+                    f"{pi_home}/.config/automa/systemd/install.sh",
+                    pi_home,
+                    pi_user,
+                    _drive_args_token(None),
+                ]
+            ),
+        ],
+    ]

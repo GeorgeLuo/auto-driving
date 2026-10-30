@@ -3,10 +3,10 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.hosts.deploy import (
+from cli.automa_cli.hosts.picar_deploy import (
     DONKEY_SERVICE_NAME,
-    _donkey_service_control_command,
     _drive_args_token,
+    donkey_service_control_command,
 )
 
 
@@ -38,7 +38,7 @@ class DonkeyRuntimeServiceTests(unittest.TestCase):
         self.assertEqual(_drive_args_token(""), "b64:")
         self.assertEqual(_drive_args_token("--js"), "b64:LS1qcw==")
 
-        command = _donkey_service_control_command(
+        command = donkey_service_control_command(
             pi_home="/home/piracer",
             action="restart",
             drive_args="--js",

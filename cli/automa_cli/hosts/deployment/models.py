@@ -17,3 +17,5 @@ class DeploymentResult:
     message: str = ""
     receipt: dict[str, Any] | None = None
     host_present: bool | None = None
+    render_kind: str = "generic"
+    child_render_kind: str = "generic"

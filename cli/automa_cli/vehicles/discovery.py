@@ -13,10 +13,9 @@ from ..providers.catalog import CHASE_SIM, PROVIDERS
 from ..providers.probes import (
     DEFAULT_READINESS_TIMEOUT_S,
     Candidate,
-    chase_operator_url,
     normalize_chase_url,
 )
-from ..shared.command_result import CommandResult
+from .models import VehicleResult
 from ..simulators.store import created_simulators
 from .store import discovered_vehicles, write_discovered_vehicles
 
@@ -55,28 +54,27 @@ def _dedupe_candidates(candidates: list[Candidate]) -> list[Candidate]:
     return unique
 
 
-def discover_vehicle(*, provider: str, url: str, force: bool = False) -> CommandResult:
+def discover_vehicle(*, provider: str, url: str, force: bool = False) -> VehicleResult:
     """List a vehicle in vehicles status once it can take a host, or regardless with ``force``."""
 
     vehicle = PROVIDERS[provider]
     try:
         url = vehicle.normalize_url(url)
     except ValueError as exc:
-        return CommandResult(2, str(exc))
-    heading = vehicle.heading_at(url)
+        return VehicleResult(2, "error", error=str(exc))
     listed = discovered_vehicles()
     entry = {"provider": provider, "url": url}
     if entry in listed or (provider == CHASE_SIM.name and url == default_chase_url()):
-        return CommandResult(0, f"Already listed: {heading}")
+        return VehicleResult(0, "listed", url=url, provider=provider)
     probe = vehicle.probe(Candidate(provider, url, "discovered"), timeout_s=DEFAULT_READINESS_TIMEOUT_S)
     ready = vehicle.can_take_host(probe)
     if not ready and not force:
-        return CommandResult(2, f"No {vehicle.machine} can take a host at {url}: {probe.error}")
+        return VehicleResult(2, "unready", url=url, provider=provider, ready=False, error=probe.error)
     write_discovered_vehicles([*listed, entry])
-    return CommandResult(0, f"Discovered {heading}" + ("" if ready else f", which cannot take a host now: {probe.error}"))
+    return VehicleResult(0, "discovered", url=url, provider=provider, ready=ready, error=probe.error)
 
 
-def remove_vehicle(*, url: str) -> CommandResult:
+def remove_vehicle(*, url: str) -> VehicleResult:
     """Stop listing a discovered vehicle; the default simulator stays."""
 
     def normalized(provider: str) -> str | None:
@@ -87,11 +85,10 @@ def remove_vehicle(*, url: str) -> CommandResult:
 
     default = default_chase_url()
     if normalized(CHASE_SIM.name) == default:
-        return CommandResult(2, f"{chase_operator_url(default)} is the default simulator and is always listed.")
+        return VehicleResult(2, "default", url=default)
     listed = discovered_vehicles()
     removed = [vehicle for vehicle in listed if normalized(vehicle["provider"]) == vehicle["url"]]
     if not removed:
-        names = ", ".join(PROVIDERS[vehicle["provider"]].heading_at(vehicle["url"]) for vehicle in listed)
-        return CommandResult(2, f"No discovered vehicle at {url}. " + (f"Discovered: {names}." if names else "None discovered."))
+        return VehicleResult(2, "missing", url=url, vehicles=tuple(listed))
     write_discovered_vehicles([vehicle for vehicle in listed if vehicle not in removed])
-    return CommandResult(0, "\n".join(f"Removed {PROVIDERS[vehicle['provider']].heading_at(vehicle['url'])}" for vehicle in removed))
+    return VehicleResult(0, "removed", vehicles=tuple(removed))

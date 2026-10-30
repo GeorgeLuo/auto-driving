@@ -15,7 +15,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.frame_loop import DECISION_TRANSACTION_PATH
 from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.hosts.runs import runtime_monitor
+from cli.automa_cli.hosts.runs import monitor
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 
@@ -158,12 +158,12 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 # Substitute HTTP reads and lifecycle transport only. Host, workers,
                 # publications, monitor polling, loopback view and records are real.
                 with (
-                    patch.object(runtime_monitor, "RuntimeClient", return_value=RuntimeClient()),
-                    patch.object(runtime_monitor, "fetch_observation_sample", side_effect=sample),
+                    patch.object(monitor, "RuntimeClient", return_value=RuntimeClient()),
+                    patch.object(monitor, "fetch_observation_sample", side_effect=sample),
                     patch("cli.automa_cli.hosts.views.decision_live.fetch_decision_transaction", side_effect=transaction),
                 ):
                     started = time.monotonic()
-                    code, message = runtime_monitor.monitor_runtime(
+                    code, message = monitor.monitor_runtime(
                         host_name="picar-test", base_url="http://picar.invalid", automation_dir=root,
                         selections={"perception": {"preset": "gated", "plugins": [], "activation": "perception/active.json"}},
                         decision={"generation_id": "test", "steps": {}, "published": False},

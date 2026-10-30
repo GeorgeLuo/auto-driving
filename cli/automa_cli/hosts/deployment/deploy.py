@@ -8,7 +8,7 @@ from typing import Any, TextIO
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
 
 from ...shared.command_result import CommandResult
-from ..runs.automation_stop import stop_host_automation
+from ..runs.service import stop_host_automation
 from ..bundles import controller_bundle_source_summary, sync_controller_bundle
 from ...shared.paths import RUNTIME_ROOT, display_path, safe_path_part
 from ...shared.io.processes import pid_alive

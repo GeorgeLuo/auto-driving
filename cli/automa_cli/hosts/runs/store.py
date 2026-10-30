@@ -1,7 +1,7 @@
 """The run record and terminal lines every host's run shares.
 
 Every runtime host executes the decision cycle while the CLI
-monitors it (``runtime_monitor``), writing this ``state.json`` record and
+monitors it (``monitor``), writing this ``state.json`` record and
 printing these lines. A recording also appends the same ``manifest.json``,
 which replay loads.
 """

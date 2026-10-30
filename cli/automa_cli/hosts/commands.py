@@ -8,12 +8,12 @@ import sys
 from ..shared.timeout_input import validate_timeout_input
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
 from ..vehicles.providers import PROVIDERS
-from .runs.automation import (
+from .runs.service import (
     restart_host_automation,
     start_host_automation_background,
+    stop_host_automation,
 )
 from .runs.automation_status import get_hosts_status
-from .runs.automation_stop import stop_host_automation
 from .deployment.deploy import create_host, update_host, delete_host
 from .views.viewer import serve_host_viewer
 

@@ -10,13 +10,14 @@ from unittest.mock import patch
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.shared.command_result import CommandResult
 from cli.automa_cli.app import main
-from cli.automa_cli.hosts.runs.automation_stop import WORKER_MODULE, _automation_command_matches_host
-from cli.automa_cli.hosts.runs.automation import (
+from cli.automa_cli.hosts.runs.models import RECOGNIZED_WORKER_MODULES, WORKER_MODULE
+from cli.automa_cli.hosts.runs.service import (
+    _automation_command_matches_host,
     _run_configuration,
-    _run_worker,
     run_host_automation,
     start_host_automation_background,
 )
+from cli.automa_cli.hosts.runs.worker import _run_worker
 
 
 class _Host:
@@ -43,6 +44,16 @@ class RunConfigurationTests(unittest.TestCase):
         self.assertTrue(_automation_command_matches_host(f"/venv/bin/python3 -m {WORKER_MODULE} --name=car", "car"))
         legacy = "python -m cli.automa_cli.hosts.automation"
         self.assertTrue(_automation_command_matches_host(f"{legacy} --name car", "car"))
+        previous = "python -m cli.automa_cli.hosts.runs.automation"
+        self.assertTrue(_automation_command_matches_host(f"{previous} --name car", "car"))
+        self.assertEqual(
+            set(RECOGNIZED_WORKER_MODULES),
+            {
+                WORKER_MODULE,
+                "cli.automa_cli.hosts.runs.automation",
+                "cli.automa_cli.hosts.automation",
+            },
+        )
         self.assertTrue(_automation_command_matches_host(f"{legacy} --name=car", "car"))
         self.assertFalse(_automation_command_matches_host(f"{legacy} --name car-2", "car"))
         self.assertFalse(_automation_command_matches_host(f"{worker} --name car-2", "car"))
@@ -147,9 +158,9 @@ class RunConfigurationTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as tmp,
             patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", Path(tmp)),
             patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)),
-            patch("cli.automa_cli.hosts.runs.automation.runtime_base_url", side_effect=AssertionError("started a host")) as started,
-            patch("cli.automa_cli.hosts.runs.automation.RuntimeClient", _HostClient),
-            patch("cli.automa_cli.hosts.runs.automation.monitor_runtime", return_value=(0, "ran")) as monitor,
+            patch("cli.automa_cli.hosts.runs.service.runtime_base_url", side_effect=AssertionError("started a host")) as started,
+            patch("cli.automa_cli.hosts.runs.service.RuntimeClient", _HostClient),
+            patch("cli.automa_cli.hosts.runs.service.monitor_runtime", return_value=(0, "ran")) as monitor,
         ):
             result = run_host_automation(
                 host_url="http://127.0.0.1:54355/", num_decisions=1, take_control=True,
@@ -163,7 +174,7 @@ class RunConfigurationTests(unittest.TestCase):
         for host_url in ("not-a-host", "http://127.0.0.1:54355/host/status"):
             with (
                 self.subTest(host_url=host_url),
-                patch("cli.automa_cli.hosts.runs.automation.runtime_base_url", side_effect=AssertionError("started a host")) as started,
+                patch("cli.automa_cli.hosts.runs.service.runtime_base_url", side_effect=AssertionError("started a host")) as started,
             ):
                 result = run_host_automation(host_url=host_url, num_decisions=1, take_control=True)
             self.assertEqual(result.exit_code, 2, result.message)
@@ -187,8 +198,8 @@ class RunConfigurationTests(unittest.TestCase):
         for client in (_Silent, _Down):
             with (
                 self.subTest(client=client.__name__),
-                patch("cli.automa_cli.hosts.runs.automation.RuntimeClient", client),
-                patch("cli.automa_cli.hosts.runs.automation.runtime_base_url", side_effect=AssertionError("started a host")) as started,
+                patch("cli.automa_cli.hosts.runs.service.RuntimeClient", client),
+                patch("cli.automa_cli.hosts.runs.service.runtime_base_url", side_effect=AssertionError("started a host")) as started,
             ):
                 result = run_host_automation(
                     host_url="http://127.0.0.1:54355", num_decisions=1, take_control=True,
@@ -201,10 +212,10 @@ class RunConfigurationTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as tmp,
             patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", Path(tmp)),
             patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)),
-            patch("cli.automa_cli.hosts.runs.automation.RuntimeClient", _HostClient),
-            patch("cli.automa_cli.hosts.runs.automation.subprocess.Popen") as popen,
+            patch("cli.automa_cli.hosts.runs.service.RuntimeClient", _HostClient),
+            patch("cli.automa_cli.hosts.runs.service.subprocess.Popen") as popen,
             patch(
-                "cli.automa_cli.hosts.runs.automation._wait_for_automation_startup",
+                "cli.automa_cli.hosts.runs.service._wait_for_automation_startup",
                 return_value={"status": "completed"},
             ),
         ):
@@ -230,9 +241,9 @@ class RunConfigurationTests(unittest.TestCase):
             with self.subTest(kwargs=kwargs):
                 command = self._background_command(record=True, **kwargs)
                 with (
-                    patch("cli.automa_cli.hosts.runs.automation.run_host_automation",
+                    patch("cli.automa_cli.hosts.runs.worker.run_host_automation",
                           return_value=CommandResult(0, "ran")) as run,
-                    patch("cli.automa_cli.hosts.runs.automation.record_host_automation_terminal_result") as record,
+                    patch("cli.automa_cli.hosts.runs.worker.record_host_automation_terminal_result") as record,
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
                     self.assertEqual(_run_worker(command[3:]), 0)
@@ -247,9 +258,9 @@ class RunConfigurationTests(unittest.TestCase):
 
     def test_worker_records_a_named_host_failure(self):
         with (
-            patch("cli.automa_cli.hosts.runs.automation.run_host_automation",
+            patch("cli.automa_cli.hosts.runs.worker.run_host_automation",
                   return_value=CommandResult(2, "no host")) as run,
-            patch("cli.automa_cli.hosts.runs.automation.record_host_automation_terminal_result") as record,
+            patch("cli.automa_cli.hosts.runs.worker.record_host_automation_terminal_result") as record,
             contextlib.redirect_stdout(io.StringIO()) as stdout,
         ):
             code = _run_worker(["--name", "car", "--timeout-s", "5", "--observe-only"])

@@ -52,7 +52,7 @@ LEGACY_MODULES: tuple[tuple[str, str], ...] = (
     # The Chase host supervisor, which ensure_chase_host starts with ``python -m``.
     ("cli.automa_cli.hosts.local", "cli.automa_cli.hosts.local"),
     # The run worker, which hosts run starts with ``python -m``.
-    ("cli.automa_cli.hosts.runs.automation", "cli.automa_cli.hosts.runs.automation"),
+    ("cli.automa_cli.hosts.runs.worker", "cli.automa_cli.hosts.runs.worker"),
 )
 
 # (legacy module, legacy attribute, canonical module, canonical attribute)

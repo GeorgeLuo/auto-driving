@@ -3,7 +3,7 @@
 Execution belongs to the host at ``base_url`` (a PiCar's Donkey service or a
 local Chase host); both serve ``autonomy.runtime.routes``. This module starts
 the session, then persists and displays its publications in the run record
-and terminal lines (``run_record``) and the Mac-side runtime view.
+and terminal lines (``store``) and the Mac-side runtime view.
 """
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ from ...shared.paths import display_path
 from ...frontend.perception_view import perception_view_ready
 from ..publications.decision_publication import perception_text_from_publication, publication_to_frame_record
 from ..publications.host_publications import fetch_observation_sample, TransactionCache
-from .run_record import (
+from .store import (
     control_source, finish_run, frame_line, frame_readiness,
     new_run_state, record_host_status, reports_frame, run_result, startup_lines,
     timestamp_ms,

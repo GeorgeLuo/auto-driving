@@ -7,7 +7,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.automa_cli.hosts.runs.automation import run_host_automation
+from cli.automa_cli.hosts.runs.service import run_host_automation
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
 from cli.automa_cli.releases.paths import controller_bundle_paths
 from cli.automa_cli.frontend.server import RuntimeViewServer
@@ -61,7 +61,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
 
             with (
                 calls,
-                patch("cli.automa_cli.hosts.runs.runtime_monitor.runtime_view_server", side_effect=record_server),
+                patch("cli.automa_cli.hosts.runs.monitor.runtime_view_server", side_effect=record_server),
                 # Exercise the view projection without opening a socket.
                 patch.object(RuntimeViewServer, "start", lambda server: server),
                 staged_runners(perception=_SlowMapper(), wrap=wrap_proposal),

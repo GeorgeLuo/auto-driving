@@ -1,7 +1,7 @@
 """Mixed controller versions report their schema before incompatible key sets."""
 import unittest
 
-from cli.automa_cli.decision import (
+from cli.automa_cli.hosts.publications.decision import (
     DecisionSurfaceError, _strict_decode_authority, _strict_decode_command,
     _strict_decode_plan, _strict_decode_proposal,
 )

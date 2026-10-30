@@ -15,15 +15,13 @@ plugins and never applies a selection itself, so a running host's
 ``plugin_report``, ``status`` and ``plugin_timing`` for diagnostics; and
 ``reset(shared_memory)`` to start a new epoch. ``reset`` resets every applied
 plugin with the host map, and a plugin whose reset raises follows the step's
-``FAILURE_POLICY.reset``. Memory's ``reset`` also returns the keys its plugins
-wrote, for a host that clears its map at a reset to restore.
+``FAILURE_POLICY.reset``, or propagates in a step that declares none.
+Memory's ``reset`` also returns the keys its plugins wrote, for a host that
+clears its map at a reset to restore.
 
-Perception, memory, proposal, and plan declare what a plugin failure or a
-missing input does as one ``FailurePolicy``, ``FAILURE_POLICY`` in the step's
-``interface``, and set it as ``failure_policy`` beside their ``schema_name``.
-``describe_schema`` reports those with the step's ``runner``,
-``configuration``, ``plugins``, and ``single_plugin``, and each step adds its
-inputs, output, and composition.
+Perception, memory, and plan declare what a plugin failure or a missing input
+does as one ``FailurePolicy``, ``FAILURE_POLICY`` in the step's ``interface``,
+which the step's runner follows.
 
 Every step's runner is a ``StepRunner``. A step adds what its plugins need
 through the hooks ``StepRunner`` names, not by reimplementing the surface.
@@ -32,7 +30,7 @@ through the hooks ``StepRunner`` names, not by reimplementing the surface.
 from __future__ import annotations
 
 import inspect
-from collections.abc import Iterable, Iterator, Mapping
+from collections.abc import Iterator, Mapping
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
@@ -88,9 +86,6 @@ class FailurePolicy:
                 allowed = ", ".join(sorted(FAILURE_POLICY_VALUES[name]))
                 raise ValueError(f"failure policy {name} must be one of {allowed}; got {value!r}")
 
-    def to_dict(self) -> dict[str, str]:
-        return {name: getattr(self, name) for name in FAILURE_POLICY_FIELDS}
-
 
 def require_step_manager(plugin_manager: object, step: str) -> PluginManager:
     if not isinstance(plugin_manager, PluginManager):
@@ -129,10 +124,6 @@ class StepRunner(Generic[PluginT]):
     - ``_plugin_records``: each plugin's timing and error in ``plugin_report``
       and ``plugin_timing``.
     - ``status``: extend ``super().status()`` with the step's own fields.
-    - ``schema_name`` and ``failure_policy``: the contract ``describe_schema``
-      reports; a step with no ``schema_name`` has none.
-    - ``_describe_schema``: extend ``super()._describe_schema()`` with the
-      step's inputs, output, and composition.
 
     A subclass sets the state its hooks read before calling
     ``super().__init__``, which applies the manager's selection.
@@ -140,8 +131,6 @@ class StepRunner(Generic[PluginT]):
 
     step: ClassVar[str]
     single_plugin: ClassVar[bool] = False
-    schema_name: ClassVar[str | None] = None
-    failure_policy: ClassVar[FailurePolicy | None] = None
 
     def __init__(
         self,
@@ -279,27 +268,6 @@ class StepRunner(Generic[PluginT]):
     def _reset_plugin(self, plugin: PluginT, shared_memory: SharedMemory | None) -> None:
         reset_plugin(plugin, shared_memory)
 
-    def describe_schema(self) -> dict[str, Any] | None:
-        """The step's contract, or None when the step declares no schema."""
-
-        if self.schema_name is None:
-            return None
-        with self._runtime_lock:
-            return self._describe_schema()
-
-    def _describe_schema(self) -> dict[str, Any]:
-        applied = self.applied
-        described: dict[str, Any] = {
-            "schema": self.schema_name,
-            "runner": f"{type(self).__module__}:{type(self).__name__}",
-            "configuration": describe_configuration(self.plugin_manager, applied),
-            "plugins": [describe_plugin(definition) for definition, _plugin in applied],
-            "single_plugin": self.single_plugin,
-        }
-        if self.failure_policy is not None:
-            described["failure_policy"] = self.failure_policy.to_dict()
-        return described
-
     # Reports ---------------------------------------------------------------
 
     def plugin_report(self) -> dict[str, Any]:
@@ -367,6 +335,11 @@ class StepRunner(Generic[PluginT]):
                 "available_plugins": sorted(self.plugin_manager.available_ids),
                 "selected_plugin_ids": list(self.plugin_manager.selected_ids),
                 "plugin_ids": list(self.plugin_ids),
+                # What each applied plugin runs with; a restaged config waits for a restart.
+                "plugin_configs": {
+                    definition.plugin_id: deepcopy(dict(definition.config))
+                    for definition, _plugin in self.applied
+                },
                 "plugin_report": self.plugin_report(),
                 "run_count": self.run_count,
                 "failure_count": self.failure_count,
@@ -415,34 +388,6 @@ def _accepts_argument(function: Any) -> bool:
         )
         for parameter in parameters
     )
-
-
-def describe_configuration(
-    plugin_manager: PluginManager,
-    applied: Iterable[tuple[PluginDefinition, Any]],
-) -> dict[str, Any]:
-    """The ``configuration`` entry of a step schema: catalog, selection, and applied plugins."""
-
-    report = build_plugin_report(plugin_manager, applied)
-    available = plugin_manager.available
-    return {
-        "plugins": list(report["applied_plugin_ids"]),
-        "available_plugins": sorted(item.plugin_id for item in available),
-        "selected_plugin_ids": list(report["selected_plugin_ids"]),
-        "applied_plugin_ids": list(report["applied_plugin_ids"]),
-        "plugin_specs": {item.plugin_id: item.entrypoint for item in available},
-        "plugin_configs": {item.plugin_id: deepcopy(dict(item.config)) for item in available},
-    }
-
-
-def describe_plugin(definition: PluginDefinition) -> dict[str, Any]:
-    """One applied plugin in a step schema's ``plugins`` list; a step adds its own fields."""
-
-    return {
-        "plugin_id": definition.plugin_id,
-        "spec": definition.entrypoint,
-        "config": deepcopy(dict(definition.config)),
-    }
 
 
 def describe_exception(exc: BaseException) -> str:

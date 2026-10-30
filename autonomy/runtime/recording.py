@@ -37,7 +37,7 @@ from autonomy.plugins import uploaded_source
 from autonomy.runtime.execution import ControlApplication
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
-RECORDING_MANIFEST_SCHEMA = "automa_recording_manifest_v0"
+RECORDING_MANIFEST_SCHEMA = "automa_recording_manifest"
 RECORDING_MANIFEST_NAME = "manifest.json"
 # Uploaded plugin sources a recording carries, as ``<sha256>.py``.
 UPLOADED_SOURCES_DIR = "plugins"
@@ -151,10 +151,40 @@ def _recording_text(value: Any, label: str) -> str:
     return value
 
 
+def recording_frame_entry(
+    *, frame_id: str, timestamp_ms: int, image_path: str | None,
+    steps: dict[str, Any], frame_index: int | None = None,
+    context: dict[str, Any] | None = None,
+    control_application_change: dict[str, Any] | None = None,
+    mode: str | None = None, user_steering: float | None = None,
+    user_throttle: float | None = None, absence_reason: str | None = None,
+) -> dict[str, Any]:
+    """The inputs needed to replay one cycle; image paths are relative to its archive."""
+
+    entry: dict[str, Any] = {
+        "frame_id": frame_id,
+        "timestamp_ms": timestamp_ms,
+        "image_path": image_path,
+        "steps": copy.deepcopy(steps),
+    }
+    if frame_index is not None:
+        entry["frame_index"] = frame_index
+    for key, value in (("mode", mode), ("user_steering", user_steering), ("user_throttle", user_throttle)):
+        if value is not None:
+            entry[key] = value
+    if context is not None:
+        entry["context"] = recorded_context(context)
+    if control_application_change is not None:
+        entry[CONTROL_APPLICATION_CHANGE_FIELD] = copy.deepcopy(control_application_change)
+    if absence_reason is not None:
+        entry["absence_reason"] = absence_reason
+    return entry
+
+
 def append_recording_frame(
     run_dir: Path,
     *,
-    vehicle_id: str,
+    host_name: str,
     run_id: str,
     generation_id: str,
     frame_id: str,
@@ -176,7 +206,7 @@ def append_recording_frame(
     applications, or is ``None`` when the host recorded no window.
     """
 
-    vehicle_id = _recording_text(vehicle_id, "vehicle_id")
+    host_name = _recording_text(host_name, "host_name")
     run_id = _recording_text(run_id, "run_id")
     generation_id = _recording_text(generation_id, "generation_id")
     frame_id = _recording_text(frame_id, "frame_id")
@@ -199,28 +229,19 @@ def append_recording_frame(
         relative_image = candidate.resolve().relative_to(root.resolve()).as_posix()
     except ValueError as exc:
         raise ValueError("recorded image must stay inside the run directory") from exc
-    entry: dict[str, Any] = {
-        "vehicle_id": vehicle_id,
-        "run_id": run_id,
-        "generation_id": generation_id,
-        "frame_id": frame_id,
-        "timestamp_ms": timestamp_ms,
-        "image_path": relative_image,
-        "steps": copy.deepcopy(steps),
+    entry = {
+        "host_name": host_name, "run_id": run_id, "generation_id": generation_id,
+        **recording_frame_entry(
+            frame_id=frame_id, frame_index=frame_index, timestamp_ms=timestamp_ms,
+            image_path=relative_image, steps=steps, context=context,
+            control_application_change=control_application_change, mode=mode,
+            user_steering=user_steering, user_throttle=user_throttle,
+        ),
     }
-    if frame_index is not None:
-        entry["frame_index"] = frame_index
-    for key, value in (("mode", mode), ("user_steering", user_steering), ("user_throttle", user_throttle)):
-        if value is not None:
-            entry[key] = value
-    if context is not None:
-        entry["context"] = recorded_context(context)
-    if control_application_change is not None:
-        entry[CONTROL_APPLICATION_CHANGE_FIELD] = copy.deepcopy(control_application_change)
     manifest_path = root / RECORDING_MANIFEST_NAME
     payload: dict[str, Any] = {
         "schema": RECORDING_MANIFEST_SCHEMA,
-        "vehicle_id": vehicle_id,
+        "host_name": host_name,
         "run_id": run_id,
         "frames": [],
     }
@@ -239,7 +260,7 @@ def append_recording_frame(
     else:
         frames.append(entry)
     payload["schema"] = RECORDING_MANIFEST_SCHEMA
-    payload["vehicle_id"] = vehicle_id
+    payload["host_name"] = host_name
     payload["run_id"] = run_id
     payload["frames"] = frames
     write_json_atomically(manifest_path, payload)
@@ -293,7 +314,7 @@ def write_recorded_frame(
         (frame.get("perception") or {}).get("text", "") + "\n", encoding="utf-8",
     )
     append_recording_frame(
-        run_dir, vehicle_id=frame["vehicle_id"], run_id=frame["run_id"],
+        run_dir, host_name=frame["host_name"], run_id=frame["run_id"],
         generation_id=frame["generation_id"], frame_id=frame_id,
         frame_index=frame["frame_index"], timestamp_ms=frame["captured_at_ms"],
         image_path=image_path, steps=frame["step_activations"], context=frame["context"],
@@ -304,7 +325,7 @@ def write_recorded_frame(
 
 
 def ran_on_release(
-    steps: dict[str, Any], *, vehicle_id: str, release: dict[str, Any] | None,
+    steps: dict[str, Any], *, host_name: str, release: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """Each step payload naming the vehicle and the release its code came from."""
     stamped: dict[str, Any] = {}
@@ -313,7 +334,7 @@ def ran_on_release(
             stamped[step] = None
             continue
         metadata = copy.deepcopy(dict(payload.get("metadata") or {}))
-        metadata.setdefault("vehicle_id", vehicle_id)
+        metadata.setdefault("host_name", host_name)
         metadata["controller_bundle"] = {
             **dict(metadata.get("controller_bundle") or {}), "release": copy.deepcopy(release),
         }
@@ -321,17 +342,17 @@ def ran_on_release(
     return stamped
 
 
-def cycle_frame(result: DecisionCycleResult, *, vehicle_id: str, run_id: str) -> dict[str, Any]:
+def cycle_frame(result: DecisionCycleResult, *, host_name: str, run_id: str) -> dict[str, Any]:
     """The same completed frame, selections and application on either host."""
     context = result.context
     steps = ran_on_release(
-        context.metadata["step_activations"], vehicle_id=vehicle_id, release=INSTALLED_RELEASE,
+        context.metadata["step_activations"], host_name=host_name, release=INSTALLED_RELEASE,
     )
     generation = activation_generation_id(
         {step: steps[step] for step in DECISION_STEPS}, prefix="decision",
     )
     return {
-        "vehicle_id": vehicle_id, "run_id": run_id,
+        "host_name": host_name, "run_id": run_id,
         "frame_id": context.frame_id, "frame_index": context.frame_index,
         "captured_at_ms": context.sensor_frame.readings[FRONT_CAMERA_SENSOR_ID].captured_at_ms,
         "perception_completed_at_ms": result.completed_at_ms,
@@ -351,13 +372,13 @@ def cycle_frame(result: DecisionCycleResult, *, vehicle_id: str, run_id: str) ->
 class RunRecording:
     """Durable ordered cycles for exactly one run; bounded batches for transport."""
 
-    def __init__(self, root: Path, *, vehicle_id: str, run_id: str | None = None,
+    def __init__(self, root: Path, *, host_name: str, run_id: str | None = None,
                  encode_image: Callable[[Any], bytes] | None = None) -> None:
         self.run_id = run_id or f"automation-{secrets.token_hex(12)}"
         if Path(self.run_id).name != self.run_id or self.run_id in {".", ".."}:
             raise ValueError("recording run_id must be a directory name")
         self.root = Path(root) / self.run_id
-        self.vehicle_id = vehicle_id
+        self.host_name = host_name
         self.encode_image = encode_image
         self.count = 0
         self._lock = threading.RLock()
@@ -382,7 +403,7 @@ class RunRecording:
             image, extension = self.encode_image(reading.value), ".jpg"
         else:
             raise ValueError("recording requires a camera image or an image encoder")
-        frame = cycle_frame(result, vehicle_id=self.vehicle_id, run_id=self.run_id)
+        frame = cycle_frame(result, host_name=self.host_name, run_id=self.run_id)
         with self._lock:
             applications = control_applications or ()
             previous = self._previous_applications

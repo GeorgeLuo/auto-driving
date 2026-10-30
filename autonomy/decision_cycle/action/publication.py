@@ -7,7 +7,7 @@ drive mode and user controls under ``MODE_KEY``, ``USER_STEERING_KEY`` and
 control execution also writes its recent ``ControlApplication`` records at
 ``CONTROL_APPLICATIONS_KEY``: a tuple or list, oldest first, of at most
 ``CONTROL_APPLICATION_LIMIT`` target writes, each with the mode it ran in.
-``()`` means no writes are retained. History survives run and memory resets.
+``()`` means no writes are retained. History survives run boundaries.
 The key is absent when the host has no execution or a replay source recorded
 none, so readers treat the car's motion as unknown.
 

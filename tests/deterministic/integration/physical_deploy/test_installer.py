@@ -7,21 +7,26 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from autonomy.decision_cycle.activation import STEPS
-from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.deploy import PicarTarget, _verify_picar_autonomy_runtime
-from cli.automa_cli.step_activations import ensure_step_activations, stage_activation
+from cli.automa_cli.hosts.bundles import sync_controller_bundle
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
+from cli.automa_cli.hosts.deployment.picar_deploy import PicarTarget, _verify_picar_autonomy_runtime
+from cli.automa_cli.hosts.step_activations import (
+    ensure_step_activations,
+    replace_metadata,
+    stage_activation,
+    startup_activations,
+)
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
     DEFAULT_STEP_PRESETS,
-    SELECTABLE_STEPS,
-    STEP_PRESETS,
+    PRESET_STEPS,
     selection_activation,
 )
 
 TARGET = PicarTarget(
-    vehicle_id="piracer",
-    vehicle={
-        "vehicle_id": "piracer",
+    host_name="piracer",
+    configuration={
+        "host_name": "piracer",
         "vehicle_kind": "picar",
         "provider": "picar",
         "connection": {"base_url": "http://piracer.local:8887"},
@@ -39,7 +44,7 @@ def _status_response(mode: str, steps: dict[str, list[str]]) -> MagicMock:
         {
             "ok": True,
             "mode": mode,
-            "autonomy": {
+            "host": {
                 "steps": {step: {"plugin_ids": plugins} for step, plugins in steps.items()},
                 "components": {},
             },
@@ -49,17 +54,18 @@ def _status_response(mode: str, steps: dict[str, list[str]]) -> MagicMock:
 
 
 class PhysicalDeployTests(unittest.TestCase):
-    def test_deploy_stages_every_step_and_rebuilds_named_presets_from_the_catalog(self) -> None:
+    def test_deploy_stages_each_saved_step_and_every_other_steps_default(self) -> None:
         """Regression: deploy staged no proposal, so a fresh vehicle held instead of proposing."""
 
         def staged(paths: dict[str, Path], step: str) -> dict:
             return json.loads(paths[step].read_text(encoding="utf-8"))
 
         with tempfile.TemporaryDirectory() as tmp:
-            bundle = controller_bundle_paths(Path(tmp) / "runtime" / "vehicles" / "piracer")
+            bundle = controller_bundle_paths(Path(tmp) / "runtime" / "hosts" / "piracer")
             release = sync_controller_bundle(bundle, output=None)
             ensure = lambda: ensure_step_activations(  # noqa: E731
-                vehicle_id="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.vehicle),
+                host_name="piracer", bundle=bundle, release=release,
+                activations=startup_activations(bundle, "piracer"), vehicle=dict(TARGET.configuration),
             )
             paths = ensure()
             self.assertEqual(set(paths), set(STEPS))
@@ -70,25 +76,34 @@ class PhysicalDeployTests(unittest.TestCase):
                         staged(paths, step)["metadata"].get("preset"), DEFAULT_STEP_PRESETS.get(step),
                     )
 
-            for step in SELECTABLE_STEPS:
+            for step in PRESET_STEPS:
                 stale = staged(paths, step)
                 stale["plugins"] = []
                 paths[step].write_text(json.dumps(stale), encoding="utf-8")
-            stage_activation(bundle, selection_activation("action", plugins=["hold"]), vehicle_id="piracer")
+            stage_activation(bundle, selection_activation("action", plugins=["hold"]), host_name="piracer")
+            paths["memory"].write_text("{", encoding="utf-8")
             paths = ensure()
-            for step in SELECTABLE_STEPS:
-                with self.subTest(step=step, staged="named preset"):
-                    self.assertEqual(
-                        staged(paths, step)["plugins"],
-                        list(STEP_PRESETS[step][DEFAULT_STEP_PRESETS[step]]["plugins"]),
-                    )
+            # A deploy replaces whatever each step had staged with its default, unless it was saved.
+            for step in STEPS:
+                with self.subTest(step=step, staged="replaced"):
+                    self.assertEqual(staged(paths, step)["plugins"], list(DEFAULT_STEP_PLUGINS[step]))
+            hold = selection_activation("action", plugins=["hold"])
+            stage_activation(bundle, replace_metadata(hold, {"saved": True}), host_name="piracer")
+            self.assertEqual(staged(ensure(), "action")["plugins"], ["hold"])
+            self.assertTrue(staged(paths, "action")["metadata"]["saved"])
 
-            custom = selection_activation("proposal", plugins=[])
-            self.assertEqual(custom.metadata["preset"], "custom")
-            stage_activation(bundle, custom, vehicle_id="piracer")
+            # A saved plugin the catalog no longer has stops the deploy before anything is staged.
+            dropped = staged(paths, "action")
+            dropped["plugins"] = ["retired"]
+            dropped["plugin_specs"]["retired"] = "implementations.retired:Retired"
+            paths["action"].write_text(json.dumps(dropped), encoding="utf-8")
+            before = {step: path.read_bytes() for step, path in paths.items()}
+            with self.assertRaisesRegex(ValueError, "piracer's saved action plugins .*retired(.|\n)*"
+                                        "plugins save --host-name piracer --step action"):
+                ensure()
+            self.assertEqual({step: path.read_bytes() for step, path in paths.items()}, before)
+            stage_activation(bundle, hold, host_name="piracer")
             paths = ensure()
-            self.assertEqual(staged(paths, "proposal")["plugins"], [])
-            self.assertEqual(staged(paths, "action")["plugins"], ["hold"])
             for step in STEPS:
                 with self.subTest(step=step, staged="release"):
                     self.assertEqual(
@@ -106,7 +121,7 @@ class PhysicalDeployTests(unittest.TestCase):
         )
         for mode, reported, error in cases:
             with self.subTest(mode=mode, reported=reported), patch(
-                "cli.automa_cli.deploy.urllib_request.urlopen",
+                "cli.automa_cli.shared.io.http_json.urllib.request.urlopen",
                 return_value=_status_response(mode, reported),
             ):
                 if error is None:

@@ -80,7 +80,7 @@
                 "path": "implementations/decision_cycle/perception/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Perception plugins that derive evidence from sensor data, their feeds, and shared library code. catalog.py lists the plugins; presets.py names ordered selections of them, and the default is a preset.",
+                "responsibility": "Perception plugins that derive evidence from sensor data, their feeds, and shared library code. catalog.json lists the plugins, presets (named, ordered selections of them), and the default, a preset.",
                 "children": [
                   {
                     "path": "implementations/decision_cycle/perception/feeds/",
@@ -111,10 +111,16 @@
                 ]
               },
               {
+                "path": "implementations/decision_cycle/observation/",
+                "category": "implementation",
+                "commit_policy": "source",
+                "responsibility": "The observation catalog: catalog.json lists the plugins and the default. Its plugin, perception_summary, lives in autonomy/decision_cycle/observation/."
+              },
+              {
                 "path": "implementations/decision_cycle/memory/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Memory plugins that retain evidence, and library code they share. catalog.py lists the plugins; presets.py names ordered selections of them, and the default is a preset. Values, protocol, and activation loading live under autonomy/decision_cycle/memory/.",
+                "responsibility": "Memory plugins that retain evidence, and library code they share. catalog.json lists the plugins, presets (named, ordered selections of them), and the default, a preset. Values, protocol, and activation loading live under autonomy/decision_cycle/memory/.",
                 "children": [
                   {
                     "path": "implementations/decision_cycle/memory/plugins/",
@@ -134,7 +140,7 @@
                 "path": "implementations/decision_cycle/proposal/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Proposal plugins that propose a command. catalog.py lists the plugins; presets.py names ordered selections of them, and the default is a preset. One folder per plugin holds its business logic. The protocol, runner, and record values live under autonomy/decision_cycle/proposal/.",
+                "responsibility": "Proposal plugins that propose a command. catalog.json lists the plugins, presets (named, ordered selections of them), and the default, a preset. One folder per plugin holds its business logic. The protocol, runner, and record values live under autonomy/decision_cycle/proposal/.",
                 "children": [
                   {
                     "path": "implementations/decision_cycle/proposal/plugins/",
@@ -148,7 +154,7 @@
                 "path": "implementations/decision_cycle/plan/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Plan plugins that select one candidate. catalog.py lists the plugins; presets.py names ordered selections of them, and the default is a preset. One folder per plugin holds its business logic. The protocol, runner, and record values live under autonomy/decision_cycle/plan/.",
+                "responsibility": "Plan plugins that select one candidate. catalog.json lists the plugins, presets (named, ordered selections of them), and the default, a preset. One folder per plugin holds its business logic. The protocol, runner, and record values live under autonomy/decision_cycle/plan/.",
                 "children": [
                   {
                     "path": "implementations/decision_cycle/plan/plugins/",
@@ -162,7 +168,7 @@
                 "path": "implementations/decision_cycle/action/",
                 "category": "implementation",
                 "commit_policy": "source",
-                "responsibility": "Packaged action plugins and the action catalog. mode applies the plan's selected command only in live drive modes; the hold action lives in autonomy/decision_cycle/action/."
+                "responsibility": "Packaged action plugins and the action catalog: catalog.json lists the plugins and the default. mode applies the plan's selected command only in live drive modes; the hold action lives in autonomy/decision_cycle/action/."
               }
             ]
           },
@@ -177,20 +183,6 @@
                 "category": "runtime-implementation",
                 "commit_policy": "source",
                 "responsibility": "PiCar runtime host and DonkeyCar drive-loop integration."
-              }
-            ]
-          },
-          {
-            "path": "implementations/operations/",
-            "category": "implementation",
-            "commit_policy": "source",
-            "responsibility": "Concrete bounded operation plans and workflows.",
-            "children": [
-              {
-                "path": "implementations/operations/startup_action_check/",
-                "category": "operation-implementation",
-                "commit_policy": "source",
-                "responsibility": "Action-and-capture checks to confirm commands register."
               }
             ]
           }
@@ -248,7 +240,49 @@
             "path": "cli/automa_cli/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "Vehicle, simulator, deploy, implementation, runtime, and diagnostic command implementation."
+            "responsibility": "Vehicle, simulator, deploy, implementation, runtime, and diagnostic command implementation. Its packages import one another without a cycle."
+          },
+          {
+            "path": "cli/automa_cli/frontend/",
+            "category": "source-ui",
+            "commit_policy": "source",
+            "responsibility": "The runtime viewer automa serves, workbench included: its pages and the server behind them. Imports no other automa_cli module."
+          },
+          {
+            "path": "cli/automa_cli/shared/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "Code several automa commands share and none owns: command results, repository paths, controller releases, I/O helpers, argument checks, reports, and offline replay sources, frame execution and recorded selections."
+          },
+          {
+            "path": "cli/automa_cli/vehicles/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "The automa vehicles commands, and the vehicle probes, listing and discovered-vehicle and simulator records that hosts and simulators share."
+          },
+          {
+            "path": "cli/automa_cli/hosts/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "The automa hosts commands and shared host discovery, staging and bundle services; deployment, runs, publications and views live in their named subpackages."
+          },
+          {
+            "path": "cli/automa_cli/workbench/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "The automa workbench command, its replay runner, plugin selections and presentation. It uses shared offline replay code and serves through the viewer automa passes in."
+          },
+          {
+            "path": "cli/automa_cli/plugins/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "The automa plugins commands: list a catalog and what a host has armed, upload, arm and disarm a host's plugins, stream a step on a host, and inspect plugins from images or recorded runs."
+          },
+          {
+            "path": "cli/automa_cli/simulators/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "The automa simulators commands, and the headless simulators simulators create starts."
           }
         ]
       },
@@ -291,43 +325,43 @@
         "responsibility": "Generated and mutable local state, reproducible from source plus CLI commands.",
         "children": [
           {
-            "path": "runtime/vehicles/",
+            "path": "runtime/hosts/",
             "category": "generated-runtime",
             "commit_policy": "generated",
-            "responsibility": "Local runtime directories keyed by discovered or configured vehicle id.",
+            "responsibility": "Local runtime directories keyed by host name.",
             "children": [
               {
-                "path": "runtime/vehicles/<vehicle-id>/",
+                "path": "runtime/hosts/<host-name>/",
                 "category": "generated-runtime",
                 "commit_policy": "generated",
-                "responsibility": "One local runtime area for a simulator or physical vehicle.",
+                "responsibility": "One local runtime area for a host controlling a simulator or physical vehicle.",
                 "children": [
                   {
-                    "path": "runtime/vehicles/<vehicle-id>/bundle/",
+                    "path": "runtime/hosts/<host-name>/bundle/",
                     "category": "generated-runtime",
                     "commit_policy": "generated",
                     "responsibility": "Generated controller bundle with core code, concrete implementations, releases, active configuration, and worker state.",
                     "children": [
                       {
-                        "path": "runtime/vehicles/<vehicle-id>/bundle/autonomy/",
+                        "path": "runtime/hosts/<host-name>/bundle/autonomy/",
                         "category": "generated-runtime",
                         "commit_policy": "generated",
                         "responsibility": "Extracted stable autonomy package from the active local controller release."
                       },
                       {
-                        "path": "runtime/vehicles/<vehicle-id>/bundle/implementations/",
+                        "path": "runtime/hosts/<host-name>/bundle/implementations/",
                         "category": "generated-runtime",
                         "commit_policy": "generated",
                         "responsibility": "Extracted concrete implementations from the active local controller release."
                       },
                       {
-                        "path": "runtime/vehicles/<vehicle-id>/bundle/releases/",
+                        "path": "runtime/hosts/<host-name>/bundle/releases/",
                         "category": "generated-runtime",
                         "commit_policy": "generated",
                         "responsibility": "Hashed controller archives and manifests available for activation or remote deployment."
                       },
                       {
-                        "path": "runtime/vehicles/<vehicle-id>/bundle/runtime/",
+                        "path": "runtime/hosts/<host-name>/bundle/runtime/",
                         "category": "generated-runtime",
                         "commit_policy": "generated",
                         "responsibility": "Perception and decision activation manifests plus automation worker state and rolling output."
@@ -335,7 +369,7 @@
                     ]
                   },
                   {
-                    "path": "runtime/vehicles/<vehicle-id>/deploy/",
+                    "path": "runtime/hosts/<host-name>/deploy/",
                     "category": "generated-runtime",
                     "commit_policy": "generated",
                     "responsibility": "Target-specific activation metadata staged for physical deployment."

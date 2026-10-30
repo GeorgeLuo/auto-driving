@@ -16,8 +16,7 @@ from autonomy.decision_cycle.runner import FailurePolicy
 from autonomy.shared_memory import SharedMemory
 
 
-PERCEPTION_TEXT_SCHEMA = "perception_text_v2"
-PERCEPTION_SCHEMA = "perception_schema_v3"
+PERCEPTION_TEXT_SCHEMA = "perception_text"
 PLUGIN_RESULT_STATUSES = ("ok", "empty", "warming_up", "unavailable", "error")
 PluginResultStatus = Literal["ok", "empty", "warming_up", "unavailable", "error"]
 
@@ -33,18 +32,6 @@ FAILURE_POLICY = FailurePolicy(
 )
 
 
-def composition_declaration() -> dict[str, str]:
-    """How several perception plugins share one frame."""
-
-    return {
-        "order": "selection_order",
-        "partial_result": (
-            "partial when an error or unavailable plugin runs alongside an ok, "
-            "empty, or warming_up plugin"
-        ),
-    }
-
-
 @dataclass(frozen=True)
 class PerceptionPluginRun:
     """Framework-derived execution record for one plugin invocation."""
@@ -54,7 +41,6 @@ class PerceptionPluginRun:
     duration_ms: float
     signal_count: int
     thing_count: int
-    artifact_count: int
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -68,7 +54,6 @@ class PerceptionPluginRun:
             duration_ms=float(data.get("duration_ms") or 0.0),
             signal_count=int(data.get("signal_count") or 0),
             thing_count=int(data.get("thing_count") or 0),
-            artifact_count=int(data.get("artifact_count") or 0),
             error=str(data["error"]) if data.get("error") is not None else None,
         )
 
@@ -88,7 +73,6 @@ class PerceptionText:
     things: tuple[PerceivedThing, ...]
     plugin_runs: tuple[PerceptionPluginRun, ...] = ()
     measurements: dict[str, dict[str, Any]] = field(default_factory=dict)
-    artifacts: dict[str, str] = field(default_factory=dict)
     limits: tuple[str, ...] = ()
 
     @property
@@ -127,10 +111,6 @@ class PerceptionText:
                 for plugin_id, values in dict(data.get("measurements") or {}).items()
                 if isinstance(values, dict)
             },
-            artifacts={
-                str(key): str(value)
-                for key, value in dict(data.get("artifacts") or {}).items()
-            },
             limits=tuple(str(item) for item in data.get("limits") or ()),
         )
 
@@ -142,9 +122,6 @@ class PerceptionBackend(Protocol):
     plugin_id: str
 
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
-        ...
-
-    def describe_schema(self) -> dict[str, Any]:
         ...
 
     def perceive(self, request: PerceptionRequest) -> PerceptionText:

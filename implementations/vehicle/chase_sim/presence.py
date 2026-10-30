@@ -17,7 +17,7 @@ class MetricsUiPresence:
     """One agent socket registered as ``client``, reopened whenever it drops.
 
     Metrics UI lists the socket to other agents (``list_agents``), which is how
-    ``vehicles status`` tells that a host is attached. The socket only listens:
+    ``hosts status`` tells that a host is attached. The socket only listens:
     it drains what the server broadcasts to agents until the server closes it.
     """
 

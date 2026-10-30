@@ -7,11 +7,12 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
+from tests.support.runtime_fixtures import stage_step, write_host_fixture
 from unittest.mock import patch
 from urllib.request import urlopen
 
-from cli.automa_cli.runtime_hosts import stop_chase_host
-from implementations.decision_cycle.catalog import SELECTABLE_STEPS, packaged_activation
+from cli.automa_cli.hosts.runtime_hosts import runtime_base_url, stop_chase_host
+from implementations.decision_cycle.catalog import PRESET_STEPS, packaged_activation
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import (
@@ -36,7 +37,7 @@ class PluginArmingFlows(unittest.TestCase):
                   plugin_host(root, vehicle, {"perception": activation}) as (host, base)):
                 before = catalog(base)
                 session = host.session_status()
-                for step in SELECTABLE_STEPS:
+                for step in PRESET_STEPS:
                     file = root / f"{step}.py"
                     write_plugin(file, step, f"prototype-{step}", 1)
                     upload(base, file, step, f"prototype-{step}")
@@ -44,12 +45,10 @@ class PluginArmingFlows(unittest.TestCase):
                 available = catalog(base)
                 self.assertEqual(available["arming"], before["arming"])
                 self.assertEqual(available["applied_decision"], before["applied_decision"])
-                selection = root / "selection.json"
-                selection.write_text(json.dumps({step: [f"prototype-{step}"] for step in SELECTABLE_STEPS}))
+                names = [option for step in PRESET_STEPS for option in ("--name", f"{step}/prototype-{step}")]
                 # Through the executable once; the worker journey below covers
-                # upload, status and disarm the same way.
-                receipt = json.loads(run_automa("vehicles", "plugins", "arm", "--url", base,
-                                                "--selection", str(selection), "--json").stdout)
+                # upload, plugins list and disarm the same way.
+                receipt = json.loads(run_automa("plugins", "arm", "--url", base, *names, "--json").stdout)
                 self.assertEqual(receipt["status"], "requested")
                 self.assertEqual(receipt["outcome"]["status"], "requested")
                 self.assertEqual(host.session_status(), session)
@@ -65,40 +64,52 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(proposal(result, "prototype-proposal").metadata["memory"],
                                  {"revision": 1, "perception": 1, "count": 1})
                 self.assertEqual(host.session_status()["status"], "pre_start")
-                human = invoke_automa("vehicles", "plugins", "status", "--url", base).stdout
-                self.assertIn("Arming: applied", human)
-                self.assertIn("Applied proposal: prototype-proposal", human)
+                human = invoke_automa("plugins", "list", "--url", base).stdout
+                self.assertIn("Armed:", human)
+                armed = selected(applied, "applied", "proposal")[0]["metadata"]
+                self.assertIn(f"- proposal/prototype-proposal: revision {armed['revision']} ({armed['filename']})", human)
 
     def test_cli_worker_view_and_stream_adopt_new_proposals_without_restarting(self):
         with tempfile.TemporaryDirectory() as directory, fake_metrics_ui_server() as ws_url:
             root = Path(directory)
             runtime = root / "vehicles"
             env = {"CHASE_UI_WS_URL": ws_url, "BROWSER": "true"}
+            write_host_fixture(runtime, "chase-sim-chaser", url=ws_url)
 
             def cli(*args, check=True):
-                return run_automa("vehicles", *args, runtime_root=runtime, extra_env=env, check=check)
+                return run_automa("hosts", *args, runtime_root=runtime, extra_env=env, check=check)
 
-            cli("update", "perception", "--id", "chase-sim-chaser", "--preset", "lightweight_observer")
+            def host_catalog():
+                # Adoption at the host's next cycle shows only in its catalog API.
+                with patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime), patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", runtime):
+                    return catalog(runtime_base_url("chase-sim-chaser"))
+
+            # Only perception is staged, so the uploaded proposal is the step's one plugin.
+            stage_step(runtime, "chase-sim-chaser", "perception")
             try:
-                cli("automation", "run", "--id", "chase-sim-chaser", "--observe-only", "--num-decisions", "0", "--record")
-                original = json.loads(cli("automation", "status", "--id", "chase-sim-chaser", "--json").stdout)["vehicles"][0]
-                before = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
+                cli("run", "--name", "chase-sim-chaser", "--observe-only", "--record")
+                original = json.loads(cli("status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
+                before = host_catalog()
                 file = root / "proposal.py"
                 for revision in (1, 2):
                     write_plugin(file, "proposal", "prototype", revision)
-                    receipt = json.loads(cli("plugins", "upload", "--id", "chase-sim-chaser", "--file", str(file),
-                                             "--step", "proposal", "--plugin-id", "prototype", "--entrypoint", "prototype:Prototype",
-                                             "--arm", "--json").stdout)
+                    receipt = json.loads(run_automa("plugins", "upload", "--host-name", "chase-sim-chaser", "--file", str(file),
+                                                    "--name", "proposal/prototype", "--entrypoint", "prototype:Prototype",
+                                                    "--arm", "--json", runtime_root=runtime, extra_env=env).stdout)
                     self.assertTrue(receipt["ok"])
                     deadline = time.monotonic() + 5
                     while True:
-                        shown = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
+                        shown = host_catalog()
                         if shown["arming"]["status"] == "applied":
                             break
                         self.assertLess(time.monotonic(), deadline, shown)
                         time.sleep(0.05)
                     self.assertEqual(selected(shown, "applied", "proposal")[0], receipt["plugin"])
-                    streamed = json.loads(cli("stream", "proposal", "--id", "chase-sim-chaser", "--once", "--json").stdout)
+                    armed = json.loads(run_automa("plugins", "list", "--host-name", "chase-sim-chaser", "--step", "proposal",
+                                                  "--json", runtime_root=runtime, extra_env=env).stdout)["armed"]
+                    self.assertEqual(armed, [receipt["plugin"]])
+                    streamed = json.loads(run_automa("plugins", "stream", "--step", "proposal", "--host-name", "chase-sim-chaser",
+                                                     "--once", "--json", runtime_root=runtime, extra_env=env).stdout)
                     self.assertEqual(streamed["plugins"], ["prototype"])
                     self.assertEqual(streamed["generation_id"], shown["applied_decision"]["generation_id"])
                     self.assertEqual(streamed["record"]["candidates"][0]["metadata"]["revision"], revision)
@@ -117,25 +128,27 @@ class PluginArmingFlows(unittest.TestCase):
                         viewed = json.load(response)
                     self.assertEqual(viewed["decision"]["generation_id"], streamed["generation_id"])
                     self.assertEqual(viewed["decision"]["cycle"]["proposal"]["candidates"][0]["metadata"]["revision"], revision)
-                    current = json.loads(cli("automation", "status", "--id", "chase-sim-chaser", "--json").stdout)["vehicles"][0]
+                    current = json.loads(cli("status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                     self.assertEqual(current["state"]["run_id"], original["state"]["run_id"])
                     self.assertEqual(current["state"]["pid"], original["state"]["pid"])
                     self.assertEqual(current["state"]["action_policy"], "observe_only")
                     self.assertEqual(current["decision"]["generation_id"], streamed["generation_id"])
                     self.assertNotEqual(streamed["generation_id"], before["applied_decision"]["generation_id"])
-                disarmed = json.loads(cli("plugins", "disarm", "--id", "chase-sim-chaser",
-                                          "--step", "proposal", "--plugin", "prototype", "--json").stdout)
+                disarmed = json.loads(run_automa("plugins", "disarm", "--host-name", "chase-sim-chaser",
+                                                 "--name", "proposal/prototype", "--json",
+                                                 runtime_root=runtime, extra_env=env).stdout)
                 self.assertTrue(disarmed["ok"])
                 deadline = time.monotonic() + 5
                 while True:
-                    shown = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
+                    shown = host_catalog()
                     if shown["arming"]["status"] == "applied":
                         break
                     self.assertLess(time.monotonic(), deadline, shown)
                     time.sleep(0.05)
                 self.assertEqual(selected(shown, "applied", "proposal"), [])
                 self.assertIn(receipt["plugin"], shown["plugins"])
-                streamed = json.loads(cli("stream", "proposal", "--id", "chase-sim-chaser", "--once", "--json").stdout)
+                streamed = json.loads(run_automa("plugins", "stream", "--step", "proposal", "--host-name", "chase-sim-chaser",
+                                                 "--once", "--json", runtime_root=runtime, extra_env=env).stdout)
                 self.assertEqual(streamed["plugins"], [])
                 self.assertEqual(streamed["generation_id"], shown["applied_decision"]["generation_id"])
                 deadline = time.monotonic() + 5
@@ -149,13 +162,13 @@ class PluginArmingFlows(unittest.TestCase):
                 with urlopen(view_url + "/api/decision/latest?generation=" + health["generation_id"], timeout=3) as response:
                     viewed = json.load(response)
                 self.assertEqual(viewed["decision"]["cycle"]["proposal"]["candidates"], [])
-                current = json.loads(cli("automation", "status", "--id", "chase-sim-chaser", "--json").stdout)["vehicles"][0]
+                current = json.loads(cli("status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                 self.assertEqual(current["state"]["run_id"], original["state"]["run_id"])
                 self.assertEqual(current["state"]["pid"], original["state"]["pid"])
                 self.assertEqual(current["state"]["action_policy"], "observe_only")
                 # The 30 Hz stream records throughout all of the CLI calls.
                 # Allow its final export to drain before forced termination.
-                cli("automation", "stop", "--id", "chase-sim-chaser", "--wait-s", "10")
+                cli("stop", "--name", "chase-sim-chaser", "--wait-s", "10")
                 automation_dir = runtime / "chase-sim-chaser" / "bundle/runtime/automation"
                 state = json.loads((automation_dir / "state.json").read_text())
                 self.assertEqual(state["status"], "stopped", state.get("error"))
@@ -169,11 +182,12 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(exported, json.loads(host_manifest.read_text()))
                 self.assertEqual(len(exported["frames"]), state["recorded_count"])
                 # The host outlives the run and keeps live deselections, like a PiCar's.
-                after = json.loads(cli("plugins", "status", "--id", "chase-sim-chaser", "--json").stdout)
-                self.assertEqual(selected(after, "applied", "proposal"), [])
+                after = json.loads(run_automa("plugins", "list", "--host-name", "chase-sim-chaser", "--step", "proposal",
+                                              "--json", runtime_root=runtime, extra_env=env).stdout)
+                self.assertEqual(after["armed"], [])
             finally:
-                cli("automation", "stop", "--id", "chase-sim-chaser", check=False)
-                with patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime):
+                cli("stop", "--name", "chase-sim-chaser", check=False)
+                with patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime), patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", runtime):
                     stop_chase_host("chase-sim-chaser")
 
 

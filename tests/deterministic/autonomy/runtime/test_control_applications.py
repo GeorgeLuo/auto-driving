@@ -24,9 +24,10 @@ from autonomy.runtime.recording import (
     control_application_windows,
     write_recorded_frame,
 )
+from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from cli.automa_cli.workbench_frames import run_frame
-from cli.automa_cli.workbench_source import SourceValidationError, load_image_source
+from cli.automa_cli.shared.replay.frames import run_frame
+from cli.automa_cli.shared.replay.source import SourceValidationError, load_image_source
 from implementations.runtime.picar.control import DonkeyControlTarget
 from tests.shared.cli.workbench_fixtures import image_source, write_manifest
 
@@ -37,12 +38,12 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             root = Path(tmp)
             camera = root / "camera.png"
             Image.new("RGB", (2, 2)).save(camera)
-            recording = RunRecording(root, vehicle_id="picar", run_id="test-run")
+            recording = RunRecording(root, host_name="picar", run_id="test-run")
             host = AutonomyCycleHost(steps=DecisionSteps(), target=DonkeyControlTarget())
             self.addCleanup(host.close)
             expected = []
             with patch("autonomy.runtime.execution.time.time", return_value=2.0):
-                host.start(recording=recording)
+                host.start(RunConfiguration(mode="autonomy", num_decisions=None), recording=recording)
                 for index in range(4):
                     if index == 1:
                         # Two equal JSON records must both survive, even after a
@@ -50,8 +51,6 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                         with patch("autonomy.runtime.execution.time.time", return_value=1.0):
                             host.execution._write_idle("same")
                             host.execution._write_idle("same")
-                    if index == 2:
-                        host.reset_memory()
                     sensors = SensorFrame(
                         read_id=f"f{index}", readings={FRONT_CAMERA_SENSOR_ID: SensorReading(
                             sensor_id=FRONT_CAMERA_SENSOR_ID, sensor_kind="camera",
@@ -116,7 +115,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             Image.new("RGB", (2, 2)).save(camera)
             host = AutonomyCycleHost(steps=DecisionSteps())
             self.addCleanup(host.close)
-            recording = RunRecording(root, vehicle_id="picar", run_id="windows")
+            recording = RunRecording(root, host_name="picar", run_id="windows")
             for index, window in enumerate(windows):
                 sensors = SensorFrame(
                     read_id=f"f{index}", readings={FRONT_CAMERA_SENSOR_ID: SensorReading(

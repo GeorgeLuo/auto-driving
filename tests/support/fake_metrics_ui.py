@@ -29,10 +29,10 @@ def fake_metrics_ui_server() -> Iterator[str]:
 
 
 @contextmanager
-def fake_metrics_ui() -> Iterator[_ThreadingWebSocketServer]:
+def fake_metrics_ui(port: int = 0) -> Iterator[_ThreadingWebSocketServer]:
     """The same server, for tests that act on the agents attached to it."""
 
-    server = _ThreadingWebSocketServer(("127.0.0.1", 0), _MetricsUiHandler)
+    server = _ThreadingWebSocketServer(("127.0.0.1", port), _MetricsUiHandler)
     thread = threading.Thread(
         target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True
     )
@@ -95,7 +95,12 @@ class _ThreadingWebSocketServer(socketserver.ThreadingTCPServer):
             handlers = list(self._agents)
         for handler in handlers:
             with handler.send_lock:
-                _send_close(handler.request, 1001, reason)
+                try:
+                    _send_close(handler.request, 1001, reason)
+                except OSError:
+                    # The client already left, or the handler thread already
+                    # closed this socket. Keep closing the others.
+                    pass
 
 
 class _MetricsUiHandler(socketserver.BaseRequestHandler):

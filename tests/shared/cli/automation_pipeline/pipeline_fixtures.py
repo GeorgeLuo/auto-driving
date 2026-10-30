@@ -20,9 +20,11 @@ from implementations.decision_cycle.catalog import packaged_activation, preset_a
 # Capture threads keep the host type while staged runners swap implementations.
 from implementations.vehicle.chase_sim import ChaseCameraCapture
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from cli.automa_cli.bundles import controller_bundle_paths
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
 
-VEHICLE_ID = "chase-sim-chaser"
+from tests.support.runtime_fixtures import write_host_fixture
+
+HOST_NAME = "chase-sim-chaser"
 
 
 class _SlowMapper:
@@ -107,7 +109,7 @@ class _FakeCar:
             "mutation_attempted": False,
         }
         self.last_capture_chaser_reference = {
-            "schema": "chaser_reference_v1",
+            "schema": "chaser_reference",
             "evaluator_only": True,
             "simulator_frame_index": simulator_frame_index,
             "simulation_epoch": "chase-run:test",
@@ -197,6 +199,8 @@ def _write_activations(
 ) -> None:
     """Stage perception and the packaged proposals. Plan has no built-in and stays unstaged."""
 
+    root = Path(bundle["root_dir"]).parent
+    write_host_fixture(root.parent, root.name)
     packaged = preset_activation("perception", preset)
     activation = step_activation(
         "perception",
@@ -232,10 +236,10 @@ def staged_runners(*, perception=None, wrap=None):
 
 
 @contextmanager
-def chase_runtime(runtime_root: Path, *, car=None, vehicle_id: str = VEHICLE_ID):
+def chase_runtime(runtime_root: Path, *, car=None, host_name: str = HOST_NAME):
     """Serve the vehicle's staged runtime from an in-process Chase host.
 
-    The host writes the record a started ``automation host`` writes, so the
+    The host writes the record a started Chase host writes, so the
     CLI (in process or as a subprocess under ``runtime_root``) finds it by
     ``base_url``. Enter it inside ``staged_runners``: the host loads its steps
     when constructed.
@@ -246,21 +250,23 @@ def chase_runtime(runtime_root: Path, *, car=None, vehicle_id: str = VEHICLE_ID)
     from implementations.runtime.chase_sim.service import (
         HOST_RECORD_SCHEMA, ChaseRuntimeHost, write_host_record,
     )
-    from cli.automa_cli.runtime_hosts import HOST_RECORD
+    from cli.automa_cli.hosts.runtime_hosts import HOST_RECORD
 
-    bundle = controller_bundle_paths(runtime_root / vehicle_id)
+    write_host_fixture(runtime_root, host_name)
+    bundle = controller_bundle_paths(runtime_root / host_name)
     with ExitStack() as stack:
-        stack.enter_context(patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root))
+        stack.enter_context(patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root))
+        stack.enter_context(patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", runtime_root))
         host = stack.enter_context(ChaseRuntimeHost(
             car=_FakeCar() if car is None else car,
-            runtime_dir=Path(bundle["runtime_dir"]), vehicle_id=vehicle_id,
+            runtime_dir=Path(bundle["runtime_dir"]), host_name=host_name,
         ))
         record = Path(bundle["runtime_dir"]) / "automation" / HOST_RECORD
         write_host_record(record, {
-            "schema": HOST_RECORD_SCHEMA, "vehicle_id": vehicle_id,
+            "schema": HOST_RECORD_SCHEMA, "host_name": host_name,
             "pid": os.getpid(), "base_url": host.base_url,
         })
         stack.callback(record.unlink, missing_ok=True)
         # Starting a host builds it from a release; this one is already serving.
-        stack.enter_context(patch("cli.automa_cli.automation.runtime_base_url", return_value=host.base_url))
+        stack.enter_context(patch("cli.automa_cli.hosts.runs.automation.runtime_base_url", return_value=host.base_url))
         yield host

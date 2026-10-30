@@ -14,7 +14,7 @@ from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.frame_loop import encode_jpeg
 from autonomy.runtime.session import RunConfiguration
 from implementations.vehicle.chase_sim import ChaseCameraCapture
-from cli.automa_cli.bundles import controller_bundle_paths
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
 from implementations.runtime.chase_sim.service import ChaseRuntimeHost
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     _FakeCar, _SlowMapper, _write_activations, staged_runners,
@@ -37,8 +37,8 @@ class ChaseRuntimeHostTests(unittest.TestCase):
         ):
             bundle = controller_bundle_paths(Path(tmp) / "chase-sim-chaser")
             _write_activations(bundle)
-            with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]), vehicle_id="chase-sim-chaser") as host:
-                host.loop.start(RunConfiguration(mode="observe_only"))
+            with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]), host_name="chase-sim-chaser") as host:
+                host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 _wait(lambda: host.loop.host.run_state == "error", message="startup failure was hidden")
                 self.assertIn("simulator_capability_missing", host.loop.host.last_error)
                 self.assertNotIn("Camera stream is not ready", host.loop.host.last_error)
@@ -90,7 +90,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             bundle = controller_bundle_paths(Path(tmp) / "chase-sim-chaser")
             _write_activations(bundle)
             with staged_runners(perception=mapper), ChaseRuntimeHost(
-                car=car, runtime_dir=Path(bundle["runtime_dir"]), vehicle_id="chase-sim-chaser",
+                car=car, runtime_dir=Path(bundle["runtime_dir"]), host_name="chase-sim-chaser",
             ) as host:
                 client = RuntimeClient(host.base_url)
                 client.start(RunConfiguration(mode="observe_only", num_decisions=2))
@@ -114,7 +114,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             _write_activations(bundle)
             car = _FakeCar()
             with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]),
-                                  vehicle_id="chase-sim-chaser") as host:
+                                  host_name="chase-sim-chaser") as host:
                 client = RuntimeClient(host.base_url, timeout_s=2.0)
                 client.start(RunConfiguration(mode="observe_only", num_decisions=2))
                 session = _wait(
@@ -125,8 +125,8 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 # leaves running. Allow that one read, then hold.
                 captured = car.capture_count
                 time.sleep(0.3)
-                observation = client.host_status()["autonomy"]["components"]["observation"]
-                decision = client.request("GET", "/autonomy/decision/latest")
+                observation = client.host_status()["host"]["components"]["observation"]
+                decision = client.request("GET", "/host/decision/latest")
 
         self.assertEqual((session["status"], session["processed_decisions"]), ("completed", 2))
         self.assertLessEqual(car.capture_count, captured + 1, "the host captured after its session ended")
@@ -141,9 +141,9 @@ class ChaseRuntimeHostTests(unittest.TestCase):
         entered, release, start_locked = threading.Event(), threading.Event(), threading.Event()
         car = _FakeCar()
         with tempfile.TemporaryDirectory() as tmp:
-            loop = ChaseFrameLoop(car=car, host=create_host(car, steps=decision_steps()), recording_root=Path(tmp), vehicle_id="fixture")
+            loop = ChaseFrameLoop(car=car, host=create_host(car, steps=decision_steps()), recording_root=Path(tmp), host_name="fixture")
             self.addCleanup(loop.shutdown)
-            loop.start(RunConfiguration(mode="observe_only"), record=True)
+            loop.start(RunConfiguration(mode="observe_only", num_decisions=None), record=True)
             encoder = loop.host.recording.encode_image
             def encode(image):
                 entered.set()
@@ -157,7 +157,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             def restart():
                 try:
                     start_locked.set()
-                    loop.start(RunConfiguration(mode="observe_only"))
+                    loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 except Exception as exc:
                     errors.append(exc)
             worker = threading.Thread(target=restart, daemon=True)
@@ -200,10 +200,10 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             bundle = controller_bundle_paths(Path(tmp) / "chase-sim-chaser")
             _write_activations(bundle)
             with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]),
-                                  vehicle_id="chase-sim-chaser") as host:
-                host.loop.start(RunConfiguration(mode="observe_only"))
+                                  host_name="chase-sim-chaser") as host:
+                host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 _wait(lambda: len(streams) == 1, message="first stream did not open")
-                host.loop.start(RunConfiguration(mode="observe_only"))
+                host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 _wait(lambda: len(streams) == 2, message="restart stream did not open")
                 self.assertTrue(streams[0].closed.is_set())
                 _wait(lambda: host.loop.frames_received == 2, message="second capture was not offered")
@@ -223,8 +223,8 @@ class ChaseRuntimeHostTests(unittest.TestCase):
         ):
             bundle = controller_bundle_paths(Path(tmp) / "chase-sim-chaser")
             _write_activations(bundle)
-            with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]), vehicle_id="chase-sim-chaser") as host:
-                host.loop.start(RunConfiguration(mode="observe_only"))
+            with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]), host_name="chase-sim-chaser") as host:
+                host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 _wait(lambda: host.loop.host.run_state == "error", message="missing stream accepted")
                 self.assertIn("simulator_capability_missing", host.loop.host.last_error)
                 self.assertEqual(host.loop.frames_received, 0)
@@ -239,11 +239,39 @@ class ChaseRuntimeHostTests(unittest.TestCase):
             bundle = controller_bundle_paths(Path(tmp) / "chase-sim-chaser")
             _write_activations(bundle)
             with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]),
-                                  vehicle_id="chase-sim-chaser") as host:
-                host.loop.start(RunConfiguration(mode="observe_only"))
+                                  host_name="chase-sim-chaser") as host:
+                host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 _wait(lambda: host.loop.host.run_state == "error", message="timeout was hidden")
                 self.assertIn("capability timed out", host.loop.host.last_error)
                 self.assertEqual(car.capture_count, 0)
+
+    def test_the_capture_loop_outlives_a_stop_that_fails_after_the_stream_ends(self):
+        # The simulator's frontend drops: its stream ends and the switch to manual fails.
+        from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
+        car, opened, dropped = _FakeCar(), [], threading.Event()
+        def ended():
+            opened.append(True)
+            dropped.set()
+            raise RuntimeError("Camera stream ended")
+        car.camera_stream = ended
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = controller_bundle_paths(Path(tmp) / "chase-sim-chaser")
+            _write_activations(bundle)
+            with ChaseRuntimeHost(car=car, runtime_dir=Path(bundle["runtime_dir"]),
+                                  host_name="chase-sim-chaser") as host:
+                cycle_host = host.loop.host
+                set_mode = cycle_host.set_mode
+                def disconnected(mode):
+                    if mode == "manual" and dropped.is_set():
+                        raise MetricsUiWebSocketError("Frontend not connected")
+                    return set_mode(mode)
+                with patch.object(cycle_host, "set_mode", side_effect=disconnected):
+                    host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
+                    _wait(lambda: cycle_host.run_state == "error", message="the ended stream was hidden")
+                self.assertEqual(cycle_host.last_error, "RuntimeError: Camera stream ended; "
+                                                        "stop failed: MetricsUiWebSocketError: Frontend not connected")
+                host.loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
+                _wait(lambda: len(opened) == 2, message="the next run opened no stream")
 
 
 if __name__ == "__main__":

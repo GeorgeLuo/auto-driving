@@ -26,11 +26,10 @@ the framework does not reject the plugin. Live CLI ledger projections return
 null for missing keys. Inspect and workbench frame rows default a missing
 ``record_count`` to 0, preserve an explicit null, and omit ``bounds``.
 
-How several plugins share one map, including the one ``EVIDENCE_KEY`` and
-last-write-wins per evidence or belief key, is ``composition_declaration`` in
-``interface``. What a failure does is ``FAILURE_POLICY`` there: an update
-failure stops the cycle, and a reset failure is recorded. ``MemoryRunner``
-reads those values.
+Several plugins share one map in selection order, with one ``EVIDENCE_KEY``
+and last-write-wins per evidence or belief key. What a failure does is
+``FAILURE_POLICY`` in ``interface``: an update failure stops the cycle, and a
+reset failure is recorded. ``MemoryRunner`` reads it.
 """
 
 from __future__ import annotations

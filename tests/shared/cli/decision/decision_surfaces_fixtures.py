@@ -23,12 +23,11 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.report import report_from_host_result
 from implementations.decision_cycle.catalog import packaged_activation
-from cli.automa_cli.decision_records import DecisionRecords, DecisionRunners
-from cli.automa_cli.step_activations import (
+from cli.automa_cli.hosts.publications.decision_records import DecisionRecords, DecisionRunners
+from cli.automa_cli.hosts.step_activations import (
     decision_generation_id,
     decision_identity,
-    update_vehicle_step,
-    vehicle_bundle,
+    host_bundle,
 )
 
 
@@ -128,7 +127,7 @@ def host_result_for_records(
 def vehicle_report_for_records(
     records: DecisionRecords,
     *,
-    vehicle_id: str,
+    host_name: str,
     run_id: str,
     generation_id: str,
     frame_id: str,
@@ -140,7 +139,7 @@ def vehicle_report_for_records(
     observation: Observation | None = None,
     memory: dict | None = None,
 ) -> dict:
-    """The ``vehicle_report_v0`` both viewers accept for these decision records."""
+    """The ``host_report`` both viewers accept for these decision records."""
 
     report_values = {"stale_after_ms": STALE_AFTER_MS}
     if values:
@@ -155,7 +154,7 @@ def vehicle_report_for_records(
             observation=observation,
             memory=memory,
         ),
-        vehicle_id=vehicle_id,
+        host_name=host_name,
         run_id=run_id,
         generation_id=generation_id,
         published_at_ms=timestamp_ms if published_at_ms is None else published_at_ms,
@@ -185,10 +184,13 @@ class DecisionSurfaceFixture:
             {"AUTOMA_RUNTIME_ROOT": str(self.runtime_root)},
         )
         self._env_patch.start()
-        # runtime_hosts reads RUNTIME_ROOT at import time; rebind for tests.
-        import cli.automa_cli.runtime_hosts as runtime_hosts_mod
+        # runtime_hosts and controller_releases read RUNTIME_ROOT at import time; rebind for tests.
+        import cli.automa_cli.hosts.runtime_hosts as runtime_hosts_mod
 
-        self._root_patches = [patch.object(runtime_hosts_mod, "RUNTIME_ROOT", self.runtime_root)]
+        self._root_patches = [
+            patch.object(runtime_hosts_mod, "RUNTIME_ROOT", self.runtime_root),
+            patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", self.runtime_root),
+        ]
         for root_patch in self._root_patches:
             root_patch.start()
 
@@ -203,26 +205,18 @@ class DecisionSurfaceFixture:
         *,
         action: str = "hold",
         proposal: bool = True,
-        vehicle_id: str = "chase-sim-chaser",
+        host_name: str = "chase-sim-chaser",
     ) -> dict:
         """Stage the packaged proposals (unless ``proposal`` is False) and ``action``."""
 
-        steps = [("action", [action])]
+        from tests.support.runtime_fixtures import stage_step
         if proposal:
-            steps.insert(0, ("proposal", None))
-        for step, plugins in steps:
-            code, message = update_vehicle_step(
-                vehicle_id=vehicle_id,
-                step=step,
-                plugins=plugins,
-                runtime_root=self.runtime_root,
-                json_output=True,
-            )
-            self.assertEqual(code, 0, message)
-        return self._identity(vehicle_id)
+            stage_step(self.runtime_root, host_name, "proposal")
+        stage_step(self.runtime_root, host_name, "action", plugins=[action])
+        return self._identity(host_name)
 
-    def _identity(self, vehicle_id: str = "chase-sim-chaser") -> dict:
-        return decision_identity(vehicle_bundle(vehicle_id, self.runtime_root))
+    def _identity(self, host_name: str = "chase-sim-chaser") -> dict:
+        return decision_identity(host_bundle(host_name, self.runtime_root))
 
     def _sample_cycle(self, action: str = "hold") -> DecisionRecords:
         cycle = sample_records(action)
@@ -241,7 +235,7 @@ class DecisionSurfaceFixture:
         observation, memory = published_cycle(left_obstruction_frame())
         report = vehicle_report_for_records(
             records,
-            vehicle_id="piracer",
+            host_name="piracer",
             run_id="donkey-run-fixture",
             generation_id=identity["generation_id"],
             frame_id="frame_001",
@@ -263,7 +257,7 @@ class DecisionSurfaceFixture:
             },
         )
         return {
-            "schema": "automa_physical_decision_publication_v0",
+            "schema": "automa_physical_decision_publication",
             "ok": True,
             "status": "ready",
             "reason": "",

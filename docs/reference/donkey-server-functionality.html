@@ -520,29 +520,24 @@
             <td>Runs capture work in an executor and includes width/height headers.</td>
           </tr>
           <tr>
-            <td><code>GET /autonomy/status</code></td>
+            <td><code>GET /host/status</code></td>
             <td>Returns the shared session <code>mode</code> (<code>manual</code>, <code>observe_only</code>, <code>autonomy</code>), <code>host_run_id</code>, each step's plugins and status, counters, errors, and last control.</td>
             <td>This is the post-deploy verification endpoint used by <code>automa</code>. Observation counters stay bounded and omit raw images.</td>
           </tr>
           <tr>
-            <td><code>GET /autonomy/observation/latest</code></td>
+            <td><code>GET /host/observation/latest</code></td>
             <td>Returns one bounded latest onboard state: health, frame identity, age, control, and detached <code>PerceptionText</code>/<code>observation</code>.</td>
             <td>Health is computed at read time (<code>warming</code>, <code>healthy</code>, <code>stale</code>, <code>error</code>, <code>unavailable</code>, <code>absent</code>). No history or disk writes.</td>
           </tr>
           <tr>
-            <td><code>GET /autonomy/observation/latest/frame.jpg</code></td>
+            <td><code>GET /host/observation/latest/frame.jpg</code></td>
             <td>Returns the exact processed JPEG retained with the latest state.</td>
             <td>Headers include <code>X-Frame-Id</code> and <code>X-Observation-Health</code> so clients pair image and JSON without using the live camera feed.</td>
           </tr>
           <tr>
-            <td><code>GET|POST /autonomy/runtime</code></td>
+            <td><code>GET|POST /host/runtime</code></td>
             <td>Reads the session, or runs <code>run</code>, <code>stop</code>, <code>restart</code>, and <code>read_recording</code>.</td>
             <td>The same route table (<code>autonomy/runtime/routes.py</code>) is served by every vehicle runtime. A run shows Donkey <code>local</code>; stopping returns to <code>user</code>.</td>
-          </tr>
-          <tr>
-            <td><code>POST /autonomy/memory/reset</code></td>
-            <td>Resets the activated memory step to a new empty epoch without restarting Donkey.</td>
-            <td>Requires observation publisher <code>reset_memory</code> (autonomy package) and this route (core vendor patch). Used by <code>automa vehicles memory reset</code>.</td>
           </tr>
           <tr>
             <td><code>GET /calibrate</code>, <code>WS /wsCalibrate</code></td>
@@ -585,7 +580,7 @@
             <p>In manual <code>user</code> mode the part forces zero pilot outputs. In autonomy mode the action step's control becomes normalized steering/throttle on <code>pilot/angle</code> and <code>pilot/throttle</code>.</p>
           </div>
           <div class="step">
-            <p><code>DriveMode</code> applies pilot values only while the mode remains <code>local</code>. Operators inspect findings through Automa against <code>/autonomy/observation/latest</code>, not by enabling pilot mode.</p>
+            <p><code>DriveMode</code> applies pilot values only while the mode remains <code>local</code>. Operators inspect findings through Automa against <code>/host/observation/latest</code>, not by enabling pilot mode.</p>
           </div>
         </div>
       </div>
@@ -680,7 +675,7 @@ Content-Type: application/json
       </p>
       <ul>
         <li>API/web control is now the default restart mode.</li>
-        <li>Use <code>./cli/automa vehicles update core --id piracer --restart --drive-args=--js</code> when you want the handheld controller to be active.</li>
+        <li>Use <code>./cli/automa hosts create --name piracer --provider picar --url http://piracer.local:8887 --drive-args=--js</code> when you want the handheld controller to be active.</li>
         <li>Changing the action plugin does not change the drive mode; movement authority requires an explicit autonomy-mode request.</li>
         <li>For autonomous experiments, choose one command source at a time and record which one is active.</li>
       </ul>

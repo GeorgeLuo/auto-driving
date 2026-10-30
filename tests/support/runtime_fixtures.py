@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.activation import step_activation
-from implementations.decision_cycle.catalog import preset_activation
+from implementations.decision_cycle.catalog import preset_activation, selection_activation
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
@@ -23,13 +23,14 @@ class RuntimeFixturePaths:
 
 def write_runtime_fixture(
     runtime_root: Path,
-    vehicle_id: str,
+    host_name: str,
     *,
     pid: int,
     manifest_bundle_root: Path | None = None,
 ) -> RuntimeFixturePaths:
     """Write one explicit staged-runtime fixture and return its document paths."""
-    bundle_root = runtime_root / vehicle_id / "bundle"
+    write_host_fixture(runtime_root, host_name)
+    bundle_root = runtime_root / host_name / "bundle"
     activation_bundle_root = manifest_bundle_root or bundle_root
     perception_activation = bundle_root / "runtime" / "perception" / "active.json"
     automation_process = bundle_root / "runtime" / "automation" / "process.json"
@@ -38,7 +39,7 @@ def write_runtime_fixture(
     # A controller release is what makes a staged bundle deployable.
     write_json(
         bundle_root / "releases" / "latest-controller-bundle.json",
-        {"schema": "automa_controller_bundle_manifest_v0", "tree_sha256": "fixture"},
+        {"schema": "automa_controller_bundle_manifest", "tree_sha256": "fixture"},
     )
     packaged = preset_activation("perception", "sim_debug")
     write_json(
@@ -57,24 +58,24 @@ def write_runtime_fixture(
     write_json(
         automation_process,
         {
-            "schema": "automa_automation_process_v0",
-            "vehicle_id": vehicle_id,
+            "schema": "automa_automation_process",
+            "host_name": host_name,
             "pid": pid,
             "log_to_disk": False,
             "log_path": None,
-            "command": [str(AUTOMA_PATH), "vehicles", "automation", "run", "--id", vehicle_id],
+            "command": [str(AUTOMA_PATH), "hosts", "run", "--name", host_name],
         },
     )
     write_json(
         automation_state,
         {
-            "schema": "automa_automation_run_state_v0",
-            "vehicle_id": vehicle_id,
+            "schema": "automa_automation_run_state",
+            "host_name": host_name,
             "run_id": "test-run",
             "status": "running",
             "pid": pid,
             "processed_count": 3,
-            "num_decisions": 0,
+            "num_decisions": None,
             "recording": False,
             "control_source": "external_ws",
             "action_policy": "cycle_idle",
@@ -93,6 +94,39 @@ def write_runtime_fixture(
         perception_activation=perception_activation,
         automation_process=automation_process,
         automation_state=automation_state,
+    )
+
+
+def write_host_fixture(runtime_root: Path, host_name: str, *, provider: str = "chase-sim",
+                       url: str | None = None) -> None:
+    from cli.automa_cli.hosts.step_activations import write_host_configuration
+
+    if (runtime_root / host_name / "host-configuration.json").exists():
+        return
+    connection = ({"ws_url": url or "ws://localhost:5050/ws/control"} if provider == "chase-sim" else
+                  {"base_url": url or "http://piracer.local:8887", "ssh_target": "piracer@piracer.local",
+                   "pi_home": "/home/piracer"})
+    write_host_configuration(runtime_root, {"host_name": host_name, "provider": provider,
+        "vehicle_kind": "chase-sim-ws" if provider == "chase-sim" else "picar-donkey-http",
+        "connection": connection})
+
+
+def stage_step(runtime_root: Path, host_name: str, step: str, *, preset: str | None = None,
+               plugins: list[str] | None = None) -> Path:
+    """Package the host's release and write one step's selection with it, as ``hosts update`` does.
+
+    With neither ``preset`` nor ``plugins`` the step's default is written.
+    """
+    from cli.automa_cli.hosts.bundles import sync_controller_bundle
+    from cli.automa_cli.hosts.step_activations import host_bundle, stage_activation, staging_host
+
+    write_host_fixture(runtime_root, host_name)
+    vehicle, unknown = staging_host(host_name, runtime_root=runtime_root)
+    assert unknown is None, unknown
+    bundle = host_bundle(host_name, runtime_root)
+    return stage_activation(
+        bundle, selection_activation(step, preset=preset, plugins=plugins),
+        host_name=host_name, release=sync_controller_bundle(bundle, output=None), vehicle=vehicle,
     )
 
 

@@ -1,7 +1,10 @@
 from __future__ import annotations
+import copy
+import threading
 import time
 import unittest
 from functools import partial
+from unittest import mock
 from urllib.parse import urlencode
 from urllib.request import urlopen
 from autonomy.decision_cycle.activation import STEPS
@@ -15,9 +18,11 @@ from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import EvidenceLedger
 from implementations.decision_cycle.catalog import selection_activation
-from cli.automa_cli.workbench import ReplayActionError
+from cli.automa_cli.workbench import runner as workbench_runner
+from cli.automa_cli.workbench.replay import ReplayActionError
 from tests.shared.cli.workbench_fixtures import (
     FixtureMapper,
+    BlockingSecondMapper,
     ImageReplayRunner,
     _wait_until,
     image_source,
@@ -57,6 +62,97 @@ class SharedMemoryProbe:
 
 
 class WorkbenchTests(unittest.TestCase):
+    def test_reset_start_cannot_interleave_control_validation_and_mutation(self):
+        for action, method, extra in (
+            ("pause", "_pause", {}),
+            ("resume", "_resume", {}),
+            ("set_cadence", "_validate_cadence", {"cadence_ms": 1000}),
+            ("set_loop", "_set_loop", {"loop": True}),
+        ):
+            with self.subTest(action=action), image_source(3) as root:
+                runner = ImageReplayRunner(root, cadence_ms=30000)
+                self.addCleanup(runner.close)
+                old_id = runner.start()["run_id"]
+                _wait_until(lambda: runner.state()["current_frame"] is not None)
+                if action == "resume":
+                    runner.dispatch("pause", run_id=old_id)
+                entered = threading.Event()
+                replacing = threading.Event()
+                replaced = threading.Event()
+                results, failures, restarted = [], [], []
+                original = getattr(runner, method)
+
+                def gated(*args, **kwargs):
+                    if threading.current_thread() is control:
+                        entered.set()
+                        if not replacing.wait(2):
+                            raise TimeoutError("replacement did not start")
+                        # Let Reset/Start finish if validation released the lock.
+                        replaced.wait(0.15)
+                    return original(*args, **kwargs)
+
+                def mutate():
+                    try:
+                        results.append(runner.dispatch(action, run_id=old_id, **extra))
+                    except Exception as exc:
+                        failures.append(exc)
+
+                def restart():
+                    replacing.set()
+                    try:
+                        runner.dispatch("reset", run_id=old_id)
+                        restarted.append(runner.start())
+                    except Exception as exc:
+                        failures.append(exc)
+                    finally:
+                        replaced.set()
+
+                control = threading.Thread(target=mutate)
+                replacement = threading.Thread(target=restart)
+                with mock.patch.object(runner, method, side_effect=gated):
+                    control.start()
+                    self.assertTrue(entered.wait(2))
+                    replacement.start()
+                    control.join(3)
+                    replacement.join(3)
+                self.assertFalse(control.is_alive())
+                self.assertFalse(replacement.is_alive())
+                self.assertEqual(failures, [])
+                self.assertEqual(results[0]["run_id"], old_id)
+                self.assertNotEqual(restarted[0]["run_id"], old_id)
+                before = runner.state()
+                with self.assertRaisesRegex(ReplayActionError, "stale"):
+                    runner.dispatch(action, run_id=old_id, **extra)
+                self.assertEqual(runner.state()["phase"], before["phase"])
+                self.assertEqual(runner.state()["controls"], before["controls"])
+
+    def test_new_seek_interrupts_uncached_catch_up_after_current_frame(self):
+        with image_source(8) as root:
+            mapper = BlockingSecondMapper()
+            runner = ImageReplayRunner(root, cadence_ms=30000,
+                                       step_factories={"perception": lambda: mapper})
+            self.addCleanup(mapper.release_second.set)
+            self.addCleanup(runner.close)
+            run_id = runner.start()["run_id"]
+            _wait_until(lambda: runner.state()["position"] == 1)
+            runner.dispatch("pause", run_id=run_id)
+            results = []
+            first = threading.Thread(target=lambda: results.append(runner.dispatch("seek", run_id=run_id, position=7)))
+            first.start()
+            self.assertTrue(mapper.second_started.wait(2))
+            second = threading.Thread(target=lambda: results.append(runner.dispatch("seek", run_id=run_id, position=0)))
+            second.start()
+            _wait_until(lambda: runner._seek_generation == 2)
+            mapper.release_second.set()
+            first.join(3)
+            second.join(3)
+            self.assertFalse(first.is_alive())
+            self.assertFalse(second.is_alive())
+            self.assertEqual(len(mapper.calls), 2)
+            self.assertEqual(runner.state()["current_frame"]["position"], 0)
+            self.assertEqual(runner.state()["latest_processed_position"], 1)
+            self.assertEqual(runner.state()["phase"], "paused")
+
     def test_shared_memory_connects_plugin_and_memory_step_across_frames(self):
         perception_step = PerceptionRunner.from_selection(
             plugins=["probe"],
@@ -231,6 +327,49 @@ class WorkbenchTests(unittest.TestCase):
         with self.assertRaises(ReplayActionError):
             idle.dispatch("seek", run_id="missing", position=0)
 
+    def test_cached_frame_is_detached_from_later_memory_and_returned_state(self) -> None:
+        class MutableMemory:
+            def __init__(self):
+                self.report = {"plugins": [{"plugin_id": "mutable", "state": {
+                    "health": "healthy", "epoch_id": "epoch", "record_count": 0, "records": [],
+                }}]}
+
+            def __call__(self, context):
+                state = self.report["plugins"][0]["state"]
+                state["records"].append({"record_id": context.frame_id})
+                state["record_count"] = len(state["records"])
+                return self.report
+
+            def reset(self, shared_memory=None):
+                pass
+
+        with image_source(3) as root:
+            memory = MutableMemory()
+            runner = ImageReplayRunner(
+                root, cadence_ms=5000,
+                step_factories={"perception": FixtureMapper, "memory": lambda: memory},
+            )
+            try:
+                run_id = runner.start()["run_id"]
+                _wait_until(lambda: len(runner.state()["timeline"]) == 1)
+                first = runner.dispatch("pause", run_id=run_id)
+                expected = copy.deepcopy(first)
+                second = runner.dispatch("step", run_id=run_id)
+                self.assertEqual(second["steps"]["memory"]["plugins"][0]["state"]["record_count"], 2)
+                self.assertEqual(second["timeline"][0], expected["timeline"][0])
+                self.assertEqual(second["summary"]["memory_plugins"], second["timeline"][1]["memory_plugins"])
+                self.assertEqual(second["summary"]["frames_completed"], 2)
+                first["steps"]["memory"]["plugins"][0]["state"]["records"].clear()
+                first["summary"]["memory_plugins"].clear()
+                second["timeline"][0]["memory_effects"].clear()
+                cached = runner.dispatch("seek", run_id=run_id, position=0)
+                self.assertEqual(cached["steps"], expected["steps"])
+                self.assertEqual(cached["summary"], expected["summary"])
+                self.assertEqual(cached["timeline"][0], expected["timeline"][0])
+                self.assertEqual(memory.report["plugins"][0]["state"]["record_count"], 2)
+            finally:
+                runner.close()
+
     def test_loop_playback_reprocesses_the_capture_each_pass(self) -> None:
         with image_source(2) as root:
             perception_step = FixtureMapper()
@@ -313,3 +452,34 @@ class WorkbenchTests(unittest.TestCase):
         self.assertGreaterEqual(second_seen - first_seen, 0.06)
         self.assertEqual(completed["phase"], "completed")
         self.assertEqual(completed["controls"]["pace"], "realtime")
+
+    def test_pause_returns_while_the_current_frame_is_still_executing(self) -> None:
+        entered = threading.Event()
+        release = threading.Event()
+        original = workbench_runner.run_frame
+
+        def blocked(frame, **kwargs):
+            entered.set()
+            if not release.wait(5):
+                raise TimeoutError("frame was not released")
+            return original(frame, **kwargs)
+
+        with image_source(4) as root:
+            runner = ImageReplayRunner(root, cadence_ms=0, loop=False)
+            self.addCleanup(runner.close)
+            self.addCleanup(release.set)
+            with mock.patch.object(workbench_runner, "run_frame", side_effect=blocked):
+                started = runner.start()
+                self.assertTrue(entered.wait(3))
+                began = time.monotonic()
+                paused = runner.dispatch("pause", run_id=started["run_id"])
+                self.assertLess(time.monotonic() - began, 0.5)
+                self.assertEqual(paused["phase"], "paused")
+                self.assertEqual(paused["progress"]["completed"], 0)
+                state = runner.state()
+                self.assertEqual(state["phase"], "paused")
+                self.assertLess(time.monotonic() - began, 0.5)
+                release.set()
+                _wait_until(lambda: runner.state()["progress"]["completed"] >= 1)
+            self.assertEqual(runner.state()["phase"], "paused")
+            self.assertEqual(runner.state()["progress"]["completed"], 1)

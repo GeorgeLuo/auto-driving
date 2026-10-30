@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 import unittest
-from cli.automa_cli.memory_report import evidence_publisher, plugin_states
-from cli.automa_cli.host_publications import publication_to_frame_record
-from cli.automa_cli.perception_view import (
+from cli.automa_cli.shared.memory_report import evidence_publisher, plugin_states
+from cli.automa_cli.hosts.publications.decision_publication import publication_to_frame_record
+from cli.automa_cli.frontend.perception_view import (
     PUBLICATION_SCHEMA,
     _publication_payload,
 )
@@ -38,7 +38,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
                 ]
             },
             "memory": memory_report({
-                "schema": "bounded_evidence_ledger_v0",
+                "schema": "bounded_evidence_ledger",
                 "health": "healthy",
                 "epoch_id": "epoch-2",
                 "record_count": 1,
@@ -68,7 +68,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
         self.assertEqual(recorded["bounded_evidence"]["records"][0]["kind"], "floor_boundary")
 
         view_payload = _publication_payload(
-            vehicle_id="piracer",
+            host_name="piracer",
             frame={
                 "frame_id": "donkey_frame_1",
                 "frame_index": 1,
@@ -81,7 +81,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
             generated_at_ms=200,
         )
         self.assertEqual(view_payload["schema"], PUBLICATION_SCHEMA)
-        self.assertEqual(PUBLICATION_SCHEMA, "automa_perception_publication_v2")
+        self.assertEqual(PUBLICATION_SCHEMA, "automa_perception_publication")
         self.assertEqual(evidence_publisher(view_payload["memory"]), "bounded_evidence")
         shown = dict(plugin_states(view_payload["memory"]))
         self.assertEqual(shown["bounded_evidence"]["epoch_id"], "epoch-2")
@@ -104,7 +104,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
             }
         )
         view_payload = _publication_payload(
-            vehicle_id="piracer",
+            host_name="piracer",
             frame={"frame_id": "donkey_frame_1", "frame_index": 1},
             perception_record=frame_record,
             generated_at_ms=200,

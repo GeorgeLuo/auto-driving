@@ -47,7 +47,7 @@ def _frame(index: int, *, captured_at_ms: int = 10_000) -> dict[str, int | str]:
 def _store(clock: _Clock | None = None, *, max_records: int = 256) -> HostTelemetryStore:
     active_clock = clock or _Clock()
     return HostTelemetryStore(
-        vehicle_id="piracer",
+        host_name="piracer",
         source_id="donkeycar:piracer",
         run_id="donkey-run-test",
         generation_id="decision-test",
@@ -102,7 +102,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
         record = result["record"]
         self.assertEqual(
             (
-                record["vehicle_id"],
+                record["host_name"],
                 record["source_id"],
                 record["run_id"],
                 record["generation_id"],
@@ -144,7 +144,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
         )
         with self.assertRaises(ValueError):
             HostTelemetryStore(
-                vehicle_id="piracer",
+                host_name="piracer",
                 source_id="donkeycar:piracer",
                 run_id="donkey-run-test",
                 generation_id="",
@@ -377,7 +377,22 @@ class HostTelemetryStoreTests(unittest.TestCase):
         )
         self.assertEqual(result["record"]["host_tick"]["published_at_ms"], 10_001)
 
-    def test_latest_and_history_are_atomic_detached_snapshots(self) -> None:
+    def test_history_only_copies_returned_records_and_status_does_not_export(self) -> None:
+        from copy import deepcopy
+
+        store = _store()
+        for index in range(256):
+            _observe(store, index)
+        with patch("implementations.runtime.picar.host_telemetry.deepcopy", wraps=deepcopy) as copied:
+            result = store.records(after_sequence=0, limit=1, now_ms=10_000)
+            self.assertEqual(len(result["records"]), 1)
+            self.assertEqual(copied.call_count, 1)
+        with patch("implementations.runtime.picar.host_telemetry.deepcopy", side_effect=AssertionError("status exported a record")):
+            self.assertEqual(store.status()["status"], "healthy")
+        result["records"][0]["host_tick"]["sequence"] = 99
+        self.assertEqual(store.records(after_sequence=0, limit=1, now_ms=10_000)["records"][0]["host_tick"]["sequence"], 1)
+
+    def test_latest_and_history_are_atomic_detached_records(self) -> None:
         store = _store()
         for index in range(3):
             _observe(store, index)

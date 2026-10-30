@@ -3,8 +3,8 @@
 A PiCar's Donkey process feeds camera frames to the shared frame loop and
 serves ``RuntimeRoutes`` from Tornado. This host feeds simulator captures to
 the same loop and serves the same routes from a stdlib server. It runs from
-the vehicle's controller release; ``automa vehicles automation host``
-supervises it and replaces it on a restart command.
+the vehicle's controller release under a supervisor that ``automa hosts create``
+and ``automa hosts run`` start, which replaces it on a restart command.
 """
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ logger = logging.getLogger(__name__)
 
 # The supervisor starts a fresh host from the current release on this code.
 RESTART_EXIT_CODE = 75
-HOST_RECORD_SCHEMA = "automa_runtime_host_v0"
+HOST_RECORD_SCHEMA = "automa_runtime_host"
 CAPTURE_POLL_S = 0.01
 RECORD_CHECK_S = 1.0
 
@@ -119,7 +119,7 @@ class ChaseFrameLoop(FrameLoop):
             except Exception as exc:
                 if generation == self._capture_generation and self._capture_enabled:
                     logger.exception("Chase capture failed")
-                    self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
+                    self.stop_after_error(exc)
                 else:
                     logger.info("Capture ended after the run changed: %s: %s", type(exc).__name__, exc)
             finally:
@@ -164,11 +164,11 @@ class RuntimeHTTPServer(ThreadingHTTPServer):
 class ChaseRuntimeHost:
     """One Chase car's frame loop and route server, until ``close``."""
 
-    def __init__(self, *, car: Any, runtime_dir: Path, vehicle_id: str, port: int = 0,
+    def __init__(self, *, car: Any, runtime_dir: Path, host_name: str, port: int = 0,
                  on_restart: Callable[[], None] | None = None) -> None:
         host, options = staged_runtime(runtime_dir, lambda steps: create_host(car, steps=steps))
         self.loop = ChaseFrameLoop(
-            host=host, car=car, vehicle_id=vehicle_id, **options,
+            host=host, car=car, host_name=host_name, **options,
         )
         self.server = RuntimeHTTPServer(("127.0.0.1", port), RuntimeRoutes(self.loop, on_restart=on_restart))
         self.base_url = f"http://127.0.0.1:{self.server.server_address[1]}"
@@ -214,27 +214,27 @@ def _record_pid(path: Path) -> Any:
         return None
 
 
-def serve(*, vehicle_id: str, ws_url: str | None, runtime_dir: Path, port: int,
+def serve(*, host_name: str, ws_url: str | None, runtime_dir: Path, port: int,
           host_record: Path, release: dict[str, Any]) -> int:
     restart = threading.Event()
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
     signal.signal(signal.SIGINT, lambda *_: stop.set())
-    car = ChaseSimCar(ws_url=ws_url, timeout_s=5.0, vehicle_id=vehicle_id)
+    car = ChaseSimCar(ws_url=ws_url, timeout_s=5.0)
     runtime = ChaseRuntimeHost(
-        car=car, runtime_dir=runtime_dir, vehicle_id=vehicle_id, port=port,
+        car=car, runtime_dir=runtime_dir, host_name=host_name, port=port,
         on_restart=lambda: (restart.set(), stop.set()),
     )
-    # The simulator lists this socket to `vehicles status` as the attached host.
+    # The simulator lists this socket to `hosts status` as the attached host.
     presence = MetricsUiPresence(car.ws_url, {
-        "kind": "vehicle-host", "vehicle_id": vehicle_id, "url": runtime.base_url, "pid": os.getpid(),
+        "kind": "host", "host_name": host_name, "url": runtime.base_url, "pid": os.getpid(),
     })
     # Presence closes last, so the runtime releases control first and within
     # the stop deadline.
     with presence, runtime:
         write_host_record(host_record, {
             "schema": HOST_RECORD_SCHEMA,
-            "vehicle_id": vehicle_id,
+            "host_name": host_name,
             "pid": os.getpid(),
             "supervisor_pid": os.getppid(),
             "base_url": runtime.base_url,
@@ -242,7 +242,7 @@ def serve(*, vehicle_id: str, ws_url: str | None, runtime_dir: Path, port: int,
             "release": release,
             "started_at_ms": int(time.time() * 1000),
         })
-        logger.info("Chase runtime for %s serving %s (release %s)", vehicle_id, runtime.base_url,
+        logger.info("Chase runtime for %s serving %s (release %s)", host_name, runtime.base_url,
                     release.get("archive_sha256"))
         try:
             while not stop.wait(RECORD_CHECK_S):
@@ -258,7 +258,7 @@ def serve(*, vehicle_id: str, ws_url: str | None, runtime_dir: Path, port: int,
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--vehicle-id", required=True)
+    parser.add_argument("--host-name", required=True)
     parser.add_argument("--ws-url")
     parser.add_argument("--runtime-dir", type=Path, required=True)
     parser.add_argument("--port", type=int, required=True)
@@ -267,7 +267,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     return serve(
-        vehicle_id=args.vehicle_id, ws_url=args.ws_url, runtime_dir=args.runtime_dir,
+        host_name=args.host_name, ws_url=args.ws_url, runtime_dir=args.runtime_dir,
         port=args.port, host_record=args.host_record, release=args.release,
     )
 

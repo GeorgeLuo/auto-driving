@@ -14,9 +14,7 @@ from autonomy.decision_cycle.activation import (
     write_step_activation,
 )
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
-from autonomy.runtime.cycle_host import AutonomyCycleHost
-from implementations.decision_cycle.catalog import packaged_activation, step_plugins
-from implementations.decision_cycle.memory.presets import DEFAULT_MEMORY_PLUGINS
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, packaged_activation, step_plugins
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import (
     LEDGER_KEY,
     BoundedEvidenceLedger,
@@ -71,7 +69,7 @@ def _thing(
 
 class BoundedEvidenceLedgerTests(unittest.TestCase):
     def test_catalog_exposes_default_plugin(self) -> None:
-        self.assertEqual(DEFAULT_MEMORY_PLUGINS, ("bounded_evidence",))
+        self.assertEqual(DEFAULT_STEP_PLUGINS["memory"], ("bounded_evidence",))
         entry = step_plugins("memory")["bounded_evidence"]
         self.assertEqual(
             entry["spec"],
@@ -288,9 +286,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                     "bounded_evidence": BoundedEvidenceLedger(**config),
                 }
                 step = MemoryRunner.from_plugins({plugin_id: plugins[plugin_id] for plugin_id in order})
-                host = AutonomyCycleHost(steps=DecisionSteps(memory=step))
-
-                context = DecisionFrameContext("f1", 1, 100, shared_memory=host.shared_memory)
+                context = DecisionFrameContext("f1", 1, 100, shared_memory={})
                 context.shared_memory[OBSERVATION_KEY] = observation
                 report = step.update(context)
 
@@ -300,7 +296,8 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
                 self.assertEqual(states["recording_test"]["record_count"], 1)
                 self.assertEqual(report["evidence_publisher"], "bounded_evidence")
 
-                report = host.reset_memory()
+                step.reset(context.shared_memory)
+                report = step.report()
 
                 states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
                 self.assertEqual(states["bounded_evidence"]["health"], "empty")

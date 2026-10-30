@@ -1,8 +1,7 @@
 """The plan step's contract declarations.
 
-``FAILURE_POLICY`` and ``composition_declaration`` are the values
-``PlanRunner`` follows and ``describe_schema`` reports, as the perception,
-memory, and proposal interfaces declare theirs. The step's record for one
+``FAILURE_POLICY`` is what ``PlanRunner`` does when a plugin fails, as the
+perception and memory interfaces declare theirs. The step's record for one
 cycle is ``ActionPlan`` in ``values``; the plugin protocol is ``PlanPlugin``
 in ``plugin``.
 """
@@ -10,8 +9,6 @@ in ``plugin``.
 from __future__ import annotations
 
 from autonomy.decision_cycle.runner import FailurePolicy
-
-PLAN_SCHEMA = "plan_schema_v1"
 
 # A plan plugin that raises, or returns a plan that fails the runner's check
 # (frame, selector_id, candidates), is isolated. With one plugin that means
@@ -24,18 +21,3 @@ FAILURE_POLICY = FailurePolicy(
     reset="propagate",
     missing_input="skip_plugin",
 )
-
-
-def composition_declaration() -> dict[str, str]:
-    """How the one plan plugin uses the proposal step's candidates.
-
-    The plugin reads the cycle context and those candidates, and returns one
-    ``ActionPlan``. Frame identity and the host map come from the context.
-    The plan's ``selector_id`` is the plugin ID.
-    """
-
-    return {
-        "order": "one_plugin",
-        "inputs": "the cycle context and the proposal candidates",
-        "output": "one ActionPlan; selector_id is the plugin ID",
-    }

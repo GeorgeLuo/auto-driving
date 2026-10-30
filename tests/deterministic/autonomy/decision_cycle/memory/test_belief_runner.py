@@ -5,7 +5,6 @@ import unittest
 from dataclasses import replace
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.runtime.report import report_from_host_result
@@ -14,7 +13,7 @@ from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.decision_cycle.memory.beliefs import Belief, Check
 from autonomy.decision_cycle.memory.interface import MemoryReport
 from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
-from autonomy.decision_cycle.memory.publication import BELIEF_KEY_PREFIX, belief_key, read_belief
+from autonomy.decision_cycle.memory.publication import belief_key, read_belief
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 
 
@@ -58,7 +57,7 @@ class BeliefRunnerTests(unittest.TestCase):
         )
         self.addCleanup(host.close)
         result = host.run(_context({}))
-        report = report_from_host_result(result, vehicle_id="test", run_id="run", generation_id="gen").to_dict()
+        report = report_from_host_result(result, host_name="test", run_id="run", generation_id="gen").to_dict()
         state = report["cycle"]["memory"]["plugins"][0]["state"]
         self.assertIn("status_error", state)
         self.assertIn("JSON", state["status_error"])
@@ -151,12 +150,6 @@ class BeliefRunnerTests(unittest.TestCase):
         self.assertIsNot(decoded.to_dict()["beliefs"]["learner.row"], decoded.beliefs["learner.row"])
         self.assertAlmostEqual(runner.status()["beliefs"]["learner.row"]["confidence"], 3 / 4)
 
-    def test_schema_names_the_belief_keys_and_each_plugins_contract(self):
-        schema = MemoryRunner.from_plugins({"learner": _Learner()}).describe_schema()
-        self.assertEqual(schema["composition"]["belief_key_prefix"], BELIEF_KEY_PREFIX)
-        self.assertEqual(schema["composition"]["beliefs"], "one_value_per_key_last_write_wins")
-        self.assertEqual([plugin["contract"] for plugin in schema["plugins"]], [_Learner.contract.to_dict()])
-
     def test_reset_and_deselection_remove_only_declared_beliefs_even_on_reset_failure(self):
         other = Belief("other.row", 15, "other", 0)
         for fail in (False, True):
@@ -180,7 +173,7 @@ class BeliefRunnerTests(unittest.TestCase):
         self.assertEqual(set(report["beliefs"]), {"a", "b"})
         self.assertEqual(set(runner.status()["beliefs"]), {"a", "b"})
 
-    def test_reset_prior_survives_runner_and_host_reset(self):
+    def test_reset_preserves_fresh_beliefs_and_advances_the_epoch(self):
         class Prior(_Learner):
             def reset(self, shared_memory):
                 assert belief_key(self.belief_id) not in shared_memory
@@ -193,9 +186,7 @@ class BeliefRunnerTests(unittest.TestCase):
         runner.update(_context(shared))
         fresh = runner.reset(shared)
         self.assertEqual(fresh[belief_key("learner.row")].value, 4)
-        host = AutonomyCycleHost(steps=DecisionSteps(memory=runner))
-        self.addCleanup(host.close)
-        host.shared_memory.update(shared)
-        host.reset_memory()
-        self.assertEqual(host.shared_memory[belief_key("learner.row")].value, 5)
-        self.assertEqual(host.shared_memory["memory.learner.epoch"], 5)
+        fresh = runner.reset(shared)
+        self.assertEqual(fresh[belief_key("learner.row")].value, 5)
+        self.assertEqual(shared[belief_key("learner.row")].value, 5)
+        self.assertEqual(shared["memory.learner.epoch"], 5)

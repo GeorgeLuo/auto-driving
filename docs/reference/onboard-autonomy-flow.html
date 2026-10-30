@@ -370,9 +370,15 @@
         <code>mode</code> action provides the first bounded live-control path.
       </p>
       <p class="source-line">
+        Create a named host with <code>hosts create --name car --provider picar --url http://piracer.local:8887</code>
+        after <code>vehicles discover --provider picar --url http://piracer.local:8887</code> lists it in
+        <code>vehicles status</code>. Deploy every step's default with <code>hosts update --name car --restart</code>,
+        then use <code>hosts run</code>; <code>plugins arm</code> changes the running host's selection.
+        <code>hosts delete --name car</code> stops the service and removes its local record.
+        <br>
         Source points: <code>autonomy/decision_cycle/cycle.py</code>,
         <code>autonomy/runtime/cycle_host.py</code>,
-        <code>cli/automa_cli/automation.py</code>, and
+        <code>cli/automa_cli/hosts/runs/automation.py</code>, and
         <code>implementations/runtime/picar/donkey_part.py</code>
       </p>
     </header>
@@ -442,7 +448,7 @@
       <div class="feedback">
         <div class="node vehicle">
           <h3>On PiRacer</h3>
-          <p><code>AutonomyPilotPart</code> adapts Donkey vehicle-memory values to the shared cycle at a bounded cadence in manual mode. It retains one detached latest state (frame and result) and publishes it on <code>/autonomy/observation/latest</code> (plus matching <code>frame.jpg</code>). Each step's activation selects its plugins; pilot outputs stay zero while drive mode remains <code>user</code>. Automa inspects the path through stream, local overlay, guided check, and viability measurement without hosting a second Pi frontend.</p>
+          <p><code>AutonomyPilotPart</code> adapts Donkey vehicle-memory values to the shared cycle at a bounded cadence in manual mode. It retains one detached latest state (frame and result) and publishes it on <code>/host/observation/latest</code> (plus matching <code>frame.jpg</code>). Each step's activation selects its plugins; pilot outputs stay zero while drive mode remains <code>user</code>. Automa inspects the path through stream, local overlay, and guided check without hosting a second Pi frontend.</p>
         </div>
         <div class="node perception">
           <h3>In Simulation</h3>
@@ -533,7 +539,7 @@
         <tbody>
           <tr>
             <td>Vehicle</td>
-            <td>Read request or bounded operation command.</td>
+            <td>Read request or pulse command.</td>
             <td><code>SensorFrame</code>, pulse result, and stop.</td>
             <td><code>autonomy/vehicle/vehicle.py</code></td>
           </tr>
@@ -573,12 +579,6 @@
             <td><code>ActionResult</code>: the authority record and the <code>AutonomyControl</code> to apply.</td>
             <td><code>autonomy/decision_cycle/action/</code>, <code>implementations/decision_cycle/action/</code>, <code>autonomy/runtime/cycle_host.py</code></td>
           </tr>
-          <tr>
-            <td>Operations</td>
-            <td><code>CarInterface</code> plus an explicitly invoked plan.</td>
-            <td>Bounded action results and optional reports.</td>
-            <td><code>implementations/operations/</code></td>
-          </tr>
         </tbody>
       </table>
     </section>
@@ -588,15 +588,14 @@
       <div class="two-col">
         <div>
           <h3>Live Controller</h3>
-          <p>Inspect staged contracts and the latest local worker result.</p>
-          <p><code>./cli/automa vehicles info perception --id chase-sim-chaser</code></p>
-          <p><code>./cli/automa vehicles info proposal --id chase-sim-chaser</code></p>
-          <p><code>./cli/automa vehicles stream perception --id chase-sim-chaser</code></p>
+          <p>Compare staged steps with the ones the host applied, and follow the latest local worker result.</p>
+          <p><code>./cli/automa hosts status --name chase-sim-chaser --long</code></p>
+          <p><code>./cli/automa plugins stream --step perception --host-name chase-sim-chaser</code></p>
         </div>
         <div>
           <h3>Recorded Cycle</h3>
           <p>Opt into a bounded recording when the full perception, observation, control, and cycle result need inspection.</p>
-          <p><code>./cli/automa vehicles automation run --id chase-sim-chaser --num-decisions 5 --record</code></p>
+          <p><code>./cli/automa hosts run --name chase-sim-chaser --num-decisions 5 --record</code></p>
           <p>Recorded cycle JSON reflects the actual runtime; unimplemented state steps remain <code>null</code>.</p>
         </div>
       </div>

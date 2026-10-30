@@ -18,9 +18,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.staged_bundle import StagedBundleImport
-from cli.automa_cli.step_hosting import BUNDLE_PREFIXES, load_staged_runner
+from autonomy.runtime.plugin_loader import BUNDLE_PREFIXES, StagedBundleImport, load_runner
+from cli.automa_cli.hosts.bundles import sync_controller_bundle
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.controller_bundle.loading_inventory import (
     LEGACY_EXPORTS,
@@ -109,7 +109,7 @@ class LoadingContractTests(unittest.TestCase):
         self.assertEqual(mismatches, [], "legacy path does not resolve to its canonical owner")
 
     def test_controller_bundle_archives_source_paths(self) -> None:
-        self.assertEqual(self.release["schema"], "automa_controller_bundle_manifest_v0")
+        self.assertEqual(self.release["schema"], "automa_controller_bundle_manifest")
         self.assertEqual(
             [source["package_root"] for source in self.release["sources"]],
             ["autonomy", "implementations"],
@@ -134,8 +134,8 @@ class LoadingContractTests(unittest.TestCase):
             "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin"
         ).BoundedEvidenceLedger
         metadata = {"controller_bundle": {"root_dir": str(self.bundle_root)}}
-        perception = load_staged_runner(packaged_activation("perception", ["frame"], metadata=metadata))
-        memory = load_staged_runner(packaged_activation("memory", metadata=metadata))
+        perception = load_runner(packaged_activation("perception", ["frame"], metadata=metadata))
+        memory = load_runner(packaged_activation("memory", metadata=metadata))
 
         # Plugins come from the bundle copy; autonomy, and so every value class
         # the cycle passes between steps, stays the host's.

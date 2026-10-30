@@ -86,13 +86,13 @@ def _share(value: Any) -> str:
 
 def _production_test_html(payload: dict[str, Any]) -> list[str]:
     sections: list[str] = ["<h3>Production vs tests</h3>"]
-    snapshot = payload.get("head", {}).get("production_test_split") or {}
-    if snapshot:
-        files = snapshot["files"]
-        raw = snapshot["raw_loc"]
-        effective = snapshot["effective_loc"]
+    split = payload.get("head", {}).get("production_test_split") or {}
+    if split:
+        files = split["files"]
+        raw = split["raw_loc"]
+        effective = split["effective_loc"]
         sections.append(
-            "<p>Denominator is production+tests. Core snapshot LOC still includes tooling/scripts and experimental/lab.</p>"
+            "<p>Denominator is production+tests. Core tree LOC still includes tooling/scripts and experimental/lab.</p>"
         )
         sections.append(_table(
             ["Class", "Files", "Raw LOC", "Raw share", "Effective Python LOC", "Effective share"],
@@ -175,7 +175,7 @@ def render_html(payload: dict[str, Any], *, title: str = "Quantitative change an
     if identity:
         sections.append(_table(["Run", "Value"], [
             ["Analyzer", identity["analyzer_version"]],
-            ["Base", identity.get("base_sha") or "snapshot"],
+            ["Base", identity.get("base_sha") or "(none)"],
             ["Head", identity.get("head_sha") or identity.get("working_tree_digest")],
             ["Scope", identity["analyzed_path"]],
         ]))
@@ -199,7 +199,7 @@ def render_html(payload: dict[str, Any], *, title: str = "Quantitative change an
                  for item in diff["file_changes"]],
             ), "</details>"])
         else:
-            sections.append(_table(["Snapshot measurement", "Value"], [
+            sections.append(_table(["Tree measurement", "Value"], [
                 [key, value] for key, value in payload["head"].items() if isinstance(value, int)
             ]))
             sections.extend(_production_test_html(payload))

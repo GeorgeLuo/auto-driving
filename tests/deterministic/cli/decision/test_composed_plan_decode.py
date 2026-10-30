@@ -10,15 +10,16 @@ from autonomy.decision_cycle.action.runner import ActionRunner
 from autonomy.decision_cycle.action.selected import SelectedAction
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.runner import PlanRunner
+from autonomy.decision_cycle.plan.values import ACTION_PLAN_SCHEMA
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
 from autonomy.vehicle import SensorFrame
-from cli.automa_cli.decision import (
+from cli.automa_cli.hosts.publications.decision import (
     DecisionSurfaceError,
     _require_aggregate_cycle_alignment,
     _strict_decode_plan,
 )
-from cli.automa_cli.decision_records import DecisionRecords
+from cli.automa_cli.hosts.publications.decision_records import DecisionRecords
 from tests.deterministic.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     WeightedMeanPlan,
     _active_proposal,
@@ -60,13 +61,13 @@ class ComposedPlanDecodeTests(unittest.TestCase):
         plan = _composed_cycle().plan
         self.assertEqual(_strict_decode_plan(plan.to_dict(), field="cycle.plan"), plan)
 
-    def test_a_v0_plan_is_rejected(self) -> None:
-        legacy = _composed_cycle().plan.to_dict()
-        legacy["schema"] = "action_plan_v0"
+    def test_a_plan_with_another_schema_is_rejected(self) -> None:
+        payload = _composed_cycle().plan.to_dict()
+        payload["schema"] = "other"
         with self.assertRaises(DecisionSurfaceError) as raised:
-            _strict_decode_plan(legacy, field="cycle.plan")
-        self.assertEqual(raised.exception.error, "latest_frame_invalid")
-        self.assertIn("action_plan_v1", str(raised.exception))
+            _strict_decode_plan(payload, field="cycle.plan")
+        self.assertEqual(raised.exception.error_code, "latest_frame_invalid")
+        self.assertIn(ACTION_PLAN_SCHEMA, str(raised.exception))
 
     def test_a_junk_command_or_reason_is_rejected_by_field(self) -> None:
         cases = (

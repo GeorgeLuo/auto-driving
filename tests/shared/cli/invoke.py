@@ -11,18 +11,13 @@ from contextlib import ExitStack, chdir, redirect_stderr, redirect_stdout
 from pathlib import Path
 from unittest import mock
 
-from cli.automa_cli import (
-    app,
-    deploy,
-    memory,
-    memory_runs,
-    operations,
-    perception,
-    perception_runs,
-    runtime_hosts,
-    view_discovery,
-    viability,
-)
+from cli.automa_cli import app
+from cli.automa_cli.hosts.deployment import deploy, picar_deploy
+from cli.automa_cli.hosts import runtime_hosts
+from cli.automa_cli.hosts.views import view_discovery
+from cli.automa_cli.plugins import catalog
+from cli.automa_cli.vehicles import discovery
+from cli.automa_cli.shared import controller_releases
 from tests.support.cli_runner import WORKSPACE_ROOT, checked_result
 from tests.support.offline.sitecustomize import offline_getaddrinfo
 
@@ -30,20 +25,16 @@ from tests.support.offline.sitecustomize import offline_getaddrinfo
 # run in this process sees a test's value only if the name is rebound.
 IMPORT_TIME_ENV = {
     "AUTOMA_RUNTIME_ROOT": (
-        (app, "VEHICLES_RUNTIME_ROOT"),
         (deploy, "RUNTIME_ROOT"),
-        (memory, "RUNTIME_ROOT"),
-        (perception, "RUNTIME_ROOT"),
+        (picar_deploy, "RUNTIME_ROOT"),
         (runtime_hosts, "RUNTIME_ROOT"),
+        (controller_releases, "RUNTIME_ROOT"),
+        (discovery, "RUNTIME_ROOT"),
+        (catalog, "RUNTIME_ROOT"),
         (view_discovery, "RUNTIME_ROOT"),
         (view_discovery.runtime_view_dir.__kwdefaults__, "runtime_root"),
         (view_discovery.discover_runtime_view.__kwdefaults__, "runtime_root"),
     ),
-    "AUTOMA_MEMORY_INSPECT_ROOT": ((memory_runs, "INSPECT_ROOT"),),
-    "AUTOMA_PERCEPTION_INSPECT_ROOT": ((perception_runs, "INSPECT_ROOT"),),
-    "AUTOMA_OPERATION_OUTPUT_ROOT": ((operations, "OPERATION_OUTPUT_ROOT"),),
-    "AUTOMA_PERCEPTION_VIABILITY_OUTPUT_ROOT": ((viability, "PERCEPTION_VIABILITY_OUTPUT_ROOT"),),
-    "AUTOMA_MEMORY_VIABILITY_OUTPUT_ROOT": ((viability, "MEMORY_VIABILITY_OUTPUT_ROOT"),),
 }
 LIVE_ENV = ("AUTOMA_TEST_LIVE_SIM", "AUTOMA_TEST_LIVE_PI")
 

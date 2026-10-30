@@ -8,18 +8,20 @@ import unittest
 from pathlib import Path
 
 from autonomy.decision_cycle.activation import STEPS, read_step_activation
-from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.deploy import PicarTarget, _REMOTE_AUTONOMY_INSTALL_SCRIPT, _write_remote_activation_files
-from cli.automa_cli.step_activations import (
+from cli.automa_cli.hosts.bundles import sync_controller_bundle
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
+from cli.automa_cli.hosts.deployment.picar_deploy import PicarTarget, _REMOTE_AUTONOMY_INSTALL_SCRIPT, _write_remote_activation_files
+from cli.automa_cli.hosts.step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     bundle_activation_path,
     ensure_step_activations,
+    startup_activations,
 )
 
 TARGET = PicarTarget(
-    vehicle_id="piracer",
-    vehicle={
-        "vehicle_id": "piracer",
+    host_name="piracer",
+    configuration={
+        "host_name": "piracer",
         "vehicle_kind": "picar",
         "provider": "picar",
         "connection": {"base_url": "http://piracer.local:8887"},
@@ -36,11 +38,12 @@ class PhysicalDeployTests(unittest.TestCase):
     def test_remote_installer_verifies_and_activates_packaged_release(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            vehicle_runtime = root / "runtime" / "vehicles" / "piracer"
-            bundle = controller_bundle_paths(vehicle_runtime)
+            host_dir = root / "runtime" / "hosts" / "piracer"
+            bundle = controller_bundle_paths(host_dir)
             release = sync_controller_bundle(bundle, output=None)
             ensure_step_activations(
-                vehicle_id="piracer", bundle=bundle, release=release, vehicle=dict(TARGET.vehicle),
+                host_name="piracer", bundle=bundle, release=release,
+                activations=startup_activations(bundle, "piracer"), vehicle=dict(TARGET.configuration),
             )
             steps = STEPS
             release_id = Path(release["archive"]["path"]).name.removesuffix(".tar.gz")
@@ -53,7 +56,7 @@ class PhysicalDeployTests(unittest.TestCase):
                 self.assertNotIn("source_dir", staged["metadata"])
             deploy_files = _write_remote_activation_files(
                 target=TARGET,
-                vehicle_runtime_dir=vehicle_runtime,
+                host_dir=host_dir,
                 release=release,
                 release_id=release_id,
                 activation_paths={step: bundle_activation_path(bundle, step) for step in steps},

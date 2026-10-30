@@ -10,7 +10,6 @@ from typing import Any
 import cv2
 import numpy as np
 
-from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginInputs
 from implementations.decision_cycle.perception.feeds.camera import CameraFrame
 from implementations.decision_cycle.perception.plugins.multi_obstruction_tracks.plugin import MultiObstructionTracksPlugin
@@ -28,11 +27,6 @@ def _json_hash(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
-class _NoopDiagnostics(PerceptionDiagnosticSink):
-    def __init__(self) -> None:
-        super().__init__(output_dir=None, plugin_id="p1", allowed_artifacts=())
-
-
 def replay_capture(manifest_path: Path, config_path: Path, output_dir: Path) -> dict[str, Any]:
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     frames = list(manifest.get("camera_frames") or [])
@@ -47,7 +41,6 @@ def replay_capture(manifest_path: Path, config_path: Path, output_dir: Path) -> 
     capture_dir = manifest_path.parent
     plugin = MultiObstructionTracksPlugin(**config)
     shared_memory: dict[str, Any] = {}  # Run-owned history, independent of plugin lifetime.
-    diagnostics = _NoopDiagnostics()
     ledger: list[dict[str, Any]] = []
     detections_path = output_dir / "detections.jsonl"
     failures: list[dict[str, Any]] = []
@@ -75,7 +68,7 @@ def replay_capture(manifest_path: Path, config_path: Path, output_dir: Path) -> 
             frame = CameraFrame("front_camera", int(item["captured_at_ms"]), np.ascontiguousarray(rgb), image_path, {"source_id": item["frame_id"]})
             batch = plugin.perceive(PerceptionPluginInputs(
                 item["frame_id"], int(item["captured_at_ms"]), {"frame": frame},
-                diagnostics, {"sequence_index": position}, shared_memory=shared_memory,
+                {"sequence_index": position}, shared_memory=shared_memory,
             ))
             things = []
             for thing in batch.things:
@@ -218,7 +211,6 @@ def local_durability(detections_path: Path, output_dir: Path, tracking_config_pa
         center_residual = _fit_residual(times, [o["center"][0] for o in obs]) + _fit_residual(times, [o["center"][1] for o in obs])
         scale_residual = _fit_residual(times, [math.log(o["scale"][0] * o["scale"][1]) for o in obs])
         span = max(times) - min(times) if times else 0.0
-        visible_interval = span + (max(gaps) if gaps else 0.0)
         supported_fraction = len(obs) / max(1.0, len(obs) + sum(1 for gap in gaps if gap > 0.0))
         flow_values = [float(o.get("flow_support") or 0.0) for o in obs]
         checks = {
@@ -330,7 +322,6 @@ def local_durability_corrected(detections_path: Path, output_dir: Path, tracking
     config = json.loads(tracking_config_path.read_text(encoding="utf-8")) if tracking_config_path else dict(DEFAULT_TRACKING_CONFIG)
     thresholds = _thresholds(config)
     output_dir.mkdir(parents=True, exist_ok=False)
-    ledger_positions = {int(record["position"]): record for record in records}
     tracks: list[dict[str, Any]] = []; active: dict[int, dict[str, Any]] = {}; alternatives: list[dict[str, Any]] = []; next_id = 0
     material_competition: set[int] = set(); material_pairs: list[dict[str, Any]] = []
     competition_margin = float(config.get("association_competition_margin", {}).get("value", 0.05))

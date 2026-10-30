@@ -6,7 +6,7 @@ is recency bookkeeping, not semantic object identity or world truth.
 
 Same-slot updates preserve kind and location shape while allowing properties to
 change between observations. Duplicate candidates within one observation must
-still agree (conflict policy ``bounded_evidence_structural_v2``). Record ids are
+still agree (conflict policy ``bounded_evidence_structural``). Record ids are
 namespaced by source plugin so two plugins cannot silently overwrite one
 another with the same local observed id.
 
@@ -33,7 +33,7 @@ from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import 
 )
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 
-CONFLICT_POLICY = "bounded_evidence_structural_v2"
+CONFLICT_POLICY = "bounded_evidence_structural"
 MAX_REPORTED_DROPS = 12
 MAX_REPORTED_ID_CHARS = 128
 

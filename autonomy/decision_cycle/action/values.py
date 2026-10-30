@@ -18,7 +18,7 @@ from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
 from autonomy.runtime.control import AutonomyControl
 
-AUTHORITY_RESULT_SCHEMA = "authority_result_v1"
+AUTHORITY_RESULT_SCHEMA = "authority_result"
 COMMAND_EPS = 1e-9
 
 

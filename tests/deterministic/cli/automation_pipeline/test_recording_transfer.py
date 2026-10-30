@@ -12,13 +12,13 @@ from autonomy.runtime.assembly import staged_runtime
 from autonomy.runtime import recording as recording_module
 from autonomy.runtime.recording import RunRecording
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.runtime_monitor import _sync_recording
+from cli.automa_cli.hosts.runs.runtime_monitor import _sync_recording
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.picar import create_host
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import frame
 
-VEHICLE_ID = "chase-sim-chaser"
+HOST_NAME = "chase-sim-chaser"
 
 
 class RecordingTransferTests(unittest.TestCase):
@@ -30,11 +30,11 @@ class RecordingTransferTests(unittest.TestCase):
                 write_step_activation(step_activation_path(runtime_root, step), activation)
             host, options = staged_runtime(runtime_root, lambda steps: create_host(steps=steps))
             self.addCleanup(host.close)
-            recording = RunRecording(options["recording_root"], vehicle_id=VEHICLE_ID)
+            recording = RunRecording(options["recording_root"], host_name=HOST_NAME)
             host.start(RunConfiguration(mode="observe_only", num_decisions=2), recording=recording)
             host.run(frame(root, 1))
             export_dir = runtime_root / "automation" / "runs" / recording.run_id
-            state = {"recorded_count": 0, "vehicle_id": VEHICLE_ID}
+            state = {"recorded_count": 0, "host_name": HOST_NAME}
 
             class Client:
                 def read_recording(self, run_id, *, after):

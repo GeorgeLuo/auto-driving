@@ -21,7 +21,7 @@ from implementations.runtime.picar import AutonomyPilotPart, create_host
 
 
 class PerceptionActivationIntegrationTests(unittest.TestCase):
-    def test_perception_activation_runs_on_in_memory_camera_without_artifacts(self) -> None:
+    def test_perception_activation_runs_on_in_memory_camera(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             activation_path = Path(tmp) / "active.json"
             write_step_activation(
@@ -56,7 +56,6 @@ class PerceptionActivationIntegrationTests(unittest.TestCase):
 
         self.assertIsNotNone(result)
         self.assertEqual(result.status, "ok")
-        self.assertEqual(result.artifacts, {})
         self.assertEqual(runner.status()["plugin_ids"], ["frame"])
         self.assertEqual(runner.last_frame_index, 0)
 
@@ -70,7 +69,7 @@ class PerceptionActivationIntegrationTests(unittest.TestCase):
         part.wait_for_cycle()
         _steering, _throttle, _control, _generation, cycle = part.completed_outputs("local")
         self.assertEqual(cycle["perception"]["status"], "ok")
-        self.assertEqual(cycle["observation"]["perception_schema"], "perception_text_v2")
+        self.assertEqual(cycle["observation"]["perception_schema"], "perception_text")
 
 
 if __name__ == "__main__":

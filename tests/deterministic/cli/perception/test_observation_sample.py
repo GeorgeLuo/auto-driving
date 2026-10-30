@@ -10,7 +10,9 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
-from cli.automa_cli import host_publications as publications, streaming
+from autonomy.runtime.frame_loop import OBSERVATION_TRANSACTION_SCHEMA
+from cli.automa_cli.hosts.publications import host_publications as publications
+from cli.automa_cli.hosts.views import view_feed as viewer
 
 
 class _Response(io.BytesIO):
@@ -22,12 +24,12 @@ class _Response(io.BytesIO):
 
 
 def _publication(frame_id="first"):
-    return {"frame": {"frame_id": frame_id, "has_image": True}}
+    return {"health": "healthy", "frame": {"frame_id": frame_id, "has_image": True}}
 
 
 def _transaction():
     return {
-        "schema": publications.OBSERVATION_TRANSACTION_SCHEMA,
+        "schema": OBSERVATION_TRANSACTION_SCHEMA,
         "publication": _publication(),
         "image_frame_id": "first",
         "image_content_type": "image/jpeg",
@@ -51,7 +53,7 @@ class ObservationSampleTests(unittest.TestCase):
     def test_unavailable_transaction_invalidates_image_cache_and_can_recover(self):
         cache = publications.TransactionCache()
         unavailable = HTTPError("http://host.invalid", 503, "bad image", {}, io.BytesIO(json.dumps({
-            "schema": publications.OBSERVATION_TRANSACTION_SCHEMA,
+            "schema": OBSERVATION_TRANSACTION_SCHEMA,
             "publication": {"health": "error", "error": "bad image"}, "image_base64": None,
         }).encode()))
         # Availability failures invalidate the whole cached pair.
@@ -93,7 +95,7 @@ class ObservationSampleTests(unittest.TestCase):
             cache = publications.TransactionCache("old", {"publication": {}}, (b"old", "image/jpeg"))
             with self.subTest(fetch=fetch.__name__), patch.object(
                     publications.urllib.request, "urlopen", return_value=_Stalled(_transaction())):
-                with self.assertRaisesRegex(ConnectionError, "timed out"):
+                with self.assertRaisesRegex(ConnectionError, "did not answer within"):
                     fetch("http://host.invalid", cache=cache)
                 self.assertEqual((cache.etag, cache.payload, cache.image), (None, None, None))
 
@@ -115,7 +117,7 @@ class ObservationSampleTests(unittest.TestCase):
         self.assertEqual(publication, _publication())
         self.assertEqual(jpeg, b"jpeg")
         self.assertEqual(read.call_count, 1)
-        self.assertEqual(read.call_args.args[0], "http://host.invalid/autonomy/observation/transaction")
+        self.assertEqual(read.call_args.args[0], "http://host.invalid/host/observation/transaction")
 
     def test_warming_returns_no_image(self):
         payload = _transaction()
@@ -155,13 +157,13 @@ class ObservationSampleTests(unittest.TestCase):
 
     def test_stream_view_uses_the_transaction_metadata_when_the_host_advances(self):
         with tempfile.TemporaryDirectory() as tmp:
-            feed = streaming._ViewFeed.__new__(streaming._ViewFeed)
+            feed = viewer.ViewFeed.__new__(viewer.ViewFeed)
             feed._observation_cache = publications.TransactionCache()
             feed._observation = feed._last_capture = None
             feed.base_url, feed.timeout_s = "http://host.invalid", 1.0
             feed.frame_path = Path(tmp) / "frame.jpg"
             feed.server, feed.decision = Mock(), Mock()
-            with patch.object(streaming, "fetch_observation_sample", return_value=(_publication("second"), b"jpeg")):
+            with patch.object(viewer, "fetch_observation_sample", return_value=(_publication("second"), b"jpeg")):
                 feed.publish(_publication("first"))
             frame = feed.server.perception.publish_matched.call_args.kwargs["frame_record"]
             self.assertEqual(frame["frame_id"], "second")
@@ -170,13 +172,13 @@ class ObservationSampleTests(unittest.TestCase):
 
     def test_stream_terminal_and_view_share_one_read_and_skip_unchanged_publication(self):
         with tempfile.TemporaryDirectory() as tmp:
-            feed = streaming._ViewFeed.__new__(streaming._ViewFeed)
+            feed = viewer.ViewFeed.__new__(viewer.ViewFeed)
             feed._observation_cache = publications.TransactionCache()
             feed._observation = feed._last_capture = None
             feed.base_url, feed.timeout_s = "http://host.invalid", 1.0
             feed.frame_path = Path(tmp) / "frame.jpg"
             feed.server, feed.decision = Mock(), Mock()
-            with patch.object(streaming, "fetch_observation_sample", return_value=(_publication(), b"jpeg")) as read:
+            with patch.object(viewer, "fetch_observation_sample", return_value=(_publication(), b"jpeg")) as read:
                 publication, error = feed.read_observation()
                 self.assertIsNone(error)
                 feed.publish(publication)

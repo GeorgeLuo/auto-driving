@@ -63,7 +63,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.addCleanup(part.shutdown)
         with tempfile.TemporaryDirectory() as tmp:
             part.recording_root = Path(tmp)
-            part.start(RunConfiguration(mode="observe_only"), record=True)
+            part.start(RunConfiguration(mode="observe_only", num_decisions=None), record=True)
             with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", side_effect=AssertionError("reencoded")):
                 part.submit(image, jpeg_bytes=wire)
                 part.wait_for_cycle()
@@ -88,7 +88,7 @@ class ObservationPublicationTests(unittest.TestCase):
             return encode_jpeg(image)
         with tempfile.TemporaryDirectory() as tmp:
             part.recording_root = Path(tmp)
-            part.start(RunConfiguration(mode="observe_only"), record=True)
+            part.start(RunConfiguration(mode="observe_only", num_decisions=None), record=True)
             published = []
             with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", side_effect=encode) as encoder:
                 part.run(image_array=np.zeros((8, 12, 3), dtype=np.uint8), mode="user")
@@ -112,7 +112,7 @@ class ObservationPublicationTests(unittest.TestCase):
         activations = {step: packaged_activation(step) for step in DECISION_STEPS}
         return AutonomyPilotPart(
             host=create_host(steps=decision_steps(activations)),
-            vehicle_id="piracer",
+            host_name="piracer",
             source_id="donkeycar:piracer",
             decision_activations={
                 step: activation.to_payload() for step, activation in activations.items()
@@ -203,7 +203,7 @@ class ObservationPublicationTests(unittest.TestCase):
                         ),
             )
             return {
-                "schema": "memory_report_v1",
+                "schema": "memory_report",
                 "plugins": [
                     {
                         "plugin_id": "bounded_evidence",
@@ -282,14 +282,6 @@ class ObservationPublicationTests(unittest.TestCase):
             part.host.status()["steps"]["memory"]["evidence_publisher"], "bounded_evidence",
         )
 
-        part.reset_memory()
-        report = part.publish_latest(now_ms=part.latest_state.completed_at_ms)["memory"]
-
-        states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
-        self.assertEqual(states["recording_test"]["record_count"], 0)
-        self.assertEqual(states["bounded_evidence"]["record_count"], 0)
-        self.assertEqual(report["evidence_publisher"], "bounded_evidence")
-
     def test_stale_and_error_health_states(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
@@ -346,8 +338,9 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(decision["reason"], "")
         published = decision["decision"]
         assert isinstance(published, dict)
-        self.assertEqual(published["schema"], "vehicle_report_v0")
-        self.assertEqual(published["vehicle_id"], "piracer")
+        self.assertEqual(published["schema"], "host_report")
+        self.assertEqual(published["host_name"], "piracer")
+        self.assertNotIn("vehicle_id", published)
         values = published["values"]
         self.assertEqual(values["source_id"], "donkeycar:piracer")
         self.assertEqual(published["run_id"], "donkey-run-fixture")
@@ -470,7 +463,7 @@ class ObservationPublicationTests(unittest.TestCase):
         # Vendor checkout is generated; the tracked patch is the durable source.
         patch = (root / "patches" / "waveshare-donkeycar-local.patch").read_text(encoding="utf-8")
         self.assertIn('+            (r"/(?:autonomy/.*|api/plugins)", AutonomyRoutesAPI),', patch)
-        self.assertNotIn("/autonomy/mode", patch)
+        self.assertNotIn("/host/mode", patch)
         dispatcher = patch.split("+class AutonomyRoutesAPI", 1)[1].split(" class WsTest", 1)[0]
         code = compile(
             "class AutonomyRoutesAPI(RequestHandler):\n" + "\n".join(
@@ -497,7 +490,7 @@ class ObservationPublicationTests(unittest.TestCase):
             route.handle.return_value = status, {"ETag": "test"}, body
             handler = namespace["AutonomyRoutesAPI"]()
             handler.application = SimpleNamespace(autonomy_routes=route)
-            handler.request = SimpleNamespace(method="GET", uri="/autonomy/observation/transaction",
+            handler.request = SimpleNamespace(method="GET", uri="/host/observation/transaction",
                 body=b"", headers={"If-None-Match": "test"}, protocol="http", host="car.test")
             asyncio.run(handler._dispatch())
             self.assertEqual(handler.status, status)

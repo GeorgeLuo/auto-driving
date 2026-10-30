@@ -150,6 +150,15 @@ class ControlExecutionTests(unittest.TestCase):
             ("manual", True, "mode-changed", {"boundary": "test_target", "write": 2}),
         )
 
+    def test_mode_read_does_not_export_application_and_status_stays_detached(self) -> None:
+        execution = ControlExecution(_RecordingTarget())
+        execution.set_mode("observe_only")
+        with patch.object(execution, "status", side_effect=AssertionError("mode exported status")):
+            self.assertEqual(execution.mode, "observe_only")
+        status = execution.status()
+        status["application"]["control"]["metadata"]["changed"] = True
+        self.assertEqual(execution.status()["application"]["control"]["metadata"], {})
+
     def test_mode_change_without_a_write_records_the_mode(self) -> None:
         target = _RecordingTarget()
         application = ControlExecution(target).set_mode("observe_only")["application"]
@@ -163,7 +172,7 @@ class ControlExecutionTests(unittest.TestCase):
     def test_close_after_a_failed_acquire_records_the_failed_stop(self) -> None:
         host = AutonomyCycleHost(target=_UnreachableTarget())
         with self.assertRaises(ConnectionError):
-            host.start(RunConfiguration(mode="autonomy"))
+            host.start(RunConfiguration(mode="autonomy", num_decisions=None))
 
         host.close()
 

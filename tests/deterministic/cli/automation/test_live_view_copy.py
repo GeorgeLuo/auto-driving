@@ -12,8 +12,11 @@ from unittest.mock import Mock, patch
 from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli import decision_steps, runtime_monitor, streaming
-from cli.automa_cli.runtime_view import RuntimeViewServer
+from cli.automa_cli.shared.command_result import CommandResult
+from cli.automa_cli.hosts.runs import runtime_monitor
+from cli.automa_cli.hosts.views import view_feed as viewer
+from cli.automa_cli.plugins import decision_steps
+from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
 from tests.deterministic.cli.automation.test_runtime_monitor import (
     DECISION, SELECTIONS, _FakeDecisionView, _host, _publication, _session,
 )
@@ -24,11 +27,11 @@ class LiveViewCopyTests(unittest.TestCase):
     def test_unavailable_view_and_failed_fetch_return_a_probe_error(self):
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(streaming, "runtime_view_dir", return_value=Path(tmp)),
-            patch.object(streaming.RuntimeViewServer, "start", side_effect=OSError("port taken")),
-            patch.object(streaming, "fetch_observation_sample", side_effect=ConnectionError("offline")),
+            patch.object(viewer, "runtime_view_dir", return_value=Path(tmp)),
+            patch.object(viewer.RuntimeViewServer, "start", side_effect=OSError("port taken")),
+            patch.object(viewer, "fetch_observation_sample", side_effect=ConnectionError("offline")),
         ):
-            feed = streaming._ViewFeed("fixture", base_url="http://host.invalid", timeout_s=0.1)
+            feed = viewer.ViewFeed("fixture", base_url="http://host.invalid", timeout_s=0.1)
             self.assertIsNone(feed.server)
             publication, error = feed.read_observation()
             self.assertIsNone(publication)
@@ -40,22 +43,22 @@ class LiveViewCopyTests(unittest.TestCase):
         publication = {"frame": {"frame_id": "one"}}
         feed.read_observation.return_value = publication, None
         def one_pass(**kwargs):
-            kwargs["accept"]()
-            return decision_steps.CommandResult(0, "done")
+            kwargs["probe"]()
+            return CommandResult(0, "done")
         normalized = {
             "result_age_ms": 0, "max_age_ms": 1000,
             "decision": {"values": {"activation": {"steps": {"plan": {"plugins": []}}}},
                          "cycle": {"plan": {}}},
         }
         with (
-            patch.object(decision_steps, "_require_valid_activations"),
+            patch.object(decision_steps, "require_valid_activations"),
             patch.object(decision_steps, "runtime_base_url", return_value="http://host.invalid"),
-            patch.object(decision_steps, "_ViewFeed", return_value=feed),
-            patch.object(decision_steps, "_poll", side_effect=one_pass),
+            patch.object(decision_steps, "ViewFeed", return_value=feed),
+            patch.object(decision_steps, "poll_stream", side_effect=one_pass),
             patch.object(decision_steps, "fetch_decision_publication", return_value={}),
             patch.object(decision_steps, "accept_decision_publication", return_value=normalized),
         ):
-            result = decision_steps.stream_vehicle_step("plan", vehicle_id="fixture")
+            result = decision_steps.stream_host_step("plan", host_name="fixture")
         self.assertEqual(result.exit_code, 0)
         feed.read_observation.assert_called_once_with()
         feed.publish.assert_called_once_with(publication)
@@ -86,7 +89,7 @@ class LiveViewCopyTests(unittest.TestCase):
             return _publication(current["index"]), output.getvalue()
 
         def server(**kwargs):
-            holder["server"] = RuntimeViewServer(**kwargs)
+            holder["server"] = runtime_view_server(**kwargs)
             return holder["server"]
 
         def export(*args, **kwargs):
@@ -98,14 +101,14 @@ class LiveViewCopyTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as tmp,
             patch.object(runtime_monitor, "RuntimeClient", return_value=Client()),
-            patch.object(runtime_monitor, "RuntimeViewServer", side_effect=server),
+            patch.object(runtime_monitor, "runtime_view_server", side_effect=server),
             patch.object(runtime_monitor, "DecisionViewAdapter", _FakeDecisionView),
             patch.object(runtime_monitor, "fetch_observation_sample", side_effect=sample),
             patch.object(runtime_monitor, "_sync_recording", side_effect=export),
         ):
             root = Path(tmp)
             worker = threading.Thread(target=lambda: results.append(runtime_monitor.monitor_runtime(
-                vehicle_id="picar-test", base_url=Client.base_url, automation_dir=root,
+                host_name="picar-test", base_url=Client.base_url, automation_dir=root,
                 selections=SELECTIONS, decision=dict(DECISION),
                 configuration=RunConfiguration(mode="observe_only", num_decisions=2),
                 timeout_s=0.2, record=True, verbose=False, output=None,

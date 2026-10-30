@@ -2,7 +2,7 @@ const assert = require("assert");
 const fs = require("fs");
 const vm = require("vm");
 
-const snapshot = JSON.parse(fs.readFileSync(0, "utf8"));
+const state = JSON.parse(fs.readFileSync(0, "utf8"));
 function node() {
   return {
     children: [], attributes: {}, events: {}, _textContent: "",
@@ -22,14 +22,14 @@ function node() {
 const elements = new Proxy({}, { get: (target, id) => target[id] || (target[id] = node()) });
 const sent = [];
 const ctx = {
-  state: snapshot, elements, actionInFlight: false,
+  state: state, elements, actionInFlight: false,
   text: (value) => String(value),
   setText(id, value) { elements[id].textContent = String(value); },
   document: { createElement: node },
   action(name, payload) { ctx.actionInFlight = true; sent.push(payload); }
 };
 vm.createContext(ctx);
-vm.runInContext(fs.readFileSync("cli/automa_cli/workbench_page/js/plugins.js", "utf8"), ctx);
+vm.runInContext(fs.readFileSync("cli/automa_cli/frontend/pages/workbench/js/plugins.js", "utf8"), ctx);
 const inputs = (step) => elements[ctx.pluginPanels[step].catalogId].querySelectorAll("input[data-plugin-id]");
 const checked = (step) => inputs(step).filter((input) => input.checked).map((input) => input.getAttribute("data-plugin-id"));
 function toggle(step, id, selected) {
@@ -48,7 +48,7 @@ function accept(step, ids, preset) {
 ctx.renderPlugins();
 const mode = process.argv[2];
 if (mode === "order") {
-  const original = snapshot.active_perception_plugin_ids.slice();
+  const original = state.active_perception_plugin_ids.slice();
   toggle("perception", "frame", true);
   assert.deepEqual(Array.from(sent.at(-1).active_plugin_ids), [...original, "frame"],
     "adding a plugin retains the CLI preset's execution order and appends it");
@@ -103,12 +103,12 @@ if (mode === "order") {
   ctx.renderPlugins();
   assert(checked("perception").includes("frame"), "a poll keeps an in-flight local draft");
   assert.deepEqual(Array.from(ctx.pluginPanels.perception.draft),
-    [...snapshot.active_perception_plugin_ids, "frame"]);
+    [...state.active_perception_plugin_ids, "frame"]);
 } else if (mode === "visibility") {
   for (const step of Object.keys(ctx.pluginPanels)) {
     const panel = ctx.pluginPanels[step];
-    const catalog = snapshot[step + "_plugin_catalog"];
-    const preset = snapshot.machine_detail.pipeline[step + "_preset"];
+    const catalog = state[step + "_plugin_catalog"];
+    const preset = state.machine_detail.pipeline[step + "_preset"];
     if (preset) {
       assert(elements[panel.summaryId].textContent.includes(preset),
         "a step's preset is visible beside its controls");
@@ -117,12 +117,12 @@ if (mode === "order") {
         "proposal has no named preset and starts with counts");
     }
     assert.equal(elements[step + "PluginOrder"].textContent,
-      "Run order: " + snapshot["active_" + step + "_plugin_ids"].join(" → "));
+      "Run order: " + state["active_" + step + "_plugin_ids"].join(" → "));
     if (catalog && catalog.single_plugin) {
       assert(inputs(step).every((input) => input.type === "radio" && input.name === step + "Plugin"),
         "a one-plugin step is a single choice");
     } else {
-      toggle(step, snapshot["active_" + step + "_plugin_ids"][0], false);
+      toggle(step, state["active_" + step + "_plugin_ids"][0], false);
       assert(elements[panel.summaryId].textContent.includes("selection pending"));
       ctx.revertPluginDraft(step);
       ctx.actionInFlight = false;

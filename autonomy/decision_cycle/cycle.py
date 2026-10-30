@@ -37,7 +37,7 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 
 
-DECISION_CYCLE_RESULT_SCHEMA = "decision_cycle_result_v1"
+DECISION_CYCLE_RESULT_SCHEMA = "decision_cycle_result"
 
 
 def timestamp_ms() -> int:
@@ -155,19 +155,7 @@ class DecisionCycle:
         )
         if context.shared_memory is not None:
             write_observation(context.shared_memory, observation)
-        try:
-            # Memory plugins write the host map; the step returns a report.
-            memory = _timed(durations, "memory", steps.memory, context)
-            if memory is not None and not isinstance(memory, dict):
-                raise TypeError("memory step must return a report dict or None")
-        except MemoryUpdateError:
-            raise
-        except Exception as exc:
-            try:
-                detail = str(exc)
-            except Exception:
-                detail = "unprintable error"
-            raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
+        memory = _run_memory_step(durations, steps.memory, context)
         proposal = _checked(
             "proposal",
             _timed(durations, "proposal", steps.proposal, context),
@@ -201,6 +189,27 @@ class DecisionCycle:
             completed_at_ms=timestamp_ms(),
             timing=cycle_timing(elapsed_ms(started), durations, steps),
         )
+
+
+def _run_memory_step(
+    durations: dict[str, float], run: MemoryStep | None, context: DecisionFrameContext,
+) -> dict[str, Any] | None:
+    """Run memory, translating failures at the cycle boundary for any callable."""
+
+    try:
+        # Memory plugins write the host map; the step returns a report.
+        memory = _timed(durations, "memory", run, context)
+        if memory is not None and not isinstance(memory, dict):
+            raise TypeError("memory step must return a report dict or None")
+    except MemoryUpdateError:
+        raise
+    except Exception as exc:
+        try:
+            detail = str(exc)
+        except Exception:
+            detail = "unprintable error"
+        raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
+    return memory
 
 
 def _timed(durations: dict[str, float], step: str, run: Any, *args: Any) -> Any:

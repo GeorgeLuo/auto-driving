@@ -7,13 +7,15 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
-from cli.automa_cli.automation import run_vehicle_automation
-from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.runtime_view import RuntimeViewServer
-from cli.automa_cli.step_activations import decision_identity, stage_activation
+from cli.automa_cli.hosts.runs.automation import run_host_automation
+from cli.automa_cli.hosts.bundles import sync_controller_bundle
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
+from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
+from cli.automa_cli.hosts.step_activations import decision_identity, stage_activation
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
-    VEHICLE_ID,
+    HOST_NAME,
     _SlowMapper,
     _write_activations,
     chase_runtime,
@@ -31,7 +33,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            bundle = controller_bundle_paths(runtime_root / VEHICLE_ID)
+            bundle = controller_bundle_paths(runtime_root / HOST_NAME)
             sync_controller_bundle(bundle, output=None)
             _write_activations(bundle)
             startup = decision_identity(bundle)["generation_id"]
@@ -40,7 +42,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
             calls = ExitStack()
 
             def record_server(**kwargs):
-                servers.append(RuntimeViewServer(**kwargs))
+                servers.append(runtime_view_server(**kwargs))
                 return servers[-1]
 
             def wrap_proposal(step_name, step):
@@ -52,23 +54,23 @@ class AutomationProposalSelectionTests(unittest.TestCase):
                     result = run(context)
                     applied.append(runner.plugin_ids)
                     if len(applied) == 1 and restaged is not None:
-                        stage_activation(bundle, restaged, vehicle_id=VEHICLE_ID)
+                        stage_activation(bundle, restaged, host_name=HOST_NAME)
                     return result
 
                 calls.enter_context(patch.object(type(step), "__call__", run_with_cli_restage))
 
             with (
                 calls,
-                patch("cli.automa_cli.runtime_monitor.RuntimeViewServer", side_effect=record_server),
+                patch("cli.automa_cli.hosts.runs.runtime_monitor.runtime_view_server", side_effect=record_server),
                 # Exercise the view projection without opening a socket.
                 patch.object(RuntimeViewServer, "start", lambda server: server),
                 staged_runners(perception=_SlowMapper(), wrap=wrap_proposal),
                 chase_runtime(runtime_root),
             ):
                 if before_run is not None:
-                    stage_activation(bundle, before_run, vehicle_id=VEHICLE_ID)
-                result = run_vehicle_automation(
-                    vehicle_id=VEHICLE_ID, num_decisions=4, take_control=False,
+                    stage_activation(bundle, before_run, host_name=HOST_NAME)
+                result = run_host_automation(
+                    host_name=HOST_NAME, num_decisions=4, take_control=False,
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             state = json.loads((Path(bundle["runtime_dir"]) / "automation" / "state.json").read_text())

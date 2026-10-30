@@ -8,16 +8,17 @@ import tempfile
 import unittest
 from contextlib import contextmanager
 from pathlib import Path
+from tests.support.runtime_fixtures import stage_step, write_host_fixture
 from typing import Iterator
 from unittest import mock
 
-from cli.automa_cli import runtime_hosts
-from cli.automa_cli.runtime_hosts import RuntimeHostError, ensure_chase_host
-from tests.shared.cli.invoke import invoke_automa
+from cli.automa_cli.hosts import runtime_hosts
+from cli.automa_cli.hosts.runtime_hosts import ensure_chase_host
+from cli.automa_cli.shared.controller_releases import RuntimeHostError
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
-VEHICLE_ID = "chase-sim-chaser"
+HOST_NAME = "chase-sim-chaser"
 POPEN = subprocess.Popen
 
 
@@ -34,11 +35,13 @@ def _staged_vehicle() -> Iterator[list[subprocess.Popen]]:
     with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui_server() as ws_url:
         root = Path(tmp) / "vehicles"
         env = {"CHASE_UI_WS_URL": ws_url}
-        invoke_automa("vehicles", "update", "perception", "--id", VEHICLE_ID, runtime_root=root, extra_env=env)
+        write_host_fixture(root, "chase-sim-chaser", url=ws_url)
+        stage_step(root, HOST_NAME, "perception")
         try:
             with (
                 mock.patch.dict(os.environ, {"AUTOMA_RUNTIME_ROOT": str(root), **env}),
                 mock.patch.object(runtime_hosts, "RUNTIME_ROOT", root),
+                mock.patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", root),
                 mock.patch.object(runtime_hosts.subprocess, "Popen", side_effect=launch),
             ):
                 yield launched
@@ -61,7 +64,7 @@ class HostStartTests(unittest.TestCase):
     def test_a_host_that_does_not_serve_in_time_is_ended(self) -> None:
         with _staged_vehicle() as launched:
             with self.assertRaisesRegex(RuntimeHostError, "did not serve within 0.01 s"):
-                ensure_chase_host(VEHICLE_ID, timeout_s=0.01)
+                ensure_chase_host(HOST_NAME, timeout_s=0.01)
             [supervisor] = launched
             wait_until(lambda: _session_ended(supervisor.pid), message="the failed start left its supervisor running")
 
@@ -76,7 +79,7 @@ class HostStartTests(unittest.TestCase):
 
         with _staged_vehicle() as launched, mock.patch.object(runtime_hosts, "_wait_for_host", side_effect=interrupted):
             with self.assertRaises(KeyboardInterrupt):
-                ensure_chase_host(VEHICLE_ID)
+                ensure_chase_host(HOST_NAME)
             [supervisor] = launched
             self.assertEqual(host_sessions, [supervisor.pid])
             wait_until(lambda: _session_ended(supervisor.pid), message="the interrupted start left its host running")

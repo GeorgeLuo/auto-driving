@@ -24,8 +24,9 @@ from autonomy.decision_cycle.activation import (
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import builtin_activation, decision_steps
 from autonomy.runtime.plugin_loader import INSTALLED_PACKAGE, CodeSource, load_runner
-from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from implementations.decision_cycle.catalog import SELECTABLE_STEPS, packaged_activation
+from cli.automa_cli.hosts.bundles import sync_controller_bundle
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
+from implementations.decision_cycle.catalog import PRESET_STEPS, packaged_activation
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
 from tests.shared.integration.plugin_flow_fixtures import prototype_definition
@@ -123,7 +124,7 @@ class SharedSelectionTests(unittest.TestCase):
                 "        return None\n",
                 encoding="utf-8",
             )
-            host_catalog = sys.modules["implementations.decision_cycle.proposal.catalog"]
+            host_catalog = sys.modules["implementations.decision_cycle.catalog"]
             host_activation = sys.modules["autonomy.decision_cycle.activation"]
             lazy = step_activation(
                 "proposal",
@@ -139,7 +140,7 @@ class SharedSelectionTests(unittest.TestCase):
             )
             loaded = chase.step("proposal")
             self.assertNotIn(LAZY_MODULE, sys.modules)
-            self.assertIs(sys.modules["implementations.decision_cycle.proposal.catalog"], host_catalog)
+            self.assertIs(sys.modules["implementations.decision_cycle.catalog"], host_catalog)
             self.assertIs(sys.modules["autonomy.decision_cycle.activation"], host_activation)
             self.assertEqual(loaded.plugins["lazy_only"].__class__.__module__, LAZY_MODULE)
             self.assertEqual(Path(loaded.import_context.bundle_root), bundle_root)
@@ -252,7 +253,7 @@ class SharedSelectionTests(unittest.TestCase):
         """Regression: a staged perception or memory restage stopped on any
         failure, and a staged proposal restage never stopped."""
 
-        activations = {step: packaged_activation(step) for step in SELECTABLE_STEPS}
+        activations = {step: packaged_activation(step) for step in PRESET_STEPS}
         directory = tempfile.TemporaryDirectory()
         self.addCleanup(directory.cleanup)
         root = Path(directory.name)
@@ -325,7 +326,7 @@ class SharedSelectionTests(unittest.TestCase):
                     self.assertEqual(host.applied_decision(), _identity(replacement))
                     self.assertEqual(host.status()["applied_decision"], _identity(replacement))
 
-    def test_status_reset_and_publication_use_the_host(self) -> None:
+    def test_status_and_publication_use_the_host(self) -> None:
         for vehicle in VEHICLES:
             with self.subTest(vehicle=vehicle):
                 proposal = packaged_activation("proposal")
@@ -346,10 +347,8 @@ class SharedSelectionTests(unittest.TestCase):
                     list(status["steps"]["proposal"]["plugin_ids"]),
                     list(host.step("proposal").plugin_ids),
                 )
-                report = host.reset_memory()
-                self.assertIsInstance(report, dict)
                 self.assertEqual(
-                    list(host.status()["steps"]["memory"]["plugin_ids"]),
+                    list(status["steps"]["memory"]["plugin_ids"]),
                     list(host.step("memory").plugin_ids),
                 )
 

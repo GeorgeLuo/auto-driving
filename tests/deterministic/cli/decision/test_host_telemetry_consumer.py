@@ -9,21 +9,21 @@ from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
-from cli.automa_cli.decision_live import (
+from autonomy.runtime.frame_loop import DECISION_PUBLICATION_SCHEMA
+from autonomy.runtime.routes import TELEMETRY_SCHEMA
+from cli.automa_cli.hosts.views.decision_live import (
     DecisionViewAdapter,
     _accepted_pair,
     read_host_telemetry_panel,
 )
-from cli.automa_cli.decision import DecisionSurfaceError
-from cli.automa_cli.decision_records import DecisionRunners
-from cli.automa_cli.host_publications import (
-    DECISION_PUBLICATION_SCHEMA,
-    HOST_TELEMETRY_SCHEMA,
+from cli.automa_cli.hosts.publications.decision import DecisionSurfaceError
+from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
+from cli.automa_cli.hosts.publications.decision_publication import normalize_decision_publication
+from cli.automa_cli.hosts.publications.host_telemetry import (
+    decision_publication_identity,
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
     normalize_host_telemetry_records,
-    normalize_decision_publication,
-    decision_publication_identity,
 )
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
     frame_inputs,
@@ -53,9 +53,9 @@ def _record(
     skipped_since_previous: int | None = None,
 ) -> dict:
     return {
-        "schema": HOST_TELEMETRY_SCHEMA,
+        "schema": TELEMETRY_SCHEMA,
         "status": "healthy",
-        "vehicle_id": "piracer",
+        "host_name": "piracer",
         "source_id": "donkeycar:piracer",
         "run_id": "run-1",
         "generation_id": GENERATION_ID,
@@ -108,7 +108,7 @@ def _decision(*, source_frame: dict | None = None) -> dict:
     observation, memory = published_cycle(recorded)
     report = vehicle_report_for_records(
         records,
-        vehicle_id="piracer",
+        host_name="piracer",
         run_id="run-1",
         generation_id=GENERATION_ID,
         frame_id=frame["frame_id"],
@@ -153,7 +153,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
     def test_physical_decision_adapter_preserves_provider_identity(self) -> None:
         normalized = normalize_decision_publication(
             _physical_publication(),
-            vehicle_id="piracer",
+            host_name="piracer",
             now_ms=NOW_MS,
         )
 
@@ -167,7 +167,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
     def test_live_view_adapter_joins_against_physical_publication(self) -> None:
         normalized = normalize_decision_publication(
             _physical_publication(),
-            vehicle_id="piracer",
+            host_name="piracer",
             now_ms=NOW_MS,
         )
 
@@ -203,11 +203,11 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         with TemporaryDirectory() as temporary:
             view = FakeRuntimeView(Path(temporary))
             with patch(
-                "cli.automa_cli.decision_live.read_host_telemetry_panel",
+                "cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel",
                 return_value=joined,
             ) as read_panel:
                 adapter = DecisionViewAdapter(
-                    vehicle_id="piracer",
+                    host_name="piracer",
                     base_url="http://piracer.local:8887",
                     view_server=view,
                     timeout_s=1.0,
@@ -225,7 +225,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
     ) -> None:
         normalized = normalize_decision_publication(
             _physical_publication(),
-            vehicle_id="piracer",
+            host_name="piracer",
             now_ms=NOW_MS,
         )
         latest = _record(
@@ -237,12 +237,12 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         )
         matching = _record(sequence=1)
         with patch(
-            "cli.automa_cli.decision_live.fetch_host_telemetry_latest",
+            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest",
             return_value=latest,
         ), patch(
-            "cli.automa_cli.decision_live.fetch_host_telemetry_records",
+            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_records",
             return_value={
-                "schema": "automa_host_boundary_telemetry_records_v0",
+                "schema": "automa_host_boundary_telemetry_records",
                 "status": "healthy",
                 "records": [matching],
             },
@@ -250,7 +250,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             panel = read_host_telemetry_panel(
                 "http://piracer.local:8887",
                 normalized_decision=normalized,
-                vehicle_id="piracer",
+                host_name="piracer",
                 timeout_s=1.0,
                 now_ms=NOW_MS,
             )
@@ -262,7 +262,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
     def test_live_view_exposes_contiguous_history_coverage_separately(self) -> None:
         normalized = normalize_decision_publication(
             _physical_publication(),
-            vehicle_id="piracer",
+            host_name="piracer",
             now_ms=NOW_MS,
         )
         second = _record(
@@ -277,12 +277,12 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             skipped_since_previous=0,
         )
         with patch(
-            "cli.automa_cli.decision_live.fetch_host_telemetry_latest",
+            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest",
             return_value=_record(),
         ), patch(
-            "cli.automa_cli.decision_live.fetch_host_telemetry_records",
+            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_records",
             return_value={
-                "schema": "automa_host_boundary_telemetry_records_v0",
+                "schema": "automa_host_boundary_telemetry_records",
                 "status": "healthy",
                 "records": [_record(), second],
                 "coverage": {"complete": True},
@@ -291,7 +291,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             panel = read_host_telemetry_panel(
                 "http://piracer.local:8887",
                 normalized_decision=normalized,
-                vehicle_id="piracer",
+                host_name="piracer",
                 timeout_s=1.0,
                 now_ms=NOW_MS,
             )
@@ -307,23 +307,23 @@ class HostTelemetryConsumerTests(unittest.TestCase):
     def test_live_view_retries_history_when_latest_point_has_not_arrived(self) -> None:
         normalized = normalize_decision_publication(
             _physical_publication(),
-            vehicle_id="piracer",
+            host_name="piracer",
             now_ms=NOW_MS,
         )
         with patch(
-            "cli.automa_cli.decision_live.fetch_host_telemetry_latest",
+            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest",
             return_value=_record(),
         ), patch(
-            "cli.automa_cli.decision_live.fetch_host_telemetry_records",
+            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_records",
             side_effect=[
                 {
-                    "schema": "automa_host_boundary_telemetry_records_v0",
+                    "schema": "automa_host_boundary_telemetry_records",
                     "status": "healthy",
                     "records": [],
                     "coverage": {"complete": True},
                 },
                 {
-                    "schema": "automa_host_boundary_telemetry_records_v0",
+                    "schema": "automa_host_boundary_telemetry_records",
                     "status": "healthy",
                     "records": [_record()],
                     "coverage": {"complete": True},
@@ -333,7 +333,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             panel = read_host_telemetry_panel(
                 "http://piracer.local:8887",
                 normalized_decision=normalized,
-                vehicle_id="piracer",
+                host_name="piracer",
                 timeout_s=1.0,
                 now_ms=NOW_MS,
             )
@@ -350,23 +350,23 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         )
         normalized = {"frame_id": "frame-1"}
         with patch(
-            "cli.automa_cli.decision_live.fetch_decision_transaction",
+            "cli.automa_cli.hosts.views.decision_live.fetch_decision_transaction",
             side_effect=[
                 {"publication": {}, "image_base64": "anBlZw==", "image_content_type": "image/jpeg"},
                 {"publication": {}, "image_base64": "anBlZw==", "image_content_type": "image/jpeg"},
             ],
         ), patch(
-            "cli.automa_cli.decision_live.accept_decision_publication",
+            "cli.automa_cli.hosts.views.decision_live.accept_decision_publication",
             side_effect=[future_error, normalized],
         ), patch(
-            "cli.automa_cli.decision_live.time.time",
+            "cli.automa_cli.hosts.views.decision_live.time.time",
             return_value=10.0,
         ), patch(
-            "cli.automa_cli.decision_live.time.sleep",
+            "cli.automa_cli.hosts.views.decision_live.time.sleep",
         ) as sleep:
             normalized, _ = _accepted_pair(
                 "http://piracer.local:8887",
-                vehicle_id="piracer",
+                host_name="piracer",
                 timeout_s=1.0,
             )
 
@@ -375,7 +375,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
 
     def test_normalizes_point_with_exact_identity_and_freshness(self) -> None:
         normalized = normalize_host_telemetry_record(
-            _record(), now_ms=NOW_MS, vehicle_id="piracer"
+            _record(), now_ms=NOW_MS, host_name="piracer"
         )
 
         self.assertEqual(normalized["status"], "healthy")
@@ -424,7 +424,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         skipped_point = normalize_host_telemetry_record(
             skipped,
             now_ms=NOW_MS,
-            vehicle_id="piracer",
+            host_name="piracer",
         )
         self.assertEqual(skipped_point["status"], "limited")
         self.assertEqual(skipped_point["reason"], "sequence_gap")
@@ -436,7 +436,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             normalize_host_telemetry_record(
                 _record(),
                 now_ms=NOW_MS,
-                vehicle_id="piracer",
+                host_name="piracer",
             )
         )
         unavailable["status"] = "unavailable"
@@ -514,6 +514,19 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             normalize_host_telemetry_record(invalid_sequence, now_ms=NOW_MS)
         self.assertEqual(raised.exception.reason, "field_invalid")
 
+    def test_a_negative_count_reports_an_integer_not_an_epoch(self) -> None:
+        for path, key in (("limits", "max_gap_ms"), ("host_tick", "source_age_ms")):
+            record = _record()
+            record[path][key] = -1
+            with self.subTest(field=f"{path}.{key}"):
+                with self.assertRaises(ValueError) as raised:
+                    normalize_host_telemetry_record(record, now_ms=NOW_MS)
+                self.assertEqual(raised.exception.reason, "field_invalid")
+                self.assertEqual(
+                    raised.exception.message_text,
+                    f"Host telemetry {path}.{key} must be a non-negative integer.",
+                )
+
     def test_records_route_distinguishes_contiguous_coverage_from_gap(self) -> None:
         second = _record(
             sequence=2,
@@ -527,13 +540,13 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             skipped_since_previous=0,
         )
         payload = {
-            "schema": "automa_host_boundary_telemetry_records_v0",
+            "schema": "automa_host_boundary_telemetry_records",
             "status": "healthy",
             "records": [_record(), second],
             "coverage": {"complete": True, "baseline": True},
         }
         contiguous = normalize_host_telemetry_records(
-            payload, now_ms=NOW_MS, after_sequence=0, limit=128, vehicle_id="piracer"
+            payload, now_ms=NOW_MS, after_sequence=0, limit=128, host_name="piracer"
         )
         self.assertEqual(contiguous["status"], "healthy")
         self.assertTrue(contiguous["coverage"]["interval_covered"])
@@ -549,7 +562,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             now_ms=NOW_MS,
             after_sequence=0,
             limit=128,
-            vehicle_id="piracer",
+            host_name="piracer",
         )
         self.assertEqual(limited["status"], "limited")
         self.assertEqual(limited["reason"], "sequence_gap")
@@ -562,7 +575,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             "baseline": True,
         }
         evicted_result = normalize_host_telemetry_records(
-            evicted, now_ms=NOW_MS, after_sequence=0, limit=128, vehicle_id="piracer"
+            evicted, now_ms=NOW_MS, after_sequence=0, limit=128, host_name="piracer"
         )
         self.assertEqual(evicted_result["reason"], "coverage_gap")
         self.assertEqual(

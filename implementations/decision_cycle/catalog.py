@@ -1,96 +1,77 @@
 """Packaged plugins for every cycle step, and activations built from them.
 
-``STEP_PLUGINS`` lists, per step, each packaged plugin's entrypoint
-(``spec``), a description, and its default config. Each plugin declares its
-own ID; ``step_plugins`` reads those IDs and refuses a step in which two
-packaged plugins declare the same one, since this directory's owner resolves
-such conflicts. ``DEFAULT_STEP_PLUGINS`` is each step's default selection. ``packaged_activation`` builds a
-``StepActivation`` that makes every packaged plugin of the step available,
-selects the requested ones in order, and applies config overrides.
-Perception, memory, proposal and plan have presets, ``STEP_PRESETS``; they are the
-``SELECTABLE_STEPS``. ``preset_activation`` builds an activation from a named
-preset of a step. ``selection_activation`` is every step's selection: a
-preset or a plugin list, else the step's default.
+Each step's ``<step>/catalog.json`` lists:
+
+- ``plugins``: each packaged plugin's entrypoint (``spec``), a description,
+  and its default config. Each plugin declares its own ID; ``step_plugins``
+  reads those IDs and refuses a step in which two packaged plugins declare
+  the same one, since the file's owner resolves such conflicts.
+- ``presets``, optional: named, ordered selections of those plugins, with
+  config overrides (``plugin_configs``) for some of them. The steps whose
+  file has presets are the ``PRESET_STEPS``.
+- ``default``: the step's default selection, a ``preset`` where the step has
+  presets and a ``plugins`` list otherwise.
+
+``STEP_PLUGINS``, ``STEP_PRESETS``, ``DEFAULT_STEP_PRESETS`` and
+``DEFAULT_STEP_PLUGINS`` hold what the files list. ``packaged_activation``
+builds a ``StepActivation`` that makes every packaged plugin of the step
+available, selects the requested ones in order, and applies config
+overrides. ``preset_activation`` builds an activation from a named preset of
+a step. ``selection_activation`` is every step's selection: a preset or a
+plugin list, else the step's default.
 """
 
 from __future__ import annotations
 
+import json
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from functools import cache
+from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.activation import STEPS, StepActivation, require_step, step_activation
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition
-from implementations.decision_cycle.action.catalog import ACTION_PLUGINS, DEFAULT_ACTION_PLUGINS
-from implementations.decision_cycle.memory.catalog import MEMORY_PLUGINS
-from implementations.decision_cycle.memory.presets import (
-    DEFAULT_MEMORY_PLUGINS,
-    DEFAULT_MEMORY_PRESET,
-    MEMORY_PRESETS,
-)
-from implementations.decision_cycle.perception.catalog import (
-    PERCEPTION_PLUGINS,
-)
-from implementations.decision_cycle.perception.presets import (
-    DEFAULT_PERCEPTION_PLUGINS,
-    DEFAULT_PERCEPTION_PRESET,
-    PERCEPTION_PRESETS,
-)
-from implementations.decision_cycle.plan.catalog import PLAN_PLUGINS
-from implementations.decision_cycle.plan.presets import (
-    DEFAULT_PLAN_PLUGINS,
-    DEFAULT_PLAN_PRESET,
-    PLAN_PRESETS,
-)
-from implementations.decision_cycle.proposal.catalog import PROPOSAL_PLUGINS
-from implementations.decision_cycle.proposal.presets import (
-    DEFAULT_PROPOSAL_PLUGINS,
-    DEFAULT_PROPOSAL_PRESET,
-    PROPOSAL_PRESETS,
-)
+
+CATALOG_DIR = Path(__file__).resolve().parent
+
+
+def catalog_path(step: str) -> Path:
+    """The file that lists ``step``'s packaged plugins, presets and default."""
+
+    return CATALOG_DIR / step / "catalog.json"
+
+
+def _read_catalog(step: str) -> dict[str, Any]:
+    path = catalog_path(step)
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except ValueError as exc:
+        raise ValueError(f"{path}: {exc}") from exc
+
+
+_CATALOGS: dict[str, dict[str, Any]] = {step: _read_catalog(step) for step in STEPS}
 
 STEP_PLUGINS: dict[str, tuple[dict[str, Any], ...]] = {
-    "perception": PERCEPTION_PLUGINS,
-    "observation": (
-        {
-            "spec": "autonomy.decision_cycle.observation.perception_summary:PerceptionSummary",
-            "description": "Perception evidence plus the sensor frame as the frame record.",
-            "default_config": {},
-        },
-    ),
-    "memory": MEMORY_PLUGINS,
-    "proposal": PROPOSAL_PLUGINS,
-    "plan": PLAN_PLUGINS,
-    "action": ACTION_PLUGINS,
+    step: tuple(catalog["plugins"]) for step, catalog in _CATALOGS.items()
 }
-
-DEFAULT_STEP_PLUGINS: dict[str, tuple[str, ...]] = {
-    "perception": DEFAULT_PERCEPTION_PLUGINS,
-    "observation": ("perception_summary",),
-    "memory": DEFAULT_MEMORY_PLUGINS,
-    "proposal": DEFAULT_PROPOSAL_PLUGINS,
-    "plan": DEFAULT_PLAN_PLUGINS,
-    "action": DEFAULT_ACTION_PLUGINS,
-}
-
-assert tuple(STEP_PLUGINS) == STEPS
-
 STEP_PRESETS: dict[str, dict[str, dict[str, Any]]] = {
-    "perception": PERCEPTION_PRESETS,
-    "memory": MEMORY_PRESETS,
-    "proposal": PROPOSAL_PRESETS,
-    "plan": PLAN_PRESETS,
+    step: catalog["presets"] for step, catalog in _CATALOGS.items() if "presets" in catalog
 }
 DEFAULT_STEP_PRESETS: dict[str, str] = {
-    "perception": DEFAULT_PERCEPTION_PRESET,
-    "memory": DEFAULT_MEMORY_PRESET,
-    "proposal": DEFAULT_PROPOSAL_PRESET,
-    "plan": DEFAULT_PLAN_PRESET,
+    step: _CATALOGS[step]["default"]["preset"] for step in STEP_PRESETS
 }
-# The steps an operator selects by preset or plugin list.
+DEFAULT_STEP_PLUGINS: dict[str, tuple[str, ...]] = {
+    step: tuple(
+        STEP_PRESETS[step][DEFAULT_STEP_PRESETS[step]]["plugins"]
+        if step in STEP_PRESETS
+        else catalog["default"]["plugins"]
+    )
+    for step, catalog in _CATALOGS.items()
+}
+# The steps whose packaged selections include named presets.
 # Empty replay follows CLEARABLE_STEPS, the steps that can run no plugins.
-SELECTABLE_STEPS: tuple[str, ...] = tuple(STEP_PRESETS)
+PRESET_STEPS: tuple[str, ...] = tuple(STEP_PRESETS)
 # The ``preset`` metadata of a selection that equals no preset.
 CUSTOM_PRESET = "custom"
 

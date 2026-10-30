@@ -23,6 +23,21 @@ class RunConfigurationTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, f"^{reason}$"):
                     RunConfiguration.from_dict(data)
 
+    def test_none_runs_until_stopped_and_counts_must_be_positive(self) -> None:
+        configuration = RunConfiguration.from_dict({"mode": "autonomy", "num_decisions": None})
+        self.assertIsNone(configuration.num_decisions)
+        self.assertEqual(configuration.to_dict(), {"mode": "autonomy", "num_decisions": None})
+        for count in (0, -1, 1.5, True, "3"):
+            with self.subTest(count=count):
+                with self.assertRaisesRegex(ValueError, "positive integer, or None"):
+                    RunConfiguration(mode="autonomy", num_decisions=count)
+
+    def test_construction_names_every_setting(self) -> None:
+        for kwargs in ({}, {"mode": "autonomy"}, {"num_decisions": None}):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(TypeError):
+                    RunConfiguration(**kwargs)
+
     def test_request_decoding_refuses_other_shapes(self) -> None:
         for data, reason in (
             ([], "configuration must be an object"),

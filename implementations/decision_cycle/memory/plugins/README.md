@@ -21,11 +21,11 @@ One folder per plugin, named for its `plugin_id`. For example, the
   no beliefs; readers then get `None`, never a score. The last write to each
   belief key wins. Belief values must be JSON data; constructing a non-JSON
   value raises in the plugin update and stops the cycle.
-- Register a plugin with one entry in `../catalog.py`: its `spec`
-  (`module.path:Class`), a description, and its default config.
-- Name ordered plugin selections and configuration recipes in `../presets.py`,
-  as in perception and proposal. `DEFAULT_MEMORY_PRESET` chooses the default;
-  the catalog lists available plugins independently of that selection.
+- Register a plugin with one entry in the `plugins` list of `../catalog.json`:
+  its `spec` (`module.path:Class`), a description, and its default config.
+- Name ordered plugin selections and configuration recipes under `presets` in
+  the same file, as in perception and proposal. `default` names the default preset;
+  `plugins` lists available plugins independently of that selection.
 - Keep cross-frame state in `context.shared_memory`, under keys the plugin
   owns. Publish what later steps read at the keys named in
   `autonomy/decision_cycle/memory/publication.py`: `EVIDENCE_KEY` for
@@ -51,11 +51,11 @@ One folder per plugin, named for its `plugin_id`. For example, the
   publisher. Reassigning the same object or changing it in place keeps the
   previous publisher. Publish a replacement value to attribute new evidence
   to this plugin; see `autonomy/decision_cycle/memory/runner.py`.
-- How several plugins share that map, and what a failure does, is declared in
-  `autonomy/decision_cycle/memory/interface.py`: `composition_declaration`
-  (selection order, one `EVIDENCE_KEY`, last write wins, one value per belief key)
-  and `FAILURE_POLICY` (an update failure stops the cycle, a reset failure is
-  recorded, plugins are still called when `read_observation` returns `None`).
-  `MemoryRunner` reads those values.
+- Several plugins share that map in selection order: one `EVIDENCE_KEY`,
+  last write wins, one value per belief key. What a failure does is declared
+  as `FAILURE_POLICY` in `autonomy/decision_cycle/memory/interface.py` (an
+  update failure stops the cycle, a reset failure is recorded, plugins are
+  still called when `read_observation` returns `None`). `MemoryRunner` reads
+  it.
 - Reuse goes through `../shared/`. A plugin does not import another plugin's
   modules.

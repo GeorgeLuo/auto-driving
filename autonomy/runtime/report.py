@@ -1,8 +1,7 @@
 """One frame report for every vehicle the viewer shows.
 
-``vehicle_report_v0`` replaces ``vehicle_decision_stream_frame_v0`` and
-``provider_decision_stream_frame_v0``. Every named field is required. Detail
-that only one vehicle has goes in ``values``. ``report_from_host_result``
+Every named field is required. Detail that only one vehicle has goes in
+``values``. ``report_from_host_result``
 builds that document from a completed host cycle and the control application
 recorded after the cycle. Each vehicle transports the document itself.
 
@@ -26,11 +25,11 @@ from typing import Any, Mapping
 from autonomy.decision_cycle.action_identifiers import require_ascii_id, require_safe_int
 from autonomy.runtime.execution import require_mode
 
-REPORT_SCHEMA = "vehicle_report_v0"
+REPORT_SCHEMA = "host_report"
 REPORT_EXACT_KEYS = frozenset(
     {
         "schema",
-        "vehicle_id",
+        "host_name",
         "run_id",
         "generation_id",
         "frame_id",
@@ -144,10 +143,10 @@ class ReportApplication:
 
 
 @dataclass(frozen=True)
-class VehicleReport:
+class HostReport:
     """The frame document both vehicles give the viewer."""
 
-    vehicle_id: str
+    host_name: str
     run_id: str
     generation_id: str
     frame_id: str
@@ -163,7 +162,7 @@ class VehicleReport:
         if self.schema != REPORT_SCHEMA:
             raise ValueError(f"schema must be {REPORT_SCHEMA!r}")
         object.__setattr__(
-            self, "vehicle_id", require_ascii_id(self.vehicle_id, field_name="vehicle_id")
+            self, "host_name", require_ascii_id(self.host_name, field_name="host_name")
         )
         object.__setattr__(self, "run_id", require_ascii_id(self.run_id, field_name="run_id"))
         object.__setattr__(
@@ -204,7 +203,7 @@ class VehicleReport:
     def to_dict(self) -> dict[str, Any]:
         return {
             "schema": self.schema,
-            "vehicle_id": self.vehicle_id,
+            "host_name": self.host_name,
             "run_id": self.run_id,
             "generation_id": self.generation_id,
             "frame_id": self.frame_id,
@@ -217,13 +216,13 @@ class VehicleReport:
         }
 
     @classmethod
-    def from_dict(cls, payload: object) -> "VehicleReport":
+    def from_dict(cls, payload: object) -> "HostReport":
         if not isinstance(payload, Mapping):
             raise ValueError("report must be an object")
         _exact_keys(payload, REPORT_EXACT_KEYS, field="report")
         return cls(
             schema=payload["schema"],
-            vehicle_id=payload["vehicle_id"],
+            host_name=payload["host_name"],
             run_id=payload["run_id"],
             generation_id=payload["generation_id"],
             frame_id=payload["frame_id"],
@@ -284,12 +283,12 @@ def _export_record(record: Any, *, field: str) -> dict[str, Any]:
 def report_from_host_result(
     result: Any,
     *,
-    vehicle_id: str,
+    host_name: str,
     run_id: str,
     generation_id: str,
     published_at_ms: int | None = None,
     values: Mapping[str, Any] | None = None,
-) -> VehicleReport:
+) -> HostReport:
     """The viewer document for one completed host cycle.
 
     ``result`` is the host's cycle result: its frame context, proposal, plan,
@@ -314,8 +313,8 @@ def report_from_host_result(
     timing = getattr(result, "timing", None)
     if timing is not None:
         values["timing"] = timing
-    return VehicleReport(
-        vehicle_id=vehicle_id,
+    return HostReport(
+        host_name=host_name,
         run_id=run_id,
         generation_id=generation_id,
         frame_id=context.frame_id,

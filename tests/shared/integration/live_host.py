@@ -9,13 +9,13 @@ from pathlib import Path
 from autonomy.decision_cycle.activation import write_step_activation
 from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.bundles import controller_bundle_paths
-from cli.automa_cli.paths import ROOT
-from cli.automa_cli.step_activations import bundle_activation_path
-from cli.automa_cli.streaming import probe_live_memory
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
+from cli.automa_cli.shared.paths import ROOT
+from cli.automa_cli.hosts.step_activations import bundle_activation_path
+from cli.automa_cli.plugins.streaming import probe_live_memory
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
-    VEHICLE_ID,
+    HOST_NAME,
     _write_activations,
     chase_runtime,
     staged_runners,
@@ -34,10 +34,10 @@ def wait_until(predicate, *, timeout_s: float = 10.0, message: str):
 def stage_runtime(runtime_root: Path) -> None:
     """Stage the steps that have no built-in.
 
-    The bundle is not an extracted release, so plan names the source tree that
-    `vehicles info plan` loads.
+    The bundle is not an extracted release, so plan names the source tree its
+    runner loads from.
     """
-    bundle = controller_bundle_paths(runtime_root / VEHICLE_ID)
+    bundle = controller_bundle_paths(runtime_root / HOST_NAME)
     _write_activations(bundle)
     for activation in (
         packaged_activation("memory", ["bounded_evidence"]),
@@ -58,13 +58,13 @@ class LiveHostTestCase(unittest.TestCase):
         self.host = stack.enter_context(chase_runtime(self.runtime_root))
         self.client = RuntimeClient(self.host.base_url, timeout_s=3.0)
 
-    def observe(self, mode: str = "observe_only") -> None:
-        self.client.start(RunConfiguration(mode=mode, num_decisions=0))
+    def observe(self) -> None:
+        self.client.start(RunConfiguration(mode="observe_only", num_decisions=None))
         self.addCleanup(self.client.stop)
         wait_until(
             lambda: any(
                 plugin["record_count"]
-                for plugin in probe_live_memory(vehicle_id=VEHICLE_ID)["plugins"]
+                for plugin in probe_live_memory(host_name=HOST_NAME)["plugins"]
             ),
             message="the session never filled memory",
         )

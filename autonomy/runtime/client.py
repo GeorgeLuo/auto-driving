@@ -11,7 +11,7 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from autonomy.runtime.routes import MEMORY_RESET_PATH, RUNTIME_PATH, STATUS_PATH
+from autonomy.runtime.routes import RUNTIME_PATH, STATUS_PATH
 from autonomy.runtime.session import RunConfiguration
 
 
@@ -53,8 +53,8 @@ class RuntimeClient:
             raise RuntimeError(response.get("error") or f"runtime rejected {command}")
         return response
 
-    def start(self, configuration: RunConfiguration | None = None, *, record: bool = False) -> dict[str, Any]:
-        return self._command("run", configuration=(configuration or RunConfiguration()).to_dict(), record=record)
+    def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
+        return self._command("run", configuration=configuration.to_dict(), record=record)
 
     def read_recording(self, run_id: str, *, after: int) -> dict[str, Any]:
         return self._command("read_recording", run_id=run_id, after=after)["recording"]
@@ -70,9 +70,6 @@ class RuntimeClient:
 
     def host_status(self) -> dict[str, Any]:
         return self.request("GET", STATUS_PATH)
-
-    def reset_memory(self) -> dict[str, Any]:
-        return self.request("POST", MEMORY_RESET_PATH, {})
 
     def restart(self, *, timeout_s: float = 30.0) -> None:
         previous = self.status()["host_run_id"]

@@ -9,8 +9,9 @@ from urllib.request import Request, urlopen
 
 from PIL import Image
 
-from cli.automa_cli.runtime_view import RuntimeViewServer
-from cli.automa_cli.perception_view import (
+from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.workbench.runner import ImageReplayRunner
+from cli.automa_cli.frontend.perception_view import (
     MAX_BUFFERED_FRAMES,
     PUBLICATION_SCHEMA,
     PerceptionView,
@@ -25,7 +26,7 @@ class PerceptionViewTests(unittest.TestCase):
             root = Path(tmp)
             frame_path = root / "frame.png"
             Image.new("RGB", (64, 48), (20, 40, 60)).save(frame_path)
-            view = PerceptionView(vehicle_id="test-vehicle")
+            view = PerceptionView(host_name="test-vehicle")
 
             for index in range(MAX_BUFFERED_FRAMES):
                 record = _frame_record()
@@ -56,9 +57,10 @@ class PerceptionViewTests(unittest.TestCase):
             Image.new("RGB", (64, 48), (20, 40, 60)).save(frame_path)
             expected_frame = frame_path.read_bytes()
             server = RuntimeViewServer(
-                vehicle_id="test-vehicle",
+                host_name="test-vehicle",
                 automation_dir=root / "automation",
                 port=0,
+                replay_runner_factory=ImageReplayRunner,
             ).start()
             try:
                 frame_record = _frame_record()
@@ -158,9 +160,10 @@ class PerceptionViewTests(unittest.TestCase):
     def test_view_rejects_data_requests_before_first_publication(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             server = RuntimeViewServer(
-                vehicle_id="test-vehicle",
+                host_name="test-vehicle",
                 automation_dir=Path(tmp),
                 port=0,
+                replay_runner_factory=ImageReplayRunner,
             ).start()
             try:
                 with self.assertRaises(HTTPError) as caught:
@@ -177,9 +180,10 @@ class PerceptionViewTests(unittest.TestCase):
             self.assertFalse(status["available"])
 
             server = RuntimeViewServer(
-                vehicle_id="test-vehicle",
+                host_name="test-vehicle",
                 automation_dir=root,
                 port=0,
+                replay_runner_factory=ImageReplayRunner,
             ).start()
             server.stop()
 
@@ -191,11 +195,12 @@ class PerceptionViewTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             server = RuntimeViewServer(
-                vehicle_id="test-vehicle",
+                host_name="test-vehicle",
                 automation_dir=root,
                 port=0,
                 run_id="run-current",
                 worker_pid=4242,
+                replay_runner_factory=ImageReplayRunner,
             ).start()
             try:
                 status = get_perception_view_status(
@@ -237,7 +242,7 @@ def _frame_record() -> dict:
             }
         },
         "perception": {
-            "schema": "perception_text_v2",
+            "schema": "perception_text",
             "status": "ok",
             "confidence": 0.8,
             "plugin_runs": [
@@ -246,7 +251,6 @@ def _frame_record() -> dict:
                     "status": "ok",
                     "duration_ms": 8,
                     "thing_count": 2,
-                    "artifact_count": 0,
                 }
             ],
             "things": [

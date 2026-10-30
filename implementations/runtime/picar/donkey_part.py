@@ -30,7 +30,7 @@ class AutonomyPilotPart(FrameLoop):
         *,
         host: AutonomyCycleHost,
         presets: dict[str, str] | None = None,
-        vehicle_id: str | None = None,
+        host_name: str | None = None,
         source_id: str | None = None,
         decision_activations: dict[str, dict[str, Any] | None] | None = None,
         generation_id: str | None = None,
@@ -48,7 +48,7 @@ class AutonomyPilotPart(FrameLoop):
         self.host_telemetry = host_telemetry
         super().__init__(
             host=host, presets=presets,
-            vehicle_id=vehicle_id, source_id=source_id,
+            host_name=host_name, source_id=source_id,
             decision_activations=decision_activations, generation_id=generation_id,
             run_id=run_id or f"donkey-run-{secrets.token_hex(12)}",
             recording_root=recording_root,
@@ -72,7 +72,7 @@ class AutonomyPilotPart(FrameLoop):
                 with self._lock:
                     self._discard_pending_locked()
                 if mode_name == "autonomy":
-                    self.host.start(RunConfiguration())
+                    self.host.start(RunConfiguration(mode="autonomy", num_decisions=None))
                 else:
                     self.host.stop()
             elif execution_mode(self._drive_mode) == "autonomy" and self.host.run_state != "running":

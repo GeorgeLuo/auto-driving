@@ -6,9 +6,11 @@ from copy import deepcopy
 from pathlib import Path
 from urllib.request import HTTPRedirectHandler, urlopen
 from PIL import Image
-from cli.automa_cli.decision_records import DecisionRunners
-from cli.automa_cli.runtime_view import RuntimeViewServer
-from cli.automa_cli.step_activations import decision_identity, update_vehicle_step, vehicle_bundle
+from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
+from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.workbench.runner import ImageReplayRunner
+from cli.automa_cli.shared.memory_report import evidence_records
+from cli.automa_cli.hosts.step_activations import decision_identity, host_bundle
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
     published_cycle,
     frame_inputs,
@@ -33,24 +35,20 @@ class LiveRuntimeDecisionViewFixture:
         self.addCleanup(self._temporary.cleanup)
         self.runtime_root = Path(self._temporary.name) / "vehicles"
         self.runtime_root.mkdir()
+        from tests.support.runtime_fixtures import stage_step
         for step in ("proposal", "action"):
-            code, message = update_vehicle_step(
-                vehicle_id="chase-sim-chaser",
-                step=step,
-                runtime_root=self.runtime_root,
-                json_output=True,
-            )
-            self.assertEqual(code, 0, message)
+            stage_step(self.runtime_root, "chase-sim-chaser", step)
         self.vehicle_runtime = self.runtime_root / "chase-sim-chaser"
         self.runtime_dir = self.vehicle_runtime / "bundle" / "runtime"
         self.automation_dir = self.runtime_dir / "automation"
-        self.activation = decision_identity(vehicle_bundle("chase-sim-chaser", self.runtime_root))
+        self.activation = decision_identity(host_bundle("chase-sim-chaser", self.runtime_root))
         self.server = RuntimeViewServer(
-            vehicle_id="chase-sim-chaser",
+            host_name="chase-sim-chaser",
             automation_dir=self.automation_dir,
             port=0,
             run_id="run-live",
             decision_identity=self._producer(),
+            replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(self.server.stop)
 
@@ -58,7 +56,7 @@ class LiveRuntimeDecisionViewFixture:
         """The decision producer a runtime host session announces."""
 
         return {
-            "vehicle_id": "chase-sim-chaser",
+            "host_name": "chase-sim-chaser",
             "source_id": SOURCE_ID,
             "run_id": run_id,
             "producer_generation_id": self.activation["generation_id"],
@@ -81,7 +79,7 @@ class LiveRuntimeDecisionViewFixture:
         observation, memory = published_cycle(raw)
         return vehicle_report_for_records(
             records,
-            vehicle_id="chase-sim-chaser",
+            host_name="chase-sim-chaser",
             run_id=run_id,
             generation_id=self.activation["generation_id"],
             frame_id=raw["frame_id"],
@@ -137,6 +135,7 @@ class LiveRuntimeDecisionViewFixture:
             },
             "observation": cycle["observation"],
             "memory": cycle["memory"],
+            "memory_evidence": evidence_records(cycle["memory"]),
         }
         target.perception.publish_frame(
             frame_path=frame_path, frame_record=frame_record

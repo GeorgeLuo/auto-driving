@@ -31,7 +31,6 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
     ("implementations.decision_cycle.perception.feeds.camera:provide_camera_frame", "implementations.decision_cycle.perception.feeds.camera", "provide_camera_frame"),
     ("implementations.decision_cycle.perception.plugins.motion_tracks.plugin:MotionTracksPlugin", "implementations.decision_cycle.perception.plugins.motion_tracks.plugin", "MotionTracksPlugin"),
     ("implementations.decision_cycle.perception.plugins.frame.plugin:FrameObservationPlugin", "implementations.decision_cycle.perception.plugins.frame.plugin", "FrameObservationPlugin"),
-    ("implementations.decision_cycle.perception.plugins.vlm_prep.plugin:VlmPrepPlugin", "implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "VlmPrepPlugin"),
     ("implementations.decision_cycle.perception.plugins.sim_color_targets.plugin:SimColorTargetsPlugin", "implementations.decision_cycle.perception.plugins.sim_color_targets.plugin", "SimColorTargetsPlugin"),
     ("implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin:SimCardboardObstaclePlugin", "implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin", "SimCardboardObstaclePlugin"),
     ("implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin:SimCardboardPermanencePlugin", "implementations.decision_cycle.perception.plugins.sim_cardboard_permanence.plugin", "SimCardboardPermanencePlugin"),
@@ -50,6 +49,10 @@ LEGACY_SPECS: tuple[tuple[str, str, str], ...] = (
 LEGACY_MODULES: tuple[tuple[str, str], ...] = (
     # Engine spec modules named by decision activations.
     ("autonomy.decision_cycle.cycle", "autonomy.decision_cycle.cycle"),
+    # The Chase host supervisor, which ensure_chase_host starts with ``python -m``.
+    ("cli.automa_cli.hosts.runtime_hosts", "cli.automa_cli.hosts.runtime_hosts"),
+    # The run worker, which hosts run starts with ``python -m``.
+    ("cli.automa_cli.hosts.runs.automation", "cli.automa_cli.hosts.runs.automation"),
 )
 
 # (legacy module, legacy attribute, canonical module, canonical attribute)
@@ -135,7 +138,6 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("autonomy.decision_cycle.perception.interface", "PERCEPTION_TEXT_SCHEMA", "autonomy.decision_cycle.perception.interface", "PERCEPTION_TEXT_SCHEMA"),
     ("autonomy.decision_cycle.perception.evidence.values", "PerceivedThing", "autonomy.decision_cycle.perception.evidence.values", "PerceivedThing"),
     ("autonomy.decision_cycle.perception.feeds.interface", "PerceptionFeedUnavailable", "autonomy.decision_cycle.perception.feeds.interface", "PerceptionFeedUnavailable"),
-    ("autonomy.decision_cycle.perception.diagnostics.sink", "PerceptionDiagnosticSink", "autonomy.decision_cycle.perception.diagnostics.sink", "PerceptionDiagnosticSink"),
     ("autonomy.decision_cycle.perception.evidence.values", "PerceptionEvidenceBatch", "autonomy.decision_cycle.perception.evidence.values", "PerceptionEvidenceBatch"),
     ("autonomy.decision_cycle.perception.interface", "PerceptionBackend", "autonomy.decision_cycle.perception.interface", "PerceptionBackend"),
     ("autonomy.decision_cycle.perception.plugin", "PerceptionPlugin", "autonomy.decision_cycle.perception.plugin", "PerceptionPlugin"),
@@ -184,18 +186,6 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "bounds_from_config", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "bounds_from_config"),
     ("implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "empty_ledger", "implementations.decision_cycle.memory.shared.evidence_ledger.ledger", "empty_ledger"),
 
-    # implementations.operations
-    ("implementations.operations", "CapturePulseStep", "implementations.operations.capture_pulse_sequence", "CapturePulseStep"),
-    ("implementations.operations", "StartupActionCheckInstruction", "implementations.operations.startup_action_check.types", "StartupActionCheckInstruction"),
-    ("implementations.operations", "StartupActionCheckPlan", "implementations.operations.startup_action_check.types", "StartupActionCheckPlan"),
-    ("implementations.operations", "build_basic_startup_action_check_plan", "implementations.operations.startup_action_check.plans", "build_basic_startup_action_check_plan"),
-    ("implementations.operations", "run_capture_pulse_sequence", "implementations.operations.capture_pulse_sequence", "run_capture_pulse_sequence"),
-    ("implementations.operations", "run_startup_action_check", "implementations.operations.startup_action_check.runner", "run_startup_action_check"),
-    ("implementations.operations.startup_action_check", "StartupActionCheckInstruction", "implementations.operations.startup_action_check.types", "StartupActionCheckInstruction"),
-    ("implementations.operations.startup_action_check", "StartupActionCheckPlan", "implementations.operations.startup_action_check.types", "StartupActionCheckPlan"),
-    ("implementations.operations.startup_action_check", "build_basic_startup_action_check_plan", "implementations.operations.startup_action_check.plans", "build_basic_startup_action_check_plan"),
-    ("implementations.operations.startup_action_check", "run_startup_action_check", "implementations.operations.startup_action_check.runner", "run_startup_action_check"),
-
     # Formerly exported by implementations.perception
     ("implementations.decision_cycle.perception.feeds.camera", "CameraFrame", "implementations.decision_cycle.perception.feeds.camera", "CameraFrame"),
     ("implementations.decision_cycle.perception.feeds.camera", "FRONT_CAMERA_RGB_INPUT", "implementations.decision_cycle.perception.feeds.camera", "FRONT_CAMERA_RGB_INPUT"),
@@ -224,9 +214,6 @@ LEGACY_EXPORTS: tuple[tuple[str, str, str, str], ...] = (
     ("implementations.decision_cycle.perception.shared.image.frame_analysis", "compare_frame_pair", "implementations.decision_cycle.perception.shared.image.frame_analysis", "compare_frame_pair"),
     ("implementations.decision_cycle.perception.shared.image.frame_analysis", "observe_frame", "implementations.decision_cycle.perception.shared.image.frame_analysis", "observe_frame"),
     ("implementations.decision_cycle.perception.shared.image.frame_analysis", "observe_rgb_frame", "implementations.decision_cycle.perception.shared.image.frame_analysis", "observe_rgb_frame"),
-    ("implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "VlmPrepConfig", "implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "VlmPrepConfig"),
-    ("implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "VlmPrepPlugin", "implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "VlmPrepPlugin"),
-    ("implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "prepare_vlm_artifacts", "implementations.decision_cycle.perception.plugins.vlm_prep.plugin", "prepare_vlm_artifacts"),
     ("implementations.decision_cycle.perception.plugins.sim_color_targets.plugin", "SimColorTargetsPlugin", "implementations.decision_cycle.perception.plugins.sim_color_targets.plugin", "SimColorTargetsPlugin"),
     ("implementations.decision_cycle.perception.plugins.floor_plane.model", "FloorPlaneConfig", "implementations.decision_cycle.perception.plugins.floor_plane.model", "FloorPlaneConfig"),
     ("implementations.decision_cycle.perception.plugins.floor_plane.model", "StillProcessingResult", "implementations.decision_cycle.perception.plugins.floor_plane.model", "StillProcessingResult"),

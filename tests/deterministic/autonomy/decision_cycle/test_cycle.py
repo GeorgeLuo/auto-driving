@@ -6,6 +6,7 @@ from dataclasses import replace
 
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
+from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import (
@@ -13,7 +14,7 @@ from autonomy.decision_cycle.perception.interface import (
     PerceptionText,
 )
 from autonomy.runtime.control import AutonomyControl
-from autonomy.decision_cycle.steps import decision_steps, snapshot_step_activations
+from autonomy.decision_cycle.steps import decision_steps, applied_step_activations
 from tests.support.action_fixtures import fixed_action_runner, plan_runner, proposal_runner
 
 
@@ -176,7 +177,7 @@ class DecisionCycleTests(unittest.TestCase):
 
 
     def test_memory_step_report_is_recorded_and_keeps_idle(self) -> None:
-        report = {"schema": "memory_report_v1", "plugins": [{"state": {"record_count": 0}}]}
+        report = {"schema": "memory_report", "plugins": [{"state": {"record_count": 0}}]}
 
         result = DecisionCycle(
             DecisionSteps(memory=lambda context: report)
@@ -188,19 +189,87 @@ class DecisionCycleTests(unittest.TestCase):
         result.to_dict()["memory"]["plugins"][0]["state"]["record_count"] = 9
         self.assertEqual(report["plugins"][0]["state"]["record_count"], 0)
 
+    def test_memory_callable_failures_stop_the_cycle_with_memory_diagnostics(self) -> None:
+        class UnprintableError(Exception):
+            def __str__(self):
+                raise RuntimeError("cannot describe this error")
 
-class StepSnapshotTests(unittest.TestCase):
-    def test_absent_steps_snapshot_as_none_and_empty_runners_as_disabled(self) -> None:
+        for failure, diagnostic in (
+            (ValueError("update failed"), "ValueError: update failed"),
+            (MemoryUpdateError("already classified"), "already classified"),
+            (UnprintableError(), "UnprintableError: unprintable error"),
+        ):
+            with self.subTest(diagnostic=diagnostic):
+                calls = []
+
+                def remember(context):
+                    calls.append("memory")
+                    raise failure
+
+                def propose(context):
+                    calls.append("proposal")
+
+                cycle = DecisionCycle(DecisionSteps(memory=remember, proposal=propose))
+                with self.assertRaises(MemoryUpdateError) as caught:
+                    cycle.run(self.context())
+
+                self.assertEqual(str(caught.exception), diagnostic)
+                self.assertEqual(calls, ["memory"])
+                if isinstance(failure, MemoryUpdateError):
+                    self.assertIs(caught.exception, failure)
+                else:
+                    self.assertIs(caught.exception.__cause__, failure)
+
+    def test_memory_callable_must_return_a_report_or_none(self) -> None:
+        cycle = DecisionCycle(DecisionSteps(memory=lambda context: []))
+
+        with self.assertRaises(MemoryUpdateError) as caught:
+            cycle.run(self.context())
+
+        self.assertEqual(
+            str(caught.exception), "TypeError: memory step must return a report dict or None"
+        )
+        self.assertIsInstance(caught.exception.__cause__, TypeError)
+
+
+class AppliedActivationTests(unittest.TestCase):
+    def test_applied_export_preserves_context_and_detaches_configs(self) -> None:
+        from types import SimpleNamespace
+        from autonomy.decision_cycle.activation import step_activation
+        from autonomy.plugins import PluginDefinition
+
+        loaded = step_activation(
+            "plan", ["pending"], {"pending": "example:Pending", "running": "example:Old"},
+            {"running": {"nested": {"value": 0}}}, metadata={"preset": {"label": "test"}},
+        )
+        definition = PluginDefinition(
+            "plan", "running", "example:Running", {"nested": {"value": 1}},
+            {"source_file": "revision.py"},
+        )
+        runner = SimpleNamespace(activation=loaded, applied=((definition, object()),))
+        payload = applied_step_activations(DecisionSteps(plan=runner))["plan"]
+        self.assertEqual(payload["plugins"], ["running"])
+        self.assertEqual(payload["plugin_specs"], {
+            "pending": "example:Pending", "running": "revision.py:Running",
+        })
+        self.assertEqual(payload["plugin_configs"]["running"]["nested"]["value"], 1)
+        payload["plugin_configs"]["running"]["nested"]["value"] = 99
+        payload["metadata"]["preset"]["label"] = "changed"
+        self.assertEqual(definition.config["nested"]["value"], 1)
+        self.assertEqual(loaded.metadata["preset"]["label"], "test")
+        self.assertNotIn("memory", applied_step_activations(DecisionSteps(memory=lambda context: None)))
+
+    def test_absent_steps_export_as_none_and_empty_runners_as_disabled(self) -> None:
         """A disarmed step keeps its runner with nothing applied; it must
         record as disabled so streams and replays run it empty."""
 
         steps = DecisionSteps(proposal=proposal_runner({}), plan=plan_runner())
 
-        snapshot = snapshot_step_activations(steps)
+        activations = applied_step_activations(steps)
 
-        self.assertEqual(snapshot["plan"]["plugins"], ["highest_confidence"])
-        self.assertEqual(snapshot["proposal"]["plugins"], [])
-        self.assertEqual({step: value for step, value in snapshot.items() if step not in ("plan", "proposal")},
+        self.assertEqual(activations["plan"]["plugins"], ["highest_confidence"])
+        self.assertEqual(activations["proposal"]["plugins"], [])
+        self.assertEqual({step: value for step, value in activations.items() if step not in ("plan", "proposal")},
                          dict.fromkeys(("perception", "observation", "memory", "action")))
 
 

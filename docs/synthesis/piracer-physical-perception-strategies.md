@@ -330,7 +330,6 @@ implementations/decision_cycle/perception/plugins/floor_continuity/
   model.py
   config.py
   confidence.py
-  diagnostics.py
   tests/
     test_contract.py
     test_floor_graph.py
@@ -345,12 +344,6 @@ implementations/decision_cycle/perception/plugins/floor_continuity/
 plugin_id = "floor_continuity"
 state_mode = "stateless"
 inputs = (FRONT_CAMERA_RGB_INPUT,)
-diagnostic_artifacts = (
-    "floor_mask",
-    "boundary_mask",
-    "overlay",
-    "summary",
-)
 ```
 
 ### Runtime behavior
@@ -360,7 +353,6 @@ diagnostic_artifacts = (
 - never read or cache an older successful result;
 - return `empty` naturally when valid current input yields no boundary;
 - allow framework handling for unavailable input and isolated error;
-- write artifacts only through the enabled diagnostic sink;
 - map all geometry back to normalized original-source coordinates;
 - cap emitted regions, for example at eight sorted by confidence/support.
 
@@ -372,8 +364,7 @@ diagnostic_artifacts = (
 4. **Left/center/right:** a synthetic interruption moves zones correctly.
 5. **Removal:** the next valid clear frame does not retain the old region.
 6. **Unavailable:** no spatial evidence is fabricated when the frame component cannot be produced.
-7. **Diagnostics:** disabled mode creates no files; enabled artifacts share the invocation’s frame ID in the summary.
-8. **Bounded output:** component cap and array sizes remain fixed.
+7. **Bounded output:** component cap and array sizes remain fixed.
 
 ## Common offline application evaluation
 

@@ -120,19 +120,11 @@ class MemoryInterfaceTests(unittest.TestCase):
             LEDGER_HEALTH_VALUES,
             frozenset({LEDGER_HEALTH_EMPTY, LEDGER_HEALTH_HEALTHY}),
         )
-        self.assertEqual(MEMORY_REPORT_SCHEMA, "memory_report_v1")
+        self.assertEqual(MEMORY_REPORT_SCHEMA, "memory_report")
 
-    def test_schema_reads_the_declared_policy_and_a_missing_ledger_key_is_null(self) -> None:
-        from autonomy.decision_cycle.memory.interface import FAILURE_POLICY, MEMORY_SCHEMA
-        from autonomy.decision_cycle.runner import FAILURE_POLICY_FIELDS
-        from cli.automa_cli.memory_report import ledger_summary
-        from implementations.decision_cycle.catalog import selection_activation
+    def test_a_missing_ledger_key_is_null(self) -> None:
+        from cli.automa_cli.shared.memory_report import ledger_summary
 
-        schema = MemoryRunner.from_activation(selection_activation("memory")).describe_schema()
-        self.assertEqual(schema["schema"], MEMORY_SCHEMA)
-        self.assertEqual(tuple(schema["failure_policy"]), FAILURE_POLICY_FIELDS)
-        self.assertEqual(schema["failure_policy"], FAILURE_POLICY.to_dict())
-        self.assertEqual(schema["failure_policy"]["update"], "stop_cycle")
         self.assertIsNone(ledger_summary({EPOCH_ID: "epoch-1"})[RECORD_COUNT])
 
     def test_report_round_trips_and_drops_a_non_dict_state(self) -> None:

@@ -4,58 +4,52 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from cli.automa_cli.automation import run_vehicle_automation
-from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.step_activations import update_vehicle_step
+from cli.automa_cli.hosts.runs.automation import run_host_automation
+from cli.automa_cli.hosts.bundles import sync_controller_bundle
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
-    VEHICLE_ID,
+    HOST_NAME,
     _SlowMapper,
     _write_activations,
     chase_runtime,
     staged_runners,
 )
+from tests.support.runtime_fixtures import stage_step
 
 
 class AutomationLivePipelineTests(unittest.TestCase):
-    def test_cli_plugin_update_changes_running_mapper_on_next_frame(self) -> None:
+    def test_a_restaged_selection_changes_the_running_mapper_on_next_frame(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            bundle = controller_bundle_paths(runtime_root / VEHICLE_ID)
+            bundle = controller_bundle_paths(runtime_root / HOST_NAME)
             sync_controller_bundle(bundle, output=None)
             _write_activations(bundle, plugins=["frame"])
             applied_selections: list[tuple[str, ...]] = []
             frame_selections: dict[str, list[str]] = {}
-            cli_updates = []
 
             def wrap_perception(step, mapper):
                 if step != "perception":
                     return
                 perceive = mapper.perceive
 
-                def perceive_with_cli_updates(request):
+                def perceive_then_restage(request):
                     result = perceive(request)
                     applied_selections.append(tuple(mapper.plugin_ids))
                     frame_selections[request.sensor_frame.read_id] = list(mapper.plugin_ids)
                     if len(applied_selections) == 1:
-                        cli_updates.append(update_vehicle_step(
-                            vehicle_id=VEHICLE_ID, step="perception", plugins=["frame", "floor_plane"],
-                            runtime_root=runtime_root, json_output=True,
-                        ))
+                        stage_step(runtime_root, HOST_NAME, "perception", plugins=["frame", "floor_plane"])
                     elif len(applied_selections) == 2:
-                        cli_updates.append(update_vehicle_step(
-                            vehicle_id=VEHICLE_ID, step="perception", plugins=["floor_plane"],
-                            runtime_root=runtime_root, json_output=True,
-                        ))
+                        stage_step(runtime_root, HOST_NAME, "perception", plugins=["floor_plane"])
                     return result
 
-                mapper.perceive = perceive_with_cli_updates
+                mapper.perceive = perceive_then_restage
 
             with (
                 staged_runners(wrap=wrap_perception),
                 chase_runtime(runtime_root),
             ):
-                result = run_vehicle_automation(
-                    vehicle_id=VEHICLE_ID, num_decisions=3, take_control=False,
+                result = run_host_automation(
+                    host_name=HOST_NAME, num_decisions=3, take_control=False,
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)
@@ -63,7 +57,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 applied_selections,
                 [("frame",), ("frame", "floor_plane"), ("floor_plane",)],
             )
-            self.assertEqual([code for code, _ in cli_updates], [0, 0])
             automation_dir = Path(bundle["runtime_dir"]) / "automation"
             state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
             self.assertEqual(state["steps"]["perception"]["plugin_ids"], ["floor_plane"])
@@ -79,20 +72,20 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
-            bundle = controller_bundle_paths(runtime_root / VEHICLE_ID)
+            bundle = controller_bundle_paths(runtime_root / HOST_NAME)
             _write_activations(bundle)
 
             with (
                 staged_runners(perception=_SlowMapper()),
                 chase_runtime(runtime_root),
                 patch(
-                    "cli.automa_cli.runtime_monitor.DecisionViewAdapter.refresh",
+                    "cli.automa_cli.hosts.runs.runtime_monitor.DecisionViewAdapter.refresh",
                     side_effect=RuntimeError("decision view unavailable"),
                 ),
-                patch("cli.automa_cli.decision_view.DecisionView.invalidate_latest", autospec=True) as invalidate,
+                patch("cli.automa_cli.frontend.decision_view.DecisionView.invalidate_latest", autospec=True) as invalidate,
             ):
-                result = run_vehicle_automation(
-                    vehicle_id=VEHICLE_ID, num_decisions=1, take_control=False,
+                result = run_host_automation(
+                    host_name=HOST_NAME, num_decisions=1, take_control=False,
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)

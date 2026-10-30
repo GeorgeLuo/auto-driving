@@ -8,6 +8,7 @@ from tempfile import TemporaryDirectory
 from typing import Iterator
 from urllib.request import Request, urlopen
 from PIL import Image
+from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
     PerceptionText,
@@ -19,10 +20,10 @@ from autonomy.decision_cycle.perception.evidence.values import (
 )
 from autonomy.decision_cycle.activation import StepActivation
 from implementations.decision_cycle.catalog import selection_activation
-from cli.automa_cli.workbench import (
+from cli.automa_cli.workbench.replay import (
     ImageReplayRunner as ProductionImageReplayRunner,
-    WorkbenchServer,
 )
+from cli.automa_cli.frontend.server import RuntimeViewServer
 
 
 def perception_activations(*plugin_ids: str) -> dict[str, StepActivation]:
@@ -44,11 +45,17 @@ def write_manifest(root: Path, payload: dict, name: str = "manifest.json") -> No
 
 
 def serve_workbench(testcase, runner: ProductionImageReplayRunner) -> str:
-    server = WorkbenchServer(runner).start()
+    server = RuntimeViewServer(
+        host_name="viewer",
+        automation_dir=None,
+        port=0,
+        connected=False,
+        replay_runner=runner,
+    ).start()
     testcase.addCleanup(server.stop)
-    base = server.url
+    base = server.workbench_url
     if base is None:
-        raise AssertionError("workbench server has no URL")
+        raise AssertionError("viewer has no workbench URL")
     return base
 
 
@@ -87,8 +94,13 @@ class FixtureMapper:
     def reset(self, shared_memory=None) -> None:
         self.reset_count += 1
 
-    def describe_schema(self) -> dict[str, object]:
-        return {"plugin_id": self.plugin_id}
+    def __call__(self, context) -> PerceptionText | None:
+        if context.sensor_frame is None:
+            self.reset(context.shared_memory)
+            return None
+        return self.perceive(build_perception_request(
+            context.sensor_frame, shared_memory=context.shared_memory, metadata=context.metadata,
+        ))
 
     def perceive(self, request) -> PerceptionText:
         reading = request.sensor("front_camera")

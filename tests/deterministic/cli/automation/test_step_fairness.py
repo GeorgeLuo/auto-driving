@@ -40,7 +40,7 @@ class StepFairnessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
-            with mock.patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", root), mock.patch(
+            with mock.patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", root), mock.patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", root), mock.patch(
                 "cli.automa_cli.hosts.automation_status.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
             ):
                 for step in staged:

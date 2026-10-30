@@ -123,7 +123,7 @@ class MemoryInterfaceTests(unittest.TestCase):
         self.assertEqual(MEMORY_REPORT_SCHEMA, "memory_report_v1")
 
     def test_a_missing_ledger_key_is_null(self) -> None:
-        from cli.automa_cli.hosts.memory_report import ledger_summary
+        from cli.automa_cli.shared.memory_report import ledger_summary
 
         self.assertIsNone(ledger_summary({EPOCH_ID: "epoch-1"})[RECORD_COUNT])
 

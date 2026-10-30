@@ -14,7 +14,7 @@ from typing import Iterator
 from unittest import mock
 
 from autonomy.decision_cycle.activation import step_activation
-from cli.automa_cli.hosts.bundles import controller_bundle_paths
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
 from cli.automa_cli.hosts.runtime_hosts import HOST_RECORD
 from cli.automa_cli.vehicles.probes import chase_operator_url
 from implementations.decision_cycle.catalog import preset_activation

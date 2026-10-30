@@ -8,9 +8,9 @@ from autonomy.plugins import DuplicatePluginIdError
 
 from .hosts.automation_status import get_hosts_status
 from .hosts.commands import register_hosts
+from .hosts.runtime_view import runtime_view_server, serve_viewer
 from .plugins.commands import register_plugins
 from .simulators.commands import register_simulators
-from .runtime_view import serve_viewer
 from .vehicles.commands import register_vehicles
 from .vehicles.status import format_vehicles_status, get_vehicles_status
 from .workbench.commands import register_workbench
@@ -39,7 +39,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     register_vehicles(subcommands)
     register_hosts(subcommands)
-    register_workbench(subcommands)
+    register_workbench(subcommands, view_server=runtime_view_server)
     register_plugins(subcommands)
     register_simulators(subcommands)
     return parser

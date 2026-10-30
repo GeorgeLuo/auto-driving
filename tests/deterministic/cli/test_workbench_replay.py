@@ -6,6 +6,7 @@ from io import StringIO
 from unittest import mock
 from urllib.request import urlopen
 
+from cli.automa_cli.hosts.runtime_view import runtime_view_server
 from cli.automa_cli.workbench.replay import run_workbench_replay
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
@@ -29,7 +30,8 @@ class WorkbenchTests(unittest.TestCase):
                 raise KeyboardInterrupt
 
             with mock.patch("cli.automa_cli.workbench.replay.open_view_message", side_effect=open_view) as launch:
-                result = run_workbench_replay(root, cadence_ms=0, open_browser=True, output=output)
+                result = run_workbench_replay(root, cadence_ms=0, open_browser=True, output=output,
+                                              view_server=runtime_view_server)
 
         launch.assert_called_once_with(opened[0])
         self.assertEqual(result.exit_code, 0)

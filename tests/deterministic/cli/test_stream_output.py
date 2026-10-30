@@ -7,8 +7,8 @@ import json
 import unittest
 from unittest.mock import Mock, patch
 
-from cli.automa_cli.hosts import decision_steps
-from cli.automa_cli.hosts.streaming import poll_stream
+from cli.automa_cli.plugins import decision_steps
+from cli.automa_cli.plugins.streaming import poll_stream
 
 
 # A fresh cycle whose plan record is empty.
@@ -49,7 +49,7 @@ class StreamOutputTests(unittest.TestCase):
                 output = FlushedOutput()
                 probes = [{"status": "unavailable", "error": "offline"}, {"status": "live"}]
                 probe = Mock(side_effect=[(item, None) for item in probes])
-                with patch("cli.automa_cli.hosts.streaming.time.sleep", side_effect=[None, KeyboardInterrupt]) as sleep:
+                with patch("cli.automa_cli.plugins.streaming.time.sleep", side_effect=[None, KeyboardInterrupt]) as sleep:
                     result = poll_stream(
                         step="memory", probe=probe, render=lambda live, _: live["status"],
                         refresh_s=0, once=False, no_clear=no_clear,
@@ -68,7 +68,7 @@ class StreamOutputTests(unittest.TestCase):
                 with self.subTest(status=status, connected=connected):
                     output = FlushedOutput() if connected else None
                     live = {"status": status}
-                    with patch("cli.automa_cli.hosts.streaming.time.sleep") as sleep:
+                    with patch("cli.automa_cli.plugins.streaming.time.sleep") as sleep:
                         result = poll_stream(
                             step="perception", probe=lambda: (live, None),
                             render=Mock(side_effect=AssertionError("JSON must not render")),
@@ -88,7 +88,7 @@ class StreamOutputTests(unittest.TestCase):
                 feed = Mock(url="http://view/", error=None)
                 feed.read_observation.return_value = None, None
                 feed.decision_line.return_value = "action view: http://view/decision"
-                with patch("cli.automa_cli.hosts.streaming.time.sleep", side_effect=[None, KeyboardInterrupt]):
+                with patch("cli.automa_cli.plugins.streaming.time.sleep", side_effect=[None, KeyboardInterrupt]):
                     result, view = _stream_plan([ConnectionError("offline"), {}], feed=feed,
                                                 json_output=json_output, output=output)
                 self.assertEqual((result.exit_code, result.message), (130, ""))
@@ -114,7 +114,7 @@ class StreamOutputTests(unittest.TestCase):
             for fetch, code in ((ConnectionError("offline"), 2), ({}, 0)):
                 with self.subTest(json=json_output, live=not code):
                     output = FlushedOutput()
-                    with patch("cli.automa_cli.hosts.streaming.time.sleep") as sleep:
+                    with patch("cli.automa_cli.plugins.streaming.time.sleep") as sleep:
                         result, view = _stream_plan([fetch], once=True, json_output=json_output, output=output)
                     self.assertEqual((result.exit_code, result.message), (code, ""))
                     line = output.getvalue()

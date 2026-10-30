@@ -18,8 +18,10 @@ from pathlib import Path
 from typing import Any
 
 from ..shared.command_result import CommandResult
-from ..hosts.runtime_hosts import RUNTIME_ROOT, RuntimeHostError, local_hosts, log_tail
+from ..hosts.runtime_hosts import local_hosts, log_tail
+from ..shared.controller_releases import RuntimeHostError
 from ..shared.processes import pid_alive
+from ..vehicles.discovery import SIMULATOR_RECORD, SIMULATOR_SCHEMA, created_simulators, simulator_dir
 from ..vehicles.probes import chase_operator_url, normalize_chase_url
 from ..vehicles.providers import CHASE_SIM
 
@@ -30,11 +32,8 @@ HEADLESS_SIM_SCRIPT = "scripts/play-chase-headless.mjs"
 # 5050 stays the default simulator's.
 SIMULATOR_PORTS = range(5051, 5100)
 SIMULATOR_START_TIMEOUT_S = 45.0
-# Each simulator ``simulators create`` started, in ``simulators/<port>/``.
-SIMULATORS = "simulators"
-SIMULATOR_RECORD = "simulator.json"
+# Beside the simulator's record, in its ``simulator_dir``.
 SIMULATOR_LOG = "simulator.log"
-SIMULATOR_SCHEMA = "automa_created_simulator_v0"
 # The headless launcher prints this line once its simulator is ready.
 SIMULATOR_READY = "CHASE_UI_WS_URL="
 
@@ -111,24 +110,6 @@ def _headless_sim_command(port: int) -> list[str]:
     override = os.environ.get("AUTOMA_HEADLESS_SIM_COMMAND")
     launcher = shlex.split(override) if override else ["node", HEADLESS_SIM_SCRIPT]
     return [*launcher, "--port", str(port)]
-
-
-def simulator_dir(port: int) -> Path:
-    return RUNTIME_ROOT / SIMULATORS / str(port)
-
-
-def created_simulators() -> list[dict[str, Any]]:
-    """The record of each simulator ``simulators create`` started that is still running, by port."""
-
-    records = []
-    for path in (RUNTIME_ROOT / SIMULATORS).glob(f"*/{SIMULATOR_RECORD}"):
-        try:
-            record = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, ValueError):
-            continue
-        if isinstance(record, dict) and record.get("schema") == SIMULATOR_SCHEMA and pid_alive(record.get("pid")):
-            records.append(record)
-    return sorted(records, key=lambda record: record["port"])
 
 
 def _ended(pid: int) -> bool:

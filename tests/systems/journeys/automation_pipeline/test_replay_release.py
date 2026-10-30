@@ -19,6 +19,7 @@ from tests.support.runtime_fixtures import stage_step, write_host_fixture
 from unittest import mock
 
 from cli.automa_cli.hosts import bundles
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
 from cli.automa_cli.hosts.runtime_hosts import stop_chase_host
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.cli_runner import WORKSPACE_ROOT, run_automa
@@ -43,7 +44,7 @@ def _package_release_with_frame_label(runtime_root: Path, source_root: Path, lab
         bundles, ROOT=source_root,
         AUTONOMY_DIR=source_root / "autonomy", IMPLEMENTATIONS_DIR=source_root / "implementations",
     ):
-        return bundles.package_controller_bundle(bundles.controller_bundle_paths(runtime_root / HOST_NAME))
+        return bundles.package_controller_bundle(controller_bundle_paths(runtime_root / HOST_NAME))
 
 
 def _frame_label(report: dict) -> str:
@@ -102,7 +103,7 @@ class ReplayByReleaseTests(unittest.TestCase):
             automa = partial(_automa, runtime_root=runtime_root, env=env)
 
             stage_step(runtime_root, HOST_NAME, "perception", plugins=["frame"])
-            bundles.package_controller_bundle(bundles.controller_bundle_paths(runtime_root / HOST_NAME))
+            bundles.package_controller_bundle(controller_bundle_paths(runtime_root / HOST_NAME))
             plugin = Path(tmp) / "prototype.py"
             plugin.write_text(
                 "from dataclasses import replace\n"
@@ -127,7 +128,7 @@ class ReplayByReleaseTests(unittest.TestCase):
             runs = runtime_root / HOST_NAME / "bundle/runtime/automation/runs"
             (recording,) = [path for path in runs.iterdir() if (path / "manifest.json").is_file()]
             self.assertEqual((recording / "plugins" / source).read_bytes(), plugin.read_bytes())
-            with mock.patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root):
+            with mock.patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root), mock.patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", runtime_root):
                 stop_chase_host(HOST_NAME)
             plugin.unlink()
             moved = Path(tmp) / "moved-recording"

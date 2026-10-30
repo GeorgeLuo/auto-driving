@@ -20,7 +20,6 @@ from ..shared import http_json
 from ..shared.command_result import CommandResult
 from .automation_stop import stop_host_automation
 from .bundles import (
-    controller_bundle_paths,
     controller_bundle_source_summary,
     release_activation_summary,
     sync_controller_bundle,
@@ -46,12 +45,11 @@ from .step_activations import (
 )
 from .host_publications import host_state
 from .host_status import host_block
+from ..shared.controller_releases import RuntimeHostError, controller_bundle_paths, release_code_dir
 from .runtime_hosts import (
-    RuntimeHostError,
     automation_dir,
     ensure_chase_host,
     host_record,
-    release_code_dir,
     running_base_url,
     staged_host,
     stop_chase_host,

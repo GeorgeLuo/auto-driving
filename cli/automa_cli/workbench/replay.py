@@ -10,12 +10,13 @@ from __future__ import annotations
 
 import os
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import Any, TextIO
 
 from implementations.decision_cycle.catalog import selection_activation
 
 from ..shared.command_result import CommandResult
+from ..shared.open_view import open_view_message
 from ..frontend.workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
@@ -24,7 +25,6 @@ from ..frontend.workbench_contract import (
     WORKBENCH_PACES,
     WORKBENCH_SEQUENCE_ID,
 )
-from ..runtime_view import open_view_message, runtime_view_server
 from .runner import ImageReplayRunner
 from .plugins import (
     WORKBENCH_SELECTABLE_STEPS,
@@ -54,6 +54,7 @@ def run_workbench_replay(
     serve: bool = False,
     open_browser: bool = False,
     output: TextIO | None = None,
+    view_server: Callable[..., Any],
 ) -> CommandResult:
     """Run one CLI replay, optionally keeping the viewer's workbench available.
 
@@ -61,7 +62,8 @@ def run_workbench_replay(
     ``selections``, a ``(preset, plugins)`` pair by step, override those steps; an unrecorded step uses its packaged
     default. Page selections override that step for the replay pass, retaining
     configs when the selected IDs are unchanged. Offline replay computes the
-    action's authorization without host delivery.
+    action's authorization without host delivery. ``view_server`` builds the
+    viewer that serves the replay.
     """
 
     try:
@@ -87,7 +89,7 @@ def run_workbench_replay(
         )
         if serve:
             # Without ``host`` the viewer binds its own loopback default.
-            server = runtime_view_server(
+            server = view_server(
                 host_name="viewer",
                 automation_dir=None,
                 port=port,

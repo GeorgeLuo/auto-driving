@@ -1,4 +1,5 @@
-"""CLI modules talk through public names, import each other at module level, and form no cycle."""
+"""CLI modules talk through public names, import each other at module level, and form no cycle,
+as modules or as the packages under ``automa_cli``."""
 
 from __future__ import annotations
 
@@ -56,6 +57,13 @@ def _cli_imports(path: Path) -> list[CliImport]:
     return found
 
 
+def _package(module: str) -> str:
+    """The name under ``automa_cli`` that holds ``module``: a command package, ``shared``,
+    ``frontend``, or a top-level module such as ``app``."""
+
+    return module[len(PACKAGE) + 1:].partition(".")[0] or PACKAGE
+
+
 def _cycles(graph: dict[str, set[str]]) -> list[list[str]]:
     """Each group of modules that import one another (Tarjan's strongly connected components)."""
 
@@ -108,7 +116,9 @@ class ModuleBoundaryTests(unittest.TestCase):
         ]
         self.assertEqual(violations, [])
 
-    def test_module_imports_form_no_cycle(self) -> None:
+    def _edges(self) -> dict[str, dict[str, CliImport]]:
+        """Each module's module-level imports of other CLI modules, by the first import of each."""
+
         edges: dict[str, dict[str, CliImport]] = {module: {} for module in self.modules}
         for module, imports in self.imports.items():
             for found in imports:
@@ -117,12 +127,33 @@ class ModuleBoundaryTests(unittest.TestCase):
                 for target in (found.module, *(f"{found.module}.{name}" for name in found.names)):
                     if target in self.modules and target != module:
                         edges[module].setdefault(target, found)
+        return edges
+
+    def test_module_imports_form_no_cycle(self) -> None:
+        edges = self._edges()
         violations = [
             f"cycle among {', '.join(group)}\n" + "\n".join(
                 f"  {edges[module][target].where} imports {target}"
                 for module in group for target in sorted(edges[module]) if target in group
             )
             for group in _cycles({module: set(targets) for module, targets in edges.items()})
+        ]
+        self.assertEqual(violations, [])
+
+    def test_package_imports_form_no_cycle(self) -> None:
+        imports: dict[str, list[tuple[str, CliImport]]] = {_package(module): [] for module in self.modules}
+        graph: dict[str, set[str]] = {package: set() for package in imports}
+        for module, targets in self._edges().items():
+            for target, found in targets.items():
+                if _package(target) != _package(module):
+                    graph[_package(module)].add(_package(target))
+                    imports[_package(module)].append((target, found))
+        violations = [
+            f"cycle among packages {', '.join(group)}\n" + "\n".join(
+                f"  {found.where} imports {target}"
+                for package in group for target, found in imports[package] if _package(target) in group
+            )
+            for group in _cycles(graph)
         ]
         self.assertEqual(violations, [])
 

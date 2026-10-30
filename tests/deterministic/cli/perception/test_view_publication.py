@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import unittest
-from cli.automa_cli.hosts.memory_report import evidence_publisher, plugin_states
+from cli.automa_cli.shared.memory_report import evidence_publisher, plugin_states
 from cli.automa_cli.hosts.decision_publication import publication_to_frame_record
 from cli.automa_cli.frontend.perception_view import (
     PUBLICATION_SCHEMA,

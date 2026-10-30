@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
+from typing import Any
 
 from ..shared.selection_args import add_selection_args
 from .plugins import WORKBENCH_SELECTABLE_STEPS
@@ -11,7 +13,9 @@ from .replay import run_workbench_replay
 from .source import WORKBENCH_DEFAULT_MAX_FRAMES
 
 
-def register_workbench(subcommands: argparse._SubParsersAction) -> None:
+def register_workbench(
+    subcommands: argparse._SubParsersAction, *, view_server: Callable[..., Any],
+) -> None:
     workbench = subcommands.add_parser(
         "workbench",
         help=(
@@ -87,7 +91,7 @@ def register_workbench(subcommands: argparse._SubParsersAction) -> None:
         action="store_true",
         help="Open the viewer's workbench page in a browser and imply --serve.",
     )
-    workbench.set_defaults(handler=_handle_workbench)
+    workbench.set_defaults(handler=_handle_workbench, view_server=view_server)
 
 
 def _handle_workbench(args: argparse.Namespace) -> int:
@@ -105,6 +109,7 @@ def _handle_workbench(args: argparse.Namespace) -> int:
         serve=args.serve,
         open_browser=args.open_browser,
         output=sys.stdout,
+        view_server=args.view_server,
     )
     if result.message:
         print(result.message)

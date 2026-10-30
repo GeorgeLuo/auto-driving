@@ -8,7 +8,7 @@ from typing import Any
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
 
-from ..hosts.memory_report import evidence_publisher, plugin_states, plugin_summaries
+from ..shared.memory_report import evidence_publisher, plugin_states, plugin_summaries
 from .frames import FrameOutcome
 from .source import ReplayFrame
 

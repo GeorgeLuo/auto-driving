@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
 from autonomy.runtime.frame_loop import OBSERVATION_TRANSACTION_SCHEMA
-from cli.automa_cli.hosts import host_publications as publications, streaming
+from cli.automa_cli.hosts import host_publications as publications, viewer
 
 
 class _Response(io.BytesIO):
@@ -156,13 +156,13 @@ class ObservationSampleTests(unittest.TestCase):
 
     def test_stream_view_uses_the_transaction_metadata_when_the_host_advances(self):
         with tempfile.TemporaryDirectory() as tmp:
-            feed = streaming.ViewFeed.__new__(streaming.ViewFeed)
+            feed = viewer.ViewFeed.__new__(viewer.ViewFeed)
             feed._observation_cache = publications.TransactionCache()
             feed._observation = feed._last_capture = None
             feed.base_url, feed.timeout_s = "http://host.invalid", 1.0
             feed.frame_path = Path(tmp) / "frame.jpg"
             feed.server, feed.decision = Mock(), Mock()
-            with patch.object(streaming, "fetch_observation_sample", return_value=(_publication("second"), b"jpeg")):
+            with patch.object(viewer, "fetch_observation_sample", return_value=(_publication("second"), b"jpeg")):
                 feed.publish(_publication("first"))
             frame = feed.server.perception.publish_matched.call_args.kwargs["frame_record"]
             self.assertEqual(frame["frame_id"], "second")
@@ -171,13 +171,13 @@ class ObservationSampleTests(unittest.TestCase):
 
     def test_stream_terminal_and_view_share_one_read_and_skip_unchanged_publication(self):
         with tempfile.TemporaryDirectory() as tmp:
-            feed = streaming.ViewFeed.__new__(streaming.ViewFeed)
+            feed = viewer.ViewFeed.__new__(viewer.ViewFeed)
             feed._observation_cache = publications.TransactionCache()
             feed._observation = feed._last_capture = None
             feed.base_url, feed.timeout_s = "http://host.invalid", 1.0
             feed.frame_path = Path(tmp) / "frame.jpg"
             feed.server, feed.decision = Mock(), Mock()
-            with patch.object(streaming, "fetch_observation_sample", return_value=(_publication(), b"jpeg")) as read:
+            with patch.object(viewer, "fetch_observation_sample", return_value=(_publication(), b"jpeg")) as read:
                 publication, error = feed.read_observation()
                 self.assertIsNone(error)
                 feed.publish(publication)

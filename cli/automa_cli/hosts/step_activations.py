@@ -39,7 +39,8 @@ from implementations.decision_cycle.catalog import (
     selection_activation,
 )
 
-from .bundles import controller_bundle_paths, release_activation_summary
+from .bundles import release_activation_summary
+from ..shared.controller_releases import controller_bundle_paths
 from ..shared.paths import display_path, safe_path_part
 from ..vehicles.providers import PROVIDERS
 

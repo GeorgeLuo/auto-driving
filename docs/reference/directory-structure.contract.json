@@ -240,7 +240,7 @@
             "path": "cli/automa_cli/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "Vehicle, simulator, deploy, implementation, runtime, and diagnostic command implementation."
+            "responsibility": "Vehicle, simulator, deploy, implementation, runtime, and diagnostic command implementation. Its packages import one another without a cycle."
           },
           {
             "path": "cli/automa_cli/frontend/",
@@ -252,31 +252,31 @@
             "path": "cli/automa_cli/shared/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "Code every automa command shares and none owns: command results, repository paths, the --timeout-s check and a step's --preset/--plugin selection."
+            "responsibility": "Code several automa commands share and none owns: command results, repository paths, controller releases, HTTP JSON requests, the --timeout-s check, a step's --preset/--plugin selection, and the step runs, reports and formatting that hosts, plugins and workbench read."
           },
           {
             "path": "cli/automa_cli/vehicles/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa vehicles commands, and the vehicle probes and listing that hosts and simulators share."
+            "responsibility": "The automa vehicles commands, and the vehicle probes, listing and discovered-vehicle and simulator records that hosts and simulators share."
           },
           {
             "path": "cli/automa_cli/hosts/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa hosts commands, and the host deploy, runs, staging, streams and plugins they drive."
+            "responsibility": "The automa hosts commands and the host deploy, runs and staging they drive; the host publication readers, plugin catalog client and runtime viewer that plugins, simulators and automa read."
           },
           {
             "path": "cli/automa_cli/workbench/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa workbench command, its replay runner, image sources, frame execution, plugin selections and presentation. The runtime viewer and plugins inspect share its replay code."
+            "responsibility": "The automa workbench command, its replay runner, image sources, frame execution, plugin selections and presentation. The runtime viewer and plugins inspect share its replay code; it serves through the viewer automa passes in."
           },
           {
             "path": "cli/automa_cli/plugins/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa plugins commands: list a catalog and what a host has armed, upload, arm and disarm a host's plugins, stream a step on a host, inspect plugins from images or recorded runs, and their catalog client."
+            "responsibility": "The automa plugins commands: list a catalog and what a host has armed, upload, arm and disarm a host's plugins, stream a step on a host, and inspect plugins from images or recorded runs."
           },
           {
             "path": "cli/automa_cli/simulators/",

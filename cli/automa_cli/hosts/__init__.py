@@ -4,17 +4,16 @@
 - ``create``, ``update``, ``delete``: ``deploy``, with ``donkeycar_vendor`` and ``bundles``.
 - ``run``, ``restart``: ``automation``; ``stop``: ``automation_stop``; ``status``:
   ``automation_status``; with ``runtime_monitor``, ``run_record`` and ``host_status``.
-- ``viewer``: ``streaming``, with ``stream_output``, ``decision_live`` and
-  ``view_discovery``.
+- ``viewer``: ``viewer``, with ``decision_live`` and ``view_discovery``.
+- ``runtime_view``: every viewer automa serves, with the host list and the workbench
+  replay runner; ``automa`` with no command serves one with no host.
 - Read by several commands: ``runtime_hosts``, which finds, starts and replaces the host
-  behind each vehicle; ``step_activations``,
-  ``host_publications`` with ``decision_publication`` and ``host_telemetry``, which check
-  what it reads; ``vehicle_access``, ``decision``, ``decision_records``,
-  ``memory_report``, ``step_formatting`` and ``inspection_runs``.
+  behind each vehicle; ``step_activations``; ``host_publications`` with
+  ``decision_publication`` and ``host_telemetry``, which check what it reads;
+  ``plugin_catalog``, the client of its plugin catalog; ``vehicle_access``, ``decision``
+  and ``decision_records``.
 
-Outside ``hosts``: ``automa`` serves ``host_status`` in its viewer,
-``simulators`` and ``vehicles`` find hosts through ``runtime_hosts``, ``plugins stream`` runs
-``streaming`` and ``decision_steps``, and ``plugins inspect`` reads ``inspection_runs``,
-``memory_report`` and ``step_formatting``. ``workbench`` shares ``step_hosting``,
-``inspection_runs`` and ``memory_report`` for replay execution and presentation.
+Outside ``hosts``: ``automa`` hands ``workbench`` the ``runtime_view`` builder,
+``simulators`` finds hosts through ``runtime_hosts``, and ``plugins stream``
+feeds a ``viewer`` view.
 """

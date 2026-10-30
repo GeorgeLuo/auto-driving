@@ -328,3 +328,12 @@ def perception_text_from_publication(publication: dict[str, Any]) -> str:
     if error:
         return f"health={health}\nerror={error}"
     return f"health={health}\n(no perception payload in latest state)"
+
+
+def health_error(publication: dict[str, Any]) -> str | None:
+    """Why the host's observation ``publication`` is not live; None while it is healthy."""
+
+    health = str(publication.get("health") or "unknown")
+    if health == "healthy":
+        return None
+    return publication.get("error") or f"The observation publication health is {health!r}."

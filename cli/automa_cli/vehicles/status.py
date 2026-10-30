@@ -6,8 +6,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from ..simulators.created import created_simulators
-from .discovery import listed_vehicles
+from .discovery import created_simulators, listed_vehicles
 from .probes import DEFAULT_READINESS_TIMEOUT_S, require_positive_timeout
 from .providers import CHASE_SIM, PROVIDERS
 

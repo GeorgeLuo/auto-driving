@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 from cli.automa_cli.hosts.automation import run_host_automation
-from cli.automa_cli.hosts.bundles import controller_bundle_paths
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
 from cli.automa_cli.hosts.step_activations import replace_metadata
 from autonomy.decision_cycle.activation import read_step_activation, write_step_activation
 from implementations.decision_cycle.catalog import packaged_activation

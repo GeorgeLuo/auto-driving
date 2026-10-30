@@ -19,9 +19,8 @@ from ..shared.command_result import CommandResult
 from ..shared.json_files import read_json, write_json_atomically
 from ..shared.paths import ROOT, display_path
 from ..shared.processes import pid_alive
+from ..shared.controller_releases import RuntimeHostError, bundle_paths
 from .runtime_hosts import (
-    bundle_paths,
-    RuntimeHostError,
     automation_dir as host_automation_dir,
     running_base_url,
     runtime_base_url,

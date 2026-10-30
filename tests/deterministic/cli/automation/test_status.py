@@ -44,6 +44,9 @@ class AutomationStatusTests(unittest.TestCase):
                 "cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
+                "cli.automa_cli.shared.controller_releases.RUNTIME_ROOT",
+                runtime_root,
+            ), mock.patch(
                 "cli.automa_cli.hosts.automation_status.get_perception_view_status",
                 side_effect=_probe,
             ):
@@ -90,6 +93,9 @@ class AutomationStatusTests(unittest.TestCase):
             write_runtime_fixture(runtime_root, "chase-sim-runner", pid=os.getpid())
             with mock.patch(
                 "cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT",
+                runtime_root,
+            ), mock.patch(
+                "cli.automa_cli.shared.controller_releases.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
                 "cli.automa_cli.hosts.automation_status.get_perception_view_status",

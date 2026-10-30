@@ -81,7 +81,7 @@ class PluginArmingFlows(unittest.TestCase):
 
             def host_catalog():
                 # Adoption at the host's next cycle shows only in its catalog API.
-                with patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime):
+                with patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime), patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", runtime):
                     return catalog(runtime_base_url("chase-sim-chaser"))
 
             # Only perception is staged, so the uploaded proposal is the step's one plugin.
@@ -187,7 +187,7 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(after["armed"], [])
             finally:
                 cli("stop", "--name", "chase-sim-chaser", check=False)
-                with patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime):
+                with patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime), patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", runtime):
                     stop_chase_host("chase-sim-chaser")
 
 

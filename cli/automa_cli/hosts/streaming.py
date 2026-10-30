@@ -34,7 +34,8 @@ from .host_publications import (
 )
 from ..plugins.catalog import PluginCatalogClient
 from .run_record import timestamp_ms
-from .runtime_hosts import RuntimeHostError, local_hosts, runtime_base_url
+from ..shared.controller_releases import RuntimeHostError
+from .runtime_hosts import local_hosts, runtime_base_url
 from .runtime_monitor import PERCEPTION_COPY_INTERVAL_S, pause_s
 from ..frontend.server import RuntimeViewServer
 from ..runtime_view import open_view_message, runtime_view_server

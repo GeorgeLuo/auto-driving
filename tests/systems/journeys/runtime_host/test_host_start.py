@@ -13,7 +13,8 @@ from typing import Iterator
 from unittest import mock
 
 from cli.automa_cli.hosts import runtime_hosts
-from cli.automa_cli.hosts.runtime_hosts import RuntimeHostError, ensure_chase_host
+from cli.automa_cli.hosts.runtime_hosts import ensure_chase_host
+from cli.automa_cli.shared.controller_releases import RuntimeHostError
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
@@ -40,6 +41,7 @@ def _staged_vehicle() -> Iterator[list[subprocess.Popen]]:
             with (
                 mock.patch.dict(os.environ, {"AUTOMA_RUNTIME_ROOT": str(root), **env}),
                 mock.patch.object(runtime_hosts, "RUNTIME_ROOT", root),
+                mock.patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", root),
                 mock.patch.object(runtime_hosts.subprocess, "Popen", side_effect=launch),
             ):
                 yield launched

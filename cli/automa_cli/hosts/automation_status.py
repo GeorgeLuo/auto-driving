@@ -14,12 +14,12 @@ from pathlib import Path
 from typing import Any
 
 from ..shared.command_result import CommandResult
-from .bundles import controller_bundle_paths
 from ..shared.json_files import read_json
 from ..shared.paths import display_path, safe_path_part
 from ..shared.processes import pid_alive
 from . import runtime_hosts
-from .runtime_hosts import RuntimeHostError, running_base_url, update_command
+from ..shared.controller_releases import RuntimeHostError, controller_bundle_paths, release_manifest, update_command
+from .runtime_hosts import running_base_url
 from .host_publications import host_state
 from .host_status import host_block, read_hosts
 from .step_activations import (
@@ -313,7 +313,7 @@ def collect_automation_status(
         except (OSError, TypeError, ValueError):
             decision = {"deployed": False}
         try:
-            release = _release_summary(runtime_hosts.release_manifest(name))
+            release = _release_summary(release_manifest(name))
         except RuntimeHostError:
             release = None
 

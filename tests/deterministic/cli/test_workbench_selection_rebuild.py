@@ -10,7 +10,8 @@ from unittest import mock
 from autonomy.runtime.plugin_loader import StagedStep
 from cli.automa_cli.workbench import runner as replay
 from cli.automa_cli.frontend.workbench_contract import ReplayActionError
-from cli.automa_cli.hosts.bundles import controller_bundle_paths, sync_controller_bundle
+from cli.automa_cli.hosts.bundles import sync_controller_bundle
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
 from implementations.decision_cycle.catalog import selection_activation
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner, image_source, write_manifest, _wait_until
 

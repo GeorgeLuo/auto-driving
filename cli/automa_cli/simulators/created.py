@@ -18,7 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from ..shared.command_result import CommandResult
-from ..hosts.runtime_hosts import RUNTIME_ROOT, RuntimeHostError, local_hosts, log_tail
+from ..hosts.runtime_hosts import RUNTIME_ROOT, local_hosts, log_tail
+from ..shared.controller_releases import RuntimeHostError
 from ..shared.processes import pid_alive
 from ..vehicles.probes import chase_operator_url, normalize_chase_url
 from ..vehicles.providers import CHASE_SIM

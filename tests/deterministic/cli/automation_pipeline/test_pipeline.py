@@ -5,7 +5,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 from cli.automa_cli.hosts.automation import run_host_automation
-from cli.automa_cli.hosts.bundles import controller_bundle_paths, sync_controller_bundle
+from cli.automa_cli.hosts.bundles import sync_controller_bundle
+from cli.automa_cli.shared.controller_releases import controller_bundle_paths
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     HOST_NAME,
     _SlowMapper,

@@ -10,16 +10,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from autonomy.runtime.layout import RuntimeLayout
-
 from ..shared.paths import ROOT, display_path
 
 AUTONOMY_DIR = ROOT / "autonomy"
 IMPLEMENTATIONS_DIR = ROOT / "implementations"
-
-
-def controller_bundle_paths(host_dir: Path) -> dict[str, str]:
-    return RuntimeLayout(host_dir / "bundle").bundle_paths()
 
 
 def sync_controller_bundle(bundle: dict[str, str], *, output: TextIO | None) -> dict[str, Any]:

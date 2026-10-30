@@ -98,7 +98,7 @@ def _host_runtime_status(
             "frames_dropped": observation.get("frames_dropped"),
             "processed_count": observation.get("processed_count", 0),
             "num_decisions": (autonomy.get("session") or {}).get("configuration", {}).get(
-                "num_decisions", 0
+                "num_decisions"
             ),
             "recording": False,
             "control_source": "runtime_host",
@@ -641,7 +641,7 @@ def _run_label(state: dict[str, Any]) -> str:
         "id": state["run_id"],
         "frames_received": state.get("frames_received") or 0,
         "frames_dropped": state.get("frames_dropped"),
-        "decisions": f"{state.get('processed_count') or 0}/{num_decisions or 'unbounded'}",
+        "decisions": f"{state.get('processed_count') or 0}/{'unbounded' if num_decisions is None else num_decisions}",
         "recording": state.get("recording"),
         "control": state.get("control_source"),
         "action": state.get("action_policy"),

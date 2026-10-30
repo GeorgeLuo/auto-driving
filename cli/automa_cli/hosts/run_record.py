@@ -240,7 +240,7 @@ def startup_lines(state: dict[str, Any]) -> list[str]:
             if view.get("available")
             else f"Runtime view: unavailable ({view.get('reason', 'startup failed')})"
         ),
-        f"Decisions: {state['num_decisions']}" if state["num_decisions"] else "Decisions: unbounded",
+        "Decisions: unbounded" if state["num_decisions"] is None else f"Decisions: {state['num_decisions']}",
     ]
 
 

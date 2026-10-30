@@ -44,23 +44,31 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             write_host_fixture(root, "chase-sim-chaser", url=ws_url)
             # Staging builds the controller release the car's runtime host runs.
             stage_step(root, "chase-sim-chaser", "perception", plugins=["frame"])
+            automation = root / "chase-sim-chaser/bundle/runtime/automation"
             try:
                 run = run_automa(
                     "hosts", "run", "--name", "chase-sim-chaser",
-                    "--observe-only", "--num-decisions", "3",
-                    "--foreground", runtime_root=root, extra_env=env,
+                    "--observe-only", "--num-decisions", "3", "--log",
+                    runtime_root=root, extra_env=env,
                 )
+                # The background worker finishes the run record after the launch returns.
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    state = json.loads((automation / "state.json").read_text())
+                    if state["status"] not in {"starting", "running"}:
+                        break
+                    time.sleep(.05)
             finally:
                 with patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", root):
                     stop_chase_host("chase-sim-chaser")
-            state = json.loads((root / "chase-sim-chaser/bundle/runtime/automation/state.json").read_text())
-            self.assertEqual(state["status"], "completed")
+            self.assertEqual(state["status"], "completed", run.stdout)
             self.assertEqual(state["num_decisions"], 3)
             self.assertEqual(state["processed_count"], 3)
             self.assertEqual(state["session"]["configuration"]["num_decisions"], 3)
             self.assertEqual(state["session"]["processed_decisions"], 3)
-            self.assertIn("Decisions: 3", run.stdout)
-            self.assertIn("Decisions completed: 3", run.stdout)
+            log = (automation / "automation.log").read_text()
+            self.assertIn("Decisions: 3", log)
+            self.assertIn("Decisions completed: 3", log)
 
     def test_unbounded_control_run_and_restart_override_the_count_until_explicit_stop(self):
         with (control_protocol(), tempfile.TemporaryDirectory() as tmp,
@@ -90,10 +98,10 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
                     session = status["session"]
                     self.assertEqual(session["status"], "running")
                     self.assertGreaterEqual(session["processed_decisions"], 3)
-                    self.assertEqual(session["configuration"]["num_decisions"], 0)
+                    self.assertIsNone(session["configuration"]["num_decisions"])
                     self.assertEqual(session["configuration"]["mode"], "autonomy")
                     state = json.loads((automation / "state.json").read_text())
-                    self.assertEqual(state["num_decisions"], 0)
+                    self.assertIsNone(state["num_decisions"])
                     self.assertEqual(state["action_policy"], "autonomy")
                 run_automa("hosts", "stop", "--name", vehicle,
                            runtime_root=root, extra_env=env)

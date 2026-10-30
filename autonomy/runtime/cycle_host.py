@@ -71,7 +71,7 @@ class AutonomyCycleHost:
         self.last_context: DecisionFrameContext | None = None
         self._session_lock = threading.RLock()
         self._session_view: dict[str, Any] = {}
-        self.configuration = RunConfiguration(mode="manual")
+        self.configuration = RunConfiguration(mode="manual", num_decisions=None)
         self.run_state = "pre_start"
         self.run_decisions = 0
         self.recording: RunRecording | None = None
@@ -393,7 +393,7 @@ class AutonomyCycleHost:
                             )
                         self.run_decisions += 1
                         if (
-                            self.configuration.num_decisions
+                            self.configuration.num_decisions is not None
                             and self.run_decisions >= self.configuration.num_decisions
                         ):
                             self.stop(reason="completed")
@@ -430,9 +430,8 @@ class AutonomyCycleHost:
         })
         return self.last_context
 
-    def start(self, configuration: RunConfiguration | None = None, *,
+    def start(self, configuration: RunConfiguration, *,
               recording: RunRecording | None = None) -> dict[str, Any]:
-        configuration = configuration or RunConfiguration()
         with self._session_lock:
             self.stop()
             self.last_error = None

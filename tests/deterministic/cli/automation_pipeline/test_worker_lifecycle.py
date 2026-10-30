@@ -47,10 +47,10 @@ class AutomationLivePipelineTests(unittest.TestCase):
             return original_start(*args, **kwargs)
         def restart():
             try:
-                part.start(RunConfiguration(mode="autonomy"))
+                part.start(RunConfiguration(mode="autonomy", num_decisions=None))
             except Exception as exc:
                 errors.append(exc)
-        part.start(RunConfiguration(mode="observe_only"))
+        part.start(RunConfiguration(mode="observe_only", num_decisions=None))
         part.submit(None, frame_id="old", image_loader=old_loader)
         self.assertTrue(decoded.wait(1))
         with patch.object(part.host, "start", side_effect=blocked_start):
@@ -357,7 +357,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             state["readiness"]["gates"]["automation_worker"]["status"], "stopped"
         )
 
-    def test_foreground_early_failure_replaces_starting_state(self) -> None:
+    def test_worker_early_failure_replaces_starting_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")

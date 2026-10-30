@@ -72,7 +72,7 @@ class AutonomyPilotPart(FrameLoop):
                 with self._lock:
                     self._discard_pending_locked()
                 if mode_name == "autonomy":
-                    self.host.start(RunConfiguration())
+                    self.host.start(RunConfiguration(mode="autonomy", num_decisions=None))
                 else:
                     self.host.stop()
             elif execution_mode(self._drive_mode) == "autonomy" and self.host.run_state != "running":

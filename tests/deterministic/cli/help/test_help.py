@@ -67,8 +67,6 @@ class HelpCommandTests(unittest.TestCase):
                 "--name",
                 "chase-sim-chaser",
                 "--observe-only",
-                "--num-decisions",
-                "0",
                 "--open-view",
             ],
             [

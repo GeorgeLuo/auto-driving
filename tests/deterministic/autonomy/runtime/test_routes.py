@@ -223,7 +223,7 @@ class RuntimeRoutesTests(unittest.TestCase):
 
     def test_a_failed_loop_stops_the_session_with_its_error(self) -> None:
         loop, routes = _routes()
-        loop.start(loop.host.configuration.__class__(mode="observe_only"))
+        loop.start(loop.host.configuration.__class__(mode="observe_only", num_decisions=None))
         loop.stop(reason="error", error="ChasePassiveCaptureError: session moved")
         _, payload = _json(routes.handle("GET", "/host/status"))
         self.assertEqual(payload["session"]["status"], "error")

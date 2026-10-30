@@ -28,6 +28,10 @@ from .run_record import stopped_readiness, timestamp_ms
 from ..vehicles.providers import PROVIDERS
 
 
+# hosts run starts this module (hosts/automation.py) as the run's worker.
+WORKER_MODULE = "cli.automa_cli.hosts.automation"
+
+
 def stop_host_automation(
     *,
     host_name: str,
@@ -182,8 +186,8 @@ def _pid_matches_automation(pid: int, host_name: str) -> bool:
 def _automation_command_matches_host(command: str, host_name: str) -> bool:
     """Pure check: command is a host run for exactly *host_name*.
 
-    Requires the contiguous launcher subcommand ``hosts run`` and
-    an exact ``--name <host_name>`` argument pair (token equality, not substring).
+    Requires ``-m`` naming the worker module and an exact ``--name <host_name>``
+    argument pair (token equality, not substring).
     """
 
     if not host_name or not str(host_name).strip():
@@ -195,9 +199,7 @@ def _automation_command_matches_host(command: str, host_name: str) -> bool:
         return False
     if not tokens:
         return False
-    # Match the subcommand immediately after the actual CLI executable.
-    if not any(Path(tokens[index]).name == "automa" and tokens[index + 1:index + 3] == ["hosts", "run"]
-               for index in range(len(tokens) - 2)):
+    if not any(tokens[index:index + 2] == ["-m", WORKER_MODULE] for index in range(len(tokens) - 1)):
         return False
     for index, token in enumerate(tokens):
         if token == "--name":

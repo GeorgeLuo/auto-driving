@@ -24,6 +24,7 @@ from autonomy.runtime.recording import (
     control_application_windows,
     write_recorded_frame,
 )
+from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.workbench.frames import run_frame
 from cli.automa_cli.workbench.source import SourceValidationError, load_image_source
@@ -42,7 +43,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             self.addCleanup(host.close)
             expected = []
             with patch("autonomy.runtime.execution.time.time", return_value=2.0):
-                host.start(recording=recording)
+                host.start(RunConfiguration(mode="autonomy", num_decisions=None), recording=recording)
                 for index in range(4):
                     if index == 1:
                         # Two equal JSON records must both survive, even after a

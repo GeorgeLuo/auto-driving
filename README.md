@@ -262,7 +262,6 @@ preserves the operator's simulator session:
 ./cli/automa hosts run \
   --name chase-sim-chaser \
   --observe-only \
-  --num-decisions 0 \
   --open-view
 ./cli/automa hosts status --name chase-sim-chaser
 ./cli/automa hosts stop --name chase-sim-chaser
@@ -307,7 +306,7 @@ and list the catalog the host can arm:
 Run the same staged plugins with movement enabled:
 
 ```sh
-./cli/automa hosts run --name chase-sim-chaser
+./cli/automa hosts run --name chase-sim-chaser --num-decisions 10
 ./cli/automa hosts status --name chase-sim-chaser --long
 ./cli/automa plugins stream --step perception --host-name chase-sim-chaser
 ./cli/automa plugins stream --step perception --host-name piracer
@@ -332,14 +331,15 @@ Stop or restart the worker:
 
 ```sh
 ./cli/automa hosts stop --name chase-sim-chaser
-./cli/automa hosts restart --name chase-sim-chaser --observe-only --num-decisions 0 --open-view
+./cli/automa hosts restart --name chase-sim-chaser --observe-only --open-view
 ```
 
 Useful run options:
 
 - `--num-decisions N` bounds the number of completed decision cycles and stops
-  movement afterward. Movement-enabled `run` and `restart` require a positive
-  count unless `--unbounded` is set. Observation-only runs still accept zero.
+  movement afterward; N must be positive. Movement-enabled `run` and `restart`
+  require a count unless `--unbounded` is set. An observation-only run without
+  a count runs until stopped.
 - `--unbounded` runs until stopped, overriding `--num-decisions` on either
   vehicle and in either mode. For example:
   `./cli/automa hosts run --name chase-sim-chaser --unbounded --open-view`.
@@ -370,7 +370,7 @@ before restarting the worker:
 
 ```sh
 ./cli/automa hosts update --name chase-sim-chaser
-./cli/automa hosts restart --name chase-sim-chaser --observe-only --num-decisions 0 --open-view
+./cli/automa hosts restart --name chase-sim-chaser --observe-only --open-view
 ```
 
 ### Perception Plugins
@@ -717,9 +717,9 @@ Once the host is created (and its release deployed, for PiCar), the same command
 control both vehicles. Change only the host name:
 
 ```sh
-./cli/automa hosts run --name chase-sim-chaser --open-view
+./cli/automa hosts run --name chase-sim-chaser --num-decisions 10 --open-view
 ./cli/automa hosts stop --name chase-sim-chaser
-./cli/automa hosts run --name piracer --open-view
+./cli/automa hosts run --name piracer --num-decisions 10 --open-view
 ./cli/automa hosts stop --name piracer
 ```
 
@@ -747,7 +747,7 @@ runtime ingress; dropped frames are received captures replaced before processing
 Counters accumulate for the host process; run summaries show deltas. Intentional
 halt/stop discards and uncaptured simulator frame-index gaps are excluded.
 Automation `run` and `restart` use `--num-decisions` in place of `--frames`.
-Run configuration and `hosts status` use `num_decisions` (zero means
+Run configuration and `hosts status` use `num_decisions` (`null` means
 unbounded, explicitly requested with `--unbounded` for movement-enabled runs); host session status
 reports `processed_decisions`.
 

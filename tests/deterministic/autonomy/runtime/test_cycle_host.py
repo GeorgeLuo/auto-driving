@@ -29,6 +29,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost, sync_live_selection
 from autonomy.runtime.execution import ControlExecution
+from autonomy.runtime.session import RunConfiguration
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.support.action_fixtures import action_runner, plan_runner, proposal_runner
 
@@ -167,9 +168,9 @@ class CycleHostMemoryTests(unittest.TestCase):
         host, _ = _host()
         host.execution = ControlExecution(Mock(write=Mock(return_value={})))
         self.addCleanup(host.close)
-        host.start()
+        host.start(RunConfiguration(mode="autonomy", num_decisions=None))
         old = host.execution.ticket().control_applications[0]
-        host.start()
+        host.start(RunConfiguration(mode="autonomy", num_decisions=None))
         current = host.execution.ticket().control_applications
         self.assertIs(current[0], old)
         self.assertEqual([item.reason for item in current], [
@@ -189,11 +190,11 @@ class CycleHostMemoryTests(unittest.TestCase):
             return original(value)
         with patch.object(host, "set_mode", side_effect=mode):
             with self.assertRaisesRegex(RuntimeError, "new acquisition failure"):
-                host.start()
+                host.start(RunConfiguration(mode="autonomy", num_decisions=None))
         self.assertEqual(host.last_error, "RuntimeError: new acquisition failure")
         self.assertEqual(host.run_state, "error")
         with patch.object(host, "set_mode", return_value={}):
-            host.start()
+            host.start(RunConfiguration(mode="autonomy", num_decisions=None))
         self.assertIsNone(host.last_error)
         host.close()
 
@@ -201,7 +202,7 @@ class CycleHostMemoryTests(unittest.TestCase):
         host, _ = _host()
         host.execution = ControlExecution(Mock(write=Mock(return_value={})))
         self.addCleanup(host.close)
-        host.start()
+        host.start(RunConfiguration(mode="autonomy", num_decisions=None))
         with patch.object(host, "set_mode", side_effect=RuntimeError("Frontend not connected")):
             with self.assertRaisesRegex(RuntimeError, "Frontend not connected"):
                 host.stop(reason="error", error="ChaseCameraStreamError: Camera stream ended")
@@ -217,7 +218,7 @@ class CycleHostMemoryTests(unittest.TestCase):
             host, _ = _host(memory=_memory_step(Path(tmp), fail_on_update=True))
             host.execution = ControlExecution(Mock(write=Mock(return_value={})))
             self.addCleanup(host.close)
-            host.start()
+            host.start(RunConfiguration(mode="autonomy", num_decisions=None))
             with patch.object(host, "set_mode", side_effect=RuntimeError("Frontend not connected")):
                 with self.assertRaisesRegex(RuntimeError, "Frontend not connected"):
                     host.run(DecisionFrameContext("frame_x", 0, 1))
@@ -327,7 +328,6 @@ class CycleHostMemoryTests(unittest.TestCase):
 class CycleHostStepTests(unittest.TestCase):
     def test_an_inflight_success_cannot_clear_an_external_stop_error(self):
         from unittest import mock
-        from autonomy.runtime.session import RunConfiguration
         from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
         perception = GatedPerception(1)
         host = AutonomyCycleHost(steps=replace(decision_steps(), perception=perception), target=mock.Mock())
@@ -339,7 +339,7 @@ class CycleHostStepTests(unittest.TestCase):
                 errors.append(exc)
         worker = threading.Thread(target=run)
         try:
-            host.start(RunConfiguration(mode="observe_only"))
+            host.start(RunConfiguration(mode="observe_only", num_decisions=None))
             worker.start()
             perception.wait_started(0)
             host.stop(reason="error", error="simulator_state_changed: control source changed")

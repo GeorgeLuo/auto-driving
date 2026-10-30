@@ -63,7 +63,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.addCleanup(part.shutdown)
         with tempfile.TemporaryDirectory() as tmp:
             part.recording_root = Path(tmp)
-            part.start(RunConfiguration(mode="observe_only"), record=True)
+            part.start(RunConfiguration(mode="observe_only", num_decisions=None), record=True)
             with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", side_effect=AssertionError("reencoded")):
                 part.submit(image, jpeg_bytes=wire)
                 part.wait_for_cycle()
@@ -88,7 +88,7 @@ class ObservationPublicationTests(unittest.TestCase):
             return encode_jpeg(image)
         with tempfile.TemporaryDirectory() as tmp:
             part.recording_root = Path(tmp)
-            part.start(RunConfiguration(mode="observe_only"), record=True)
+            part.start(RunConfiguration(mode="observe_only", num_decisions=None), record=True)
             published = []
             with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", side_effect=encode) as encoder:
                 part.run(image_array=np.zeros((8, 12, 3), dtype=np.uint8), mode="user")

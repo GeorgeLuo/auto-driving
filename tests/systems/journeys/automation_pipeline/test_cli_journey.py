@@ -44,7 +44,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
             try:
                 run_automa(
                     "hosts", "run", "--name", "chase-sim-chaser",
-                    "--observe-only", "--num-decisions", "0", runtime_root=runtime_root, extra_env=env,
+                    "--observe-only", runtime_root=runtime_root, extra_env=env,
                 )
                 stream_env = {
                     **os.environ, **env,
@@ -122,8 +122,6 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                         "--name",
                         "chase-sim-chaser",
                         "--observe-only",
-                        "--num-decisions",
-                        "0",
                         "--open-view",
                         runtime_root=runtime_root,
                         extra_env=env,
@@ -144,7 +142,7 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     ).stdout)["hosts"][0]["run"]["state"]["run_id"]
                     restarted = run_automa(
                         "hosts", "restart", "--name", "chase-sim-chaser",
-                        "--observe-only", "--num-decisions", "0", "--open-view",
+                        "--observe-only", "--open-view",
                         runtime_root=runtime_root, extra_env=env,
                     )
                     self.assertIn("Run started on host", restarted.stdout)

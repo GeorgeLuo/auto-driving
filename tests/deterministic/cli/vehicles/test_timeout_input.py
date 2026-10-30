@@ -60,18 +60,13 @@ class TimeoutInputTests(unittest.TestCase):
     def test_invalid_automation_values_stop_before_worker_dispatch(self) -> None:
         for value in INVALID_TIMEOUTS:
             with self.subTest(value=value):
-                with (
-                    patch("cli.automa_cli.hosts.commands.run_host_automation") as run_automation,
-                    patch("cli.automa_cli.hosts.commands.start_host_automation_background") as start_automation,
-                    patch("cli.automa_cli.hosts.commands.record_host_automation_terminal_result") as record_result,
-                ):
+                with patch("cli.automa_cli.hosts.commands.start_host_automation_background") as start_automation:
                     code, stdout, stderr = _invoke(
                         "hosts",
                         "run",
                         "--name",
                         "chase-sim-chaser",
                         *_timeout_args(value),
-                        "--foreground",
                     )
 
                 self.assertEqual(code, 2)
@@ -79,9 +74,7 @@ class TimeoutInputTests(unittest.TestCase):
                 self.assertIn(TIMEOUT_MESSAGE, stdout)
                 self.assertNotIn("Traceback", stdout)
                 self.assertEqual(stderr, "")
-                run_automation.assert_not_called()
                 start_automation.assert_not_called()
-                record_result.assert_not_called()
 
     def test_valid_positive_timeout_reaches_each_consumer_unchanged(self) -> None:
         with patch(
@@ -100,11 +93,9 @@ class TimeoutInputTests(unittest.TestCase):
         get_hosts.assert_called_once_with(host_name=None, timeout_s=1.25, long=False, json_output=False)
 
         with patch(
-            "cli.automa_cli.hosts.commands.run_host_automation",
+            "cli.automa_cli.hosts.commands.start_host_automation_background",
             return_value=SimpleNamespace(exit_code=0, message="ok"),
-        ) as run_automation, patch(
-            "cli.automa_cli.hosts.commands.record_host_automation_terminal_result"
-        ):
+        ) as run_automation:
             code, _, _ = _invoke(
                 "hosts",
                 "run",
@@ -112,7 +103,6 @@ class TimeoutInputTests(unittest.TestCase):
                 "chase-sim-chaser",
                 "--timeout-s",
                 "1.25",
-                "--foreground",
             )
         self.assertEqual(code, 0)
         self.assertEqual(run_automation.call_args.kwargs["timeout_s"], 1.25)
@@ -129,17 +119,14 @@ class TimeoutInputTests(unittest.TestCase):
             self.assertEqual(get_status.call_args.kwargs["timeout_s"], 5.0)
 
         with patch(
-            "cli.automa_cli.hosts.commands.run_host_automation",
+            "cli.automa_cli.hosts.commands.start_host_automation_background",
             return_value=SimpleNamespace(exit_code=0, message="ok"),
-        ) as run_automation, patch(
-            "cli.automa_cli.hosts.commands.record_host_automation_terminal_result"
-        ):
+        ) as run_automation:
             code, _, _ = _invoke(
                 "hosts",
                 "run",
                 "--name",
                 "chase-sim-chaser",
-                "--foreground",
             )
         self.assertEqual(code, 0)
         self.assertEqual(run_automation.call_args.kwargs["timeout_s"], 5.0)

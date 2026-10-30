@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import subprocess
@@ -26,7 +27,7 @@ from .runtime_hosts import (
     runtime_base_url,
     staged_host,
 )
-from .automation_stop import stop_host_automation
+from .automation_stop import WORKER_MODULE, stop_host_automation
 from .runtime_monitor import monitor_runtime
 from .step_activations import (
     bundle_activation_problems,
@@ -48,9 +49,6 @@ from ..frontend.perception_view import (
     perception_view_ready,
 )
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
-
-
-AUTOMA_EXECUTABLE = ROOT / "cli" / "automa"
 
 
 
@@ -100,17 +98,17 @@ def _resolve_run_target(
 
 
 
-def _run_configuration(*, take_control: bool, num_decisions: int,
+def _run_configuration(*, take_control: bool, num_decisions: int | None,
                        unbounded: bool = False) -> RunConfiguration:
     """Movement runs require a positive bound or an explicit unbounded opt-in."""
 
     # Refuse what the runtime refuses before --unbounded replaces the count.
-    if type(num_decisions) is not int or num_decisions < 0:
-        raise ValueError("num_decisions must be a nonnegative integer")
+    if num_decisions is not None and (type(num_decisions) is not int or num_decisions < 1):
+        raise ValueError("--num-decisions must be a positive integer")
     if unbounded:
-        num_decisions = 0
+        num_decisions = None
 
-    if take_control and num_decisions == 0 and not unbounded:
+    if take_control and num_decisions is None and not unbounded:
         raise ValueError(
             "A run that applies control needs --num-decisions N (N > 0); "
             "use --unbounded to run until stopped."
@@ -127,7 +125,7 @@ def run_host_automation(
     host_name: str | None = None,
     host_url: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    num_decisions: int = 0,
+    num_decisions: int | None = None,
     unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
@@ -179,7 +177,7 @@ def start_host_automation_background(
     host_name: str | None = None,
     host_url: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    num_decisions: int = 0,
+    num_decisions: int | None = None,
     unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
@@ -316,18 +314,16 @@ def start_host_automation_background(
 
     command = [
         sys.executable,
-        str(AUTOMA_EXECUTABLE),
-        "hosts",
-        "run",
+        "-m",
+        WORKER_MODULE,
         *(["--host-url", host_url] if host_url is not None else ["--name", host_name]),
         "--timeout-s",
         str(timeout_s),
-        "--num-decisions",
-        str(configuration.num_decisions),
-        "--foreground",
     ]
-    if unbounded:
+    if configuration.num_decisions is None:
         command.append("--unbounded")
+    else:
+        command.extend(["--num-decisions", str(configuration.num_decisions)])
     if not take_control:
         command.append("--observe-only")
     if record:
@@ -734,7 +730,7 @@ def restart_host_automation(
     *,
     host_name: str,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    num_decisions: int = 0,
+    num_decisions: int | None = None,
     unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
@@ -791,3 +787,40 @@ def _log_status_line(process: Any, log_path: Path) -> str:
     if isinstance(configured_path, str) and configured_path:
         return f"Log: {configured_path}"
     return f"Log: {display_path(log_path)}"
+
+
+
+def _run_worker(argv: list[str]) -> int:
+    """Run in the foreground for hosts run, reporting a failure before the run starts."""
+
+    parser = argparse.ArgumentParser(prog=WORKER_MODULE)
+    target = parser.add_mutually_exclusive_group(required=True)
+    target.add_argument("--name", dest="host_name")
+    target.add_argument("--host-url")
+    parser.add_argument("--timeout-s", type=float, required=True)
+    parser.add_argument("--num-decisions", type=int)
+    parser.add_argument("--unbounded", action="store_true")
+    parser.add_argument("--observe-only", action="store_true")
+    parser.add_argument("--record", action="store_true")
+    parser.add_argument("--verbose", action="store_true")
+    args = parser.parse_args(argv)
+    result = run_host_automation(
+        host_name=args.host_name,
+        host_url=args.host_url,
+        timeout_s=args.timeout_s,
+        num_decisions=args.num_decisions,
+        unbounded=args.unbounded,
+        take_control=not args.observe_only,
+        record=args.record,
+        verbose=args.verbose,
+        output=sys.stdout,
+    )
+    if result.message:
+        print(result.message)
+    if args.host_name:
+        record_host_automation_terminal_result(host_name=args.host_name, result=result)
+    return result.exit_code
+
+
+if __name__ == "__main__":
+    raise SystemExit(_run_worker(sys.argv[1:]))

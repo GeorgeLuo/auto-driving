@@ -41,7 +41,7 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
             try:
                 try:
                     run = cli("hosts", "run", "--name", "chase-sim-chaser", "--observe-only",
-                              "--num-decisions", "0", "--open-view", "--timeout-s", "6")
+                              "--open-view", "--timeout-s", "6")
                     self.assertIn("Run started on host", run.stdout)
                     self.assertIn("Runtime view: http://127.0.0.1:", run.stdout)
 

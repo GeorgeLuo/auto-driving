@@ -64,10 +64,10 @@ class ChasePassiveCaptureError(RuntimeError):
             "simulator_state_changed": "passive_capture",
         }.get(self.code, "passive_capture")
         return {
-            "schema": "automa_cli_error_v1",
-            "error": self.code,
+            "schema": "automa_cli_error",
+            "error_code": self.code,
+            "error": self.detail,
             "layer": layer,
-            "message": self.detail,
             "details": self.details,
             "recovery": None,
             "exit_code": 1,

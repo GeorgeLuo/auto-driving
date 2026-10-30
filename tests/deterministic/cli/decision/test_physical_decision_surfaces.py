@@ -113,7 +113,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                     host_name="piracer",
                     now_ms=now_ms,
                 )
-            self.assertEqual(raised.exception.error, "decision_publication_unavailable")
+            self.assertEqual(raised.exception.error_code, "decision_publication_unavailable")
             self.assertEqual(raised.exception.details.get("reason"), expected_reason)
 
     def test_physical_decision_is_served_under_the_host_producer_identity(self) -> None:
@@ -331,7 +331,8 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             )
             self.assertEqual(expired.returncode, 2, expired.stderr + expired.stdout)
             unavailable = json.loads(expired.stdout)
-            self.assertEqual(unavailable["error"], "decision_publication_unavailable")
+            self.assertEqual(unavailable["error_code"], "decision_publication_unavailable")
+            self.assertIn("Decision publication", unavailable["error"])
             self.assertEqual(unavailable["details"]["reason"], "expired")
         finally:
             server.shutdown()

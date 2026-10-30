@@ -6,7 +6,7 @@ import json
 import math
 from typing import TextIO
 
-_TIMEOUT_INPUT_ERROR = "timeout_invalid"
+_TIMEOUT_INPUT_ERROR_CODE = "timeout_invalid"
 _TIMEOUT_INPUT_CONSTRAINT = "finite number greater than zero"
 _TIMEOUT_INPUT_RECOVERY = "Provide a finite --timeout-s greater than zero."
 
@@ -28,10 +28,10 @@ def validate_timeout_input(
         print(
             json.dumps(
                 {
-                    "schema": "automa_cli_error_v1",
-                    "error": _TIMEOUT_INPUT_ERROR,
+                    "schema": "automa_cli_error",
+                    "error_code": _TIMEOUT_INPUT_ERROR_CODE,
+                    "error": message,
                     "layer": "input",
-                    "message": message,
                     "details": {
                         "argument": "--timeout-s",
                         "constraint": _TIMEOUT_INPUT_CONSTRAINT,

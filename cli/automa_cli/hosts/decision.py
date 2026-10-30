@@ -126,7 +126,7 @@ class DecisionSurfaceError(Exception):
 
     def __init__(
         self,
-        error: str,
+        error_code: str,
         message: str,
         *,
         host_name: str | None = None,
@@ -134,7 +134,7 @@ class DecisionSurfaceError(Exception):
         exit_code: int = 2,
     ) -> None:
         super().__init__(message)
-        self.error = error
+        self.error_code = error_code
         self.message_text = message
         self.host_name = host_name
         self.details = details or {}
@@ -143,8 +143,8 @@ class DecisionSurfaceError(Exception):
 
 def decision_error_payload(
     *,
+    error_code: str,
     error: str,
-    message: str,
     exit_code: int = 2,
     host_name: str | None = None,
     details: dict[str, Any] | None = None,
@@ -152,8 +152,8 @@ def decision_error_payload(
     return {
         "schema": ERROR_SCHEMA,
         "exit_code": exit_code,
+        "error_code": error_code,
         "error": error,
-        "message": message,
         "host_name": host_name,
         "details": details or {},
     }
@@ -177,23 +177,23 @@ def require_valid_activations(
         )
 
 
-def _require_identity_steps(identity: object, *, error: str) -> dict[str, Any]:
+def _require_identity_steps(identity: object, *, error_code: str) -> dict[str, Any]:
     """The decision steps of an identity; its generation ID must match their content."""
 
     if not isinstance(identity, dict) or not isinstance(identity.get("steps"), dict):
         raise DecisionSurfaceError(
-            error,
+            error_code,
             "The decision identity names no proposal, plan, and action steps.",
         )
     steps = identity["steps"]
     if set(steps) != set(DECISION_STEPS):
         raise DecisionSurfaceError(
-            "activation_invalid" if error == "activation_missing" else error,
+            "activation_invalid" if error_code == "activation_missing" else error_code,
             f"Decision identity must name exactly the steps {list(DECISION_STEPS)!r}.",
         )
     if steps.get("proposal") is None:
         raise DecisionSurfaceError(
-            error,
+            error_code,
             "The decision identity has no proposal step. "
             "Arm one with: ./cli/automa plugins arm --host-name <host> --name proposal/<plugin>",
         )
@@ -201,12 +201,12 @@ def _require_identity_steps(identity: object, *, error: str) -> dict[str, Any]:
         expected = activation_generation_id(activations_from_payloads(steps), prefix="decision")
     except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError(
-            "activation_invalid" if error == "activation_missing" else error,
+            "activation_invalid" if error_code == "activation_missing" else error_code,
             f"Decision step activations are invalid: {exc}",
         ) from exc
     if identity.get("generation_id") != expected:
         raise DecisionSurfaceError(
-            "activation_invalid" if error == "activation_missing" else error,
+            "activation_invalid" if error_code == "activation_missing" else error_code,
             "Decision generation_id does not match its step activations.",
         )
     return steps
@@ -218,7 +218,7 @@ def _require_report_cycle_alignment(
 ) -> None:
     """The same typed cycle and staged-step checks for every report transport."""
 
-    steps = _require_identity_steps(activation, error="latest_frame_invalid")
+    steps = _require_identity_steps(activation, error_code="latest_frame_invalid")
     cycle = _require_exact_cycle_export(report["cycle"])
     _require_runner_plan_alignment(cycle, steps)
     _require_aggregate_cycle_alignment(report, cycle)
@@ -268,7 +268,7 @@ def accept_decision_publication(
             "decision_publication_unavailable",
             f"Decision publication is invalid: {exc.message_text}",
             host_name=host_name,
-            details={"reason": "mismatched", "source_error": exc.error, **exc.details},
+            details={"reason": "mismatched", "source_error_code": exc.error_code, **exc.details},
         ) from exc
     return normalized
 

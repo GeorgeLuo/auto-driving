@@ -282,6 +282,10 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
         self.assertEqual(raised.exception.code, "capture_image_invalid")
         self.assertEqual(raised.exception.path, "sensor.image.svg")
         self.assertIn(".png", raised.exception.detail)
+        envelope = raised.exception.to_dict()
+        self.assertEqual((envelope["schema"], envelope["error_code"], envelope["error"]),
+                         ("automa_cli_error", "capture_image_invalid", raised.exception.detail))
+        self.assertNotIn("message", envelope)
 
     def test_invalid_capture_is_rejected_before_output_write(self) -> None:
         car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)
@@ -330,6 +334,14 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
         score = score_reference_alignment_batch(frames, min_frames=2)
         self.assertTrue(score["passed"], score)
         self.assertTrue(score["consistent_run_identity"])
+        self.assertEqual((score["error_code"], score["error"]), (None, None))
+
+        unreferenced = score_reference_alignment_batch(
+            [{**frame, "chaser_reference": None} for frame in frames], min_frames=2,
+        )
+        self.assertFalse(unreferenced["passed"])
+        self.assertEqual(unreferenced["error_code"], "evaluator_reference_unavailable")
+        self.assertIn("Reference alignment requires", unreferenced["error"])
 
         frames.reverse()
         reversed_score = score_reference_alignment_batch(frames, min_frames=2)

@@ -103,7 +103,7 @@ def stream_host_step(
             return _error_probe(exc), None
 
     def render(live: dict[str, Any], _source: None) -> str:
-        text = _format_stream_frame(step, live) if live["status"] == "live" else live["message"]
+        text = _format_stream_frame(step, live) if live["status"] == "live" else live["error"]
         if view is None:
             return text
         return "\n".join([text, "", *view_page_lines(view, ("perception view", "/perception"))])
@@ -125,11 +125,11 @@ def stream_host_step(
 
 
 def _error_probe(exc: DecisionSurfaceError) -> dict[str, Any]:
-    """A decision error as a stream probe; ``error`` keeps its code."""
+    """A decision error as a stream probe: ``error`` is its text and ``error_code`` its code."""
 
     return {
         **decision_error_payload(
-            error=exc.error, message=exc.message_text, exit_code=exc.exit_code,
+            error_code=exc.error_code, error=exc.message_text, exit_code=exc.exit_code,
             host_name=exc.host_name, details=exc.details,
         ),
         "status": "error",

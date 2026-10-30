@@ -95,8 +95,9 @@ class StreamOutputTests(unittest.TestCase):
                 self.assertEqual(len(output.frames), 2)
                 if json_output:
                     error, live = map(json.loads, output.getvalue().splitlines())
-                    self.assertEqual((error["status"], error["error"], error["message"]),
+                    self.assertEqual((error["status"], error["error_code"], error["error"]),
                                      ("error", "runtime_decision_unavailable", OFFLINE))
+                    self.assertNotIn("message", error)
                     self.assertEqual((live["schema"], live["status"], live["frame_id"]), ("host_plan_stream", "live", "next"))
                     view.assert_not_called()
                 else:

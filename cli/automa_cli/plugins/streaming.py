@@ -20,7 +20,7 @@ from autonomy.decision_cycle.memory.interface import (
 from autonomy.decision_cycle.timing import step_timing
 from autonomy.runtime.frame_loop import LATEST_FRAME_PATH, LATEST_JSON_PATH
 from ..shared.command_result import CommandResult
-from ..shared.controller_releases import RuntimeHostError
+from ..releases.errors import RuntimeHostError
 from ..shared.memory_report import evidence_publisher, ledger_summary, plugin_ledgers
 from ..shared.timestamps import timestamp_ms
 from ..hosts.publications.decision_publication import (

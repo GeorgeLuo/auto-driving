@@ -12,7 +12,7 @@ from autonomy.decision_cycle.activation import DECISION_STEPS
 from .catalog.commands import register_catalog
 from .decision_steps import stream_host_step
 from .streaming import stream_host_memory, stream_host_perception
-from ..shared.replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
+from ..replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ..shared.selection_args import add_selection_args
 from .step_inspect import INSPECT_STEPS, inspect_step
 

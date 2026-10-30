@@ -21,13 +21,13 @@ from autonomy.plugins import uploaded_source
 from autonomy.runtime.recording import recorded_selections, recording_frame_entry
 from autonomy.decision_cycle.activation import StepActivation
 
-from ..shared.replay.inspection_runs import (
+from ..replay.selections import (
     SharedMemorySeed, recorded_runner,
     default_selection, resolve_replay_activations, restage_replay_steps, selection_report,
 )
 from ..shared.paths import safe_path_part
-from ..shared.replay.frames import FrameOutcome, run_frame
-from ..shared.replay.source import (
+from ..replay.frames import FrameOutcome, run_frame
+from ..replay.source import (
     ImageSource,
     ReplayFrame,
     SourceValidationError,

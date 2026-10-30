@@ -8,7 +8,8 @@ from typing import Any, TextIO
 from autonomy.decision_cycle.activation import DECISION_STEPS
 
 from ..shared.command_result import CommandResult
-from ..shared.controller_releases import RuntimeHostError, bundle_paths
+from ..releases.errors import RuntimeHostError
+from ..shared.controller_releases import bundle_paths
 from .step_formatting import format_step_record, format_step_timing
 from ..hosts.publications.decision import (
     DecisionSurfaceError,

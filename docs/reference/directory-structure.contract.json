@@ -252,7 +252,19 @@
             "path": "cli/automa_cli/shared/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "Code several automa commands share and none owns: command results, repository paths, controller releases, I/O helpers, argument checks, reports, and offline replay sources, frame execution and recorded selections."
+            "responsibility": "Code several automa commands share and none owns: command results, repository paths, controller-bundle paths, I/O helpers, argument checks, and reports."
+          },
+          {
+            "path": "cli/automa_cli/releases/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "Reading and reconstructing a host's controller release. Packaging a release stays with host deployment."
+          },
+          {
+            "path": "cli/automa_cli/replay/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "Offline replay shared by the workbench and plugin inspection: image sources, one-frame execution, and selections rebuilt from a recorded controller release."
           },
           {
             "path": "cli/automa_cli/vehicles/",
@@ -270,7 +282,7 @@
             "path": "cli/automa_cli/workbench/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa workbench command, its replay runner, plugin selections and presentation. It uses shared offline replay code and serves through the viewer automa passes in."
+            "responsibility": "The automa workbench command, its replay runner, plugin selections and presentation. It uses the replay package for sources, frames and selections, and serves through the viewer automa passes in."
           },
           {
             "path": "cli/automa_cli/plugins/",

@@ -26,8 +26,8 @@ from autonomy.runtime.recording import (
 )
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from cli.automa_cli.shared.replay.frames import run_frame
-from cli.automa_cli.shared.replay.source import SourceValidationError, load_image_source
+from cli.automa_cli.replay.frames import run_frame
+from cli.automa_cli.replay.source import SourceValidationError, load_image_source
 from implementations.runtime.picar.control import DonkeyControlTarget
 from tests.shared.cli.workbench_fixtures import image_source, write_manifest
 

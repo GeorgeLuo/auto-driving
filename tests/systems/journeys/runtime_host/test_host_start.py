@@ -14,7 +14,7 @@ from unittest import mock
 
 from cli.automa_cli.hosts import runtime_hosts
 from cli.automa_cli.hosts.runtime_hosts import ensure_chase_host
-from cli.automa_cli.shared.controller_releases import RuntimeHostError
+from cli.automa_cli.releases.errors import RuntimeHostError
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 

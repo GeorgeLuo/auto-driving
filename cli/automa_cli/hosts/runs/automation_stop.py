@@ -17,7 +17,7 @@ from ..vehicle_access import create_vehicle_access
 from ...shared.io.json_files import read_json, write_json_atomically
 from ...shared.paths import display_path
 from ...shared.io.processes import pid_alive
-from ...shared.controller_releases import RuntimeHostError
+from ...releases.errors import RuntimeHostError
 from ..runtime_hosts import (
     automation_dir as host_automation_dir,
     running_base_url,

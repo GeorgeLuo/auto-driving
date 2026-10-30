@@ -14,9 +14,9 @@ from pathlib import Path
 from typing import Any
 
 from ..shared.command_result import CommandResult
-from ..shared.json_files import read_json
+from ..shared.io.json_files import read_json
 from ..shared.paths import display_path, safe_path_part
-from ..shared.processes import pid_alive
+from ..shared.io.processes import pid_alive
 from . import runtime_hosts
 from ..shared.controller_releases import RuntimeHostError, controller_bundle_paths, release_manifest, update_command
 from .runtime_hosts import running_base_url

@@ -11,7 +11,7 @@ from ..shared.command_result import CommandResult
 from .automation_stop import stop_host_automation
 from .bundles import controller_bundle_source_summary, sync_controller_bundle
 from ..shared.paths import RUNTIME_ROOT, display_path, safe_path_part
-from ..shared.processes import pid_alive
+from ..shared.io.processes import pid_alive
 from .step_activations import (
     decision_generation_id,
     ensure_step_activations,

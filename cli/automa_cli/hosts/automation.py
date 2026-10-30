@@ -16,9 +16,9 @@ from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
 from ..shared.command_result import CommandResult
-from ..shared.json_files import read_json, write_json_atomically
+from ..shared.io.json_files import read_json, write_json_atomically
 from ..shared.paths import ROOT, display_path
-from ..shared.processes import pid_alive
+from ..shared.io.processes import pid_alive
 from ..shared.controller_releases import RuntimeHostError, bundle_paths
 from .runtime_hosts import (
     automation_dir as host_automation_dir,

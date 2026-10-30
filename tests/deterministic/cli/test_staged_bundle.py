@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 from autonomy.runtime.plugin_loader import StagedBundleImport
-from cli.automa_cli.shared.json_files import read_json, write_json_atomically
+from cli.automa_cli.shared.io.json_files import read_json, write_json_atomically
 
 
 HOST_NAME = "bundle_probe_host.marker"

@@ -121,7 +121,7 @@ class PhysicalDeployTests(unittest.TestCase):
         )
         for mode, reported, error in cases:
             with self.subTest(mode=mode, reported=reported), patch(
-                "cli.automa_cli.shared.http_json.urllib.request.urlopen",
+                "cli.automa_cli.shared.io.http_json.urllib.request.urlopen",
                 return_value=_status_response(mode, reported),
             ):
                 if error is None:

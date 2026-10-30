@@ -20,7 +20,7 @@ from typing import Any
 from ..shared.command_result import CommandResult
 from ..hosts.runtime_hosts import local_hosts, log_tail
 from ..shared.controller_releases import RuntimeHostError
-from ..shared.processes import pid_alive
+from ..shared.io.processes import pid_alive
 from ..vehicles.discovery import SIMULATOR_RECORD, SIMULATOR_SCHEMA, created_simulators, simulator_dir
 from ..vehicles.probes import chase_operator_url, normalize_chase_url
 from ..vehicles.providers import CHASE_SIM

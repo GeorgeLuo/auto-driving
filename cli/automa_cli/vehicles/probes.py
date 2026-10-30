@@ -20,7 +20,7 @@ from implementations.vehicle.chase_sim.car import FRONTEND_DELIVERY_PROTOCOL_COD
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
 from implementations.vehicle.picar import create_picar
 
-from ..shared import http_json
+from ..shared.io import http_json
 
 DEFAULT_READINESS_TIMEOUT_S = 5.0
 

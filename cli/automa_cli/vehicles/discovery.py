@@ -13,9 +13,9 @@ from implementations.vehicle.chase_sim.defaults import (
 )
 
 from ..shared.command_result import CommandResult
-from ..shared.json_files import write_json_atomically
+from ..shared.io.json_files import write_json_atomically
 from ..shared.paths import RUNTIME_ROOT
-from ..shared.processes import pid_alive
+from ..shared.io.processes import pid_alive
 from .probes import (
     DEFAULT_READINESS_TIMEOUT_S,
     Candidate,

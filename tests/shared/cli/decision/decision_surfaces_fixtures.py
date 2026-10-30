@@ -257,7 +257,7 @@ class DecisionSurfaceFixture:
             },
         )
         return {
-            "schema": "automa_physical_decision_publication_v0",
+            "schema": "automa_physical_decision_publication",
             "ok": True,
             "status": "ready",
             "reason": "",

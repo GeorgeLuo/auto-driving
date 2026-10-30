@@ -229,7 +229,7 @@ def validate_chase_sensor_capture(
         )
 
     return {
-        "schema": "chase_sensor_capture_v1",
+        "schema": "chase_sensor_capture",
         "capture_id": capture_id,
         "actor_id": actor_id,
         "game_id": game_id,
@@ -330,7 +330,7 @@ def evaluate_chase_evaluator_reference(
         )
 
     bounded = {
-        "schema": "chaser_reference_v1",
+        "schema": "chaser_reference",
         "evaluator_only": True,
         "capture_id": sensor["capture_id"],
         "actor_id": sensor["actor_id"],

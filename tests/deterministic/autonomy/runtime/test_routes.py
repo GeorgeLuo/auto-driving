@@ -148,7 +148,7 @@ class RuntimeRoutesTests(unittest.TestCase):
         with patch.object(FrameLoop, "frame_jpeg", side_effect=advance_before_encoding):
             status, transaction = _json(routes.handle("GET", "/host/observation/transaction"))
         self.assertEqual(status, 200, transaction)
-        self.assertEqual(transaction["schema"], "automa_observation_transaction_v0")
+        self.assertEqual(transaction["schema"], "automa_observation_transaction")
         self.assertEqual(transaction["publication"]["frame"]["frame_id"], "first")
         self.assertEqual(transaction["image_frame_id"], "first")
         self.assertEqual(transaction["image_content_type"], "image/jpeg")
@@ -186,7 +186,7 @@ class RuntimeRoutesTests(unittest.TestCase):
         loop.wait_for_cycle()
         status, transaction = _json(routes.handle("GET", "/host/decision/transaction"))
         self.assertEqual(status, 200, transaction)
-        self.assertEqual(transaction["schema"], "automa_decision_transaction_v0")
+        self.assertEqual(transaction["schema"], "automa_decision_transaction")
         self.assertEqual(transaction["publication"]["decision"]["frame_id"], "sim_frame_000042")
         self.assertEqual(transaction["image_content_type"], "image/jpeg")
         self.assertTrue(base64.b64decode(transaction["image_base64"]).startswith(b"\xff\xd8"))

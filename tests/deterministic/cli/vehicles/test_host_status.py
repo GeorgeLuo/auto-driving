@@ -150,7 +150,7 @@ class HostStatusTests(unittest.TestCase):
         path = self.runtime_root / "old-host" / "host-configuration.json"
         path.parent.mkdir()
         path.write_text(json.dumps({
-            "schema": "automa_host_configuration_v1", "host_name": "old-host", "provider": "chase-sim",
+            "host_name": "old-host", "provider": "chase-sim",
             "connection": {"ws_url": self.server.url},
         }), encoding="utf-8")
 

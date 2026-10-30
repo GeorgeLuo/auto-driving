@@ -627,7 +627,7 @@ class ChaseSimCar(CarInterface):
             }
         )
         result: dict[str, Any] = {
-            "schema": "chase_passive_capture_v1",
+            "schema": "chase_passive_capture",
             "status": status,
             "code": code,
             "reason": reason,

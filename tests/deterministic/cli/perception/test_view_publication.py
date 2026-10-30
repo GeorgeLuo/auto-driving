@@ -38,7 +38,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
                 ]
             },
             "memory": memory_report({
-                "schema": "bounded_evidence_ledger_v0",
+                "schema": "bounded_evidence_ledger",
                 "health": "healthy",
                 "epoch_id": "epoch-2",
                 "record_count": 1,

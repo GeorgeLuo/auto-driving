@@ -16,7 +16,7 @@ from autonomy.decision_cycle.runner import FailurePolicy
 from autonomy.shared_memory import SharedMemory
 
 
-PERCEPTION_TEXT_SCHEMA = "perception_text_v2"
+PERCEPTION_TEXT_SCHEMA = "perception_text"
 PLUGIN_RESULT_STATUSES = ("ok", "empty", "warming_up", "unavailable", "error")
 PluginResultStatus = Literal["ok", "empty", "warming_up", "unavailable", "error"]
 

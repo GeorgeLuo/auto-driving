@@ -23,7 +23,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.runner import FailurePolicy
 from autonomy.shared_memory import SharedMemory
 
-MEMORY_REPORT_SCHEMA = "memory_report_v1"
+MEMORY_REPORT_SCHEMA = "memory_report"
 
 # A memory plugin that raises stops the cycle, a reset failure is recorded,
 # and plugins are still called when read_observation returns None.

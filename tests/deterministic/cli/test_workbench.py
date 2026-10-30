@@ -110,7 +110,7 @@ class WorkbenchTests(unittest.TestCase):
             image_root.mkdir(parents=True)
             _make_images(image_root, 2)
             write_manifest(root, {
-                "schema": "perception_inspect_v1",
+                "schema": "perception_inspect",
                 "selections": {},
                 "source_id": "fixture.sequence",
                 "run_dir": "lab/runs/fixture-run",

@@ -120,7 +120,7 @@ class MemoryInterfaceTests(unittest.TestCase):
             LEDGER_HEALTH_VALUES,
             frozenset({LEDGER_HEALTH_EMPTY, LEDGER_HEALTH_HEALTHY}),
         )
-        self.assertEqual(MEMORY_REPORT_SCHEMA, "memory_report_v1")
+        self.assertEqual(MEMORY_REPORT_SCHEMA, "memory_report")
 
     def test_a_missing_ledger_key_is_null(self) -> None:
         from cli.automa_cli.shared.memory_report import ledger_summary

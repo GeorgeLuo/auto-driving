@@ -71,7 +71,7 @@ function record(id) {
 }
 function twoPluginReport(publisher) {
   return {
-    schema: "memory_report_v1",
+    schema: "memory_report",
     plugins: [
       { plugin_id: "bounded_evidence", state: {
         health: "healthy", epoch_id: "epoch-b", record_count: 2,
@@ -136,7 +136,7 @@ assert(elements.memoryPlugins.children.includes(ctx.document.activeElement));
 
 // With no publisher and no listed pick, no plugin is shown by position.
 ctx.state.steps = { memory: {
-  schema: "memory_report_v1",
+  schema: "memory_report",
   plugins: [
     { plugin_id: "alpha", state: { record_count: 0, records: [] } },
     { plugin_id: "beta", state: { record_count: 0, records: [] } }

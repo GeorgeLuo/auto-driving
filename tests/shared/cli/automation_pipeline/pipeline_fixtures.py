@@ -109,7 +109,7 @@ class _FakeCar:
             "mutation_attempted": False,
         }
         self.last_capture_chaser_reference = {
-            "schema": "chaser_reference_v1",
+            "schema": "chaser_reference",
             "evaluator_only": True,
             "simulator_frame_index": simulator_frame_index,
             "simulation_epoch": "chase-run:test",

@@ -67,9 +67,6 @@ class StepSelectionTests(unittest.TestCase):
             self.assertEqual(payload["presets"], DEFAULT_STEP_PRESETS)
 
     def test_an_update_records_the_same_provenance_on_every_step(self) -> None:
-        """Regression: perception returned ``vehicle_perception_update_v0`` and
-        memory ``vehicle_memory_update_v1``, each with its own fields."""
-
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)

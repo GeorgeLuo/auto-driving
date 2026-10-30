@@ -22,7 +22,7 @@ from typing import Any
 
 from autonomy.plugins import PluginManager
 
-STEP_ACTIVATION_SCHEMA = "automa_step_activation_v0"
+STEP_ACTIVATION_SCHEMA = "automa_step_activation"
 # The cycle's steps in the order they run.
 STEPS = ("perception", "observation", "memory", "proposal", "plan", "action")
 # The steps that decide the cycle's action; their activations identify a decision generation.

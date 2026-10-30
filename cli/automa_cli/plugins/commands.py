@@ -229,7 +229,7 @@ def register_plugins(subcommands: argparse._SubParsersAction) -> None:
             dest="shared_memory_file",
             default=None,
             metavar="FILE",
-            help="Start inspect from a shared_memory_v1 JSON file; recorded as provenance.",
+            help="Start inspect from a shared_memory JSON file; recorded as provenance.",
         )
         step_inspect.add_argument(
             "--max-frames",

@@ -49,7 +49,7 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         Image.fromarray(rgb).save(self.source / "02.png")
         self.seed_file = self.root / "seed.json"
         self.document = {
-            "schema": "shared_memory_v1",
+            "schema": "shared_memory",
             "values": {KEY: {
                 "objects": [{"object_id": 7, "bbox_xyxy_norm": [0.25, 0.25, 0.62, 0.58],
                              "seen_frames": 3, "missed_frames": 0}],

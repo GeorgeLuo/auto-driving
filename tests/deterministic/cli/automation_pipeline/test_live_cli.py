@@ -185,7 +185,7 @@ class LiveCommandsTests(LiveHostTestCase):
 
     def test_status_keeps_an_invalid_staged_step_beside_the_one_the_host_applied(self) -> None:
         path = self.runtime_root / HOST_NAME / "bundle/runtime/memory/active.json"
-        path.write_text(json.dumps({"schema": "automa_memory_activation_v0"}), encoding="utf-8")
+        path.write_text("{}", encoding="utf-8")
         machine = self.automa("status", "--json")
         human = self.automa("status", "--long")
         self.assertEqual((machine.returncode, human.returncode), (0, 0), human.stdout + human.stderr)

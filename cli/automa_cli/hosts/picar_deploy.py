@@ -148,7 +148,7 @@ status_pending = status_path.with_name(f".{status_path.name}.pending")
 status_pending.write_text(
     json.dumps(
         {
-            "schema": "automa_installed_controller_release_v0",
+            "schema": "automa_installed_controller_release",
             "release_id": release_id,
             "archive_sha256": actual_sha256,
             "release_root": str(release_root),

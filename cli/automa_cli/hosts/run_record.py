@@ -18,7 +18,7 @@ from ..frontend.server import RuntimeViewServer
 from .step_activations import step_lines
 
 RUN_STATE_SCHEMA = "automa_automation_run_state"
-READINESS_SCHEMA = "automa_cli_readiness_v1"
+READINESS_SCHEMA = "automa_cli_readiness"
 # A run's host owns its wheel commands.
 CONTROL_SOURCE_LABELS = {"runtime_host": "runtime host"}
 

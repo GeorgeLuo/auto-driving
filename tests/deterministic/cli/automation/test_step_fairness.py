@@ -49,7 +49,7 @@ class StepFairnessTests(unittest.TestCase):
                 if released and not staged:
                     write_json(
                         root / VEHICLE / "bundle/releases/latest-controller-bundle.json",
-                        {"schema": "automa_controller_bundle_manifest_v0", "tree_sha256": "test"},
+                        {"schema": "automa_controller_bundle_manifest", "tree_sha256": "test"},
                     )
                 yield root
 

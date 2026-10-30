@@ -57,7 +57,7 @@ def package_controller_bundle(bundle: dict[str, str]) -> dict[str, Any]:
     latest_manifest_path = release_dir / "latest-controller-bundle.json"
 
     manifest: dict[str, Any] = {
-        "schema": "automa_controller_bundle_manifest_v0",
+        "schema": "automa_controller_bundle_manifest",
         "bundle_kind": "autonomy-controller",
         "created_at_ms": created_at_ms,
         "sources": [

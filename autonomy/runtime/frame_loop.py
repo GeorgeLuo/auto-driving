@@ -35,19 +35,19 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 logger = logging.getLogger(__name__)
 
-ONBOARD_OBSERVATION_STATE_SCHEMA = "automa_onboard_observation_state_v0"
-OBSERVATION_PUBLICATION_SCHEMA = "automa_physical_observation_publication_v0"
-DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
+ONBOARD_OBSERVATION_STATE_SCHEMA = "automa_onboard_observation_state"
+OBSERVATION_PUBLICATION_SCHEMA = "automa_physical_observation_publication"
+DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication"
 LATEST_FRAME_PATH = "/host/observation/latest/frame.jpg"
 OBSERVATION_TRANSACTION_PATH = "/host/observation/transaction"
-OBSERVATION_TRANSACTION_SCHEMA = "automa_observation_transaction_v0"
+OBSERVATION_TRANSACTION_SCHEMA = "automa_observation_transaction"
 LATEST_JSON_PATH = "/host/observation/latest"
 CAMERA_LATEST_FRAME_PATH = "/host/camera/latest/frame.jpg"
 CAMERA_LATEST_JSON_PATH = "/host/camera/latest"
-CAMERA_PUBLICATION_SCHEMA = "automa_physical_camera_publication_v0"
+CAMERA_PUBLICATION_SCHEMA = "automa_physical_camera_publication"
 DECISION_LATEST_PATH = "/host/decision/latest"
 DECISION_TRANSACTION_PATH = "/host/decision/transaction"
-DECISION_TRANSACTION_SCHEMA = "automa_decision_transaction_v0"
+DECISION_TRANSACTION_SCHEMA = "automa_decision_transaction"
 
 PUBLICATION_HEALTH_ABSENT = "absent"
 PUBLICATION_HEALTH_WARMING = "warming"

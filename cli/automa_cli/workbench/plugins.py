@@ -31,7 +31,7 @@ from ..shared.plugin_catalog import ordered_plugin_definitions, packaged_plugin_
 # The workbench exposes selection controls for the steps with packaged presets.
 WORKBENCH_SELECTABLE_STEPS = PRESET_STEPS
 
-PLUGIN_CATALOG_SCHEMA = "workbench_plugin_catalog_v1"
+PLUGIN_CATALOG_SCHEMA = "workbench_plugin_catalog"
 
 
 class PluginCatalogError(ValueError):

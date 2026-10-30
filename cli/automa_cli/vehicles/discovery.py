@@ -26,11 +26,11 @@ from .providers import CHASE_SIM, PROVIDERS
 
 # Where vehicles status looks besides the default simulator.
 DISCOVERED = "discovered.json"
-DISCOVERED_SCHEMA = "automa_discovered_vehicles_v0"
+DISCOVERED_SCHEMA = "automa_discovered_vehicles"
 # Each simulator ``simulators create`` started, in ``simulators/<port>/``.
 SIMULATORS = "simulators"
 SIMULATOR_RECORD = "simulator.json"
-SIMULATOR_SCHEMA = "automa_created_simulator_v0"
+SIMULATOR_SCHEMA = "automa_created_simulator"
 
 
 def discovered_vehicles() -> list[dict[str, str]]:

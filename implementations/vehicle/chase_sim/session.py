@@ -112,7 +112,7 @@ def normalize_passive_receipt_fingerprint(value: Any) -> dict[str, Any]:
         if not valid:
             unknown_fields.append(normalized_name)
     return {
-        "schema": "chase_session_fingerprint_v1",
+        "schema": "chase_session_fingerprint",
         **normalized,
         "unknown_fields": unknown_fields,
     }
@@ -213,7 +213,7 @@ def build_chase_session_fingerprint(
         if fingerprint.get(field_name) is None
     ]
     return {
-        "schema": "chase_session_fingerprint_v1",
+        "schema": "chase_session_fingerprint",
         **fingerprint,
         "unknown_fields": unknown_fields,
     }

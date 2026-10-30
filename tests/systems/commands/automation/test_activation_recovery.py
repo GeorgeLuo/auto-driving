@@ -21,7 +21,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                 paths = write_runtime_fixture(runtime_root, HOST_NAME, pid=child.pid)
                 path = paths.bundle_root / "runtime/memory/active.json"
                 path.parent.mkdir(parents=True)
-                path.write_text('{"schema":"automa_memory_activation_v0"}', encoding="utf-8")
+                path.write_text("{}", encoding="utf-8")
                 process = paths.automation_process.read_bytes()
                 state = paths.automation_state.read_bytes()
                 result = invoke_automa(

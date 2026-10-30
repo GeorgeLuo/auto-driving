@@ -74,8 +74,7 @@ def normalize_decision_publication(
     """Normalize and freshness-check a decision publication.
 
     The provider returns a detached view of the onboard transport and never
-    creates vehicle/run/activation/frame identity. The typed cycle remains the
-    ``action_result_v0`` export for common validation.
+    creates vehicle/run/activation/frame identity.
     """
 
     if publication is None:

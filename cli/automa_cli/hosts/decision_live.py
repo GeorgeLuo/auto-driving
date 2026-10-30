@@ -55,7 +55,7 @@ def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
         metadata = metadata if isinstance(metadata, dict) else {}
         limits = metadata.get("limits")
         perception = {
-            "schema": observation_value.get("perception_schema") or "perception_text_v2",
+            "schema": observation_value.get("perception_schema") or "perception_text",
             "status": "ok",
             "text": "\n".join(summary),
             "lines": summary,

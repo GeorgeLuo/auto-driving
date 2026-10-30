@@ -6,9 +6,9 @@ from typing import Any
 
 
 WORKBENCH_SEQUENCE_ID = "workbench.image_replay.v1"
-WORKBENCH_STATE_SCHEMA = "workbench_image_replay_state_v3"
-WORKBENCH_ACTION_RESULT_SCHEMA = "workbench_action_result_v1"
-WORKBENCH_ERROR_SCHEMA = "workbench_error_v1"
+WORKBENCH_STATE_SCHEMA = "workbench_image_replay_state"
+WORKBENCH_ACTION_RESULT_SCHEMA = "workbench_action_result"
+WORKBENCH_ERROR_SCHEMA = "workbench_error"
 WORKBENCH_DEFAULT_CADENCE_MS = 250
 WORKBENCH_DEFAULT_PACE = "fixed"
 WORKBENCH_DEFAULT_LOOP = True

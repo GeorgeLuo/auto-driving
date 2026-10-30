@@ -203,7 +203,7 @@ class ObservationPublicationTests(unittest.TestCase):
                         ),
             )
             return {
-                "schema": "memory_report_v1",
+                "schema": "memory_report",
                 "plugins": [
                     {
                         "plugin_id": "bounded_evidence",

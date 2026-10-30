@@ -56,7 +56,7 @@ class StepInspectTests(unittest.TestCase):
                     "schema", "step", "run_id", "source_id", "source", "selections", "frames", "run_dir",
                 })
                 self.assertEqual(report["step"], step)
-                self.assertEqual(report["schema"], f"{step}_inspect_v1")
+                self.assertEqual(report["schema"], f"{step}_inspect")
                 self.assertEqual(report["source"]["frame_count"], 3)
                 self.assertEqual([item["position"] for item in report["frames"]], [0, 1, 2])
                 for item in report["frames"]:
@@ -446,7 +446,7 @@ class MemoryInspectTests(unittest.TestCase):
             plugin_configs={**dict(bounded.plugin_configs), "recording_test": {}},
         )
         (run / "report.json").write_text(json.dumps({
-            "schema": "memory_inspect_v1",
+            "schema": "memory_inspect",
             "selections": {"memory": selection_report(selection)},
             "frames": [{"image_path": f"frame_{index}.png", "steps": {"memory": selection.to_payload()}}
                        for index in range(3)],
@@ -474,7 +474,7 @@ class MemoryInspectTests(unittest.TestCase):
         selection = selection_activation("perception", preset="multi_obstruction")
         run = write_frames(self.tmp / "run")
         (run / "report.json").write_text(json.dumps({
-            "schema": "perception_inspect_v1",
+            "schema": "perception_inspect",
             "selections": {"perception": selection_report(selection)},
             "frames": [{
                 "image_path": f"frame_{index}.png", "timestamp_ms": 5000 + 400 * index,

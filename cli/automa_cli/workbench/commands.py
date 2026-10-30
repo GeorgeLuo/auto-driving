@@ -7,7 +7,7 @@ from collections.abc import Callable
 from typing import Any
 
 from ..replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
-from ..shared.selection_args import add_selection_args
+from ..shared.cli.selection_args import add_selection_args
 from .models import WorkbenchEvent
 from .plugins import WORKBENCH_SELECTABLE_STEPS
 from .render import format_workbench_status

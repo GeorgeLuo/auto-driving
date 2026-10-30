@@ -246,13 +246,21 @@
             "path": "cli/automa_cli/frontend/",
             "category": "source-ui",
             "commit_policy": "source",
-            "responsibility": "The runtime viewer automa serves, workbench included: its pages and the server behind them. Imports no other automa_cli module."
+            "responsibility": "The runtime viewer automa serves: the HTTP server, the loopback transport, and one module per page. Page assets stay under pages. Imports no other automa_cli module."
           },
           {
             "path": "cli/automa_cli/shared/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "Code several automa commands share and none owns: command results, repository paths, controller-bundle paths, I/O helpers, argument checks, and reports."
+            "responsibility": "Code several automa commands share and none owns: command results, repository and runtime roots, I/O helpers, and reports. Controller-bundle paths live in releases.",
+            "children": [
+              {
+                "path": "cli/automa_cli/shared/cli/",
+                "category": "tooling",
+                "commit_policy": "source",
+                "responsibility": "Argument and timeout adapters reused by more than one command. This package does not import a feature package."
+              }
+            ]
           },
           {
             "path": "cli/automa_cli/releases/",

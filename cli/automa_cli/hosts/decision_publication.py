@@ -16,7 +16,7 @@ from autonomy.decision_cycle.action_identifiers import (
 )
 from autonomy.runtime.frame_loop import DECISION_PUBLICATION_SCHEMA
 from autonomy.runtime.report import HostReport, diagnostic_ceiling
-from ..shared.publication_fields import PublicationError, require_id, require_mapping
+from .publication_fields import PublicationError, require_id, require_mapping
 
 
 class DecisionPublicationError(PublicationError):

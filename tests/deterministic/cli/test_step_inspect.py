@@ -17,7 +17,7 @@ from cli.automa_cli.workbench.source import normalize_image_directory
 from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
-from cli.automa_cli.shared.step_formatting import format_step_record
+from cli.automa_cli.plugins.step_formatting import format_step_record
 from cli.automa_cli.plugins.step_inspect import INSPECT_STEPS, inspect_step
 from cli.automa_cli.plugins.step_replay import StepReplay, default_selection
 from cli.automa_cli.workbench.source import ImageSource, ReplayFrame

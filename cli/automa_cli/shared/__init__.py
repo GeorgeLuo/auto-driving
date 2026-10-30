@@ -1,5 +1,6 @@
 """Code every ``automa`` command shares, owned by none of them.
 
+- ``text``: shared command output formatting.
 - ``command_result``: the exit code and message a command returns.
 - ``paths``: the repository and runtime roots and the path helpers built on them.
 - ``controller_releases``: where a host's controller bundle lives, the releases ``hosts update`` packages into it, and ``RuntimeHostError``.
@@ -9,7 +10,6 @@
 - ``open_view``: a runtime view's page opened in a browser tab, for ``hosts run``,
   ``hosts viewer`` and ``workbench --open``.
 - ``http_json``: one JSON request to a host or catalog route, for status, publication, probe and catalog reads.
-- ``publication_fields``: the field checks the host publication readers share.
 - ``timeout_input``: the ``--timeout-s`` check of the status and run commands.
 - ``selection_args``: a step's ``--preset``/``--plugin`` selection, for ``workbench`` and ``plugins inspect``.
 - ``plugin_catalog``: the packaged plugin definitions, defaults first, for ``plugins list``
@@ -18,5 +18,4 @@
   ``plugins inspect`` and the host's decision records.
 - ``step_hosting``: a hosted step runner's plugin report, for the worker and ``workbench``.
 - ``memory_report``: memory plugin state read from a memory report or memory step status.
-- ``step_formatting``: step records and cycle timing as text, for ``plugins inspect`` and live streams.
 """

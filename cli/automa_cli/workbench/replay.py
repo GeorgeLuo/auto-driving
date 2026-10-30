@@ -32,7 +32,7 @@ from .plugins import (
     PluginCatalogError,
     packaged_plugin_catalog,
 )
-from .source import (
+from ..shared.replay.source import (
     ImageSource,
     ReplayFrame,
     SourceValidationError,

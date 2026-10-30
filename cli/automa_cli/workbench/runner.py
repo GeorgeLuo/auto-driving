@@ -35,7 +35,7 @@ from ..frontend.workbench_contract import (
     WORKBENCH_SEQUENCE_ID,
     WORKBENCH_STATE_SCHEMA,
 )
-from .frames import FrameOutcome, run_frame
+from ..shared.replay.frames import FrameOutcome, run_frame
 from .presentation import (
     displayed_steps, empty_steps, frame_detail, frame_summary, timeline_item,
 )
@@ -45,7 +45,7 @@ from .plugins import (
     PluginCatalogError,
     packaged_plugin_catalog,
 )
-from .source import (
+from ..shared.replay.source import (
     ImageSource,
     ReplayFrame,
     SourceValidationError,

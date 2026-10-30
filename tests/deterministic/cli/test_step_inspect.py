@@ -13,14 +13,14 @@ from cli.automa_cli.shared.inspection_runs import selection_report
 from cli.automa_cli.shared.memory_report import plugin_summaries
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
 from implementations.decision_cycle.catalog import selection_activation
-from cli.automa_cli.workbench.source import normalize_image_directory
+from cli.automa_cli.shared.replay.source import normalize_image_directory
 from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from cli.automa_cli.plugins.step_formatting import format_step_record
 from cli.automa_cli.plugins.step_inspect import INSPECT_STEPS, inspect_step
 from cli.automa_cli.plugins.step_replay import StepReplay, default_selection
-from cli.automa_cli.workbench.source import ImageSource, ReplayFrame
+from cli.automa_cli.shared.replay.source import ImageSource, ReplayFrame
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PRESETS, PRESET_STEPS
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (

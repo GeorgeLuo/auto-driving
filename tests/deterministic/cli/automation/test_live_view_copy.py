@@ -132,4 +132,4 @@ class LiveViewCopyTests(unittest.TestCase):
                 export_release.set()
                 worker.join(3)
             self.assertFalse(worker.is_alive())
-            self.assertEqual(results[0][0], 0, results)
+            self.assertEqual(results[0].exit_code, 0, results)

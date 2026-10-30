@@ -183,6 +183,8 @@ def _layer_reason(source: str, target: str) -> str | None:
         return "shared imports a feature"
     if source.startswith(f"{PACKAGE}.providers.") and target.startswith(f"{PACKAGE}.hosts.deployment."):
         return "provider imports deployment"
+    if source in {f"{PACKAGE}.hosts.runs.service", f"{PACKAGE}.hosts.runs.process"} and target == f"{PACKAGE}.shared.io.json_files":
+        return "run records belong to store"
     source_role, target_role = _role(source), _role(target)
     if source_role is None or target_role is None:
         return "unclassified module"
@@ -393,6 +395,7 @@ class ModuleBoundaryTests(unittest.TestCase):
                 with self.subTest(source=source, target=target):
                     self.assertIsNotNone(_layer_reason(f"{PACKAGE}.{source}", f"{PACKAGE}.{target}"))
         self.assertIsNotNone(_layer_reason(f"{PACKAGE}.providers.catalog", f"{PACKAGE}.hosts.deployment.service"))
+        self.assertIsNotNone(_layer_reason(f"{PACKAGE}.hosts.runs.service", f"{PACKAGE}.shared.io.json_files"))
         self.assertIsNone(_layer_reason(f"{PACKAGE}.vehicles.render", f"{PACKAGE}.providers.metadata"))
         self.assertIsNone(_layer_reason(f"{PACKAGE}.hosts.runs.worker", f"{PACKAGE}.hosts.runs.render"))
 

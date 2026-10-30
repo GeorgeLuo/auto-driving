@@ -16,16 +16,11 @@ from ...providers.catalog import PROVIDERS
 from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ...releases.errors import RuntimeHostError
 from ...releases.paths import bundle_paths
-from ...shared.io.json_files import read_json, write_json_atomically
 from ...shared.io.processes import pid_alive
 from ...shared.open_view import launch_browser
-from ...shared.paths import display_path
 from ...shared.timestamps import timestamp_ms
 from ..discovery import running_base_url
 from ..local import ensure_chase_host, stop_chase_host
-from ..staging import (
-    automation_dir as host_automation_dir,
-)
 from ..staging import (
     staged_host,
 )
@@ -52,6 +47,11 @@ from .store import (
     mark_automation_startup_error,
     mark_process_stopped,
     mark_state_stopped,
+    read_process_record,
+    read_run_state,
+    record_background_worker,
+    record_worker_startup,
+    run_directory,
 )
 
 
@@ -218,9 +218,7 @@ def start_host_automation_background(
         )
     except (TypeError, ValueError, RuntimeHostError) as exc:
         return StartResult(2, "error", error=str(exc))
-    automation_dir = host_automation_dir(host_name)
-    automation_dir.mkdir(parents=True, exist_ok=True)
-    process_path = automation_dir / "process.json"
+    automation_dir = run_directory(host_name, create=True)
     log_path = automation_dir / "automation.log"
 
     bundle = bundle_paths(host_name)
@@ -228,10 +226,10 @@ def start_host_automation_background(
     if problems:
         return StartResult(2, "activation_invalid", problems=problems)
 
-    existing = read_json(process_path)
+    existing = read_process_record(automation_dir)
     existing_pid = existing.get("pid") if isinstance(existing, dict) else None
     if isinstance(existing_pid, int) and pid_alive(existing_pid):
-        existing_state = read_json(automation_dir / "state.json")
+        existing_state = read_run_state(automation_dir)
         existing_status = (
             existing_state.get("status")
             if isinstance(existing_state, dict)
@@ -342,30 +340,16 @@ def start_host_automation_background(
             error=f"{type(exc).__name__}: {exc}",
         )
 
-    process_record = {
-        "schema": "automa_automation_process",
-        "host_name": host_name,
-        "pid": process.pid,
-        "started_at_ms": started_at_ms,
-        "command": command,
-        "log_to_disk": bool(log_to_disk),
-        "log_path": display_path(log_path) if log_to_disk else None,
-        "state_path": display_path(automation_dir / "state.json"),
-        "latest_perception_text": display_path(
-            automation_dir / "latest_perception.txt"
-        ),
-        "stream_command": f"./cli/automa plugins stream --step perception --host-name {host_name}",
-    }
-    write_json_atomically(process_path, process_record)
+    process_record = record_background_worker(
+        automation_dir, host_name=host_name, pid=process.pid, started_at_ms=started_at_ms,
+        command=command, log_to_disk=log_to_disk,
+    )
     startup = wait_for_automation_startup(
         process=process,
         automation_dir=automation_dir,
         timeout_s=startup_wait_s,
     )
-    process_record["startup"] = {
-        key: value for key, value in startup.items() if key != "state"
-    }
-    write_json_atomically(process_path, process_record)
+    process_record = record_worker_startup(automation_dir, process_record, startup)
 
     browser = (
         launch_browser(str(startup.get("view_url")))
@@ -459,10 +443,10 @@ def stop_host_automation(
             forced = _replace_unanswering_host(host_name, wait_s=wait_s)
             if forced is not None:
                 return forced
-    automation_dir = host_automation_dir(host_name)
+    automation_dir = run_directory(host_name)
     process_path = automation_dir / "process.json"
     state_path = automation_dir / "state.json"
-    process = read_json(process_path)
+    process = read_process_record(automation_dir)
     pid = process.get("pid") if isinstance(process, dict) else None
 
     if not isinstance(pid, int):

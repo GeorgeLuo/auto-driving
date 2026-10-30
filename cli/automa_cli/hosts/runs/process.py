@@ -18,11 +18,10 @@ from ...frontend.perception_view import (
     get_perception_view_status,
     perception_view_ready,
 )
-from ...shared.io.json_files import read_json
 from ...shared.io.processes import pid_alive
 from ...shared.paths import ROOT
 from .models import RECOGNIZED_WORKER_MODULES, WORKER_MODULE
-from .store import mark_automation_startup_error
+from .store import mark_automation_startup_error, read_run_state
 
 
 def pid_matches_automation(pid: int, host_name: str) -> bool:
@@ -182,10 +181,9 @@ def wait_for_automation_startup(
     automation_dir: Path,
     timeout_s: float,
 ) -> dict[str, Any]:
-    state_path = automation_dir / "state.json"
     deadline = time.monotonic() + max(0.1, float(timeout_s))
     while True:
-        state = read_json(state_path)
+        state = read_run_state(automation_dir)
         state = state if isinstance(state, dict) else {}
         status = state.get("status")
         published_view = (
@@ -271,7 +269,7 @@ def wait_for_automation_startup(
 
         exit_code = process.poll()
         if exit_code is not None:
-            state = read_json(state_path)
+            state = read_run_state(automation_dir)
             state = state if isinstance(state, dict) else {}
             reason = state.get("error")
             if not isinstance(reason, str) or not reason:
@@ -281,7 +279,7 @@ def wait_for_automation_startup(
                     error=reason,
                     exit_code=exit_code,
                 )
-                state = read_json(state_path)
+                state = read_run_state(automation_dir)
             return {"status": "failed", "reason": reason, "state": state}
 
         if time.monotonic() >= deadline:

@@ -21,7 +21,7 @@ class LifecycleResultTests(unittest.TestCase):
         self.stack = ExitStack()
         self.addCleanup(self.stack.close)
         self.root = Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
-        self.stack.enter_context(patch.object(service, "host_automation_dir", return_value=self.root))
+        self.stack.enter_context(patch.object(service, "run_directory", return_value=self.root))
         self.stack.enter_context(patch.object(service, "staged_host", return_value={"provider": "chase-sim"}))
         self.stack.enter_context(patch.object(service, "bundle_paths", return_value={}))
         self.stack.enter_context(patch.object(service, "bundle_activation_problems", return_value=[]))

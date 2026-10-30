@@ -397,3 +397,55 @@ def mark_automation_startup_error(
             "readiness": failed_readiness("automation_worker"),
         },
     )
+
+
+def run_directory(host_name: str, *, create: bool = False) -> Path:
+    directory = host_automation_dir(host_name)
+    if create:
+        directory.mkdir(parents=True, exist_ok=True)
+    return directory
+
+
+def read_process_record(automation_dir: Path) -> Any:
+    return read_json(automation_dir / "process.json")
+
+
+def read_run_state(automation_dir: Path) -> Any:
+    return read_json(automation_dir / "state.json")
+
+
+def record_background_worker(
+    automation_dir: Path, *, host_name: str, pid: int, started_at_ms: int,
+    command: list[str], log_to_disk: bool,
+) -> dict[str, Any]:
+    """Record the launched worker before readiness verification begins."""
+
+    log_path = automation_dir / "automation.log"
+    record = {
+        "schema": "automa_automation_process",
+        "host_name": host_name,
+        "pid": pid,
+        "started_at_ms": started_at_ms,
+        "command": command,
+        "log_to_disk": bool(log_to_disk),
+        "log_path": display_path(log_path) if log_to_disk else None,
+        "state_path": display_path(automation_dir / "state.json"),
+        "latest_perception_text": display_path(
+            automation_dir / "latest_perception.txt"
+        ),
+        "stream_command": f"./cli/automa plugins stream --step perception --host-name {host_name}",
+    }
+    write_json_atomically(automation_dir / "process.json", record)
+    return record
+
+
+def record_worker_startup(
+    automation_dir: Path, process_record: dict[str, Any], startup: dict[str, Any],
+) -> dict[str, Any]:
+    """Persist the readiness verdict without duplicating the full run state."""
+
+    record = {**process_record, "startup": {
+        key: value for key, value in startup.items() if key != "state"
+    }}
+    write_json_atomically(automation_dir / "process.json", record)
+    return record

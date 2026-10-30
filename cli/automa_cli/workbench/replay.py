@@ -1,9 +1,8 @@
-"""Loopback decision playback workbench for deterministic image replays.
+"""CLI replay lifecycle for one ordered image directory.
 
-The workbench is deliberately a thin presentation and lifecycle boundary. It
-normalizes one ordered image-directory source, feeds it through the existing
-perception, observation, memory, and decision steps, and exposes the
-resulting state to both the CLI and a small loopback HTTP page.
+The operation starts the runner and, when asked, the viewer. It reports
+snapshots and operational notices through ``emit``. The command formats those
+snapshots. Browser payloads for the workbench page stay in ``presentation``.
 """
 
 from __future__ import annotations
@@ -11,35 +10,23 @@ from __future__ import annotations
 import os
 import time
 from collections.abc import Callable, Mapping, Sequence
-from typing import Any, TextIO
+from typing import Any
 
 from implementations.decision_cycle.catalog import selection_activation
 
-from ..shared.command_result import CommandResult
-from ..shared.open_view import open_view_message
 from ..frontend.workbench_contract import (
-    ReplayActionError,
-    WORKBENCH_ACTIONS,
     WORKBENCH_DEFAULT_CADENCE_MS,
     WORKBENCH_DEFAULT_PACE,
-    WORKBENCH_PACES,
-    WORKBENCH_SEQUENCE_ID,
-)
-from .runner import ImageReplayRunner
-from .plugins import (
-    WORKBENCH_SELECTABLE_STEPS,
-    PluginCatalog,
-    PluginCatalogError,
-    packaged_plugin_catalog,
+    ReplayActionError,
 )
 from ..replay.source import (
-    ImageSource,
-    ReplayFrame,
-    SourceValidationError,
     WORKBENCH_DEFAULT_MAX_FRAMES,
-    load_image_source,
-    normalize_image_directory,
+    SourceValidationError,
 )
+from ..shared.command_result import CommandResult
+from ..shared.open_view import open_view_message
+from .models import WorkbenchEvent
+from .runner import ImageReplayRunner
 
 
 def run_workbench_replay(
@@ -53,7 +40,7 @@ def run_workbench_replay(
     port: int = 0,
     serve: bool = False,
     open_browser: bool = False,
-    output: TextIO | None = None,
+    emit: Callable[[WorkbenchEvent], None] | None = None,
     view_server: Callable[..., Any],
 ) -> CommandResult:
     """Run one CLI replay, optionally keeping the viewer's workbench available.
@@ -63,7 +50,8 @@ def run_workbench_replay(
     default. Page selections override that step for the replay pass, retaining
     configs when the selected IDs are unchanged. Offline replay computes the
     action's authorization without host delivery. ``view_server`` builds the
-    viewer that serves the replay.
+    viewer that serves the replay. ``emit`` receives snapshots and notices;
+    this function does not format them.
     """
 
     try:
@@ -99,33 +87,23 @@ def run_workbench_replay(
             ).start()
             displayed_url = server.workbench_url
         runner.start()
-        if output is not None and serve:
-            print(
-                _format_workbench_status(
-                    runner.state(),
-                    server_url=displayed_url,
-                    serving=True,
-                ),
-                file=output,
-            )
+        if serve and emit is not None:
+            emit(WorkbenchEvent(state=runner.state(), server_url=displayed_url, serving=True))
         if serve:
             try:
                 if open_browser and displayed_url:
-                    print(open_view_message(displayed_url), file=output)
+                    notice = open_view_message(displayed_url)
+                    if emit is not None:
+                        emit(WorkbenchEvent(line=notice))
                 while True:
                     time.sleep(0.25)
             except KeyboardInterrupt:
                 return CommandResult(0, "viewer stopped")
         state = runner.wait()
         exit_code = 0 if state.get("phase") == "completed" else 2
-        return CommandResult(
-            exit_code,
-            _format_workbench_status(
-                state,
-                server_url=displayed_url,
-                serving=False,
-            ),
-        )
+        if emit is not None:
+            emit(WorkbenchEvent(state=state, server_url=displayed_url, serving=False))
+        return CommandResult(exit_code, "")
     except (ReplayActionError, SourceValidationError) as exc:
         return CommandResult(2, f"Workbench replay failed: {exc}")
     finally:
@@ -133,76 +111,3 @@ def run_workbench_replay(
             server.stop()
         elif runner is not None:
             runner.close()
-
-
-def _format_workbench_status(
-    state: dict[str, Any],
-    *,
-    server_url: str | None,
-    serving: bool,
-) -> str:
-    source = state.get("source") or {}
-    progress = state.get("progress") or {}
-    pipeline = (state.get("machine_detail") or {}).get("pipeline") or {}
-    lines = [
-        "automa decision playback workbench",
-        f"phase: {state.get('phase')}",
-        f"sequence: {state.get('sequence_id')}",
-        f"run_id: {state.get('run_id') or '(none)'}",
-        f"source: {source.get('source_path') or source.get('path') or '(none)'}",
-        *(
-            f"{step}: "
-            + _selection_text(
-                pipeline.get(f"{step}_preset"), state.get(f"active_{step}_plugin_ids")
-            )
-            for step in WORKBENCH_SELECTABLE_STEPS
-        ),
-        f"progress: {progress.get('completed', 0)}/{progress.get('total', 0)}",
-    ]
-    if server_url:
-        lines.append(f"workbench: {server_url}")
-    if serving:
-        lines.append("server: persistent loopback mode; press Ctrl-C to stop")
-    failure = state.get("failure")
-    if isinstance(failure, dict):
-        lines.append(f"failure: {failure.get('message')}")
-    recovery = state.get("recovery_action")
-    if recovery:
-        lines.append(f"recovery: {recovery}")
-    cleanup = state.get("cleanup")
-    if isinstance(cleanup, dict):
-        fields = (*WORKBENCH_SELECTABLE_STEPS, "source_read_only", "movement_control")
-        lines.append(
-            "cleanup: " + "; ".join(f"{field}={cleanup.get(field)}" for field in fields)
-        )
-    return "\n".join(lines)
-
-
-def _selection_text(preset: Any, plugin_ids: Any) -> str:
-    """A step's selection as the inspect commands print it: preset (plugins).
-
-    Before the pipeline reports a preset, the plugins print alone.
-    """
-
-    plugins = ", ".join(str(item) for item in plugin_ids or []) or "none"
-    return f"{preset} ({plugins})" if preset else plugins
-
-
-__all__ = [
-    "ImageSource",
-    "ImageReplayRunner",
-    "PluginCatalog",
-    "PluginCatalogError",
-    "ReplayActionError",
-    "ReplayFrame",
-    "SourceValidationError",
-    "WORKBENCH_ACTIONS",
-    "WORKBENCH_DEFAULT_CADENCE_MS",
-    "WORKBENCH_DEFAULT_PACE",
-    "WORKBENCH_PACES",
-    "WORKBENCH_SEQUENCE_ID",
-    "load_image_source",
-    "normalize_image_directory",
-    "run_workbench_replay",
-    "packaged_plugin_catalog",
-]

@@ -2,20 +2,73 @@ from __future__ import annotations
 
 import json
 import unittest
-from io import StringIO
 from unittest import mock
 from urllib.request import urlopen
 
 from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
+from cli.automa_cli.workbench.models import WorkbenchEvent
+from cli.automa_cli.workbench.render import format_workbench_status
 from cli.automa_cli.workbench.replay import run_workbench_replay
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
 
 
 class WorkbenchTests(unittest.TestCase):
+    def test_status_renderer_formats_a_supplied_replay(self) -> None:
+        text = format_workbench_status(
+            {
+                "phase": "completed",
+                "sequence_id": "workbench.image_replay.v1",
+                "run_id": None,
+                "source": {"source_path": "/tmp/frames"},
+                "machine_detail": {"pipeline": {"perception_preset": "lightweight_observer"}},
+                "active_perception_plugin_ids": ["frame"],
+                "progress": {"completed": 1, "total": 1},
+                "failure": {"message": "stopped"},
+                "recovery_action": "retry",
+                "cleanup": {
+                    "perception": "reset",
+                    "memory": "reset",
+                    "proposal": "reset",
+                    "plan": "reset",
+                    "source_read_only": True,
+                    "movement_control": False,
+                },
+            },
+            server_url="http://127.0.0.1:9/workbench/",
+            serving=True,
+        )
+
+        self.assertEqual(text, "\n".join([
+            "automa decision playback workbench",
+            "phase: completed",
+            "sequence: workbench.image_replay.v1",
+            "run_id: (none)",
+            "source: /tmp/frames",
+            "perception: lightweight_observer (frame)",
+            "memory: none",
+            "proposal: none",
+            "plan: none",
+            "progress: 1/1",
+            "workbench: http://127.0.0.1:9/workbench/",
+            "server: persistent loopback mode; press Ctrl-C to stop",
+            "failure: stopped",
+            "recovery: retry",
+            "cleanup: perception=reset; memory=reset; proposal=reset; plan=reset; source_read_only=True; movement_control=False",
+        ]))
+
     def test_open_replay_opens_the_viewers_workbench_with_its_source_loaded(self) -> None:
-        output = StringIO()
         opened = []
+        shown: list[str] = []
+
+        def emit(event: WorkbenchEvent) -> None:
+            if event.state is not None:
+                shown.append(format_workbench_status(
+                    event.state, server_url=event.server_url, serving=event.serving,
+                ))
+            if event.line:
+                shown.append(event.line)
+
         with image_source(1) as root:
             def open_view(url: str) -> str:
                 opened.append(url)
@@ -30,13 +83,14 @@ class WorkbenchTests(unittest.TestCase):
                 raise KeyboardInterrupt
 
             with mock.patch("cli.automa_cli.workbench.replay.open_view_message", side_effect=open_view) as launch:
-                result = run_workbench_replay(root, cadence_ms=0, open_browser=True, output=output,
-                                              view_server=runtime_view_server)
+                result = run_workbench_replay(
+                    root, cadence_ms=0, open_browser=True, emit=emit, view_server=runtime_view_server,
+                )
 
         launch.assert_called_once_with(opened[0])
         self.assertEqual(result.exit_code, 0)
         self.assertEqual(result.message, "viewer stopped")
-        self.assertIn(f"workbench: {opened[0]}", output.getvalue())
+        self.assertIn(f"workbench: {opened[0]}", "\n".join(shown))
 
     def test_cli_replay_human_output_names_recovery_and_cleanup(self) -> None:
         with image_source(1) as root:

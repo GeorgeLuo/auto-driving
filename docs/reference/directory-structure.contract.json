@@ -288,7 +288,7 @@
             "path": "cli/automa_cli/workbench/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa workbench command, its replay runner, plugin selections and presentation. It uses the replay package for sources, frames and selections, and serves through the viewer automa passes in."
+            "responsibility": "The automa workbench command, its replay operation, terminal text, browser frame payloads, replay runner, and plugin selections. It uses the replay package for sources, frames and selections, and serves through the viewer automa passes in."
           },
           {
             "path": "cli/automa_cli/plugins/",

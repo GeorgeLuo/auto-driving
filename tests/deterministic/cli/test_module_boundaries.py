@@ -93,6 +93,7 @@ LAYERED_FEATURES = (
     f"{PACKAGE}.hosts.deployment",
     f"{PACKAGE}.vehicles",
     f"{PACKAGE}.simulators",
+    f"{PACKAGE}.workbench",
 )
 LAYERED_ASSEMBLERS = (
     f"{PACKAGE}.plugins.commands",
@@ -283,8 +284,8 @@ class ModuleBoundaryTests(unittest.TestCase):
         """Layered features keep commands, services, and rendering apart.
 
         The check resolves relative imports and aliases. It does not prove a
-        renderer performs no I/O; stream, host-status, deployment, and vehicle
-        status tests render from supplied data.
+        renderer performs no I/O; stream, host-status, deployment, vehicle
+        status, and workbench tests render from supplied data.
         """
 
         self.assertEqual(_layer_violations(self._edges()), [])

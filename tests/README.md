@@ -28,7 +28,7 @@ The browser install is only for the systems test that opens Chromium. CI does no
 
 Either suite takes `-k PATTERN` to run only the tests whose ID (`module.Class.method`) matches, as unittest's `-k` does: a substring, or a glob when it contains `*`. Repeat it to widen the match, for example `python3 tests/run.py --systems journeys -k upload -k arming`. A pattern that matches no test fails the run.
 
-The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. CI also fails when `python3 -m pyflakes tests` reports an undefined name, which catches a broken systems import without running the suite.
+The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. CI also fails when `python3 -m pyflakes tests` reports an undefined name, which catches a broken systems import without running the suite, and when a tracked file outside `docs/deprecated/` uses a word the workflow's retired-vocabulary step lists. Run that step's `git grep` line before pushing to check locally.
 
 ## Validating a change
 

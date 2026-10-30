@@ -34,18 +34,27 @@ def _module_name(path: Path) -> str:
 def _cli_imports(path: Path) -> list[CliImport]:
     """Each import of a CLI module in ``path``, with relative imports resolved."""
 
-    name = _module_name(path)
-    package = (name if path.name == "__init__.py" else name.rpartition(".")[0]).split(".")
+    return _imports_of(path, path.read_text(encoding="utf-8"), _module_name(path), path.name == "__init__.py")
+
+
+def _imports_of(path: Path, source: str, module: str, init: bool) -> list[CliImport]:
+    """Imports in ``source``, as if it were the CLI module ``module``.
+
+    ``from . import render as presentation`` keeps the imported name ``render``,
+    so the alias does not hide the target.
+    """
+
+    package = (module if init else module.rpartition(".")[0]).split(".")
     found: list[CliImport] = []
 
     def visit(node: ast.AST, in_function: bool) -> None:
         for child in ast.iter_child_nodes(node):
             if isinstance(child, ast.ImportFrom):
                 base = package[:len(package) - child.level + 1] if child.level else []
-                module = ".".join([*base, *([child.module] if child.module else [])])
-                if module == PACKAGE or module.startswith(f"{PACKAGE}."):
+                imported = ".".join([*base, *([child.module] if child.module else [])])
+                if imported == PACKAGE or imported.startswith(f"{PACKAGE}."):
                     names = tuple(alias.name for alias in child.names)
-                    found.append(CliImport(path, child.lineno, module, names, in_function))
+                    found.append(CliImport(path, child.lineno, imported, names, in_function))
             elif isinstance(child, ast.Import):
                 found.extend(
                     CliImport(path, child.lineno, alias.name, (), in_function)
@@ -53,8 +62,100 @@ def _cli_imports(path: Path) -> list[CliImport]:
                 )
             visit(child, in_function or isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)))
 
-    visit(ast.parse(path.read_text(encoding="utf-8"), filename=str(path)), False)
+    visit(ast.parse(source, filename=str(path)), False)
     return found
+
+
+def _import_edges(imports: dict[str, list[CliImport]], modules: set[str]) -> dict[str, dict[str, CliImport]]:
+    """Each module's module-level imports of other CLI modules, by the first import of each."""
+
+    edges: dict[str, dict[str, CliImport]] = {module: {} for module in modules}
+    for module, found_imports in imports.items():
+        edges.setdefault(module, {})
+        for found in found_imports:
+            if found.in_function:
+                continue
+            for target in (found.module, *(f"{found.module}.{name}" for name in found.names)):
+                if target in modules and target != module:
+                    edges[module].setdefault(target, found)
+    return edges
+
+
+# Files with these names have that responsibility. Anything else in a feature is support.
+_LAYER_NAMES = {"commands", "service", "models", "render", "store", "worker", "monitor", "registry"}
+_OPERATION_ROLES = {"service", "support", "store", "worker", "monitor", "registry"}
+# Plugin features already split by responsibility. Later slices add to this tuple.
+LAYERED_FEATURES = (
+    f"{PACKAGE}.plugins.catalog",
+    f"{PACKAGE}.plugins.inspect",
+    f"{PACKAGE}.plugins.stream",
+)
+LAYERED_ASSEMBLERS = (f"{PACKAGE}.plugins.commands",)
+
+
+def _role(module: str) -> str:
+    leaf = module.rsplit(".", 1)[-1]
+    return leaf if leaf in _LAYER_NAMES else "support"
+
+
+def _feature_package(module: str) -> str:
+    return module.rsplit(".", 1)[0]
+
+
+def _layered(module: str) -> bool:
+    if module in LAYERED_ASSEMBLERS:
+        return True
+    return any(module == feature or module.startswith(feature + ".") for feature in LAYERED_FEATURES)
+
+
+def _layer_reason(source: str, target: str) -> str | None:
+    """Why ``source`` may not import ``target``, or None when the edge is allowed.
+
+    A parent command module may import a child command module to register it.
+    This is an import relationship, not a proof that a renderer avoids I/O.
+    """
+
+    source_role = _role(source)
+    target_role = _role(target)
+    same_feature = _feature_package(source) == _feature_package(target)
+    if source_role in _OPERATION_ROLES and target_role in {"commands", "render"}:
+        return "operation imports presentation"
+    if source_role == "models" and target_role in {"commands", "render", "service", "store", "worker", "monitor", "registry"}:
+        return "model imports an operation or presentation"
+    if source_role == "models" and target_role == "support" and same_feature:
+        return "model imports an operation"
+    if source_role == "render" and target_role in {"commands", "service", "store", "worker", "monitor", "registry"}:
+        return "renderer imports an operation"
+    if source_role == "render" and target_role == "support" and same_feature:
+        return "renderer imports an operation"
+    if source_role == "render" and target.rsplit(".", 1)[-1] in {"view_feed", "session"}:
+        return "renderer imports a viewer"
+    if source_role == "commands" and target_role == "commands":
+        source_package = _feature_package(source)
+        if target.startswith(source_package + ".") and target != source:
+            return None
+        return "command handler reused outside its assembler"
+    return None
+
+
+def _layer_violations(edges: dict[str, dict[str, CliImport]]) -> list[str]:
+    violations = []
+    for source, targets in edges.items():
+        if not _layered(source):
+            continue
+        for target, found in targets.items():
+            reason = _layer_reason(source, target)
+            if reason is not None:
+                violations.append(f"{found.where} {reason}: {target}")
+    return violations
+
+
+def _fixture_edges(files: dict[str, str]) -> dict[str, dict[str, CliImport]]:
+    imports = {
+        module: _imports_of(ROOT / Path(*module.split(".")).with_suffix(".py"), source, module, False)
+        for module, source in files.items()
+    }
+    return _import_edges(imports, set(files))
 
 
 def _package(module: str) -> str:
@@ -119,15 +220,7 @@ class ModuleBoundaryTests(unittest.TestCase):
     def _edges(self) -> dict[str, dict[str, CliImport]]:
         """Each module's module-level imports of other CLI modules, by the first import of each."""
 
-        edges: dict[str, dict[str, CliImport]] = {module: {} for module in self.modules}
-        for module, imports in self.imports.items():
-            for found in imports:
-                if found.in_function:
-                    continue
-                for target in (found.module, *(f"{found.module}.{name}" for name in found.names)):
-                    if target in self.modules and target != module:
-                        edges[module].setdefault(target, found)
-        return edges
+        return _import_edges(self.imports, self.modules)
 
     def test_module_imports_form_no_cycle(self) -> None:
         edges = self._edges()
@@ -174,6 +267,39 @@ class ModuleBoundaryTests(unittest.TestCase):
             for group in _cycles(graph)
         ]
         self.assertEqual(violations, [])
+
+    def test_plugin_layers_keep_operations_from_presentation(self) -> None:
+        """Catalog, inspect, and stream keep commands, services, and rendering apart.
+
+        The check resolves relative imports and aliases. It does not prove a
+        renderer performs no I/O; the stream tests render from a supplied snapshot.
+        """
+
+        self.assertEqual(_layer_violations(self._edges()), [])
+
+    def test_layer_fixtures_accept_assembly_and_reject_crossed_imports(self) -> None:
+        allowed = {
+            f"{PACKAGE}.plugins.commands": "from .catalog.commands import register_catalog\n",
+            f"{PACKAGE}.plugins.catalog.commands": "from .service import run\nfrom .render import show\n",
+            f"{PACKAGE}.plugins.catalog.service": "from .models import Result\n",
+            f"{PACKAGE}.plugins.catalog.render": "from .models import Result\n",
+            f"{PACKAGE}.plugins.catalog.models": "",
+        }
+        self.assertEqual(_layer_violations(_fixture_edges(allowed)), [])
+
+        crossed = {
+            f"{PACKAGE}.plugins.catalog.service": "from . import render as presentation\n",
+            f"{PACKAGE}.plugins.catalog.render": "",
+            f"{PACKAGE}.plugins.catalog.commands": "from ..inspect.commands import register_inspect\n",
+            f"{PACKAGE}.plugins.inspect.commands": "",
+        }
+        violations = _layer_violations(_fixture_edges(crossed))
+        self.assertEqual(sorted(violations), sorted([
+            "cli/automa_cli/plugins/catalog/commands.py:1 command handler reused outside its assembler: "
+            f"{PACKAGE}.plugins.inspect.commands",
+            "cli/automa_cli/plugins/catalog/service.py:1 operation imports presentation: "
+            f"{PACKAGE}.plugins.catalog.render",
+        ]))
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ from pathlib import Path
 
 from autonomy.runtime.plugin_loader import BUNDLE_PREFIXES, StagedBundleImport, load_runner
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
-from cli.automa_cli.shared.controller_releases import controller_bundle_paths
+from cli.automa_cli.releases.paths import controller_bundle_paths
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.controller_bundle.loading_inventory import (
     LEGACY_EXPORTS,

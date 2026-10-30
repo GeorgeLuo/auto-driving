@@ -145,7 +145,7 @@ class RunConfigurationTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as tmp,
             patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", Path(tmp)),
-            patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", Path(tmp)),
+            patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)),
             patch("cli.automa_cli.hosts.runs.automation.runtime_base_url", side_effect=AssertionError("started a host")) as started,
             patch("cli.automa_cli.hosts.runs.automation.RuntimeClient", _HostClient),
             patch("cli.automa_cli.hosts.runs.automation.monitor_runtime", return_value=(0, "ran")) as monitor,
@@ -199,7 +199,7 @@ class RunConfigurationTests(unittest.TestCase):
         with (
             tempfile.TemporaryDirectory() as tmp,
             patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", Path(tmp)),
-            patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", Path(tmp)),
+            patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)),
             patch("cli.automa_cli.hosts.runs.automation.RuntimeClient", _HostClient),
             patch("cli.automa_cli.hosts.runs.automation.subprocess.Popen") as popen,
             patch(

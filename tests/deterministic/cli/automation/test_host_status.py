@@ -18,7 +18,7 @@ class HostRuntimeStatusTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp, mock.patch(
             "cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", Path(tmp)
         ), mock.patch(
-            "cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", Path(tmp)
+            "cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)
         ):
             return _host_runtime_status(HOST_NAME, url, timeout_s=1.0)["process"]
 

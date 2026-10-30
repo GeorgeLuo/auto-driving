@@ -105,7 +105,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             write_host_fixture(runtime_root, "chase-sim-chaser")
             with (
                 patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
                 patch(
                     "cli.automa_cli.hosts.runs.automation.subprocess.Popen",
                     return_value=_ExitedProcess(),
@@ -177,7 +177,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
             with (
                 patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.hosts.runs.automation.subprocess.Popen", side_effect=launch),
                 patch(
                     "cli.automa_cli.hosts.runs.automation.get_perception_view_status",
@@ -254,7 +254,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
             with (
                 patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.hosts.runs.automation.pid_alive", return_value=True),
                 patch(
                     "cli.automa_cli.hosts.runs.automation.get_perception_view_status",
@@ -311,7 +311,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
             with (
                 patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.hosts.runs.automation.pid_alive", return_value=True),
                 patch(
                     "cli.automa_cli.hosts.runs.automation.get_perception_view_status",
@@ -346,7 +346,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
 
             with (
                 patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
             ):
                 result = stop_host_automation(host_name="chase-sim-chaser")
 
@@ -376,7 +376,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
             with (
                 patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", runtime_root),
+                patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
             ):
                 record_host_automation_terminal_result(
                     host_name="chase-sim-chaser",

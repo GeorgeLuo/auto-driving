@@ -1,8 +1,7 @@
 """Where a host's controller bundle lives.
 
-Reading and reconstructing the releases ``hosts update`` packages into that
-bundle lives in ``releases``. A missing release raises ``RuntimeHostError``
-from there.
+``store`` reads and reconstructs the releases in that bundle. The runtime
+root and path sanitization stay in ``shared.paths``.
 """
 
 from __future__ import annotations
@@ -11,7 +10,7 @@ from pathlib import Path
 
 from autonomy.runtime.layout import RuntimeLayout
 
-from .paths import RUNTIME_ROOT, safe_path_part
+from ..shared.paths import RUNTIME_ROOT, safe_path_part
 
 
 def controller_bundle_paths(host_dir: Path) -> dict[str, str]:

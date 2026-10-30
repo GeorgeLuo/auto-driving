@@ -9,7 +9,7 @@ import unittest
 from pathlib import Path
 
 from cli.automa_cli.hosts.runs.automation import run_host_automation
-from cli.automa_cli.shared.controller_releases import controller_bundle_paths
+from cli.automa_cli.releases.paths import controller_bundle_paths
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (

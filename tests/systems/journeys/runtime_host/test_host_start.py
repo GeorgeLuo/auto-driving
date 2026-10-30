@@ -41,7 +41,7 @@ def _staged_vehicle() -> Iterator[list[subprocess.Popen]]:
             with (
                 mock.patch.dict(os.environ, {"AUTOMA_RUNTIME_ROOT": str(root), **env}),
                 mock.patch.object(runtime_hosts, "RUNTIME_ROOT", root),
-                mock.patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", root),
+                mock.patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", root),
                 mock.patch.object(runtime_hosts.subprocess, "Popen", side_effect=launch),
             ):
                 yield launched

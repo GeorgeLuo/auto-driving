@@ -22,8 +22,8 @@ from autonomy.runtime.client import RuntimeClient
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, RESTART_EXIT_CODE
 
 from ..releases.errors import RuntimeHostError
+from ..releases.paths import bundle_root
 from ..releases.store import release_code_dir, release_manifest, release_summary
-from ..shared.controller_releases import bundle_root
 from ..shared.paths import ROOT, RUNTIME_ROOT, display_path
 from ..shared.io.processes import pid_alive
 from ..vehicles.providers import PROVIDERS

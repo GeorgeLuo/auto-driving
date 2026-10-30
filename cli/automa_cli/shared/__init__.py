@@ -12,6 +12,8 @@
 - ``publication_fields``: the field checks the host publication readers share.
 - ``timeout_input``: the ``--timeout-s`` check of the status and run commands.
 - ``selection_args``: a step's ``--preset``/``--plugin`` selection, for ``workbench`` and ``plugins inspect``.
+- ``plugin_catalog``: the packaged plugin definitions, defaults first, for ``plugins list``
+  and ``workbench``; ``hosts.plugin_catalog`` reads a host's live catalog.
 - ``inspection_runs``: the selection a vehicle ran, rebuilt from its release, for ``workbench``,
   ``plugins inspect`` and the host's decision records.
 - ``step_hosting``: a hosted step runner's plugin report, for the worker and ``workbench``.

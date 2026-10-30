@@ -11,11 +11,12 @@ import argparse
 import sys
 from typing import Any, TextIO
 
-from .models import WORKER_MODULE
-from .render import startup_lines, reports_frame, frame_line, render_run_result
-from .models import RunEvent
 from ...shared.paths import display_path
-from .service import record_host_automation_terminal_result, run_host_automation
+from ..step_formatting import format_activation_problems
+from .models import WORKER_MODULE, RunEvent
+from .render import frame_line, render_run_result, reports_frame, startup_lines
+from .service import run_host_automation
+from .store import record_host_automation_terminal_result
 
 
 class RunOutput:
@@ -73,6 +74,8 @@ def _run_worker(argv: list[str]) -> int:
         emit=RunOutput(sys.stdout, verbose=args.verbose),
     )
     message = render_run_result(result.state, state_path=display_path(result.state_path)) if result.state is not None else result.message
+    if result.problems:
+        message = format_activation_problems(result.problems)
     if message:
         print(message)
     if args.host_name:

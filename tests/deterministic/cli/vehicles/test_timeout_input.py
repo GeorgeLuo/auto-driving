@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 from types import SimpleNamespace
+from cli.automa_cli.hosts.runs.models import StartResult
 from unittest.mock import patch
 
 from tests.shared.cli.invoke import invoke_automa
@@ -94,7 +95,7 @@ class TimeoutInputTests(unittest.TestCase):
 
         with patch(
             "cli.automa_cli.hosts.runs.commands.start_host_automation_background",
-            return_value=SimpleNamespace(exit_code=0, message="ok"),
+            return_value=StartResult(0, "error"),
         ) as run_automation:
             code, _, _ = _invoke(
                 "hosts",
@@ -120,7 +121,7 @@ class TimeoutInputTests(unittest.TestCase):
 
         with patch(
             "cli.automa_cli.hosts.runs.commands.start_host_automation_background",
-            return_value=SimpleNamespace(exit_code=0, message="ok"),
+            return_value=StartResult(0, "error"),
         ) as run_automation:
             code, _, _ = _invoke(
                 "hosts",

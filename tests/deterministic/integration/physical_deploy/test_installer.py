@@ -62,7 +62,7 @@ class PhysicalDeployTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             bundle = controller_bundle_paths(Path(tmp) / "runtime" / "hosts" / "piracer")
-            release = sync_controller_bundle(bundle, output=None)
+            release = sync_controller_bundle(bundle, emit=None)
             ensure = lambda: ensure_step_activations(  # noqa: E731
                 host_name="piracer", bundle=bundle, release=release,
                 activations=startup_activations(bundle, "piracer"), vehicle=dict(TARGET.configuration),

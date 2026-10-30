@@ -92,7 +92,7 @@ class SharedSelectionTests(unittest.TestCase):
             patch("autonomy.decision_cycle.steps.load_runner", side_effect=substitute),
         ):
             bundle = controller_bundle_paths(Path(tmp) / "vehicle")
-            sync_controller_bundle(bundle, output=None)
+            sync_controller_bundle(bundle, emit=None)
             sources = {
                 "chase": CodeSource(bundle_root=Path(bundle["root_dir"])),
                 "picar": INSTALLED_PACKAGE,
@@ -114,7 +114,7 @@ class SharedSelectionTests(unittest.TestCase):
     def test_code_source_does_not_leak_into_host_imports(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             bundle = controller_bundle_paths(Path(tmp) / "vehicle")
-            sync_controller_bundle(bundle, output=None)
+            sync_controller_bundle(bundle, emit=None)
             bundle_root = Path(bundle["root_dir"])
             staged = bundle_root / "implementations/decision_cycle/proposal/lazy_only.py"
             staged.write_text(

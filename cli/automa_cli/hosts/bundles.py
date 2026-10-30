@@ -8,32 +8,33 @@ import tarfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
 
 from ..shared.paths import ROOT, display_path
+from ..shared.progress import ProgressSink, report
 
 AUTONOMY_DIR = ROOT / "autonomy"
 IMPLEMENTATIONS_DIR = ROOT / "implementations"
 
 
-def sync_controller_bundle(bundle: dict[str, str], *, output: TextIO | None) -> dict[str, Any]:
+def sync_controller_bundle(bundle: dict[str, str], *, emit: ProgressSink | None) -> dict[str, Any]:
     bundle_root = Path(bundle["root_dir"])
     autonomy_target = Path(bundle["autonomy_dir"])
     implementations_target = Path(bundle["implementations_dir"])
-    _emit(output, "==> Package local controller bundle")
+    report(emit, "step", label="Package local controller bundle")
     release = package_controller_bundle(bundle)
-    _emit(output, f"Archive: {display_path(Path(release['archive']['path']))}")
-    _emit(output, f"Tree SHA-256: {release['tree_sha256']}")
-    _emit(output, f"Archive SHA-256: {release['archive']['sha256']}")
+    report(emit, "archive", path=Path(release["archive"]["path"]))
+    report(emit, "tree_hash", sha256=release["tree_sha256"])
+    report(emit, "archive_hash", sha256=release["archive"]["sha256"])
 
-    _emit(output, "==> Extract controller bundle release")
+    report(emit, "step", label="Extract controller bundle release")
     if autonomy_target.exists():
         shutil.rmtree(autonomy_target)
     if implementations_target.exists():
         shutil.rmtree(implementations_target)
     bundle_root.mkdir(parents=True, exist_ok=True)
     _extract_controller_bundle_archive(Path(release["archive"]["path"]), bundle_root)
-    _emit(output, f"Extracted release -> {bundle_root}")
+    report(emit, "extracted", path=bundle_root)
     return release
 
 
@@ -197,8 +198,3 @@ def _extract_controller_bundle_archive(archive_path: Path, bundle_root: Path) ->
             if target != bundle_root_resolved and bundle_root_resolved not in target.parents:
                 raise RuntimeError(f"archive member escapes bundle root: {member.name}")
         archive.extractall(bundle_root)
-
-
-def _emit(output: TextIO | None, message: str) -> None:
-    if output is not None:
-        print(message, file=output, flush=True)

@@ -12,25 +12,21 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
 from urllib.parse import urlparse
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
 
+from ...releases.paths import controller_bundle_paths
 from ...shared.io import http_json
-from .models import DeploymentResult
+from ...shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
+from ...shared.progress import ProgressSink, report
 from ..bundles import (
     controller_bundle_source_summary,
     release_activation_summary,
     sync_controller_bundle,
 )
-from .donkeycar_vendor import (
-    donkeycar_vendor_source_dir,
-    ensure_donkeycar_vendor,
-    load_donkeycar_vendor_manifest,
-)
-from ...shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
 from ..step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     bundle_activation_path,
@@ -39,8 +35,12 @@ from ..step_activations import (
     read_bundle_activation,
     startup_activations,
 )
-from ...releases.paths import controller_bundle_paths
-
+from .donkeycar_vendor import (
+    donkeycar_vendor_source_dir,
+    ensure_donkeycar_vendor,
+    load_donkeycar_vendor_manifest,
+)
+from .models import DeploymentResult
 
 DEPLOY_DIR = ROOT / "deploy" / "targets" / "donkeycar"
 DONKEY_SERVICE_NAME = "automa-donkey.service"
@@ -174,13 +174,12 @@ class PicarTarget:
 
 def install_picar_core(
     target: PicarTarget, *, dry_run: bool = False,
-    verbose: bool = False, output: TextIO | None = None,
+    verbose: bool = False, emit: ProgressSink | None = None,
 ) -> DeploymentResult:
-    stream = output
     host_name = target.host_name
-    _emit(stream, f"Selected {host_name} ({target.provider}) at {target.ssh_target}.")
-    _emit(stream, "Scope: core Donkey/harness bundle only.")
-    _emit(stream, f"Remote home: {target.pi_home}")
+    report(emit, "selected", host_name=host_name, provider=target.provider, ssh_target=target.ssh_target)
+    report(emit, "scope", scope="core")
+    report(emit, "remote_home", path=target.pi_home)
 
     vendor_source_dir = donkeycar_vendor_source_dir()
     commands = _core_sync_commands(
@@ -204,8 +203,8 @@ def install_picar_core(
         return DeploymentResult(0, receipt=payload, render_kind="core_update")
 
     try:
-        _emit(stream, "==> Ensure DonkeyCar vendor source")
-        ensure_donkeycar_vendor(output=stream, verbose=verbose)
+        report(emit, "step", label="Ensure DonkeyCar vendor source")
+        ensure_donkeycar_vendor(emit=emit, verbose=verbose)
     except Exception as exc:
         return DeploymentResult(2, f"Could not prepare DonkeyCar vendor source: {exc}")
 
@@ -217,23 +216,23 @@ def install_picar_core(
         ("Install and enable Donkey runtime service", commands[4], None),
     ]
     for label, command, env in steps:
-        code = run_step(label, command, env=env, verbose=verbose, output=stream)
+        code = run_step(label, command, env=env, verbose=verbose, emit=emit)
         if code != 0:
             return DeploymentResult(code, f"{label} failed with exit code {code}.")
 
-    _emit(stream, "Core deploy bundle synced.")
+    report(emit, "core_synced")
 
     return DeploymentResult(0, "Core deploy bundle synced.")
 
 
 def deploy_picar_release(
     target: PicarTarget, *, dry_run: bool, restart: bool, drive_args: str | None,
-    verbose: bool, output: TextIO | None,
+    verbose: bool, emit: ProgressSink | None,
 ) -> DeploymentResult:
     host_name = target.host_name
-    _emit(output, f"Selected {host_name} ({target.provider}) at {target.ssh_target}.")
-    _emit(output, "Scope: versioned autonomy controller bundle and activation metadata only.")
-    _emit(output, f"Remote home: {target.pi_home}")
+    report(emit, "selected", host_name=host_name, provider=target.provider, ssh_target=target.ssh_target)
+    report(emit, "scope", scope="autonomy")
+    report(emit, "remote_home", path=target.pi_home)
 
     host_dir = RUNTIME_ROOT / safe_path_part(host_name)
     bundle = controller_bundle_paths(host_dir)
@@ -273,7 +272,7 @@ def deploy_picar_release(
 
     # The deployment stages and ships each step's saved plugins, else its
     # default, replacing whatever it had staged, an unreadable document included.
-    release = sync_controller_bundle(bundle, output=output)
+    release = sync_controller_bundle(bundle, emit=emit)
     ensure_step_activations(
         host_name=host_name, bundle=bundle, release=release, activations=startup,
         vehicle=dict(target.configuration),
@@ -300,7 +299,7 @@ def deploy_picar_release(
     )
 
     for label, command in commands:
-        code = run_step(label, command, env=None, verbose=verbose, output=output)
+        code = run_step(label, command, env=None, verbose=verbose, emit=emit)
         if code != 0:
             return DeploymentResult(code, f"{label} failed with exit code {code}.")
 
@@ -310,7 +309,7 @@ def deploy_picar_release(
             target=target,
             drive_args=drive_args,
             verbose=verbose,
-            output=output,
+            emit=emit,
         )
         if code != 0:
             return DeploymentResult(code, f"Restart failed with exit code {code}.")
@@ -647,7 +646,7 @@ def _restart_drive_service(
     target: PicarTarget,
     drive_args: str | None,
     verbose: bool,
-    output: TextIO | None,
+    emit: ProgressSink | None,
 ) -> int:
     remote_command = donkey_service_control_command(
         pi_home=target.pi_home,
@@ -659,7 +658,7 @@ def _restart_drive_service(
         ["ssh", target.ssh_target, remote_command],
         env=None,
         verbose=verbose,
-        output=output,
+        emit=emit,
     )
     if code != 0:
         return code
@@ -669,9 +668,9 @@ def _restart_drive_service(
             timeout_s=DONKEY_READY_TIMEOUT_S,
         )
     except RuntimeError as exc:
-        _emit(output, f"HTTP readiness failed: {exc}")
+        report(emit, "readiness_failed", error=str(exc))
         return 2
-    _emit(output, f"Donkey runtime ready: {readiness['status_url']}")
+    report(emit, "ready", url=readiness["status_url"])
     return 0
 
 
@@ -795,25 +794,18 @@ def _target_base_url(target: PicarTarget) -> str:
     return f"http://{host}:8887"
 
 
-def _emit(output: TextIO | None, message: str) -> None:
-    if output is None:
-        return
-    print(message, file=output, flush=True)
-
-
 def run_step(
     label: str,
     command: list[str],
     *,
     env: dict[str, str] | None,
     verbose: bool,
-    output: TextIO | None,
+    emit: ProgressSink | None,
     command_prefix: str | None = None,
 ) -> int:
-    _emit(output, f"==> {label}")
+    report(emit, "step", label=label)
     if verbose:
-        prefix = f"{command_prefix} " if command_prefix else ""
-        _emit(output, f"$ {prefix}{shlex.join(command)}")
+        report(emit, "command", command=command, prefix=command_prefix, quoted=True)
 
     process = subprocess.Popen(
         command,
@@ -826,7 +818,7 @@ def run_step(
     )
     assert process.stdout is not None
     for line in process.stdout:
-        _emit(output, line.rstrip())
+        report(emit, "output", line=line.rstrip())
     return process.wait()
 
 

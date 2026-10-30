@@ -3,10 +3,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from cli.automa_cli.providers.probes import (
-    Candidate,
-    probe_picar,
-)
+from cli.automa_cli.providers.probes import probe_picar
+from cli.automa_cli.providers.models import Candidate
 from tests.shared.cli.invoke import invoke_automa
 
 

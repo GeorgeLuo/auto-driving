@@ -7,17 +7,29 @@ open a connection, or start a host.
 from __future__ import annotations
 
 import json
+import shlex
 from typing import Any
 
-from ..host_status import host_block
-from ..step_activations import step_lines
-from ...providers.catalog import PROVIDERS
+from ...providers.metadata import PROVIDERS
+from ...shared.paths import display_path
+from ...shared.progress import ProgressEvent
+from ..host_formatting import host_block
+from ..runs.render import render_stop_result
+from ..step_formatting import step_lines
 from .models import DeploymentResult
 
 
 def present_deployment(result: DeploymentResult, *, json_output: bool) -> str:
     """The command's printable receipt. A diagnostic has no receipt."""
 
+    if result.render_kind == "stop_failed":
+        return render_stop_result(result.stop)
+    if result.render_kind == "delete_failed":
+        return "Could not stop the PiCar host; its local record was kept."
+    if result.render_kind == "deleted":
+        stopped = "Stopped the run. " if result.stopped_run else ""
+        suffix = "" if result.local else " Harness files stay in ~/mycar on the PiCar."
+        return f"{stopped}Stopped host {result.host_name}. Removed {display_path(result.deleted_path)}.{suffix}"
     if result.exit_code or result.receipt is None:
         return result.message
     if json_output:
@@ -186,3 +198,47 @@ def _format_autonomy_update(payload: dict[str, Any]) -> str:
             ),
         ]
     )
+
+
+def render_progress(event: ProgressEvent) -> str:
+    data = event.data
+    if event.kind == "step":
+        return f"==> {data['label']}"
+    if event.kind == "command":
+        command = shlex.join(data["command"]) if data.get("quoted") else " ".join(data["command"])
+        prefix = f"{data['prefix']} " if data.get("prefix") else ""
+        return f"$ {prefix}{command}"
+    if event.kind == "output":
+        return data["line"]
+    if event.kind == "selected":
+        return f"Selected {data['host_name']} ({data['provider']}) at {data['ssh_target']}."
+    if event.kind == "scope":
+        scope = ("core Donkey/harness bundle" if data["scope"] == "core"
+                 else "versioned autonomy controller bundle and activation metadata")
+        return f"Scope: {scope} only."
+    if event.kind == "remote_home":
+        return f"Remote home: {data['path']}"
+    if event.kind == "core_synced":
+        return "Core deploy bundle synced."
+    if event.kind == "readiness_failed":
+        return f"HTTP readiness failed: {data['error']}"
+    if event.kind == "ready":
+        return f"Donkey runtime ready: {data['url']}"
+    if event.kind == "archive":
+        return f"Archive: {display_path(data['path'])}"
+    if event.kind == "tree_hash":
+        return f"Tree SHA-256: {data['sha256']}"
+    if event.kind == "archive_hash":
+        return f"Archive SHA-256: {data['sha256']}"
+    if event.kind == "extracted":
+        return f"Extracted release -> {data['path']}"
+    vendor_labels = {
+        "vendor_ready": "DonkeyCar vendor ready",
+        "vendor_registered": "Registered existing DonkeyCar vendor",
+        "vendor_patched": "Patched existing DonkeyCar vendor",
+        "vendor_replacing": "Replacing stale DonkeyCar vendor checkout",
+        "vendor_prepared": "Prepared DonkeyCar vendor",
+    }
+    if event.kind in vendor_labels:
+        return f"{vendor_labels[event.kind]}: {display_path(data['path'])}"
+    raise ValueError(f"Unknown deployment progress: {event.kind}")

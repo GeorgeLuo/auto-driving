@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..providers.catalog import PROVIDERS
-from ..providers.probes import chase_operator_url
-from .models import VehicleResult
+from ..providers.metadata import PROVIDERS
+from ..providers.urls import chase_operator_url
 from ..shared.text import indented
+from .models import VehicleResult
 
 
 def format_vehicles_status(status: dict[str, Any]) -> str:

@@ -12,19 +12,19 @@ from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.plugin_catalog import describe_plugin
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, catalog_path
 
-from ...hosts.publications.plugin_catalog import PluginCatalogClient
 from ...hosts.discovery import runtime_base_url
+from ...hosts.publications.plugin_catalog import PluginCatalogClient
 from ...hosts.step_activations import (
     bundle_activation_path,
     bundle_activation_problems,
-    format_activation_problems,
     host_bundle,
     save_selections,
     staging_host,
 )
+from ...hosts.step_formatting import format_activation_problems
 from ...shared.paths import RUNTIME_ROOT, display_path
 from ...shared.plugin_catalog import packaged_plugin_definitions
-from .models import ListingResult, MutationResult, Recovery, SaveResult, SavedStep
+from .models import ListingResult, MutationResult, Recovery, SavedStep, SaveResult
 
 # Arming waits for the host's current cycle and for the selection to load.
 ARM_TIMEOUT_S = 60.0

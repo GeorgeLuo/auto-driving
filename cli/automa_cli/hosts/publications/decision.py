@@ -12,10 +12,31 @@ from collections.abc import Mapping
 from copy import deepcopy
 from typing import Any
 
+from autonomy.decision_cycle.action.hold import (
+    HoldAction,
+    idle_output,
+)
+from autonomy.decision_cycle.action.result import (
+    ACTION_RESULT_SCHEMA,
+    ActionResult,
+)
+from autonomy.decision_cycle.action.values import (
+    AUTHORITY_RESULT_SCHEMA,
+    AuthorityResult,
+    control_output,
+)
+from autonomy.decision_cycle.action_identifiers import (
+    require_ascii_id,
+)
+from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
 from autonomy.decision_cycle.plan.values import (
     ACTION_PLAN_SCHEMA,
     ActionPlan,
     PlanContribution,
+)
+from autonomy.decision_cycle.proposal.result import (
+    PROPOSAL_RESULT_SCHEMA,
+    ProposalResult,
 )
 from autonomy.decision_cycle.proposal.values import (
     ACTION_PROPOSAL_SCHEMA,
@@ -23,40 +44,19 @@ from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
     ProposedVehicleCommand,
 )
-from autonomy.decision_cycle.action.hold import (
-    HoldAction,
-    idle_output,
-)
-from autonomy.decision_cycle.action.values import (
-    AUTHORITY_RESULT_SCHEMA,
-    AuthorityResult,
-    control_output,
-)
-from autonomy.decision_cycle.action.result import (
-    ACTION_RESULT_SCHEMA,
-    ActionResult,
-)
-from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
-from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA, ProposalResult
-from autonomy.decision_cycle.action_identifiers import (
-    require_ascii_id,
-)
-from autonomy.serialization import canonical_json_utf8
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.report import (
     REPORT_SCHEMA,
 )
+from autonomy.serialization import canonical_json_utf8
 
-from .decision_records import DecisionRecords, activations_from_payloads
-from ..step_activations import (
-    bundle_activation_problems,
-    format_activation_problems,
-    proposal_plugin_ids,
-)
+from ..step_activations import bundle_activation_problems, proposal_plugin_ids
+from ..step_formatting import format_activation_problems
 from .decision_publication import (
     DecisionPublicationError,
     normalize_decision_publication,
 )
+from .decision_records import DecisionRecords, activations_from_payloads
 
 ERROR_SCHEMA = "host_decision_error"
 # Typed decision records within the five-record cycle.

@@ -43,7 +43,7 @@ class PerceptionCommandTests(unittest.TestCase):
             write_host_fixture(runtime_root, host_name)
             host_dir = runtime_root / host_name
             bundle = controller_bundle_paths(host_dir)
-            release = sync_controller_bundle(bundle, output=None)
+            release = sync_controller_bundle(bundle, emit=None)
 
             bundle_root = Path(bundle["root_dir"])
             archive_path = Path(release["archive"]["path"])

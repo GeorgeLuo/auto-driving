@@ -15,12 +15,12 @@ from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
-from ..shared.command_result import CommandResult
-from ..shared.io.json_files import read_json, write_json_atomically
-from ..shared.paths import ROOT, display_path
-from ..shared.io.processes import pid_alive
-from ..shared.controller_releases import RuntimeHostError, bundle_paths
-from .runtime_hosts import (
+from ...shared.command_result import CommandResult
+from ...shared.io.json_files import read_json, write_json_atomically
+from ...shared.paths import ROOT, display_path
+from ...shared.io.processes import pid_alive
+from ...shared.controller_releases import RuntimeHostError, bundle_paths
+from ..runtime_hosts import (
     automation_dir as host_automation_dir,
     running_base_url,
     runtime_base_url,
@@ -28,13 +28,13 @@ from .runtime_hosts import (
 )
 from .automation_stop import WORKER_MODULE, stop_host_automation
 from .runtime_monitor import monitor_runtime
-from .step_activations import (
+from ..step_activations import (
     bundle_activation_problems,
     decision_identity,
     format_activation_problems,
     staged_selections,
 )
-from ..shared.open_view import open_view_message
+from ...shared.open_view import open_view_message
 from .run_record import (
     control_application,
     control_source,
@@ -42,12 +42,12 @@ from .run_record import (
     failed_readiness,
     new_run_state,
 )
-from ..shared.timestamps import timestamp_ms
-from ..frontend.perception_view import (
+from ...shared.timestamps import timestamp_ms
+from ...frontend.perception_view import (
     get_perception_view_status,
     perception_view_ready,
 )
-from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
+from ...vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
 
 
 

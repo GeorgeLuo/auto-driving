@@ -12,25 +12,27 @@ from typing import Any
 
 from autonomy.runtime.client import RuntimeClient
 
-from ..shared.command_result import CommandResult
-from .vehicle_access import create_vehicle_access
-from ..shared.io.json_files import read_json, write_json_atomically
-from ..shared.paths import display_path
-from ..shared.io.processes import pid_alive
-from ..shared.controller_releases import RuntimeHostError
-from .runtime_hosts import (
+from ...shared.command_result import CommandResult
+from ..vehicle_access import create_vehicle_access
+from ...shared.io.json_files import read_json, write_json_atomically
+from ...shared.paths import display_path
+from ...shared.io.processes import pid_alive
+from ...shared.controller_releases import RuntimeHostError
+from ..runtime_hosts import (
     automation_dir as host_automation_dir,
     running_base_url,
     staged_host,
     stop_chase_host,
 )
-from ..shared.timestamps import timestamp_ms
+from ...shared.timestamps import timestamp_ms
 from .run_record import stopped_readiness
-from ..vehicles.providers import PROVIDERS
+from ...vehicles.providers import PROVIDERS
 
 
 # hosts run starts this module (hosts/automation.py) as the run's worker.
-WORKER_MODULE = "cli.automa_cli.hosts.automation"
+WORKER_MODULE = "cli.automa_cli.hosts.runs.automation"
+# A run started before the module move must still be stoppable.
+LEGACY_WORKER_MODULE = "cli.automa_cli.hosts.automation"
 
 
 def stop_host_automation(
@@ -187,7 +189,7 @@ def _pid_matches_automation(pid: int, host_name: str) -> bool:
 def _automation_command_matches_host(command: str, host_name: str) -> bool:
     """Pure check: command is a host run for exactly *host_name*.
 
-    Requires ``-m`` naming the worker module and an exact ``--name <host_name>``
+    Requires ``-m`` naming a current or pre-move worker module and an exact ``--name <host_name>``
     argument pair (token equality, not substring).
     """
 
@@ -200,7 +202,10 @@ def _automation_command_matches_host(command: str, host_name: str) -> bool:
         return False
     if not tokens:
         return False
-    if not any(tokens[index:index + 2] == ["-m", WORKER_MODULE] for index in range(len(tokens) - 1)):
+    if not any(
+        tokens[index] == "-m" and tokens[index + 1] in (WORKER_MODULE, LEGACY_WORKER_MODULE)
+        for index in range(len(tokens) - 1)
+    ):
         return False
     for index, token in enumerate(tokens):
         if token == "--name":

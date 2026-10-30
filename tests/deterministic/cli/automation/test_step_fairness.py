@@ -15,9 +15,9 @@ from unittest import mock
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import builtin_activation
-from cli.automa_cli.hosts.automation import run_host_automation
-from cli.automa_cli.hosts.automation_status import collect_automation_status
-from cli.automa_cli.hosts.run_record import step_status
+from cli.automa_cli.hosts.runs.automation import run_host_automation
+from cli.automa_cli.hosts.runs.automation_status import collect_automation_status
+from cli.automa_cli.hosts.runs.run_record import step_status
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.runtime_fixtures import stage_step, write_json
 
@@ -41,7 +41,7 @@ class StepFairnessTests(unittest.TestCase):
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
             with mock.patch("cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", root), mock.patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", root), mock.patch(
-                "cli.automa_cli.hosts.automation_status.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
+                "cli.automa_cli.hosts.runs.automation_status.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
             ):
                 for step in staged:
                     stage_step(root, VEHICLE, step)
@@ -63,9 +63,9 @@ class StepFairnessTests(unittest.TestCase):
 
         for step in STEPS:
             with self.subTest(step=step), self._runtime(step), mock.patch(
-                "cli.automa_cli.hosts.automation.runtime_base_url", return_value="http://host.invalid"
+                "cli.automa_cli.hosts.runs.automation.runtime_base_url", return_value="http://host.invalid"
             ), mock.patch(
-                "cli.automa_cli.hosts.automation.monitor_runtime", return_value=(0, "done")
+                "cli.automa_cli.hosts.runs.automation.monitor_runtime", return_value=(0, "done")
             ) as monitor:
                 result = run_host_automation(
                     host_name=VEHICLE, take_control=False, num_decisions=1, output=io.StringIO()

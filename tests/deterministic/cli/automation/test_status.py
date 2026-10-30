@@ -21,7 +21,7 @@ class AutomationStatusTests(unittest.TestCase):
     def test_view_warmup_polling_is_bounded_by_command_budget(self) -> None:
         """view_timeout_s is one wall-clock budget for probes and warm-up sleeps."""
 
-        from cli.automa_cli.hosts.automation_status import collect_automation_status
+        from cli.automa_cli.hosts.runs.automation_status import collect_automation_status
 
         warming = {
             "schema": "automa_perception_view",
@@ -47,7 +47,7 @@ class AutomationStatusTests(unittest.TestCase):
                 "cli.automa_cli.shared.controller_releases.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
-                "cli.automa_cli.hosts.automation_status.get_perception_view_status",
+                "cli.automa_cli.hosts.runs.automation_status.get_perception_view_status",
                 side_effect=_probe,
             ):
                 started = time.monotonic()
@@ -71,7 +71,7 @@ class AutomationStatusTests(unittest.TestCase):
     def test_aggregate_view_probes_share_one_command_deadline(self) -> None:
         """Aggregate status must not restart view_timeout_s for each runtime."""
 
-        from cli.automa_cli.hosts.automation_status import collect_automation_status
+        from cli.automa_cli.hosts.runs.automation_status import collect_automation_status
 
         warming = {
             "schema": "automa_perception_view",
@@ -98,7 +98,7 @@ class AutomationStatusTests(unittest.TestCase):
                 "cli.automa_cli.shared.controller_releases.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
-                "cli.automa_cli.hosts.automation_status.get_perception_view_status",
+                "cli.automa_cli.hosts.runs.automation_status.get_perception_view_status",
                 side_effect=_probe,
             ):
                 started = time.monotonic()

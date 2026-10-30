@@ -14,7 +14,7 @@ from PIL import Image
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs import runtime_monitor
 from cli.automa_cli.hosts.views import view_feed as viewer
-from cli.automa_cli.plugins.stream import decision
+from cli.automa_cli.plugins.stream import decision, session
 from cli.automa_cli.plugins.stream.commands import stream_host_step
 from cli.automa_cli.plugins.stream.models import StreamResult
 from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
@@ -54,7 +54,7 @@ class LiveViewCopyTests(unittest.TestCase):
         with (
             patch.object(decision, "require_valid_activations"),
             patch.object(decision, "runtime_base_url", return_value="http://host.invalid"),
-            patch.object(decision, "ViewFeed", return_value=feed),
+            patch.object(session, "ViewFeed", return_value=feed),
             patch.object(decision, "poll_events", side_effect=one_pass),
             patch.object(decision, "fetch_decision_publication", return_value={}),
             patch.object(decision, "accept_decision_publication", return_value=normalized),

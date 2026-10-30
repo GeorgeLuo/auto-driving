@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any, Callable
 
 from autonomy.runtime.frame_loop import LATEST_JSON_PATH
@@ -10,11 +9,11 @@ from autonomy.runtime.frame_loop import LATEST_JSON_PATH
 from ...hosts.publications.decision_publication import health_error, publication_to_frame_record
 from ...hosts.publications.host_publications import fetch_observation_publication
 from ...hosts.runtime_hosts import runtime_base_url
-from ...hosts.views.view_feed import ViewFeed
 from ...releases.errors import RuntimeHostError
 from ...shared.timestamps import timestamp_ms
 from .models import StreamEvent, StreamResult
 from .polling import poll_events, preflight_failure, unavailable_probe
+from .session import StreamView, with_snapshot
 
 PERCEPTION_LIVE_SCHEMA = "host_perception_live"
 # Observation publication health -> probe status; "healthy" is the only live one.
@@ -39,15 +38,15 @@ def stream_perception(
     host_name: str,
     refresh_s: float,
     once: bool,
-    no_clear: bool,
-    json_output: bool,
     timeout_s: float,
+    serve_view: bool,
     emit: Callable[[StreamEvent], None],
 ) -> StreamResult:
     """Poll the latest perception the host publishes.
 
-    A running terminal stream feeds a local runtime view from the same
-    publication the probe just read. JSON and ``--once`` do not open that view.
+    The probe is the observation publication, with or without a local view.
+    ``serve_view`` feeds a local runtime view from that same read. The command
+    asks for a view only on a continuous text stream.
     """
 
     try:
@@ -57,7 +56,7 @@ def stream_perception(
             message=str(exc),
             live=unavailable_probe(PERCEPTION_LIVE_SCHEMA, host_name, str(exc)),
         )
-    view = None if json_output or once else ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
+    view = StreamView(host_name, base_url=base_url, timeout_s=timeout_s) if serve_view else None
 
     def probe() -> tuple[dict[str, Any], Any]:
         publication, fetch_error = (view.read_observation() if view is not None
@@ -70,16 +69,15 @@ def stream_perception(
     def outbound(event: StreamEvent) -> None:
         if view is not None:
             view.publish(event.source)
-        emit(replace(event, view=view, host_name=host_name, base_url=base_url))
+        emit(with_snapshot(view, event, host_name=host_name, base_url=base_url))
 
     try:
         return poll_events(
-            step="perception", probe=probe, refresh_s=refresh_s, once=once,
-            no_clear=no_clear, json_output=json_output, emit=outbound,
+            step="perception", probe=probe, refresh_s=refresh_s, once=once, emit=outbound,
         )
     finally:
         if view is not None:
-            view.stop()
+            view.close()
 
 
 def _probe_perception(

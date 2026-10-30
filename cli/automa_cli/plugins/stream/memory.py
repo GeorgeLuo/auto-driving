@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
 from typing import Any, Callable
 
 from autonomy.decision_cycle.timing import step_timing
@@ -10,13 +9,13 @@ from autonomy.decision_cycle.timing import step_timing
 from ...hosts.publications.host_publications import fetch_autonomy_status
 from ...hosts.runtime_hosts import runtime_base_url
 from ...hosts.step_activations import absent_step_error
-from ...hosts.views.view_feed import ViewFeed
 from ...releases.errors import RuntimeHostError
 from ...shared.memory_report import evidence_publisher, ledger_summary
 from ...shared.timestamps import timestamp_ms
 from .models import MemoryPublication, StreamEvent, StreamResult
 from .perception import read_publication
 from .polling import poll_events, preflight_failure, unavailable_probe
+from .session import StreamView, with_snapshot
 
 MEMORY_LIVE_SCHEMA = "host_memory_live"
 LIVE_STEP_SCHEMAS = {
@@ -30,16 +29,17 @@ def stream_memory(
     host_name: str,
     refresh_s: float,
     once: bool,
-    no_clear: bool,
-    json_output: bool,
     timeout_s: float,
+    serve_view: bool,
+    include_publication: bool,
     emit: Callable[[StreamEvent], None],
 ) -> StreamResult:
     """Poll the live memory step the host runs.
 
     ``live`` means the host runs a memory step; update health stays in the
-    plugin diagnostics. The terminal screen also reads the latest published
-    memory report. JSON prints the status probe alone.
+    plugin diagnostics. ``include_publication`` also reads the latest published
+    memory report for the text screen. ``serve_view`` feeds a local view from
+    that same read. JSON leaves the publication unread.
     """
 
     try:
@@ -49,30 +49,29 @@ def stream_memory(
             message=str(exc),
             live=unavailable_probe(MEMORY_LIVE_SCHEMA, host_name, str(exc)),
         )
-    view = None if json_output or once else ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
+    view = StreamView(host_name, base_url=base_url, timeout_s=timeout_s) if serve_view else None
 
     def probe() -> tuple[dict[str, Any], Any]:
-        return _probe_step("memory", host_name=host_name, base_url=base_url, timeout_s=timeout_s), None
-
-    def outbound(event: StreamEvent) -> None:
-        event = replace(event, host_name=host_name, view=view)
-        if not event.json_output:
+        live = _probe_step("memory", host_name=host_name, base_url=base_url, timeout_s=timeout_s)
+        source = None
+        if include_publication or view is not None:
             publication, fetch_error = (view.read_observation() if view is not None
                                         else read_publication(base_url, timeout_s=timeout_s))
             if view is not None:
                 view.publish(publication)
-            report = publication.get("memory") if isinstance(publication, dict) else None
-            event = replace(event, source=MemoryPublication(report, fetch_error))
-        emit(event)
+            if include_publication:
+                report = publication.get("memory") if isinstance(publication, dict) else None
+                source = MemoryPublication(report, fetch_error)
+        return live, source
+
+    def outbound(event: StreamEvent) -> None:
+        emit(with_snapshot(view, event, host_name=host_name))
 
     try:
-        return poll_events(
-            step="memory", probe=probe, refresh_s=refresh_s, once=once,
-            no_clear=no_clear, json_output=json_output, emit=outbound,
-        )
+        return poll_events(step="memory", probe=probe, refresh_s=refresh_s, once=once, emit=outbound)
     finally:
         if view is not None:
-            view.stop()
+            view.close()
 
 
 def probe_live_memory(*, host_name: str, timeout_s: float = 3.0) -> dict[str, Any]:

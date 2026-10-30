@@ -33,11 +33,9 @@ plugin lives in `plugins/highest_confidence/`.
   | `selected` | the candidate's, named by `selected_proposal_id` | that candidate, weight 1.0, role `selected` |
   | `composed` | the plan's own; confidence may be `None` | the candidates behind the command, each with a finite weight and a role |
 
-- How the plugin plans, and what a failure does, is declared in
-  `autonomy/decision_cycle/plan/interface.py`: `composition_declaration`
-  (one plugin; the cycle context and the proposal candidates in; one
-  `ActionPlan` out) and `FAILURE_POLICY` (a plugin error or a plan that fails the check
-  returns no plan and the action holds, a reset error propagates, a failed
-  proposal skips the plugin). An absent proposal step still calls the plugin
-  with no candidates. The runner's `describe_schema()` reports these
-  declarations.
+- The one plugin reads the cycle context and the proposal candidates, and
+  returns one `ActionPlan`. What a failure does is declared as
+  `FAILURE_POLICY` in `autonomy/decision_cycle/plan/interface.py` (a plugin
+  error or a plan that fails the check returns no plan and the action holds,
+  a reset error propagates, a failed proposal skips the plugin). An absent
+  proposal step still calls the plugin with no candidates.

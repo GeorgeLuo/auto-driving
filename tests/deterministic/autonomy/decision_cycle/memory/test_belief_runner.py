@@ -13,7 +13,7 @@ from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.decision_cycle.memory.beliefs import Belief, Check
 from autonomy.decision_cycle.memory.interface import MemoryReport
 from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
-from autonomy.decision_cycle.memory.publication import BELIEF_KEY_PREFIX, belief_key, read_belief
+from autonomy.decision_cycle.memory.publication import belief_key, read_belief
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 
 
@@ -149,12 +149,6 @@ class BeliefRunnerTests(unittest.TestCase):
         self.assertIsNot(MemoryReport.from_dict(first).beliefs["learner.row"], first["beliefs"]["learner.row"])
         self.assertIsNot(decoded.to_dict()["beliefs"]["learner.row"], decoded.beliefs["learner.row"])
         self.assertAlmostEqual(runner.status()["beliefs"]["learner.row"]["confidence"], 3 / 4)
-
-    def test_schema_names_the_belief_keys_and_each_plugins_contract(self):
-        schema = MemoryRunner.from_plugins({"learner": _Learner()}).describe_schema()
-        self.assertEqual(schema["composition"]["belief_key_prefix"], BELIEF_KEY_PREFIX)
-        self.assertEqual(schema["composition"]["beliefs"], "one_value_per_key_last_write_wins")
-        self.assertEqual([plugin["contract"] for plugin in schema["plugins"]], [_Learner.contract.to_dict()])
 
     def test_reset_and_deselection_remove_only_declared_beliefs_even_on_reset_failure(self):
         other = Belief("other.row", 15, "other", 0)

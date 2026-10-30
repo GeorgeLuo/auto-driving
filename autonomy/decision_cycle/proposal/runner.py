@@ -6,16 +6,13 @@ that raises, returns a different type, or returns another identity is replaced
 by a synthetic error candidate under its selected ID. A candidate that fails
 lifecycle or size validation ends the step with status ``error`` and no
 candidates. There is no plugin-count limit; with no plugins selected the step
-returns no candidates and the plan is idle.
-Plugin failures and missing inputs follow ``FAILURE_POLICY`` in ``interface``;
-``describe_schema`` reports the step's contract.
+returns no candidates and the plan is idle. A plugin reset error propagates.
 """
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import ClassVar
 
-from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
 from autonomy.decision_cycle.action_identifiers import (
     ActionInputError,
     ActionProposalMatrixError,
@@ -24,23 +21,15 @@ from autonomy.decision_cycle.action_identifiers import (
     require_safe_int,
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
-from autonomy.decision_cycle.proposal.interface import (
-    FAILURE_POLICY,
-    PROPOSAL_SCHEMA,
-    composition_declaration,
-)
 from autonomy.decision_cycle.proposal.plugin import ProposalPlugin
-from autonomy.decision_cycle.proposal.result import PROPOSAL_RESULT_SCHEMA, ProposalResult
+from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.values import (
-    ACTION_PROPOSAL_SCHEMA,
     ActionProposal,
     synthetic_error_proposal,
 )
 from autonomy.decision_cycle.runner import (
     StepRunner,
     describe_exception,
-    describe_plugin,
 )
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition
@@ -104,65 +93,11 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
 
     step: ClassVar[str] = "proposal"
     plugin_id: ClassVar[str] = "autonomy.proposal.plugin-runner-v0"
-    schema_name = PROPOSAL_SCHEMA
-    failure_policy = FAILURE_POLICY
 
     def validate_plugin(self, plugin: ProposalPlugin, definition: PluginDefinition) -> None:
         require_ascii_id(definition.plugin_id, field_name="plugin_id")
         if not callable(getattr(plugin, "propose", None)):
             raise TypeError(f"proposal plugin {definition.entrypoint} must implement propose()")
-
-    def _describe_schema(self) -> dict[str, Any]:
-        """The step's contract: configuration, inputs, plugins, output, composition, failure."""
-
-        missing_observation = (
-            "plugins are still called"
-            if FAILURE_POLICY.missing_input == "invoke"
-            else "plugins are skipped"
-        )
-        return {
-            **super()._describe_schema(),
-            "plugin_id": self.plugin_id,
-            "inputs": [
-                {
-                    "name": "observation",
-                    "required": False,
-                    "source": f"{OBSERVATION_KEY} in the host map",
-                    "missing_behavior": (
-                        "the key is absent, read_observation returns None, and "
-                        f"{missing_observation}"
-                    ),
-                },
-                {
-                    "name": "shared_memory",
-                    "required": False,
-                    "source": "the host map on the frame context, shared by every plugin",
-                    "missing_behavior": "absent keys are unknown",
-                },
-            ],
-            "plugins": [describe_plugin(definition) for definition, _ in self.applied],
-            "output": {
-                "schema": PROPOSAL_RESULT_SCHEMA,
-                "records": [
-                    {
-                        "record": "candidates[]",
-                        "meaning": (
-                            f"one {ACTION_PROPOSAL_SCHEMA} per selected plugin, in "
-                            "selection order; a synthetic error candidate when the "
-                            "plugin raises, returns a different type, or returns "
-                            "another plugin or frame identity"
-                        ),
-                    },
-                ],
-                "invalid_candidate_behavior": (
-                    "a lifecycle or size violation fails the step with "
-                    "action_proposal_matrix_violated and no candidates; "
-                    "the plan step does not plan and action fails closed"
-                ),
-                "error_reasons": sorted(CYCLE_ERROR_REASONS),
-            },
-            "composition": composition_declaration(),
-        }
 
     def __call__(self, context: DecisionFrameContext) -> ProposalResult:
         frame_id = context.frame_id

@@ -17,7 +17,6 @@ from autonomy.shared_memory import SharedMemory
 
 
 PERCEPTION_TEXT_SCHEMA = "perception_text_v2"
-PERCEPTION_SCHEMA = "perception_schema_v3"
 PLUGIN_RESULT_STATUSES = ("ok", "empty", "warming_up", "unavailable", "error")
 PluginResultStatus = Literal["ok", "empty", "warming_up", "unavailable", "error"]
 
@@ -31,18 +30,6 @@ FAILURE_POLICY = FailurePolicy(
     reset="propagate",
     missing_input="skip_plugin",
 )
-
-
-def composition_declaration() -> dict[str, str]:
-    """How several perception plugins share one frame."""
-
-    return {
-        "order": "selection_order",
-        "partial_result": (
-            "partial when an error or unavailable plugin runs alongside an ok, "
-            "empty, or warming_up plugin"
-        ),
-    }
 
 
 @dataclass(frozen=True)
@@ -135,9 +122,6 @@ class PerceptionBackend(Protocol):
     plugin_id: str
 
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
-        ...
-
-    def describe_schema(self) -> dict[str, Any]:
         ...
 
     def perceive(self, request: PerceptionRequest) -> PerceptionText:

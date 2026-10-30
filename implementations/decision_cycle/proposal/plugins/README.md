@@ -38,13 +38,11 @@ One folder per plugin, named for its `plugin_id`. For example, the
   epoch. The runner calls it on an explicit reset and when the plugin leaves
   the selection, passing the host map if the method takes an argument. The
   map may be absent in offline use. Reset errors propagate.
-- How several plugins share one cycle, and what a failure does, is declared in
-  `autonomy/decision_cycle/proposal/interface.py`: `composition_declaration`
-  (selection order, every plugin reads the same host map, every candidate kept)
-  and `FAILURE_POLICY` (a plugin error becomes that plugin's error candidate
-  and the others still propose, a reset error propagates, an absent
-  observation is unknown). The runner's `describe_schema()` reports
-  these declarations alongside the candidate admission boundary.
+- Several plugins share one cycle in selection order: every plugin reads the
+  same host map, and every candidate is kept. A plugin error becomes that
+  plugin's error candidate and the others still propose, and an absent
+  observation is unknown. `autonomy/decision_cycle/proposal/runner.py`
+  applies these rules with the candidate admission boundary.
 - `ProposalRunner.plugin_report()` reports each applied plugin's last
   invocation duration and error, including isolated synthetic error
   candidates and errors declared by a valid candidate. Records are null

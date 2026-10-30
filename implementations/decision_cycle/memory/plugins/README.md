@@ -51,11 +51,11 @@ One folder per plugin, named for its `plugin_id`. For example, the
   publisher. Reassigning the same object or changing it in place keeps the
   previous publisher. Publish a replacement value to attribute new evidence
   to this plugin; see `autonomy/decision_cycle/memory/runner.py`.
-- How several plugins share that map, and what a failure does, is declared in
-  `autonomy/decision_cycle/memory/interface.py`: `composition_declaration`
-  (selection order, one `EVIDENCE_KEY`, last write wins, one value per belief key)
-  and `FAILURE_POLICY` (an update failure stops the cycle, a reset failure is
-  recorded, plugins are still called when `read_observation` returns `None`).
-  `MemoryRunner` reads those values.
+- Several plugins share that map in selection order: one `EVIDENCE_KEY`,
+  last write wins, one value per belief key. What a failure does is declared
+  as `FAILURE_POLICY` in `autonomy/decision_cycle/memory/interface.py` (an
+  update failure stops the cycle, a reset failure is recorded, plugins are
+  still called when `read_observation` returns `None`). `MemoryRunner` reads
+  it.
 - Reuse goes through `../shared/`. A plugin does not import another plugin's
   modules.

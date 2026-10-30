@@ -6,12 +6,12 @@ import ast
 import unittest
 
 from autonomy.decision_cycle.activation import STEPS
-from cli.automa_cli.hosts import deploy
+from cli.automa_cli.hosts import picar_deploy
 
 
 class RemoteInstallScriptTests(unittest.TestCase):
     def test_script_compiles_and_names_the_activation_steps(self) -> None:
-        script = deploy._REMOTE_AUTONOMY_INSTALL_SCRIPT
+        script = picar_deploy._REMOTE_AUTONOMY_INSTALL_SCRIPT
         compile(script, "<remote install>", "exec")
         assignments = [
             node.value

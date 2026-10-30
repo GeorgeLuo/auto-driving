@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli.automa_cli.shared.command_result import CommandResult
-from cli.automa_cli.hosts import deploy, runtime_hosts
+from cli.automa_cli.hosts import deploy, picar_deploy, runtime_hosts
 from cli.automa_cli.vehicles.probes import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.vehicle_fixtures import probe_returning
@@ -18,6 +18,7 @@ class HostLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory())) / "vehicles"
         self.enterContext(patch.object(deploy, "RUNTIME_ROOT", self.root))
+        self.enterContext(patch.object(picar_deploy, "RUNTIME_ROOT", self.root))
         self.enterContext(patch.object(runtime_hosts, "RUNTIME_ROOT", self.root))
         self.enterContext(patch("cli.automa_cli.shared.controller_releases.RUNTIME_ROOT", self.root))
 
@@ -65,7 +66,7 @@ class HostLifecycleTests(unittest.TestCase):
         directory.mkdir(parents=True)
         staged = directory / "keep.json"
         staged.write_text("{}")
-        with patch.object(deploy, "_install_picar_core", return_value=CommandResult(2, "ssh failed")):
+        with patch.object(deploy, "install_picar_core", return_value=CommandResult(2, "ssh failed")):
             result = deploy.create_host(host_name="test", provider="picar", url="http://example:8887")
         self.assertEqual(result.exit_code, 2)
         self.assertTrue(staged.exists())
@@ -99,19 +100,19 @@ class HostLifecycleTests(unittest.TestCase):
 
     def test_delete_picar_keeps_record_on_ssh_failure_then_removes_on_success(self):
         write_host_fixture(self.root, "car", provider="picar")
-        with patch.object(deploy, "_run_step", return_value=1) as run:
+        with patch.object(deploy, "run_step", return_value=1) as run:
             result = deploy.delete_host(host_name="car")
         self.assertEqual(result.exit_code, 1)
         self.assertTrue((self.root / "car" / "host-configuration.json").exists())
         self.assertIn("control.sh /home/piracer stop", run.call_args.args[1][-1])
-        with patch.object(deploy, "_run_step", return_value=0):
+        with patch.object(deploy, "run_step", return_value=0):
             result = deploy.delete_host(host_name="car")
         self.assertEqual(result.exit_code, 0)
         self.assertIn("~/mycar", result.message)
         self.assertFalse((self.root / "car").exists())
 
     def test_failed_new_creation_removes_the_directory(self):
-        with patch.object(deploy, "_install_picar_core", return_value=CommandResult(2, "sync failed")):
+        with patch.object(deploy, "install_picar_core", return_value=CommandResult(2, "sync failed")):
             result = deploy.create_host(host_name="car", provider="picar", url="http://example:8887")
         self.assertEqual(result.exit_code, 2)
         self.assertFalse((self.root / "car").exists())
@@ -121,7 +122,7 @@ class HostLifecycleTests(unittest.TestCase):
         with patch.object(deploy, "host_state", return_value={"state": "running"}), \
              patch("cli.automa_cli.hosts.deploy.stop_host_automation",
                    return_value=CommandResult(2, "could not release control")), \
-             patch.object(deploy, "_run_step") as remote:
+             patch.object(deploy, "run_step") as remote:
             result = deploy.delete_host(host_name="car")
         self.assertEqual(result.exit_code, 2)
         self.assertTrue((self.root / "car" / "host-configuration.json").exists())

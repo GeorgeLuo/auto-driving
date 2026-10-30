@@ -16,6 +16,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.workbench.runner import ImageReplayRunner
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
@@ -60,7 +61,8 @@ class PluginUploadFlows(unittest.TestCase):
                 host.follow_activations({}, root / "runtime")
                 identity = host.applied_decision()
                 view = RuntimeViewServer(host_name="chase-sim-chaser", automation_dir=root / "automation",
-                                         port=0, plugin_catalog=PluginCatalogAPI(host.catalog)).start()
+                                         port=0, plugin_catalog=PluginCatalogAPI(host.catalog),
+                                         replay_runner_factory=ImageReplayRunner).start()
                 self.addCleanup(view.stop)
                 file = root / "prototype.py"
                 file.write_text("raise RuntimeError('must not import on upload')")

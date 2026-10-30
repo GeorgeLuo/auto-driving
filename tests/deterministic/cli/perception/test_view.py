@@ -10,6 +10,7 @@ from urllib.request import Request, urlopen
 from PIL import Image
 
 from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.workbench.runner import ImageReplayRunner
 from cli.automa_cli.frontend.perception_view import (
     MAX_BUFFERED_FRAMES,
     PUBLICATION_SCHEMA,
@@ -59,6 +60,7 @@ class PerceptionViewTests(unittest.TestCase):
                 host_name="test-vehicle",
                 automation_dir=root / "automation",
                 port=0,
+                replay_runner_factory=ImageReplayRunner,
             ).start()
             try:
                 frame_record = _frame_record()
@@ -161,6 +163,7 @@ class PerceptionViewTests(unittest.TestCase):
                 host_name="test-vehicle",
                 automation_dir=Path(tmp),
                 port=0,
+                replay_runner_factory=ImageReplayRunner,
             ).start()
             try:
                 with self.assertRaises(HTTPError) as caught:
@@ -180,6 +183,7 @@ class PerceptionViewTests(unittest.TestCase):
                 host_name="test-vehicle",
                 automation_dir=root,
                 port=0,
+                replay_runner_factory=ImageReplayRunner,
             ).start()
             server.stop()
 
@@ -196,6 +200,7 @@ class PerceptionViewTests(unittest.TestCase):
                 port=0,
                 run_id="run-current",
                 worker_pid=4242,
+                replay_runner_factory=ImageReplayRunner,
             ).start()
             try:
                 status = get_perception_view_status(

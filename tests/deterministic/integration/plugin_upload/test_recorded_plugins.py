@@ -18,6 +18,7 @@ from autonomy.runtime.plugin_loader import load_runner
 from autonomy.runtime.recording import RunRecording
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.workbench.runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import PRESET_STEPS
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
@@ -94,7 +95,8 @@ class RecordedPluginFlows(unittest.TestCase):
                 self.addCleanup(host.close)
                 host.follow_activations({}, root / "runtime")
                 view = RuntimeViewServer(host_name=vehicle, automation_dir=root / "automation",
-                                         port=0, plugin_catalog=host.plugin_catalog).start()
+                                         port=0, plugin_catalog=host.plugin_catalog,
+                                         replay_runner_factory=ImageReplayRunner).start()
                 self.addCleanup(view.stop)
                 recording = RunRecording(root / "runs", host_name=vehicle)
                 host.start(RunConfiguration(mode="observe_only", num_decisions=3), recording=recording)

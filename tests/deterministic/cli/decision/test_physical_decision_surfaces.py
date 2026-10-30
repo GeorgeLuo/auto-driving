@@ -21,6 +21,7 @@ from cli.automa_cli.hosts.decision import accept_decision_publication, decision_
 from cli.automa_cli.hosts.decision_live import DecisionViewAdapter, _provider_identity
 from cli.automa_cli.hosts.decision_records import activations_from_payloads
 from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.workbench.runner import ImageReplayRunner
 from cli.automa_cli.hosts.step_activations import replace_metadata
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.picar import AutonomyPilotPart, create_host
@@ -41,6 +42,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         server = RuntimeViewServer(
             host_name="piracer", automation_dir=self.runtime_root / "view",
             run_id=normalized["run_id"], decision_identity=_provider_identity(normalized),
+            replay_runner_factory=ImageReplayRunner,
         )
         adapter = DecisionViewAdapter(
             host_name="piracer", base_url="http://host.invalid", view_server=server,
@@ -129,6 +131,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             port=0,
             run_id=normalized["run_id"],
             decision_identity=_provider_identity(normalized),
+            replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(server.stop)
 
@@ -181,6 +184,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             port=0,
             run_id=normalized["run_id"],
             decision_identity=_provider_identity(normalized),
+            replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(server.stop)
 

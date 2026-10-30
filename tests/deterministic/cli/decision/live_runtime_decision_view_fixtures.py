@@ -8,6 +8,7 @@ from urllib.request import HTTPRedirectHandler, urlopen
 from PIL import Image
 from cli.automa_cli.hosts.decision_records import DecisionRunners
 from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.workbench.runner import ImageReplayRunner
 from cli.automa_cli.hosts.memory_report import evidence_records
 from cli.automa_cli.hosts.step_activations import decision_identity, host_bundle
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
@@ -47,6 +48,7 @@ class LiveRuntimeDecisionViewFixture:
             port=0,
             run_id="run-live",
             decision_identity=self._producer(),
+            replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(self.server.stop)
 

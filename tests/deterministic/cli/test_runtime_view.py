@@ -14,7 +14,6 @@ from cli.automa_cli import app
 from cli.automa_cli.frontend.server import (
     NOT_CONNECTED_ERROR,
     RUNTIME_HOST_ROUTES,
-    WORKBENCH_UNAVAILABLE_ERROR,
     RuntimeViewServer,
 )
 from cli.automa_cli.frontend.workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY
@@ -111,7 +110,9 @@ class ViewerWithoutHostTests(unittest.TestCase):
 
 class ConnectedSplashTests(unittest.TestCase):
     def test_splash_links_runtime_pages_while_connected(self) -> None:
-        server = RuntimeViewServer(host_name="test-vehicle", automation_dir=None, port=0).start()
+        server = RuntimeViewServer(
+            host_name="test-vehicle", automation_dir=None, port=0, replay_runner_factory=ImageReplayRunner,
+        ).start()
         self.addCleanup(server.stop)
 
         html = _read_text(server.url)
@@ -140,15 +141,18 @@ class ConnectedSplashTests(unittest.TestCase):
                 server.stop()
                 close.assert_called_once_with()
 
-    def test_server_without_automa_providers_lists_no_hosts_and_refuses_the_workbench(self) -> None:
-        server = RuntimeViewServer(host_name="viewer", automation_dir=None, port=0, connected=False).start()
+    def test_server_without_a_host_list_lists_no_hosts(self) -> None:
+        server = RuntimeViewServer(
+            host_name="viewer", automation_dir=None, port=0, connected=False,
+            replay_runner_factory=ImageReplayRunner,
+        ).start()
         self.addCleanup(server.stop)
 
         self.assertEqual(json.loads(_read_text(f"{server.url}api/hosts")), {"hosts": []})
-        with self.assertRaises(HTTPError) as caught:
-            urlopen(f"{server.workbench_url}api/state", timeout=1.0)
-        self.assertEqual(caught.exception.code, 503)
-        self.assertEqual(json.loads(caught.exception.read()), {"ok": False, "error": WORKBENCH_UNAVAILABLE_ERROR})
+
+    def test_server_refuses_to_start_without_a_workbench_runner(self) -> None:
+        with self.assertRaisesRegex(TypeError, "replay_runner or replay_runner_factory"):
+            RuntimeViewServer(host_name="viewer", automation_dir=None, port=0, connected=False)
 
 
 class ViewerWorkbenchTests(unittest.TestCase):

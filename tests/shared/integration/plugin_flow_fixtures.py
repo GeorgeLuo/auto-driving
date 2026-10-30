@@ -60,7 +60,8 @@ def plugin_host(root, vehicle="chase", activations=None):
             else create_picar_host(steps=steps))
     host.follow_activations(selected, root / "runtime")
     view = RuntimeViewServer(host_name=vehicle, automation_dir=root / "automation",
-                             port=0, plugin_catalog=host.plugin_catalog).start()
+                             port=0, plugin_catalog=host.plugin_catalog,
+                             replay_runner_factory=ImageReplayRunner).start()
     try:
         yield host, view.url
     finally:

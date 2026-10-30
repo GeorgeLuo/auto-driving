@@ -6,6 +6,7 @@ from urllib.parse import quote
 from urllib.request import Request, build_opener, urlopen
 from unittest.mock import patch
 from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.workbench.runner import ImageReplayRunner
 from tests.deterministic.cli.decision.live_runtime_decision_view_fixtures import (
     LiveRuntimeDecisionViewFixture,
     _NoRedirectHandler,
@@ -76,5 +77,6 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
                         automation_dir=automation_dir,
                         host=host,
                         port=0,
+                        replay_runner_factory=ImageReplayRunner,
                     )
         self.assertFalse(automation_dir.exists())

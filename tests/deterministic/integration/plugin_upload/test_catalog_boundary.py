@@ -25,7 +25,8 @@ class CatalogWriteBoundaryFlows(unittest.TestCase):
             self.addCleanup(host.close)
             host.follow_activations({}, root / "runtime")
             view = RuntimeViewServer(host_name="picar", automation_dir=root / "automation",
-                                     port=0, plugin_catalog=host.plugin_catalog).start()
+                                     port=0, plugin_catalog=host.plugin_catalog,
+                                     replay_runner_factory=ImageReplayRunner).start()
             self.addCleanup(view.stop)
             workbench = serve_workbench(self, ImageReplayRunner(root))
             runtime = root / "vehicles"

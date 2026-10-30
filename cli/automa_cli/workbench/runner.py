@@ -21,7 +21,7 @@ from autonomy.runtime.recording import recorded_selections
 
 from ..shared.step_hosting import plugin_report
 from ..shared.timestamps import timestamp_ms
-from ..shared.replay.inspection_runs import (
+from ..replay.selections import (
     default_selection, recorded_runner,
     resolve_replay_activations, restage_replay_steps,
 )
@@ -35,7 +35,7 @@ from ..frontend.workbench_contract import (
     WORKBENCH_SEQUENCE_ID,
     WORKBENCH_STATE_SCHEMA,
 )
-from ..shared.replay.frames import FrameOutcome, run_frame
+from ..replay.frames import FrameOutcome, run_frame
 from .presentation import (
     displayed_steps, empty_steps, frame_detail, frame_summary, timeline_item,
 )
@@ -45,7 +45,7 @@ from .plugins import (
     PluginCatalogError,
     packaged_plugin_catalog,
 )
-from ..shared.replay.source import (
+from ..replay.source import (
     ImageSource,
     ReplayFrame,
     SourceValidationError,

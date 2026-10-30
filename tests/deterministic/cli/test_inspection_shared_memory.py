@@ -12,10 +12,10 @@ import numpy as np
 from PIL import Image
 
 from cli.automa_cli.app import build_parser
-from cli.automa_cli.plugins.step_inspect import inspect_step
-from cli.automa_cli.shared.replay.inspection_runs import SharedMemorySeed
-from cli.automa_cli.plugins.step_replay import StepReplay
-from cli.automa_cli.shared.replay.source import normalize_image_file
+from cli.automa_cli.plugins.inspect.commands import inspect_step
+from cli.automa_cli.replay.selections import SharedMemorySeed
+from cli.automa_cli.plugins.inspect.replay import StepReplay
+from cli.automa_cli.replay.source import normalize_image_file
 
 KEY = "perception.sim_cardboard_permanence.history"
 PLUGINS = ["sim_cardboard_obstacle", "sim_cardboard_permanence"]
@@ -58,7 +58,7 @@ class InspectionSharedMemoryTests(unittest.TestCase):
         }
         self.write_seed()
         self.record_root = self.root / "recordings"
-        self.enterContext(patch("cli.automa_cli.plugins.step_inspect.inspect_root", return_value=self.record_root))
+        self.enterContext(patch("cli.automa_cli.plugins.inspect.service.inspect_root", return_value=self.record_root))
 
     def write_seed(self) -> None:
         self.seed_file.write_text(json.dumps(self.document), encoding="utf-8")

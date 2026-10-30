@@ -24,7 +24,8 @@ from ..step_activations import (
 )
 from ..publications.host_publications import host_state
 from ..host_status import host_block
-from ...shared.controller_releases import RuntimeHostError, release_code_dir
+from ...releases.errors import RuntimeHostError
+from ...releases.store import release_code_dir
 from ..runtime_hosts import (
     automation_dir,
     ensure_chase_host,

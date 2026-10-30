@@ -18,7 +18,7 @@ from autonomy.runtime.plugin_loader import code_source_from_activation, load_run
 from autonomy.shared_memory import read_shared_memory_file
 from implementations.decision_cycle.catalog import selection_activation
 
-from ..controller_releases import release_code_dir
+from ..releases.store import release_code_dir
 
 
 @dataclass(frozen=True)

@@ -18,7 +18,9 @@ from ...shared.io.json_files import read_json
 from ...shared.paths import display_path, safe_path_part
 from ...shared.io.processes import pid_alive
 from .. import runtime_hosts
-from ...shared.controller_releases import RuntimeHostError, controller_bundle_paths, release_manifest, update_command
+from ...releases.errors import RuntimeHostError
+from ...releases.store import release_manifest, update_command
+from ...shared.controller_releases import controller_bundle_paths
 from ..runtime_hosts import running_base_url
 from ..publications.host_publications import host_state
 from ..host_status import host_block, read_hosts

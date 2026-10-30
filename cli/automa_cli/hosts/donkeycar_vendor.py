@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
 
-from ..shared.json_files import write_json_atomically
+from ..shared.io.json_files import write_json_atomically
 from ..shared.paths import ROOT, display_path
 
 

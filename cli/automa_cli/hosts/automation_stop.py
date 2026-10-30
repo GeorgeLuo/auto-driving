@@ -14,9 +14,9 @@ from autonomy.runtime.client import RuntimeClient
 
 from ..shared.command_result import CommandResult
 from .vehicle_access import create_vehicle_access
-from ..shared.json_files import read_json, write_json_atomically
+from ..shared.io.json_files import read_json, write_json_atomically
 from ..shared.paths import display_path
-from ..shared.processes import pid_alive
+from ..shared.io.processes import pid_alive
 from ..shared.controller_releases import RuntimeHostError
 from .runtime_hosts import (
     automation_dir as host_automation_dir,

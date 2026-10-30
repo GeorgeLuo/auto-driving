@@ -6,6 +6,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from ..shared.text import indented
 from .discovery import created_simulators, listed_vehicles
 from .probes import DEFAULT_READINESS_TIMEOUT_S, require_positive_timeout
 from .providers import CHASE_SIM, PROVIDERS
@@ -60,7 +61,3 @@ def _vehicle_block(vehicle: dict[str, Any]) -> str:
     if vehicle.get("pid"):
         lines.append(f"  created by simulators create, pid {vehicle['pid']}")
     return "\n".join(lines)
-
-
-def indented(text: Any) -> list[str]:
-    return [f"  {line}" for line in str(text).splitlines()] if text else []

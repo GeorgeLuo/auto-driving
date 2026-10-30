@@ -25,7 +25,7 @@ from ..shared.controller_releases import (
     RuntimeHostError, bundle_root, release_code_dir, release_manifest, release_summary,
 )
 from ..shared.paths import ROOT, RUNTIME_ROOT, display_path
-from ..shared.processes import pid_alive
+from ..shared.io.processes import pid_alive
 from ..vehicles.providers import PROVIDERS
 from .step_activations import host_names, staging_host
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 import unittest
 
-from cli.automa_cli.shared.http_json import request_json
+from cli.automa_cli.shared.io.http_json import request_json
 from tests.support.fake_hosts import answering, closed_url, hung_url
 
 

@@ -9,7 +9,7 @@ from autonomy.decision_cycle.activation import DECISION_STEPS
 
 from ..shared.command_result import CommandResult
 from ..shared.controller_releases import RuntimeHostError, bundle_paths
-from ..shared.step_formatting import format_step_record, format_step_timing
+from .step_formatting import format_step_record, format_step_timing
 from ..hosts.decision import (
     DecisionSurfaceError,
     accept_decision_publication,

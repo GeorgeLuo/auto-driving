@@ -12,7 +12,7 @@ from autonomy.shared_memory import SharedMemoryValueError
 from implementations.decision_cycle.catalog import selection_activation
 
 from ..shared.command_result import CommandResult
-from ..shared.step_formatting import format_step_record, format_step_timing
+from .step_formatting import format_step_record, format_step_timing
 from ..shared.inspection_runs import add_seed_provenance, read_shared_memory_seed
 from ..shared.memory_report import evidence_publisher, plugin_summaries
 from ..shared.paths import ROOT, display_path

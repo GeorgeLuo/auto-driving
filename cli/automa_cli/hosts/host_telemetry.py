@@ -23,7 +23,7 @@ from implementations.runtime.picar.host_telemetry import (
     HOST_TELEMETRY_MODES,
     HOST_TELEMETRY_REASONS,
 )
-from ..shared.publication_fields import PublicationError, require_id, require_mapping
+from .publication_fields import PublicationError, require_id, require_mapping
 
 HOST_TELEMETRY_RECORDS_SCHEMA = "automa_host_boundary_telemetry_records"
 HOST_TELEMETRY_PANEL_SCHEMA = "automa_host_boundary_telemetry_panel"

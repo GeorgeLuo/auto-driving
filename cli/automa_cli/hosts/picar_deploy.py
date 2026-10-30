@@ -18,7 +18,7 @@ from urllib.parse import urlparse
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
 
-from ..shared import http_json
+from ..shared.io import http_json
 from ..shared.command_result import CommandResult
 from .bundles import (
     controller_bundle_source_summary,

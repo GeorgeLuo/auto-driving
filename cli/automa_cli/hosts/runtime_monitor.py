@@ -30,7 +30,7 @@ from .run_record import (
 from ..frontend.server import RuntimeViewServer
 from .runtime_view import runtime_view_server
 from .decision_live import DecisionViewAdapter
-from ..shared.json_files import write_json_atomically
+from ..shared.io.json_files import write_json_atomically
 from .plugin_catalog import PluginCatalogClient
 
 MONITOR_POLL_INTERVAL_S = 0.1

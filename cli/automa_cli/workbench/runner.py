@@ -19,9 +19,9 @@ from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.recording import recorded_selections
 
-from ..hosts.step_hosting import plugin_report
+from ..shared.step_hosting import plugin_report
 from ..shared.timestamps import timestamp_ms
-from ..hosts.inspection_runs import (
+from ..shared.inspection_runs import (
     default_selection, recorded_runner,
     resolve_replay_activations, restage_replay_steps,
 )

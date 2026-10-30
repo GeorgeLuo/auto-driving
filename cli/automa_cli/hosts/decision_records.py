@@ -28,7 +28,7 @@ from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.decision_cycle.steps import builtin_activation
 from autonomy.runtime.control import AutonomyControl
 
-from .inspection_runs import recorded_runner
+from ..shared.inspection_runs import recorded_runner
 
 
 @dataclass(frozen=True)

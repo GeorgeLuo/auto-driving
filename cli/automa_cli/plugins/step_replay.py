@@ -21,7 +21,7 @@ from autonomy.plugins import uploaded_source
 from autonomy.runtime.recording import recorded_selections, recording_frame_entry
 from autonomy.decision_cycle.activation import StepActivation
 
-from ..hosts.inspection_runs import (
+from ..shared.inspection_runs import (
     SharedMemorySeed, recorded_runner,
     default_selection, resolve_replay_activations, restage_replay_steps, selection_report,
 )

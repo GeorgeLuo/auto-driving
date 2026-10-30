@@ -17,7 +17,7 @@ from .decision import (
 from .host_publications import fetch_decision_publication
 from ..shared.controller_releases import RuntimeHostError, bundle_paths
 from .runtime_hosts import runtime_base_url
-from .step_formatting import format_step_record, format_step_timing
+from ..shared.step_formatting import format_step_record, format_step_timing
 from .streaming import (
     ViewFeed,
     poll_stream,

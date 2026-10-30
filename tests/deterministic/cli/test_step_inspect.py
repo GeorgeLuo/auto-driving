@@ -9,15 +9,15 @@ from pathlib import Path
 
 from PIL import Image
 from dataclasses import replace
-from cli.automa_cli.hosts.inspection_runs import selection_report
-from cli.automa_cli.hosts.memory_report import plugin_summaries
+from cli.automa_cli.shared.inspection_runs import selection_report
+from cli.automa_cli.shared.memory_report import plugin_summaries
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
 from implementations.decision_cycle.catalog import selection_activation
 from cli.automa_cli.workbench.source import normalize_image_directory
 from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
-from cli.automa_cli.hosts.step_formatting import format_step_record
+from cli.automa_cli.shared.step_formatting import format_step_record
 from cli.automa_cli.plugins.step_inspect import INSPECT_STEPS, inspect_step
 from cli.automa_cli.plugins.step_replay import StepReplay, default_selection
 from cli.automa_cli.workbench.source import ImageSource, ReplayFrame

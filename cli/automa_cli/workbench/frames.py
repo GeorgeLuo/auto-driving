@@ -18,7 +18,7 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
-from ..hosts.step_hosting import plugin_report
+from ..shared.step_hosting import plugin_report
 from ..frontend.workbench_contract import WORKBENCH_SEQUENCE_ID
 from .source import ReplayFrame
 

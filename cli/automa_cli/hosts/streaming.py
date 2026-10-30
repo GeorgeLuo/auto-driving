@@ -21,7 +21,7 @@ from autonomy.decision_cycle.timing import step_timing
 from autonomy.runtime.frame_loop import LATEST_FRAME_PATH, LATEST_JSON_PATH
 from ..shared.command_result import CommandResult
 from .decision_live import DecisionViewAdapter
-from .memory_report import evidence_publisher, ledger_summary, plugin_ledgers
+from ..shared.memory_report import evidence_publisher, ledger_summary, plugin_ledgers
 from .decision_publication import (
     perception_text_from_publication,
     presets_text,

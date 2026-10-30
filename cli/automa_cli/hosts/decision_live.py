@@ -25,7 +25,7 @@ from .host_telemetry import (
     normalize_host_telemetry_records,
 )
 from ..frontend.server import RuntimeViewServer
-from .memory_report import evidence_records
+from ..shared.memory_report import evidence_records
 
 
 def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:

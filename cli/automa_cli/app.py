@@ -8,7 +8,7 @@ from autonomy.plugins import DuplicatePluginIdError
 
 from .hosts.automation_status import get_hosts_status
 from .hosts.commands import register_hosts
-from .hosts.runtime_view import runtime_view_server, serve_viewer
+from .hosts.views.runtime_view import runtime_view_server, serve_viewer
 from .plugins.commands import register_plugins
 from .simulators.commands import register_simulators
 from .vehicles.commands import register_vehicles

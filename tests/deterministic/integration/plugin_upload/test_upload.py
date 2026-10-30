@@ -12,7 +12,7 @@ from urllib.error import HTTPError
 from autonomy.decision_cycle.activation import step_activation_from_payload
 from autonomy.plugins import uploaded_source
 from cli.automa_cli.shared.controller_releases import controller_bundle_paths
-from cli.automa_cli.hosts.plugin_catalog import PluginCatalogClient
+from cli.automa_cli.hosts.publications.plugin_catalog import PluginCatalogClient
 from implementations.decision_cycle.catalog import selection_activation
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime

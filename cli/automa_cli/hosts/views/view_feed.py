@@ -1,70 +1,16 @@
-"""``hosts viewer``: the runtime view a host's publications feed.
+"""Feed a local runtime view from a host's publications."""
 
-``ViewFeed`` serves a loopback view from the host's observation and decision
-publications. ``hosts viewer`` serves one until interrupted, and the
-``plugins stream`` screens feed one beside their terminal output.
-"""
 from __future__ import annotations
 
-import time
 from typing import Any
 
-from ..shared.command_result import CommandResult
-from ..shared.controller_releases import RuntimeHostError
-from ..shared.open_view import open_view_message
-from ..frontend.server import RuntimeViewServer
+from ...frontend.server import RuntimeViewServer
 from .decision_live import DecisionViewAdapter
-from .decision_publication import health_error, publication_to_frame_record
-from .host_publications import TransactionCache, fetch_observation_sample
-from .plugin_catalog import PluginCatalogClient
-from .runtime_hosts import local_hosts, runtime_base_url
-from .runtime_monitor import PERCEPTION_COPY_INTERVAL_S, pause_s
+from ..publications.decision_publication import health_error, publication_to_frame_record
+from ..publications.host_publications import TransactionCache, fetch_observation_sample
+from ..publications.plugin_catalog import PluginCatalogClient
 from .runtime_view import runtime_view_server
 from .view_discovery import runtime_view_dir
-
-
-def serve_host_viewer(
-    *, host_name: str | None = None, host_url: str | None = None, timeout_s: float = 3.0,
-) -> CommandResult:
-    """Serve the runtime view fed from a local host until interrupted.
-
-    The host is ``host_name``, or the one at ``host_url``, the host URL
-    ``hosts status`` shows. The view opens only once the host answers, and
-    refreshes at the cadence of a run's view. While the host is not live its
-    pages say why.
-    """
-
-    if host_name is not None:
-        try:
-            base_url = runtime_base_url(host_name)
-        except RuntimeHostError as exc:
-            return CommandResult(2, str(exc))
-    else:
-        hosts = [host for host in local_hosts() if host["url"]]
-        matched = [host for host in hosts if host["url"].rstrip("/") == host_url.rstrip("/")]
-        if not matched:
-            names = ", ".join(f"{host['host_name']} at {host['url']}" for host in hosts)
-            return CommandResult(2, f"No host at {host_url}. " + (f"Hosts: {names}." if names else "None is running."))
-        host_name, base_url = matched[0]["host_name"], matched[0]["url"]
-    view = ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
-    try:
-        publication, error = view.read_observation()
-        if view.url is None or error is not None:
-            return CommandResult(2, f"Cannot view host {host_name} at {base_url}: {view.error}")
-        view.publish(publication)
-        print(f"Viewing host {host_name} at {base_url}", flush=True)
-        not_live = health_error(publication)
-        if not_live is not None:
-            print(f"Not live: {not_live}", flush=True)
-        print(open_view_message(view.url), flush=True)
-        while True:
-            started = time.monotonic()
-            view.publish(view.read_observation()[0])
-            time.sleep(pause_s(started, PERCEPTION_COPY_INTERVAL_S))
-    except KeyboardInterrupt:
-        return CommandResult(130, "")
-    finally:
-        view.stop()
 
 
 class ViewFeed:

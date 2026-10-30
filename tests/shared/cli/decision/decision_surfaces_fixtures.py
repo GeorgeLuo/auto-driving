@@ -23,7 +23,7 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.report import report_from_host_result
 from implementations.decision_cycle.catalog import packaged_activation
-from cli.automa_cli.hosts.decision_records import DecisionRecords, DecisionRunners
+from cli.automa_cli.hosts.publications.decision_records import DecisionRecords, DecisionRunners
 from cli.automa_cli.hosts.step_activations import (
     decision_generation_id,
     decision_identity,

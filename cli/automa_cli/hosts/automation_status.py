@@ -20,7 +20,7 @@ from ..shared.io.processes import pid_alive
 from . import runtime_hosts
 from ..shared.controller_releases import RuntimeHostError, controller_bundle_paths, release_manifest, update_command
 from .runtime_hosts import running_base_url
-from .host_publications import host_state
+from .publications.host_publications import host_state
 from .host_status import host_block, read_hosts
 from .step_activations import (
     bundle_activation_problems,
@@ -30,7 +30,7 @@ from .step_activations import (
     staged_selections,
 )
 from ..shared.timestamps import timestamp_ms
-from .view_discovery import discover_runtime_view
+from .views.view_discovery import discover_runtime_view
 from ..frontend.perception_view import get_perception_view_status
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
 

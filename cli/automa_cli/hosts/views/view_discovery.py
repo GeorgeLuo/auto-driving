@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Callable
 
-from ..shared.paths import RUNTIME_ROOT
-from .step_activations import host_bundle
+from ...shared.paths import RUNTIME_ROOT
+from ..step_activations import host_bundle
 
 
 def runtime_view_dir(host_name: str, *, runtime_root: Path = RUNTIME_ROOT) -> Path:

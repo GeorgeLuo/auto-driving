@@ -6,7 +6,7 @@ from copy import deepcopy
 from pathlib import Path
 from urllib.request import HTTPRedirectHandler, urlopen
 from PIL import Image
-from cli.automa_cli.hosts.decision_records import DecisionRunners
+from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.workbench.runner import ImageReplayRunner
 from cli.automa_cli.shared.memory_report import evidence_records

@@ -6,7 +6,7 @@ from typing import Any
 
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
-from ..shared.io import http_json
+from ...shared.io import http_json
 
 
 class PluginCatalogClient:

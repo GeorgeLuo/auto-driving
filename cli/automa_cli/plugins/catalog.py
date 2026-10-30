@@ -13,7 +13,7 @@ from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.plugin_catalog import describe_plugin
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, catalog_path
 
-from ..hosts.plugin_catalog import PluginCatalogClient
+from ..hosts.publications.plugin_catalog import PluginCatalogClient
 from ..hosts.runtime_hosts import runtime_base_url
 from ..hosts.step_activations import (
     bundle_activation_path,

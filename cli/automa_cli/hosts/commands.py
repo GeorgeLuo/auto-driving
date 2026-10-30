@@ -15,7 +15,7 @@ from .automation import (
 from .automation_status import get_hosts_status
 from .automation_stop import stop_host_automation
 from .deploy import create_host, update_host, delete_host
-from .viewer import serve_host_viewer
+from .views.viewer import serve_host_viewer
 
 
 def register_hosts(subcommands: argparse._SubParsersAction) -> None:

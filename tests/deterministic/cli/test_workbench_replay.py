@@ -6,7 +6,7 @@ from io import StringIO
 from unittest import mock
 from urllib.request import urlopen
 
-from cli.automa_cli.hosts.runtime_view import runtime_view_server
+from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
 from cli.automa_cli.workbench.replay import run_workbench_replay
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source

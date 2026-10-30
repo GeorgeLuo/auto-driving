@@ -22,7 +22,7 @@ from .step_activations import (
     startup_activations,
     write_host_configuration,
 )
-from .host_publications import host_state
+from .publications.host_publications import host_state
 from .host_status import host_block
 from ..shared.controller_releases import RuntimeHostError, release_code_dir
 from .runtime_hosts import (

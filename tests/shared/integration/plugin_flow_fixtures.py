@@ -11,7 +11,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.plugins import PluginDefinition
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.frontend.server import RuntimeViewServer
-from cli.automa_cli.hosts.plugin_catalog import PluginCatalogClient
+from cli.automa_cli.hosts.publications.plugin_catalog import PluginCatalogClient
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA

@@ -20,34 +20,24 @@ from autonomy.vehicle.vehicle import FRONT_CAMERA_SENSOR_ID
 from autonomy.runtime.client import RuntimeClient
 from ..shared.paths import display_path
 from ..frontend.perception_view import perception_view_ready
-from .decision_publication import perception_text_from_publication, publication_to_frame_record
-from .host_publications import fetch_observation_sample, TransactionCache
+from .publications.decision_publication import perception_text_from_publication, publication_to_frame_record
+from .publications.host_publications import fetch_observation_sample, TransactionCache
 from .run_record import (
     control_source, finish_run, frame_line, frame_readiness,
     new_run_state, record_host_status, reports_frame, run_result, startup_lines,
     timestamp_ms,
 )
 from ..frontend.server import RuntimeViewServer
-from .runtime_view import runtime_view_server
-from .decision_live import DecisionViewAdapter
+from .views.runtime_view import runtime_view_server
+from .views.polling import PERCEPTION_COPY_INTERVAL_S, pause_s
+from .views.decision_live import DecisionViewAdapter
 from ..shared.io.json_files import write_json_atomically
-from .plugin_catalog import PluginCatalogClient
+from .publications.plugin_catalog import PluginCatalogClient
 
 MONITOR_POLL_INTERVAL_S = 0.1
-PERCEPTION_COPY_INTERVAL_S = 1 / 30
 # The decision copy stays off the recording export. A batch can take longer
 # than the decision stays fresh, so the copy cannot wait for that read.
 DECISION_COPY_INTERVAL_S = 1 / 30
-MAX_POLL_GAP_S = 0.1
-
-
-def pause_s(started: float, interval_s: float) -> float:
-    """Target the interval on fast hosts; back off after slower passes.
-
-    A 30 ms pass waits 30 ms (~16.7 Hz); a 200 ms pass waits 100 ms.
-    """
-    elapsed = max(0.0, time.monotonic() - started)
-    return max(interval_s - elapsed, min(elapsed, MAX_POLL_GAP_S))
 
 
 def _frames_received(host: dict[str, Any]) -> int:

@@ -17,7 +17,7 @@ from cli.automa_cli.frontend.server import (
     RuntimeViewServer,
 )
 from cli.automa_cli.frontend.workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY
-from cli.automa_cli.hosts.runtime_view import runtime_view_server
+from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
 from implementations.vehicle.chase_sim.defaults import CHASE_UI_WS_URL_ENV
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
 from implementations.vehicle.chase_sim.presence import MetricsUiPresence
@@ -125,7 +125,7 @@ class ConnectedSplashTests(unittest.TestCase):
     def test_workbench_is_created_on_first_visit_and_closed_with_the_viewer(self) -> None:
         runner = ImageReplayRunner(cadence_ms=0, step_factories={"perception": FixtureMapper})
         self.addCleanup(runner.close)
-        with mock.patch("cli.automa_cli.hosts.runtime_view.ImageReplayRunner", return_value=runner) as build:
+        with mock.patch("cli.automa_cli.hosts.views.runtime_view.ImageReplayRunner", return_value=runner) as build:
             server = runtime_view_server(host_name="test-vehicle", automation_dir=None, port=0).start()
             self.addCleanup(server.stop)
             _read_text(server.url)

@@ -160,7 +160,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 with (
                     patch.object(runtime_monitor, "RuntimeClient", return_value=RuntimeClient()),
                     patch.object(runtime_monitor, "fetch_observation_sample", side_effect=sample),
-                    patch("cli.automa_cli.hosts.decision_live.fetch_decision_transaction", side_effect=transaction),
+                    patch("cli.automa_cli.hosts.views.decision_live.fetch_decision_transaction", side_effect=transaction),
                 ):
                     started = time.monotonic()
                     code, message = runtime_monitor.monitor_runtime(

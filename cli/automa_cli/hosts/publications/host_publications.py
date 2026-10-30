@@ -29,7 +29,7 @@ from autonomy.runtime.routes import (
     TELEMETRY_LATEST_PATH,
     TELEMETRY_RECORDS_PATH,
 )
-from ..shared.io import http_json
+from ...shared.io import http_json
 from .host_telemetry import HostTelemetryError
 
 

@@ -318,6 +318,10 @@ def start_vehicle_automation_background(
             take_control=take_control, num_decisions=num_decisions, unbounded=unbounded,
         )
         vehicle_id, host_url = _resolve_run_target(vehicle_id, host_url, timeout_s=timeout_s)
+        if host_url is None and not is_chase_vehicle_id(vehicle_id):
+            # A Chase host starts with the run; any other vehicle's host is its
+            # staged connection, which must exist before a worker is launched.
+            runtime_base_url(vehicle_id)
     except (TypeError, ValueError, RuntimeHostError) as exc:
         return CommandResult(2, str(exc))
     automation_dir = vehicle_automation_dir(vehicle_id)
@@ -572,11 +576,13 @@ def start_vehicle_automation_background(
     else:
         lines = [
             f"Automation did not become ready for {vehicle_id}.",
-            f"PID: {process.pid}",
             f"Reason: {startup.get('reason', 'unknown startup failure')}",
-            "Not ready for: inspect perception",
         ]
-        exit_code = 2
+        if startup.get("worker_running"):
+            lines.append(f"PID: {process.pid}")
+        if log_to_disk:
+            lines.append(_log_status_line(process_record, log_path))
+        return CommandResult(2, "\n".join(lines))
     lines.extend(
         [
             f"State: {display_path(automation_dir / 'state.json')}",
@@ -795,6 +801,7 @@ def _wait_for_automation_startup(
                     "camera/perception frame and current-generation view "
                     f"within {max(0.1, float(timeout_s)):.1f}s"
                 ),
+                "worker_running": True,
                 "phases": {
                     "capture": {
                         "status": "complete"

@@ -114,7 +114,11 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 )
 
             self.assertEqual(result.exit_code, 2)
-            self.assertIn("did not become ready", result.message)
+            self.assertEqual(
+                result.message,
+                "Automation did not become ready for chase-sim-chaser.\n"
+                "Reason: automation worker exited with code 7 before publishing a frame",
+            )
             state_path = (
                 runtime_root
                 / "chase-sim-chaser"
@@ -126,6 +130,61 @@ class AutomationLivePipelineTests(unittest.TestCase):
             state = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertEqual(state["status"], "error")
             self.assertIn("exited with code 7", state["error"])
+
+    def test_background_start_refuses_a_vehicle_with_no_runtime_host(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            with (
+                patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch.dict(
+                    "os.environ",
+                    {"PIRACER_ID": "piracer", "PIRACER_BASE_URL": "http://piracer.local:8887"},
+                ),
+                patch(
+                    "cli.automa_cli.automation.subprocess.Popen",
+                    side_effect=AssertionError("must not launch a worker"),
+                ),
+            ):
+                result = start_vehicle_automation_background(
+                    vehicle_id="picar-test",
+                    take_control=False,
+                )
+
+            self.assertEqual(result.exit_code, 2)
+            self.assertEqual(
+                result.message,
+                "Vehicle 'picar-test' has no staged runtime base URL: it is not a Chase id "
+                "(chase-sim-*), and no PiCar connection is staged under it.\n"
+                "vehicles update stages a PiCar under PIRACER_ID ('piracer'), "
+                "at PIRACER_BASE_URL (http://piracer.local:8887).",
+            )
+            self.assertFalse((runtime_root / "picar-test").exists())
+
+    def test_a_startup_timeout_names_the_running_worker_and_its_log(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            runtime_root = Path(tmp) / "vehicles"
+            with (
+                patch("cli.automa_cli.runtime_hosts.RUNTIME_ROOT", runtime_root),
+                patch(
+                    "cli.automa_cli.automation.subprocess.Popen",
+                    return_value=_RunningProcess(),
+                ),
+            ):
+                result = start_vehicle_automation_background(
+                    vehicle_id="chase-sim-chaser",
+                    take_control=False,
+                    log_to_disk=True,
+                    startup_wait_s=0.1,
+                )
+
+        self.assertEqual(result.exit_code, 2)
+        heading, reason, pid, log = result.message.splitlines()
+        self.assertEqual(heading, "Automation did not become ready for chase-sim-chaser.")
+        self.assertTrue(reason.startswith("Reason: worker is still running"), reason)
+        self.assertEqual(pid, f"PID: {_RunningProcess.pid}")
+        self.assertTrue(
+            log.startswith("Log: ") and log.endswith("automation/automation.log"), log
+        )
 
     def test_background_start_returns_only_after_first_frame_and_view(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

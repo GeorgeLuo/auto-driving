@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import time
-import webbrowser
 from typing import Any
 
-from .frontend.server import RuntimeViewServer, VIEWER_PORT
-from .hosts.host_status import host_state_text, host_statuses
-from .workbench.runner import ImageReplayRunner
+from ..frontend.server import RuntimeViewServer, VIEWER_PORT
+from ..shared.open_view import open_view_message
+from ..workbench.runner import ImageReplayRunner
+from .host_status import host_state_text, host_statuses
 
 
 def runtime_view_server(**options: Any) -> RuntimeViewServer:
@@ -35,24 +35,6 @@ def serve_viewer() -> int:
         return 130
     finally:
         server.stop()
-
-
-def open_view_message(url: str) -> str:
-    """Open ``url`` in a browser tab; return the line telling the user where it is."""
-
-    try:
-        opened = webbrowser.open(url, new=2)
-    except (OSError, webbrowser.Error) as exc:
-        opened = False
-        detail = f"{type(exc).__name__}: {exc}"
-    else:
-        detail = "browser launcher returned false"
-    if opened:
-        return f"Browser opened: {url}"
-    return (
-        f"Warning: could not open the browser ({detail}). "
-        f"Open manually: {url}"
-    )
 
 
 def _host_list() -> list[dict[str, Any]]:

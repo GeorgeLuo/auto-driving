@@ -34,7 +34,7 @@ from .step_activations import (
     format_activation_problems,
     staged_selections,
 )
-from ..runtime_view import open_view_message
+from ..shared.open_view import open_view_message
 from .run_record import (
     control_application,
     control_source,

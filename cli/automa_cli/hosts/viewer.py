@@ -11,14 +11,15 @@ from typing import Any
 
 from ..shared.command_result import CommandResult
 from ..shared.controller_releases import RuntimeHostError
+from ..shared.open_view import open_view_message
 from ..frontend.server import RuntimeViewServer
-from ..runtime_view import open_view_message, runtime_view_server
 from .decision_live import DecisionViewAdapter
 from .decision_publication import health_error, publication_to_frame_record
 from .host_publications import TransactionCache, fetch_observation_sample
 from .plugin_catalog import PluginCatalogClient
 from .runtime_hosts import local_hosts, runtime_base_url
 from .runtime_monitor import PERCEPTION_COPY_INTERVAL_S, pause_s
+from .runtime_view import runtime_view_server
 from .view_discovery import runtime_view_dir
 
 

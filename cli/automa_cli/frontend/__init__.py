@@ -2,6 +2,6 @@
 
 This package imports only itself, the standard library, PIL and ``autonomy``.
 Automa feeds it host publications and passes in the host list and the workbench
-replay runner (``automa_cli.runtime_view``), so the viewer serves wherever the
+replay runner (``automa_cli.hosts.runtime_view``), so the viewer serves wherever the
 CLI runs.
 """

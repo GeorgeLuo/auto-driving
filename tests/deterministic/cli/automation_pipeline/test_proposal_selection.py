@@ -11,7 +11,7 @@ from cli.automa_cli.hosts.automation import run_host_automation
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
 from cli.automa_cli.shared.controller_releases import controller_bundle_paths
 from cli.automa_cli.frontend.server import RuntimeViewServer
-from cli.automa_cli.runtime_view import runtime_view_server
+from cli.automa_cli.hosts.runtime_view import runtime_view_server
 from cli.automa_cli.hosts.step_activations import decision_identity, stage_activation
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (

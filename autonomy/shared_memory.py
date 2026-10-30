@@ -18,7 +18,7 @@ A value is JSON data or a record. JSON data is a dict with string keys, a list
 or a tuple, a string, a number, a boolean, or None. A record has ``to_dict()``
 and a ``from_dict`` classmethod. Either kind may be nested in the other. An
 array is wrapped in a record. A tuple decodes as a list, so readers accept
-either. ``shared_memory_document`` writes ``{"schema": "shared_memory_v1",
+either. ``shared_memory_document`` writes ``{"schema": "shared_memory",
 "values": {...}}``. A record is ``{"$record": "module.path:QualName", "data":
 ...}``. ``shared_memory_from_document`` reads that document into a fresh dict
 on every call. Loading a record by its ``module:Name`` spec keeps this module
@@ -55,7 +55,7 @@ from collections.abc import Mapping, MutableMapping
 from pathlib import Path
 from typing import Any
 
-SHARED_MEMORY_SCHEMA = "shared_memory_v1"
+SHARED_MEMORY_SCHEMA = "shared_memory"
 _RECORD_KEYS = frozenset({"$record", "data"})
 
 SharedMemory = MutableMapping[str, Any]
@@ -83,7 +83,7 @@ def read_shared_memory_file(path: str | Path) -> tuple[dict[str, Any], dict[str,
 
 
 def shared_memory_document(shared_memory: Mapping[str, Any]) -> dict[str, Any]:
-    """Encode ``shared_memory`` as a ``shared_memory_v1`` document."""
+    """Encode ``shared_memory`` as a ``shared_memory`` document."""
 
     if not isinstance(shared_memory, Mapping):
         raise SharedMemoryValueError("values", "shared memory must be an object")
@@ -96,7 +96,7 @@ def shared_memory_document(shared_memory: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def shared_memory_from_document(document: Mapping[str, Any]) -> dict[str, Any]:
-    """Decode a ``shared_memory_v1`` document into a fresh map."""
+    """Decode a ``shared_memory`` document into a fresh map."""
 
     if not isinstance(document, Mapping):
         raise SharedMemoryValueError("document", "shared memory document must be an object")

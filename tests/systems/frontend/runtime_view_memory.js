@@ -103,7 +103,7 @@ function publication(plugins, publisher) {
     host_name: "piracer",
     frame: { frame_id: "frame_1" },
     perception: { things: [], plugin_runs: [] },
-    memory: { schema: "memory_report_v1", plugins, evidence_publisher: publisher }
+    memory: { schema: "memory_report", plugins, evidence_publisher: publisher }
   };
 }
 

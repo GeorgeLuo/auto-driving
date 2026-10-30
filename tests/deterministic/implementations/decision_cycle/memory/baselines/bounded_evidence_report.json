@@ -22,7 +22,7 @@
       "metadata": {
        "capacity_eviction_count": 0,
        "conflict_count": 0,
-       "conflict_policy": "bounded_evidence_structural_v2",
+       "conflict_policy": "bounded_evidence_structural",
        "last_update_conflict_count": 0,
        "last_update_drop_count": 0,
        "last_update_drops": [],
@@ -80,7 +80,7 @@
         "record_id": "thing:1:11:floor_plane:1:a"
        }
       ],
-      "schema": "bounded_evidence_ledger_v0",
+      "schema": "bounded_evidence_ledger",
       "summary": [
        "retained_count=2",
        "epoch_id=epoch-1",
@@ -90,7 +90,7 @@
      }
     }
    ],
-   "schema": "memory_report_v1"
+   "schema": "memory_report"
   }
  },
  {
@@ -116,7 +116,7 @@
       "metadata": {
        "capacity_eviction_count": 0,
        "conflict_count": 0,
-       "conflict_policy": "bounded_evidence_structural_v2",
+       "conflict_policy": "bounded_evidence_structural",
        "last_update_conflict_count": 0,
        "last_update_drop_count": 0,
        "last_update_drops": [],
@@ -201,7 +201,7 @@
         "record_id": "thing:1:11:floor_plane:1:b"
        }
       ],
-      "schema": "bounded_evidence_ledger_v0",
+      "schema": "bounded_evidence_ledger",
       "summary": [
        "retained_count=3",
        "epoch_id=epoch-1",
@@ -211,7 +211,7 @@
      }
     }
    ],
-   "schema": "memory_report_v1"
+   "schema": "memory_report"
   }
  },
  {
@@ -237,7 +237,7 @@
       "metadata": {
        "capacity_eviction_count": 0,
        "conflict_count": 0,
-       "conflict_policy": "bounded_evidence_structural_v2",
+       "conflict_policy": "bounded_evidence_structural",
        "last_update_conflict_count": 0,
        "last_update_drop_count": 0,
        "last_update_drops": [],
@@ -322,7 +322,7 @@
         "record_id": "thing:1:11:floor_plane:1:b"
        }
       ],
-      "schema": "bounded_evidence_ledger_v0",
+      "schema": "bounded_evidence_ledger",
       "summary": [
        "retained_count=3",
        "epoch_id=epoch-1",
@@ -332,7 +332,7 @@
      }
     }
    ],
-   "schema": "memory_report_v1"
+   "schema": "memory_report"
   }
  },
  {
@@ -358,7 +358,7 @@
       "metadata": {
        "capacity_eviction_count": 0,
        "conflict_count": 0,
-       "conflict_policy": "bounded_evidence_structural_v2",
+       "conflict_policy": "bounded_evidence_structural",
        "last_update_conflict_count": 0,
        "last_update_drop_count": 0,
        "last_update_drops": [],
@@ -443,7 +443,7 @@
         "record_id": "thing:1:11:floor_plane:1:b"
        }
       ],
-      "schema": "bounded_evidence_ledger_v0",
+      "schema": "bounded_evidence_ledger",
       "summary": [
        "retained_count=3",
        "epoch_id=epoch-1",
@@ -453,7 +453,7 @@
      }
     }
    ],
-   "schema": "memory_report_v1"
+   "schema": "memory_report"
   }
  },
  {
@@ -479,7 +479,7 @@
       "metadata": {
        "capacity_eviction_count": 0,
        "conflict_count": 0,
-       "conflict_policy": "bounded_evidence_structural_v2",
+       "conflict_policy": "bounded_evidence_structural",
        "last_update_conflict_count": 0,
        "last_update_drop_count": 3,
        "last_update_drops": [
@@ -506,7 +506,7 @@
       "plugin_id": "bounded_evidence",
       "record_count": 0,
       "records": [],
-      "schema": "bounded_evidence_ledger_v0",
+      "schema": "bounded_evidence_ledger",
       "summary": [
        "memory_empty=true",
        "epoch_id=epoch-1",
@@ -515,7 +515,7 @@
      }
     }
    ],
-   "schema": "memory_report_v1"
+   "schema": "memory_report"
   }
  },
  {
@@ -541,7 +541,7 @@
       "metadata": {
        "capacity_eviction_count": 0,
        "conflict_count": 0,
-       "conflict_policy": "bounded_evidence_structural_v2",
+       "conflict_policy": "bounded_evidence_structural",
        "last_update_conflict_count": 0,
        "last_update_drop_count": 0,
        "last_update_drops": [],
@@ -552,7 +552,7 @@
       "plugin_id": "bounded_evidence",
       "record_count": 0,
       "records": [],
-      "schema": "bounded_evidence_ledger_v0",
+      "schema": "bounded_evidence_ledger",
       "summary": [
        "memory_empty=true",
        "epoch_id=epoch-2",
@@ -561,7 +561,7 @@
      }
     }
    ],
-   "schema": "memory_report_v1"
+   "schema": "memory_report"
   }
  }
 ]

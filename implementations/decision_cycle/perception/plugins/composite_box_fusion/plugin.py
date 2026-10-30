@@ -946,7 +946,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                 cache_path.write_text(
                     json.dumps(
                         {
-                            "schema": "composite_geometry_jev_cache_v1",
+                            "schema": "composite_geometry_jev_cache",
                             "request": request,
                             "response": payload,
                         },

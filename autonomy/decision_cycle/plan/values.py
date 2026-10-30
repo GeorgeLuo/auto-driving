@@ -32,7 +32,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_safe_int,
 )
 
-ACTION_PLAN_SCHEMA = "action_plan_v1"
+ACTION_PLAN_SCHEMA = "action_plan"
 
 
 @dataclass(frozen=True)

@@ -27,7 +27,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     paths.automation_state.unlink()
                     path = paths.bundle_root / "runtime" / step / "active.json"
                     path.parent.mkdir(parents=True, exist_ok=True)
-                    original = json.dumps({"schema": f"automa_{step}_activation_v0"})
+                    original = "{}"
                     path.write_text(original, encoding="utf-8")
                     env = {"CHASE_UI_WS_URL": ws_url}
                     command = f"./cli/automa hosts update --name {HOST_NAME}"
@@ -64,7 +64,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
             write_host_fixture(runtime_root, HOST_NAME)
             path = runtime_root / HOST_NAME / "bundle/runtime/memory/active.json"
             path.parent.mkdir(parents=True)
-            path.write_text(json.dumps({"schema": "automa_memory_activation_v0"}), encoding="utf-8")
+            path.write_text("{}", encoding="utf-8")
             env = {"CHASE_UI_WS_URL": ws_url}
             run = json.loads(invoke_automa(
                 "hosts", "status", "--json", runtime_root=runtime_root, extra_env=env,
@@ -86,7 +86,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     write_host_fixture(runtime_root, HOST_NAME)
                     path = runtime_root / HOST_NAME / "bundle/runtime" / step / "active.json"
                     path.parent.mkdir(parents=True)
-                    path.write_text(json.dumps({"schema": f"automa_{step}_activation_v0"}), encoding="utf-8")
+                    path.write_text("{}", encoding="utf-8")
                     env = {"CHASE_UI_WS_URL": ws_url}
                     command = f"./cli/automa hosts update --name {HOST_NAME}"
                     # A decision step's stream reads all three decision activations.

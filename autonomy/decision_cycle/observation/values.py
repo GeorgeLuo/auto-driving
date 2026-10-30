@@ -6,7 +6,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 
-OBSERVATION_SCHEMA = "decision_observation_v1"
+OBSERVATION_SCHEMA = "decision_observation"
 
 
 @dataclass(frozen=True)

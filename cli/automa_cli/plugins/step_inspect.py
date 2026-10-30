@@ -99,7 +99,7 @@ def inspect_step(
 
     run_id = inspect_run_id(image_source.source_id)
     report = {
-        "schema": f"{step}_inspect_v1",
+        "schema": f"{step}_inspect",
         "step": step,
         "run_id": run_id,
         "source_id": image_source.source_id,

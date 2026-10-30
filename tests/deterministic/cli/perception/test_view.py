@@ -242,7 +242,7 @@ def _frame_record() -> dict:
             }
         },
         "perception": {
-            "schema": "perception_text_v2",
+            "schema": "perception_text",
             "status": "ok",
             "confidence": 0.8,
             "plugin_runs": [

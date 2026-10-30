@@ -275,12 +275,11 @@ default observation and action plugins. `hosts update` stages them again with
 each new release. To run other plugins, arm them on the running host with
 `plugins arm`.
 
-`runtime/` survives Git branch changes. Old per-step schemas, including
-`automa_memory_activation_v0`, are incompatible with the shared
-`automa_step_activation_v0` documents. `hosts status --long` reports an
-invalid deployment and `hosts update`, which replaces every step with its
-default. Run it, then check again. Every command that reads staged documents
-checks them first and prints the same step, path, reason, and update command:
+`runtime/` survives Git branch changes. A staged step that cannot be read
+shows up in `hosts status --long` as an invalid deployment. `hosts update`
+replaces every step with its default. Run it, then check again. Every command
+that reads staged documents checks them first and prints the same step, path,
+reason, and update command:
 startup and restart before launching or stopping a worker, and
 `plugins stream --step proposal|plan|action` before reporting. `hosts status --long`
 also marks the step `unreadable` beside the selection a running host still applies.
@@ -428,7 +427,7 @@ pass `--max-frames N` for larger sources, as with `workbench`.
 
 The terminal prints the source, every step's selection and each frame's record,
 followed by the step's, its plugins' and the cycle's timing. `--json` returns
-`<step>_inspect_v1`: `step`, `run_id`, `source_id`, `source` (path, source ID and
+`<step>_inspect`: `step`, `run_id`, `source_id`, `source` (path, source ID and
 frame count), `selections`, `frames` and `run_dir`. Each frame has its position,
 ID, index, timestamp, image path, absence reason, `record`, `plugin_report`,
 `timing` for every step, and executable `steps` selections.
@@ -464,12 +463,12 @@ any step and can be moved or used after the original images are removed:
 ```
 
 Start perception, memory, proposal, plan, or action
-inspection with `--shared-memory FILE`. The file is a `shared_memory_v1` JSON
+inspection with `--shared-memory FILE`. The file is a `shared_memory` JSON
 document. For example, save this as `seed.json` to continue cardboard object 7:
 
 ```json
 {
-  "schema": "shared_memory_v1",
+  "schema": "shared_memory",
   "values": {
     "perception.sim_cardboard_permanence.history": {
       "objects": [{
@@ -619,7 +618,7 @@ plugins. A currently executing plugin finishes before a change takes effect.
 
 For workbench API integrations, the page and its API sit under `/workbench/`
 on the viewer. `GET /workbench/api/state` reports schema
-`workbench_image_replay_state_v3`. Read `<step>_plugin_catalog` for availability
+`workbench_image_replay_state`. Read `<step>_plugin_catalog` for availability
 and default configs, `active_<step>_plugin_ids` for the selected execution order,
 and `machine_detail.pipeline.<step>_preset` for the selection's preset name or
 `custom`. The pipeline's `<step>_plugin_report.applied_plugin_ids` reports the
@@ -627,16 +626,10 @@ plugins that were applied. Each frame's `memory_plugins` lists every applied
 memory plugin's health, record count, and epoch, and
 `memory_evidence_publisher` names the plugin whose evidence the step published.
 `steps.memory` is the complete memory step report, with its `plugins[]` and
-`evidence_publisher`. Replace v1's generic perception `plugin_catalog` and
-`active_plugin_ids` with the step-named fields; use the catalog's `digest` in
-place of `catalog_digest` / `run_catalog_digest`, and the selected or applied ids
-in place of `plugin_order` / `run_plugin_order` / `run_active_plugin_ids`.
-Cleanup now names `perception` instead of `mapper`. The removed CLI flags
-`--plugin`, `--active-plugin`, and `--active-plugin-id` become
-`--perception-plugin`; memory uses `--memory-plugin`.
+`evidence_publisher`. `<step>_plugin_catalog` includes `digest`.
 
 Send `POST /api/action` with an explicit step for any selection; omitting
-`step` is a 400 input error. `active_plugin_ids` remains the common request field
+`step` is a 400 input error. `active_plugin_ids` is the common request field
 and may be empty. Include the current state's `run_id` during playback:
 
 ```json

@@ -39,7 +39,7 @@ def write_runtime_fixture(
     # A controller release is what makes a staged bundle deployable.
     write_json(
         bundle_root / "releases" / "latest-controller-bundle.json",
-        {"schema": "automa_controller_bundle_manifest_v0", "tree_sha256": "fixture"},
+        {"schema": "automa_controller_bundle_manifest", "tree_sha256": "fixture"},
     )
     packaged = preset_activation("perception", "sim_debug")
     write_json(

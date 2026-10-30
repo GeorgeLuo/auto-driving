@@ -69,7 +69,7 @@ class PerceptionActivationIntegrationTests(unittest.TestCase):
         part.wait_for_cycle()
         _steering, _throttle, _control, _generation, cycle = part.completed_outputs("local")
         self.assertEqual(cycle["perception"]["status"], "ok")
-        self.assertEqual(cycle["observation"]["perception_schema"], "perception_text_v2")
+        self.assertEqual(cycle["observation"]["perception_schema"], "perception_text")
 
 
 if __name__ == "__main__":

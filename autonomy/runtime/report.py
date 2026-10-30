@@ -1,8 +1,7 @@
 """One frame report for every vehicle the viewer shows.
 
-``host_report`` replaces ``vehicle_decision_stream_frame_v0`` and
-``provider_decision_stream_frame_v0``. Every named field is required. Detail
-that only one vehicle has goes in ``values``. ``report_from_host_result``
+Every named field is required. Detail that only one vehicle has goes in
+``values``. ``report_from_host_result``
 builds that document from a completed host cycle and the control application
 recorded after the cycle. Each vehicle transports the document itself.
 

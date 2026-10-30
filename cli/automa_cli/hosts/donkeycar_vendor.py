@@ -74,7 +74,7 @@ def ensure_donkeycar_vendor(*, output: TextIO | None = None, verbose: bool = Fal
 
 def _desired_state(manifest: dict[str, Any]) -> dict[str, Any]:
     return {
-        "schema": "automa_donkeycar_vendor_state_v0",
+        "schema": "automa_donkeycar_vendor_state",
         "manifest": display_path(VENDOR_MANIFEST_PATH),
         "repo_url": manifest["source"]["repo_url"],
         "revision": manifest["source"]["revision"],

@@ -92,7 +92,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(throttle, 0.0)
         self.assertEqual(control["reason"], "action_plan_invariant_violated")
         self.assertIsNone(generation)
-        self.assertEqual(cycle["schema"], "decision_cycle_result_v1")
+        self.assertEqual(cycle["schema"], "decision_cycle_result")
         self.assertEqual(cycle["context"]["frame_id"], "donkey_frame_000000")
 
     def test_manual_mode_runs_cycle_and_forces_zero_pilot_outputs(self) -> None:

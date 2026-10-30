@@ -109,7 +109,7 @@ class LoadingContractTests(unittest.TestCase):
         self.assertEqual(mismatches, [], "legacy path does not resolve to its canonical owner")
 
     def test_controller_bundle_archives_source_paths(self) -> None:
-        self.assertEqual(self.release["schema"], "automa_controller_bundle_manifest_v0")
+        self.assertEqual(self.release["schema"], "automa_controller_bundle_manifest")
         self.assertEqual(
             [source["package_root"] for source in self.release["sources"]],
             ["autonomy", "implementations"],

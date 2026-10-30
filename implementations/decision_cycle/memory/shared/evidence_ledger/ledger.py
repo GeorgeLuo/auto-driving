@@ -14,7 +14,7 @@ from autonomy.decision_cycle.memory.evidence import RetainedEvidence
 from autonomy.decision_cycle.memory.interface import LEDGER_HEALTH_VALUES
 from autonomy.serialization import canonical_json_size_bytes
 
-LEDGER_SCHEMA = "bounded_evidence_ledger_v0"
+LEDGER_SCHEMA = "bounded_evidence_ledger"
 
 DEFAULT_MAX_RECORDS = 32
 DEFAULT_MAX_AGE_MS = 10_000

@@ -72,7 +72,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
 
         unavailable_cases: list[tuple[str, object]] = [
             ("missing", None),
-            ("incomplete", {"schema": "automa_physical_decision_publication_v0"}),
+            ("incomplete", {"schema": "automa_physical_decision_publication"}),
             (
                 "mismatched",
                 {

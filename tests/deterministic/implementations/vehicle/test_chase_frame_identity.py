@@ -115,7 +115,7 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
         reference = build_chaser_reference(_atomic_capture())
         assert reference is not None
 
-        self.assertEqual(reference["schema"], "chaser_reference_v1")
+        self.assertEqual(reference["schema"], "chaser_reference")
         self.assertTrue(reference["evaluator_only"])
         self.assertEqual(reference["simulator_frame_index"], 42)
         self.assertEqual(reference["simulation_epoch"], "chase-run:test")

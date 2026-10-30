@@ -37,7 +37,7 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 
 
-DECISION_CYCLE_RESULT_SCHEMA = "decision_cycle_result_v1"
+DECISION_CYCLE_RESULT_SCHEMA = "decision_cycle_result"
 
 
 def timestamp_ms() -> int:

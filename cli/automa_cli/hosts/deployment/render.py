@@ -11,7 +11,7 @@ from typing import Any
 
 from ..host_status import host_block
 from ..step_activations import step_lines
-from ...vehicles.providers import PROVIDERS
+from ...providers.catalog import PROVIDERS
 from .models import DeploymentResult
 
 

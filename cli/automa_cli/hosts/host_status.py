@@ -16,8 +16,8 @@ from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError
 
 from .publications.host_publications import host_state
 from .discovery import local_hosts
-from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S, chase_operator_url, require_positive_timeout
-from ..vehicles.providers import CHASE_SIM, PROVIDERS
+from ..providers.catalog import CHASE_SIM, PROVIDERS
+from ..providers.probes import DEFAULT_READINESS_TIMEOUT_S, chase_operator_url, require_positive_timeout
 from ..shared.text import indented
 
 

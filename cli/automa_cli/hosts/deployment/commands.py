@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 
-from ...vehicles.providers import PROVIDERS
+from ...providers.catalog import PROVIDERS
 from .render import present_deployment
 from .service import create_host, delete_host, update_host
 

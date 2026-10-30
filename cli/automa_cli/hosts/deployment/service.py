@@ -1,7 +1,9 @@
 """Create, update, and delete a host.
 
 These operations return a result and a receipt. The command formats the receipt
-and chooses where progress lines are written.
+and chooses where progress lines are written. The provider's registered
+operations perform the deployment; an unregistered operation fails before it
+changes a host.
 """
 
 from __future__ import annotations
@@ -17,8 +19,8 @@ from ...releases.errors import RuntimeHostError
 from ...releases.store import release_code_dir
 from ...shared.io.processes import pid_alive
 from ...shared.paths import RUNTIME_ROOT, display_path, safe_path_part
-from ...vehicles.probes import Candidate
-from ...vehicles.providers import PROVIDERS
+from ...providers.catalog import PROVIDERS
+from ...providers.probes import Candidate
 from ..bundles import controller_bundle_source_summary, sync_controller_bundle
 from ..discovery import running_base_url
 from ..local import ensure_chase_host, host_record, stop_chase_host
@@ -45,6 +47,7 @@ from .picar_deploy import (
     run_step,
     ssh_target_from_vehicle,
 )
+from .registry import DeploymentBackend, backend_for, register_backend, unsupported_operation
 
 
 def update_host(
@@ -56,12 +59,31 @@ def update_host(
         return DeploymentResult(2, error)
     if drive_args is not None and not restart:
         return DeploymentResult(2, "--drive-args requires --restart so the new arguments take effect.")
-    if PROVIDERS[configuration["provider"]].local_host:
-        if drive_args is not None:
-            return DeploymentResult(2, "--drive-args applies only to a PiCar.")
-        return _update_local_autonomy(
-            host_name=host_name, dry_run=dry_run, restart=restart, output=output,
-        )
+    backend = backend_for(configuration["provider"])
+    if backend is None or backend.update is None:
+        return DeploymentResult(2, unsupported_operation(configuration["provider"], "update"))
+    return backend.update(
+        configuration, dry_run=dry_run, restart=restart, drive_args=drive_args,
+        verbose=verbose, output=output,
+    )
+
+
+def _update_chase(
+    configuration: dict[str, Any], *, dry_run: bool, restart: bool, drive_args: str | None,
+    verbose: bool, output: TextIO | None,
+) -> DeploymentResult:
+    del verbose
+    if drive_args is not None:
+        return DeploymentResult(2, "--drive-args applies only to a PiCar.")
+    return _update_local_autonomy(
+        host_name=configuration["host_name"], dry_run=dry_run, restart=restart, output=output,
+    )
+
+
+def _update_picar(
+    configuration: dict[str, Any], *, dry_run: bool, restart: bool, drive_args: str | None,
+    verbose: bool, output: TextIO | None,
+) -> DeploymentResult:
     return deploy_picar_release(
         resolve_picar_target(configuration), dry_run=dry_run, restart=restart,
         drive_args=drive_args, verbose=verbose, output=output,
@@ -111,7 +133,9 @@ def _update_local_autonomy(
         try:
             RuntimeClient(record["base_url"], timeout_s=5.0).restart(timeout_s=DONKEY_READY_TIMEOUT_S)
         except (RuntimeError, TimeoutError) as exc:
-            return DeploymentResult(2, f"Release {summary['archive']} was packaged, but the host did not restart: {exc}")
+            return DeploymentResult(
+                2, f"Release {summary['archive']} was packaged, but the host did not restart: {exc}",
+            )
         restarted = True
     return DeploymentResult(0, receipt={
         "host_name": host_name,
@@ -136,14 +160,52 @@ def create_host(
         return DeploymentResult(2, "Host names may contain letters, digits, dots, underscores and hyphens, excluding . and ..")
     if provider not in PROVIDERS:
         return DeploymentResult(2, f"Provider must be one of {', '.join(PROVIDERS)} (got {provider!r}).")
-    vehicle = PROVIDERS[provider]
-    local = vehicle.local_host
     directory = RUNTIME_ROOT / safe_path_part(host_name)
     if (directory / "host-configuration.json").exists():
         existing, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
         return DeploymentResult(2, error or f"Host {host_name!r} already exists: {_vehicle_label(existing)}.")
-    if local and any(value is not None for value in (ssh_target, pi_home, drive_args)):
+    backend = backend_for(provider)
+    if backend is None or backend.create is None:
+        return DeploymentResult(2, unsupported_operation(provider, "create"))
+    return backend.create(
+        host_name=host_name, provider=provider, url=url, vehicle=PROVIDERS[provider],
+        ssh_target=ssh_target, pi_home=pi_home, drive_args=drive_args, dry_run=dry_run,
+        verbose=verbose, output=output,
+    )
+
+
+def _create_chase(
+    *, host_name: str, provider: str, url: str, vehicle: Any,
+    ssh_target: str | None, pi_home: str | None, drive_args: str | None, dry_run: bool,
+    verbose: bool, output: TextIO | None,
+) -> DeploymentResult:
+    del verbose
+    if any(value is not None for value in (ssh_target, pi_home, drive_args)):
         return DeploymentResult(2, "--ssh-target, --pi-home and --drive-args apply only to a PiCar.")
+    try:
+        url = vehicle.normalize_url(url)
+    except ValueError as exc:
+        return DeploymentResult(2, str(exc))
+    if not dry_run:
+        probe = vehicle.probe(Candidate(provider, url, "cli"), timeout_s=5.0)
+        if not vehicle.can_take_host(probe):
+            return DeploymentResult(2, f"No {vehicle.machine} can take a host at {url}: {probe.error}")
+    configuration = {
+        "host_name": host_name, "provider": provider, "vehicle_kind": vehicle.vehicle_kind,
+        "connection": {vehicle.url_key: url},
+    }
+    if dry_run:
+        return _update_local_autonomy(host_name=host_name, dry_run=True, restart=True, output=output)
+    return _install_created_host(
+        configuration, local=True, drive_args=drive_args, verbose=False, output=output,
+    )
+
+
+def _create_picar(
+    *, host_name: str, provider: str, url: str, vehicle: Any,
+    ssh_target: str | None, pi_home: str | None, drive_args: str | None, dry_run: bool,
+    verbose: bool, output: TextIO | None,
+) -> DeploymentResult:
     try:
         url = vehicle.normalize_url(url)
     except ValueError as exc:
@@ -152,19 +214,11 @@ def create_host(
         "host_name": host_name, "provider": provider, "vehicle_kind": vehicle.vehicle_kind,
         "connection": {vehicle.url_key: url},
     }
-    if local:
-        if not dry_run:
-            probe = vehicle.probe(Candidate(provider, url, "cli"), timeout_s=5.0)
-            if not vehicle.can_take_host(probe):
-                return DeploymentResult(2, f"No {vehicle.machine} can take a host at {url}: {probe.error}")
-    else:
-        configuration["connection"].update(
-            ssh_target=ssh_target or os.environ.get("PI_HOST") or ssh_target_from_vehicle(configuration),
-            pi_home=pi_home or os.environ.get("PI_HOME") or DEFAULT_PI_HOME,
-        )
+    configuration["connection"].update(
+        ssh_target=ssh_target or os.environ.get("PI_HOST") or ssh_target_from_vehicle(configuration),
+        pi_home=pi_home or os.environ.get("PI_HOME") or DEFAULT_PI_HOME,
+    )
     if dry_run:
-        if local:
-            return _update_local_autonomy(host_name=host_name, dry_run=True, restart=True, output=output)
         target = resolve_picar_target(configuration)
         core = install_picar_core(target, dry_run=True)
         release = deploy_picar_release(
@@ -177,6 +231,17 @@ def create_host(
         return DeploymentResult(0, receipt={
             "configuration": configuration, "dry_run": True, "core": core.receipt, "host": release.receipt,
         })
+    return _install_created_host(
+        configuration, local=False, drive_args=drive_args, verbose=verbose, output=output,
+    )
+
+
+def _install_created_host(
+    configuration: dict[str, Any], *, local: bool, drive_args: str | None,
+    verbose: bool, output: TextIO | None,
+) -> DeploymentResult:
+    host_name = configuration["host_name"]
+    directory = RUNTIME_ROOT / safe_path_part(host_name)
     made_directory = not directory.exists()
     write_host_configuration(RUNTIME_ROOT, configuration)
     try:
@@ -217,24 +282,20 @@ def delete_host(*, host_name: str, verbose: bool = False, output: TextIO | None 
     configuration, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
     if error:
         return DeploymentResult(2, error)
+    backend = backend_for(configuration["provider"])
+    if backend is None or backend.delete is None:
+        return DeploymentResult(2, unsupported_operation(configuration["provider"], "delete"))
+    return backend.delete(configuration, verbose=verbose, output=output)
+
+
+def _delete_recorded_host(
+    configuration: dict[str, Any], *, verbose: bool, output: TextIO | None, local: bool,
+) -> DeploymentResult:
+    host_name = configuration["host_name"]
     directory = RUNTIME_ROOT / safe_path_part(host_name)
-    # Stop an active local run before stopping its host. An idle Pi may have no HTTP listener.
-    process = automation_dir(host_name) / "process.json"
-    base_url = running_base_url(host_name)
-    state = host_state(base_url, host_name=host_name, timeout_s=1.0) if base_url else {}
-    try:
-        process_record = json.loads(process.read_text())
-    except (OSError, ValueError):
-        process_record = {}
-    active_run = (
-        (isinstance(process_record, dict) and pid_alive(process_record.get("pid")))
-        or state.get("state") in {"starting", "running", "stopping"}
-    )
-    if active_run:
-        result = stop_host_automation(host_name=host_name)
-        if result.exit_code:
-            return DeploymentResult(result.exit_code, result.message)
-    local = PROVIDERS[configuration["provider"]].local_host
+    stopped, failure = _stop_active_automation(host_name)
+    if failure is not None:
+        return failure
     if local:
         stop_chase_host(host_name)
     else:
@@ -248,5 +309,43 @@ def delete_host(*, host_name: str, verbose: bool = False, output: TextIO | None 
             return DeploymentResult(code, "Could not stop the PiCar host; its local record was kept.")
     shutil.rmtree(directory)
     suffix = "" if local else " Harness files stay in ~/mycar on the PiCar."
-    stopped = "Stopped the run. " if active_run else ""
-    return DeploymentResult(0, f"{stopped}Stopped host {host_name}. Removed {display_path(directory)}.{suffix}")
+    stopped_text = "Stopped the run. " if stopped else ""
+    return DeploymentResult(0, f"{stopped_text}Stopped host {host_name}. Removed {display_path(directory)}.{suffix}")
+
+
+def _stop_active_automation(host_name: str) -> tuple[bool, DeploymentResult | None]:
+    """Stop a running automation before its host. An idle host has nothing to stop."""
+
+    process = automation_dir(host_name) / "process.json"
+    base_url = running_base_url(host_name)
+    state = host_state(base_url, host_name=host_name, timeout_s=1.0) if base_url else {}
+    try:
+        process_record = json.loads(process.read_text())
+    except (OSError, ValueError):
+        process_record = {}
+    active_run = (
+        (isinstance(process_record, dict) and pid_alive(process_record.get("pid")))
+        or state.get("state") in {"starting", "running", "stopping"}
+    )
+    if not active_run:
+        return False, None
+    result = stop_host_automation(host_name=host_name)
+    if result.exit_code:
+        return True, DeploymentResult(result.exit_code, result.message)
+    return True, None
+
+
+def _delete_chase(
+    configuration: dict[str, Any], *, verbose: bool, output: TextIO | None,
+) -> DeploymentResult:
+    return _delete_recorded_host(configuration, verbose=verbose, output=output, local=True)
+
+
+def _delete_picar(
+    configuration: dict[str, Any], *, verbose: bool, output: TextIO | None,
+) -> DeploymentResult:
+    return _delete_recorded_host(configuration, verbose=verbose, output=output, local=False)
+
+
+register_backend("chase-sim", DeploymentBackend(create=_create_chase, update=_update_chase, delete=_delete_chase))
+register_backend("picar", DeploymentBackend(create=_create_picar, update=_update_picar, delete=_delete_picar))

@@ -11,7 +11,7 @@ from cli.automa_cli.hosts.deployment import picar_deploy, service
 from cli.automa_cli.hosts.deployment.models import DeploymentResult
 from cli.automa_cli.hosts.deployment.render import present_deployment
 from cli.automa_cli.hosts import staging
-from cli.automa_cli.vehicles.probes import Candidate, ProbeResult
+from cli.automa_cli.providers.probes import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.vehicle_fixtures import probe_returning
 from tests.support.runtime_fixtures import write_host_fixture

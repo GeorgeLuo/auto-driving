@@ -15,7 +15,7 @@ from ...shared.timestamps import timestamp_ms
 from .models import MemoryPublication, StreamEvent, StreamResult
 from .perception import read_publication
 from .polling import poll_events, preflight_failure, unavailable_probe
-from .session import StreamView, with_snapshot
+from .session import StreamView, with_view
 
 MEMORY_LIVE_SCHEMA = "host_memory_live"
 LIVE_STEP_SCHEMAS = {
@@ -65,7 +65,7 @@ def stream_memory(
         return live, source
 
     def outbound(event: StreamEvent) -> None:
-        emit(with_snapshot(view, event, host_name=host_name))
+        emit(with_view(view, event, host_name=host_name))
 
     try:
         return poll_events(step="memory", probe=probe, refresh_s=refresh_s, once=once, emit=outbound)

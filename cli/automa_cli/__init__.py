@@ -4,7 +4,7 @@ A capability is a package. The file name inside it is the responsibility:
 
 - ``commands`` registers arguments, calls the operation, selects text or JSON, and maps the exit code.
 - ``service`` performs the operation and returns data or events. A concrete name such as ``replay``, ``discovery``, or ``process`` stays when that name is the responsibility.
-- ``models`` holds the requests, results, events, and snapshots that cross those boundaries.
+- ``models`` holds the requests, results, and events that cross those boundaries.
 - ``render`` formats data it is given.
 - ``store`` reads and writes that capability's records.
 - ``worker`` is a background process entry. ``monitor`` observes a running process.

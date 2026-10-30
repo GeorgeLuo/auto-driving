@@ -68,8 +68,8 @@ class ViewerWithoutHostTests(unittest.TestCase):
         self.assertIn('<p class="float-frame-status-text" role="status"></p>', html)
         self.assertIn('<div class="float-frame-status-actions"></div>', html)
 
-    def test_shared_frame_files_are_served(self) -> None:
-        for name, content_type in (("float.js", "javascript"), ("float.css", "css")):
+    def test_shared_page_files_are_served(self) -> None:
+        for name, content_type in (("float.js", "javascript"), ("float.css", "css"), ("metrics.js", "javascript")):
             with self.subTest(name=name):
                 with urlopen(f"{self.server.url}static/shared/{name}", timeout=1.0) as response:
                     self.assertEqual(response.status, 200)

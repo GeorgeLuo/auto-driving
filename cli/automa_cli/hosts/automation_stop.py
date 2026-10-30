@@ -24,7 +24,8 @@ from .runtime_hosts import (
     staged_host,
     stop_chase_host,
 )
-from .run_record import stopped_readiness, timestamp_ms
+from ..shared.timestamps import timestamp_ms
+from .run_record import stopped_readiness
 from ..vehicles.providers import PROVIDERS
 
 

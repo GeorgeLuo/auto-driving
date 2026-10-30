@@ -65,6 +65,9 @@ function pageContext(fetchLatest) {
 
 function runPage(path, ctx) {
   const html = fs.readFileSync(path, "utf8");
+  for (const [, name] of html.matchAll(/<script src="\/static\/shared\/([a-z]+\.js)"><\/script>/g)) {
+    vm.runInContext(fs.readFileSync(`cli/automa_cli/frontend/pages/shared/${name}`, "utf8"), ctx);
+  }
   const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
   vm.runInContext(script, ctx);
 }

@@ -29,7 +29,7 @@ from .step_activations import (
     selection_label,
     staged_selections,
 )
-from .run_record import timestamp_ms
+from ..shared.timestamps import timestamp_ms
 from .view_discovery import discover_runtime_view
 from ..frontend.perception_view import get_perception_view_status
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S

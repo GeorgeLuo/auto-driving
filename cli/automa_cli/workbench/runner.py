@@ -20,6 +20,7 @@ from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.recording import recorded_selections
 
 from ..hosts.step_hosting import plugin_report
+from ..shared.timestamps import timestamp_ms
 from ..hosts.inspection_runs import (
     default_selection, recorded_runner,
     resolve_replay_activations, restage_replay_steps,
@@ -1111,7 +1112,7 @@ class ImageReplayRunner:
         """
 
         cleanup = {
-            "completed_at_ms": _now_ms(),
+            "completed_at_ms": timestamp_ms(),
             **{
                 step: _reset_status(self._steps.get(step), self._shared_memory)
                 for step in STEPS
@@ -1255,7 +1256,7 @@ class ImageReplayRunner:
         self._state["steps_revision"] = int(self._state.get("steps_revision", 0)) + 1
 
     def _record_action_locked(self, action: str, **fields: Any) -> None:
-        item = {"action": action, **fields, "at_ms": _now_ms()}
+        item = {"action": action, **fields, "at_ms": timestamp_ms()}
         detail = self._state.setdefault("machine_detail", self._machine_detail())
         detail["last_transition"] = item
         self._state["controls"] = self._controls()
@@ -1332,10 +1333,6 @@ def _reset_status(runner: Any, shared_memory: dict[str, Any]) -> str:
     except Exception as exc:  # noqa: BLE001 - cleanup boundary
         return f"error: {type(exc).__name__}: {exc}"
     return "reset"
-
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
 
 
 __all__ = ["ImageReplayRunner"]

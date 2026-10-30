@@ -382,14 +382,13 @@
     </aside>
   </main>
 
+  <script src="/static/shared/metrics.js"></script>
   <script>
     const frameImage = document.getElementById("frame");
     const canvas = document.getElementById("overlay");
     const context = canvas.getContext("2d");
     const stage = document.getElementById("stage");
     const emptyState = document.getElementById("emptyState");
-    const statusDot = document.getElementById("statusDot");
-    const statusText = document.getElementById("statusText");
     const pauseButton = document.getElementById("pauseButton");
     const regionsToggle = document.getElementById("regionsToggle");
     const labelsToggle = document.getElementById("labelsToggle");
@@ -406,11 +405,6 @@
       let hash = 0;
       for (const char of value) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
       return palette[Math.abs(hash) % palette.length];
-    }
-
-    function setStatus(text, mode) {
-      statusText.textContent = text;
-      statusDot.className = `status-dot ${mode || ""}`;
     }
 
     function drawableThings() {
@@ -576,26 +570,6 @@
           }
         }
       }
-    }
-
-    function formatMs(value) {
-      const number = Number(value);
-      if (value == null || !Number.isFinite(number)) return "—";
-      return `${Math.round(number * 1000) / 1000} ms`;
-    }
-
-    function confidenceText(value, digits = 3) {
-      if (value === null || value === undefined) return "none";
-      const number = Number(value);
-      return Number.isFinite(number) ? number.toFixed(digits) : "none";
-    }
-
-    function appendMetric(container, name, value) {
-      const term = document.createElement("dt");
-      term.textContent = name;
-      const detail = document.createElement("dd");
-      detail.textContent = value ?? "unknown";
-      container.append(term, detail);
     }
 
     function formatAge(value) {

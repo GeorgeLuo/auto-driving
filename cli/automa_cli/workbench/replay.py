@@ -16,7 +16,6 @@ from typing import Any, TextIO
 from implementations.decision_cycle.catalog import selection_activation
 
 from ..shared.command_result import CommandResult
-from ..frontend.server import RuntimeViewServer, VIEW_HOST
 from ..frontend.workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTIONS,
@@ -50,7 +49,7 @@ def run_workbench_replay(
     cadence_ms: int = WORKBENCH_DEFAULT_CADENCE_MS,
     pace: str = WORKBENCH_DEFAULT_PACE,
     max_frames: int = WORKBENCH_DEFAULT_MAX_FRAMES,
-    host: str = VIEW_HOST,
+    host: str | None = None,
     port: int = 0,
     serve: bool = False,
     open_browser: bool = False,
@@ -75,7 +74,7 @@ def run_workbench_replay(
     if open_browser:
         serve = True
     runner: ImageReplayRunner | None = None
-    server: RuntimeViewServer | None = None
+    server = None
     displayed_url: str | None = None
     try:
         runner = ImageReplayRunner(
@@ -87,13 +86,14 @@ def run_workbench_replay(
             loop=serve,
         )
         if serve:
+            # Without ``host`` the viewer binds its own loopback default.
             server = runtime_view_server(
                 host_name="viewer",
                 automation_dir=None,
-                host=host,
                 port=port,
                 connected=False,
                 replay_runner=runner,
+                **({} if host is None else {"host": host}),
             ).start()
             displayed_url = server.workbench_url
         runner.start()

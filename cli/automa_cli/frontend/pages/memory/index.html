@@ -243,10 +243,9 @@
     </section>
   </main>
 
+  <script src="/static/shared/metrics.js"></script>
   <script>
     const vehicleEl = document.getElementById("vehicle");
-    const statusDot = document.getElementById("statusDot");
-    const statusText = document.getElementById("statusText");
     const pauseButton = document.getElementById("pauseButton");
     const pluginList = document.getElementById("pluginList");
     const ledgerMetrics = document.getElementById("ledgerMetrics");
@@ -270,31 +269,6 @@
     let lastKindsFingerprint = "";
     let lastMetricsFingerprint = "";
     let lastValueFingerprint = "";
-
-    function setStatus(text, mode) {
-      statusText.textContent = text;
-      statusDot.className = `status-dot ${mode || ""}`;
-    }
-
-    function formatMs(value) {
-      const number = Number(value);
-      if (value == null || !Number.isFinite(number)) return "—";
-      return `${Math.round(number * 1000) / 1000} ms`;
-    }
-
-    function confidenceText(value, digits = 3) {
-      if (value === null || value === undefined) return "none";
-      const number = Number(value);
-      return Number.isFinite(number) ? number.toFixed(digits) : "none";
-    }
-
-    function appendMetric(container, name, value) {
-      const term = document.createElement("dt");
-      term.textContent = name;
-      const detail = document.createElement("dd");
-      detail.textContent = value ?? "—";
-      container.append(term, detail);
-    }
 
     // The memory report lists every applied plugin by plugin_id and names the
     // evidence publisher. The page shows one plugin's ledger at a time: the
@@ -625,8 +599,8 @@
       valueKey.textContent = selectedKey;
       valueKind.textContent = value.kind || "retained evidence";
       valueSummary.replaceChildren();
-      appendMetric(valueSummary, "kind", value.kind);
-      appendMetric(valueSummary, "label", value.label);
+      appendMetric(valueSummary, "kind", value.kind ?? "—");
+      appendMetric(valueSummary, "label", value.label ?? "—");
       appendMetric(valueSummary, "confidence", confidenceText(value.confidence));
       appendMetric(valueSummary, "location.frame", value.location?.frame || "—");
       appendMetric(valueSummary, "location.zone", value.location?.zone || "—");

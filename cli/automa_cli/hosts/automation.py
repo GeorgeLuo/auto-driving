@@ -42,8 +42,8 @@ from .run_record import (
     decision_record,
     failed_readiness,
     new_run_state,
-    timestamp_ms,
 )
+from ..shared.timestamps import timestamp_ms
 from ..frontend.perception_view import (
     get_perception_view_status,
     perception_view_ready,

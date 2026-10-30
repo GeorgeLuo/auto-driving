@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import time
-from dataclasses import replace
 from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import DECISION_STEPS
@@ -16,11 +15,11 @@ from ...hosts.publications.decision import (
 )
 from ...hosts.publications.host_publications import fetch_decision_publication
 from ...hosts.runtime_hosts import runtime_base_url
-from ...hosts.views.view_feed import ViewFeed
 from ...releases.errors import RuntimeHostError
 from ...shared.controller_releases import bundle_paths
 from .models import StreamEvent, StreamResult
 from .polling import poll_events, preflight_failure, unavailable_probe
+from .session import StreamView, with_snapshot
 
 
 def stream_decision(
@@ -29,16 +28,15 @@ def stream_decision(
     host_name: str,
     refresh_s: float,
     once: bool,
-    no_clear: bool,
-    json_output: bool,
     timeout_s: float,
+    serve_view: bool,
     emit: Callable[[StreamEvent], None],
 ) -> StreamResult:
     """Poll one decision step in the latest cycle the host published.
 
     Each probe is the ``host_<step>_stream`` frame with ``status: live``, or
-    the decision error that kept it from one with ``status: error``. A running
-    terminal stream hosts the runtime view and shares one observation read
+    the decision error that kept it from one with ``status: error``.
+    ``serve_view`` hosts the runtime view and shares one observation read
     with that view's decision page.
     """
 
@@ -55,7 +53,7 @@ def stream_decision(
             live=unavailable_probe(f"host_{step}_stream", host_name, str(exc)),
         )
 
-    view = None if json_output or once else ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
+    view = StreamView(host_name, base_url=base_url, timeout_s=timeout_s) if serve_view else None
 
     def read_frame() -> dict[str, Any]:
         try:
@@ -97,16 +95,13 @@ def stream_decision(
             return _error_probe(exc), None
 
     def outbound(event: StreamEvent) -> None:
-        emit(replace(event, view=view))
+        emit(with_snapshot(view, event))
 
     try:
-        return poll_events(
-            step=step, probe=probe, refresh_s=refresh_s, once=once,
-            no_clear=no_clear, json_output=json_output, emit=outbound,
-        )
+        return poll_events(step=step, probe=probe, refresh_s=refresh_s, once=once, emit=outbound)
     finally:
         if view is not None:
-            view.stop()
+            view.close()
 
 
 def _error_probe(exc: DecisionSurfaceError) -> dict[str, Any]:

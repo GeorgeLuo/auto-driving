@@ -6,13 +6,12 @@ import argparse
 import json
 import sys
 from collections.abc import Callable
-from typing import Any, TextIO
+from typing import TextIO
 
 from autonomy.decision_cycle.activation import DECISION_STEPS
 
 from ...shared.command_result import CommandResult
 from .models import StreamEvent, StreamResult
-from .polling import poll_events
 from .render import render_stream
 from .service import stream_host
 
@@ -69,42 +68,22 @@ def stream_host_step(
     output: TextIO | None = None,
     timeout_s: float = 3.0,
 ) -> CommandResult:
-    """Stream ``step`` and return the exit code and any message still to print."""
+    """Stream ``step`` and return the exit code and any message still to print.
+
+    JSON and ``--once`` do not serve a local view. Text, including one shot,
+    reads the publication details that screen shows. Only a continuous text
+    stream clears the terminal, and only unless ``--no-clear``.
+    """
 
     return _present(
         lambda emit: stream_host(
-            step, host_name=host_name, refresh_s=refresh_s, once=once, no_clear=no_clear,
-            json_output=json_output, timeout_s=timeout_s, emit=emit,
+            step, host_name=host_name, refresh_s=refresh_s, once=once, timeout_s=timeout_s,
+            serve_view=not json_output and not once,
+            include_publication=not json_output,
+            emit=emit,
         ),
-        output=output, json_output=json_output,
+        output=output, json_output=json_output, clear=not (no_clear or once or json_output),
     )
-
-
-def poll_stream(
-    *,
-    step: str,
-    probe: Callable[[], tuple[dict[str, Any], Any]],
-    render: Callable[[dict[str, Any], Any], str],
-    refresh_s: float,
-    once: bool,
-    no_clear: bool,
-    json_output: bool,
-    stream: TextIO | None,
-) -> CommandResult:
-    """Poll ``probe`` and write each frame. JSON skips ``render``."""
-
-    delivered: dict[str, str | None] = {"line": None}
-
-    def emit(event: StreamEvent) -> None:
-        line = json.dumps(event.live, sort_keys=True) if event.json_output else render(event.live, event.source)
-        delivered["line"] = line
-        write_stream_frame(stream, line, clear=event.clear)
-
-    result = poll_events(
-        step=step, probe=probe, refresh_s=refresh_s, once=once, no_clear=no_clear,
-        json_output=json_output, emit=emit,
-    )
-    return _command_result(result, output=stream, json_output=json_output, rendered_line=delivered["line"])
 
 
 def _handle_plugins_stream(args: argparse.Namespace) -> int:
@@ -117,13 +96,19 @@ def _handle_plugins_stream(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _present(operation: Callable[[Callable[[StreamEvent], None]], StreamResult], *, output: TextIO | None, json_output: bool) -> CommandResult:
+def _present(
+    operation: Callable[[Callable[[StreamEvent], None]], StreamResult],
+    *,
+    output: TextIO | None,
+    json_output: bool,
+    clear: bool,
+) -> CommandResult:
     delivered: dict[str, str | None] = {"line": None}
 
     def emit(event: StreamEvent) -> None:
-        line = render_stream(event)
+        line = render_stream(event, json_output=json_output)
         delivered["line"] = line
-        write_stream_frame(output, line, clear=event.clear)
+        write_stream_frame(output, line, clear=clear)
 
     result = operation(emit)
     return _command_result(result, output=output, json_output=json_output, rendered_line=delivered["line"])

@@ -51,14 +51,26 @@ class ViewFeed:
     def url(self) -> str | None:
         return self.server.url if self.server is not None else None
 
+    def state(self) -> tuple[str | None, str | None, str | None, str | None]:
+        """This view's URL, error, decision page path, and decision error.
+
+        Reading these starts no request. A stream copies them into a snapshot
+        before its renderer runs.
+        """
+
+        page = None
+        if self.server is not None and self.url is not None:
+            page = self.server.decision.page_url()
+        return self.url, self.error, page, self.decision_error
+
     def decision_line(self) -> str:
         """The decision page's address, or why it has no decision to show."""
 
-        page = self.server.decision.page_url() if self.server is not None else None
-        if self.server is None or self.server.url is None or page is None:
-            return _view_line("action view", None, self.error or self.decision_error or "no action yet")
-        line = f"action view: {self.server.url.rstrip('/')}{page}"
-        return f"{line}  (latest unavailable: {self.decision_error})" if self.decision_error else line
+        _url, error, page, decision_error = self.state()
+        if self.server is None or self.url is None or page is None:
+            return _view_line("action view", None, error or decision_error or "no action yet")
+        line = f"action view: {self.url.rstrip('/')}{page}"
+        return f"{line}  (latest unavailable: {decision_error})" if decision_error else line
 
     def read_observation(self) -> tuple[dict[str, Any] | None, str | None]:
         try:
@@ -120,14 +132,3 @@ def _view_line(label: str, url: str | None, error: str | None, route: str = "") 
     if url:
         return f"{label}: {url.rstrip('/') + route if route else url}"
     return f"{label}: unavailable ({error})" if error else f"{label}: unavailable"
-
-
-def view_page_lines(view: ViewFeed | None, *pages: tuple[str, str]) -> list[str]:
-    """Each ``(label, route)`` page of a stream's local view, then its action view.
-
-    A stream without a view, as with ``--once``, shows none.
-    """
-
-    if view is None:
-        return []
-    return [*(_view_line(label, view.url, view.error, route) for label, route in pages), view.decision_line()]

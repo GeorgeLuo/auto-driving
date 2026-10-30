@@ -7,7 +7,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli.automa_cli.shared.command_result import CommandResult
-from cli.automa_cli.hosts.deployment import deploy, picar_deploy
+from cli.automa_cli.hosts.deployment import picar_deploy, service
+from cli.automa_cli.hosts.deployment.models import DeploymentResult
+from cli.automa_cli.hosts.deployment.render import present_deployment
 from cli.automa_cli.hosts import staging
 from cli.automa_cli.vehicles.probes import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
@@ -18,7 +20,7 @@ from tests.support.runtime_fixtures import write_host_fixture
 class HostLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory())) / "vehicles"
-        self.enterContext(patch.object(deploy, "RUNTIME_ROOT", self.root))
+        self.enterContext(patch.object(service, "RUNTIME_ROOT", self.root))
         self.enterContext(patch.object(picar_deploy, "RUNTIME_ROOT", self.root))
         self.enterContext(patch.object(staging, "RUNTIME_ROOT", self.root))
         self.enterContext(patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", self.root))
@@ -40,9 +42,9 @@ class HostLifecycleTests(unittest.TestCase):
     def test_create_chase_packages_starts_and_records_a_free_name(self):
         probe = ProbeResult(active=True, candidate=Candidate("chase-sim", "ws://localhost:5050/ws/control", "cli"))
         with probe_returning(probe), \
-             patch.object(deploy, "ensure_chase_host", return_value="http://localhost:9999") as start, \
-             patch.object(deploy, "host_state", return_value={"state": "idle"}):
-            result = deploy.create_host(host_name="test", provider="chase-sim", url="http://localhost:5050")
+             patch.object(service, "ensure_chase_host", return_value="http://localhost:9999") as start, \
+             patch.object(service, "host_state", return_value={"state": "idle"}):
+            result = service.create_host(host_name="test", provider="chase-sim", url="http://localhost:5050")
         self.assertEqual(result.exit_code, 0, result.message)
         start.assert_called_once_with("test")
         record = json.loads((self.root / "test" / "host-configuration.json").read_text())
@@ -50,14 +52,14 @@ class HostLifecycleTests(unittest.TestCase):
         self.assertNotIn("vehicle_id", record)
         self.assertEqual(record["connection"]["ws_url"], "ws://localhost:5050/ws/control")
         self.assertTrue((self.root / "test" / "bundle" / "releases" / "latest-controller-bundle.json").exists())
-        again = deploy.create_host(host_name="test", provider="chase-sim", url="http://localhost:5050")
+        again = service.create_host(host_name="test", provider="chase-sim", url="http://localhost:5050")
         self.assertEqual(again.exit_code, 2)
         self.assertIn("already exists: the chaser", again.message)
 
     def test_unreachable_simulator_leaves_no_directory(self):
         probe = ProbeResult(active=False, candidate=Candidate("chase-sim", "ws://example/ws/control", "cli"), error="no frontend")
         with probe_returning(probe):
-            result = deploy.create_host(host_name="test", provider="chase-sim", url="http://example")
+            result = service.create_host(host_name="test", provider="chase-sim", url="http://example")
         self.assertEqual(result.exit_code, 2)
         self.assertIn("no frontend", result.message)
         self.assertFalse(self.root.exists())
@@ -67,8 +69,8 @@ class HostLifecycleTests(unittest.TestCase):
         directory.mkdir(parents=True)
         staged = directory / "keep.json"
         staged.write_text("{}")
-        with patch.object(deploy, "install_picar_core", return_value=CommandResult(2, "ssh failed")):
-            result = deploy.create_host(host_name="test", provider="picar", url="http://example:8887")
+        with patch.object(service, "install_picar_core", return_value=CommandResult(2, "ssh failed")):
+            result = service.create_host(host_name="test", provider="picar", url="http://example:8887")
         self.assertEqual(result.exit_code, 2)
         self.assertTrue(staged.exists())
         self.assertFalse((directory / "host-configuration.json").exists())
@@ -84,54 +86,72 @@ class HostLifecycleTests(unittest.TestCase):
 
     def test_update_uses_record_and_requires_restart_for_drive_args(self):
         write_host_fixture(self.root, "car", provider="picar")
-        result = deploy.update_host(host_name="car", drive_args="--js", dry_run=True)
+        result = service.update_host(host_name="car", drive_args="--js", dry_run=True)
         self.assertEqual(result.exit_code, 2)
         self.assertIn("requires --restart", result.message)
-        result = deploy.update_host(host_name="car", dry_run=True, json_output=True)
+        result = service.update_host(host_name="car", dry_run=True)
         self.assertEqual(result.exit_code, 0)
-        self.assertFalse(json.loads(result.message)["restart_requested"])
+        self.assertFalse(result.receipt["restart_requested"])
+        self.assertFalse(json.loads(present_deployment(result, json_output=True))["restart_requested"])
+        self.assertTrue(present_deployment(result, json_output=False).startswith("Autonomy update dry run"))
 
     def test_delete_chase_stops_host_and_removes_directory(self):
         write_host_fixture(self.root, "test")
-        with patch.object(deploy, "stop_chase_host") as stop:
-            result = deploy.delete_host(host_name="test")
+        with patch.object(service, "stop_chase_host") as stop:
+            result = service.delete_host(host_name="test")
         self.assertEqual(result.exit_code, 0)
         stop.assert_called_once_with("test")
         self.assertFalse((self.root / "test").exists())
 
     def test_delete_picar_keeps_record_on_ssh_failure_then_removes_on_success(self):
         write_host_fixture(self.root, "car", provider="picar")
-        with patch.object(deploy, "run_step", return_value=1) as run:
-            result = deploy.delete_host(host_name="car")
+        with patch.object(service, "run_step", return_value=1) as run:
+            result = service.delete_host(host_name="car")
         self.assertEqual(result.exit_code, 1)
         self.assertTrue((self.root / "car" / "host-configuration.json").exists())
         self.assertIn("control.sh /home/piracer stop", run.call_args.args[1][-1])
-        with patch.object(deploy, "run_step", return_value=0):
-            result = deploy.delete_host(host_name="car")
+        with patch.object(service, "run_step", return_value=0):
+            result = service.delete_host(host_name="car")
         self.assertEqual(result.exit_code, 0)
         self.assertIn("~/mycar", result.message)
         self.assertFalse((self.root / "car").exists())
 
     def test_failed_new_creation_removes_the_directory(self):
-        with patch.object(deploy, "install_picar_core", return_value=CommandResult(2, "sync failed")):
-            result = deploy.create_host(host_name="car", provider="picar", url="http://example:8887")
+        with patch.object(service, "install_picar_core", return_value=CommandResult(2, "sync failed")):
+            result = service.create_host(host_name="car", provider="picar", url="http://example:8887")
         self.assertEqual(result.exit_code, 2)
         self.assertFalse((self.root / "car").exists())
 
     def test_delete_aborts_when_an_active_run_cannot_stop(self):
         write_host_fixture(self.root, "car", provider="picar")
-        with patch.object(deploy, "host_state", return_value={"state": "running"}), \
-             patch("cli.automa_cli.hosts.deployment.deploy.stop_host_automation",
+        with patch.object(service, "host_state", return_value={"state": "running"}), \
+             patch("cli.automa_cli.hosts.deployment.service.stop_host_automation",
                    return_value=CommandResult(2, "could not release control")), \
-             patch.object(deploy, "run_step") as remote:
-            result = deploy.delete_host(host_name="car")
+             patch.object(service, "run_step") as remote:
+            result = service.delete_host(host_name="car")
         self.assertEqual(result.exit_code, 2)
         self.assertTrue((self.root / "car" / "host-configuration.json").exists())
         remote.assert_not_called()
 
+    def test_renderer_formats_a_supplied_receipt(self):
+        receipt = {
+            "host_name": "car",
+            "dry_run": True,
+            "restart": False,
+            "source": {"tree_sha256": "abcdef1234567890", "file_count": 3},
+        }
+        rendered = present_deployment(DeploymentResult(0, receipt=receipt), json_output=False)
+        self.assertEqual(
+            rendered,
+            "Dry run: would package car's controller release (tree abcdef123456, 3 files)\n"
+            "Restart the host onto it: no",
+        )
+        self.assertEqual(json.loads(present_deployment(DeploymentResult(0, receipt=receipt), json_output=True))["source"]["file_count"], 3)
+        self.assertEqual(present_deployment(DeploymentResult(2, "missing"), json_output=True), "missing")
+
     def test_host_name_cannot_escape_runtime_root(self):
         for name in ("..", ".", "../car", "car/name"):
             with self.subTest(name=name):
-                result = deploy.create_host(host_name=name, provider="picar", url="http://example:8887")
+                result = service.create_host(host_name=name, provider="picar", url="http://example:8887")
                 self.assertEqual(result.exit_code, 2)
         self.assertFalse(self.root.exists())

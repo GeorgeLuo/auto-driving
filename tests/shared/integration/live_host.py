@@ -12,7 +12,7 @@ from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.shared.controller_releases import controller_bundle_paths
 from cli.automa_cli.shared.paths import ROOT
 from cli.automa_cli.hosts.step_activations import bundle_activation_path
-from cli.automa_cli.hosts.streaming import probe_live_memory
+from cli.automa_cli.plugins.streaming import probe_live_memory
 from implementations.decision_cycle.catalog import packaged_activation
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     HOST_NAME,

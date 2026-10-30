@@ -117,6 +117,119 @@ restart, keep `--observe-only` explicit:
 Stopping the worker keeps its local deployment staged and makes its previous
 view unavailable or stale, never current.
 
+## Chase v1 Forward Baseline
+
+Perception, memory, proposal and plan each provide `chase-v1-detect-by-color`. Together
+they detect and retain visible simulator cardboard boxes, find the walls,
+report sustained visual stagnation and image-space clearance, and drive
+straight forward into whatever is ahead. A collision (a static view with
+cardboard or a wall in sight) starts the `avoid_obstacle` recovery: reverse
+until no near box reaches the right of the image, then turn right until no near
+box is ahead, then drive forward again. If the car cannot reverse (the view
+stays static for more than 8 cycles), it turns right anyway, and a stalled turn
+reverses again, so a corner becomes a multi-point turn. A static view with
+nothing in sight still reverses with `drive_backwards`. The straight commands
+are steering `0.0` with normalized throttle `0.60` or `-0.60`; the turn is
+steering `1.0` with throttle `0.60`.
+
+Memory's `stop_row` learns to start that recovery before contact. The first
+collision sets a hypothesis: start reversing once the lowest lower edge of a
+box ahead (`clearance_ahead`'s `nearest_bottom_y`) reaches image row `0.79`,
+halfway between `min_stop_row` `0.6` and `blind_row` `0.98`. Each stop at the
+hypothesis tests it. The car keeps rolling briefly after it starts reversing,
+so the lower edge keeps descending; if it reaches `blind_row` (the base has
+left the image, which happens just before contact) the row was too close, and
+if it stays above until the car starts turning, or for `settle_ms` (one second)
+of reversing, the car stopped short. Rows seen while turning do not count: the
+turn sweeps other boxes into the ahead band. A head-on approach crosses the
+stop row long before the view is static, so a later collision was not head-on;
+it is counted but does not move the row. The next row is the
+midpoint between the deepest row that stopped short and the shallowest that
+came too close, until they are within `resolution` (`0.02`); then the car keeps
+the deepest row that stopped short. A row that fails after passing, or passes
+after failing, discards the older bound, so the hypothesis can move back when
+conditions change. The hypothesis lives in shared memory, so restarting the
+host or resetting memory forgets it.
+
+Memory's `turn_model` changes no command. It learns, from ordinary driving,
+how the car's own turn moves the boxes `sim_cardboard_permanence` tracks: each
+landmark's bearing is its box centre's offset from the middle of the image, in
+image widths, and each new camera frame contributes the median shift of the
+landmarks seen at both ends, filed by the applied right turn or straight
+drive over that interval. A left turn is not learned. A box touching the image
+edge, or one that changes size by more than 1.5×, does not count, because the
+detector splits a box leaving the image and identities follow the pieces. Two
+slow turning intervals in a row are counted as a stall instead of learned.
+Landmarks that leave the view keep a bearing carried by the learned speed, so
+one seen again measures how far off it was. It knows no degrees, camera or
+map, only widths per second and its own errors, so it should transfer to
+another car and camera unchanged.
+
+Memory's `approach_model` also changes no command. While the car drives
+straight, the lower edge of a box ahead steps down the image one row at a
+time, slowly near the horizon and quickly near the car; it times each
+one-row step, on 120 rows and the camera's capture clock, and keeps each row's
+median. It also times each straight run that ended with `avoid_obstacle`
+backing up, and keeps their median as `run_ms`, how long the car usually
+drives before it must stop. Perception's `closeness` adds the learned row
+times from a box's lower edge down to `stop_row`'s row: that is the box's
+reach. It emits `closeness_ahead`, `closeness_left` and `closeness_right`,
+`near` when the nearest box in that band would be reached within one usual run
+and `far` otherwise, or no value until the rows between are learned. A row
+nobody has timed borrows its learned neighbours. Both numbers are the car's
+own, so nothing is tuned for this arena. When the box ahead is near,
+`avoid_obstacle` turns toward the side whose nearest box has more reach (an
+empty side has the most), right on a tie, until ahead has as much reach as
+that side.
+
+Perception's `sim_wall` plugin finds wall pixels by saturation, which lighting
+does not change: the walls are less saturated than the wood floor and more than
+the gray sky. It splits the image into 16 vertical strips and emits one box per
+strip over that strip's longest run of wall rows, so each box's lower edge is
+where the wall meets the floor.
+
+Perception's `clearance` plugin emits `clearance_ahead` and `clearance_right`:
+each is true when no `sim_cardboard_obstacle` or `sim_wall` box overlaps that
+horizontal band of the image with its lower edge at or below the band's
+`*_bottom_y`. The ahead band also counts farther boxes, so the turn continues
+until the obstacle has left the centre. Each signal also reports
+`nearest_bottom_y`, the lowest lower edge of any box overlapping the band,
+which is the row `stop_row` learns. It has no depth or vehicle width, so a
+future version could remember how much clearance a turn actually needed.
+
+Perception's `view_stagnation` plugin emits `view_static` and publishes its
+timestamped result at `shared_memory["perception.view_stagnation"]`. The default
+requires at least three fresh captures spanning one second below the visual
+change threshold. Missing/repeated input clears the cue, and the plan drives
+forward. See the
+[plugin contract](../../implementations/decision_cycle/perception/plugins/view_stagnation/README.md).
+
+With the running simulator exposed at `http://localhost:5050`, stage the four
+steps and start a bounded movement run:
+
+```sh
+./cli/automa vehicles update perception --id chase-sim-chaser --preset chase-v1-detect-by-color
+./cli/automa vehicles update memory --id chase-sim-chaser --preset chase-v1-detect-by-color
+./cli/automa vehicles update proposal --id chase-sim-chaser --preset chase-v1-detect-by-color
+./cli/automa vehicles update plan --id chase-sim-chaser --preset chase-v1-detect-by-color
+./cli/automa vehicles automation run --id chase-sim-chaser --num-decisions 60 --record
+```
+
+If the game's pause-before-actions debug setting is active, enable **Playback**
+under **Game → Simulation** to let frames advance during the movement run.
+
+For a simulator on another port, set `CHASE_UI_WS_URL` in the command
+environment, for example `ws://localhost:5054/ws/control`, before staging and
+running. `vehicles status --chase-url` only inspects that endpoint; it does not
+persist a different runtime endpoint.
+
+The car always hits its first obstacle; only later obstacles can be avoided
+before contact. Clearance and the stop row are image rows, not distances: they
+know nothing of the car's speed or width, and the stop row does not cover
+contact during the turn. Once the bisection
+converges the hypothesis does not explore deeper rows again unless a stop comes
+too close.
+
 ## Upload to an Existing Catalog
 
 With a Chase worker and its viewer open, upload a local plugin file separately

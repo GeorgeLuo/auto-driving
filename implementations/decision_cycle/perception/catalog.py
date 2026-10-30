@@ -157,6 +157,21 @@ PERCEPTION_PLUGINS: tuple[dict[str, Any], ...] = (
         "default_config": {},
     },
     {
+        "spec": "implementations.decision_cycle.perception.plugins.view_stagnation.plugin:ViewStagnationPlugin",
+        "description": "Sustained low visual change across fresh camera frames, published to shared memory.",
+        "default_config": {},
+    },
+    {
+        "spec": "implementations.decision_cycle.perception.plugins.clearance.plugin:ClearancePlugin",
+        "description": "Whether a near cardboard or wall box blocks the view ahead or on the right.",
+        "default_config": {},
+    },
+    {
+        "spec": "implementations.decision_cycle.perception.plugins.closeness.plugin:ClosenessPlugin",
+        "description": "Whether the nearest box ahead and on each side is near or far, from learned approach times.",
+        "default_config": {},
+    },
+    {
         "spec": "implementations.decision_cycle.perception.plugins.sim_color_targets.plugin:SimColorTargetsPlugin",
         "description": "",
         "default_config": {},
@@ -164,6 +179,11 @@ PERCEPTION_PLUGINS: tuple[dict[str, Any], ...] = (
     {
         "spec": "implementations.decision_cycle.perception.plugins.sim_cardboard_obstacle.plugin:SimCardboardObstaclePlugin",
         "description": "Image-space bounding boxes for visible Chase cardboard obstacles.",
+        "default_config": {},
+    },
+    {
+        "spec": "implementations.decision_cycle.perception.plugins.sim_wall.plugin:SimWallPlugin",
+        "description": "One image-space box per vertical strip of the Chase simulator's beige-gray walls.",
         "default_config": {},
     },
     {

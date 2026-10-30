@@ -264,7 +264,7 @@
             "path": "cli/automa_cli/hosts/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa hosts commands and the host deploy, runs and staging they drive; the host publication readers, plugin catalog client and runtime viewer that plugins, simulators and automa read."
+            "responsibility": "The automa hosts commands and shared host discovery, staging and bundle services; deployment, runs, publications and views live in their named subpackages."
           },
           {
             "path": "cli/automa_cli/workbench/",

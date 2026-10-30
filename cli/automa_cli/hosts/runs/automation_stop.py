@@ -29,7 +29,7 @@ from .run_record import stopped_readiness
 from ...vehicles.providers import PROVIDERS
 
 
-# hosts run starts this module (hosts/automation.py) as the run's worker.
+# hosts run starts the automation module as the run's worker.
 WORKER_MODULE = "cli.automa_cli.hosts.runs.automation"
 # A run started before the module move must still be stoppable.
 LEGACY_WORKER_MODULE = "cli.automa_cli.hosts.automation"

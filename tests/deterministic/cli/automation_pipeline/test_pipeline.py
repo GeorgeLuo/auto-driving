@@ -4,7 +4,6 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
-from cli.automa_cli.hosts.runs.render import RunOutput
 from cli.automa_cli.hosts.runs.service import run_host_automation
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
 from cli.automa_cli.releases.paths import controller_bundle_paths
@@ -51,7 +50,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             ):
                 result = run_host_automation(
                     host_name=HOST_NAME, num_decisions=3, take_control=False,
-                    transcript=RunOutput(),
+
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)
@@ -88,7 +87,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             ):
                 result = run_host_automation(
                     host_name=HOST_NAME, num_decisions=1, take_control=False,
-                    transcript=RunOutput(),
+
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)

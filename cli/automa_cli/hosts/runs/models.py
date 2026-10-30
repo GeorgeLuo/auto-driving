@@ -4,14 +4,15 @@
 process started as ``runs.automation`` or ``hosts.automation`` before that
 entry point moved. The match is the exact module token, not a prefix.
 
-``RunTranscript`` is the live output the monitor updates and a renderer
-implements. ``status_reason`` is the truncated reason status collection and
+``RunEvent`` carries live facts; ``RunResult`` describes the outcome. ``status_reason`` is the truncated reason status collection and
 status text both use.
 """
 
 from __future__ import annotations
 
-from typing import Any, Protocol
+from typing import Any
+from dataclasses import dataclass
+from pathlib import Path
 
 
 WORKER_MODULE = "cli.automa_cli.hosts.runs.worker"
@@ -24,19 +25,24 @@ RECOGNIZED_WORKER_MODULES = (
 MAX_STATUS_REASON_CHARS = 240
 
 
-class RunTranscript(Protocol):
-    """Live lines during a run, and the closing result the caller prints."""
+@dataclass(frozen=True)
+class RunEvent:
+    kind: str
+    data: dict[str, Any]
 
-    def startup(self, state: dict[str, Any]) -> None:
-        """Show that the run has started."""
 
-    def frame(
-        self, frame_id: str, *, signals: int, things: int, action: Any, count: int, verbose: bool,
-    ) -> None:
-        """Show one captured frame when the transcript includes that frame."""
+@dataclass(frozen=True)
+class RunResult:
+    exit_code: int
+    message: str = ""
+    state: dict[str, Any] | None = None
+    state_path: Path | None = None
 
-    def result(self, state: dict[str, Any], *, state_path: str) -> tuple[int, str]:
-        """Return the exit code and closing lines. ``state_path`` is display text."""
+
+def run_exit_code(state: dict[str, Any]) -> int:
+    if state["status"] == "error":
+        return 2
+    return 130 if state.get("stop_reason") == "keyboard_interrupt" else 0
 
 
 def status_reason(value: Any, *, fallback: str) -> str:

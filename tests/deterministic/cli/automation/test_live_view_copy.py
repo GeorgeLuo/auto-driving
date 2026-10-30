@@ -13,7 +13,6 @@ from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs import monitor
-from cli.automa_cli.hosts.runs.render import RunOutput
 from cli.automa_cli.hosts.views import view_feed as viewer
 from cli.automa_cli.plugins.stream import decision, session
 from cli.automa_cli.plugins.stream.commands import stream_host_step
@@ -113,7 +112,7 @@ class LiveViewCopyTests(unittest.TestCase):
                 host_name="picar-test", base_url=Client.base_url, automation_dir=root,
                 selections=SELECTIONS, decision=dict(DECISION),
                 configuration=RunConfiguration(mode="observe_only", num_decisions=2),
-                timeout_s=0.2, record=True, verbose=False, transcript=RunOutput(),
+                timeout_s=0.2, record=True, verbose=False,
             )), daemon=True)
             worker.start()
             try:

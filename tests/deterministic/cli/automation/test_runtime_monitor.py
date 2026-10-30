@@ -12,7 +12,9 @@ from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs import monitor
-from cli.automa_cli.hosts.runs.render import RunOutput
+from cli.automa_cli.hosts.runs.worker import RunOutput
+from cli.automa_cli.hosts.runs.render import render_run_result
+from cli.automa_cli.hosts.runs.models import run_exit_code
 from cli.automa_cli.hosts.runs.store import control_application, control_source
 
 
@@ -135,7 +137,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         transcript.startup(state)
         transcript.frame("frame-1", signals=1, things=0, action="steer-left", count=1, verbose=False)
         transcript.frame("frame-2", signals=1, things=0, action="hold", count=2, verbose=False)
-        code, message = transcript.result(state, state_path="automation/state.json")
+        code, message = run_exit_code(state), render_run_result(state, state_path="automation/state.json")
 
         self.assertEqual(
             output.getvalue().splitlines(),
@@ -173,7 +175,7 @@ class RuntimeMonitorTests(unittest.TestCase):
             mock.patch.object(monitor, "fetch_observation_sample", side_effect=sample),
             mock.patch.object(monitor, "DecisionViewAdapter", _FakeDecisionView),
         ):
-            code, message = monitor.monitor_runtime(
+            outcome = monitor.monitor_runtime(
                 host_name=HOST_NAME,
                 base_url=client.base_url,
                 automation_dir=automation_dir,
@@ -183,8 +185,9 @@ class RuntimeMonitorTests(unittest.TestCase):
                 timeout_s=1.0,
                 record=False,
                 verbose=False,
-                transcript=RunOutput(output),
+                emit=RunOutput(output),
             )
+            code, message = outcome.exit_code, render_run_result(outcome.state, state_path=str(outcome.state_path))
         state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
         return client, code, message, output.getvalue().splitlines(), state
 

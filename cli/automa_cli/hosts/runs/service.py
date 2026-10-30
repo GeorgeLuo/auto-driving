@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 import signal
 import subprocess
 import sys
@@ -29,8 +28,11 @@ from ..staging import (
     automation_dir as host_automation_dir,
     staged_host,
 )
-from .models import RECOGNIZED_WORKER_MODULES, RunTranscript, WORKER_MODULE
+from .models import RunEvent, RunResult, WORKER_MODULE
+from collections.abc import Callable
 from .monitor import monitor_runtime
+from .process import pid_matches_automation, terminate_pid, process_command
+from .store import mark_process_stopped, mark_state_stopped
 from ..step_activations import (
     bundle_activation_problems,
     decision_identity,
@@ -44,7 +46,6 @@ from .store import (
     decision_record,
     failed_readiness,
     new_run_state,
-    stopped_readiness,
 )
 from ...shared.timestamps import timestamp_ms
 from ...frontend.perception_view import (
@@ -134,8 +135,8 @@ def run_host_automation(
     take_control: bool = True,
     record: bool = False,
     verbose: bool = False,
-    transcript: RunTranscript | None = None,
-) -> CommandResult:
+    emit: Callable[[RunEvent], None] | None = None,
+) -> RunResult:
     try:
         if host_name is not None:
             staged_host(host_name)
@@ -144,35 +145,34 @@ def run_host_automation(
         )
         host_name, host_url = _resolve_run_target(host_name, host_url, timeout_s=timeout_s)
     except (TypeError, ValueError, RuntimeHostError) as exc:
-        return CommandResult(2, str(exc))
+        return RunResult(2, str(exc))
     # Every vehicle runs its staged steps on its runtime host: a PiCar's Donkey
     # service or a local Chase host, each from its controller release.
     # Each step runs its staged selection, else its built-in, else nothing.
     bundle = bundle_paths(host_name)
     problems = bundle_activation_problems(bundle, host_name)
     if problems:
-        return CommandResult(2, format_activation_problems(problems))
+        return RunResult(2, format_activation_problems(problems))
     try:
         selections = staged_selections(bundle)
         identity = decision_identity(bundle)
     except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
-        return CommandResult(2, f"Could not read staged step activations for {host_name}: {exc}")
+        return RunResult(2, f"Could not read staged step activations for {host_name}: {exc}")
     if host_url is None:
         try:
             base_url = runtime_base_url(host_name, start=True)
         except RuntimeHostError as exc:
-            return CommandResult(2, str(exc))
+            return RunResult(2, str(exc))
     else:
         base_url = host_url
-    code, message = monitor_runtime(
+    return monitor_runtime(
         host_name=host_name, base_url=base_url,
         automation_dir=Path(bundle["runtime_dir"]) / "automation",
         selections=selections,
         decision=decision_record(identity),
         configuration=configuration, timeout_s=timeout_s, record=record,
-        verbose=verbose, transcript=transcript,
+        verbose=verbose, emit=emit,
     )
-    return CommandResult(code, message)
 
 
 
@@ -820,7 +820,7 @@ def stop_host_automation(
     pid = process.get("pid") if isinstance(process, dict) else None
 
     if not isinstance(pid, int):
-        _mark_state_stopped(state_path, stopped_by="stop_command_no_pid")
+        mark_state_stopped(state_path, stopped_by="stop_command_no_pid")
         return CommandResult(
             0,
             "\n".join(
@@ -832,8 +832,8 @@ def stop_host_automation(
         )
 
     if not pid_alive(pid):
-        _mark_process_stopped(process_path, process, stopped_by="stop_command_already_dead")
-        _mark_state_stopped(state_path, stopped_by="stop_command_already_dead")
+        mark_process_stopped(process_path, process, stopped_by="stop_command_already_dead")
+        mark_state_stopped(state_path, stopped_by="stop_command_already_dead")
         return CommandResult(
             0,
             "\n".join(
@@ -844,9 +844,9 @@ def stop_host_automation(
                 ]
             ),
         )
-    if not _pid_matches_automation(pid, host_name):
-        _mark_process_stopped(process_path, process, stopped_by="stop_command_stale_pid")
-        _mark_state_stopped(state_path, stopped_by="stop_command_stale_pid")
+    if not pid_matches_automation(pid, host_name):
+        mark_process_stopped(process_path, process, stopped_by="stop_command_stale_pid")
+        mark_state_stopped(state_path, stopped_by="stop_command_stale_pid")
         return CommandResult(
             0,
             "\n".join(
@@ -854,17 +854,17 @@ def stop_host_automation(
                     f"The recorded run PID for host {host_name} is alive but is not this host's run.",
                     f"PID: {pid}",
                     "The PID record was marked stale; no process was terminated.",
-                    f"Process: {_process_command(pid) or 'unknown'}",
+                    f"Process: {process_command(pid) or 'unknown'}",
                 ]
             ),
         )
 
-    _terminate_pid(pid, signal.SIGINT, process_group=False)
+    terminate_pid(pid, signal.SIGINT, process_group=False)
     deadline = time.monotonic() + max(0.0, float(wait_s))
     while time.monotonic() < deadline:
         if not pid_alive(pid):
-            _mark_process_stopped(process_path, process, stopped_by="stop_command")
-            _mark_state_stopped(state_path, stopped_by="stop_command")
+            mark_process_stopped(process_path, process, stopped_by="stop_command")
+            mark_state_stopped(state_path, stopped_by="stop_command")
             return CommandResult(
                 0,
                 "\n".join(
@@ -877,12 +877,12 @@ def stop_host_automation(
             )
         time.sleep(0.1)
 
-    _terminate_pid(pid, signal.SIGKILL)
+    terminate_pid(pid, signal.SIGKILL)
     forced_deadline = time.monotonic() + 1.0
     while time.monotonic() < forced_deadline:
         if not pid_alive(pid):
-            _mark_process_stopped(process_path, process, stopped_by="stop_command_forced")
-            _mark_state_stopped(state_path, stopped_by="stop_command_forced")
+            mark_process_stopped(process_path, process, stopped_by="stop_command_forced")
+            mark_state_stopped(state_path, stopped_by="stop_command_forced")
             return CommandResult(
                 0,
                 "\n".join(
@@ -926,114 +926,3 @@ def _replace_unanswering_host(host_name: str, *, wait_s: float) -> CommandResult
             "Stop the chaser in the simulator before the next run.",
         ]))
     return None
-
-
-
-def _pid_matches_automation(pid: int, host_name: str) -> bool:
-    """Return whether *pid* looks like this host's automation monitor.
-
-    When the process command cannot be read, returns True (stop path stays
-    permissive). Callers that must fail closed should read the command first
-    and use :func:`_automation_command_matches_host` directly.
-    """
-
-    command = _process_command(pid)
-    if command is None:
-        return True
-    return _automation_command_matches_host(command, host_name)
-
-
-
-def _automation_command_matches_host(command: str, host_name: str) -> bool:
-    """Pure check: command is a host run for exactly *host_name*.
-
-    Requires ``-m`` naming a current or pre-move worker module and an exact ``--name <host_name>``
-    argument pair (token equality, not substring).
-    """
-
-    if not host_name or not str(host_name).strip():
-        return False
-    host_key = str(host_name).strip()
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return False
-    if not tokens:
-        return False
-    if not any(
-        tokens[index] == "-m" and tokens[index + 1] in RECOGNIZED_WORKER_MODULES
-        for index in range(len(tokens) - 1)
-    ):
-        return False
-    for index, token in enumerate(tokens):
-        if token == "--name":
-            if index + 1 < len(tokens) and tokens[index + 1] == host_key:
-                return True
-        elif token.startswith("--name="):
-            if token[len("--name=") :] == host_key:
-                return True
-    return False
-
-
-
-def _process_command(pid: int) -> str | None:
-    try:
-        result = subprocess.run(
-            ["ps", "-p", str(pid), "-o", "command="],
-            check=False,
-            capture_output=True,
-            text=True,
-        )
-    except OSError:
-        return None
-    command = result.stdout.strip()
-    return command or None
-
-
-
-def _mark_process_stopped(path: Path, process: Any, *, stopped_by: str) -> None:
-    record = process if isinstance(process, dict) else {}
-    updated = {
-        **record,
-        "status": "stopped",
-        "stopped_by": stopped_by,
-        "stopped_at_ms": timestamp_ms(),
-    }
-    write_json_atomically(path, updated)
-
-
-
-def _mark_state_stopped(path: Path, *, stopped_by: str) -> None:
-    state = read_json(path)
-    if not isinstance(state, dict):
-        return
-    if state.get("status") not in ("starting", "running", "error"):
-        return
-    updated = {
-        **state,
-        "status": "stopped",
-        "stop_reason": stopped_by,
-        "completed_at_ms": timestamp_ms(),
-        "updated_at_ms": timestamp_ms(),
-        "readiness": stopped_readiness(),
-    }
-    write_json_atomically(path, updated)
-
-
-
-def _terminate_pid(
-    pid: int,
-    sig: signal.Signals,
-    *,
-    process_group: bool = True,
-) -> None:
-    try:
-        if process_group:
-            os.killpg(pid, sig)
-        else:
-            os.kill(pid, sig)
-    except OSError:
-        try:
-            os.kill(pid, sig)
-        except OSError:
-            return

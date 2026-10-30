@@ -1,8 +1,7 @@
 """Background entry point for ``hosts run``.
 
 The process runs the host session and records a failure that happens before
-the run has its own state. It chooses the transcript for its own standard
-output and passes that to ``service``. Stop recognizes this module and the
+the run has its own state. It formats data events for its standard output. Stop recognizes this module and the
 two entry points it replaced.
 """
 
@@ -10,10 +9,42 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import Any, TextIO
 
 from .models import WORKER_MODULE
-from .render import RunOutput
+from .render import startup_lines, reports_frame, frame_line, render_run_result
+from .models import RunEvent
+from ...shared.paths import display_path
 from .service import record_host_automation_terminal_result, run_host_automation
+
+
+class RunOutput:
+    """The transcript a run monitor updates. Live lines go to ``output``; the closing result does not."""
+
+    def __init__(self, output: TextIO | None = None, *, verbose: bool = False) -> None:
+        self.verbose = verbose
+        self._output = output
+
+    def startup(self, state: dict[str, Any]) -> None:
+        self._write(startup_lines(state))
+
+    def frame(
+        self, frame_id: str, *, signals: int, things: int, action: Any, count: int, verbose: bool,
+    ) -> None:
+        if reports_frame(count, verbose=verbose):
+            self._write([frame_line(frame_id, signals=signals, things=things, action=action)])
+
+    def _write(self, lines: list[str]) -> None:
+        if self._output is None:
+            return
+        for line in lines:
+            print(line, file=self._output, flush=True)
+
+    def __call__(self, event: RunEvent) -> None:
+        if event.kind == "startup":
+            self.startup(event.data)
+        elif event.kind == "frame":
+            self.frame(**event.data, verbose=self.verbose)
 
 
 def _run_worker(argv: list[str]) -> int:
@@ -39,10 +70,11 @@ def _run_worker(argv: list[str]) -> int:
         take_control=not args.observe_only,
         record=args.record,
         verbose=args.verbose,
-        transcript=RunOutput(sys.stdout),
+        emit=RunOutput(sys.stdout, verbose=args.verbose),
     )
-    if result.message:
-        print(result.message)
+    message = render_run_result(result.state, state_path=display_path(result.state_path)) if result.state is not None else result.message
+    if message:
+        print(message)
     if args.host_name:
         record_host_automation_terminal_result(host_name=args.host_name, result=result)
     return result.exit_code

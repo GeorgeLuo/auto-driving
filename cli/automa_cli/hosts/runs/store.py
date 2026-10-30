@@ -1,9 +1,9 @@
-"""The run record and terminal lines every host's run shares.
+"""The run record every host's run shares.
 
-Every runtime host executes the decision cycle while the CLI
-monitors it (``monitor``), writing this ``state.json`` record and
-printing these lines. A recording also appends the same ``manifest.json``,
-which replay loads.
+Every runtime host executes the decision cycle while the CLI monitors it
+(``monitor``), writing this ``state.json`` record. A recording also appends
+the same ``manifest.json``, which replay loads. The lines a terminal prints
+come from ``render``.
 """
 from __future__ import annotations
 
@@ -15,12 +15,9 @@ from autonomy.runtime.session import RunConfiguration
 from ...shared.paths import display_path
 from ...shared.timestamps import timestamp_ms
 from ...frontend.server import RuntimeViewServer
-from ..step_activations import step_lines
 
 RUN_STATE_SCHEMA = "automa_automation_run_state"
 READINESS_SCHEMA = "automa_cli_readiness"
-# A run's host owns its wheel commands.
-CONTROL_SOURCE_LABELS = {"runtime_host": "runtime host"}
 
 
 def control_source(configuration: RunConfiguration) -> str:
@@ -213,41 +210,6 @@ def record_host_status(state: dict[str, Any], host_status: dict[str, Any]) -> No
     state["selections"] = applied_selections(state["selections"], steps) or state["selections"]
 
 
-def startup_lines(state: dict[str, Any]) -> list[str]:
-    selections = state["selections"]
-    view = state["published_view"]
-    source = state["control_source"]
-    return [
-        f"Run started on host {state['host_name']}.",
-        *step_lines(
-            {step: selection["plugins"] for step, selection in selections.items()},
-            {step: selection["preset"] for step, selection in selections.items() if selection["preset"]},
-        ),
-        (
-            f"Recording: {state['run_dir']}"
-            if state["run_dir"] is not None
-            else "Recording: off; latest frame and perception are overwritten each iteration"
-        ),
-        f"Control source: {CONTROL_SOURCE_LABELS.get(source, source)}",
-        f"Action policy: {state['action_policy']}",
-        f"Decision generation: {state['decision']['generation_id']}",
-        (
-            f"Runtime view: {view.get('url')}"
-            if view.get("available")
-            else f"Runtime view: unavailable ({view.get('reason', 'startup failed')})"
-        ),
-        "Decisions: unbounded" if state["num_decisions"] is None else f"Decisions: {state['num_decisions']}",
-    ]
-
-
-def reports_frame(count: int, *, verbose: bool) -> bool:
-    return verbose or count == 1 or count % 10 == 0
-
-
-def frame_line(frame_id: str, *, signals: int, things: int, action: Any) -> str:
-    return f"{frame_id}: signals={signals} things={things} action={action}"
-
-
 def stop_view(view_server: RuntimeViewServer | None) -> dict[str, Any]:
     """Stop the run's view and return its last published record."""
 
@@ -300,42 +262,3 @@ def finish_run(
         state["readiness"] = stopped_readiness()
     state["completed_at_ms"] = state["updated_at_ms"] = timestamp_ms()
     state["published_view"] = stop_view(view_server)
-
-
-def run_result(state: dict[str, Any], *, state_path: Path) -> tuple[int, str]:
-    """The exit code and closing lines for a finished run."""
-
-    host_name = state["host_name"]
-    status = state["status"]
-    if status == "error":
-        return 2, "\n".join(
-            [
-                f"The run on host {host_name} failed.",
-                f"Reason: {state['error']}",
-                f"State: {display_path(state_path)}",
-            ]
-        )
-    if status == "completed":
-        dropped = state.get("frames_dropped")
-        dropped = "unavailable" if dropped is None else dropped
-        return 0, "\n".join(
-            [
-                f"Run completed on host {host_name}.",
-                f"Frames received: {state.get('frames_received', 0)}",
-                f"Frames dropped before decision: {dropped}",
-                f"Decisions completed: {state['processed_count']}",
-                f"Control source: {state['control_source']}",
-                f"Action policy: {state['action_policy']}",
-                f"Recording: {'on' if state['recording'] else 'off'}",
-                *([f"Decisions recorded: {state['recorded_count']}"] if state["recording"] else []),
-                f"State: {display_path(state_path)}",
-                f"Latest perception: {state['latest']['perception_text']}",
-            ]
-        )
-    code = 130 if state.get("stop_reason") == "keyboard_interrupt" else 0
-    return code, "\n".join(
-        [
-            f"Run stopped on host {host_name}.",
-            f"State: {display_path(state_path)}",
-        ]
-    )

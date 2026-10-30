@@ -2,8 +2,9 @@
 
 Execution belongs to the host at ``base_url`` (a PiCar's Donkey service or a
 local Chase host); both serve ``autonomy.runtime.routes``. This module starts
-the session, then persists and displays its publications in the run record
-and terminal lines (``store``) and the Mac-side runtime view.
+the session, persists its publications in the run record (``store``), and
+reports each change through the caller's transcript. The Mac-side runtime
+view stays here because the monitor publishes it.
 """
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
 
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.recording import write_recorded_frame
@@ -22,10 +23,11 @@ from ...shared.paths import display_path
 from ...frontend.perception_view import perception_view_ready
 from ..publications.decision_publication import perception_text_from_publication, publication_to_frame_record
 from ..publications.host_publications import fetch_observation_sample, TransactionCache
+from ...shared.timestamps import timestamp_ms
+from .models import RunTranscript
 from .store import (
-    control_source, finish_run, frame_line, frame_readiness,
-    new_run_state, record_host_status, reports_frame, run_result, startup_lines,
-    timestamp_ms,
+    control_source, finish_run, frame_readiness,
+    new_run_state, record_host_status,
 )
 from ...frontend.server import RuntimeViewServer
 from ..views.runtime_view import runtime_view_server
@@ -148,7 +150,7 @@ def _join_decision_copy(copier: threading.Thread | None, stop: threading.Event) 
 def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                             selections: dict[str, dict[str, Any]], decision: dict[str, Any],
                             configuration: RunConfiguration, timeout_s: float,
-                            record: bool, verbose: bool, output: TextIO | None) -> tuple[int, str]:
+                            record: bool, verbose: bool, transcript: RunTranscript) -> tuple[int, str]:
     client = RuntimeClient(base_url, timeout_s=timeout_s)
     automation_dir.mkdir(parents=True, exist_ok=True)
     state_path = automation_dir / "state.json"
@@ -198,9 +200,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
             run_dir=display_path(run_dir) if run_dir is not None else None,
         )
         write_json_atomically(state_path, state)
-        for line in startup_lines(state):
-            if output is not None:
-                print(line, file=output, flush=True)
+        transcript.startup(state)
         worker = threading.Thread(
             target=_copy_latest_decision,
             args=(decision_view, server, stop_copy, copied),
@@ -287,10 +287,11 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                 }
                 last_capture = capture
                 frames_seen += 1
-                if output is not None and reports_frame(frames_seen, verbose=verbose):
-                    action = (frame.get("control") or {}).get("reason")
-                    line = frame_line(frame_id, signals=signals, things=things, action=action)
-                    print(line, file=output, flush=True)
+                action = (frame.get("control") or {}).get("reason")
+                transcript.frame(
+                    frame_id, signals=signals, things=things, action=action,
+                    count=frames_seen, verbose=verbose,
+                )
             # One batch keeps the export near the capture rate. The stop path
             # drains whatever remains, and the decision copy does not wait here.
             if run_dir is not None:
@@ -335,7 +336,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
             finish_run(state, server, status="completed" if reason == "completed" else "stopped",
                        stop_reason=reason)
     write_json_atomically(state_path, state)
-    return run_result(state, state_path=state_path)
+    return transcript.result(state, state_path=display_path(state_path))
 
 
 def _sync_recording(client: RuntimeClient, state: dict[str, Any], *,

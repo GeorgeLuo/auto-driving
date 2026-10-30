@@ -7,6 +7,7 @@ from contextlib import ExitStack
 from pathlib import Path
 from unittest.mock import patch
 
+from cli.automa_cli.hosts.runs.render import RunOutput
 from cli.automa_cli.hosts.runs.service import run_host_automation
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
 from cli.automa_cli.releases.paths import controller_bundle_paths
@@ -71,6 +72,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
                     stage_activation(bundle, before_run, host_name=HOST_NAME)
                 result = run_host_automation(
                     host_name=HOST_NAME, num_decisions=4, take_control=False,
+                    transcript=RunOutput(),
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             state = json.loads((Path(bundle["runtime_dir"]) / "automation" / "state.json").read_text())

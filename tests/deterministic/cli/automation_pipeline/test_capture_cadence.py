@@ -8,6 +8,7 @@ import time
 import unittest
 from pathlib import Path
 
+from cli.automa_cli.hosts.runs.render import RunOutput
 from cli.automa_cli.hosts.runs.service import run_host_automation
 from cli.automa_cli.releases.paths import controller_bundle_paths
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
@@ -26,7 +27,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
         with staged_runners(perception=perception), chase_runtime(runtime_root, car=car):
             result = run_host_automation(
                 host_name=HOST_NAME, num_decisions=num_decisions,
-                take_control=False, record=True, verbose=True, output=output,
+                take_control=False, record=True, verbose=True, transcript=RunOutput(output),
             )
         state = json.loads((Path(bundle["runtime_dir"]) / "automation" / "state.json").read_text())
         return result, state, output.getvalue()

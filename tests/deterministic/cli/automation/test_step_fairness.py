@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import json
-import io
 import os
 import tempfile
 import unittest
@@ -16,7 +15,7 @@ from unittest import mock
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import builtin_activation
 from cli.automa_cli.hosts.runs.service import run_host_automation
-from cli.automa_cli.hosts.runs.automation_status import collect_automation_status
+from cli.automa_cli.hosts.runs.status import collect_automation_status
 from cli.automa_cli.hosts.runs.store import step_status
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.runtime_fixtures import stage_step, write_json
@@ -41,7 +40,7 @@ class StepFairnessTests(unittest.TestCase):
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
             with mock.patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", root), mock.patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", root), mock.patch(
-                "cli.automa_cli.hosts.runs.automation_status.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
+                "cli.automa_cli.hosts.runs.status.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
             ):
                 for step in staged:
                     stage_step(root, VEHICLE, step)
@@ -68,7 +67,7 @@ class StepFairnessTests(unittest.TestCase):
                 "cli.automa_cli.hosts.runs.service.monitor_runtime", return_value=(0, "done")
             ) as monitor:
                 result = run_host_automation(
-                    host_name=VEHICLE, take_control=False, num_decisions=1, output=io.StringIO()
+                    host_name=VEHICLE, take_control=False, num_decisions=1,
                 )
                 self.assertEqual((result.exit_code, result.message), (0, "done"))
                 selections = monitor.call_args.kwargs["selections"]

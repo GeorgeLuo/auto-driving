@@ -8,7 +8,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
 from urllib.parse import urlparse
 
 from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
@@ -29,7 +29,7 @@ from ..staging import (
     automation_dir as host_automation_dir,
     staged_host,
 )
-from .models import RECOGNIZED_WORKER_MODULES, WORKER_MODULE
+from .models import RECOGNIZED_WORKER_MODULES, RunTranscript, WORKER_MODULE
 from .monitor import monitor_runtime
 from ..step_activations import (
     bundle_activation_problems,
@@ -134,7 +134,7 @@ def run_host_automation(
     take_control: bool = True,
     record: bool = False,
     verbose: bool = False,
-    output: TextIO | None = None,
+    transcript: RunTranscript | None = None,
 ) -> CommandResult:
     try:
         if host_name is not None:
@@ -170,7 +170,7 @@ def run_host_automation(
         selections=selections,
         decision=decision_record(identity),
         configuration=configuration, timeout_s=timeout_s, record=record,
-        verbose=verbose, output=output,
+        verbose=verbose, transcript=transcript,
     )
     return CommandResult(code, message)
 

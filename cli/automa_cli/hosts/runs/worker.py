@@ -1,8 +1,9 @@
 """Background entry point for ``hosts run``.
 
-The process runs the host session in the foreground and records a failure
-that happens before the run has its own state. ``service`` launches this
-module; stop recognizes this module and the two entry points it replaced.
+The process runs the host session and records a failure that happens before
+the run has its own state. It chooses the transcript for its own standard
+output and passes that to ``service``. Stop recognizes this module and the
+two entry points it replaced.
 """
 
 from __future__ import annotations
@@ -11,6 +12,7 @@ import argparse
 import sys
 
 from .models import WORKER_MODULE
+from .render import RunOutput
 from .service import record_host_automation_terminal_result, run_host_automation
 
 
@@ -37,7 +39,7 @@ def _run_worker(argv: list[str]) -> int:
         take_control=not args.observe_only,
         record=args.record,
         verbose=args.verbose,
-        output=sys.stdout,
+        transcript=RunOutput(sys.stdout),
     )
     if result.message:
         print(result.message)

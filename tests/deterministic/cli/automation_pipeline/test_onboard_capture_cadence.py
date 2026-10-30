@@ -16,6 +16,7 @@ from autonomy.runtime.frame_loop import DECISION_TRANSACTION_PATH
 from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs import monitor
+from cli.automa_cli.hosts.runs.render import RunOutput
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 
@@ -168,7 +169,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                         selections={"perception": {"preset": "gated", "plugins": [], "activation": "perception/active.json"}},
                         decision={"generation_id": "test", "steps": {}, "published": False},
                         configuration=RunConfiguration(mode="observe_only", num_decisions=3),
-                        timeout_s=0.2, record=True, verbose=True, output=output,
+                        timeout_s=0.2, record=True, verbose=True, transcript=RunOutput(output),
                     )
                 self.assertEqual(code, 0, message)
                 self.assertLess(time.monotonic() - started, 2.0, "monitor waited after the worker was free")

@@ -12,6 +12,7 @@ from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs import monitor
+from cli.automa_cli.hosts.runs.render import RunOutput
 from cli.automa_cli.hosts.runs.store import control_application, control_source
 
 
@@ -109,6 +110,53 @@ def _publication(index: int) -> dict:
 
 
 class RuntimeMonitorTests(unittest.TestCase):
+    def test_run_transcript_formats_a_supplied_snapshot(self) -> None:
+        state = {
+            "host_name": "car",
+            "status": "completed",
+            "frames_received": 3,
+            "frames_dropped": 1,
+            "processed_count": 2,
+            "control_source": "runtime_host",
+            "action_policy": "autonomy",
+            "recording": False,
+            "latest": {"perception_text": "latest_perception.txt"},
+            "selections": {
+                "perception": {"plugins": ["lanes"], "preset": "lane-preset"},
+                "memory": {"plugins": [], "preset": None},
+            },
+            "published_view": {"available": True, "url": "http://127.0.0.1:9/"},
+            "decision": {"generation_id": "gen-1"},
+            "num_decisions": 2,
+            "run_dir": None,
+        }
+        output = io.StringIO()
+        transcript = RunOutput(output)
+        transcript.startup(state)
+        transcript.frame("frame-1", signals=1, things=0, action="steer-left", count=1, verbose=False)
+        transcript.frame("frame-2", signals=1, things=0, action="hold", count=2, verbose=False)
+        code, message = transcript.result(state, state_path="automation/state.json")
+
+        self.assertEqual(
+            output.getvalue().splitlines(),
+            [
+                "Run started on host car.",
+                "Perception: lane-preset (lanes)",
+                "Memory: (no plugins)",
+                "Recording: off; latest frame and perception are overwritten each iteration",
+                "Control source: runtime host",
+                "Action policy: autonomy",
+                "Decision generation: gen-1",
+                "Runtime view: http://127.0.0.1:9/",
+                "Decisions: 2",
+                "frame-1: signals=1 things=0 action=steer-left",
+            ],
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("Run completed on host car.", message)
+        self.assertIn("State: automation/state.json", message)
+        self.assertIn("Frames received: 3", message)
+
     def _monitor(self, automation_dir: Path, *, sessions: list[dict], hosts: list[dict]):
         jpeg = io.BytesIO()
         Image.new("RGB", (4, 4)).save(jpeg, format="JPEG")
@@ -135,7 +183,7 @@ class RuntimeMonitorTests(unittest.TestCase):
                 timeout_s=1.0,
                 record=False,
                 verbose=False,
-                output=output,
+                transcript=RunOutput(output),
             )
         state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
         return client, code, message, output.getvalue().splitlines(), state

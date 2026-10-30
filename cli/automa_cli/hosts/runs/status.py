@@ -1,44 +1,38 @@
-"""``automa hosts status``: each host's state, and its deployment, steps, run and view.
+"""Collect each host's state, and its deployment, steps, run and view.
 
 A worker's state and process records say how its run went; the host's
 ``/host/status`` reports the cycles it is running now. Each step's staged
-selection is reported beside the one its host applied and how its runs went,
-so either can be missing or invalid without hiding the other.
+selection is collected beside the one its host applied and how its runs went,
+so either can be missing or invalid without hiding the other. ``render``
+turns that data into text or JSON.
 """
 
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 from typing import Any
 
-from ...shared.command_result import CommandResult
 from ...shared.io.json_files import read_json
 from ...shared.paths import display_path, safe_path_part
 from ...shared.io.processes import pid_alive
 from .. import staging
 from ...releases.errors import RuntimeHostError
-from ...releases.store import release_manifest, update_command
+from ...releases.store import release_manifest
 from ...releases.paths import controller_bundle_paths
 from ..discovery import running_base_url
 from ..publications.host_publications import host_state
-from ..host_status import host_block, read_hosts
+from ..host_status import read_hosts
 from ..step_activations import (
     bundle_activation_problems,
     decision_identity,
-    format_activation_problems,
-    selection_label,
     staged_selections,
 )
 from ...shared.timestamps import timestamp_ms
 from ..views.view_discovery import discover_runtime_view
 from ...frontend.perception_view import get_perception_view_status
 from ...vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
-
-
-MAX_STATUS_REASON_CHARS = 240
-
+from .models import status_reason
 
 
 def _host_runtime_status(
@@ -130,7 +124,6 @@ def _host_runtime_status(
     }
 
 
-
 def _decision_summary(identity: Any) -> dict[str, Any]:
     """Whether a decision identity is deployed, and its generation."""
 
@@ -139,26 +132,26 @@ def _decision_summary(identity: Any) -> dict[str, Any]:
     return {"deployed": True, "generation_id": identity.get("generation_id")}
 
 
-
-def get_hosts_status(
+def hosts_status(
     *,
     host_name: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    long: bool = False,
-    json_output: bool = False,
-) -> CommandResult:
-    """Each host's state and attachment; ``long`` adds its deployment, release, steps, run and view.
+    include_runs: bool = False,
+) -> tuple[int, list[dict[str, Any]]]:
+    """Each host's state and attachment.
 
-    The JSON carries every host's run. With ``host_name``, exits 1 when that host
-    is missing, stopped, not answering, or reports an error. Without it, no
-    host's state changes the exit.
+    ``include_runs`` adds its deployment, release, steps, run and view. JSON
+    status includes that data, and plain text includes it with ``--long``.
+    With ``host_name``, the exit is 1 when that host is missing, stopped,
+    not answering, or reports an error. Without it, no host's state changes
+    the exit.
     """
 
     reads = read_hosts(host_name=host_name, timeout_s=timeout_s)
     hosts = [host for host, _ in reads]
     failed = {"not found", "not running", "not answering", "error"}
     exit_code = 1 if host_name is not None and any(host["state"] in failed for host in hosts) else 0
-    if long or json_output:
+    if include_runs:
         runs = {
             run["host_name"]: run
             for run in collect_automation_status(
@@ -168,11 +161,7 @@ def get_hosts_status(
         }
         for host in hosts:
             host["run"] = runs.get(host["host_name"])
-    if json_output:
-        payload = {"schema": "automa_hosts_status", "host_name": host_name, "hosts": hosts}
-        return CommandResult(exit_code, json.dumps(payload, indent=2, sort_keys=True))
-    return CommandResult(exit_code, _format_hosts_status(hosts, long=long))
-
+    return exit_code, hosts
 
 
 def collect_automation_status(
@@ -458,137 +447,6 @@ def _release_summary(manifest: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-
-def _format_hosts_status(hosts: list[dict[str, Any]], *, long: bool) -> str:
-    if not hosts:
-        return "No hosts found"
-    return "\n\n".join(
-        "\n".join([host_block(host), *(_run_lines(host["run"]) if long else [])]) for host in hosts
-    )
-
-
-
-def _run_lines(item: dict[str, Any] | None) -> list[str]:
-    """A host's deployment, release, steps, worker, run and view, under its host block."""
-
-    if not isinstance(item, dict):
-        return []
-    decision = item.get("decision") if isinstance(item.get("decision"), dict) else {}
-    process = item.get("process") if isinstance(item.get("process"), dict) else {}
-    state = item.get("state") if isinstance(item.get("state"), dict) else {}
-    published_view = item.get("published_view") if isinstance(item.get("published_view"), dict) else {}
-    last_frame = state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
-    lines = [
-        f"  deployment: {'deployed' if item.get('deployed') else 'not deployed'}",
-        f"  release: {_release_label(item.get('release'), item.get('host_name'))}",
-        *_selection_lines(item),
-        f"  decision: {_decision_label(decision)}",
-        f"  worker: {_worker_label(process, state)}",
-        f"  run: {_run_label(state)}",
-        f"  latest: {_latest_status_label(state, last_frame)}",
-        f"  view: {_published_view_label(published_view)}",
-        f"  state: {state.get('state_record', 'unknown')}",
-        f"  log: {_status_log_label(process)}",
-    ]
-    arming = state.get("arming")
-    if isinstance(arming, dict) and arming.get("request_id"):
-        lines.append(f"  arming: {arming['status']} (request {arming['request_id']})")
-        if arming.get("error"):
-            lines.append(f"  problem: {arming['error']}")
-    problems = item.get("activation_problems")
-    if isinstance(problems, list) and problems:
-        lines.extend(f"  {line}" for line in format_activation_problems(problems).splitlines())
-    reason = process.get("reason")
-    if isinstance(reason, str) and reason:
-        lines.append(f"  problem: {reason}")
-    return lines
-
-
-
-def _release_label(release: Any, host_name: Any) -> str:
-    if not isinstance(release, dict):
-        return f"none (run `{update_command(str(host_name))}` to package one)"
-    fields = {"archive": release.get("archive"), "manifest": release.get("manifest")}
-    return "  ".join([
-        str(release.get("tree_sha256") or "unknown")[:12],
-        *(f"{name}={value}" for name, value in fields.items() if value),
-    ])
-
-
-
-def _selection_lines(item: dict[str, Any]) -> list[str]:
-    """Every step's staged selection and its source, over the selection its host applied."""
-
-    selections = item.get("steps")
-    if not isinstance(selections, dict):
-        return []
-    applied = item.get("applied_steps") if isinstance(item.get("applied_steps"), dict) else {}
-    lines = [
-        "  steps: staged, and applied by the running host"
-        if applied.get("available")
-        else f"  steps: staged; applied unavailable ({applied.get('reason') or 'unknown'})"
-    ]
-    for step, selection in selections.items():
-        lines.append(f"    {step}: {_staged_label(selection)}")
-        if isinstance(selection.get("applied"), dict):
-            lines.append(f"      applied: {_applied_label(selection, selection['applied'])}")
-    return lines
-
-
-
-def _staged_label(selection: dict[str, Any]) -> str:
-    source = selection.get("source")
-    if source == "invalid":
-        return "unreadable  source=invalid"
-    if source == "staged":
-        source = f"staged ({'saved' if selection.get('saved') else 'default'})"
-    return f"{selection_label(selection.get('preset'), selection.get('plugins') or [])}  source={source}"
-
-
-
-def _applied_label(selection: dict[str, Any], applied: dict[str, Any]) -> str:
-    """What the host applied beside the staged selection; restaged configs wait for a restart."""
-
-    if applied.get("error"):
-        return f"unavailable ({_status_reason(applied['error'], fallback='its report failed')})"
-    configs, staged = applied.get("plugin_configs"), selection.get("plugin_configs") or {}
-    if selection.get("source") == "invalid" or (
-        (applied.get("preset"), applied.get("plugins")) != (selection.get("preset"), selection.get("plugins"))
-    ):
-        label = selection_label(applied.get("preset"), applied.get("plugins") or [])
-    elif not isinstance(configs, dict):
-        label = "staged plugins, configs not reported"
-    elif configs != staged:
-        differ = [plugin for plugin in dict.fromkeys([*configs, *staged]) if configs.get(plugin) != staged.get(plugin)]
-        label = f"staged plugins, configs differ ({', '.join(differ)})"
-    else:
-        label = "as staged"
-    last_error = applied.get("last_error")
-    fields = {
-        "runs": applied.get("run_count"),
-        "failures": applied.get("failure_count"),
-        "last_error": _status_reason(last_error, fallback="") if last_error else None,
-    }
-    return "  ".join([label, *(f"{name}={value}" for name, value in fields.items() if value is not None)])
-
-
-
-def _decision_label(decision: dict[str, Any]) -> str:
-    if not decision.get("deployed"):
-        return f"not deployed; expected {decision.get('activation', 'unknown')}"
-    return str(decision.get("generation_id") or "no generation")
-
-
-
-def _worker_label(process: dict[str, Any], state: dict[str, Any]) -> str:
-    pid = process.get("pid")
-    if pid is None:
-        pid = state.get("pid")
-    pid_text = str(pid) if isinstance(pid, int) else "none"
-    return f"{process.get('status', 'unknown')}  pid={pid_text} ({process.get('pid_state', 'unknown')})"
-
-
-
 def _worker_status(*, pid: Any, pid_alive: bool, run_status: Any) -> str:
     if run_status == "error":
         return "error"
@@ -603,7 +461,6 @@ def _worker_status(*, pid: Any, pid_alive: bool, run_status: Any) -> str:
     return "not_started"
 
 
-
 def _worker_reason(
     *,
     worker_status: str,
@@ -614,78 +471,11 @@ def _worker_reason(
         pid_text = str(pid) if isinstance(pid, int) else "none"
         return f"recorded worker PID {pid_text} is not running"
     if worker_status == "error":
-        return _status_reason(
+        return status_reason(
             state.get("error"),
             fallback="automation worker reported an error",
         )
     return None
-
-
-
-def _status_reason(value: Any, *, fallback: str) -> str:
-    lines = (
-        [line.strip() for line in value.splitlines() if line.strip()]
-        if isinstance(value, str)
-        else []
-    )
-    reason = lines[0] if lines else fallback
-    if len(reason) <= MAX_STATUS_REASON_CHARS:
-        return reason
-    return f"{reason[:MAX_STATUS_REASON_CHARS]}..."
-
-
-
-def _run_label(state: dict[str, Any]) -> str:
-    if not state.get("run_id"):
-        return "none"
-    num_decisions = state.get("num_decisions")
-    fields = {
-        "id": state["run_id"],
-        "frames_received": state.get("frames_received") or 0,
-        "frames_dropped": state.get("frames_dropped"),
-        "decisions": f"{state.get('processed_count') or 0}/{'unbounded' if num_decisions is None else num_decisions}",
-        "recording": state.get("recording"),
-        "control": state.get("control_source"),
-        "action": state.get("action_policy"),
-    }
-    return "  ".join(f"{name}={value}" for name, value in fields.items() if value is not None)
-
-
-
-def _latest_status_label(state: dict[str, Any], last_frame: dict[str, Any]) -> str:
-    if not last_frame:
-        return "none"
-    fields = {
-        "frame": last_frame.get("frame_id"),
-        "signals": last_frame.get("signals"),
-        "things": last_frame.get("things"),
-        "perception_ms": last_frame.get("perception_duration_ms"),
-        "cycle_ms": last_frame.get("cycle_duration_ms"),
-        "age_ms": state.get("latest_perception_age_ms"),
-    }
-    return "  ".join(f"{name}={value}" for name, value in fields.items() if value is not None)
-
-
-
-def _published_view_label(published_view: dict[str, Any]) -> str:
-    if published_view.get("available") and published_view.get("url"):
-        label = str(published_view["url"])
-        lag = published_view.get("capture_lag")
-        if isinstance(lag, int) and lag > 0:
-            lag_ms = published_view.get("capture_lag_ms")
-            if isinstance(lag_ms, int):
-                return f"{label}  capture_lag={lag} ({lag_ms}ms)"
-            return f"{label}  capture_lag={lag}"
-        return label
-    return f"unavailable ({published_view.get('reason', 'automation view is not running')})"
-
-
-
-def _status_log_label(process: dict[str, Any]) -> str:
-    if not process.get("log_to_disk"):
-        return "disabled"
-    return process.get("log_path") or "enabled"
-
 
 
 def _int_or_none(value: Any) -> int | None:

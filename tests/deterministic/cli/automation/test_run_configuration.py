@@ -104,7 +104,7 @@ class RunConfigurationTests(unittest.TestCase):
             for count, flags in ((["--num-decisions", "3"], []), (["--num-decisions", "3"], ["--unbounded"]), ([], [])):
                 with (
                     self.subTest(verb=verb, count=count, flags=flags),
-                    patch(f"cli.automa_cli.hosts.commands.{target}", return_value=CommandResult(0, "ok")) as run,
+                    patch(f"cli.automa_cli.hosts.runs.commands.{target}", return_value=CommandResult(0, "ok")) as run,
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
                     code = main(["hosts", verb, "--name", "picar-test", *count, *flags])
@@ -124,7 +124,7 @@ class RunConfigurationTests(unittest.TestCase):
 
     def test_cli_dispatches_host_url_without_an_id(self):
         with (
-            patch("cli.automa_cli.hosts.commands.start_host_automation_background",
+            patch("cli.automa_cli.hosts.runs.commands.start_host_automation_background",
                   return_value=CommandResult(0, "ok")) as run,
             contextlib.redirect_stdout(io.StringIO()),
         ):

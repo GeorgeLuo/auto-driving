@@ -252,7 +252,7 @@
             "path": "cli/automa_cli/shared/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "Code several automa commands share and none owns: command results, repository paths, controller releases, HTTP JSON requests, the --timeout-s check, a step's --preset/--plugin selection, and the step runs, reports and formatting that hosts, plugins and workbench read."
+            "responsibility": "Code several automa commands share and none owns: command results, repository paths, controller releases, I/O helpers, argument checks, reports, and offline replay sources, frame execution and recorded selections."
           },
           {
             "path": "cli/automa_cli/vehicles/",
@@ -270,7 +270,7 @@
             "path": "cli/automa_cli/workbench/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa workbench command, its replay runner, image sources, frame execution, plugin selections and presentation. The runtime viewer and plugins inspect share its replay code; it serves through the viewer automa passes in."
+            "responsibility": "The automa workbench command, its replay runner, plugin selections and presentation. It uses shared offline replay code and serves through the viewer automa passes in."
           },
           {
             "path": "cli/automa_cli/plugins/",

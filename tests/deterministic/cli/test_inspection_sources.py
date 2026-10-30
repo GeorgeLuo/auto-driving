@@ -9,7 +9,7 @@ from pathlib import Path
 from PIL import Image
 
 from cli.automa_cli.workbench.runner import ImageReplayRunner
-from cli.automa_cli.workbench.source import normalize_image_directory
+from cli.automa_cli.shared.replay.source import normalize_image_directory
 from tests.shared.cli.invoke import invoke_automa
 
 

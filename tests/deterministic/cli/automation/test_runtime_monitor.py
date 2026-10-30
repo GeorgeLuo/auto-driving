@@ -11,8 +11,8 @@ from unittest import mock
 from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.hosts import runtime_monitor
-from cli.automa_cli.hosts.run_record import control_application, control_source
+from cli.automa_cli.hosts.runs import runtime_monitor
+from cli.automa_cli.hosts.runs.run_record import control_application, control_source
 
 
 HOST_NAME = "picar-test"

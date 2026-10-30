@@ -7,7 +7,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from cli.automa_cli.shared.command_result import CommandResult
-from cli.automa_cli.hosts import deploy, picar_deploy, runtime_hosts
+from cli.automa_cli.hosts.deployment import deploy, picar_deploy
+from cli.automa_cli.hosts import runtime_hosts
 from cli.automa_cli.vehicles.probes import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.vehicle_fixtures import probe_returning
@@ -120,7 +121,7 @@ class HostLifecycleTests(unittest.TestCase):
     def test_delete_aborts_when_an_active_run_cannot_stop(self):
         write_host_fixture(self.root, "car", provider="picar")
         with patch.object(deploy, "host_state", return_value={"state": "running"}), \
-             patch("cli.automa_cli.hosts.deploy.stop_host_automation",
+             patch("cli.automa_cli.hosts.deployment.deploy.stop_host_automation",
                    return_value=CommandResult(2, "could not release control")), \
              patch.object(deploy, "run_step") as remote:
             result = deploy.delete_host(host_name="car")

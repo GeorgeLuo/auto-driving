@@ -95,7 +95,7 @@ class HostStatusTests(unittest.TestCase):
         self.enterContext(_attached(self.server, "chase-sim-chaser", host.base_url))
 
         # The run lines use the host's one /host/status read.
-        with mock.patch("cli.automa_cli.hosts.automation_status.host_state", side_effect=AssertionError("read twice")):
+        with mock.patch("cli.automa_cli.hosts.runs.automation_status.host_state", side_effect=AssertionError("read twice")):
             human = self.status()
             long = self.status("--long")
             machine = json.loads(self.status("--json").stdout)

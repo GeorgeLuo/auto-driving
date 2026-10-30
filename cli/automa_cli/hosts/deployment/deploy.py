@@ -7,12 +7,12 @@ from typing import Any, TextIO
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
 
-from ..shared.command_result import CommandResult
-from .automation_stop import stop_host_automation
-from .bundles import controller_bundle_source_summary, sync_controller_bundle
-from ..shared.paths import RUNTIME_ROOT, display_path, safe_path_part
-from ..shared.io.processes import pid_alive
-from .step_activations import (
+from ...shared.command_result import CommandResult
+from ..runs.automation_stop import stop_host_automation
+from ..bundles import controller_bundle_source_summary, sync_controller_bundle
+from ...shared.paths import RUNTIME_ROOT, display_path, safe_path_part
+from ...shared.io.processes import pid_alive
+from ..step_activations import (
     decision_generation_id,
     ensure_step_activations,
     host_bundle,
@@ -22,10 +22,10 @@ from .step_activations import (
     startup_activations,
     write_host_configuration,
 )
-from .publications.host_publications import host_state
-from .host_status import host_block
-from ..shared.controller_releases import RuntimeHostError, release_code_dir
-from .runtime_hosts import (
+from ..publications.host_publications import host_state
+from ..host_status import host_block
+from ...shared.controller_releases import RuntimeHostError, release_code_dir
+from ..runtime_hosts import (
     automation_dir,
     ensure_chase_host,
     host_record,
@@ -33,8 +33,8 @@ from .runtime_hosts import (
     staged_host,
     stop_chase_host,
 )
-from ..vehicles.probes import Candidate
-from ..vehicles.providers import PROVIDERS
+from ...vehicles.probes import Candidate
+from ...vehicles.providers import PROVIDERS
 from .picar_deploy import (
     DEFAULT_PI_HOME,
     DONKEY_READY_TIMEOUT_S,

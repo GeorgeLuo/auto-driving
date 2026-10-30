@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 from autonomy.decision_cycle.activation import STEPS
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
 from cli.automa_cli.shared.controller_releases import controller_bundle_paths
-from cli.automa_cli.hosts.picar_deploy import PicarTarget, _verify_picar_autonomy_runtime
+from cli.automa_cli.hosts.deployment.picar_deploy import PicarTarget, _verify_picar_autonomy_runtime
 from cli.automa_cli.hosts.step_activations import (
     ensure_step_activations,
     replace_metadata,

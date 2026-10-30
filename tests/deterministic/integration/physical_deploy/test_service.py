@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.hosts.picar_deploy import (
+from cli.automa_cli.hosts.deployment.picar_deploy import (
     DONKEY_SERVICE_NAME,
     _drive_args_token,
     donkey_service_control_command,

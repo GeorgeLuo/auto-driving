@@ -18,9 +18,9 @@ from urllib.parse import urlparse
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
 
-from ..shared.io import http_json
-from ..shared.command_result import CommandResult
-from .bundles import (
+from ...shared.io import http_json
+from ...shared.command_result import CommandResult
+from ..bundles import (
     controller_bundle_source_summary,
     release_activation_summary,
     sync_controller_bundle,
@@ -30,8 +30,8 @@ from .donkeycar_vendor import (
     ensure_donkeycar_vendor,
     load_donkeycar_vendor_manifest,
 )
-from ..shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
-from .step_activations import (
+from ...shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
+from ..step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     bundle_activation_path,
     decision_generation_id,
@@ -40,7 +40,7 @@ from .step_activations import (
     step_lines,
     startup_activations,
 )
-from ..shared.controller_releases import controller_bundle_paths
+from ...shared.controller_releases import controller_bundle_paths
 
 
 DEPLOY_DIR = ROOT / "deploy" / "targets" / "donkeycar"

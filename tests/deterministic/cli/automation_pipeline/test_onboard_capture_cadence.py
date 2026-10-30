@@ -15,7 +15,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.frame_loop import DECISION_TRANSACTION_PATH
 from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.hosts import runtime_monitor
+from cli.automa_cli.hosts.runs import runtime_monitor
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 

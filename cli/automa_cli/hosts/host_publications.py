@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-import http.client
 import json
 import urllib.error
 import urllib.request
@@ -30,6 +29,7 @@ from autonomy.runtime.routes import (
     TELEMETRY_LATEST_PATH,
     TELEMETRY_RECORDS_PATH,
 )
+from ..shared import http_json
 from .host_telemetry import HostTelemetryError
 
 
@@ -60,33 +60,8 @@ def _cached_transaction(cache: TransactionCache, read_at_ms: int | None = None) 
     return payload
 
 
-def _request(url: str, *, timeout_s: float,
-             headers: dict[str, str] | None = None) -> tuple[int, Any, bytes]:
-    """GET once and read the body; an HTTP error status is a response."""
-    target = urllib.request.Request(url, headers=headers) if headers else url
-    try:
-        try:
-            response = urllib.request.urlopen(target, timeout=max(0.1, float(timeout_s)))
-        except urllib.error.HTTPError as exc:
-            response = exc
-        with response:
-            return getattr(response, "status", 200), getattr(response, "headers", {}) or {}, response.read()
-    except urllib.error.URLError as exc:
-        raise ConnectionError(f"GET {url} failed: {exc.reason}") from exc
-    except TimeoutError as exc:
-        raise ConnectionError(f"GET {url} timed out after {timeout_s}s") from exc
-    except (OSError, http.client.HTTPException) as exc:
-        # A dropped or garbled reply escapes urlopen unwrapped.
-        raise ConnectionError(f"GET {url} failed: {exc}") from exc
-
-
 def _json_object(body: bytes, url: str, status_code: int) -> dict[str, Any]:
-    try:
-        payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ConnectionError(f"GET {url} returned non-JSON body") from exc
-    if not isinstance(payload, dict):
-        raise ConnectionError(f"GET {url} returned a non-object JSON payload")
+    payload = http_json.json_object(body, url, status_code)
     payload.setdefault("http_status", status_code)
     return payload
 
@@ -94,7 +69,7 @@ def _json_object(body: bytes, url: str, status_code: int) -> dict[str, Any]:
 def _get_json(base_url: str, path: str, *, timeout_s: float) -> dict[str, Any]:
     """Read a JSON object; an HTTP error's JSON body is the answer."""
     url = f"{base_url.rstrip('/')}{path}"
-    status_code, _headers, body = _request(url, timeout_s=timeout_s)
+    status_code, _headers, body = http_json.request(url, timeout_s=timeout_s)
     return _json_object(body, url, status_code)
 
 
@@ -108,7 +83,7 @@ def _get_transaction(base_url: str, path: str, *, timeout_s: float,
     url = f"{base_url.rstrip('/')}{path}"
     headers = {"If-None-Match": cache.etag} if cache and cache.etag else None
     try:
-        status_code, response_headers, body = _request(url, timeout_s=timeout_s, headers=headers)
+        status_code, response_headers, body = http_json.request(url, timeout_s=timeout_s, headers=headers)
         if status_code == 304:
             if cache is None or cache.payload is None:
                 raise ConnectionError("Host returned 304 without a cached transaction")
@@ -154,7 +129,7 @@ def host_state(base_url: str, *, host_name: str | None = None, timeout_s: float)
     }
     url = f"{base_url.rstrip('/')}{STATUS_PATH}"
     try:
-        status_code, _headers, body = _request(url, timeout_s=timeout_s)
+        status_code, _headers, body = http_json.request(url, timeout_s=timeout_s)
     except ConnectionError as exc:
         return {**result, "error": _no_answer(exc, timeout_s)}
     no_host = f"{base_url} answers but reports no runtime host"

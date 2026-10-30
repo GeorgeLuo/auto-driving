@@ -94,7 +94,7 @@ class ObservationSampleTests(unittest.TestCase):
             cache = publications.TransactionCache("old", {"publication": {}}, (b"old", "image/jpeg"))
             with self.subTest(fetch=fetch.__name__), patch.object(
                     publications.urllib.request, "urlopen", return_value=_Stalled(_transaction())):
-                with self.assertRaisesRegex(ConnectionError, "timed out"):
+                with self.assertRaisesRegex(ConnectionError, "did not answer within"):
                     fetch("http://host.invalid", cache=cache)
                 self.assertEqual((cache.etag, cache.payload, cache.image), (None, None, None))
 

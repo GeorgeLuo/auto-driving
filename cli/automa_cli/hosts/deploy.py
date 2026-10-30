@@ -11,13 +11,12 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO
-from urllib import error as urllib_error
-from urllib import request as urllib_request
 from urllib.parse import urlparse
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
 
+from ..shared import http_json
 from ..shared.command_result import CommandResult
 from .automation_stop import stop_host_automation
 from .bundles import (
@@ -1074,22 +1073,9 @@ def inspect_picar_autonomy_runtime(
 def _read_runtime_status(status_url: str, *, timeout_s: float) -> dict[str, Any]:
     """Read the status route, including the error body a 503 carries."""
     try:
-        with urllib_request.urlopen(status_url, timeout=timeout_s) as response:
-            body = response.read()
-    except urllib_error.HTTPError as exc:
-        with exc:
-            body = exc.read()
-        if not body:
-            raise RuntimeError(f"GET {status_url} failed: HTTP {exc.code}") from exc
-    except (OSError, urllib_error.URLError, ValueError) as exc:
-        raise RuntimeError(f"GET {status_url} failed: {exc}") from exc
-    try:
-        payload = json.loads(body.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise RuntimeError(f"GET {status_url} did not return JSON: {exc}") from exc
-    if not isinstance(payload, dict):
-        raise RuntimeError(f"{status_url} did not return a JSON object")
-    return payload
+        return http_json.request_json(status_url, timeout_s=timeout_s)[1]
+    except ConnectionError as exc:
+        raise RuntimeError(str(exc)) from exc
 
 
 def _wait_for_donkey_readiness(

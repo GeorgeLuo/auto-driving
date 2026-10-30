@@ -15,7 +15,7 @@ from urllib.error import HTTPError
 from urllib.request import urlopen
 
 from cli.automa_cli.hosts.host_publications import fetch_observation_sample
-from cli.automa_cli.hosts.viewer import ViewFeed
+from cli.automa_cli.hosts.view_feed import ViewFeed
 from cli.automa_cli.plugins.streaming import _read_publication
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import HOST_NAME
 from tests.shared.cli.invoke import invoke_automa
@@ -28,7 +28,7 @@ class LiveCommandsTests(LiveHostTestCase):
 
     def test_the_perception_view_stays_live_while_the_decision_is_unavailable(self) -> None:
         self.observe()
-        with patch("cli.automa_cli.hosts.viewer.runtime_view_dir", return_value=self.runtime_root / "view"):
+        with patch("cli.automa_cli.hosts.view_feed.runtime_view_dir", return_value=self.runtime_root / "view"):
             feed = ViewFeed(HOST_NAME, base_url=self.host.base_url, timeout_s=3.0)
         self.addCleanup(feed.stop)
         feed.decision.refresh = Mock(side_effect=ConnectionError("decision route down"))
@@ -40,7 +40,7 @@ class LiveCommandsTests(LiveHostTestCase):
             samples.append(pair)
             return pair
 
-        with patch("cli.automa_cli.hosts.viewer.fetch_observation_sample", side_effect=sample):
+        with patch("cli.automa_cli.hosts.view_feed.fetch_observation_sample", side_effect=sample):
             feed.publish(publication)
         self.assertIn("ConnectionError: decision route down", feed.decision_line())
         with urlopen(f"{feed.url.rstrip('/')}/api/latest", timeout=5) as response:

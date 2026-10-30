@@ -18,7 +18,7 @@ from ..hosts.decision import (
 )
 from ..hosts.host_publications import fetch_decision_publication
 from ..hosts.runtime_hosts import runtime_base_url
-from ..hosts.viewer import ViewFeed, view_page_lines
+from ..hosts.view_feed import ViewFeed, view_page_lines
 from .streaming import poll_stream, stream_preflight_outcome, unavailable_probe
 
 

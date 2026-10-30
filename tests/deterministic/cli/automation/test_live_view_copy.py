@@ -13,7 +13,7 @@ from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.shared.command_result import CommandResult
-from cli.automa_cli.hosts import runtime_monitor, viewer
+from cli.automa_cli.hosts import runtime_monitor, view_feed as viewer
 from cli.automa_cli.plugins import decision_steps
 from cli.automa_cli.hosts.runtime_view import runtime_view_server
 from tests.deterministic.cli.automation.test_runtime_monitor import (

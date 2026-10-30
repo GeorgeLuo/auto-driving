@@ -29,25 +29,15 @@ from .run_record import (
 )
 from ..frontend.server import RuntimeViewServer
 from .runtime_view import runtime_view_server
+from .view_polling import PERCEPTION_COPY_INTERVAL_S, pause_s
 from .decision_live import DecisionViewAdapter
 from ..shared.io.json_files import write_json_atomically
 from .plugin_catalog import PluginCatalogClient
 
 MONITOR_POLL_INTERVAL_S = 0.1
-PERCEPTION_COPY_INTERVAL_S = 1 / 30
 # The decision copy stays off the recording export. A batch can take longer
 # than the decision stays fresh, so the copy cannot wait for that read.
 DECISION_COPY_INTERVAL_S = 1 / 30
-MAX_POLL_GAP_S = 0.1
-
-
-def pause_s(started: float, interval_s: float) -> float:
-    """Target the interval on fast hosts; back off after slower passes.
-
-    A 30 ms pass waits 30 ms (~16.7 Hz); a 200 ms pass waits 100 ms.
-    """
-    elapsed = max(0.0, time.monotonic() - started)
-    return max(interval_s - elapsed, min(elapsed, MAX_POLL_GAP_S))
 
 
 def _frames_received(host: dict[str, Any]) -> int:

@@ -32,7 +32,7 @@ from ..hosts.decision_publication import (
 from ..hosts.host_publications import fetch_autonomy_status, fetch_observation_publication
 from ..hosts.runtime_hosts import runtime_base_url
 from ..hosts.step_activations import absent_step_error
-from ..hosts.viewer import ViewFeed, view_page_lines
+from ..hosts.view_feed import ViewFeed, view_page_lines
 from .stream_output import write_stream_frame
 
 PERCEPTION_LIVE_SCHEMA = "host_perception_live"

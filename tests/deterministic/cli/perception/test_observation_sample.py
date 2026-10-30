@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
 from autonomy.runtime.frame_loop import OBSERVATION_TRANSACTION_SCHEMA
-from cli.automa_cli.hosts import host_publications as publications, viewer
+from cli.automa_cli.hosts import host_publications as publications, view_feed as viewer
 
 
 class _Response(io.BytesIO):

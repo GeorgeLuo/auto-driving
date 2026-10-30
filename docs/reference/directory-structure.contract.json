@@ -276,7 +276,7 @@
             "path": "cli/automa_cli/vehicles/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa vehicles commands, and the vehicle listing and discovered-vehicle and simulator records that hosts and simulators share."
+            "responsibility": "The automa vehicles commands, vehicle listing, and discovered-vehicle records. Simulator records belong to simulators; vehicles status reads them."
           },
           {
             "path": "cli/automa_cli/hosts/",
@@ -300,7 +300,7 @@
             "path": "cli/automa_cli/simulators/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa simulators commands, and the headless simulators simulators create starts."
+            "responsibility": "The automa simulators commands. Creating and deleting a headless simulator, supervising its process, and storing its record are separate."
           }
         ]
       },

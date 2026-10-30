@@ -10,7 +10,8 @@ from ..shared.timeout_input import validate_timeout_input
 from .discovery import discover_vehicle, remove_vehicle
 from ..providers.catalog import PROVIDERS
 from ..providers.probes import DEFAULT_READINESS_TIMEOUT_S
-from .status import format_vehicles_status, get_vehicles_status
+from .render import format_vehicles_status
+from .status import get_vehicles_status
 
 
 def register_vehicles(subcommands: argparse._SubParsersAction) -> None:

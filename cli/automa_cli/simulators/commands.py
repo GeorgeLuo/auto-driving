@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import argparse
 
-from .created import create_simulator, delete_simulator
+from .service import create_simulator, delete_simulator
 
 
 def register_simulators(subcommands: argparse._SubParsersAction) -> None:

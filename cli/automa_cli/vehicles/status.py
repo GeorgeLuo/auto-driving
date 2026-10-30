@@ -1,4 +1,4 @@
-"""``automa vehicles status``: each listed vehicle's state."""
+"""``automa vehicles status``: collect each listed vehicle's state."""
 
 from __future__ import annotations
 
@@ -6,10 +6,10 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from ..shared.text import indented
-from .discovery import created_simulators, listed_vehicles
 from ..providers.catalog import CHASE_SIM, PROVIDERS
 from ..providers.probes import DEFAULT_READINESS_TIMEOUT_S, require_positive_timeout
+from ..simulators.store import created_simulators
+from .discovery import listed_vehicles
 
 
 def get_vehicles_status(*, timeout_s: float = DEFAULT_READINESS_TIMEOUT_S) -> dict[str, Any]:
@@ -41,23 +41,3 @@ def get_vehicles_status(*, timeout_s: float = DEFAULT_READINESS_TIMEOUT_S) -> di
         if candidate.provider == CHASE_SIM.name:
             vehicle["pid"] = created.get(candidate.url)
     return {"schema": "automa_vehicles_status", "vehicles": vehicles}
-
-
-def format_vehicles_status(status: dict[str, Any]) -> str:
-    return "\n\n".join(_vehicle_block(vehicle) for vehicle in status.get("vehicles") or [])
-
-
-def _vehicle_block(vehicle: dict[str, Any]) -> str:
-    heading = f"{PROVIDERS[vehicle['provider']].heading}  {vehicle['state']} at {vehicle['url']}"
-    # A PiCar reports only its state; a simulator also reports its frontend.
-    if "frontend" not in vehicle:
-        return heading + (f": {vehicle['error']}" if vehicle.get("error") else "")
-    lines = [heading]
-    if vehicle.get("frontend") == "connected" and vehicle.get("game"):
-        lines.append(f"  frontend connected, game {vehicle['game']}")
-    elif vehicle.get("frontend"):
-        lines.append(f"  frontend {vehicle['frontend']}")
-    lines += indented(vehicle.get("error"))
-    if vehicle.get("pid"):
-        lines.append(f"  created by simulators create, pid {vehicle['pid']}")
-    return "\n".join(lines)

@@ -5,7 +5,6 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.hosts.runs.render import RunOutput
 from cli.automa_cli.hosts.runs.service import run_host_automation
 from cli.automa_cli.releases.paths import controller_bundle_paths
 from cli.automa_cli.hosts.step_activations import replace_metadata
@@ -87,7 +86,7 @@ class AutomationMemorySelectionTests(unittest.TestCase):
             ):
                 result = run_host_automation(
                     host_name=HOST_NAME, num_decisions=5, take_control=False,
-                    transcript=RunOutput(),
+
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             self.assertEqual(

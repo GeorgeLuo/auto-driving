@@ -7,14 +7,13 @@ come from ``render``.
 """
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from autonomy.runtime.session import RunConfiguration
 from ...shared.paths import display_path
+from ...shared.io.json_files import read_json, write_json_atomically
 from ...shared.timestamps import timestamp_ms
-from ...frontend.server import RuntimeViewServer
 
 RUN_STATE_SCHEMA = "automa_automation_run_state"
 READINESS_SCHEMA = "automa_cli_readiness"
@@ -210,33 +209,9 @@ def record_host_status(state: dict[str, Any], host_status: dict[str, Any]) -> No
     state["selections"] = applied_selections(state["selections"], steps) or state["selections"]
 
 
-def stop_view(view_server: RuntimeViewServer | None) -> dict[str, Any]:
-    """Stop the run's view and return its last published record."""
-
-    if view_server is None:
-        return {
-            "status": "unavailable",
-            "available": False,
-            "url": None,
-            "reason": "perception view did not start",
-        }
-    try:
-        view_server.stop()
-    except OSError as exc:
-        return {
-            **view_server.describe(status="error"),
-            "reason": f"{type(exc).__name__}: {exc}",
-        }
-    try:
-        record = json.loads(view_server.record_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        record = None
-    return record if isinstance(record, dict) else view_server.describe(status="stopped")
-
-
 def finish_run(
     state: dict[str, Any],
-    view_server: RuntimeViewServer | None,
+    view_state: dict[str, Any],
     *,
     status: str,
     stop_reason: str | None = None,
@@ -245,7 +220,7 @@ def finish_run(
     error_details: dict[str, Any] | None = None,
     blocking_layer: str = "automation_worker",
 ) -> None:
-    """Close the run's view and record how the run ended."""
+    """Record how the run ended after its viewer has closed."""
 
     if status == "completed" and state["recording"] and state["recorded_count"] != state["processed_count"]:
         status, error = "error", "Recording count does not match completed decisions"
@@ -261,4 +236,33 @@ def finish_run(
     else:
         state["readiness"] = stopped_readiness()
     state["completed_at_ms"] = state["updated_at_ms"] = timestamp_ms()
-    state["published_view"] = stop_view(view_server)
+    state["published_view"] = view_state
+
+
+def mark_process_stopped(path: Path, process: Any, *, stopped_by: str) -> None:
+    record = process if isinstance(process, dict) else {}
+    updated = {
+        **record,
+        "status": "stopped",
+        "stopped_by": stopped_by,
+        "stopped_at_ms": timestamp_ms(),
+    }
+    write_json_atomically(path, updated)
+
+
+
+def mark_state_stopped(path: Path, *, stopped_by: str) -> None:
+    state = read_json(path)
+    if not isinstance(state, dict):
+        return
+    if state.get("status") not in ("starting", "running", "error"):
+        return
+    updated = {
+        **state,
+        "status": "stopped",
+        "stop_reason": stopped_by,
+        "completed_at_ms": timestamp_ms(),
+        "updated_at_ms": timestamp_ms(),
+        "readiness": stopped_readiness(),
+    }
+    write_json_atomically(path, updated)

@@ -9,10 +9,11 @@ from unittest.mock import patch
 
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.shared.command_result import CommandResult
+from cli.automa_cli.hosts.runs.process import automation_command_matches_host
+from cli.automa_cli.hosts.runs.models import RunResult
 from cli.automa_cli.app import main
 from cli.automa_cli.hosts.runs.models import RECOGNIZED_WORKER_MODULES, WORKER_MODULE
 from cli.automa_cli.hosts.runs.service import (
-    _automation_command_matches_host,
     _run_configuration,
     run_host_automation,
     start_host_automation_background,
@@ -40,12 +41,12 @@ class _HostClient:
 class RunConfigurationTests(unittest.TestCase):
     def test_process_recognition_requires_the_worker_module_and_exact_host_name(self):
         worker = f"python -m {WORKER_MODULE}"
-        self.assertTrue(_automation_command_matches_host(f"{worker} --name car --timeout-s 5", "car"))
-        self.assertTrue(_automation_command_matches_host(f"/venv/bin/python3 -m {WORKER_MODULE} --name=car", "car"))
+        self.assertTrue(automation_command_matches_host(f"{worker} --name car --timeout-s 5", "car"))
+        self.assertTrue(automation_command_matches_host(f"/venv/bin/python3 -m {WORKER_MODULE} --name=car", "car"))
         legacy = "python -m cli.automa_cli.hosts.automation"
-        self.assertTrue(_automation_command_matches_host(f"{legacy} --name car", "car"))
+        self.assertTrue(automation_command_matches_host(f"{legacy} --name car", "car"))
         previous = "python -m cli.automa_cli.hosts.runs.automation"
-        self.assertTrue(_automation_command_matches_host(f"{previous} --name car", "car"))
+        self.assertTrue(automation_command_matches_host(f"{previous} --name car", "car"))
         self.assertEqual(
             set(RECOGNIZED_WORKER_MODULES),
             {
@@ -54,14 +55,14 @@ class RunConfigurationTests(unittest.TestCase):
                 "cli.automa_cli.hosts.automation",
             },
         )
-        self.assertTrue(_automation_command_matches_host(f"{legacy} --name=car", "car"))
-        self.assertFalse(_automation_command_matches_host(f"{legacy} --name car-2", "car"))
-        self.assertFalse(_automation_command_matches_host(f"{worker} --name car-2", "car"))
-        self.assertFalse(_automation_command_matches_host(f"{worker} --host-url http://car", "car"))
-        self.assertFalse(_automation_command_matches_host("python -m cli.automa_cli.hosts.runtime_hosts car", "car"))
-        self.assertFalse(_automation_command_matches_host("python -m cli.automa_cli.hosts.local car", "car"))
-        self.assertFalse(_automation_command_matches_host(f"python {WORKER_MODULE} --name car", "car"))
-        self.assertFalse(_automation_command_matches_host("python /tmp/cli/automa hosts run --name car", "car"))
+        self.assertTrue(automation_command_matches_host(f"{legacy} --name=car", "car"))
+        self.assertFalse(automation_command_matches_host(f"{legacy} --name car-2", "car"))
+        self.assertFalse(automation_command_matches_host(f"{worker} --name car-2", "car"))
+        self.assertFalse(automation_command_matches_host(f"{worker} --host-url http://car", "car"))
+        self.assertFalse(automation_command_matches_host("python -m cli.automa_cli.hosts.runtime_hosts car", "car"))
+        self.assertFalse(automation_command_matches_host("python -m cli.automa_cli.hosts.local car", "car"))
+        self.assertFalse(automation_command_matches_host(f"python {WORKER_MODULE} --name car", "car"))
+        self.assertFalse(automation_command_matches_host("python /tmp/cli/automa hosts run --name car", "car"))
 
     def test_unbounded_overrides_counts_in_both_modes(self):
         for take_control in (True, False):
@@ -160,7 +161,7 @@ class RunConfigurationTests(unittest.TestCase):
             patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)),
             patch("cli.automa_cli.hosts.runs.service.runtime_base_url", side_effect=AssertionError("started a host")) as started,
             patch("cli.automa_cli.hosts.runs.service.RuntimeClient", _HostClient),
-            patch("cli.automa_cli.hosts.runs.service.monitor_runtime", return_value=(0, "ran")) as monitor,
+            patch("cli.automa_cli.hosts.runs.service.monitor_runtime", return_value=RunResult(0, "ran")) as monitor,
         ):
             result = run_host_automation(
                 host_url="http://127.0.0.1:54355/", num_decisions=1, take_control=True,
@@ -242,7 +243,7 @@ class RunConfigurationTests(unittest.TestCase):
                 command = self._background_command(record=True, **kwargs)
                 with (
                     patch("cli.automa_cli.hosts.runs.worker.run_host_automation",
-                          return_value=CommandResult(0, "ran")) as run,
+                          return_value=RunResult(0, "ran")) as run,
                     patch("cli.automa_cli.hosts.runs.worker.record_host_automation_terminal_result") as record,
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
@@ -259,7 +260,7 @@ class RunConfigurationTests(unittest.TestCase):
     def test_worker_records_a_named_host_failure(self):
         with (
             patch("cli.automa_cli.hosts.runs.worker.run_host_automation",
-                  return_value=CommandResult(2, "no host")) as run,
+                  return_value=RunResult(2, "no host")) as run,
             patch("cli.automa_cli.hosts.runs.worker.record_host_automation_terminal_result") as record,
             contextlib.redirect_stdout(io.StringIO()) as stdout,
         ):

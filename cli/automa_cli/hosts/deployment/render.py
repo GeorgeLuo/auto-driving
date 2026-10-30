@@ -41,19 +41,21 @@ def _json_receipt(receipt: dict[str, Any]) -> str:
 
 def _text_receipt(result: DeploymentResult) -> str:
     body = result.receipt or {}
-    if body.get("schema") == "host_core_update":
+    if result.render_kind == "core_update":
         return _format_core_dry_run(body)
-    if body.get("schema") == "host_autonomy_update":
+    if result.render_kind == "remote_update":
         if body.get("dry_run"):
             return _format_autonomy_dry_run(body)
         return _format_autonomy_update(body)
-    if body.get("dry_run") and ("core" in body or "host" in body):
+    if result.render_kind == "create_plan":
         core = _format_core_dry_run(body["core"]) if body.get("core") else body.get("core_error", "")
         host = _format_autonomy_dry_run(body["host"]) if body.get("host") else body.get("host_error", "")
         return core + "\n" + host
-    if "configuration" in body and "result" in body:
-        return _format_created_host(body)
-    return _format_local_autonomy(body, host_present=result.host_present)
+    if result.render_kind == "create":
+        return _format_created_host(body, child_kind=result.child_render_kind)
+    if result.render_kind == "local_update":
+        return _format_local_autonomy(body, host_present=result.host_present)
+    return json.dumps(body, indent=2, sort_keys=True)
 
 
 def _format_local_autonomy(body: dict[str, Any], *, host_present: bool | None) -> str:
@@ -81,9 +83,9 @@ def _format_local_autonomy(body: dict[str, Any], *, host_present: bool | None) -
     ])
 
 
-def _format_created_host(body: dict[str, Any]) -> str:
+def _format_created_host(body: dict[str, Any], *, child_kind: str) -> str:
     configuration = body["configuration"]
-    rendered = _text_receipt(DeploymentResult(0, receipt=body["result"]))
+    rendered = _text_receipt(DeploymentResult(0, receipt=body["result"], render_kind=child_kind))
     detail = "\n".join(
         line for line in rendered.splitlines()
         if not line.startswith(("Host updated:", "Runtime restarted:"))

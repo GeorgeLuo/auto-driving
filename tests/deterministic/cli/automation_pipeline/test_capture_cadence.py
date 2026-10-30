@@ -8,7 +8,7 @@ import time
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.hosts.runs.render import RunOutput
+from cli.automa_cli.hosts.runs.worker import RunOutput
 from cli.automa_cli.hosts.runs.service import run_host_automation
 from cli.automa_cli.releases.paths import controller_bundle_paths
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
@@ -27,7 +27,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
         with staged_runners(perception=perception), chase_runtime(runtime_root, car=car):
             result = run_host_automation(
                 host_name=HOST_NAME, num_decisions=num_decisions,
-                take_control=False, record=True, verbose=True, transcript=RunOutput(output),
+                take_control=False, record=True, verbose=True, emit=RunOutput(output, verbose=True),
             )
         state = json.loads((Path(bundle["runtime_dir"]) / "automation" / "state.json").read_text())
         return result, state, output.getvalue()
@@ -90,9 +90,9 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
             records.sort(key=lambda r: r["context"]["metadata"]["capture_sequence"])
             self.assertEqual([r["context"]["metadata"]["simulator_frame_index"] for r in records], [100, 103])
             self.assertEqual(records[-1]["context"]["metadata"]["simulation_epoch"], "chase-run:test")
-            self.assertIn("Frames received: 4", result.message)
-            self.assertIn("Decisions completed: 2", result.message)
-            self.assertIn("Decisions recorded: 2", result.message)
+            self.assertEqual(result.state["frames_received"], 4)
+            self.assertEqual(result.state["processed_count"], 2)
+            self.assertEqual(result.state["recorded_count"], 2)
 
     def test_bounded_completion_does_not_wait_after_the_worker_finishes(self) -> None:
         perception = GatedPerception(1)

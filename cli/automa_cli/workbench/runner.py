@@ -21,7 +21,7 @@ from autonomy.runtime.recording import recorded_selections
 
 from ..shared.step_hosting import plugin_report
 from ..shared.timestamps import timestamp_ms
-from ..shared.inspection_runs import (
+from ..shared.replay.inspection_runs import (
     default_selection, recorded_runner,
     resolve_replay_activations, restage_replay_steps,
 )

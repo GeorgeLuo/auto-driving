@@ -14,8 +14,7 @@
 - ``selection_args``: a step's ``--preset``/``--plugin`` selection, for ``workbench`` and ``plugins inspect``.
 - ``plugin_catalog``: the packaged plugin definitions, defaults first, for ``plugins list``
   and ``workbench``; ``hosts.plugin_catalog`` reads a host's live catalog.
-- ``inspection_runs``: the selection a vehicle ran, rebuilt from its release, for ``workbench``,
-  ``plugins inspect`` and the host's decision records.
+- ``replay``: image sources, frame execution and selections rebuilt from recorded releases.
 - ``step_hosting``: a hosted step runner's plugin report, for the worker and ``workbench``.
 - ``memory_report``: memory plugin state read from a memory report or memory step status.
 """

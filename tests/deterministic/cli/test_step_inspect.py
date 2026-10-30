@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PIL import Image
 from dataclasses import replace
-from cli.automa_cli.shared.inspection_runs import selection_report
+from cli.automa_cli.shared.replay.inspection_runs import selection_report
 from cli.automa_cli.shared.memory_report import plugin_summaries
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
 from implementations.decision_cycle.catalog import selection_activation

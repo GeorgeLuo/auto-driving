@@ -24,7 +24,6 @@ from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, RESTAR
 from ..shared.controller_releases import (
     RuntimeHostError, bundle_root, release_code_dir, release_manifest, release_summary,
 )
-from ..shared.json_files import write_json_atomically
 from ..shared.paths import ROOT, RUNTIME_ROOT, display_path
 from ..shared.processes import pid_alive
 from ..vehicles.providers import PROVIDERS
@@ -32,9 +31,6 @@ from .step_activations import host_names, staging_host
 
 HOST_RECORD = "host.json"
 HOST_LOG = "host.log"
-# Where vehicles status looks besides the default simulator.
-DISCOVERED = "discovered.json"
-DISCOVERED_SCHEMA = "automa_discovered_vehicles_v0"
 HOST_START_TIMEOUT_S = 20.0
 LOG_TAIL_LINES = 20
 # The host imports only the release: ``-I`` drops the working tree and user
@@ -288,19 +284,6 @@ def local_hosts() -> list[dict[str, Any]]:
             "error": None,
         })
     return hosts
-
-
-def discovered_vehicles() -> list[dict[str, str]]:
-    """The ``{provider, url}`` of each vehicle ``vehicles discover`` listed, oldest first."""
-
-    path = RUNTIME_ROOT / DISCOVERED
-    if not path.is_file():
-        return []
-    return json.loads(path.read_text(encoding="utf-8"))["vehicles"]
-
-
-def write_discovered_vehicles(vehicles: list[dict[str, str]]) -> None:
-    write_json_atomically(RUNTIME_ROOT / DISCOVERED, {"schema": DISCOVERED_SCHEMA, "vehicles": vehicles})
 
 
 def runtime_base_url(host_name: str, *, start: bool = False, timeout_s: float = HOST_START_TIMEOUT_S) -> str:

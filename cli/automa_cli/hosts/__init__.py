@@ -11,6 +11,6 @@
   what it reads; ``vehicle_access``, ``decision`` and ``decision_records``.
 
 Outside ``hosts``: ``automa`` serves ``host_status`` in its viewer,
-``simulators`` and ``vehicles`` find hosts through ``runtime_hosts``, and ``plugins stream``
+``simulators`` finds hosts through ``runtime_hosts``, and ``plugins stream``
 feeds a ``viewer`` view.
 """

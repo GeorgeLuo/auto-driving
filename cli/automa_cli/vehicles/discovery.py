@@ -2,16 +2,20 @@
 
 from __future__ import annotations
 
+import json
 import os
+from pathlib import Path
+from typing import Any
 
 from implementations.vehicle.chase_sim.defaults import (
     CHASE_UI_WS_URL_ENV,
     DEFAULT_CHASE_UI_WS_URL,
 )
 
-from ..hosts.runtime_hosts import discovered_vehicles, write_discovered_vehicles
 from ..shared.command_result import CommandResult
-from ..simulators.created import created_simulators
+from ..shared.json_files import write_json_atomically
+from ..shared.paths import RUNTIME_ROOT
+from ..shared.processes import pid_alive
 from .probes import (
     DEFAULT_READINESS_TIMEOUT_S,
     Candidate,
@@ -19,6 +23,45 @@ from .probes import (
     normalize_chase_url,
 )
 from .providers import CHASE_SIM, PROVIDERS
+
+# Where vehicles status looks besides the default simulator.
+DISCOVERED = "discovered.json"
+DISCOVERED_SCHEMA = "automa_discovered_vehicles_v0"
+# Each simulator ``simulators create`` started, in ``simulators/<port>/``.
+SIMULATORS = "simulators"
+SIMULATOR_RECORD = "simulator.json"
+SIMULATOR_SCHEMA = "automa_created_simulator_v0"
+
+
+def discovered_vehicles() -> list[dict[str, str]]:
+    """The ``{provider, url}`` of each vehicle ``vehicles discover`` listed, oldest first."""
+
+    path = RUNTIME_ROOT / DISCOVERED
+    if not path.is_file():
+        return []
+    return json.loads(path.read_text(encoding="utf-8"))["vehicles"]
+
+
+def write_discovered_vehicles(vehicles: list[dict[str, str]]) -> None:
+    write_json_atomically(RUNTIME_ROOT / DISCOVERED, {"schema": DISCOVERED_SCHEMA, "vehicles": vehicles})
+
+
+def simulator_dir(port: int) -> Path:
+    return RUNTIME_ROOT / SIMULATORS / str(port)
+
+
+def created_simulators() -> list[dict[str, Any]]:
+    """The record of each simulator ``simulators create`` started that is still running, by port."""
+
+    records = []
+    for path in (RUNTIME_ROOT / SIMULATORS).glob(f"*/{SIMULATOR_RECORD}"):
+        try:
+            record = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(record, dict) and record.get("schema") == SIMULATOR_SCHEMA and pid_alive(record.get("pid")):
+            records.append(record)
+    return sorted(records, key=lambda record: record["port"])
 
 
 def default_chase_url() -> str:

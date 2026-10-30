@@ -18,8 +18,8 @@ from cli.automa_cli.hosts import (
     view_discovery,
 )
 from cli.automa_cli.plugins import catalog
+from cli.automa_cli.vehicles import discovery
 from cli.automa_cli.shared import controller_releases
-from cli.automa_cli.simulators import created
 from tests.support.cli_runner import WORKSPACE_ROOT, checked_result
 from tests.support.offline.sitecustomize import offline_getaddrinfo
 
@@ -30,7 +30,7 @@ IMPORT_TIME_ENV = {
         (deploy, "RUNTIME_ROOT"),
         (runtime_hosts, "RUNTIME_ROOT"),
         (controller_releases, "RUNTIME_ROOT"),
-        (created, "RUNTIME_ROOT"),
+        (discovery, "RUNTIME_ROOT"),
         (catalog, "RUNTIME_ROOT"),
         (view_discovery, "RUNTIME_ROOT"),
         (view_discovery.runtime_view_dir.__kwdefaults__, "runtime_root"),

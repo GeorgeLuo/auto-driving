@@ -8,6 +8,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from cli.automa_cli.shared.command_result import CommandResult
+from cli.automa_cli.hosts.runs.models import StopResult
 from cli.automa_cli.hosts.deployment import picar_deploy, service
 from cli.automa_cli.hosts.deployment.models import DeploymentResult
 from cli.automa_cli.hosts.deployment.registry import BACKENDS, DeploymentBackend, register_backend
@@ -15,7 +16,7 @@ from cli.automa_cli.hosts.deployment.render import present_deployment
 from cli.automa_cli.hosts.step_activations import write_host_configuration
 from cli.automa_cli.hosts import staging
 from cli.automa_cli.providers.catalog import PICAR, PROVIDERS
-from cli.automa_cli.providers.probes import Candidate, ProbeResult
+from cli.automa_cli.providers.models import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.vehicle_fixtures import probe_returning
 from tests.support.runtime_fixtures import write_host_fixture
@@ -117,7 +118,7 @@ class HostLifecycleTests(unittest.TestCase):
         with patch.object(service, "run_step", return_value=0):
             result = service.delete_host(host_name="car")
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("~/mycar", result.message)
+        self.assertIn("~/mycar", present_deployment(result, json_output=False))
         self.assertFalse((self.root / "car").exists())
 
     def test_failed_new_creation_removes_the_directory(self):
@@ -130,7 +131,7 @@ class HostLifecycleTests(unittest.TestCase):
         write_host_fixture(self.root, "car", provider="picar")
         with patch.object(service, "host_state", return_value={"state": "running"}), \
              patch("cli.automa_cli.hosts.deployment.service.stop_host_automation",
-                   return_value=CommandResult(2, "could not release control")), \
+                   return_value=StopResult(2, "release_failed", "car", error="could not release control")), \
              patch.object(service, "run_step") as remote:
             result = service.delete_host(host_name="car")
         self.assertEqual(result.exit_code, 2)
@@ -160,7 +161,7 @@ class HostLifecycleTests(unittest.TestCase):
             vehicle_kind="bench", local_host=False, probe=probe,
         )
 
-        def update_bench(configuration, *, dry_run, restart, drive_args, verbose, output):
+        def update_bench(configuration, *, dry_run, restart, drive_args, verbose, emit):
             return DeploymentResult(0, receipt={
                 "schema": "bench_update", "host_name": configuration["host_name"], "dry_run": dry_run,
             })

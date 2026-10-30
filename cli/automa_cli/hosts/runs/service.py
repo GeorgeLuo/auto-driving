@@ -1,60 +1,58 @@
 from __future__ import annotations
 
 import json
-import os
-import signal
-import subprocess
-import sys
-import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 from urllib.parse import urlparse
 
-from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import RunConfiguration
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
-from ...shared.command_result import CommandResult
-from ..vehicle_access import create_vehicle_access
-from ...shared.io.json_files import read_json, write_json_atomically
-from ...shared.paths import ROOT, display_path
-from ...shared.io.processes import pid_alive
-from ...releases.errors import RuntimeHostError
-from ...releases.paths import bundle_paths
-from ..discovery import running_base_url, runtime_base_url
-from ..local import stop_chase_host
-from ..staging import (
-    automation_dir as host_automation_dir,
-    staged_host,
-)
-from .models import RunEvent, RunResult, WORKER_MODULE
-from collections.abc import Callable
-from .monitor import monitor_runtime
-from .process import pid_matches_automation, terminate_pid, process_command
-from .store import mark_process_stopped, mark_state_stopped
-from ..step_activations import (
-    bundle_activation_problems,
-    decision_identity,
-    format_activation_problems,
-    staged_selections,
-)
-from ...shared.open_view import open_view_message
-from .store import (
-    control_application,
-    control_source,
-    decision_record,
-    failed_readiness,
-    new_run_state,
-)
-from ...shared.timestamps import timestamp_ms
 from ...frontend.perception_view import (
     get_perception_view_status,
     perception_view_ready,
 )
 from ...providers.catalog import PROVIDERS
-from ...providers.probes import DEFAULT_READINESS_TIMEOUT_S
-
+from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
+from ...releases.errors import RuntimeHostError
+from ...releases.paths import bundle_paths
+from ...shared.io.json_files import read_json, write_json_atomically
+from ...shared.io.processes import pid_alive
+from ...shared.open_view import launch_browser
+from ...shared.paths import display_path
+from ...shared.timestamps import timestamp_ms
+from ..discovery import running_base_url
+from ..local import ensure_chase_host, stop_chase_host
+from ..staging import (
+    automation_dir as host_automation_dir,
+)
+from ..staging import (
+    staged_host,
+)
+from ..step_activations import (
+    bundle_activation_problems,
+    decision_identity,
+    staged_selections,
+)
+from ..vehicle_access import create_vehicle_access
+from .models import RestartResult, RunEvent, RunResult, StartResult, StopResult
+from .monitor import monitor_runtime
+from .process import (
+    launch_worker,
+    pid_matches_automation,
+    process_command,
+    stop_worker,
+    wait_for_automation_startup,
+    worker_command,
+)
+from .store import (
+    control_application,
+    decision_record,
+    initialize_automation_startup,
+    mark_automation_startup_error,
+    mark_process_stopped,
+    mark_state_stopped,
+)
 
 
 def _normalize_host_url(value: str) -> str:
@@ -67,7 +65,6 @@ def _normalize_host_url(value: str) -> str:
     if parsed.path not in {"", "/"} or parsed.params or parsed.query or parsed.fragment:
         raise ValueError("--host-url must be the host base URL, not a route or query")
     return text.rstrip("/")
-
 
 
 def _host_name_at_host(host_url: str, *, timeout_s: float) -> str:
@@ -83,9 +80,11 @@ def _host_name_at_host(host_url: str, *, timeout_s: float) -> str:
     return host_name
 
 
-
 def _resolve_run_target(
-    host_name: str | None, host_url: str | None, *, timeout_s: float,
+    host_name: str | None,
+    host_url: str | None,
+    *,
+    timeout_s: float,
 ) -> tuple[str, str | None]:
     """The host name to record, and the existing host URL when one was named.
 
@@ -102,13 +101,15 @@ def _resolve_run_target(
     return _host_name_at_host(normalized, timeout_s=timeout_s), normalized
 
 
-
-def _run_configuration(*, take_control: bool, num_decisions: int | None,
-                       unbounded: bool = False) -> RunConfiguration:
+def _run_configuration(
+    *, take_control: bool, num_decisions: int | None, unbounded: bool = False
+) -> RunConfiguration:
     """Movement runs require a positive bound or an explicit unbounded opt-in."""
 
     # Refuse what the runtime refuses before --unbounded replaces the count.
-    if num_decisions is not None and (type(num_decisions) is not int or num_decisions < 1):
+    if num_decisions is not None and (
+        type(num_decisions) is not int or num_decisions < 1
+    ):
         raise ValueError("--num-decisions must be a positive integer")
     if unbounded:
         num_decisions = None
@@ -122,7 +123,6 @@ def _run_configuration(*, take_control: bool, num_decisions: int | None,
         mode="autonomy" if take_control else "observe_only",
         num_decisions=num_decisions,
     )
-
 
 
 def run_host_automation(
@@ -141,9 +141,13 @@ def run_host_automation(
         if host_name is not None:
             staged_host(host_name)
         configuration = _run_configuration(
-            take_control=take_control, num_decisions=num_decisions, unbounded=unbounded,
+            take_control=take_control,
+            num_decisions=num_decisions,
+            unbounded=unbounded,
         )
-        host_name, host_url = _resolve_run_target(host_name, host_url, timeout_s=timeout_s)
+        host_name, host_url = _resolve_run_target(
+            host_name, host_url, timeout_s=timeout_s
+        )
     except (TypeError, ValueError, RuntimeHostError) as exc:
         return RunResult(2, str(exc))
     # Every vehicle runs its staged steps on its runtime host: a PiCar's Donkey
@@ -152,28 +156,39 @@ def run_host_automation(
     bundle = bundle_paths(host_name)
     problems = bundle_activation_problems(bundle, host_name)
     if problems:
-        return RunResult(2, format_activation_problems(problems))
+        return RunResult(2, problems=problems)
     try:
         selections = staged_selections(bundle)
         identity = decision_identity(bundle)
     except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
-        return RunResult(2, f"Could not read staged step activations for {host_name}: {exc}")
+        return RunResult(
+            2, f"Could not read staged step activations for {host_name}: {exc}"
+        )
     if host_url is None:
         try:
-            base_url = runtime_base_url(host_name, start=True)
+            base_url = (
+                ensure_chase_host(host_name)
+                if PROVIDERS[staged_host(host_name)["provider"]].local_host
+                else running_base_url(host_name)
+            )
+            if base_url is None:
+                raise RuntimeHostError(f"Host {host_name!r} is not running.")
         except RuntimeHostError as exc:
             return RunResult(2, str(exc))
     else:
         base_url = host_url
     return monitor_runtime(
-        host_name=host_name, base_url=base_url,
+        host_name=host_name,
+        base_url=base_url,
         automation_dir=Path(bundle["runtime_dir"]) / "automation",
         selections=selections,
         decision=decision_record(identity),
-        configuration=configuration, timeout_s=timeout_s, record=record,
-        verbose=verbose, emit=emit,
+        configuration=configuration,
+        timeout_s=timeout_s,
+        record=record,
+        verbose=verbose,
+        emit=emit,
     )
-
 
 
 def start_host_automation_background(
@@ -189,16 +204,20 @@ def start_host_automation_background(
     log_to_disk: bool = False,
     open_view: bool = False,
     startup_wait_s: float = 20.0,
-) -> CommandResult:
+) -> StartResult:
     try:
         if host_name is not None:
             staged_host(host_name)
         configuration = _run_configuration(
-            take_control=take_control, num_decisions=num_decisions, unbounded=unbounded,
+            take_control=take_control,
+            num_decisions=num_decisions,
+            unbounded=unbounded,
         )
-        host_name, host_url = _resolve_run_target(host_name, host_url, timeout_s=timeout_s)
+        host_name, host_url = _resolve_run_target(
+            host_name, host_url, timeout_s=timeout_s
+        )
     except (TypeError, ValueError, RuntimeHostError) as exc:
-        return CommandResult(2, str(exc))
+        return StartResult(2, "error", error=str(exc))
     automation_dir = host_automation_dir(host_name)
     automation_dir.mkdir(parents=True, exist_ok=True)
     process_path = automation_dir / "process.json"
@@ -207,25 +226,24 @@ def start_host_automation_background(
     bundle = bundle_paths(host_name)
     problems = bundle_activation_problems(bundle, host_name)
     if problems:
-        return CommandResult(2, format_activation_problems(problems))
+        return StartResult(2, "activation_invalid", problems=problems)
 
     existing = read_json(process_path)
     existing_pid = existing.get("pid") if isinstance(existing, dict) else None
     if isinstance(existing_pid, int) and pid_alive(existing_pid):
         existing_state = read_json(automation_dir / "state.json")
         existing_status = (
-            existing_state.get("status") if isinstance(existing_state, dict) else "unknown"
+            existing_state.get("status")
+            if isinstance(existing_state, dict)
+            else "unknown"
         )
         if existing_status in {"launching", "starting"}:
-            return CommandResult(
+            return StartResult(
                 2,
-                "\n".join(
-                    [
-                        f"The run on host {host_name} is still starting.",
-                        f"PID: {existing_pid}",
-                        f"State: {display_path(automation_dir / 'state.json')}",
-                    ]
-                ),
+                "starting",
+                host_name=host_name,
+                pid=existing_pid,
+                state_path=automation_dir / "state.json",
             )
         existing_run_id = (
             existing_state.get("run_id")
@@ -240,16 +258,12 @@ def start_host_automation_background(
             else None
         )
         if existing_state_pid is not None and existing_state_pid != existing_pid:
-            return CommandResult(
+            return StartResult(
                 2,
-                "\n".join(
-                    [
-                        f"The run records for host {host_name} disagree.",
-                        f"Process PID: {existing_pid}",
-                        f"State PID: {existing_state_pid}",
-                        "Reason: worker generation is stale; no duplicate worker was started.",
-                    ]
-                ),
+                "records_disagree",
+                host_name=host_name,
+                pid=existing_pid,
+                state_pid=existing_state_pid,
             )
         expected_authority = {
             "action_policy": configuration.mode,
@@ -260,83 +274,53 @@ def start_host_automation_background(
             for key in expected_authority
         }
         if actual_authority != expected_authority:
-            return CommandResult(
+            return StartResult(
                 2,
-                "\n".join(
-                    [
-                        f"Host {host_name} already has a run, but its authority does not match this command.",
-                        f"PID: {existing_pid}",
-                        (
-                            "Expected authority: "
-                            f"action={expected_authority['action_policy']}, "
-                            f"control={expected_authority['control_application']}"
-                        ),
-                        (
-                            "Current authority: "
-                            f"action={actual_authority['action_policy'] or 'unknown'}, "
-                            f"control={actual_authority['control_application'] or 'unknown'}"
-                        ),
-                        (
-                            "Recovery: ./cli/automa hosts stop "
-                            f"--name {host_name}"
-                        ),
-                    ]
-                ),
+                "authority_mismatch",
+                host_name=host_name,
+                pid=existing_pid,
+                expected_authority=expected_authority,
+                actual_authority=actual_authority,
             )
         view = get_perception_view_status(
             automation_dir,
             expected_run_id=existing_run_id,
             expected_worker_pid=existing_pid,
         )
-        if not _view_ready_for_inspection(view):
-            return CommandResult(
+        if not perception_view_ready(view):
+            return StartResult(
                 2,
-                "\n".join(
-                    [
-                        f"Host {host_name} has a run, but its perception view is not ready.",
-                        f"PID: {existing_pid}",
-                        f"Reason: {view.get('reason') or 'no correlated publication'}",
-                        f"State: {display_path(automation_dir / 'state.json')}",
-                    ]
-                ),
+                "view_unready",
+                host_name=host_name,
+                pid=existing_pid,
+                view=view,
+                state_path=automation_dir / "state.json",
             )
-        browser_line = open_view_message(str(view["url"])) if open_view else None
-        return CommandResult(
+        browser = launch_browser(str(view["url"])) if open_view else None
+        return StartResult(
             0,
-            "\n".join(
-                [
-                    f"Host {host_name} already has a run.",
-                    f"PID: {existing_pid}",
-                    f"Runtime view: {view['url']}",
-                    *([browser_line] if browser_line else []),
-                    f"State: {display_path(automation_dir / 'state.json')}",
-                    _log_status_line(existing, log_path),
-                    f"Stream: ./cli/automa plugins stream --step perception --host-name {host_name}",
-                ]
-            ),
+            "existing",
+            host_name=host_name,
+            pid=existing_pid,
+            view=view,
+            browser=browser,
+            state_path=automation_dir / "state.json",
+            process_record=existing,
+            log_path=log_path,
         )
 
-    command = [
-        sys.executable,
-        "-m",
-        WORKER_MODULE,
-        *(["--host-url", host_url] if host_url is not None else ["--name", host_name]),
-        "--timeout-s",
-        str(timeout_s),
-    ]
-    if configuration.num_decisions is None:
-        command.append("--unbounded")
-    else:
-        command.extend(["--num-decisions", str(configuration.num_decisions)])
-    if not take_control:
-        command.append("--observe-only")
-    if record:
-        command.append("--record")
-    if verbose:
-        command.append("--verbose")
+    command = worker_command(
+        host_name=host_name,
+        host_url=host_url,
+        timeout_s=timeout_s,
+        configuration=configuration,
+        take_control=take_control,
+        record=record,
+        verbose=verbose,
+    )
 
     started_at_ms = timestamp_ms()
-    _initialize_automation_startup(
+    initialize_automation_startup(
         automation_dir=automation_dir,
         host_name=host_name,
         started_at_ms=started_at_ms,
@@ -344,42 +328,19 @@ def start_host_automation_background(
         record=record,
     )
 
-    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
-    stdout_target: Any
-    log_handle = None
-    if log_to_disk:
-        log_handle = log_path.open("a", encoding="utf-8")
-        stdout_target = log_handle
-    else:
-        stdout_target = subprocess.DEVNULL
     try:
-        try:
-            process = subprocess.Popen(
-                command,
-                cwd=ROOT,
-                stdout=stdout_target,
-                stderr=subprocess.STDOUT,
-                stdin=subprocess.DEVNULL,
-                start_new_session=True,
-                env=env,
-                text=True,
-            )
-        except OSError as exc:
-            _mark_automation_startup_error(
-                automation_dir=automation_dir,
-                error=f"Could not launch automation worker: {type(exc).__name__}: {exc}",
-            )
-            return CommandResult(
-                2,
-                "\n".join(
-                    [
-                        f"Could not start a run on host {host_name}: {type(exc).__name__}: {exc}",
-                    ]
-                ),
-            )
-    finally:
-        if log_handle is not None:
-            log_handle.close()
+        process = launch_worker(command, log_path=log_path if log_to_disk else None)
+    except OSError as exc:
+        mark_automation_startup_error(
+            automation_dir=automation_dir,
+            error=f"Could not launch automation worker: {type(exc).__name__}: {exc}",
+        )
+        return StartResult(
+            2,
+            "launch_failed",
+            host_name=host_name,
+            error=f"{type(exc).__name__}: {exc}",
+        )
 
     process_record = {
         "schema": "automa_automation_process",
@@ -390,11 +351,13 @@ def start_host_automation_background(
         "log_to_disk": bool(log_to_disk),
         "log_path": display_path(log_path) if log_to_disk else None,
         "state_path": display_path(automation_dir / "state.json"),
-        "latest_perception_text": display_path(automation_dir / "latest_perception.txt"),
+        "latest_perception_text": display_path(
+            automation_dir / "latest_perception.txt"
+        ),
         "stream_command": f"./cli/automa plugins stream --step perception --host-name {host_name}",
     }
     write_json_atomically(process_path, process_record)
-    startup = _wait_for_automation_startup(
+    startup = wait_for_automation_startup(
         process=process,
         automation_dir=automation_dir,
         timeout_s=startup_wait_s,
@@ -404,330 +367,22 @@ def start_host_automation_background(
     }
     write_json_atomically(process_path, process_record)
 
-    startup_status = startup["status"]
-    if startup_status == "ready":
-        phases = startup.get("phases") if isinstance(startup.get("phases"), dict) else {}
-        perception_phase = (
-            phases.get("perception")
-            if isinstance(phases.get("perception"), dict)
-            else {}
-        )
-        lines = [
-            f"Run started on host {host_name}.",
-            f"PID: {process.pid}",
-            f"First frame: {startup.get('frame_id', 'captured')}",
-            (
-                "Startup phases: "
-                "capture=complete, "
-                f"perception={_duration_label(perception_phase)}, "
-                "view=current-generation correlated"
-            ),
-            f"Runtime view: {startup.get('view_url')}",
-        ]
-        capture_lag = startup.get("capture_lag")
-        if isinstance(capture_lag, int) and capture_lag > 0:
-            lines.append(f"Capture lag: {capture_lag} frames")
-        lines.append(f"Stop: ./cli/automa hosts stop --name {host_name}")
-        if open_view:
-            lines.append(open_view_message(str(startup.get("view_url"))))
-        exit_code = 0
-    elif startup_status == "completed":
-        lines = [
-            f"The run on host {host_name} completed during startup verification.",
-            f"PID: {process.pid}",
-        ]
-        exit_code = 0
-    else:
-        lines = [
-            f"The run on host {host_name} did not become ready.",
-            f"PID: {process.pid}",
-            f"Reason: {startup.get('reason', 'unknown startup failure')}",
-        ]
-        exit_code = 2
-    lines.extend(
-        [
-            f"State: {display_path(automation_dir / 'state.json')}",
-            _log_status_line(process_record, log_path),
-            f"Stream: ./cli/automa plugins stream --step perception --host-name {host_name}",
-            f"Status: ./cli/automa hosts status --name {host_name} --long",
-        ]
+    browser = (
+        launch_browser(str(startup.get("view_url")))
+        if open_view and startup["status"] == "ready"
+        else None
     )
-    return CommandResult(exit_code, "\n".join(lines))
-
-
-
-def record_host_automation_terminal_result(
-    *,
-    host_name: str,
-    result: CommandResult,
-) -> None:
-    """Persist failures that occur before the worker creates its normal run state."""
-
-    if result.exit_code == 0:
-        return
-    automation_dir = host_automation_dir(host_name)
-    state_path = automation_dir / "state.json"
-    state = read_json(state_path)
-    if not isinstance(state, dict) or state.get("status") not in {"launching", "starting"}:
-        return
-    completed_at_ms = timestamp_ms()
-    write_json_atomically(
-        state_path,
-        {
-            **state,
-            "status": "error",
-            "pid": os.getpid(),
-            "error": result.message or f"automation worker exited with code {result.exit_code}",
-            "exit_code": result.exit_code,
-            "completed_at_ms": completed_at_ms,
-            "updated_at_ms": completed_at_ms,
-            "published_view": {
-                "status": "error",
-                "available": False,
-                "url": None,
-                "reason": "automation worker failed before the perception view started",
-            },
-            "readiness": failed_readiness("automation_worker"),
-        },
+    return StartResult(
+        0 if startup["status"] in {"ready", "completed"} else 2,
+        "started",
+        host_name=host_name,
+        pid=process.pid,
+        startup=startup,
+        browser=browser,
+        state_path=automation_dir / "state.json",
+        process_record=process_record,
+        log_path=log_path,
     )
-
-
-
-def _initialize_automation_startup(
-    *,
-    automation_dir: Path,
-    host_name: str,
-    started_at_ms: int,
-    configuration: RunConfiguration,
-    record: bool,
-) -> None:
-    view_record_path = automation_dir / "perception_view.json"
-    view_record_path.unlink(missing_ok=True)
-    starting_text = "\n".join(
-        [
-            f"schema={PERCEPTION_TEXT_SCHEMA}",
-            "plugin=automation-worker",
-            f"status=starting host_name={host_name}",
-            "signal id=perception_ready value=false confidence=1.000 reason=worker_starting",
-        ]
-    )
-    (automation_dir / "latest_perception.txt").write_text(
-        starting_text + "\n",
-        encoding="utf-8",
-    )
-    write_json_atomically(
-        automation_dir / "latest_perception.json",
-        {
-            "schema": "automa_latest_perception_placeholder",
-            "host_name": host_name,
-            "status": "starting",
-            "started_at_ms": started_at_ms,
-            "text": starting_text,
-            "perception": {"confidence": 0.0, "things": []},
-        },
-    )
-    write_json_atomically(
-        automation_dir / "state.json",
-        new_run_state(
-            host_name=host_name,
-            run_id="starting",
-            status="starting",
-            pid=None,
-            configuration=configuration,
-            record=record,
-            control_source=control_source(configuration),
-            automation_dir=automation_dir,
-            front_camera_path=(
-                automation_dir / "latest" / "frames" / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
-            ),
-            run_dir=None,
-            published_view={
-                "status": "starting",
-                "available": False,
-                "url": None,
-                "reason": "the run is starting",
-            },
-            started_at_ms=started_at_ms,
-        ),
-    )
-
-
-
-def _wait_for_automation_startup(
-    *,
-    process: subprocess.Popen[Any],
-    automation_dir: Path,
-    timeout_s: float,
-) -> dict[str, Any]:
-    state_path = automation_dir / "state.json"
-    deadline = time.monotonic() + max(0.1, float(timeout_s))
-    while True:
-        state = read_json(state_path)
-        state = state if isinstance(state, dict) else {}
-        status = state.get("status")
-        published_view = (
-            state.get("published_view")
-            if isinstance(state.get("published_view"), dict)
-            else {}
-        )
-        frames_received = state.get("frames_received")
-        processed_count = state.get("processed_count")
-        last_frame = (
-            state.get("last_frame")
-            if isinstance(state.get("last_frame"), dict)
-            else {}
-        )
-
-        if (
-            status == "running"
-            and isinstance(frames_received, int)
-            and frames_received > 0
-            and isinstance(processed_count, int)
-            and processed_count > 0
-        ):
-            expected_pid = state.get("pid") if isinstance(state.get("pid"), int) else None
-            expected_run_id = (
-                state.get("run_id") if isinstance(state.get("run_id"), str) else None
-            )
-            remaining = deadline - time.monotonic()
-            if remaining >= 0.05:
-                view = get_perception_view_status(
-                    automation_dir,
-                    timeout_s=min(0.25, remaining),
-                    expected_run_id=expected_run_id,
-                    expected_worker_pid=expected_pid,
-                )
-                # The independent perception copier can advance while the
-                # status writer exports a recording batch. The view proves a
-                # matched image/result in this run and worker generation.
-                if _view_ready_for_inspection(view):
-                    return {
-                        "status": "ready",
-                        "frame_id": view["latest_perception_frame_id"],
-                        "view_url": view.get("url"),
-                        "capture_lag": view.get("capture_lag"),
-                        "capture_lag_ms": view.get("capture_lag_ms"),
-                        "phases": {
-                            "capture": {"status": "complete"},
-                            "perception": {
-                                "status": "complete",
-                                "duration_ms": last_frame.get("perception_duration_ms"),
-                            },
-                            "view": {
-                                "status": "complete",
-                                "duration_ms": 0,
-                                "run_id": expected_run_id,
-                                "worker_pid": expected_pid,
-                            },
-                        },
-                        "state": state,
-                    }
-        if status == "completed":
-            return {"status": "completed", "state": state}
-        if status in {"error", "stopped"}:
-            return {
-                "status": "failed",
-                "reason": state.get("error") or state.get("stop_reason") or f"worker status is {status}",
-                "state": state,
-            }
-        if (
-            status == "running"
-            and isinstance(frames_received, int)
-            and frames_received > 0
-            and published_view.get("status") == "error"
-        ):
-            return {
-                "status": "failed",
-                "reason": published_view.get("reason") or published_view.get("last_error") or "perception view failed",
-                "state": state,
-            }
-
-        exit_code = process.poll()
-        if exit_code is not None:
-            state = read_json(state_path)
-            state = state if isinstance(state, dict) else {}
-            reason = state.get("error")
-            if not isinstance(reason, str) or not reason:
-                reason = f"automation worker exited with code {exit_code} before publishing a frame"
-                _mark_automation_startup_error(
-                    automation_dir=automation_dir,
-                    error=reason,
-                    exit_code=exit_code,
-                )
-                state = read_json(state_path)
-            return {"status": "failed", "reason": reason, "state": state}
-
-        if time.monotonic() >= deadline:
-            return {
-                "status": "failed",
-                "reason": (
-                    "worker is still running but did not publish one correlated "
-                    "camera/perception frame and current-generation view "
-                    f"within {max(0.1, float(timeout_s)):.1f}s"
-                ),
-                "phases": {
-                    "capture": {
-                        "status": "complete"
-                        if isinstance(frames_received, int) and frames_received > 0
-                        else "incomplete",
-                    },
-                    "perception": {
-                        "status": "complete"
-                        if isinstance(processed_count, int) and processed_count > 0
-                        else "incomplete",
-                    },
-                    "view": {
-                        "status": "complete"
-                        if _view_ready_for_inspection(published_view)
-                        else "incomplete",
-                    },
-                },
-                "state": state,
-            }
-        time.sleep(0.05)
-
-
-
-def _view_ready_for_inspection(view: dict[str, Any]) -> bool:
-    return perception_view_ready(view)
-
-
-
-def _duration_label(phase: dict[str, Any]) -> str:
-    value = phase.get("duration_ms")
-    return f"{value}ms" if isinstance(value, (int, float)) else "not reported"
-
-
-
-def _mark_automation_startup_error(
-    *,
-    automation_dir: Path,
-    error: str,
-    exit_code: int | None = None,
-) -> None:
-    state_path = automation_dir / "state.json"
-    state = read_json(state_path)
-    state = state if isinstance(state, dict) else {}
-    completed_at_ms = timestamp_ms()
-    write_json_atomically(
-        state_path,
-        {
-            **state,
-            "status": "error",
-            "error": error,
-            "exit_code": exit_code,
-            "completed_at_ms": completed_at_ms,
-            "updated_at_ms": completed_at_ms,
-            "published_view": {
-                "status": "error",
-                "available": False,
-                "url": None,
-                "reason": error,
-            },
-            "readiness": failed_readiness("automation_worker"),
-        },
-    )
-
 
 
 def restart_host_automation(
@@ -742,29 +397,33 @@ def restart_host_automation(
     log_to_disk: bool = False,
     open_view: bool = False,
     wait_s: float = 3.0,
-) -> CommandResult:
+) -> RestartResult:
     try:
         _run_configuration(
-            take_control=take_control, num_decisions=num_decisions, unbounded=unbounded,
+            take_control=take_control,
+            num_decisions=num_decisions,
+            unbounded=unbounded,
         )
     except (TypeError, ValueError) as exc:
-        return CommandResult(2, str(exc))
+        return RestartResult(2, kind="error", error=str(exc))
     bundle = bundle_paths(host_name)
     problems = bundle_activation_problems(bundle, host_name)
     if problems:
-        return CommandResult(2, format_activation_problems(problems))
+        return RestartResult(2, kind="error", problems=problems)
     stop_result = stop_host_automation(host_name=host_name, wait_s=wait_s)
     if stop_result.exit_code != 0:
-        return stop_result
+        return RestartResult(stop_result.exit_code, kind="stop_failed", stop=stop_result)
 
     # A fresh host process loads the staged specs and configs; a Chase host
     # with none running starts on the latest release with the run.
     base_url = running_base_url(host_name)
     if base_url is not None:
         try:
-            RuntimeClient(base_url, timeout_s=timeout_s).restart(timeout_s=max(30.0, timeout_s))
+            RuntimeClient(base_url, timeout_s=timeout_s).restart(
+                timeout_s=max(30.0, timeout_s)
+            )
         except (RuntimeError, TimeoutError) as exc:
-            return CommandResult(2, f"Could not restart {host_name}: {exc}")
+            return RestartResult(2, kind="restart_failed", host_name=host_name, error=str(exc))
 
     start_result = start_host_automation_background(
         host_name=host_name,
@@ -777,39 +436,26 @@ def restart_host_automation(
         log_to_disk=log_to_disk,
         open_view=open_view,
     )
-    message = "\n\n".join(part for part in (stop_result.message, start_result.message) if part)
-    return CommandResult(start_result.exit_code, message)
-
-
-
-def _log_status_line(process: Any, log_path: Path) -> str:
-    record = process if isinstance(process, dict) else {}
-    configured_path = record.get("log_path")
-    log_to_disk = bool(record.get("log_to_disk")) or isinstance(configured_path, str)
-    if not log_to_disk:
-        return "Log: disabled; pass --log to persist worker output"
-    if isinstance(configured_path, str) and configured_path:
-        return f"Log: {configured_path}"
-    return f"Log: {display_path(log_path)}"
+    return RestartResult(start_result.exit_code, stop=stop_result, start=start_result)
 
 
 def stop_host_automation(
     *,
     host_name: str,
     wait_s: float = 3.0,
-) -> CommandResult:
+) -> StopResult:
     # The host ends the session and releases control; the monitor then
     # finishes the run record.
     try:
         base_url = running_base_url(host_name)
     except RuntimeHostError as exc:
-        return CommandResult(2, str(exc))
+        return StopResult(2, "error", host_name, error=str(exc))
     if base_url is not None:
         try:
             RuntimeClient(base_url, timeout_s=max(1.0, wait_s)).stop()
         except RuntimeError as exc:
             if not PROVIDERS[staged_host(host_name)["provider"]].local_host:
-                return CommandResult(2, f"Could not stop {host_name}: {exc}")
+                return StopResult(2, "remote_failed", host_name, error=str(exc))
             forced = _replace_unanswering_host(host_name, wait_s=wait_s)
             if forced is not None:
                 return forced
@@ -821,94 +467,36 @@ def stop_host_automation(
 
     if not isinstance(pid, int):
         mark_state_stopped(state_path, stopped_by="stop_command_no_pid")
-        return CommandResult(
-            0,
-            "\n".join(
-                [
-                    f"No run PID is recorded for host {host_name}.",
-                    f"State: {display_path(state_path)}",
-                ]
-            ),
-        )
+        return StopResult(0, "no_pid", host_name, state_path=state_path)
 
     if not pid_alive(pid):
-        mark_process_stopped(process_path, process, stopped_by="stop_command_already_dead")
-        mark_state_stopped(state_path, stopped_by="stop_command_already_dead")
-        return CommandResult(
-            0,
-            "\n".join(
-                [
-                    f"Host {host_name} has no run.",
-                    f"Recorded PID: {pid}",
-                    f"State: {display_path(state_path)}",
-                ]
-            ),
+        mark_process_stopped(
+            process_path, process, stopped_by="stop_command_already_dead"
         )
+        mark_state_stopped(state_path, stopped_by="stop_command_already_dead")
+        return StopResult(0, "already_dead", host_name, pid=pid, state_path=state_path)
     if not pid_matches_automation(pid, host_name):
         mark_process_stopped(process_path, process, stopped_by="stop_command_stale_pid")
         mark_state_stopped(state_path, stopped_by="stop_command_stale_pid")
-        return CommandResult(
-            0,
-            "\n".join(
-                [
-                    f"The recorded run PID for host {host_name} is alive but is not this host's run.",
-                    f"PID: {pid}",
-                    "The PID record was marked stale; no process was terminated.",
-                    f"Process: {process_command(pid) or 'unknown'}",
-                ]
-            ),
+        return StopResult(
+            0, "stale_pid", host_name, pid=pid, command=process_command(pid)
         )
 
-    terminate_pid(pid, signal.SIGINT, process_group=False)
-    deadline = time.monotonic() + max(0.0, float(wait_s))
-    while time.monotonic() < deadline:
-        if not pid_alive(pid):
-            mark_process_stopped(process_path, process, stopped_by="stop_command")
-            mark_state_stopped(state_path, stopped_by="stop_command")
-            return CommandResult(
-                0,
-                "\n".join(
-                    [
-                        f"Stopped the run on host {host_name}.",
-                        f"PID: {pid}",
-                        f"State: {display_path(state_path)}",
-                    ]
-                ),
-            )
-        time.sleep(0.1)
-
-    terminate_pid(pid, signal.SIGKILL)
-    forced_deadline = time.monotonic() + 1.0
-    while time.monotonic() < forced_deadline:
-        if not pid_alive(pid):
-            mark_process_stopped(process_path, process, stopped_by="stop_command_forced")
-            mark_state_stopped(state_path, stopped_by="stop_command_forced")
-            return CommandResult(
-                0,
-                "\n".join(
-                    [
-                        f"Force-stopped the run on host {host_name}.",
-                        f"PID: {pid}",
-                        f"State: {display_path(state_path)}",
-                    ]
-                ),
-            )
-        time.sleep(0.05)
-
-    return CommandResult(
-        2,
-        "\n".join(
-            [
-                f"The run on host {host_name} did not stop.",
-                f"PID: {pid}",
-                f"State: {display_path(state_path)}",
-            ]
-        ),
+    outcome = stop_worker(pid, wait_s=wait_s)
+    if outcome != "timeout":
+        stopped_by = "stop_command_forced" if outcome == "forced" else "stop_command"
+        mark_process_stopped(process_path, process, stopped_by=stopped_by)
+        mark_state_stopped(state_path, stopped_by=stopped_by)
+    return StopResult(
+        2 if outcome == "timeout" else 0,
+        outcome,
+        host_name,
+        pid=pid,
+        state_path=state_path,
     )
 
 
-
-def _replace_unanswering_host(host_name: str, *, wait_s: float) -> CommandResult | None:
+def _replace_unanswering_host(host_name: str, *, wait_s: float) -> StopResult | None:
     """End a Chase host that does not answer; a killed one cannot release control.
 
     ``None`` once the host is gone with control released.
@@ -918,11 +506,11 @@ def _replace_unanswering_host(host_name: str, *, wait_s: float) -> CommandResult
     if not killed:
         return None
     try:
-        create_vehicle_access(staged_host(host_name), timeout_s=max(1.0, wait_s)).car.stop()
+        create_vehicle_access(
+            staged_host(host_name), timeout_s=max(1.0, wait_s)
+        ).car.stop()
     except Exception as exc:  # noqa: BLE001 - reported with the recovery
-        return CommandResult(2, "\n".join([
-            f"The Chase host for {host_name} did not answer and was killed; "
-            f"stopping the car failed: {type(exc).__name__}: {exc}",
-            "Stop the chaser in the simulator before the next run.",
-        ]))
+        return StopResult(
+            2, "release_failed", host_name, error=f"{type(exc).__name__}: {exc}"
+        )
     return None

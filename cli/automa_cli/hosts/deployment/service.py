@@ -11,16 +11,17 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from typing import Any, TextIO
+from typing import Any
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
 
+from ...providers.catalog import PROVIDERS
+from ...providers.models import Candidate
 from ...releases.errors import RuntimeHostError
 from ...releases.store import release_code_dir
 from ...shared.io.processes import pid_alive
-from ...shared.paths import RUNTIME_ROOT, display_path, safe_path_part
-from ...providers.catalog import PROVIDERS
-from ...providers.probes import Candidate
+from ...shared.paths import RUNTIME_ROOT, safe_path_part
+from ...shared.progress import ProgressSink
 from ..bundles import controller_bundle_source_summary, sync_controller_bundle
 from ..discovery import running_base_url
 from ..local import ensure_chase_host, host_record, stop_chase_host
@@ -47,12 +48,17 @@ from .picar_deploy import (
     run_step,
     ssh_target_from_vehicle,
 )
-from .registry import DeploymentBackend, backend_for, register_backend, unsupported_operation
+from .registry import (
+    DeploymentBackend,
+    backend_for,
+    register_backend,
+    unsupported_operation,
+)
 
 
 def update_host(
     *, host_name: str, dry_run: bool = False, restart: bool = False,
-    drive_args: str | None = None, verbose: bool = False, output: TextIO | None = None,
+    drive_args: str | None = None, verbose: bool = False, emit: ProgressSink | None = None,
 ) -> DeploymentResult:
     configuration, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
     if error:
@@ -64,29 +70,29 @@ def update_host(
         return DeploymentResult(2, unsupported_operation(configuration["provider"], "update"))
     return backend.update(
         configuration, dry_run=dry_run, restart=restart, drive_args=drive_args,
-        verbose=verbose, output=output,
+        verbose=verbose, emit=emit,
     )
 
 
 def _update_chase(
     configuration: dict[str, Any], *, dry_run: bool, restart: bool, drive_args: str | None,
-    verbose: bool, output: TextIO | None,
+    verbose: bool, emit: ProgressSink | None,
 ) -> DeploymentResult:
     del verbose
     if drive_args is not None:
         return DeploymentResult(2, "--drive-args applies only to a PiCar.")
     return _update_local_autonomy(
-        host_name=configuration["host_name"], dry_run=dry_run, restart=restart, output=output,
+        host_name=configuration["host_name"], dry_run=dry_run, restart=restart, emit=emit,
     )
 
 
 def _update_picar(
     configuration: dict[str, Any], *, dry_run: bool, restart: bool, drive_args: str | None,
-    verbose: bool, output: TextIO | None,
+    verbose: bool, emit: ProgressSink | None,
 ) -> DeploymentResult:
     return deploy_picar_release(
         resolve_picar_target(configuration), dry_run=dry_run, restart=restart,
-        drive_args=drive_args, verbose=verbose, output=output,
+        drive_args=drive_args, verbose=verbose, emit=emit,
     )
 
 
@@ -95,7 +101,7 @@ def _update_local_autonomy(
     host_name: str,
     dry_run: bool,
     restart: bool,
-    output: TextIO | None,
+    emit: ProgressSink | None,
 ) -> DeploymentResult:
     """Package a release for a locally hosted vehicle; ``restart`` moves its host onto it."""
 
@@ -113,7 +119,7 @@ def _update_local_autonomy(
         return DeploymentResult(2, str(exc))
     try:
         configuration = staged_host(host_name)
-        release = sync_controller_bundle(bundle, output=output)
+        release = sync_controller_bundle(bundle, emit=emit)
         ensure_step_activations(
             host_name=host_name, bundle=bundle, release=release, activations=startup,
             vehicle=configuration,
@@ -154,7 +160,7 @@ def create_host(
     *, host_name: str, provider: str, url: str,
     ssh_target: str | None = None, pi_home: str | None = None,
     drive_args: str | None = None, dry_run: bool = False,
-    verbose: bool = False, output: TextIO | None = None,
+    verbose: bool = False, emit: ProgressSink | None = None,
 ) -> DeploymentResult:
     if host_name in {".", ".."} or safe_path_part(host_name) != host_name or not host_name:
         return DeploymentResult(2, "Host names may contain letters, digits, dots, underscores and hyphens, excluding . and ..")
@@ -170,14 +176,14 @@ def create_host(
     return backend.create(
         host_name=host_name, provider=provider, url=url, vehicle=PROVIDERS[provider],
         ssh_target=ssh_target, pi_home=pi_home, drive_args=drive_args, dry_run=dry_run,
-        verbose=verbose, output=output,
+        verbose=verbose, emit=emit,
     )
 
 
 def _create_chase(
     *, host_name: str, provider: str, url: str, vehicle: Any,
     ssh_target: str | None, pi_home: str | None, drive_args: str | None, dry_run: bool,
-    verbose: bool, output: TextIO | None,
+    verbose: bool, emit: ProgressSink | None,
 ) -> DeploymentResult:
     del verbose
     if any(value is not None for value in (ssh_target, pi_home, drive_args)):
@@ -195,16 +201,16 @@ def _create_chase(
         "connection": {vehicle.url_key: url},
     }
     if dry_run:
-        return _update_local_autonomy(host_name=host_name, dry_run=True, restart=True, output=output)
+        return _update_local_autonomy(host_name=host_name, dry_run=True, restart=True, emit=emit)
     return _install_created_host(
-        configuration, local=True, drive_args=drive_args, verbose=False, output=output,
+        configuration, local=True, drive_args=drive_args, verbose=False, emit=emit,
     )
 
 
 def _create_picar(
     *, host_name: str, provider: str, url: str, vehicle: Any,
     ssh_target: str | None, pi_home: str | None, drive_args: str | None, dry_run: bool,
-    verbose: bool, output: TextIO | None,
+    verbose: bool, emit: ProgressSink | None,
 ) -> DeploymentResult:
     try:
         url = vehicle.normalize_url(url)
@@ -222,7 +228,7 @@ def _create_picar(
         target = resolve_picar_target(configuration)
         core = install_picar_core(target, dry_run=True)
         release = deploy_picar_release(
-            target, dry_run=True, restart=True, drive_args=drive_args, verbose=verbose, output=output,
+            target, dry_run=True, restart=True, drive_args=drive_args, verbose=verbose, emit=emit,
         )
         if core.exit_code:
             return core
@@ -232,13 +238,13 @@ def _create_picar(
             "configuration": configuration, "dry_run": True, "core": core.receipt, "host": release.receipt,
         })
     return _install_created_host(
-        configuration, local=False, drive_args=drive_args, verbose=verbose, output=output,
+        configuration, local=False, drive_args=drive_args, verbose=verbose, emit=emit,
     )
 
 
 def _install_created_host(
     configuration: dict[str, Any], *, local: bool, drive_args: str | None,
-    verbose: bool, output: TextIO | None,
+    verbose: bool, emit: ProgressSink | None,
 ) -> DeploymentResult:
     host_name = configuration["host_name"]
     directory = RUNTIME_ROOT / safe_path_part(host_name)
@@ -246,12 +252,12 @@ def _install_created_host(
     write_host_configuration(RUNTIME_ROOT, configuration)
     try:
         if not local:
-            core = install_picar_core(resolve_picar_target(configuration), verbose=verbose, output=output)
+            core = install_picar_core(resolve_picar_target(configuration), verbose=verbose, emit=emit)
             if core.exit_code:
                 raise RuntimeError(core.message)
         result = update_host(
             host_name=host_name, restart=not local, drive_args=drive_args,
-            verbose=verbose, output=output,
+            verbose=verbose, emit=emit,
         )
         if result.exit_code:
             raise RuntimeError(result.message)
@@ -278,18 +284,18 @@ def _vehicle_label(configuration: dict[str, Any]) -> str:
     return f"the {vehicle.label} at {vehicle.operator_url(configuration['connection'][vehicle.url_key])}"
 
 
-def delete_host(*, host_name: str, verbose: bool = False, output: TextIO | None = None) -> DeploymentResult:
+def delete_host(*, host_name: str, verbose: bool = False, emit: ProgressSink | None = None) -> DeploymentResult:
     configuration, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
     if error:
         return DeploymentResult(2, error)
     backend = backend_for(configuration["provider"])
     if backend is None or backend.delete is None:
         return DeploymentResult(2, unsupported_operation(configuration["provider"], "delete"))
-    return backend.delete(configuration, verbose=verbose, output=output)
+    return backend.delete(configuration, verbose=verbose, emit=emit)
 
 
 def _delete_recorded_host(
-    configuration: dict[str, Any], *, verbose: bool, output: TextIO | None, local: bool,
+    configuration: dict[str, Any], *, verbose: bool, emit: ProgressSink | None, local: bool,
 ) -> DeploymentResult:
     host_name = configuration["host_name"]
     directory = RUNTIME_ROOT / safe_path_part(host_name)
@@ -303,14 +309,13 @@ def _delete_recorded_host(
         command = donkey_service_control_command(pi_home=target.pi_home, action="stop", drive_args=None)
         code = run_step(
             "Stop Donkey runtime service", ["ssh", target.ssh_target, command],
-            env=None, verbose=verbose, output=output,
+            env=None, verbose=verbose, emit=emit,
         )
         if code:
-            return DeploymentResult(code, "Could not stop the PiCar host; its local record was kept.")
+            return DeploymentResult(code, render_kind="delete_failed", host_name=host_name, local=False)
     shutil.rmtree(directory)
-    suffix = "" if local else " Harness files stay in ~/mycar on the PiCar."
-    stopped_text = "Stopped the run. " if stopped else ""
-    return DeploymentResult(0, f"{stopped_text}Stopped host {host_name}. Removed {display_path(directory)}.{suffix}")
+    return DeploymentResult(0, render_kind="deleted", deleted_path=directory,
+                            host_name=host_name, stopped_run=stopped, local=local)
 
 
 def _stop_active_automation(host_name: str) -> tuple[bool, DeploymentResult | None]:
@@ -331,20 +336,20 @@ def _stop_active_automation(host_name: str) -> tuple[bool, DeploymentResult | No
         return False, None
     result = stop_host_automation(host_name=host_name)
     if result.exit_code:
-        return True, DeploymentResult(result.exit_code, result.message)
+        return True, DeploymentResult(result.exit_code, render_kind="stop_failed", stop=result)
     return True, None
 
 
 def _delete_chase(
-    configuration: dict[str, Any], *, verbose: bool, output: TextIO | None,
+    configuration: dict[str, Any], *, verbose: bool, emit: ProgressSink | None,
 ) -> DeploymentResult:
-    return _delete_recorded_host(configuration, verbose=verbose, output=output, local=True)
+    return _delete_recorded_host(configuration, verbose=verbose, emit=emit, local=True)
 
 
 def _delete_picar(
-    configuration: dict[str, Any], *, verbose: bool, output: TextIO | None,
+    configuration: dict[str, Any], *, verbose: bool, emit: ProgressSink | None,
 ) -> DeploymentResult:
-    return _delete_recorded_host(configuration, verbose=verbose, output=output, local=False)
+    return _delete_recorded_host(configuration, verbose=verbose, emit=emit, local=False)
 
 
 register_backend("chase-sim", DeploymentBackend(create=_create_chase, update=_update_chase, delete=_delete_chase))

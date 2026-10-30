@@ -4,7 +4,8 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from cli.automa_cli.replay.source import SourceValidationError, normalize_image_directory
+from cli.automa_cli.replay.source import normalize_image_directory
+from cli.automa_cli.replay.models import SourceValidationError
 from tests.shared.cli.workbench_fixtures import (
     BlockingSecondMapper,
     DecisionFixtureMapper,

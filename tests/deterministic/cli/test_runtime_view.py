@@ -208,7 +208,8 @@ class OpenViewerCommandTests(unittest.TestCase):
     def test_automa_without_a_command_serves_the_viewer(self) -> None:
         with mock.patch.object(app, "serve_viewer", return_value=130) as serve_viewer:
             self.assertEqual(app.main([]), 130)
-        serve_viewer.assert_called_once_with()
+        serve_viewer.assert_called_once()
+        self.assertTrue(callable(serve_viewer.call_args.kwargs["emit"]))
 
 
 def _read_text(url: str) -> str:

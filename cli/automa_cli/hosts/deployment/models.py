@@ -8,7 +8,10 @@ process was already running, stay beside the receipt.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+from ..runs.models import StopResult
 
 
 @dataclass(frozen=True)
@@ -19,3 +22,9 @@ class DeploymentResult:
     host_present: bool | None = None
     render_kind: str = "generic"
     child_render_kind: str = "generic"
+
+    stop: StopResult | None = None
+    deleted_path: Path | None = None
+    host_name: str | None = None
+    stopped_run: bool = False
+    local: bool = True

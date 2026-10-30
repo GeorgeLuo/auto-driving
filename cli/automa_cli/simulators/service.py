@@ -13,12 +13,11 @@ from pathlib import Path
 
 from ..hosts.discovery import local_hosts
 from ..providers.catalog import CHASE_SIM
-from ..providers.probes import normalize_chase_url
+from ..providers.urls import normalize_chase_url
 from ..releases.errors import RuntimeHostError
 from .models import SimulatorResult
 from .process import start_simulator, stop_simulator
 from .store import created_simulators
-
 
 # simulators create runs Metrics UI's headless launcher from this checkout.
 METRICS_UI_DIR_ENV = "AUTOMA_METRICS_UI_DIR"

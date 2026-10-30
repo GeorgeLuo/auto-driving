@@ -7,6 +7,8 @@ from urllib.request import urlopen
 
 from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
 from cli.automa_cli.workbench.models import WorkbenchEvent
+from cli.automa_cli.shared.text import format_browser_result
+from cli.automa_cli.workbench.render import render_workbench_result
 from cli.automa_cli.workbench.render import format_workbench_status
 from cli.automa_cli.workbench.replay import run_workbench_replay
 from tests.shared.cli.invoke import invoke_automa
@@ -66,8 +68,8 @@ class WorkbenchTests(unittest.TestCase):
                 shown.append(format_workbench_status(
                     event.state, server_url=event.server_url, serving=event.serving,
                 ))
-            if event.line:
-                shown.append(event.line)
+            if event.browser:
+                shown.append(format_browser_result(event.browser))
 
         with image_source(1) as root:
             def open_view(url: str) -> str:
@@ -82,14 +84,14 @@ class WorkbenchTests(unittest.TestCase):
                     self.assertIn('<a class="nav" href="/workbench/">Workbench</a>', response.read().decode())
                 raise KeyboardInterrupt
 
-            with mock.patch("cli.automa_cli.workbench.replay.open_view_message", side_effect=open_view) as launch:
+            with mock.patch("cli.automa_cli.workbench.replay.launch_browser", side_effect=open_view) as launch:
                 result = run_workbench_replay(
                     root, cadence_ms=0, open_browser=True, emit=emit, view_server=runtime_view_server,
                 )
 
         launch.assert_called_once_with(opened[0])
         self.assertEqual(result.exit_code, 0)
-        self.assertEqual(result.message, "viewer stopped")
+        self.assertEqual(render_workbench_result(result), "viewer stopped")
         self.assertIn(f"workbench: {opened[0]}", "\n".join(shown))
 
     def test_cli_replay_human_output_names_recovery_and_cleanup(self) -> None:

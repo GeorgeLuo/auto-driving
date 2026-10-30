@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import math
 import socket
 import time
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
-from urllib.parse import urlparse, urlunparse
+from urllib.parse import urlparse
 
 from autonomy.runtime.routes import STATUS_PATH
 from implementations.vehicle.chase_sim import (
@@ -17,46 +15,15 @@ from implementations.vehicle.chase_sim import (
     ChaseSimCar,
 )
 from implementations.vehicle.chase_sim.car import FRONTEND_DELIVERY_PROTOCOL_CODES
-from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
+from implementations.vehicle.chase_sim.metrics_ws import (
+    MetricsUiWebSocketError,
+    MetricsUiWsClient,
+)
 from implementations.vehicle.picar import create_picar
 
 from ..shared.io import http_json
-
-DEFAULT_READINESS_TIMEOUT_S = 5.0
-
-
-@dataclass(frozen=True)
-class Candidate:
-    provider: str
-    url: str
-    source: str
-
-    def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
-
-
-@dataclass(frozen=True)
-class ProbeResult:
-    active: bool
-    candidate: Candidate
-    vehicle: dict[str, Any] | None = None
-    error: str | None = None
-    diagnostics: dict[str, Any] = field(default_factory=dict)
-    checked_at_ms: int = field(default_factory=lambda: int(time.time() * 1000))
-
-    def to_dict(self) -> dict[str, Any]:
-        data = {
-            "active": self.active,
-            "candidate": self.candidate.to_dict(),
-            "checked_at_ms": self.checked_at_ms,
-        }
-        if self.vehicle is not None:
-            data["vehicle"] = self.vehicle
-        if self.error is not None:
-            data["error"] = self.error
-        if self.diagnostics:
-            data["diagnostics"] = self.diagnostics
-        return data
+from .models import Candidate, ProbeResult
+from .urls import chase_operator_url
 
 
 def simulator_status(candidate: Candidate, remaining: Callable[[], float]) -> dict[str, Any]:
@@ -106,69 +73,11 @@ def simulator_status(candidate: Candidate, remaining: Callable[[], float]) -> di
     return status
 
 
-def picar_state(probe: ProbeResult) -> str:
-    if probe.active:
-        return "answering"
-    reachable = probe.diagnostics.get("runtime_state") in {"server_not_listening", "http_unhealthy"}
-    return "reachable, no host listening" if reachable else "unreachable"
-
-
 def _frontend_code(exc: BaseException | None) -> str | None:
     """The code Metrics UI fails a query with when no browser frontend answers it."""
 
     code = getattr(exc, "code", None)
     return code if code in FRONTEND_DELIVERY_PROTOCOL_CODES else None
-
-
-def _normalize_http_url(url: str) -> str:
-    value = url.strip().rstrip("/")
-    if "://" not in value:
-        value = f"http://{value}"
-    return value
-
-
-def normalize_chase_url(url: str) -> str:
-    """Normalize an operator HTTP/WS Metrics UI URL to its control WebSocket."""
-
-    value = url.strip()
-    if not value:
-        raise ValueError("Chase URL must not be empty")
-    if "://" not in value:
-        value = f"http://{value}"
-    parsed = urlparse(value)
-    if parsed.scheme not in {"http", "https", "ws", "wss"}:
-        raise ValueError(
-            "Chase URL scheme must be http, https, ws, or wss "
-            f"(got {parsed.scheme or 'none'!r})"
-        )
-    if not parsed.netloc:
-        raise ValueError(f"Chase URL has no host: {url!r}")
-
-    scheme = {
-        "http": "ws",
-        "https": "wss",
-        "ws": "ws",
-        "wss": "wss",
-    }[parsed.scheme]
-    path = parsed.path
-    if parsed.scheme in {"http", "https"} or path in {"", "/"}:
-        path = "/ws/control"
-    return urlunparse((scheme, parsed.netloc, path, "", parsed.query, ""))
-
-
-def require_positive_timeout(value: float) -> float:
-    timeout = float(value)
-    if not math.isfinite(timeout) or timeout <= 0:
-        raise ValueError("timeout must be a finite number greater than zero")
-    return timeout
-
-
-def chase_operator_url(ws_url: str) -> str:
-    """Return the reloadable browser origin for a normalized Chase endpoint."""
-
-    parsed = urlparse(ws_url)
-    scheme = "https" if parsed.scheme == "wss" else "http"
-    return urlunparse((scheme, parsed.netloc, "/", "", "", ""))
 
 
 def probe_picar(candidate: Candidate, *, timeout_s: float) -> ProbeResult:

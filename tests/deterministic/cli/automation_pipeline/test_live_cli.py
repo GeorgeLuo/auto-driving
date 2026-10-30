@@ -6,6 +6,8 @@ in-process host; a PiCar differs only in where its ``base_url`` comes from.
 """
 from __future__ import annotations
 
+from cli.automa_cli.shared.browser_result import BrowserOpenResult
+
 import json
 import tempfile
 import unittest
@@ -97,8 +99,8 @@ class LiveCommandsTests(LiveHostTestCase):
                 served.append((exc.code, json.load(exc)))
             raise KeyboardInterrupt
 
-        with patch("cli.automa_cli.hosts.views.viewer.open_view_message",
-                   side_effect=lambda url: opened.append(url) or f"Browser opened: {url}"), \
+        with patch("cli.automa_cli.hosts.views.viewer.launch_browser",
+                   side_effect=lambda url: opened.append(url) or BrowserOpenResult(url, True)), \
              patch("cli.automa_cli.hosts.views.viewer.pause_s", side_effect=interrupt):
             result = self.viewer(*target)
         self.assertEqual(result.returncode, 130, result.stdout + result.stderr)
@@ -144,7 +146,7 @@ class LiveCommandsTests(LiveHostTestCase):
         url = closed_url()
         write_host_fixture(self.runtime_root, "piracer", provider="picar", url=url)
         for target in (("--host-url", url), ("--name", "piracer")):
-            with self.subTest(target=target), patch("cli.automa_cli.hosts.views.viewer.open_view_message") as open_view:
+            with self.subTest(target=target), patch("cli.automa_cli.hosts.views.viewer.launch_browser") as open_view:
                 silent = self.viewer(*target)
                 self.assertEqual(silent.returncode, 2, silent.stdout + silent.stderr)
                 self.assertTrue(silent.stdout.startswith(f"Cannot view host piracer at {url}: "), silent.stdout)

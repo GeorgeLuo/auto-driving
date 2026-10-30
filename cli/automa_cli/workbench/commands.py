@@ -10,7 +10,7 @@ from ..replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ..shared.cli.selection_args import add_selection_args
 from .models import WorkbenchEvent
 from .plugins import WORKBENCH_SELECTABLE_STEPS
-from .render import format_workbench_status
+from .render import render_workbench_event, render_workbench_result
 from .replay import run_workbench_replay
 
 
@@ -96,11 +96,9 @@ def register_workbench(
 
 
 def _present(event: WorkbenchEvent) -> None:
-    if event.state is not None:
-        print(format_workbench_status(event.state, server_url=event.server_url, serving=event.serving))
-    if event.line:
-        print(event.line)
-
+    message = render_workbench_event(event)
+    if message:
+        print(message)
 
 def _handle_workbench(args: argparse.Namespace) -> int:
     result = run_workbench_replay(
@@ -119,6 +117,7 @@ def _handle_workbench(args: argparse.Namespace) -> int:
         emit=_present,
         view_server=args.view_server,
     )
-    if result.message:
-        print(result.message)
+    message = render_workbench_result(result)
+    if message:
+        print(message)
     return result.exit_code

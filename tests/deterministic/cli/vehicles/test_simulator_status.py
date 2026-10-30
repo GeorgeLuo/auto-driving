@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from cli.automa_cli.hosts.publications.host_publications import host_state
-from cli.automa_cli.providers.probes import chase_operator_url
+from cli.automa_cli.providers.urls import chase_operator_url
 from tests.deterministic.cli.vehicles.test_host_status import _record
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.shared.cli.invoke import invoke_automa

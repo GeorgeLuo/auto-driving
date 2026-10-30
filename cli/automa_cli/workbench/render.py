@@ -6,6 +6,9 @@ from typing import Any
 
 from implementations.decision_cycle.catalog import PRESET_STEPS
 
+from ..shared.text import format_browser_result
+from .models import WorkbenchEvent, WorkbenchResult
+
 
 def format_workbench_status(
     state: dict[str, Any],
@@ -58,3 +61,15 @@ def _selection_text(preset: Any, plugin_ids: Any) -> str:
 
     plugins = ", ".join(str(item) for item in plugin_ids or []) or "none"
     return f"{preset} ({plugins})" if preset else plugins
+
+
+def render_workbench_event(event: WorkbenchEvent) -> str:
+    if event.state is not None:
+        return format_workbench_status(event.state, server_url=event.server_url, serving=event.serving)
+    return format_browser_result(event.browser) if event.browser else ""
+
+
+def render_workbench_result(result: WorkbenchResult) -> str:
+    if result.error is not None:
+        return f"Workbench replay failed: {result.error}"
+    return "viewer stopped" if result.viewer_stopped else ""

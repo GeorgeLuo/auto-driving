@@ -62,7 +62,7 @@ class LoadingContractTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls._temporary = tempfile.TemporaryDirectory()
         cls.bundle = controller_bundle_paths(Path(cls._temporary.name) / "vehicle")
-        cls.release = sync_controller_bundle(cls.bundle, output=None)
+        cls.release = sync_controller_bundle(cls.bundle, emit=None)
         cls.bundle_root = Path(cls.bundle["root_dir"])
 
     @classmethod

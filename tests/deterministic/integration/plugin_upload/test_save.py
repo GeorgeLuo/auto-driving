@@ -10,7 +10,6 @@ from pathlib import Path
 from autonomy.decision_cycle.activation import STEPS
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
 from cli.automa_cli.hosts.step_activations import (
-    bundle_activation_path,
     ensure_step_activations,
     host_bundle,
     staging_host,
@@ -33,7 +32,7 @@ def update(runtime_root: Path) -> dict[str, Path]:
     assert error is None, error
     bundle = host_bundle("one", runtime_root)
     return ensure_step_activations(
-        host_name="one", bundle=bundle, release=sync_controller_bundle(bundle, output=None),
+        host_name="one", bundle=bundle, release=sync_controller_bundle(bundle, emit=None),
         activations=startup_activations(bundle, "one"), vehicle=configuration,
     )
 

@@ -15,7 +15,7 @@ from cli.automa_cli import app
 from cli.automa_cli.hosts.deployment import deploy, picar_deploy
 from cli.automa_cli.hosts import runtime_hosts
 from cli.automa_cli.hosts.views import view_discovery
-from cli.automa_cli.plugins import catalog
+from cli.automa_cli.plugins.catalog import service as catalog
 from cli.automa_cli.vehicles import discovery
 from cli.automa_cli.shared import controller_releases
 from tests.support.cli_runner import WORKSPACE_ROOT, checked_result

@@ -15,7 +15,7 @@ from ...hosts.publications.decision_publication import (
 )
 from ...shared.memory_report import evidence_publisher, plugin_ledgers
 from ..step_formatting import format_step_record, format_step_timing
-from .models import MemoryPublication, StreamEvent, ViewerSnapshot
+from .models import MemoryPublication, StreamEvent, ViewState
 
 _PERCEPTION_PAGES = (("view", ""),)
 _MEMORY_PAGES = (("memory map", "/memory"), ("perception view", "/perception"))
@@ -213,15 +213,15 @@ def _shown(value: Any, default: str = "unknown") -> Any:
     return default if value is None else value
 
 
-def _view_lines(view: ViewerSnapshot | None, *pages: tuple[str, str]) -> list[str]:
-    """Each ``(label, route)`` page, then the action view. No snapshot shows none."""
+def _view_lines(view: ViewState | None, *pages: tuple[str, str]) -> list[str]:
+    """Each ``(label, route)`` page, then the action view. An absent view shows nothing."""
 
     if view is None:
         return []
     return [*(_page_line(label, view.url, view.error, route) for label, route in pages), _action_line(view)]
 
 
-def _action_line(view: ViewerSnapshot) -> str:
+def _action_line(view: ViewState) -> str:
     if view.url is None or view.decision_page is None:
         return _page_line("action view", None, view.error or view.decision_error or "no action yet")
     line = f"action view: {view.url.rstrip('/')}{view.decision_page}"

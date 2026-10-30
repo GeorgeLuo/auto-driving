@@ -110,7 +110,7 @@ def _publication(index: int) -> dict:
 
 
 class RuntimeMonitorTests(unittest.TestCase):
-    def test_run_transcript_formats_a_supplied_snapshot(self) -> None:
+    def test_run_transcript_formats_supplied_state(self) -> None:
         state = {
             "host_name": "car",
             "status": "completed",

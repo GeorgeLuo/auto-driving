@@ -13,7 +13,7 @@ from ...releases.errors import RuntimeHostError
 from ...shared.timestamps import timestamp_ms
 from .models import StreamEvent, StreamResult
 from .polling import poll_events, preflight_failure, unavailable_probe
-from .session import StreamView, with_snapshot
+from .session import StreamView, with_view
 
 PERCEPTION_LIVE_SCHEMA = "host_perception_live"
 # Observation publication health -> probe status; "healthy" is the only live one.
@@ -69,7 +69,7 @@ def stream_perception(
     def outbound(event: StreamEvent) -> None:
         if view is not None:
             view.publish(event.source)
-        emit(with_snapshot(view, event, host_name=host_name, base_url=base_url))
+        emit(with_view(view, event, host_name=host_name, base_url=base_url))
 
     try:
         return poll_events(

@@ -84,13 +84,16 @@ def _import_edges(imports: dict[str, list[CliImport]], modules: set[str]) -> dic
 # Files with these names have that responsibility. Anything else in a feature is support.
 _LAYER_NAMES = {"commands", "service", "models", "render", "store", "worker", "monitor", "registry"}
 _OPERATION_ROLES = {"service", "support", "store", "worker", "monitor", "registry"}
-# Features split by responsibility. Later slices add to this tuple.
+# Every command family whose modules use the role names below. A role-named
+# module outside this tuple fails test_role_modules_belong_to_a_layered_feature.
 LAYERED_FEATURES = (
     f"{PACKAGE}.plugins.catalog",
     f"{PACKAGE}.plugins.inspect",
     f"{PACKAGE}.plugins.stream",
     f"{PACKAGE}.hosts.runs",
     f"{PACKAGE}.hosts.deployment",
+    f"{PACKAGE}.hosts.views",
+    f"{PACKAGE}.releases",
     f"{PACKAGE}.vehicles",
     f"{PACKAGE}.simulators",
     f"{PACKAGE}.workbench",
@@ -285,10 +288,19 @@ class ModuleBoundaryTests(unittest.TestCase):
 
         The check resolves relative imports and aliases. It does not prove a
         renderer performs no I/O; stream, host-status, deployment, vehicle
-        status, and workbench tests render from supplied data.
+        status, and workbench tests render from supplied data. The run worker
+        may import its own renderer because that process entry composes the
+        transcript the service receives.
         """
 
         self.assertEqual(_layer_violations(self._edges()), [])
+
+    def test_role_modules_belong_to_a_layered_feature(self) -> None:
+        uncovered = sorted(
+            module for module in self.modules
+            if module.rsplit(".", 1)[-1] in _LAYER_NAMES and not _layered(module)
+        )
+        self.assertEqual(uncovered, [])
 
     def test_layer_fixtures_accept_assembly_and_reject_crossed_imports(self) -> None:
         allowed = {

@@ -16,7 +16,7 @@ from unittest.mock import Mock, patch
 
 from cli.automa_cli.plugins.stream import decision, memory, perception, session
 from cli.automa_cli.plugins.stream.commands import stream_host_step
-from cli.automa_cli.plugins.stream.models import StreamEvent, ViewerSnapshot
+from cli.automa_cli.plugins.stream.models import StreamEvent, ViewState
 from cli.automa_cli.plugins.stream.polling import poll_events
 from cli.automa_cli.plugins.stream.render import render_stream
 from cli.automa_cli.releases.errors import RuntimeHostError
@@ -295,12 +295,12 @@ class StreamOutputTests(unittest.TestCase):
                         self.assertEqual(result.exit_code, 2 if outcome == "complete" else 130)
                 feed.stop.assert_called_once_with()
 
-    def test_render_uses_a_snapshot_and_no_view(self):
+    def test_render_uses_supplied_view_addresses(self):
         event = StreamEvent(
             step="plan",
             host_name="fixture",
             live={"status": "error", "error": "offline"},
-            view=ViewerSnapshot(url="http://view/", error=None, decision_page="/decision", decision_error="late"),
+            view=ViewState(url="http://view/", error=None, decision_page="/decision", decision_error="late"),
         )
         text = render_stream(event, json_output=False)
         self.assertIn("offline", text)

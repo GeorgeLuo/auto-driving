@@ -19,7 +19,7 @@ from ...releases.errors import RuntimeHostError
 from ...releases.paths import bundle_paths
 from .models import StreamEvent, StreamResult
 from .polling import poll_events, preflight_failure, unavailable_probe
-from .session import StreamView, with_snapshot
+from .session import StreamView, with_view
 
 
 def stream_decision(
@@ -95,7 +95,7 @@ def stream_decision(
             return _error_probe(exc), None
 
     def outbound(event: StreamEvent) -> None:
-        emit(with_snapshot(view, event))
+        emit(with_view(view, event))
 
     try:
         return poll_events(step=step, probe=probe, refresh_s=refresh_s, once=once, emit=outbound)

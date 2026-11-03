@@ -7,7 +7,7 @@ from typing import Any
 
 
 @dataclass(frozen=True)
-class ViewerSnapshot:
+class ViewState:
     """URLs and errors for one local view.
 
     A renderer prints these. It does not receive the server or the feed.
@@ -32,7 +32,7 @@ class StreamEvent:
     step: str
     live: dict[str, Any]
     source: Any = None
-    view: ViewerSnapshot | None = None
+    view: ViewState | None = None
     host_name: str = ""
     base_url: str = ""
 

@@ -1,8 +1,8 @@
 """CLI replay lifecycle for one ordered image directory.
 
 The operation starts the runner and, when asked, the viewer. It reports
-snapshots and operational notices through ``emit``. The command formats those
-snapshots. Browser payloads for the workbench page stay in ``presentation``.
+runner state and operational notices through ``emit``. The command formats
+that state. Browser payloads for the workbench page stay in ``presentation``.
 """
 
 from __future__ import annotations
@@ -50,7 +50,7 @@ def run_workbench_replay(
     default. Page selections override that step for the replay pass, retaining
     configs when the selected IDs are unchanged. Offline replay computes the
     action's authorization without host delivery. ``view_server`` builds the
-    viewer that serves the replay. ``emit`` receives snapshots and notices;
+    viewer that serves the replay. ``emit`` receives runner state and notices;
     this function does not format them.
     """
 

@@ -1,4 +1,4 @@
-"""Terminal text for a workbench replay snapshot the caller already collected."""
+"""Terminal text for workbench replay state the caller already collected."""
 
 from __future__ import annotations
 

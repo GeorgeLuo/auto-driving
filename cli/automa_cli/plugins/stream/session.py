@@ -3,7 +3,7 @@
 Polling does not import this module. A step operation opens a session when
 the command asks to serve a view, publishes through it, and closes it on
 completion, interruption, and failure. The renderer receives only
-``ViewerSnapshot``.
+``ViewState``.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from dataclasses import replace
 from typing import Any
 
 from ...hosts.views.view_feed import ViewFeed
-from .models import StreamEvent, ViewerSnapshot
+from .models import StreamEvent, ViewState
 
 
 class StreamView:
@@ -27,15 +27,15 @@ class StreamView:
     def publish(self, publication: dict[str, Any] | None) -> None:
         self._feed.publish(publication)
 
-    def snapshot(self) -> ViewerSnapshot:
+    def view_state(self) -> ViewState:
         url, error, page, decision_error = self._feed.state()
-        return ViewerSnapshot(url=url, error=error, decision_page=page, decision_error=decision_error)
+        return ViewState(url=url, error=error, decision_page=page, decision_error=decision_error)
 
     def close(self) -> None:
         self._feed.stop()
 
 
-def with_snapshot(view: StreamView | None, event: StreamEvent, **fields: Any) -> StreamEvent:
+def with_view(view: StreamView | None, event: StreamEvent, **fields: Any) -> StreamEvent:
     """``event`` plus the view's addresses when a session is open."""
 
-    return replace(event, view=None if view is None else view.snapshot(), **fields)
+    return replace(event, view=None if view is None else view.view_state(), **fields)

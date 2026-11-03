@@ -54,8 +54,8 @@ class ViewFeed:
     def state(self) -> tuple[str | None, str | None, str | None, str | None]:
         """This view's URL, error, decision page path, and decision error.
 
-        Reading these starts no request. A stream copies them into a snapshot
-        before its renderer runs.
+        Reading these starts no request. A stream copies them before its
+        renderer runs.
         """
 
         page = None

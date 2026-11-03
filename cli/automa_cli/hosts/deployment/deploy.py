@@ -8,7 +8,7 @@ from typing import Any, TextIO
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
 
 from ...shared.command_result import CommandResult
-from ..runs.automation_stop import stop_host_automation
+from ..runs.service import stop_host_automation
 from ..bundles import controller_bundle_source_summary, sync_controller_bundle
 from ...shared.paths import RUNTIME_ROOT, display_path, safe_path_part
 from ...shared.io.processes import pid_alive
@@ -26,14 +26,9 @@ from ..publications.host_publications import host_state
 from ..host_status import host_block
 from ...releases.errors import RuntimeHostError
 from ...releases.store import release_code_dir
-from ..runtime_hosts import (
-    automation_dir,
-    ensure_chase_host,
-    host_record,
-    running_base_url,
-    staged_host,
-    stop_chase_host,
-)
+from ..discovery import running_base_url
+from ..local import ensure_chase_host, host_record, stop_chase_host
+from ..staging import automation_dir, staged_host
 from ...vehicles.probes import Candidate
 from ...vehicles.providers import PROVIDERS
 from .picar_deploy import (

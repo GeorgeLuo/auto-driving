@@ -184,11 +184,11 @@ class DecisionSurfaceFixture:
             {"AUTOMA_RUNTIME_ROOT": str(self.runtime_root)},
         )
         self._env_patch.start()
-        # runtime_hosts and release paths read RUNTIME_ROOT at import time; rebind for tests.
-        import cli.automa_cli.hosts.runtime_hosts as runtime_hosts_mod
+        # Staging and release paths read RUNTIME_ROOT at import time; rebind for tests.
+        import cli.automa_cli.hosts.staging as staging_mod
 
         self._root_patches = [
-            patch.object(runtime_hosts_mod, "RUNTIME_ROOT", self.runtime_root),
+            patch.object(staging_mod, "RUNTIME_ROOT", self.runtime_root),
             patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", self.runtime_root),
         ]
         for root_patch in self._root_patches:

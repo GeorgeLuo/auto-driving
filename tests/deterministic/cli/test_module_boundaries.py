@@ -84,13 +84,17 @@ def _import_edges(imports: dict[str, list[CliImport]], modules: set[str]) -> dic
 # Files with these names have that responsibility. Anything else in a feature is support.
 _LAYER_NAMES = {"commands", "service", "models", "render", "store", "worker", "monitor", "registry"}
 _OPERATION_ROLES = {"service", "support", "store", "worker", "monitor", "registry"}
-# Plugin features already split by responsibility. Later slices add to this tuple.
+# Features split by responsibility. Later slices add to this tuple.
 LAYERED_FEATURES = (
     f"{PACKAGE}.plugins.catalog",
     f"{PACKAGE}.plugins.inspect",
     f"{PACKAGE}.plugins.stream",
+    f"{PACKAGE}.hosts.runs",
 )
-LAYERED_ASSEMBLERS = (f"{PACKAGE}.plugins.commands",)
+LAYERED_ASSEMBLERS = (
+    f"{PACKAGE}.plugins.commands",
+    f"{PACKAGE}.hosts.commands",
+)
 
 
 def _role(module: str) -> str:
@@ -118,6 +122,10 @@ def _layer_reason(source: str, target: str) -> str | None:
     source_role = _role(source)
     target_role = _role(target)
     same_feature = _feature_package(source) == _feature_package(target)
+    # The run worker is the process entry for hosts run. It composes the
+    # renderer for its own stdout and passes that object into the service.
+    if source_role == "worker" and target_role == "render" and same_feature:
+        return None
     if source_role in _OPERATION_ROLES and target_role in {"commands", "render"}:
         return "operation imports presentation"
     if source_role == "models" and target_role in {"commands", "render", "service", "store", "worker", "monitor", "registry"}:
@@ -269,10 +277,11 @@ class ModuleBoundaryTests(unittest.TestCase):
         self.assertEqual(violations, [])
 
     def test_plugin_layers_keep_operations_from_presentation(self) -> None:
-        """Catalog, inspect, and stream keep commands, services, and rendering apart.
+        """Layered features keep commands, services, and rendering apart.
 
         The check resolves relative imports and aliases. It does not prove a
-        renderer performs no I/O; the stream tests render from a supplied snapshot.
+        renderer performs no I/O; stream and host-status tests render from
+        supplied data.
         """
 
         self.assertEqual(_layer_violations(self._edges()), [])
@@ -284,6 +293,10 @@ class ModuleBoundaryTests(unittest.TestCase):
             f"{PACKAGE}.plugins.catalog.service": "from .models import Result\n",
             f"{PACKAGE}.plugins.catalog.render": "from .models import Result\n",
             f"{PACKAGE}.plugins.catalog.models": "",
+            f"{PACKAGE}.hosts.commands": "from .runs.commands import register_host_runs\n",
+            f"{PACKAGE}.hosts.runs.commands": "",
+            f"{PACKAGE}.hosts.runs.worker": "from .render import RunOutput\n",
+            f"{PACKAGE}.hosts.runs.render": "",
         }
         self.assertEqual(_layer_violations(_fixture_edges(allowed)), [])
 
@@ -292,6 +305,10 @@ class ModuleBoundaryTests(unittest.TestCase):
             f"{PACKAGE}.plugins.catalog.render": "",
             f"{PACKAGE}.plugins.catalog.commands": "from ..inspect.commands import register_inspect\n",
             f"{PACKAGE}.plugins.inspect.commands": "",
+            f"{PACKAGE}.hosts.runs.service": "from .render import RunOutput\n",
+            f"{PACKAGE}.hosts.runs.render": "",
+            f"{PACKAGE}.hosts.runs.commands": "from ..deployment.commands import register_host_deployment\n",
+            f"{PACKAGE}.hosts.deployment.commands": "",
         }
         violations = _layer_violations(_fixture_edges(crossed))
         self.assertEqual(sorted(violations), sorted([
@@ -299,6 +316,10 @@ class ModuleBoundaryTests(unittest.TestCase):
             f"{PACKAGE}.plugins.inspect.commands",
             "cli/automa_cli/plugins/catalog/service.py:1 operation imports presentation: "
             f"{PACKAGE}.plugins.catalog.render",
+            "cli/automa_cli/hosts/runs/service.py:1 operation imports presentation: "
+            f"{PACKAGE}.hosts.runs.render",
+            "cli/automa_cli/hosts/runs/commands.py:1 command handler reused outside its assembler: "
+            f"{PACKAGE}.hosts.deployment.commands",
         ]))
 
 

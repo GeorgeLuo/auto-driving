@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from cli.automa_cli.hosts.runs.automation_status import _host_runtime_status
+from cli.automa_cli.hosts.runs.status import _host_runtime_status
 from tests.support.fake_hosts import answering
 
 
@@ -16,7 +16,7 @@ HOST_NAME = "chase-sim-chaser"
 class HostRuntimeStatusTests(unittest.TestCase):
     def read(self, url: str) -> dict:
         with tempfile.TemporaryDirectory() as tmp, mock.patch(
-            "cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT", Path(tmp)
+            "cli.automa_cli.hosts.staging.RUNTIME_ROOT", Path(tmp)
         ), mock.patch(
             "cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)
         ):

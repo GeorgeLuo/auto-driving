@@ -12,7 +12,8 @@ from unittest.mock import Mock, patch
 from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.hosts.runs import runtime_monitor
+from cli.automa_cli.hosts.runs import monitor
+from cli.automa_cli.hosts.runs.render import RunOutput
 from cli.automa_cli.hosts.views import view_feed as viewer
 from cli.automa_cli.plugins.stream import decision, session
 from cli.automa_cli.plugins.stream.commands import stream_host_step
@@ -101,18 +102,18 @@ class LiveViewCopyTests(unittest.TestCase):
 
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(runtime_monitor, "RuntimeClient", return_value=Client()),
-            patch.object(runtime_monitor, "runtime_view_server", side_effect=server),
-            patch.object(runtime_monitor, "DecisionViewAdapter", _FakeDecisionView),
-            patch.object(runtime_monitor, "fetch_observation_sample", side_effect=sample),
-            patch.object(runtime_monitor, "_sync_recording", side_effect=export),
+            patch.object(monitor, "RuntimeClient", return_value=Client()),
+            patch.object(monitor, "runtime_view_server", side_effect=server),
+            patch.object(monitor, "DecisionViewAdapter", _FakeDecisionView),
+            patch.object(monitor, "fetch_observation_sample", side_effect=sample),
+            patch.object(monitor, "_sync_recording", side_effect=export),
         ):
             root = Path(tmp)
-            worker = threading.Thread(target=lambda: results.append(runtime_monitor.monitor_runtime(
+            worker = threading.Thread(target=lambda: results.append(monitor.monitor_runtime(
                 host_name="picar-test", base_url=Client.base_url, automation_dir=root,
                 selections=SELECTIONS, decision=dict(DECISION),
                 configuration=RunConfiguration(mode="observe_only", num_decisions=2),
-                timeout_s=0.2, record=True, verbose=False, output=None,
+                timeout_s=0.2, record=True, verbose=False, transcript=RunOutput(),
             )), daemon=True)
             worker.start()
             try:

@@ -14,7 +14,7 @@ from ...hosts.publications.decision import (
     require_valid_activations,
 )
 from ...hosts.publications.host_publications import fetch_decision_publication
-from ...hosts.runtime_hosts import runtime_base_url
+from ...hosts.discovery import runtime_base_url
 from ...releases.errors import RuntimeHostError
 from ...releases.paths import bundle_paths
 from .models import StreamEvent, StreamResult

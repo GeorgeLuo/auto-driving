@@ -8,7 +8,7 @@ from ...shared.command_result import CommandResult
 from ...releases.errors import RuntimeHostError
 from ...shared.open_view import open_view_message
 from ..publications.decision_publication import health_error
-from ..runtime_hosts import local_hosts, runtime_base_url
+from ..discovery import local_hosts, runtime_base_url
 from .view_feed import ViewFeed
 from .polling import PERCEPTION_COPY_INTERVAL_S, pause_s
 

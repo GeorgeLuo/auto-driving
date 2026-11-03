@@ -15,7 +15,7 @@ from typing import Any, Callable
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWebSocketError, MetricsUiWsClient
 
 from .publications.host_publications import host_state
-from .runtime_hosts import local_hosts
+from .discovery import local_hosts
 from ..vehicles.probes import DEFAULT_READINESS_TIMEOUT_S, chase_operator_url, require_positive_timeout
 from ..vehicles.providers import CHASE_SIM, PROVIDERS
 from ..shared.text import indented

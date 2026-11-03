@@ -13,7 +13,7 @@ from unittest import mock
 
 from cli.automa_cli import app
 from cli.automa_cli.hosts.deployment import deploy, picar_deploy
-from cli.automa_cli.hosts import runtime_hosts
+from cli.automa_cli.hosts import staging
 from cli.automa_cli.hosts.views import view_discovery
 from cli.automa_cli.plugins.catalog import service as catalog
 from cli.automa_cli.vehicles import discovery
@@ -27,7 +27,7 @@ IMPORT_TIME_ENV = {
     "AUTOMA_RUNTIME_ROOT": (
         (deploy, "RUNTIME_ROOT"),
         (picar_deploy, "RUNTIME_ROOT"),
-        (runtime_hosts, "RUNTIME_ROOT"),
+        (staging, "RUNTIME_ROOT"),
         (release_paths, "RUNTIME_ROOT"),
         (discovery, "RUNTIME_ROOT"),
         (catalog, "RUNTIME_ROOT"),

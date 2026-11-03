@@ -1,11 +1,9 @@
-"""Find, start, and replace the runtime host behind each vehicle.
+"""Start and supervise the local Chase host process.
 
-Every vehicle host serves the routes in ``autonomy.runtime.routes``, so the
-CLI addresses a runtime only by ``base_url``. A PiCar's host is its Donkey
-service at the staged connection. A Chase car's host is a local process
-(``implementations.runtime.chase_sim.service``) that runs from the vehicle's
-controller release, as the Pi runs the release ``hosts update`` installed.
+``ensure_chase_host`` launches this module. A PiCar has no process here; its
+host is the Donkey service at the staged connection.
 """
+
 from __future__ import annotations
 
 import json
@@ -24,10 +22,9 @@ from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, RESTAR
 from ..releases.errors import RuntimeHostError
 from ..releases.paths import bundle_root
 from ..releases.store import release_code_dir, release_manifest, release_summary
-from ..shared.paths import ROOT, RUNTIME_ROOT, display_path
 from ..shared.io.processes import pid_alive
-from ..vehicles.providers import PROVIDERS
-from .step_activations import host_names, staging_host
+from ..shared.paths import ROOT, display_path
+from .staging import automation_dir, staged_host
 
 HOST_RECORD = "host.json"
 HOST_LOG = "host.log"
@@ -41,21 +38,6 @@ BOOT = (
     "raise SystemExit(main(sys.argv[1:]))"
 )
 
-
-def automation_dir(host_name: str) -> Path:
-    """The vehicle's local runtime directory: run state, records, host, and view."""
-
-    return bundle_root(host_name) / "runtime" / "automation"
-
-
-def staged_host(host_name: str) -> dict[str, Any]:
-    vehicle, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
-    if vehicle is None:
-        raise RuntimeHostError(error or f"Host {host_name!r} is not staged.")
-    return vehicle
-
-
-# The Chase host ------------------------------------------------------------
 
 def host_record(host_name: str) -> dict[str, Any] | None:
     """The running Chase host's record; ``None`` once its process is gone."""
@@ -190,7 +172,7 @@ def ensure_chase_host(host_name: str, *, timeout_s: float = HOST_START_TIMEOUT_S
     (directory / HOST_RECORD).unlink(missing_ok=True)
     with (directory / HOST_LOG).open("a", encoding="utf-8") as log:
         process = subprocess.Popen(
-            [sys.executable, "-m", "cli.automa_cli.hosts.runtime_hosts", host_name],
+            [sys.executable, "-m", "cli.automa_cli.hosts.local", host_name],
             cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
             start_new_session=True, env={**os.environ, "PYTHONUNBUFFERED": "1"},
         )
@@ -230,74 +212,6 @@ def stop_chase_host(host_name: str, *, wait_s: float = 3.0) -> bool:
             killed = True
     (automation_dir(host_name) / HOST_RECORD).unlink(missing_ok=True)
     return killed
-
-
-# Any vehicle ----------------------------------------------------------------
-
-def staged_connection(host_name: str) -> dict[str, Any]:
-    """The connection ``hosts create`` recorded for the vehicle, without discovery."""
-
-    vehicle = staged_host(host_name)
-    connection = vehicle.get("connection")
-    return connection if isinstance(connection, dict) else {}
-
-
-def running_base_url(host_name: str) -> str | None:
-    """The runtime host to address now, without discovery or starting one.
-
-    A PiCar's is its staged connection; a Chase car's is its running host.
-    """
-
-    if PROVIDERS[staged_host(host_name)["provider"]].local_host:
-        record = host_record(host_name)
-        return None if record is None else record["base_url"]
-    base_url = staged_connection(host_name).get("base_url")
-    return base_url.rstrip("/") if isinstance(base_url, str) and base_url.strip() else None
-
-
-def local_hosts() -> list[dict[str, Any]]:
-    """The host each local vehicle addresses now, by ``running_base_url``.
-
-    ``local`` names where the host was found: a Chase car's running host
-    record, or a PiCar's staged connection. A host whose configuration cannot
-    be read has only its ``error``, so it does not hide the others.
-    """
-
-    hosts = []
-    for host_name in host_names(RUNTIME_ROOT):
-        try:
-            configuration = staged_host(host_name)
-        except RuntimeHostError as exc:
-            hosts.append({"host_name": host_name, "url": None, "pid": None, "local": None, "provider": None,
-                          "vehicle_url": None, "error": str(exc)})
-            continue
-        connection = configuration["connection"]
-        vehicle = PROVIDERS[configuration["provider"]]
-        record = host_record(host_name) if vehicle.local_host else None
-        hosts.append({
-            "host_name": host_name,
-            "url": (record["base_url"] if record else None) if vehicle.local_host else connection["base_url"],
-            "pid": record.get("pid") if record else None,
-            "local": "host record" if vehicle.local_host else "staged connection",
-            "provider": configuration["provider"],
-            "vehicle_url": connection.get(vehicle.url_key),
-            "error": None,
-        })
-    return hosts
-
-
-def runtime_base_url(host_name: str, *, start: bool = False, timeout_s: float = HOST_START_TIMEOUT_S) -> str:
-    """Where the vehicle's runtime serves the shared routes, or why it cannot be reached.
-
-    ``start`` starts (or moves onto the latest release) a local Chase host.
-    """
-
-    if start and PROVIDERS[staged_host(host_name)["provider"]].local_host:
-        return ensure_chase_host(host_name, timeout_s=timeout_s)
-    base_url = running_base_url(host_name)
-    if base_url is not None:
-        return base_url
-    raise RuntimeHostError(f"Host {host_name!r} is not running.")
 
 
 if __name__ == "__main__":

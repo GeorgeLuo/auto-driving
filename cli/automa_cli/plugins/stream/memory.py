@@ -7,7 +7,7 @@ from typing import Any, Callable
 from autonomy.decision_cycle.timing import step_timing
 
 from ...hosts.publications.host_publications import fetch_autonomy_status
-from ...hosts.runtime_hosts import runtime_base_url
+from ...hosts.discovery import runtime_base_url
 from ...hosts.step_activations import absent_step_error
 from ...releases.errors import RuntimeHostError
 from ...shared.memory_report import evidence_publisher, ledger_summary

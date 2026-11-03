@@ -12,8 +12,8 @@ from tests.support.runtime_fixtures import stage_step, write_host_fixture
 from typing import Iterator
 from unittest import mock
 
-from cli.automa_cli.hosts import runtime_hosts
-from cli.automa_cli.hosts.runtime_hosts import ensure_chase_host
+from cli.automa_cli.hosts import local, staging
+from cli.automa_cli.hosts.local import ensure_chase_host
 from cli.automa_cli.releases.errors import RuntimeHostError
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
@@ -40,9 +40,9 @@ def _staged_vehicle() -> Iterator[list[subprocess.Popen]]:
         try:
             with (
                 mock.patch.dict(os.environ, {"AUTOMA_RUNTIME_ROOT": str(root), **env}),
-                mock.patch.object(runtime_hosts, "RUNTIME_ROOT", root),
+                mock.patch.object(staging, "RUNTIME_ROOT", root),
                 mock.patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", root),
-                mock.patch.object(runtime_hosts.subprocess, "Popen", side_effect=launch),
+                mock.patch.object(local.subprocess, "Popen", side_effect=launch),
             ):
                 yield launched
         finally:
@@ -70,14 +70,14 @@ class HostStartTests(unittest.TestCase):
 
     def test_an_interrupted_start_ends_the_host_it_started(self) -> None:
         host_sessions = []
-        wait_for_host = runtime_hosts._wait_for_host
+        wait_for_host = local._wait_for_host
 
         def interrupted(*args):
             host = wait_for_host(*args)
             host_sessions.append(os.getpgid(host["pid"]))
             raise KeyboardInterrupt
 
-        with _staged_vehicle() as launched, mock.patch.object(runtime_hosts, "_wait_for_host", side_effect=interrupted):
+        with _staged_vehicle() as launched, mock.patch.object(local, "_wait_for_host", side_effect=interrupted):
             with self.assertRaises(KeyboardInterrupt):
                 ensure_chase_host(HOST_NAME)
             [supervisor] = launched

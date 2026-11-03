@@ -144,13 +144,13 @@ class HostLifecycleTests(unittest.TestCase):
             "restart": False,
             "source": {"tree_sha256": "abcdef1234567890", "file_count": 3},
         }
-        rendered = present_deployment(DeploymentResult(0, receipt=receipt), json_output=False)
+        rendered = present_deployment(DeploymentResult(0, receipt=receipt, render_kind="local_update"), json_output=False)
         self.assertEqual(
             rendered,
             "Dry run: would package car's controller release (tree abcdef123456, 3 files)\n"
             "Restart the host onto it: no",
         )
-        self.assertEqual(json.loads(present_deployment(DeploymentResult(0, receipt=receipt), json_output=True))["source"]["file_count"], 3)
+        self.assertEqual(json.loads(present_deployment(DeploymentResult(0, receipt=receipt, render_kind="local_update"), json_output=True))["source"]["file_count"], 3)
         self.assertEqual(present_deployment(DeploymentResult(2, "missing"), json_output=True), "missing")
 
     def test_a_third_provider_is_selected_by_registration(self):
@@ -178,7 +178,13 @@ class HostLifecycleTests(unittest.TestCase):
             updated = service.update_host(host_name="car", dry_run=True)
             self.assertEqual(updated.exit_code, 0, updated.message)
             self.assertEqual(updated.receipt["schema"], "bench_update")
+            self.assertEqual(json.loads(present_deployment(updated, json_output=False)), updated.receipt)
             self.assertTrue(updated.receipt["dry_run"])
+            for flags in ([], ["--json"]):
+                command = invoke_automa("hosts", "update", "--name", "car", "--dry-run", *flags,
+                                        runtime_root=self.root, check=False)
+                self.assertEqual(command.returncode, 0, command.stderr)
+                self.assertEqual(json.loads(command.stdout), updated.receipt)
             self.assertEqual(present_deployment(updated, json_output=True).count("bench_update"), 1)
             removed = service.delete_host(host_name="car")
             self.assertEqual(removed.message, "Provider 'bench' does not support hosts delete.")

@@ -201,7 +201,7 @@ def install_picar_core(
             drive_args=None,
             runtime_readiness=None,
         )
-        return DeploymentResult(0, receipt=payload)
+        return DeploymentResult(0, receipt=payload, render_kind="core_update")
 
     try:
         _emit(stream, "==> Ensure DonkeyCar vendor source")
@@ -269,7 +269,7 @@ def deploy_picar_release(
             generation_id=None,
             runtime_verification=None,
         )
-        return DeploymentResult(0, receipt=payload)
+        return DeploymentResult(0, receipt=payload, render_kind="remote_update")
 
     # The deployment stages and ships each step's saved plugins, else its
     # default, replacing whatever it had staged, an unreadable document included.
@@ -350,7 +350,7 @@ def deploy_picar_release(
         generation_id=generation_id,
         runtime_verification=runtime_verification,
     )
-    return DeploymentResult(0, receipt=payload)
+    return DeploymentResult(0, receipt=payload, render_kind="remote_update")
 
 
 def resolve_picar_target(configuration: dict[str, Any]) -> PicarTarget:

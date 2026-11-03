@@ -1,6 +1,7 @@
 """Host run and status treat every decision-cycle step by one rule."""
 
 from __future__ import annotations
+from cli.automa_cli.hosts.runs.models import RunResult
 
 import contextlib
 import json
@@ -64,7 +65,7 @@ class StepFairnessTests(unittest.TestCase):
             with self.subTest(step=step), self._runtime(step), mock.patch(
                 "cli.automa_cli.hosts.runs.service.runtime_base_url", return_value="http://host.invalid"
             ), mock.patch(
-                "cli.automa_cli.hosts.runs.service.monitor_runtime", return_value=(0, "done")
+                "cli.automa_cli.hosts.runs.service.monitor_runtime", return_value=RunResult(0, "done")
             ) as monitor:
                 result = run_host_automation(
                     host_name=VEHICLE, take_control=False, num_decisions=1,

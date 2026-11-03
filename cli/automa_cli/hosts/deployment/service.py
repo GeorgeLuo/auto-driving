@@ -104,7 +104,7 @@ def _update_local_autonomy(
     bundle = host_bundle(host_name, RUNTIME_ROOT)
     source_summary = controller_bundle_source_summary()
     if dry_run:
-        return DeploymentResult(0, receipt={
+        return DeploymentResult(0, render_kind="local_update", receipt={
             "host_name": host_name, "dry_run": True, "restart": restart, "source": source_summary,
         })
     try:
@@ -137,7 +137,7 @@ def _update_local_autonomy(
                 2, f"Release {summary['archive']} was packaged, but the host did not restart: {exc}",
             )
         restarted = True
-    return DeploymentResult(0, receipt={
+    return DeploymentResult(0, render_kind="local_update", receipt={
         "host_name": host_name,
         "dry_run": False,
         "release": summary,
@@ -228,7 +228,7 @@ def _create_picar(
             return core
         if release.exit_code:
             return release
-        return DeploymentResult(0, receipt={
+        return DeploymentResult(0, render_kind="create_plan", receipt={
             "configuration": configuration, "dry_run": True, "core": core.receipt, "host": release.receipt,
         })
     return _install_created_host(
@@ -259,7 +259,7 @@ def _install_created_host(
         if local:
             base_url = ensure_chase_host(host_name)
             state = host_state(base_url, host_name=host_name, timeout_s=5.0)
-        return DeploymentResult(0, receipt={
+        return DeploymentResult(0, render_kind="create", child_render_kind=result.render_kind, receipt={
             "configuration": configuration, "result": result.receipt, "host": state,
         })
     except (OSError, RuntimeError, ValueError) as exc:

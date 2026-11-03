@@ -126,6 +126,10 @@ def _layer_reason(source: str, target: str) -> str | None:
     This is an import relationship, not a proof that a renderer avoids I/O.
     """
 
+    if source.startswith(f"{PACKAGE}.shared.") and not target.startswith(f"{PACKAGE}.shared."):
+        return "shared imports a feature"
+    if source.startswith(f"{PACKAGE}.providers.") and target.startswith(f"{PACKAGE}.hosts.deployment."):
+        return "provider imports deployment"
     source_role = _role(source)
     target_role = _role(target)
     same_feature = _feature_package(source) == _feature_package(target)
@@ -143,6 +147,10 @@ def _layer_reason(source: str, target: str) -> str | None:
         return "renderer imports an operation"
     if source_role == "render" and target_role == "support" and same_feature:
         return "renderer imports an operation"
+    if source_role in {"render", "models"} and target in {
+        f"{PACKAGE}.hosts.local", f"{PACKAGE}.hosts.discovery", f"{PACKAGE}.hosts.staging",
+    }:
+        return "data or rendering imports host operations"
     if source_role == "render" and target.rsplit(".", 1)[-1] in {"view_feed", "session"}:
         return "renderer imports a viewer"
     if source_role == "commands" and target_role == "commands":
@@ -156,7 +164,7 @@ def _layer_reason(source: str, target: str) -> str | None:
 def _layer_violations(edges: dict[str, dict[str, CliImport]]) -> list[str]:
     violations = []
     for source, targets in edges.items():
-        if not _layered(source):
+        if not (_layered(source) or source.startswith((f"{PACKAGE}.shared.", f"{PACKAGE}.providers."))):
             continue
         for target, found in targets.items():
             reason = _layer_reason(source, target)
@@ -301,6 +309,31 @@ class ModuleBoundaryTests(unittest.TestCase):
             if module.rsplit(".", 1)[-1] in _LAYER_NAMES and not _layered(module)
         )
         self.assertEqual(uncovered, [])
+
+    def test_shared_and_external_host_operation_edges_are_rejected(self) -> None:
+        files = {
+            f"{PACKAGE}.shared.cli.example": "from ...plugins.catalog.commands import register_catalog",
+            f"{PACKAGE}.plugins.catalog.commands": "",
+            f"{PACKAGE}.plugins.stream.render": "from ...hosts.local import ensure_chase_host",
+            f"{PACKAGE}.hosts.local": "",
+        }
+        violations = _layer_violations(_fixture_edges(files))
+        self.assertEqual(len(violations), 2)
+        self.assertTrue(any("shared imports a feature" in v for v in violations))
+        self.assertTrue(any("imports host operations" in v for v in violations))
+
+    def test_renderers_do_not_write_output(self) -> None:
+        violations = []
+        for path in (ROOT / "cli" / "automa_cli").rglob("render.py"):
+            for node in ast.walk(ast.parse(path.read_text())):
+                if not isinstance(node, ast.Call):
+                    continue
+                function = node.func
+                if ((isinstance(function, ast.Name) and function.id == "print")
+                        or (isinstance(function, ast.Attribute) and function.attr in
+                            {"write", "write_text", "write_bytes", "flush"})):
+                    violations.append(f"{path}:{node.lineno}")
+        self.assertEqual(violations, [])
 
     def test_layer_fixtures_accept_assembly_and_reject_crossed_imports(self) -> None:
         allowed = {

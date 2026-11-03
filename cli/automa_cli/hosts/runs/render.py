@@ -1,14 +1,14 @@
 """Format host status and the live run transcript from supplied data.
 
 Nothing here fetches a host, starts a viewer, or reads a run record.
-``RunOutput`` writes the lines shown while a run is in progress and returns
+The worker writes the lines shown while a run is in progress and receives
 the closing result for the caller to print.
 """
 
 from __future__ import annotations
 
 import json
-from typing import Any, TextIO
+from typing import Any
 
 from ..host_status import host_block
 from ..step_activations import format_activation_problems, selection_label, step_lines
@@ -243,8 +243,8 @@ def frame_line(frame_id: str, *, signals: int, things: int, action: Any) -> str:
     return f"{frame_id}: signals={signals} things={things} action={action}"
 
 
-def run_result(state: dict[str, Any], *, state_path: str) -> tuple[int, str]:
-    """The exit code and closing lines for a finished run.
+def render_run_result(state: dict[str, Any], *, state_path: str) -> str:
+    """The closing lines for a finished run.
 
     ``state_path`` is the path text the caller already prepared for display.
     """
@@ -252,7 +252,7 @@ def run_result(state: dict[str, Any], *, state_path: str) -> tuple[int, str]:
     host_name = state["host_name"]
     status = state["status"]
     if status == "error":
-        return 2, "\n".join(
+        return "\n".join(
             [
                 f"The run on host {host_name} failed.",
                 f"Reason: {state['error']}",
@@ -262,7 +262,7 @@ def run_result(state: dict[str, Any], *, state_path: str) -> tuple[int, str]:
     if status == "completed":
         dropped = state.get("frames_dropped")
         dropped = "unavailable" if dropped is None else dropped
-        return 0, "\n".join(
+        return "\n".join(
             [
                 f"Run completed on host {host_name}.",
                 f"Frames received: {state.get('frames_received', 0)}",
@@ -276,35 +276,9 @@ def run_result(state: dict[str, Any], *, state_path: str) -> tuple[int, str]:
                 f"Latest perception: {state['latest']['perception_text']}",
             ]
         )
-    code = 130 if state.get("stop_reason") == "keyboard_interrupt" else 0
-    return code, "\n".join(
+    return "\n".join(
         [
             f"Run stopped on host {host_name}.",
             f"State: {state_path}",
         ]
     )
-
-
-class RunOutput:
-    """The transcript a run monitor updates. Live lines go to ``output``; the closing result does not."""
-
-    def __init__(self, output: TextIO | None = None) -> None:
-        self._output = output
-
-    def startup(self, state: dict[str, Any]) -> None:
-        self._write(startup_lines(state))
-
-    def frame(
-        self, frame_id: str, *, signals: int, things: int, action: Any, count: int, verbose: bool,
-    ) -> None:
-        if reports_frame(count, verbose=verbose):
-            self._write([frame_line(frame_id, signals=signals, things=things, action=action)])
-
-    def result(self, state: dict[str, Any], *, state_path: str) -> tuple[int, str]:
-        return run_result(state, state_path=state_path)
-
-    def _write(self, lines: list[str]) -> None:
-        if self._output is None:
-            return
-        for line in lines:
-            print(line, file=self._output, flush=True)

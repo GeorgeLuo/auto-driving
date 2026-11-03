@@ -3,12 +3,13 @@
 Execution belongs to the host at ``base_url`` (a PiCar's Donkey service or a
 local Chase host); both serve ``autonomy.runtime.routes``. This module starts
 the session, persists its publications in the run record (``store``), and
-reports each change through the caller's transcript. The Mac-side runtime
+reports changes through an optional data-event consumer. The Mac-side runtime
 view stays here because the monitor publishes it.
 """
 from __future__ import annotations
 
 import base64
+import json
 import os
 import threading
 import time
@@ -24,9 +25,11 @@ from ...frontend.perception_view import perception_view_ready
 from ..publications.decision_publication import perception_text_from_publication, publication_to_frame_record
 from ..publications.host_publications import fetch_observation_sample, TransactionCache
 from ...shared.timestamps import timestamp_ms
-from .models import RunTranscript
+from .models import RunEvent, RunResult, run_exit_code
+from collections.abc import Callable
+from copy import deepcopy
 from .store import (
-    control_source, finish_run, frame_readiness,
+    control_source, finish_run as record_completion, frame_readiness,
     new_run_state, record_host_status,
 )
 from ...frontend.server import RuntimeViewServer
@@ -150,7 +153,7 @@ def _join_decision_copy(copier: threading.Thread | None, stop: threading.Event) 
 def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                             selections: dict[str, dict[str, Any]], decision: dict[str, Any],
                             configuration: RunConfiguration, timeout_s: float,
-                            record: bool, verbose: bool, transcript: RunTranscript) -> tuple[int, str]:
+                            record: bool, verbose: bool, emit: Callable[[RunEvent], None] | None = None) -> RunResult:
     client = RuntimeClient(base_url, timeout_s=timeout_s)
     automation_dir.mkdir(parents=True, exist_ok=True)
     state_path = automation_dir / "state.json"
@@ -200,7 +203,8 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
             run_dir=display_path(run_dir) if run_dir is not None else None,
         )
         write_json_atomically(state_path, state)
-        transcript.startup(state)
+        if emit is not None:
+            emit(RunEvent("startup", deepcopy(state)))
         worker = threading.Thread(
             target=_copy_latest_decision,
             args=(decision_view, server, stop_copy, copied),
@@ -288,10 +292,9 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                 last_capture = capture
                 frames_seen += 1
                 action = (frame.get("control") or {}).get("reason")
-                transcript.frame(
-                    frame_id, signals=signals, things=things, action=action,
-                    count=frames_seen, verbose=verbose,
-                )
+                if emit is not None:
+                    emit(RunEvent("frame", dict(frame_id=frame_id, signals=signals,
+                                               things=things, action=action, count=frames_seen)))
             # One batch keeps the export near the capture rate. The stop path
             # drains whatever remains, and the decision copy does not wait here.
             if run_dir is not None:
@@ -336,7 +339,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
             finish_run(state, server, status="completed" if reason == "completed" else "stopped",
                        stop_reason=reason)
     write_json_atomically(state_path, state)
-    return transcript.result(state, state_path=display_path(state_path))
+    return RunResult(run_exit_code(state), state=state, state_path=state_path)
 
 
 def _sync_recording(client: RuntimeClient, state: dict[str, Any], *,
@@ -386,3 +389,31 @@ def _stop(client: RuntimeClient, state: dict[str, Any], *,
     except Exception as exc:  # noqa: BLE001 - recorded as the run's error
         return f"Could not stop the run or finish its recording: {type(exc).__name__}: {exc}"
     return None
+
+
+def stop_view(view_server: RuntimeViewServer | None) -> dict[str, Any]:
+    """Stop the run's view and return its last published record."""
+
+    if view_server is None:
+        return {
+            "status": "unavailable",
+            "available": False,
+            "url": None,
+            "reason": "perception view did not start",
+        }
+    try:
+        view_server.stop()
+    except OSError as exc:
+        return {
+            **view_server.describe(status="error"),
+            "reason": f"{type(exc).__name__}: {exc}",
+        }
+    try:
+        record = json.loads(view_server.record_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        record = None
+    return record if isinstance(record, dict) else view_server.describe(status="stopped")
+
+
+def finish_run(state: dict[str, Any], view_server: RuntimeViewServer | None, **outcome: Any) -> None:
+    record_completion(state, stop_view(view_server), **outcome)

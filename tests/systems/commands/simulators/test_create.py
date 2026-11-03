@@ -17,6 +17,7 @@ from unittest.mock import patch
 
 from cli.automa_cli.simulators import store as simulator_store
 from cli.automa_cli.simulators.service import create_simulator
+from cli.automa_cli.simulators.render import render_simulator_result
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.fake_headless_sim import fake_headless_sim_command
 from tests.support.fake_metrics_ui import fake_metrics_ui
@@ -120,8 +121,8 @@ class CreatedSimulatorTests(unittest.TestCase):
             result = create_simulator(timeout_s=0.5)
 
         self.assertEqual(result.exit_code, 2)
-        self.assertTrue(result.message.startswith("The simulator was not ready within 0.5 s.\n"), result.message)
-        pid = int(re.search(r"^pid (\d+)$", result.message, re.MULTILINE).group(1))
+        self.assertTrue(render_simulator_result(result).startswith("The simulator was not ready within 0.5 s.\n"), render_simulator_result(result))
+        pid = int(re.search(r"^pid (\d+)$", render_simulator_result(result), re.MULTILINE).group(1))
         self.assertTrue(_gone(pid))
         self.assertEqual(self.records(), [])
 

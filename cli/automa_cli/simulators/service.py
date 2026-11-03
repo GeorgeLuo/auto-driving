@@ -13,9 +13,9 @@ from pathlib import Path
 
 from ..hosts.discovery import local_hosts
 from ..providers.catalog import CHASE_SIM
-from ..providers.probes import chase_operator_url, normalize_chase_url
+from ..providers.probes import normalize_chase_url
 from ..releases.errors import RuntimeHostError
-from ..shared.command_result import CommandResult
+from .models import SimulatorResult
 from .process import start_simulator, stop_simulator
 from .store import created_simulators
 
@@ -28,7 +28,7 @@ SIMULATOR_PORTS = range(5051, 5100)
 SIMULATOR_START_TIMEOUT_S = 45.0
 
 
-def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> CommandResult:
+def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> SimulatorResult:
     """Start a headless Chase simulator on the first free port in ``SIMULATOR_PORTS``.
 
     Metrics UI's launcher runs it with its default configuration and checks
@@ -38,41 +38,36 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Command
 
     ui_dir, error = _metrics_ui_dir()
     if ui_dir is None:
-        return CommandResult(2, f"Cannot create a simulator: {error}")
+        return SimulatorResult(2, "create_error", error=error)
     port = next((port for port in SIMULATOR_PORTS if not _port_in_use(port)), None)
     if port is None:
-        return CommandResult(
-            2, f"Cannot create a simulator: ports {SIMULATOR_PORTS[0]}-{SIMULATOR_PORTS[-1]} are all in use."
-        )
+        return SimulatorResult(2, "create_error", error=f"ports {SIMULATOR_PORTS[0]}-{SIMULATOR_PORTS[-1]} are all in use.")
     try:
         record = start_simulator(_headless_sim_command(port), cwd=ui_dir, port=port, timeout_s=timeout_s)
     except OSError as exc:
-        return CommandResult(2, f"Cannot create a simulator: {exc}")
+        return SimulatorResult(2, "create_error", error=str(exc))
     except RuntimeHostError as exc:
-        return CommandResult(2, str(exc))
-    return CommandResult(0, f"Created {CHASE_SIM.heading_at(record['url'])}")
+        return SimulatorResult(2, "error", error=str(exc))
+    return SimulatorResult(0, "created", url=record["url"])
 
 
-def delete_simulator(*, url: str) -> CommandResult:
+def delete_simulator(*, url: str) -> SimulatorResult:
     """End a simulator ``simulators create`` started, unless a host was created at it."""
 
     try:
         ws_url = normalize_chase_url(url)
     except ValueError as exc:
-        return CommandResult(2, str(exc))
+        return SimulatorResult(2, "error", error=str(exc))
     created = created_simulators()
     record = next((simulator for simulator in created if simulator["url"] == ws_url), None)
     if record is None:
-        names = ", ".join(chase_operator_url(simulator["url"]) for simulator in created)
-        return CommandResult(2, f"No created simulator at {url}. " + (f"Created: {names}." if names else "None created."))
+        return SimulatorResult(2, "missing", url=url, urls=tuple(item["url"] for item in created))
     hosts = [host["host_name"] for host in local_hosts()
              if host["provider"] == CHASE_SIM.name and host["vehicle_url"] == ws_url]
     if hosts:
-        subject = f"Host {hosts[0]} uses" if len(hosts) == 1 else f"Hosts {', '.join(hosts)} use"
-        return CommandResult(2, f"{subject} the simulator at {chase_operator_url(ws_url)}; "
-                                f"delete {'it' if len(hosts) == 1 else 'them'} first.")
+        return SimulatorResult(2, "blocked", url=ws_url, hosts=tuple(hosts))
     killed = stop_simulator(record)
-    return CommandResult(0, f"Deleted {CHASE_SIM.heading_at(ws_url)}" + (", killed" if killed else ""))
+    return SimulatorResult(0, "deleted", url=ws_url, killed=killed)
 
 
 def _metrics_ui_dir() -> tuple[Path | None, str | None]:

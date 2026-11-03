@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+from .render import render_vehicle_result
 import json
 import sys
 
@@ -119,11 +120,11 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
 
 def _handle_vehicles_discover(args: argparse.Namespace) -> int:
     result = discover_vehicle(provider=args.provider, url=args.url, force=args.force)
-    print(result.message)
+    print(render_vehicle_result(result))
     return result.exit_code
 
 
 def _handle_vehicles_remove(args: argparse.Namespace) -> int:
     result = remove_vehicle(url=args.url)
-    print(result.message)
+    print(render_vehicle_result(result))
     return result.exit_code

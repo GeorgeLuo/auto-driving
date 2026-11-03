@@ -17,7 +17,7 @@ from cli.automa_cli.hosts import runtime_hosts
 from cli.automa_cli.hosts.views import view_discovery
 from cli.automa_cli.plugins.catalog import service as catalog
 from cli.automa_cli.vehicles import discovery
-from cli.automa_cli.shared import controller_releases
+from cli.automa_cli.releases import paths as release_paths
 from tests.support.cli_runner import WORKSPACE_ROOT, checked_result
 from tests.support.offline.sitecustomize import offline_getaddrinfo
 
@@ -28,7 +28,7 @@ IMPORT_TIME_ENV = {
         (deploy, "RUNTIME_ROOT"),
         (picar_deploy, "RUNTIME_ROOT"),
         (runtime_hosts, "RUNTIME_ROOT"),
-        (controller_releases, "RUNTIME_ROOT"),
+        (release_paths, "RUNTIME_ROOT"),
         (discovery, "RUNTIME_ROOT"),
         (catalog, "RUNTIME_ROOT"),
         (view_discovery, "RUNTIME_ROOT"),

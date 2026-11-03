@@ -9,7 +9,7 @@ from pathlib import Path
 from autonomy.decision_cycle.activation import write_step_activation
 from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.shared.controller_releases import controller_bundle_paths
+from cli.automa_cli.releases.paths import controller_bundle_paths
 from cli.automa_cli.shared.paths import ROOT
 from cli.automa_cli.hosts.step_activations import bundle_activation_path
 from cli.automa_cli.plugins.stream.memory import probe_live_memory

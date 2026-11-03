@@ -20,7 +20,7 @@ from ...shared.io.json_files import read_json, write_json_atomically
 from ...shared.paths import ROOT, display_path
 from ...shared.io.processes import pid_alive
 from ...releases.errors import RuntimeHostError
-from ...shared.controller_releases import bundle_paths
+from ...releases.paths import bundle_paths
 from ..runtime_hosts import (
     automation_dir as host_automation_dir,
     running_base_url,

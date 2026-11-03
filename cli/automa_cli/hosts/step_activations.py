@@ -40,7 +40,7 @@ from implementations.decision_cycle.catalog import (
 )
 
 from .bundles import release_activation_summary
-from ..shared.controller_releases import controller_bundle_paths
+from ..releases.paths import controller_bundle_paths
 from ..shared.paths import display_path, safe_path_part
 from ..vehicles.providers import PROVIDERS
 

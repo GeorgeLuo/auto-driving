@@ -3,7 +3,7 @@
 - ``text``: shared command output formatting.
 - ``command_result``: the exit code and message a command returns.
 - ``paths``: the repository and runtime roots and the path helpers built on them.
-- ``controller_releases``: where a host's controller bundle lives. Reading a release is ``releases``.
+  Where a host's controller bundle lives is ``releases.paths``.
 - ``io.json_files``: the JSON files written beside a vehicle's runtime and read back.
 - ``io.processes``: whether a process the CLI started is still alive.
 - ``timestamps``: the wall-clock milliseconds on run records and replay state.

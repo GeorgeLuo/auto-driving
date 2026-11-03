@@ -40,7 +40,7 @@ from ..step_activations import (
     step_lines,
     startup_activations,
 )
-from ...shared.controller_releases import controller_bundle_paths
+from ...releases.paths import controller_bundle_paths
 
 
 DEPLOY_DIR = ROOT / "deploy" / "targets" / "donkeycar"

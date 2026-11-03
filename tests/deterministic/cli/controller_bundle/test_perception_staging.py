@@ -11,7 +11,7 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from autonomy.decision_cycle.activation import step_activation
 from autonomy.runtime.plugin_loader import load_runner
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
-from cli.automa_cli.shared.controller_releases import controller_bundle_paths
+from cli.automa_cli.releases.paths import controller_bundle_paths
 from implementations.decision_cycle.catalog import step_plugins
 
 

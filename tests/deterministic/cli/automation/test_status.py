@@ -44,7 +44,7 @@ class AutomationStatusTests(unittest.TestCase):
                 "cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
-                "cli.automa_cli.shared.controller_releases.RUNTIME_ROOT",
+                "cli.automa_cli.releases.paths.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
                 "cli.automa_cli.hosts.runs.automation_status.get_perception_view_status",
@@ -95,7 +95,7 @@ class AutomationStatusTests(unittest.TestCase):
                 "cli.automa_cli.hosts.runtime_hosts.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
-                "cli.automa_cli.shared.controller_releases.RUNTIME_ROOT",
+                "cli.automa_cli.releases.paths.RUNTIME_ROOT",
                 runtime_root,
             ), mock.patch(
                 "cli.automa_cli.hosts.runs.automation_status.get_perception_view_status",

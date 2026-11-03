@@ -25,7 +25,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import builtin_activation, decision_steps
 from autonomy.runtime.plugin_loader import INSTALLED_PACKAGE, CodeSource, load_runner
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
-from cli.automa_cli.shared.controller_releases import controller_bundle_paths
+from cli.automa_cli.releases.paths import controller_bundle_paths
 from implementations.decision_cycle.catalog import PRESET_STEPS, packaged_activation
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host

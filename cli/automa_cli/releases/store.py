@@ -1,8 +1,7 @@
 """Read and reconstruct the controller releases ``hosts update`` packages.
 
-Path lookup stays in ``shared.controller_releases``. This module extracts a
-release archive once into ``releases/<archive sha256>`` and does not package
-or deploy one.
+Path lookup is ``paths``. This module extracts a release archive once into
+``releases/<archive sha256>`` and does not package or deploy one.
 """
 
 from __future__ import annotations
@@ -15,8 +14,8 @@ import tarfile
 from pathlib import Path
 from typing import Any
 
-from ..shared.controller_releases import bundle_root
 from ..shared.paths import display_path
+from .paths import bundle_root
 from .errors import RuntimeHostError
 
 

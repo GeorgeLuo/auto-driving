@@ -1,17 +1,13 @@
-"""Find hosts and the runtime endpoints that are already serving.
-
-``start`` on ``runtime_base_url`` asks ``local`` to start a Chase host. This
-module does not stage configuration or deploy a release.
-"""
+"""Find hosts and the runtime endpoints that are already serving."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from ..releases.errors import RuntimeHostError
 from ..providers.catalog import PROVIDERS
+from ..releases.errors import RuntimeHostError
 from . import staging
-from .local import HOST_START_TIMEOUT_S, ensure_chase_host, host_record
+from .local import host_record
 from .staging import staged_connection, staged_host
 from .step_activations import host_names
 
@@ -60,14 +56,9 @@ def local_hosts() -> list[dict[str, Any]]:
     return hosts
 
 
-def runtime_base_url(host_name: str, *, start: bool = False, timeout_s: float = HOST_START_TIMEOUT_S) -> str:
-    """Where the vehicle's runtime serves the shared routes, or why it cannot be reached.
+def runtime_base_url(host_name: str) -> str:
+    """The serving endpoint, or an error when the host is not running."""
 
-    ``start`` starts (or moves onto the latest release) a local Chase host.
-    """
-
-    if start and PROVIDERS[staged_host(host_name)["provider"]].local_host:
-        return ensure_chase_host(host_name, timeout_s=timeout_s)
     base_url = running_base_url(host_name)
     if base_url is not None:
         return base_url

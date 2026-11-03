@@ -268,5 +268,5 @@ def chase_runtime(runtime_root: Path, *, car=None, host_name: str = HOST_NAME):
         })
         stack.callback(record.unlink, missing_ok=True)
         # Starting a host builds it from a release; this one is already serving.
-        stack.enter_context(patch("cli.automa_cli.hosts.runs.service.runtime_base_url", return_value=host.base_url))
+        stack.enter_context(patch("cli.automa_cli.hosts.runs.service.ensure_chase_host", return_value=host.base_url))
         yield host

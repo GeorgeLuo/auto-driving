@@ -1,4 +1,5 @@
 from __future__ import annotations
+from cli.automa_cli.hosts.runs.render import render_lifecycle_result
 import json
 import tempfile
 import threading
@@ -10,10 +11,10 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.session import RunConfiguration
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from unittest.mock import patch
-from cli.automa_cli.shared.command_result import CommandResult
+from cli.automa_cli.hosts.runs.models import RunResult
+from cli.automa_cli.hosts.runs.process import wait_for_automation_startup
+from cli.automa_cli.hosts.runs.store import record_host_automation_terminal_result
 from cli.automa_cli.hosts.runs.service import (
-    _wait_for_automation_startup,
-    record_host_automation_terminal_result,
     start_host_automation_background,
     stop_host_automation,
 )
@@ -88,10 +89,10 @@ class AutomationLivePipelineTests(unittest.TestCase):
             "perception_frame_buffered": True,
         }
         with (
-            patch("cli.automa_cli.hosts.runs.service.read_json", return_value=state),
-            patch("cli.automa_cli.hosts.runs.service.get_perception_view_status", return_value=view) as status,
+            patch("cli.automa_cli.hosts.runs.process.read_run_state", return_value=state),
+            patch("cli.automa_cli.hosts.runs.process.get_perception_view_status", return_value=view) as status,
         ):
-            result = _wait_for_automation_startup(
+            result = wait_for_automation_startup(
                 process=_RunningProcess(), automation_dir=Path("unused"), timeout_s=0.2,
             )
         self.assertEqual(result["status"], "ready")
@@ -107,7 +108,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
                 patch(
-                    "cli.automa_cli.hosts.runs.service.subprocess.Popen",
+                    "cli.automa_cli.hosts.runs.process.subprocess.Popen",
                     return_value=_ExitedProcess(),
                 ),
             ):
@@ -118,7 +119,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 )
 
             self.assertEqual(result.exit_code, 2)
-            self.assertIn("did not become ready", result.message)
+            self.assertIn("did not become ready", render_lifecycle_result(result))
             state_path = (
                 runtime_root
                 / "chase-sim-chaser"
@@ -178,9 +179,9 @@ class AutomationLivePipelineTests(unittest.TestCase):
             with (
                 patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
                 patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.hosts.runs.service.subprocess.Popen", side_effect=launch),
+                patch("cli.automa_cli.hosts.runs.process.subprocess.Popen", side_effect=launch),
                 patch(
-                    "cli.automa_cli.hosts.runs.service.get_perception_view_status",
+                    "cli.automa_cli.hosts.runs.process.get_perception_view_status",
                     return_value={
                         "status": "running",
                         "available": True,
@@ -204,12 +205,12 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     startup_wait_s=1.0,
                 )
 
-            self.assertEqual(result.exit_code, 0, result.message)
-            self.assertIn("Run started on host", result.message)
-            self.assertNotIn("ready for:", result.message.lower())
-            self.assertIn("frame_000000", result.message)
-            self.assertIn("http://127.0.0.1:8555/", result.message)
-            self.assertIn("Browser opened", result.message)
+            self.assertEqual(result.exit_code, 0, render_lifecycle_result(result))
+            self.assertIn("Run started on host", render_lifecycle_result(result))
+            self.assertNotIn("ready for:", render_lifecycle_result(result).lower())
+            self.assertIn("frame_000000", render_lifecycle_result(result))
+            self.assertIn("http://127.0.0.1:8555/", render_lifecycle_result(result))
+            self.assertIn("Browser opened", render_lifecycle_result(result))
             browser_open.assert_called_once_with(
                 "http://127.0.0.1:8555/",
                 new=2,
@@ -261,7 +262,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     return_value=view,
                 ),
                 patch(
-                    "cli.automa_cli.hosts.runs.service.subprocess.Popen",
+                    "cli.automa_cli.hosts.runs.process.subprocess.Popen",
                     side_effect=AssertionError("must not spawn a duplicate worker"),
                 ),
                 patch(
@@ -275,11 +276,11 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     open_view=True,
                 )
 
-        self.assertEqual(result.exit_code, 0, result.message)
-        self.assertIn("already has a run", result.message)
-        self.assertNotIn("ready for:", result.message.lower())
-        self.assertIn("Warning: could not open the browser", result.message)
-        self.assertIn("Open manually: http://127.0.0.1:8666/", result.message)
+        self.assertEqual(result.exit_code, 0, render_lifecycle_result(result))
+        self.assertIn("already has a run", render_lifecycle_result(result))
+        self.assertNotIn("ready for:", render_lifecycle_result(result).lower())
+        self.assertIn("Warning: could not open the browser", render_lifecycle_result(result))
+        self.assertIn("Open manually: http://127.0.0.1:8666/", render_lifecycle_result(result))
         browser_open.assert_called_once_with("http://127.0.0.1:8666/", new=2)
 
     def test_existing_worker_must_match_requested_observation_only_authority(
@@ -327,9 +328,9 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 )
 
         self.assertEqual(result.exit_code, 2)
-        self.assertIn("authority does not match", result.message)
-        self.assertIn("action=observe_only, control=not_applied", result.message)
-        self.assertNotIn("ready for:", result.message.lower())
+        self.assertIn("authority does not match", render_lifecycle_result(result))
+        self.assertIn("action=observe_only, control=not_applied", render_lifecycle_result(result))
+        self.assertNotIn("ready for:", render_lifecycle_result(result).lower())
 
     def test_stop_without_pid_records_stopped_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -355,7 +356,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
 
         self.assertEqual(result.exit_code, 0)
-        self.assertNotIn("ready for:", result.message.lower())
+        self.assertNotIn("ready for:", render_lifecycle_result(result).lower())
         self.assertEqual(state["status"], "stopped")
         self.assertEqual(state["readiness"]["status"], "ready")
         self.assertEqual(
@@ -380,7 +381,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             ):
                 record_host_automation_terminal_result(
                     host_name="chase-sim-chaser",
-                    result=CommandResult(2, "No active Chase frontend was found."),
+                    result=RunResult(2, "No active Chase frontend was found."),
                 )
 
             state = json.loads(

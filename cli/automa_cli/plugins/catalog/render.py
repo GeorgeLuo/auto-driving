@@ -8,9 +8,9 @@ from typing import Any
 
 from autonomy.decision_cycle.activation import STEPS
 
-from ...hosts.step_activations import step_lines
+from ...hosts.step_formatting import step_lines
+from ...providers.metadata import PROVIDERS
 from ...shared.paths import display_path
-from ...providers.catalog import PROVIDERS
 from .models import ListingResult, MutationResult, Recovery, SaveResult
 
 

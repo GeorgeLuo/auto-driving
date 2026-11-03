@@ -5,6 +5,7 @@ stops, and restarts a run. ``worker`` is the background process. ``monitor``
 watches the running host. ``store`` persists the run record. ``status``
 collects host status, and ``render`` formats that status and the live run
 transcript. The monitor emits optional data events and returns its outcome
-without presentation. ``process`` identifies and terminates workers;
-``models`` names the worker processes stop still recognizes.
+without presentation. ``process`` launches, identifies, waits for, and
+terminates workers. ``models`` holds startup, stop, restart and monitor
+outcomes, along with the worker identities stop recognizes.
 """

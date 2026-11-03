@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import argparse
 import sys
+from typing import TextIO
 
 from ...providers.catalog import PROVIDERS
-from .render import present_deployment
+from ...shared.progress import ProgressEvent, ProgressSink
+from .render import present_deployment, render_progress
 from .service import create_host, delete_host, update_host
 
 
@@ -39,7 +41,7 @@ def _handle_hosts_create(args: argparse.Namespace) -> int:
         host_name=args.host_name, provider=args.provider, url=args.url,
         ssh_target=args.ssh_target, pi_home=args.pi_home, drive_args=args.drive_args,
         dry_run=args.dry_run, verbose=args.verbose,
-        output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
+        emit=None if args.dry_run else _progress_writer(sys.stderr if args.json else sys.stdout),
     )
     print(present_deployment(result, json_output=args.json))
     return result.exit_code
@@ -49,13 +51,19 @@ def _handle_hosts_update(args: argparse.Namespace) -> int:
     result = update_host(
         host_name=args.host_name, dry_run=args.dry_run, restart=args.restart,
         drive_args=args.drive_args, verbose=args.verbose,
-        output=None if args.dry_run else (sys.stderr if args.json else sys.stdout),
+        emit=None if args.dry_run else _progress_writer(sys.stderr if args.json else sys.stdout),
     )
     print(present_deployment(result, json_output=args.json))
     return result.exit_code
 
 
 def _handle_hosts_delete(args: argparse.Namespace) -> int:
-    result = delete_host(host_name=args.host_name, verbose=args.verbose, output=sys.stdout)
+    result = delete_host(host_name=args.host_name, verbose=args.verbose, emit=_progress_writer(sys.stdout))
     print(present_deployment(result, json_output=False))
     return result.exit_code
+
+
+def _progress_writer(stream: TextIO) -> ProgressSink:
+    def write(event: ProgressEvent) -> None:
+        print(render_progress(event), file=stream, flush=True)
+    return write

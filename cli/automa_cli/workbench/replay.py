@@ -19,13 +19,10 @@ from ..frontend.workbench_contract import (
     WORKBENCH_DEFAULT_PACE,
     ReplayActionError,
 )
-from ..replay.source import (
-    WORKBENCH_DEFAULT_MAX_FRAMES,
-    SourceValidationError,
-)
-from ..shared.command_result import CommandResult
-from ..shared.open_view import open_view_message
-from .models import WorkbenchEvent
+from ..replay.models import SourceValidationError
+from ..replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
+from ..shared.open_view import launch_browser
+from .models import WorkbenchEvent, WorkbenchResult
 from .runner import ImageReplayRunner
 
 
@@ -42,7 +39,7 @@ def run_workbench_replay(
     open_browser: bool = False,
     emit: Callable[[WorkbenchEvent], None] | None = None,
     view_server: Callable[..., Any],
-) -> CommandResult:
+) -> WorkbenchResult:
     """Run one CLI replay, optionally keeping the viewer's workbench available.
 
     Recorded frames restore their executable step selections. Explicit CLI
@@ -60,7 +57,7 @@ def run_workbench_replay(
             if preset is not None or plugins is not None:
                 activations[step] = selection_activation(step, preset=preset, plugins=plugins)
     except ValueError as exc:
-        return CommandResult(2, f"Workbench replay failed: {exc}")
+        return WorkbenchResult(2, error=str(exc))
     if open_browser:
         serve = True
     runner: ImageReplayRunner | None = None
@@ -92,20 +89,20 @@ def run_workbench_replay(
         if serve:
             try:
                 if open_browser and displayed_url:
-                    notice = open_view_message(displayed_url)
+                    notice = launch_browser(displayed_url)
                     if emit is not None:
-                        emit(WorkbenchEvent(line=notice))
+                        emit(WorkbenchEvent(browser=notice))
                 while True:
                     time.sleep(0.25)
             except KeyboardInterrupt:
-                return CommandResult(0, "viewer stopped")
+                return WorkbenchResult(0, viewer_stopped=True)
         state = runner.wait()
         exit_code = 0 if state.get("phase") == "completed" else 2
         if emit is not None:
             emit(WorkbenchEvent(state=state, server_url=displayed_url, serving=False))
-        return CommandResult(exit_code, "")
+        return WorkbenchResult(exit_code)
     except (ReplayActionError, SourceValidationError) as exc:
-        return CommandResult(2, f"Workbench replay failed: {exc}")
+        return WorkbenchResult(2, error=str(exc))
     finally:
         if server is not None:
             server.stop()

@@ -6,10 +6,11 @@ from typing import Any
 
 from autonomy.plugins import DuplicatePluginIdError
 
-from .hosts.runs.commands import get_hosts_status
 from .hosts.commands import register_hosts
+from .hosts.runs.commands import get_hosts_status
 from .hosts.views.runtime_view import runtime_view_server, serve_viewer
 from .plugins.commands import register_plugins
+from .shared.text import format_browser_result
 from .simulators.commands import register_simulators
 from .vehicles.commands import register_vehicles
 from .vehicles.render import format_vehicles_status
@@ -81,7 +82,7 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
 
 
 def _handle_open_viewer(args: argparse.Namespace) -> int:
-    return serve_viewer()
+    return serve_viewer(emit=lambda result: print(format_browser_result(result), flush=True))
 
 
 def _handle_status(args: argparse.Namespace) -> int:

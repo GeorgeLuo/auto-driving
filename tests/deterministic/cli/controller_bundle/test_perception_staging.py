@@ -19,7 +19,7 @@ class PerceptionStagingTests(unittest.TestCase):
     def test_staged_bundle_keeps_feed_and_plugin_types_consistent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             bundle = controller_bundle_paths(Path(tmp) / "vehicle")
-            sync_controller_bundle(bundle, output=None)
+            sync_controller_bundle(bundle, emit=None)
             mapper = load_runner(
                 step_activation(
                     "perception",

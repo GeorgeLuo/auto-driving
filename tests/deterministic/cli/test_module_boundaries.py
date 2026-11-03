@@ -81,96 +81,139 @@ def _import_edges(imports: dict[str, list[CliImport]], modules: set[str]) -> dic
     return edges
 
 
-# Files with these names have that responsibility. Anything else in a feature is support.
-_LAYER_NAMES = {"commands", "service", "models", "render", "store", "worker", "monitor", "registry"}
-_OPERATION_ROLES = {"service", "support", "store", "worker", "monitor", "registry"}
-# Every command family whose modules use the role names below. A role-named
-# module outside this tuple fails test_role_modules_belong_to_a_layered_feature.
-LAYERED_FEATURES = (
-    f"{PACKAGE}.plugins.catalog",
-    f"{PACKAGE}.plugins.inspect",
-    f"{PACKAGE}.plugins.stream",
-    f"{PACKAGE}.hosts.runs",
-    f"{PACKAGE}.hosts.deployment",
-    f"{PACKAGE}.hosts.views",
-    f"{PACKAGE}.releases",
-    f"{PACKAGE}.vehicles",
-    f"{PACKAGE}.simulators",
-    f"{PACKAGE}.workbench",
-)
-LAYERED_ASSEMBLERS = (
-    f"{PACKAGE}.plugins.commands",
-    f"{PACKAGE}.hosts.commands",
-)
+# Conventional filenames declare a role. Other modules have an explicit role;
+# a new filename must be classified here, never silently treated as support.
+_NAMED_ROLES = {name: name for name in ("commands", "service", "models", "render", "store", "monitor", "registry")}
+_OPERATION_ROLES = {"service", "store", "monitor", "registry", "operation"}
+_MODULE_ROLES = {
+    "app": "entrypoint",
+    "frontend.decision_view": "operation",
+    "frontend.loopback_http": "operation",
+    "frontend.perception_view": "operation",
+    "frontend.plugin_catalog": "operation",
+    "frontend.server": "operation",
+    "frontend.workbench_contract": "pure",
+    "frontend.workbench_view": "operation",
+    "hosts.bundles": "store",
+    "hosts.deployment.donkeycar_vendor": "operation",
+    "hosts.deployment.picar_deploy": "operation",
+    "hosts.discovery": "operation",
+    "hosts.host_formatting": "pure",
+    "hosts.host_status": "operation",
+    "hosts.local": "operation",
+    "hosts.local_worker": "entrypoint",
+    "hosts.publications.decision": "operation",
+    "hosts.publications.decision_publication": "pure",
+    "hosts.publications.decision_records": "operation",
+    "hosts.publications.host_publications": "operation",
+    "hosts.publications.host_telemetry": "pure",
+    "hosts.publications.plugin_catalog": "operation",
+    "hosts.publications.publication_fields": "pure",
+    "hosts.runs.process": "operation",
+    "hosts.runs.status": "operation",
+    "hosts.runs.worker": "entrypoint",
+    "hosts.staging": "store",
+    "hosts.step_activations": "store",
+    "hosts.step_formatting": "pure",
+    "hosts.vehicle_access": "operation",
+    "hosts.views.decision_live": "operation",
+    "hosts.views.polling": "pure",
+    "hosts.views.runtime_view": "operation",
+    "hosts.views.view_discovery": "operation",
+    "hosts.views.view_feed": "operation",
+    "hosts.views.viewer": "operation",
+    "plugins.inspect.replay": "operation",
+    "plugins.step_formatting": "pure",
+    "plugins.stream.decision": "operation",
+    "plugins.stream.memory": "operation",
+    "plugins.stream.perception": "operation",
+    "plugins.stream.polling": "pure",
+    "plugins.stream.session": "operation",
+    "providers.catalog": "registry",
+    "providers.metadata": "pure",
+    "providers.probes": "operation",
+    "providers.urls": "pure",
+    "releases.errors": "pure",
+    "releases.paths": "pure",
+    "replay.frames": "operation",
+    "replay.selections": "operation",
+    "replay.source": "store",
+    "shared.browser_result": "models",
+    "shared.cli.selection_args": "cli",
+    "shared.cli.timeout_input": "cli",
+    "shared.command_result": "models",
+    "shared.io.http_json": "operation",
+    "shared.io.json_files": "store",
+    "shared.io.processes": "operation",
+    "shared.memory_report": "pure",
+    "shared.open_view": "operation",
+    "shared.paths": "pure",
+    "shared.plugin_catalog": "pure",
+    "shared.progress": "pure",
+    "shared.step_hosting": "pure",
+    "shared.text": "pure",
+    "shared.timestamps": "pure",
+    "simulators.process": "operation",
+    "vehicles.discovery": "operation",
+    "vehicles.status": "operation",
+    "workbench.plugins": "operation",
+    "workbench.presentation": "pure",
+    "workbench.replay": "operation",
+    "workbench.runner": "operation",
+}
+_PACKAGE_MODULES = {_module_name(path) for path in (ROOT / "cli" / "automa_cli").rglob("__init__.py")}
+_ASSEMBLERS = {f"{PACKAGE}.{name}" for name in ("hosts.commands", "plugins.commands")}
 
 
-def _role(module: str) -> str:
-    leaf = module.rsplit(".", 1)[-1]
-    return leaf if leaf in _LAYER_NAMES else "support"
+def _role(module: str) -> str | None:
+    if module in _PACKAGE_MODULES:
+        return "package"
+    relative = module.removeprefix(PACKAGE + ".")
+    return _MODULE_ROLES.get(relative, _NAMED_ROLES.get(module.rsplit(".", 1)[-1]))
 
 
 def _feature_package(module: str) -> str:
     return module.rsplit(".", 1)[0]
 
 
-def _layered(module: str) -> bool:
-    if module in LAYERED_ASSEMBLERS:
-        return True
-    return any(module == feature or module.startswith(feature + ".") for feature in LAYERED_FEATURES)
-
-
 def _layer_reason(source: str, target: str) -> str | None:
-    """Why ``source`` may not import ``target``, or None when the edge is allowed.
-
-    A parent command module may import a child command module to register it.
-    This is an import relationship, not a proof that a renderer avoids I/O.
-    """
+    """Check every intra-CLI edge, including concrete support filenames."""
 
     if source.startswith(f"{PACKAGE}.shared.") and not target.startswith(f"{PACKAGE}.shared."):
         return "shared imports a feature"
     if source.startswith(f"{PACKAGE}.providers.") and target.startswith(f"{PACKAGE}.hosts.deployment."):
         return "provider imports deployment"
-    source_role = _role(source)
-    target_role = _role(target)
-    same_feature = _feature_package(source) == _feature_package(target)
-    # The run worker is the process entry for hosts run. It composes the
-    # renderer for its own stdout and passes that object into the service.
-    if source_role == "worker" and target_role == "render" and same_feature:
-        return None
-    if source_role in _OPERATION_ROLES and target_role in {"commands", "render"}:
+    if source in {f"{PACKAGE}.hosts.runs.service", f"{PACKAGE}.hosts.runs.process"} and target == f"{PACKAGE}.shared.io.json_files":
+        return "run records belong to store"
+    source_role, target_role = _role(source), _role(target)
+    if source_role is None or target_role is None:
+        return "unclassified module"
+    if source_role == "package":
+        return "package initializer imports implementation"
+    if source_role in _OPERATION_ROLES and target_role in {"commands", "render", "entrypoint", "cli"}:
         return "operation imports presentation"
-    if source_role == "models" and target_role in {"commands", "render", "service", "store", "worker", "monitor", "registry"}:
-        return "model imports an operation or presentation"
-    if source_role == "models" and target_role == "support" and same_feature:
-        return "model imports an operation"
-    if source_role == "render" and target_role in {"commands", "service", "store", "worker", "monitor", "registry"}:
-        return "renderer imports an operation"
-    if source_role == "render" and target_role == "support" and same_feature:
-        return "renderer imports an operation"
-    if source_role in {"render", "models"} and target in {
-        f"{PACKAGE}.hosts.local", f"{PACKAGE}.hosts.discovery", f"{PACKAGE}.hosts.staging",
-    }:
-        return "data or rendering imports host operations"
-    if source_role == "render" and target.rsplit(".", 1)[-1] in {"view_feed", "session"}:
-        return "renderer imports a viewer"
-    if source_role == "commands" and target_role == "commands":
-        source_package = _feature_package(source)
-        if target.startswith(source_package + ".") and target != source:
+    if source_role in {"models", "pure", "render"} and target_role in _OPERATION_ROLES | {"commands", "entrypoint", "cli"}:
+        return "data or rendering imports operations"
+    if source_role in {"models", "pure"} and target_role == "render":
+        return "data imports presentation"
+    if target_role == "commands":
+        if source == f"{PACKAGE}.app":
+            return None
+        if source in _ASSEMBLERS and target.startswith(_feature_package(source) + "."):
             return None
         return "command handler reused outside its assembler"
+    # Only the actual process entrypoints compose presentation and operations.
+    if target_role == "entrypoint":
+        return "process entrypoint reused as a library"
     return None
 
 
 def _layer_violations(edges: dict[str, dict[str, CliImport]]) -> list[str]:
-    violations = []
-    for source, targets in edges.items():
-        if not (_layered(source) or source.startswith((f"{PACKAGE}.shared.", f"{PACKAGE}.providers."))):
-            continue
-        for target, found in targets.items():
-            reason = _layer_reason(source, target)
-            if reason is not None:
-                violations.append(f"{found.where} {reason}: {target}")
-    return violations
+    return [
+        f"{found.where} {reason}: {target}"
+        for source, targets in edges.items() for target, found in targets.items()
+        if (reason := _layer_reason(source, target)) is not None
+    ]
 
 
 def _fixture_edges(files: dict[str, str]) -> dict[str, dict[str, CliImport]]:
@@ -303,12 +346,20 @@ class ModuleBoundaryTests(unittest.TestCase):
 
         self.assertEqual(_layer_violations(self._edges()), [])
 
-    def test_role_modules_belong_to_a_layered_feature(self) -> None:
-        uncovered = sorted(
-            module for module in self.modules
-            if module.rsplit(".", 1)[-1] in _LAYER_NAMES and not _layered(module)
-        )
-        self.assertEqual(uncovered, [])
+    def test_every_module_has_a_role_and_no_stale_assignments(self) -> None:
+        self.assertEqual(sorted(module for module in self.modules if _role(module) is None), [])
+        self.assertEqual(sorted(name for name in _MODULE_ROLES if f"{PACKAGE}.{name}" not in self.modules), [])
+        self.assertIsNone(_role(f"{PACKAGE}.hosts.runs.future_helper"))
+
+    def test_package_initializers_only_contain_metadata(self) -> None:
+        for path in (ROOT / "cli" / "automa_cli").rglob("__init__.py"):
+            body = ast.parse(path.read_text()).body
+            statements = [node for node in body if not (
+                isinstance(node, ast.Expr) and isinstance(node.value, ast.Constant)
+                and isinstance(node.value.value, str)) and not (
+                    isinstance(node, ast.Assign) and all(isinstance(t, ast.Name) and t.id in {"__all__", "__version__"} for t in node.targets)
+                    and isinstance(node.value, (ast.Constant, ast.List, ast.Tuple)))]
+            self.assertEqual(statements, [], str(path))
 
     def test_shared_and_external_host_operation_edges_are_rejected(self) -> None:
         files = {
@@ -320,20 +371,33 @@ class ModuleBoundaryTests(unittest.TestCase):
         violations = _layer_violations(_fixture_edges(files))
         self.assertEqual(len(violations), 2)
         self.assertTrue(any("shared imports a feature" in v for v in violations))
-        self.assertTrue(any("imports host operations" in v for v in violations))
+        self.assertTrue(any("imports operations" in v for v in violations))
 
-    def test_renderers_do_not_write_output(self) -> None:
+    def test_only_output_adapters_print_or_accept_output_streams(self) -> None:
         violations = []
-        for path in (ROOT / "cli" / "automa_cli").rglob("render.py"):
+        for path in (ROOT / "cli" / "automa_cli").rglob("*.py"):
+            role = _role(_module_name(path))
+            if role in {"commands", "entrypoint", "cli"}:
+                continue
             for node in ast.walk(ast.parse(path.read_text())):
-                if not isinstance(node, ast.Call):
-                    continue
-                function = node.func
-                if ((isinstance(function, ast.Name) and function.id == "print")
-                        or (isinstance(function, ast.Attribute) and function.attr in
-                            {"write", "write_text", "write_bytes", "flush"})):
-                    violations.append(f"{path}:{node.lineno}")
+                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print":
+                    violations.append(f"{path}:{node.lineno} prints")
+                if role in {"render", "models", "pure"} and isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"write", "write_text", "write_bytes", "flush"}:
+                    violations.append(f"{path}:{node.lineno} writes")
+                if isinstance(node, ast.arg) and isinstance(node.annotation, ast.AST) and "TextIO" in ast.unparse(node.annotation):
+                    violations.append(f"{path}:{node.lineno} takes an output stream")
         self.assertEqual(violations, [])
+
+    def test_concrete_operation_imports_and_unknown_modules_are_rejected(self) -> None:
+        for target in ("providers.catalog", "providers.probes", "hosts.bundles", "workbench.runner",
+                       "hosts.runs.future_helper"):
+            for source in ("plugins.stream.render", "hosts.runs.models", "hosts.step_formatting"):
+                with self.subTest(source=source, target=target):
+                    self.assertIsNotNone(_layer_reason(f"{PACKAGE}.{source}", f"{PACKAGE}.{target}"))
+        self.assertIsNotNone(_layer_reason(f"{PACKAGE}.providers.catalog", f"{PACKAGE}.hosts.deployment.service"))
+        self.assertIsNotNone(_layer_reason(f"{PACKAGE}.hosts.runs.service", f"{PACKAGE}.shared.io.json_files"))
+        self.assertIsNone(_layer_reason(f"{PACKAGE}.vehicles.render", f"{PACKAGE}.providers.metadata"))
+        self.assertIsNone(_layer_reason(f"{PACKAGE}.hosts.runs.worker", f"{PACKAGE}.hosts.runs.render"))
 
     def test_layer_fixtures_accept_assembly_and_reject_crossed_imports(self) -> None:
         allowed = {

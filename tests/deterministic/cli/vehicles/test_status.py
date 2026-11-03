@@ -3,10 +3,8 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from cli.automa_cli.providers.probes import (
-    Candidate,
-    normalize_chase_url,
-)
+from cli.automa_cli.providers.urls import normalize_chase_url
+from cli.automa_cli.providers.models import Candidate
 from cli.automa_cli.vehicles.render import format_vehicles_status
 from tests.shared.cli.invoke import invoke_automa
 

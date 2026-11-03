@@ -12,9 +12,8 @@ from typing import Any
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
 
+from ..replay.models import FrameOutcome, ReplayFrame
 from ..shared.memory_report import evidence_publisher, plugin_states, plugin_summaries
-from ..replay.frames import FrameOutcome
-from ..replay.source import ReplayFrame
 
 
 def empty_steps() -> dict[str, Any]:

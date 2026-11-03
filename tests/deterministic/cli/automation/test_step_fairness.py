@@ -63,7 +63,7 @@ class StepFairnessTests(unittest.TestCase):
 
         for step in STEPS:
             with self.subTest(step=step), self._runtime(step), mock.patch(
-                "cli.automa_cli.hosts.runs.service.runtime_base_url", return_value="http://host.invalid"
+                "cli.automa_cli.hosts.runs.service.ensure_chase_host", return_value="http://host.invalid"
             ), mock.patch(
                 "cli.automa_cli.hosts.runs.service.monitor_runtime", return_value=RunResult(0, "done")
             ) as monitor:

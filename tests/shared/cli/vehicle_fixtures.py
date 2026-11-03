@@ -7,7 +7,7 @@ from dataclasses import replace
 from unittest.mock import Mock, patch
 
 from cli.automa_cli.providers.catalog import PROVIDERS
-from cli.automa_cli.providers.probes import ProbeResult
+from cli.automa_cli.providers.models import ProbeResult
 
 
 def probe_returning(probe: ProbeResult) -> AbstractContextManager[object]:

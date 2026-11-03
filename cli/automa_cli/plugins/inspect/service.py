@@ -10,8 +10,9 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from autonomy.shared_memory import SharedMemoryValueError
 from implementations.decision_cycle.catalog import selection_activation
 
+from ...replay.models import SourceValidationError
 from ...replay.selections import add_seed_provenance, read_shared_memory_seed
-from ...replay.source import WORKBENCH_DEFAULT_MAX_FRAMES, SourceValidationError
+from ...replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ...shared.paths import ROOT
 from .models import InspectResult
 from .replay import StepReplay, inspect_run_id, read_replay_source, record_inspect_run

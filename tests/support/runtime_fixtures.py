@@ -126,7 +126,7 @@ def stage_step(runtime_root: Path, host_name: str, step: str, *, preset: str | N
     bundle = host_bundle(host_name, runtime_root)
     return stage_activation(
         bundle, selection_activation(step, preset=preset, plugins=plugins),
-        host_name=host_name, release=sync_controller_bundle(bundle, output=None), vehicle=vehicle,
+        host_name=host_name, release=sync_controller_bundle(bundle, emit=None), vehicle=vehicle,
     )
 
 

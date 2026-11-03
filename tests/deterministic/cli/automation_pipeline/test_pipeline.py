@@ -22,7 +22,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             bundle = controller_bundle_paths(runtime_root / HOST_NAME)
-            sync_controller_bundle(bundle, output=None)
+            sync_controller_bundle(bundle, emit=None)
             _write_activations(bundle, plugins=["frame"])
             applied_selections: list[tuple[str, ...]] = []
             frame_selections: dict[str, list[str]] = {}

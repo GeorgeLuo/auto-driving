@@ -40,7 +40,7 @@ class PhysicalDeployTests(unittest.TestCase):
             root = Path(tmp)
             host_dir = root / "runtime" / "hosts" / "piracer"
             bundle = controller_bundle_paths(host_dir)
-            release = sync_controller_bundle(bundle, output=None)
+            release = sync_controller_bundle(bundle, emit=None)
             ensure_step_activations(
                 host_name="piracer", bundle=bundle, release=release,
                 activations=startup_activations(bundle, "piracer"), vehicle=dict(TARGET.configuration),

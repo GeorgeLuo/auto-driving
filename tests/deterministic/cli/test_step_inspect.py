@@ -20,7 +20,7 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
 from cli.automa_cli.plugins.step_formatting import format_step_record
 from cli.automa_cli.plugins.inspect.commands import INSPECT_STEPS, inspect_step
 from cli.automa_cli.plugins.inspect.replay import StepReplay
-from cli.automa_cli.replay.source import ImageSource, ReplayFrame
+from cli.automa_cli.replay.models import ImageSource, ReplayFrame
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PRESETS, PRESET_STEPS
 from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (

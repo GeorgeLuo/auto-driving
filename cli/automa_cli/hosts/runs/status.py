@@ -13,25 +13,25 @@ import time
 from pathlib import Path
 from typing import Any
 
-from ...shared.io.json_files import read_json
-from ...shared.paths import display_path, safe_path_part
-from ...shared.io.processes import pid_alive
-from .. import staging
+from ...frontend.perception_view import get_perception_view_status
+from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ...releases.errors import RuntimeHostError
-from ...releases.store import release_manifest
 from ...releases.paths import controller_bundle_paths
+from ...releases.store import release_manifest
+from ...shared.io.json_files import read_json
+from ...shared.io.processes import pid_alive
+from ...shared.paths import display_path, safe_path_part
+from ...shared.timestamps import timestamp_ms
+from .. import staging
 from ..discovery import running_base_url
-from ..publications.host_publications import host_state
 from ..host_status import read_hosts
+from ..publications.host_publications import host_state
 from ..step_activations import (
     bundle_activation_problems,
     decision_identity,
     staged_selections,
 )
-from ...shared.timestamps import timestamp_ms
 from ..views.view_discovery import discover_runtime_view
-from ...frontend.perception_view import get_perception_view_status
-from ...providers.probes import DEFAULT_READINESS_TIMEOUT_S
 from .models import status_reason
 
 

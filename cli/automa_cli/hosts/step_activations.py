@@ -39,10 +39,11 @@ from implementations.decision_cycle.catalog import (
     selection_activation,
 )
 
-from .bundles import release_activation_summary
+from ..providers.catalog import PROVIDERS
 from ..releases.paths import controller_bundle_paths
 from ..shared.paths import display_path, safe_path_part
-from ..providers.catalog import PROVIDERS
+from .bundles import release_activation_summary
+
 
 def host_bundle(host_name: str, runtime_root: Path) -> dict[str, str]:
     return controller_bundle_paths(Path(runtime_root) / safe_path_part(host_name))
@@ -79,20 +80,6 @@ def bundle_activation_problems(
                 "command": f"./cli/automa hosts update --name {shlex.quote(host_name)}",
             })
     return problems
-
-
-def format_activation_problems(problems: list[dict[str, str]]) -> str:
-    """Render the same step-specific recovery for startup and status callers."""
-
-    return "\n".join(
-        line
-        for problem in problems
-        for line in (
-            f"Invalid {problem['step']} activation: {problem['activation']}",
-            f"Reason: {problem['reason']}",
-            f"Replace it with the step's default: {problem['command']}",
-        )
-    )
 
 
 def absent_step_error(step: str, host_name: str) -> str:
@@ -397,20 +384,6 @@ def staged_selections(bundle: dict[str, str]) -> dict[str, dict[str, Any]]:
     return selections
 
 
-def selection_label(preset: str | None, plugins: list[str]) -> str:
-    """A selection as deploy, run and status print it: its preset and plugins."""
-
-    listed = ", ".join(plugins)
-    return f"{preset} ({listed or 'no plugins'})" if preset else listed or "(no plugins)"
-
-
-def step_lines(steps: dict[str, list[str]], presets: dict[str, str]) -> list[str]:
-    return [
-        f"{step.capitalize()}: {selection_label(presets.get(step), plugins)}"
-        for step, plugins in steps.items()
-    ]
-
-
 def decision_activations(bundle: dict[str, str]) -> dict[str, StepActivation | None]:
     """The proposal, plan, and action activations a host would run, with built-ins."""
 
@@ -453,7 +426,6 @@ __all__ = [
     "decision_generation_id",
     "decision_identity",
     "ensure_step_activations",
-    "format_activation_problems",
     "proposal_plugin_ids",
     "CONTROLLER_BUNDLE_KEYS",
     "read_bundle_activation",

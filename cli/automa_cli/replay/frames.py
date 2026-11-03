@@ -7,20 +7,21 @@ replay frame and the active steps into a cycle result.
 from __future__ import annotations
 
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import Any
 
 from autonomy.decision_cycle.action.publication import write_host_inputs
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
-from autonomy.decision_cycle.observation.perception_summary import observation_from_perception
+from autonomy.decision_cycle.observation.perception_summary import (
+    observation_from_perception,
+)
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 from ..frontend.workbench_contract import WORKBENCH_SEQUENCE_ID
 from ..shared.step_hosting import plugin_report
-from .source import ReplayFrame
+from .models import FrameOutcome, ReplayFrame
 
 
 def sensor_frame_for_replay_frame(frame: ReplayFrame) -> SensorFrame | None:
@@ -68,14 +69,6 @@ def decision_view(result: Any) -> dict[str, Any] | None:
         "plan": result.plan.to_dict() if result.plan is not None else None,
         "authority": action.authority.to_dict(),
     }
-
-
-@dataclass(frozen=True)
-class FrameOutcome:
-    result: Any
-    decision: dict[str, Any] | None
-    # Each step runner's plugin report after the frame, by step.
-    plugin_reports: dict[str, dict[str, Any] | None]
 
 
 def run_frame(

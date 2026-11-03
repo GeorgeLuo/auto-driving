@@ -240,7 +240,7 @@
             "path": "cli/automa_cli/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "Vehicle, simulator, deploy, implementation, runtime, and diagnostic command implementation. Its packages import one another without a cycle."
+            "responsibility": "CLI capabilities use commands for argument and output adapters, services for operations, models for outcomes, render for supplied-data presentation, store for records, and process for launch, identity checks, signals and waits. Import roles cover every module in tests/deterministic/cli/test_module_boundaries.py; unclassified modules and cycles fail."
           },
           {
             "path": "cli/automa_cli/frontend/",
@@ -272,13 +272,13 @@
             "path": "cli/automa_cli/replay/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "Offline replay shared by the workbench and plugin inspection: image sources, one-frame execution, and selections rebuilt from a recorded controller release."
+            "responsibility": "Offline replay shared by workbench and plugin inspection: models hold replay inputs and outcomes, source loads image directories, frames executes one frame, and selections rebuilds steps from a recorded controller release."
           },
           {
             "path": "cli/automa_cli/providers/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "What differs between the vehicles a host can control, and how each vehicle is probed. Host deployment registers its own operations; this package does not import host deployment."
+            "responsibility": "Provider metadata, URL conventions and result models are separate from the catalog of operational callbacks and network probes. Renderers import metadata. Host deployment registers its own operations; providers do not import deployment."
           },
           {
             "path": "cli/automa_cli/vehicles/",
@@ -290,7 +290,7 @@
             "path": "cli/automa_cli/hosts/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa hosts commands and shared host discovery, staging and bundle services; deployment, runs, publications and views live in their named subpackages."
+            "responsibility": "Host discovery reads existing endpoints; local manages local host processes and local_worker supervises them. Staging and bundles own records and release packaging. Host and step formatting consume supplied records. Deployment, runs, publications and views live in their named subpackages."
           },
           {
             "path": "cli/automa_cli/workbench/",

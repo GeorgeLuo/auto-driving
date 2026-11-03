@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import argparse
 
+from .models import ViewerEvent
+from .render import render_viewer_event, render_viewer_result
 from .viewer import serve_host_viewer
-
 
 _HOST_NAME_HELP = "Name of a host created with hosts create."
 
@@ -27,7 +28,12 @@ def register_host_viewer(host_commands: argparse._SubParsersAction) -> None:
 
 
 def _handle_hosts_viewer(args: argparse.Namespace) -> int:
-    result = serve_host_viewer(host_name=args.host_name, host_url=args.host_url)
-    if result.message:
-        print(result.message)
+    result = serve_host_viewer(host_name=args.host_name, host_url=args.host_url, emit=_present)
+    message = render_viewer_result(result)
+    if message:
+        print(message)
     return result.exit_code
+
+
+def _present(event: ViewerEvent) -> None:
+    print(render_viewer_event(event), flush=True)

@@ -1,6 +1,6 @@
 """Format supplied simulator results without performing operations."""
-from ..providers.catalog import CHASE_SIM
-from ..providers.probes import chase_operator_url
+from ..providers.metadata import CHASE_SIM
+from ..providers.urls import chase_operator_url
 from .models import SimulatorResult
 
 

@@ -8,7 +8,8 @@ from pathlib import Path
 from unittest.mock import patch
 
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.shared.command_result import CommandResult
+from cli.automa_cli.hosts.runs.models import StartResult, RestartResult
+from cli.automa_cli.hosts.runs.render import render_start_result
 from cli.automa_cli.hosts.runs.process import automation_command_matches_host
 from cli.automa_cli.hosts.runs.models import RunResult
 from cli.automa_cli.app import main
@@ -105,7 +106,7 @@ class RunConfigurationTests(unittest.TestCase):
             for count, flags in ((["--num-decisions", "3"], []), (["--num-decisions", "3"], ["--unbounded"]), ([], [])):
                 with (
                     self.subTest(verb=verb, count=count, flags=flags),
-                    patch(f"cli.automa_cli.hosts.runs.commands.{target}", return_value=CommandResult(0, "ok")) as run,
+                    patch(f"cli.automa_cli.hosts.runs.commands.{target}", return_value=(RestartResult(0) if target == "restart_host_automation" else StartResult(0, "error"))) as run,
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
                     code = main(["hosts", verb, "--name", "picar-test", *count, *flags])
@@ -126,7 +127,7 @@ class RunConfigurationTests(unittest.TestCase):
     def test_cli_dispatches_host_url_without_an_id(self):
         with (
             patch("cli.automa_cli.hosts.runs.commands.start_host_automation_background",
-                  return_value=CommandResult(0, "ok")) as run,
+                  return_value=StartResult(0, "error")) as run,
             contextlib.redirect_stdout(io.StringIO()),
         ):
             code = main([
@@ -159,7 +160,7 @@ class RunConfigurationTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as tmp,
             patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", Path(tmp)),
             patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)),
-            patch("cli.automa_cli.hosts.runs.service.runtime_base_url", side_effect=AssertionError("started a host")) as started,
+            patch("cli.automa_cli.hosts.runs.service.ensure_chase_host", side_effect=AssertionError("started a host")) as started,
             patch("cli.automa_cli.hosts.runs.service.RuntimeClient", _HostClient),
             patch("cli.automa_cli.hosts.runs.service.monitor_runtime", return_value=RunResult(0, "ran")) as monitor,
         ):
@@ -175,7 +176,7 @@ class RunConfigurationTests(unittest.TestCase):
         for host_url in ("not-a-host", "http://127.0.0.1:54355/host/status"):
             with (
                 self.subTest(host_url=host_url),
-                patch("cli.automa_cli.hosts.runs.service.runtime_base_url", side_effect=AssertionError("started a host")) as started,
+                patch("cli.automa_cli.hosts.runs.service.ensure_chase_host", side_effect=AssertionError("started a host")) as started,
             ):
                 result = run_host_automation(host_url=host_url, num_decisions=1, take_control=True)
             self.assertEqual(result.exit_code, 2, result.message)
@@ -200,7 +201,7 @@ class RunConfigurationTests(unittest.TestCase):
             with (
                 self.subTest(client=client.__name__),
                 patch("cli.automa_cli.hosts.runs.service.RuntimeClient", client),
-                patch("cli.automa_cli.hosts.runs.service.runtime_base_url", side_effect=AssertionError("started a host")) as started,
+                patch("cli.automa_cli.hosts.runs.service.ensure_chase_host", side_effect=AssertionError("started a host")) as started,
             ):
                 result = run_host_automation(
                     host_url="http://127.0.0.1:54355", num_decisions=1, take_control=True,
@@ -214,15 +215,15 @@ class RunConfigurationTests(unittest.TestCase):
             patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", Path(tmp)),
             patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)),
             patch("cli.automa_cli.hosts.runs.service.RuntimeClient", _HostClient),
-            patch("cli.automa_cli.hosts.runs.service.subprocess.Popen") as popen,
+            patch("cli.automa_cli.hosts.runs.process.subprocess.Popen") as popen,
             patch(
-                "cli.automa_cli.hosts.runs.service._wait_for_automation_startup",
+                "cli.automa_cli.hosts.runs.service.wait_for_automation_startup",
                 return_value={"status": "completed"},
             ),
         ):
             popen.return_value.pid = 99
             result = start_host_automation_background(host_url="http://127.0.0.1:54355", **kwargs)
-        self.assertEqual(result.exit_code, 0, result.message)
+        self.assertEqual(result.exit_code, 0, render_start_result(result))
         return popen.call_args.args[0]
 
     def test_background_command_names_the_host_url(self):

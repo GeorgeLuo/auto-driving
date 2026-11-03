@@ -7,11 +7,11 @@ import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any
 
 from ...shared.io.json_files import write_json_atomically
 from ...shared.paths import ROOT, display_path
-
+from ...shared.progress import ProgressSink, report
 
 VENDOR_MANIFEST_PATH = ROOT / "deploy" / "targets" / "donkeycar" / "donkeycar-vendor.json"
 VENDOR_STATE_FILE = ".automa-vendor-state.json"
@@ -34,7 +34,7 @@ def donkeycar_vendor_source_dir() -> Path:
     return ROOT / manifest["checkout"]["path"]
 
 
-def ensure_donkeycar_vendor(*, output: TextIO | None = None, verbose: bool = False) -> DonkeyCarVendorResult:
+def ensure_donkeycar_vendor(*, emit: ProgressSink | None = None, verbose: bool = False) -> DonkeyCarVendorResult:
     manifest = load_donkeycar_vendor_manifest()
     checkout_dir = ROOT / manifest["checkout"]["path"]
     repo_url = manifest["source"]["repo_url"]
@@ -43,7 +43,7 @@ def ensure_donkeycar_vendor(*, output: TextIO | None = None, verbose: bool = Fal
     desired_state = _desired_state(manifest)
 
     if state_path.exists() and _state_matches(_read_json(state_path), desired_state):
-        _emit(output, f"DonkeyCar vendor ready: {display_path(checkout_dir)}")
+        report(emit, "vendor_ready", path=checkout_dir)
         return DonkeyCarVendorResult(checkout_dir, "reused", revision, state_path)
 
     if checkout_dir.exists():
@@ -51,24 +51,24 @@ def ensure_donkeycar_vendor(*, output: TextIO | None = None, verbose: bool = Fal
         patches = _patch_paths(manifest)
         if existing_head == revision and _patches_are_applied(checkout_dir, patches):
             _write_json(state_path, desired_state)
-            _emit(output, f"Registered existing DonkeyCar vendor: {display_path(checkout_dir)}")
+            report(emit, "vendor_registered", path=checkout_dir)
             return DonkeyCarVendorResult(checkout_dir, "registered-existing", revision, state_path)
 
         if existing_head == revision and _git_tree_is_clean(checkout_dir):
-            _apply_patches(checkout_dir, patches, output=output, verbose=verbose)
+            _apply_patches(checkout_dir, patches, emit=emit, verbose=verbose)
             _write_json(state_path, desired_state)
-            _emit(output, f"Patched existing DonkeyCar vendor: {display_path(checkout_dir)}")
+            report(emit, "vendor_patched", path=checkout_dir)
             return DonkeyCarVendorResult(checkout_dir, "patched-existing", revision, state_path)
 
-        _emit(output, f"Replacing stale DonkeyCar vendor checkout: {display_path(checkout_dir)}")
+        report(emit, "vendor_replacing", path=checkout_dir)
         shutil.rmtree(checkout_dir)
 
     checkout_dir.parent.mkdir(parents=True, exist_ok=True)
-    _run(["git", "clone", repo_url, str(checkout_dir)], output=output, verbose=verbose)
-    _run(["git", "checkout", revision], cwd=checkout_dir, output=output, verbose=verbose)
-    _apply_patches(checkout_dir, _patch_paths(manifest), output=output, verbose=verbose)
+    _run(["git", "clone", repo_url, str(checkout_dir)], emit=emit, verbose=verbose)
+    _run(["git", "checkout", revision], cwd=checkout_dir, emit=emit, verbose=verbose)
+    _apply_patches(checkout_dir, _patch_paths(manifest), emit=emit, verbose=verbose)
     _write_json(state_path, desired_state)
-    _emit(output, f"Prepared DonkeyCar vendor: {display_path(checkout_dir)}")
+    report(emit, "vendor_prepared", path=checkout_dir)
     return DonkeyCarVendorResult(checkout_dir, "created", revision, state_path)
 
 
@@ -102,11 +102,11 @@ def _apply_patches(
     checkout_dir: Path,
     patches: list[Path],
     *,
-    output: TextIO | None,
+    emit: ProgressSink | None,
     verbose: bool,
 ) -> None:
     for patch in patches:
-        _run(["git", "apply", "--binary", str(patch)], cwd=checkout_dir, output=output, verbose=verbose)
+        _run(["git", "apply", "--binary", str(patch)], cwd=checkout_dir, emit=emit, verbose=verbose)
 
 
 def _patches_are_applied(checkout_dir: Path, patches: list[Path]) -> bool:
@@ -148,11 +148,11 @@ def _run(
     command: list[str],
     *,
     cwd: Path | None = None,
-    output: TextIO | None,
+    emit: ProgressSink | None,
     verbose: bool,
 ) -> None:
     if verbose:
-        _emit(output, "$ " + " ".join(command))
+        report(emit, "command", command=command, quoted=False)
     process = subprocess.run(
         command,
         cwd=cwd or ROOT,
@@ -163,7 +163,7 @@ def _run(
     )
     if verbose and process.stdout:
         for line in process.stdout.splitlines():
-            _emit(output, line)
+            report(emit, "output", line=line)
     if process.returncode != 0:
         raise RuntimeError(
             "\n".join(
@@ -190,8 +190,3 @@ def _read_json(path: Path) -> dict[str, Any]:
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
     payload = {**payload, "prepared_at_ms": int(time.time() * 1000)}
     write_json_atomically(path, payload)
-
-
-def _emit(output: TextIO | None, message: str) -> None:
-    if output is not None:
-        print(message, file=output, flush=True)

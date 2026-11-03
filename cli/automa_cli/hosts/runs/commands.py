@@ -5,17 +5,16 @@ from __future__ import annotations
 import argparse
 import sys
 
-from ...shared.command_result import CommandResult
+from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ...shared.cli.timeout_input import validate_timeout_input
-from ...providers.probes import DEFAULT_READINESS_TIMEOUT_S
-from .render import render_hosts_status
+from ...shared.command_result import CommandResult
+from .render import render_hosts_status, render_lifecycle_result
 from .service import (
     restart_host_automation,
     start_host_automation_background,
     stop_host_automation,
 )
 from .status import hosts_status
-
 
 _HOST_NAME_HELP = "Name of a host created with hosts create."
 
@@ -217,8 +216,9 @@ def _handle_hosts_run(args: argparse.Namespace) -> int:
         log_to_disk=args.log_to_disk,
         open_view=args.open_view,
     )
-    if result.message:
-        print(result.message)
+    message = render_lifecycle_result(result)
+    if message:
+        print(message)
     return result.exit_code
 
 
@@ -227,8 +227,9 @@ def _handle_hosts_stop(args: argparse.Namespace) -> int:
         host_name=args.host_name,
         wait_s=args.wait_s,
     )
-    if result.message:
-        print(result.message)
+    message = render_lifecycle_result(result)
+    if message:
+        print(message)
     return result.exit_code
 
 
@@ -246,8 +247,9 @@ def _handle_hosts_status(args: argparse.Namespace) -> int:
         long=args.long,
         json_output=args.json,
     )
-    if result.message:
-        print(result.message)
+    message = result.message
+    if message:
+        print(message)
     return result.exit_code
 
 
@@ -264,6 +266,7 @@ def _handle_hosts_restart(args: argparse.Namespace) -> int:
         open_view=args.open_view,
         wait_s=args.wait_s,
     )
-    if result.message:
-        print(result.message)
+    message = render_lifecycle_result(result)
+    if message:
+        print(message)
     return result.exit_code

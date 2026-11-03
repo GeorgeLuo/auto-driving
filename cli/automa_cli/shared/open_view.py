@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import webbrowser
 
+from .browser_result import BrowserOpenResult
 
-def open_view_message(url: str) -> str:
-    """Open ``url`` in a browser tab; return the line telling the user where it is."""
+
+def launch_browser(url: str) -> BrowserOpenResult:
+    """Open ``url`` in a browser tab; return whether the launcher accepted the request."""
 
     try:
         opened = webbrowser.open(url, new=2)
@@ -15,9 +17,4 @@ def open_view_message(url: str) -> str:
         detail = f"{type(exc).__name__}: {exc}"
     else:
         detail = "browser launcher returned false"
-    if opened:
-        return f"Browser opened: {url}"
-    return (
-        f"Warning: could not open the browser ({detail}). "
-        f"Open manually: {url}"
-    )
+    return BrowserOpenResult(url, opened, None if opened else detail)

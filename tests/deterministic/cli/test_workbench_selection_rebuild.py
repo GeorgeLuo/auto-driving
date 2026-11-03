@@ -31,7 +31,7 @@ class LiveSelectionTests(unittest.TestCase):
     def test_bundled_selection_keeps_retained_instances_and_loads_additions_in_bundle(self):
         with tempfile.TemporaryDirectory() as directory, image_source(3) as root:
             bundle = controller_bundle_paths(Path(directory) / "vehicle")
-            sync_controller_bundle(bundle, output=None)
+            sync_controller_bundle(bundle, emit=None)
             code = Path(bundle["root_dir"])
             (code / "implementations/recorded_frame.py").write_text(
                 "from implementations.decision_cycle.perception.plugins.frame.plugin import FrameObservationPlugin\n"

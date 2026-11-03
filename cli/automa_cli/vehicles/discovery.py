@@ -10,13 +10,10 @@ from implementations.vehicle.chase_sim.defaults import (
 )
 
 from ..providers.catalog import CHASE_SIM, PROVIDERS
-from ..providers.probes import (
-    DEFAULT_READINESS_TIMEOUT_S,
-    Candidate,
-    normalize_chase_url,
-)
-from .models import VehicleResult
+from ..providers.models import DEFAULT_READINESS_TIMEOUT_S, Candidate
+from ..providers.urls import normalize_chase_url
 from ..simulators.store import created_simulators
+from .models import VehicleResult
 from .store import discovered_vehicles, write_discovered_vehicles
 
 

@@ -13,20 +13,13 @@ from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
-from implementations.decision_cycle.catalog import CUSTOM_PRESET
-from autonomy.plugins import LocalPluginCatalog
 from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.plugins import LocalPluginCatalog
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.recording import recorded_selections
+from implementations.decision_cycle.catalog import CUSTOM_PRESET
 
-from ..shared.step_hosting import plugin_report
-from ..shared.timestamps import timestamp_ms
-from ..replay.selections import (
-    default_selection, recorded_runner,
-    resolve_replay_activations, restage_replay_steps,
-)
 from ..frontend.workbench_contract import (
-    ReplayActionError,
     WORKBENCH_ACTIONS,
     WORKBENCH_DEFAULT_CADENCE_MS,
     WORKBENCH_DEFAULT_LOOP,
@@ -34,26 +27,42 @@ from ..frontend.workbench_contract import (
     WORKBENCH_PACES,
     WORKBENCH_SEQUENCE_ID,
     WORKBENCH_STATE_SCHEMA,
+    ReplayActionError,
 )
-from ..replay.frames import FrameOutcome, run_frame
-from .presentation import (
-    displayed_steps, empty_steps, frame_detail, frame_summary, timeline_item,
+from ..replay.frames import run_frame
+from ..replay.models import (
+    WORKBENCH_ADAPTER,
+    FrameOutcome,
+    ImageSource,
+    ReplayFrame,
+    SourceValidationError,
 )
+from ..replay.selections import (
+    default_selection,
+    recorded_runner,
+    resolve_replay_activations,
+    restage_replay_steps,
+)
+from ..replay.source import (
+    WORKBENCH_DEFAULT_MAX_FRAMES,
+    WORKBENCH_DEFAULT_MAX_IMAGE_BYTES,
+    content_type_for_path,
+    normalize_image_directory,
+)
+from ..shared.step_hosting import plugin_report
+from ..shared.timestamps import timestamp_ms
 from .plugins import (
     WORKBENCH_SELECTABLE_STEPS,
     PluginCatalog,
     PluginCatalogError,
     packaged_plugin_catalog,
 )
-from ..replay.source import (
-    ImageSource,
-    ReplayFrame,
-    SourceValidationError,
-    WORKBENCH_ADAPTER,
-    WORKBENCH_DEFAULT_MAX_FRAMES,
-    WORKBENCH_DEFAULT_MAX_IMAGE_BYTES,
-    content_type_for_path,
-    normalize_image_directory,
+from .presentation import (
+    displayed_steps,
+    empty_steps,
+    frame_detail,
+    frame_summary,
+    timeline_item,
 )
 
 

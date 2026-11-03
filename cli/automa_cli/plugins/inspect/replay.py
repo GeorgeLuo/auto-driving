@@ -17,23 +17,27 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from autonomy.decision_cycle.activation import StepActivation
 from autonomy.plugins import uploaded_source
 from autonomy.runtime.recording import recorded_selections, recording_frame_entry
-from autonomy.decision_cycle.activation import StepActivation
 
-from ...replay.selections import (
-    SharedMemorySeed, recorded_runner,
-    default_selection, resolve_replay_activations, restage_replay_steps, selection_report,
-)
-from ...shared.paths import safe_path_part
-from ...replay.frames import FrameOutcome, run_frame
-from ...replay.source import (
+from ...replay.frames import run_frame
+from ...replay.models import (
+    FrameOutcome,
     ImageSource,
     ReplayFrame,
     SourceValidationError,
-    normalize_image_directory,
-    normalize_image_file,
 )
+from ...replay.selections import (
+    SharedMemorySeed,
+    default_selection,
+    recorded_runner,
+    resolve_replay_activations,
+    restage_replay_steps,
+    selection_report,
+)
+from ...replay.source import normalize_image_directory, normalize_image_file
+from ...shared.paths import safe_path_part
 
 
 def read_replay_source(source: str | Path, *, max_frames: int) -> ImageSource:

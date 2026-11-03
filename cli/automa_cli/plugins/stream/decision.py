@@ -1,42 +1,45 @@
-"""Live streams for proposal, plan, and action."""
+"""Live proposal, plan, and action records from the host's decision publication."""
 
 from __future__ import annotations
 
 import time
-from typing import Any, TextIO
+from dataclasses import replace
+from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import DECISION_STEPS
 
-from ..shared.command_result import CommandResult
-from ..shared.controller_releases import RuntimeHostError, bundle_paths
-from .step_formatting import format_step_record, format_step_timing
-from ..hosts.publications.decision import (
+from ...hosts.publications.decision import (
     DecisionSurfaceError,
     accept_decision_publication,
     decision_error_payload,
     require_valid_activations,
 )
-from ..hosts.publications.host_publications import fetch_decision_publication
-from ..hosts.runtime_hosts import runtime_base_url
-from ..hosts.views.view_feed import ViewFeed, view_page_lines
-from .streaming import poll_stream, stream_preflight_outcome, unavailable_probe
+from ...hosts.publications.host_publications import fetch_decision_publication
+from ...hosts.runtime_hosts import runtime_base_url
+from ...hosts.views.view_feed import ViewFeed
+from ...releases.errors import RuntimeHostError
+from ...shared.controller_releases import bundle_paths
+from .models import StreamEvent, StreamResult
+from .polling import poll_events, preflight_failure, unavailable_probe
 
 
-def stream_host_step(
+def stream_decision(
     step: str,
     *,
     host_name: str,
-    refresh_s: float = 0.5,
-    once: bool = False,
-    no_clear: bool = False,
-    json_output: bool = False,
-    output: TextIO | None = None,
-    timeout_s: float = 3.0,
-) -> CommandResult:
-    """Poll the step's record in the latest cycle the host published.
+    refresh_s: float,
+    once: bool,
+    no_clear: bool,
+    json_output: bool,
+    timeout_s: float,
+    emit: Callable[[StreamEvent], None],
+) -> StreamResult:
+    """Poll one decision step in the latest cycle the host published.
 
     Each probe is the ``host_<step>_stream`` frame with ``status: live``, or
-    the decision error that kept it from one with ``status: error``.
+    the decision error that kept it from one with ``status: error``. A running
+    terminal stream hosts the runtime view and shares one observation read
+    with that view's decision page.
     """
 
     timeout_s = max(0.1, float(timeout_s))
@@ -45,18 +48,13 @@ def stream_host_step(
         require_valid_activations(bundle_paths(host_name), host_name=host_name, steps=DECISION_STEPS)
         base_url = runtime_base_url(host_name)
     except DecisionSurfaceError as exc:
-        return CommandResult(*stream_preflight_outcome(
-            step=step, live=_error_probe(exc), message=exc.message_text,
-            json_output=json_output, stream=output,
-        ))
+        return preflight_failure(message=exc.message_text, live=_error_probe(exc))
     except RuntimeHostError as exc:
-        return CommandResult(*stream_preflight_outcome(
-            step=step, live=unavailable_probe(f"host_{step}_stream", host_name, str(exc)),
-            message=str(exc), json_output=json_output, stream=output,
-        ))
+        return preflight_failure(
+            message=str(exc),
+            live=unavailable_probe(f"host_{step}_stream", host_name, str(exc)),
+        )
 
-    # A running terminal stream hosts the runtime view; its decision page shows
-    # the evidence, candidates and selection behind each record.
     view = None if json_output or once else ViewFeed(host_name, base_url=base_url, timeout_s=timeout_s)
 
     def read_frame() -> dict[str, Any]:
@@ -98,22 +96,13 @@ def stream_host_step(
         except DecisionSurfaceError as exc:
             return _error_probe(exc), None
 
-    def render(live: dict[str, Any], _source: None) -> str:
-        text = _format_stream_frame(step, live) if live["status"] == "live" else live["error"]
-        if view is None:
-            return text
-        return "\n".join([text, "", *view_page_lines(view, ("perception view", "/perception"))])
+    def outbound(event: StreamEvent) -> None:
+        emit(replace(event, view=view))
 
     try:
-        return poll_stream(
-            step=step,
-            probe=probe,
-            render=render,
-            refresh_s=refresh_s,
-            once=once,
-            no_clear=no_clear,
-            json_output=json_output,
-            stream=output,
+        return poll_events(
+            step=step, probe=probe, refresh_s=refresh_s, once=once,
+            no_clear=no_clear, json_output=json_output, emit=outbound,
         )
     finally:
         if view is not None:
@@ -130,26 +119,3 @@ def _error_probe(exc: DecisionSurfaceError) -> dict[str, Any]:
         ),
         "status": "error",
     }
-
-
-def _format_stream_frame(step: str, frame: dict[str, Any]) -> str:
-    freshness = frame["freshness"]
-    lines = [
-        f"{step.capitalize()} stream: {frame['host_name']} frame={frame['frame_id']} "
-        f"run={frame['run_id']} age_ms={freshness['age_ms']} max_age_ms={freshness['max_age_ms']}",
-        f"Generation: {frame['generation_id']}",
-        f"Plugins: {', '.join(frame['plugins']) or 'none'}",
-        *format_step_record(
-            step, frame["record"], observation=frame.get("observation"), memory=frame.get("memory"),
-        ),
-    ]
-    if step == "action":
-        application = frame["application"]
-        lines.append(
-            "Host application: "
-            f"applied={str(application.get('applied') is True).lower()} "
-            f"mode={application.get('mode')} reason={application.get('reason')} "
-            f"steering={application.get('steering')} throttle={application.get('throttle')}"
-        )
-    lines.append(format_step_timing(step, frame["timing"]))
-    return "\n".join(lines)

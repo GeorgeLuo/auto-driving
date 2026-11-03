@@ -5,6 +5,6 @@
 - ``runner``: replay state and playback controls, also used by the runtime viewer.
 - ``plugins`` and ``presentation``: selectable plugins and displayed step results.
 
-Image sources and frame execution live in ``shared.replay``. The viewer's server,
+Image sources and frame execution live in ``replay``. The viewer's server,
 contracts and page assets live in ``frontend``.
 """

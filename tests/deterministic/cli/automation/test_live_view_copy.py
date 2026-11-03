@@ -12,10 +12,11 @@ from unittest.mock import Mock, patch
 from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.shared.command_result import CommandResult
 from cli.automa_cli.hosts.runs import runtime_monitor
 from cli.automa_cli.hosts.views import view_feed as viewer
-from cli.automa_cli.plugins import decision_steps
+from cli.automa_cli.plugins.stream import decision
+from cli.automa_cli.plugins.stream.commands import stream_host_step
+from cli.automa_cli.plugins.stream.models import StreamResult
 from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
 from tests.deterministic.cli.automation.test_runtime_monitor import (
     DECISION, SELECTIONS, _FakeDecisionView, _host, _publication, _session,
@@ -44,21 +45,21 @@ class LiveViewCopyTests(unittest.TestCase):
         feed.read_observation.return_value = publication, None
         def one_pass(**kwargs):
             kwargs["probe"]()
-            return CommandResult(0, "done")
+            return StreamResult(exit_code=0)
         normalized = {
             "result_age_ms": 0, "max_age_ms": 1000,
             "decision": {"values": {"activation": {"steps": {"plan": {"plugins": []}}}},
                          "cycle": {"plan": {}}},
         }
         with (
-            patch.object(decision_steps, "require_valid_activations"),
-            patch.object(decision_steps, "runtime_base_url", return_value="http://host.invalid"),
-            patch.object(decision_steps, "ViewFeed", return_value=feed),
-            patch.object(decision_steps, "poll_stream", side_effect=one_pass),
-            patch.object(decision_steps, "fetch_decision_publication", return_value={}),
-            patch.object(decision_steps, "accept_decision_publication", return_value=normalized),
+            patch.object(decision, "require_valid_activations"),
+            patch.object(decision, "runtime_base_url", return_value="http://host.invalid"),
+            patch.object(decision, "ViewFeed", return_value=feed),
+            patch.object(decision, "poll_events", side_effect=one_pass),
+            patch.object(decision, "fetch_decision_publication", return_value={}),
+            patch.object(decision, "accept_decision_publication", return_value=normalized),
         ):
-            result = decision_steps.stream_host_step("plan", host_name="fixture")
+            result = stream_host_step("plan", host_name="fixture")
         self.assertEqual(result.exit_code, 0)
         feed.read_observation.assert_called_once_with()
         feed.publish.assert_called_once_with(publication)

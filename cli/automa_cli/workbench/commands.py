@@ -10,7 +10,7 @@ from typing import Any
 from ..shared.selection_args import add_selection_args
 from .plugins import WORKBENCH_SELECTABLE_STEPS
 from .replay import run_workbench_replay
-from ..shared.replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
+from ..replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
 
 
 def register_workbench(

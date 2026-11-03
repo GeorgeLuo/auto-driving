@@ -9,8 +9,8 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
 
 from ..shared.memory_report import evidence_publisher, plugin_states, plugin_summaries
-from ..shared.replay.frames import FrameOutcome
-from ..shared.replay.source import ReplayFrame
+from ..replay.frames import FrameOutcome
+from ..replay.source import ReplayFrame
 
 
 def empty_steps() -> dict[str, Any]:

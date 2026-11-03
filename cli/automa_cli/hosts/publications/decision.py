@@ -1,7 +1,7 @@
 """Acceptance of a vehicle's published decision cycle.
 
 A runtime host publishes one report per cycle with the proposal, plan, and
-action records. ``decision_steps`` streams each step's record from it; this
+action records. Plugin streams read each step's record from it; this
 module decodes the report strictly and accepts it only when its records,
 aggregates, and generation agree with the step activations it names.
 """

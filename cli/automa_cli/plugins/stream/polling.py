@@ -32,26 +32,19 @@ def poll_events(
     probe: Callable[[], tuple[dict[str, Any], Any]],
     refresh_s: float,
     once: bool,
-    no_clear: bool,
-    json_output: bool,
     emit: Callable[[StreamEvent], None],
 ) -> StreamResult:
     """Probe, emit one event, and sleep until ``once`` or the caller stops it.
 
     ``once`` exits 0 only when the probe is live. A keyboard interrupt exits 130
-    with an empty message. The caller renders and writes each event.
+    with an empty message. The caller renders and writes each event. This loop
+    does not clear a terminal, choose JSON, or open a view.
     """
 
     try:
         while True:
             live, source = probe()
-            emit(StreamEvent(
-                step=step,
-                live=live,
-                source=source,
-                clear=not (no_clear or once or json_output),
-                json_output=json_output,
-            ))
+            emit(StreamEvent(step=step, live=live, source=source))
             if once:
                 status = str(live.get("status") or "unknown")
                 if status == "live":

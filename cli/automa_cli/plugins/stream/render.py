@@ -13,20 +13,23 @@ from ...hosts.publications.decision_publication import (
     presets_text,
     publication_to_frame_record,
 )
-from ...hosts.views.view_feed import view_page_lines
 from ...shared.memory_report import evidence_publisher, plugin_ledgers
 from ..step_formatting import format_step_record, format_step_timing
-from .models import MemoryPublication, StreamEvent
+from .models import MemoryPublication, StreamEvent, ViewerSnapshot
 
 _PERCEPTION_PAGES = (("view", ""),)
 _MEMORY_PAGES = (("memory map", "/memory"), ("perception view", "/perception"))
 _DECISION_PAGES = (("perception view", "/perception"),)
 
 
-def render_stream(event: StreamEvent) -> str:
-    """The terminal screen, or one JSON probe line without its trailing newline."""
+def render_stream(event: StreamEvent, *, json_output: bool) -> str:
+    """The terminal screen, or one JSON probe line without its trailing newline.
 
-    if event.json_output:
+    ``json_output`` chooses the formatting. The event carries the probe, its
+    source, and any view addresses; this function does not fetch or serve them.
+    """
+
+    if json_output:
         return json.dumps(event.live, sort_keys=True)
     if event.step == "perception":
         return _perception_screen(event)
@@ -70,7 +73,7 @@ def _perception_screen(event: StreamEvent) -> str:
             f"signals={_shown(len(signals) if isinstance(signals, list) else None)}  "
             f"things={_shown(len(things) if isinstance(things, list) else None)}"
         ),
-        *view_page_lines(event.view, *_PERCEPTION_PAGES),
+        *_view_lines(event.view, *_PERCEPTION_PAGES),
         (
             f"publication: {publication.get('health') or 'unavailable'}  "
             f"json: {LATEST_JSON_PATH}  frame: {LATEST_FRAME_PATH}"
@@ -91,7 +94,7 @@ def _memory_screen(event: StreamEvent) -> str:
     lines = [
         format_live_memory_screen(host_name=event.host_name, live=event.live),
         "",
-        *view_page_lines(event.view, *_MEMORY_PAGES),
+        *_view_lines(event.view, *_MEMORY_PAGES),
     ]
     if source.error:
         lines.append(f"publication memory: {source.error}")
@@ -108,7 +111,7 @@ def _decision_screen(event: StreamEvent) -> str:
     text = _format_stream_frame(event.step, live) if live.get("status") == "live" else str(live.get("error") or "")
     if event.view is None:
         return text
-    return "\n".join([text, "", *view_page_lines(event.view, *_DECISION_PAGES)])
+    return "\n".join([text, "", *_view_lines(event.view, *_DECISION_PAGES)])
 
 
 def _format_stream_frame(step: str, frame: dict[str, Any]) -> str:
@@ -208,3 +211,24 @@ def _format_plugin_ledgers(ledgers: list[dict[str, Any]]) -> list[str]:
 
 def _shown(value: Any, default: str = "unknown") -> Any:
     return default if value is None else value
+
+
+def _view_lines(view: ViewerSnapshot | None, *pages: tuple[str, str]) -> list[str]:
+    """Each ``(label, route)`` page, then the action view. No snapshot shows none."""
+
+    if view is None:
+        return []
+    return [*(_page_line(label, view.url, view.error, route) for label, route in pages), _action_line(view)]
+
+
+def _action_line(view: ViewerSnapshot) -> str:
+    if view.url is None or view.decision_page is None:
+        return _page_line("action view", None, view.error or view.decision_error or "no action yet")
+    line = f"action view: {view.url.rstrip('/')}{view.decision_page}"
+    return f"{line}  (latest unavailable: {view.decision_error})" if view.decision_error else line
+
+
+def _page_line(label: str, url: str | None, error: str | None, route: str = "") -> str:
+    if url:
+        return f"{label}: {url.rstrip('/') + route if route else url}"
+    return f"{label}: unavailable ({error})" if error else f"{label}: unavailable"

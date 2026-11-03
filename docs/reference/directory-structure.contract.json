@@ -276,7 +276,7 @@
             "path": "cli/automa_cli/plugins/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa plugins commands: list a catalog and what a host has armed, upload, arm and disarm a host's plugins, stream a step on a host, and inspect plugins from images or recorded runs."
+            "responsibility": "The automa plugins commands. plugins/catalog registers and performs list, upload, arm, disarm and save, and renders their text and JSON. Streaming a step and inspecting plugins from images or recorded runs stay beside that package."
           },
           {
             "path": "cli/automa_cli/simulators/",

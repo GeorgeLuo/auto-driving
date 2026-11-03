@@ -11,75 +11,64 @@ from autonomy.decision_cycle.activation import STEPS
 from ...hosts.step_formatting import step_lines
 from ...providers.metadata import PROVIDERS
 from ...shared.paths import display_path
-from .models import ListingResult, MutationResult, Recovery, SaveResult
+from .models import Arming, Definition, ListingResult, Receipt, Recovery, SaveResult, SelectionResult, UploadResult
+
+_SELECTION = {
+    "arm": ("automa_plugin_arm", "Arming", "Plugin selection loaded; the host applies it at its next cycle."),
+    "disarm": ("automa_plugin_disarm", "Disarming",
+               "Plugin deselection prepared; the host applies it at its next cycle."),
+}
 
 
 def render_listing(result: ListingResult, *, json_output: bool) -> str:
-    payload = result.payload
     if json_output:
-        return json.dumps(payload, indent=2, sort_keys=True)
-    return "\n".join(_listing_lines(payload))
+        return _json(_listing_document(result))
+    return "\n".join(_listing_lines(result))
 
 
-def render_mutation(result: MutationResult, *, json_output: bool) -> str:
-    response = result.response
-    ok = bool(response.get("ok"))
-    operation = result.operation
-    recovery = _recovery_text(result.recovery)
-    if operation == "arm":
-        label, state = "Arming", response.get("status", "failed")
-        message = "Plugin selection loaded; the host applies it at its next cycle."
-    elif operation == "disarm":
-        label, state = "Disarming", response.get("status", "failed")
-        message = "Plugin deselection prepared; the host applies it at its next cycle."
-    elif response.get("upload"):
-        label, state = "Arming", response.get("status", "failed")
+def render_upload(result: UploadResult, *, json_output: bool) -> str:
+    """An upload receipt; after ``--arm`` it reports the arming, with the upload under ``upload``."""
+
+    upload, armed = result.upload, result.arm
+    last = armed or upload
+    if armed is not None:
+        label, state = "Arming", armed.status
         message = "Plugin uploaded and loaded; the host applies it at its next cycle."
+        answer = {**upload.body, **armed.body, "upload": upload.body}
     else:
-        label, state = "Upload", "uploaded" if ok else "failed"
+        label, state = "Upload", "uploaded" if upload.ok else "failed"
         message = "Plugin uploaded and available; selection unchanged."
-    if not ok:
-        message = response.get("error", "Catalog request failed.")
-    body = {
-        **response,
-        "schema": {"upload": "automa_plugin_upload", "arm": "automa_plugin_arm", "disarm": "automa_plugin_disarm"}[operation],
-        "host_name": result.host_name, "url": result.url, "step": result.step,
-        "outcome": {
-            "status": state if operation in ("arm", "disarm") or response.get("upload") else "ok" if ok else state,
-            "message": message, "recovery": recovery,
-        },
-    }
+        answer = upload.body
+    message = message if last.ok else _reason(last)
+    recovery = _recovery_text(result.recovery)
     if json_output:
-        return json.dumps(body, indent=2, sort_keys=True)
-    lines = [f"Host: {result.host_name}"] if result.host_name else []
-    if result.url:
-        lines.append(f"Endpoint: {result.url}")
-    if result.step:
-        lines.append(f"Step: {result.step}")
-    lines.append(f"{label}: {state}")
-    if body.get("upload"):
-        lines.extend([f"Upload: {body['upload']['status']}", f"Plugin: {result.plugin_id}",
-                      f"Revision: {body['plugin']['metadata']['revision']}",
-                      _catalog_version(body)])
-        if not ok:
-            lines.append(f"Reason: {message}")
-    elif not ok:
+        status = state if armed is not None or not upload.ok else "ok"
+        return _json(_receipt_document(answer, "automa_plugin_upload", result.host_name, result.url, result.step,
+                                       status, message, recovery))
+    lines = [*_target_lines(result.host_name, result.url, result.step), f"{label}: {state}"]
+    if armed is not None:
+        lines.extend([f"Upload: {upload.status}", *_uploaded_lines(result.plugin_id, upload)])
+    if not last.ok:
         lines.append(f"Reason: {message}")
-    elif operation == "upload":
-        lines.extend([
-            f"Plugin: {result.plugin_id}", f"Revision: {body['plugin']['metadata']['revision']}",
-            _catalog_version(body), "Selection: unchanged",
-        ])
-    arming = body.get("arming")
-    if arming:
-        lines.append(f"Request: {arming['request_id']}")
-        for name in ("requested", "applied"):
-            for selected_step, definitions in arming[name].items():
-                selected = ", ".join(f"{item['id']} ({item['metadata'].get('revision', 'packaged')})" for item in definitions)
-                lines.append(f"{name.capitalize()} {selected_step}: {selected or '(none)'}")
-    if recovery:
-        lines.append(f"Next: {recovery}")
-    return "\n".join(lines)
+    elif armed is None:
+        lines.extend([*_uploaded_lines(result.plugin_id, upload), "Selection: unchanged"])
+    return "\n".join([*lines, *_arming_lines(last.arming), *_next_lines(recovery)])
+
+
+def render_selection(result: SelectionResult, *, json_output: bool) -> str:
+    """An arm or disarm receipt: the host's answer and the selection it reports."""
+
+    receipt = result.receipt
+    schema, label, message = _SELECTION[result.operation]
+    message = message if receipt.ok else _reason(receipt)
+    recovery = _recovery_text(result.recovery)
+    if json_output:
+        return _json(_receipt_document(receipt.body, schema, result.host_name, result.url, result.step,
+                                       receipt.status, message, recovery))
+    lines = [*_target_lines(result.host_name, result.url, result.step), f"{label}: {receipt.status}"]
+    if not receipt.ok:
+        lines.append(f"Reason: {message}")
+    return "\n".join([*lines, *_arming_lines(receipt.arming), *_next_lines(recovery)])
 
 
 def render_save(result: SaveResult, *, json_output: bool) -> str:
@@ -96,10 +85,10 @@ def render_save(result: SaveResult, *, json_output: bool) -> str:
     if not result.ok:
         payload["error"] = result.error
         if json_output:
-            return json.dumps(payload, indent=2, sort_keys=True)
+            return _json(payload)
         return "\n".join([f"Host: {result.host_name}", "Save: failed", f"Reason: {result.error}"])
     if json_output:
-        return json.dumps(payload, indent=2, sort_keys=True)
+        return _json(payload)
     selections = payload["steps"]
     rows = step_lines({name: entry["plugins"] for name, entry in selections.items()},
                       {name: entry["preset"] for name, entry in selections.items() if entry["preset"]})
@@ -117,34 +106,96 @@ def render_save(result: SaveResult, *, json_output: bool) -> str:
     ])
 
 
-def _listing_lines(payload: dict[str, Any]) -> list[str]:
-    host_name = payload["host_name"]
-    if payload.get("defaults") is not None and payload["ok"]:
-        marked = {(name, plugin_id, None) for name, plugin_ids in payload["defaults"].items() for plugin_id in plugin_ids}
-        return [f"Catalog: {payload['catalog']['source']}",
-                *_plugin_rows(payload["catalog"]["plugins"], marked, "default")]
+def _json(document: dict[str, Any]) -> str:
+    return json.dumps(document, indent=2, sort_keys=True)
+
+
+def _receipt_document(answer: dict[str, Any], schema: str, host_name: str | None, url: str | None,
+                      step: str | None, status: str, message: str, recovery: str | None) -> dict[str, Any]:
+    """The host's answer as sent, with the target and the outcome the command reports."""
+
+    return {**answer, "schema": schema, "host_name": host_name, "url": url, "step": step,
+            "outcome": {"status": status, "message": message, "recovery": recovery}}
+
+
+def _listing_document(result: ListingResult) -> dict[str, Any]:
+    document: dict[str, Any] = {"schema": "automa_plugin_list", "host_name": result.host_name,
+                                "url": result.url, "step": result.step, "ok": result.ok}
+    if result.packaged:
+        document["defaults"] = result.defaults
+    else:
+        document.update(armed=result.armed, arming_error=result.arming_error)
+    if result.catalog is not None:
+        catalog: dict[str, Any] = {"source": result.catalog.source, "plugins": result.catalog.plugins}
+        if not result.packaged:
+            catalog.update(version=result.catalog.version, host_run_id=result.catalog.host_run_id)
+        document["catalog"] = catalog
+    if result.error is not None:
+        document["error"] = result.error
+    return document
+
+
+def _listing_lines(result: ListingResult) -> list[str]:
+    host_name = result.host_name
+    if result.packaged:
+        marked = {(name, plugin_id, None) for name, plugin_ids in result.defaults.items() for plugin_id in plugin_ids}
+        return [f"Catalog: {result.catalog.source}", *_plugin_rows(result.catalog.plugins, marked, "default")]
     lines = [f"Host: {host_name}"] if host_name else []
-    if not payload["ok"]:
-        lines.extend(["Catalog: unavailable", f"Reason: {payload['error']}"])
-        recovery = _recovery_text(Recovery(kind="endpoint", url=payload["url"], host_name=host_name))
-        return [*lines, f"Next: {recovery}"] if recovery else lines
-    armed = payload["armed"] or []
-    if "catalog" in payload:
-        lines.extend([f"Catalog: {payload['url']}", _catalog_version_fields(payload["catalog"]),
-                      *_plugin_rows(_armed_first(payload["catalog"]["plugins"], armed),
+    if not result.ok:
+        lines.extend(["Catalog: unavailable", f"Reason: {result.error}"])
+        return [*lines, *_next_lines(_recovery_text(Recovery(kind="endpoint", url=result.url, host_name=host_name)))]
+    armed = result.armed or []
+    if result.catalog is not None:
+        lines.extend([f"Catalog: {result.url}", _catalog_version(result.catalog.version, result.catalog.host_run_id),
+                      *_plugin_rows(_armed_first(result.catalog.plugins, armed),
                                     {_plugin_key(plugin) for plugin in armed}, "armed")])
     else:
-        lines.extend([*([] if host_name else [f"Catalog: {payload['url']}"]), "Armed:", *_plugin_rows(armed)])
-    if payload["arming_error"]:
-        lines.append(f"Arming error: {payload['arming_error']}")
+        lines.extend([*([] if host_name else [f"Catalog: {result.url}"]), "Armed:", *_plugin_rows(armed)])
+    if result.arming_error:
+        lines.append(f"Arming error: {result.arming_error}")
     return lines
 
 
-def _plugin_key(plugin: dict[str, Any]) -> tuple[str, str, str | None]:
-    return plugin["step"], plugin["id"], plugin.get("metadata", {}).get("revision")
+def _target_lines(host_name: str | None, url: str | None, step: str | None) -> list[str]:
+    return [line for value, line in ((host_name, f"Host: {host_name}"), (url, f"Endpoint: {url}"),
+                                     (step, f"Step: {step}")) if value]
 
 
-def _armed_first(catalog: list[dict[str, Any]], armed: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _uploaded_lines(plugin_id: str, upload: Receipt) -> list[str]:
+    return [f"Plugin: {plugin_id}", f"Revision: {upload.revision}",
+            _catalog_version(upload.catalog_version, upload.host_run_id)]
+
+
+def _arming_lines(arming: Arming | None) -> list[str]:
+    """The request a host is on, then each step's requested and applied definitions."""
+
+    if arming is None:
+        return []
+    lines = [] if arming.request_id is None else [f"Request: {arming.request_id}"]
+    for label, by_step in (("Requested", arming.requested), ("Applied", arming.applied)):
+        for step, definitions in by_step.items():
+            selected = ", ".join(f"{item['id']} ({_metadata(item).get('revision', 'packaged')})" for item in definitions)
+            lines.append(f"{label} {step}: {selected or '(none)'}")
+    return lines
+
+
+def _reason(receipt: Receipt) -> str:
+    return receipt.error or "Catalog request failed."
+
+
+def _next_lines(recovery: str | None) -> list[str]:
+    return [f"Next: {recovery}"] if recovery else []
+
+
+def _metadata(plugin: Definition) -> dict[str, Any]:
+    return plugin.get("metadata") or {}
+
+
+def _plugin_key(plugin: Definition) -> tuple[str, str, str | None]:
+    return plugin["step"], plugin["id"], _metadata(plugin).get("revision")
+
+
+def _armed_first(catalog: list[Definition], armed: list[Definition]) -> list[Definition]:
     """Each step's armed definitions in run order, then its other catalog entries, newer revisions of armed IDs first."""
 
     ordered = []
@@ -157,13 +208,13 @@ def _armed_first(catalog: list[dict[str, Any]], armed: list[dict[str, Any]]) -> 
     return ordered
 
 
-def _plugin_rows(plugins: list[dict[str, Any]], marked: set[tuple[str, str, str | None]] = frozenset(),
+def _plugin_rows(plugins: list[Definition], marked: set[tuple[str, str, str | None]] = frozenset(),
                  label: str = "") -> list[str]:
     """One ``- step/id: source`` row per definition, with ``(label)`` on the ``marked`` step, ID and revision keys."""
 
     rows = []
     for plugin in plugins:
-        metadata = plugin.get("metadata", {})
+        metadata = _metadata(plugin)
         revision = metadata.get("revision")
         source = f"revision {revision} ({metadata.get('filename', 'uploaded')})" if revision else "packaged"
         if _plugin_key(plugin) in marked:
@@ -172,15 +223,8 @@ def _plugin_rows(plugins: list[dict[str, Any]], marked: set[tuple[str, str, str 
     return rows or ["(none)"]
 
 
-def _catalog_version(result: dict[str, Any]) -> str:
-    host_run = result.get("host_run_id")
-    return f"Catalog version: {result['catalog_version']}" + (f" (host run {host_run})" if host_run else "")
-
-
-def _catalog_version_fields(catalog: dict[str, Any]) -> str:
-    """The version line for a listing, whose JSON stores the version under ``catalog``."""
-
-    return _catalog_version({"catalog_version": catalog["version"], "host_run_id": catalog.get("host_run_id")})
+def _catalog_version(version: int | None, host_run_id: str | None) -> str:
+    return f"Catalog version: {version}" + (f" (host run {host_run_id})" if host_run_id else "")
 
 
 def _target_args(url: str | None, host_name: str | None) -> str:

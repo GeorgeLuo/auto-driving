@@ -17,6 +17,7 @@ from implementations.decision_cycle.catalog import selection_activation
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.shared.cli.invoke import invoke_automa
+from tests.support.fake_hosts import answering
 from tests.shared.cli.workbench_fixtures import (
     ImageReplayRunner,
     _wait_until,
@@ -337,6 +338,27 @@ class PluginUploadFlows(unittest.TestCase):
             with chase_runtime(runtime_root) as restarted:
                 self.assertNotEqual(restarted.loop.run_id, first.loop.run_id)
                 self.assertNotIn("memory/prototype", listed(restarted.loop.run_id))
+
+    def test_answers_without_reported_fields_fail_or_omit_them_instead_of_raising(self):
+        with tempfile.TemporaryDirectory() as directory:
+            file = Path(directory) / "prototype.py"
+            file.write_text("class Prototype:\n    pass\n")
+            upload_args = ("upload", "--file", str(file), "--name", "perception/prototype",
+                           "--entrypoint", "prototype:Prototype")
+            cases = (
+                (upload_args, {"ok": True, "status": "uploaded", "catalog_version": 5}, 2,
+                 "Reason: Host accepted the upload without reporting its revision and catalog version."),
+                (("arm", "--name", "perception/prototype"),
+                 {"ok": True, "status": "requested", "arming": {"requested": {"perception": None}}}, 0,
+                 "Arming: requested"),
+                (("list", "--long"), {"ok": True, "plugins": []}, 2,
+                 "Reason: Host did not report its catalog version."),
+            )
+            for (command, *options), answer, code, shown in cases:
+                with self.subTest(command=command), answering(json.dumps(answer).encode()) as base:
+                    result = invoke_automa("plugins", command, "--url", base, *options, check=False)
+                    self.assertEqual((result.returncode, result.stderr), (code, ""))
+                    self.assertIn(shown, result.stdout)
 
 
 if __name__ == "__main__":

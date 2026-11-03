@@ -12,7 +12,8 @@ from .hosts.views.runtime_view import runtime_view_server, serve_viewer
 from .plugins.commands import register_plugins
 from .simulators.commands import register_simulators
 from .vehicles.commands import register_vehicles
-from .vehicles.status import format_vehicles_status, get_vehicles_status
+from .vehicles.render import format_vehicles_status
+from .vehicles.status import get_vehicles_status
 from .workbench.commands import register_workbench
 
 

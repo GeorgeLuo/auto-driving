@@ -7,7 +7,7 @@ from pathlib import Path
 
 from ...replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ...shared.command_result import CommandResult
-from ...shared.selection_args import add_selection_args
+from ...shared.cli.selection_args import add_selection_args
 from .render import render_inspect
 from .service import INSPECT_STEPS, inspect_step as run_inspect
 

@@ -7,6 +7,7 @@ from cli.automa_cli.providers.probes import (
     Candidate,
     normalize_chase_url,
 )
+from cli.automa_cli.vehicles.render import format_vehicles_status
 from tests.shared.cli.invoke import invoke_automa
 
 
@@ -75,6 +76,33 @@ class VehicleStatusTests(unittest.TestCase):
         self.assertEqual(probe.diagnostics["error_code"], "frontend_disconnected")
         self.assertIn("Open or reload", probe.error or "")
         self.assertNotIn("atomic-evaluation-capture", probe.error or "")
+
+    def test_status_renderer_formats_supplied_vehicles(self) -> None:
+        text = format_vehicles_status({"vehicles": [
+            {
+                "provider": "chase-sim",
+                "state": "running",
+                "url": "ws://localhost:5050/ws/control",
+                "frontend": "connected",
+                "game": "chase",
+                "pid": 42,
+                "error": None,
+            },
+            {
+                "provider": "picar",
+                "state": "unreachable",
+                "url": "http://pi.local",
+                "error": "timed out",
+            },
+        ]})
+
+        self.assertEqual(text, (
+            "Simulator (chase-sim)  running at ws://localhost:5050/ws/control\n"
+            "  frontend connected, game chase\n"
+            "  created by simulators create, pid 42\n"
+            "\n"
+            "PiCar (picar)  unreachable at http://pi.local: timed out"
+        ))
 
     def test_retired_discovery_command_is_unavailable(self):
         result = invoke_automa("vehicles", "active", check=False)

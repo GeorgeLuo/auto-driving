@@ -246,13 +246,21 @@
             "path": "cli/automa_cli/frontend/",
             "category": "source-ui",
             "commit_policy": "source",
-            "responsibility": "The runtime viewer automa serves, workbench included: its pages and the server behind them. Imports no other automa_cli module."
+            "responsibility": "The runtime viewer automa serves: the HTTP server, the loopback transport, and one module per page. Page assets stay under pages. Imports no other automa_cli module."
           },
           {
             "path": "cli/automa_cli/shared/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "Code several automa commands share and none owns: command results, repository paths, controller-bundle paths, I/O helpers, argument checks, and reports."
+            "responsibility": "Code several automa commands share and none owns: command results, repository and runtime roots, I/O helpers, and reports. Controller-bundle paths live in releases.",
+            "children": [
+              {
+                "path": "cli/automa_cli/shared/cli/",
+                "category": "tooling",
+                "commit_policy": "source",
+                "responsibility": "Argument and timeout adapters reused by more than one command. This package does not import a feature package."
+              }
+            ]
           },
           {
             "path": "cli/automa_cli/releases/",
@@ -276,7 +284,7 @@
             "path": "cli/automa_cli/vehicles/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa vehicles commands, and the vehicle listing and discovered-vehicle and simulator records that hosts and simulators share."
+            "responsibility": "The automa vehicles commands, vehicle listing, and discovered-vehicle records. Simulator records belong to simulators; vehicles status reads them."
           },
           {
             "path": "cli/automa_cli/hosts/",
@@ -288,7 +296,7 @@
             "path": "cli/automa_cli/workbench/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa workbench command, its replay runner, plugin selections and presentation. It uses the replay package for sources, frames and selections, and serves through the viewer automa passes in."
+            "responsibility": "The automa workbench command, its replay operation, terminal text, browser frame payloads, replay runner, and plugin selections. It uses the replay package for sources, frames and selections, and serves through the viewer automa passes in."
           },
           {
             "path": "cli/automa_cli/plugins/",
@@ -300,7 +308,7 @@
             "path": "cli/automa_cli/simulators/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa simulators commands, and the headless simulators simulators create starts."
+            "responsibility": "The automa simulators commands. Creating and deleting a headless simulator, supervising its process, and storing its record are separate."
           }
         ]
       },

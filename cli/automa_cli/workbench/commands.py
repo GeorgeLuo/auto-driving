@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from collections.abc import Callable
 from typing import Any
 
-from ..shared.selection_args import add_selection_args
-from .plugins import WORKBENCH_SELECTABLE_STEPS
-from .replay import run_workbench_replay
 from ..replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
+from ..shared.cli.selection_args import add_selection_args
+from .models import WorkbenchEvent
+from .plugins import WORKBENCH_SELECTABLE_STEPS
+from .render import format_workbench_status
+from .replay import run_workbench_replay
 
 
 def register_workbench(
@@ -94,6 +95,13 @@ def register_workbench(
     workbench.set_defaults(handler=_handle_workbench, view_server=view_server)
 
 
+def _present(event: WorkbenchEvent) -> None:
+    if event.state is not None:
+        print(format_workbench_status(event.state, server_url=event.server_url, serving=event.serving))
+    if event.line:
+        print(event.line)
+
+
 def _handle_workbench(args: argparse.Namespace) -> int:
     result = run_workbench_replay(
         args.source_dir,
@@ -108,7 +116,7 @@ def _handle_workbench(args: argparse.Namespace) -> int:
         port=args.port,
         serve=args.serve,
         open_browser=args.open_browser,
-        output=sys.stdout,
+        emit=_present,
         view_server=args.view_server,
     )
     if result.message:

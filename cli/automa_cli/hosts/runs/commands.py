@@ -6,7 +6,7 @@ import argparse
 import sys
 
 from ...shared.command_result import CommandResult
-from ...shared.timeout_input import validate_timeout_input
+from ...shared.cli.timeout_input import validate_timeout_input
 from ...providers.probes import DEFAULT_READINESS_TIMEOUT_S
 from .render import render_hosts_status
 from .service import (

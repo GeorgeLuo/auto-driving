@@ -1,4 +1,8 @@
-"""Pure frame presentation for the workbench's live state and replay history."""
+"""Browser payloads for the workbench's live state and replay history.
+
+Terminal text for a CLI replay is ``render``. This module turns a frame
+outcome into the dictionaries the workbench page reads.
+"""
 
 from __future__ import annotations
 

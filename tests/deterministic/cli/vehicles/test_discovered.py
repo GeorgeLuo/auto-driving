@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from cli.automa_cli.vehicles.probes import Candidate, ProbeResult, chase_operator_url, normalize_chase_url
+from cli.automa_cli.providers.probes import Candidate, ProbeResult, chase_operator_url, normalize_chase_url
 from implementations.vehicle.chase_sim.presence import MetricsUiPresence
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import chase_runtime
 from tests.shared.cli.invoke import invoke_automa

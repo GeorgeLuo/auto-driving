@@ -19,7 +19,7 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation
 from autonomy.runtime.layout import RuntimeLayout
 
 from ...shared.io import http_json
-from ...shared.command_result import CommandResult
+from .models import DeploymentResult
 from ..bundles import (
     controller_bundle_source_summary,
     release_activation_summary,
@@ -37,7 +37,6 @@ from ..step_activations import (
     decision_generation_id,
     ensure_step_activations,
     read_bundle_activation,
-    step_lines,
     startup_activations,
 )
 from ...releases.paths import controller_bundle_paths
@@ -174,9 +173,9 @@ class PicarTarget:
 
 
 def install_picar_core(
-    target: PicarTarget, *, dry_run: bool = False, json_output: bool = False,
+    target: PicarTarget, *, dry_run: bool = False,
     verbose: bool = False, output: TextIO | None = None,
-) -> CommandResult:
+) -> DeploymentResult:
     stream = output
     host_name = target.host_name
     _emit(stream, f"Selected {host_name} ({target.provider}) at {target.ssh_target}.")
@@ -202,15 +201,13 @@ def install_picar_core(
             drive_args=None,
             runtime_readiness=None,
         )
-        if json_output:
-            return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-        return CommandResult(0, _format_core_dry_run(payload))
+        return DeploymentResult(0, receipt=payload)
 
     try:
         _emit(stream, "==> Ensure DonkeyCar vendor source")
         ensure_donkeycar_vendor(output=stream, verbose=verbose)
     except Exception as exc:
-        return CommandResult(2, f"Could not prepare DonkeyCar vendor source: {exc}")
+        return DeploymentResult(2, f"Could not prepare DonkeyCar vendor source: {exc}")
 
     steps = [
         ("Prepare remote directories", commands[0], None),
@@ -222,17 +219,17 @@ def install_picar_core(
     for label, command, env in steps:
         code = run_step(label, command, env=env, verbose=verbose, output=stream)
         if code != 0:
-            return CommandResult(code, f"{label} failed with exit code {code}.")
+            return DeploymentResult(code, f"{label} failed with exit code {code}.")
 
     _emit(stream, "Core deploy bundle synced.")
 
-    return CommandResult(0, "Core deploy bundle synced.")
+    return DeploymentResult(0, "Core deploy bundle synced.")
 
 
 def deploy_picar_release(
     target: PicarTarget, *, dry_run: bool, restart: bool, drive_args: str | None,
-    json_output: bool, verbose: bool, output: TextIO | None,
-) -> CommandResult:
+    verbose: bool, output: TextIO | None,
+) -> DeploymentResult:
     host_name = target.host_name
     _emit(output, f"Selected {host_name} ({target.provider}) at {target.ssh_target}.")
     _emit(output, "Scope: versioned autonomy controller bundle and activation metadata only.")
@@ -244,7 +241,7 @@ def deploy_picar_release(
     try:
         startup = startup_activations(bundle, host_name)
     except ValueError as exc:
-        return CommandResult(2, str(exc))
+        return DeploymentResult(2, str(exc))
 
     if dry_run:
         release_id = f"autonomy-{source_summary['tree_sha256'][:12]}-preview"
@@ -272,9 +269,7 @@ def deploy_picar_release(
             generation_id=None,
             runtime_verification=None,
         )
-        if json_output:
-            return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-        return CommandResult(0, _format_autonomy_dry_run(payload))
+        return DeploymentResult(0, receipt=payload)
 
     # The deployment stages and ships each step's saved plugins, else its
     # default, replacing whatever it had staged, an unreadable document included.
@@ -307,7 +302,7 @@ def deploy_picar_release(
     for label, command in commands:
         code = run_step(label, command, env=None, verbose=verbose, output=output)
         if code != 0:
-            return CommandResult(code, f"{label} failed with exit code {code}.")
+            return DeploymentResult(code, f"{label} failed with exit code {code}.")
 
     runtime_verification: dict[str, Any] | None = None
     if restart:
@@ -318,7 +313,7 @@ def deploy_picar_release(
             output=output,
         )
         if code != 0:
-            return CommandResult(code, f"Restart failed with exit code {code}.")
+            return DeploymentResult(code, f"Restart failed with exit code {code}.")
 
     deployed_steps = {step: list(activation.plugins) for step, activation in activations.items()}
     generation_id = decision_generation_id(
@@ -332,7 +327,7 @@ def deploy_picar_release(
                 timeout_s=DONKEY_READY_TIMEOUT_S,
             )
         except RuntimeError as exc:
-            return CommandResult(
+            return DeploymentResult(
                 2,
                 "\n".join(
                     [
@@ -355,36 +350,7 @@ def deploy_picar_release(
         generation_id=generation_id,
         runtime_verification=runtime_verification,
     )
-    if json_output:
-        return CommandResult(0, json.dumps(payload, indent=2, sort_keys=True))
-    verified_lines: list[str] = []
-    if runtime_verification is not None:
-        verified_lines.append(
-            "Runtime verified: every deployed step runs its staged plugins; "
-            "drive mode remains manual"
-        )
-    return CommandResult(
-        0,
-        "\n".join(
-            [
-                f"Host updated: {host_name} -> {target.ssh_target}",
-                f"Release: {release_id}",
-                f"Tree SHA-256: {release['tree_sha256']}",
-                *step_lines(payload["activation"]["steps"], payload["activation"]["presets"]),
-                f"Decision generation: {payload['activation']['generation_id']}",
-                f"Runtime restarted: {'yes' if restart else 'no'}",
-                *verified_lines,
-                *(
-                    []
-                    if restart
-                    else [
-                        "A running runtime selects changed staged plugins on its next frame; "
-                        "changed plugin specs or configs need --restart."
-                    ]
-                ),
-            ]
-        ),
-    )
+    return DeploymentResult(0, receipt=payload)
 
 
 def resolve_picar_target(configuration: dict[str, Any]) -> PicarTarget:
@@ -659,55 +625,6 @@ def _deployment_result(*, dry_run: bool) -> dict[str, Any]:
         "remote_connection_attempted": False,
         "remote_writes_performed": False,
     }
-
-
-def _format_core_dry_run(payload: dict[str, Any]) -> str:
-    source = payload["source"]
-    vendor = source["vendor"]
-    return "\n".join(
-        [
-            f"Core update dry run for {payload['host_name']}",
-            (
-                f"target: {payload['target']['provider']} at "
-                f"{payload['target']['ssh_target']}; home={payload['target']['pi_home']}"
-            ),
-            f"scope: {payload['scope']['description']}",
-            "outcome: plan only; no files written and no remote connection attempted",
-            f"vendor: {vendor['repo_url']} @ {vendor['revision']}",
-            f"vendor checkout: {vendor['checkout']}",
-            f"harness: {source['harness']}",
-            (
-                f"service: {source['service']['name']} "
-                f"from {source['service']['source']} (enabled at boot)"
-            ),
-            "planned commands:",
-            *[f"- {entry['step']}: {entry['command']}" for entry in payload["commands"]],
-            f"restart requested: {'yes' if payload['restart_requested'] else 'no'}",
-        ]
-    )
-
-
-def _format_autonomy_dry_run(payload: dict[str, Any]) -> str:
-    return "\n".join(
-        [
-            f"Autonomy update dry run for {payload['host_name']}",
-            (
-                f"target: {payload['target']['provider']} at "
-                f"{payload['target']['ssh_target']}; home={payload['target']['pi_home']}"
-            ),
-            f"scope: {payload['scope']['description']}",
-            "outcome: plan only; no files written and no remote connection attempted",
-            f"source tree SHA-256: {payload['source']['tree_sha256']}",
-            f"source files: {payload['source']['file_count']}",
-            "activation: " + " ".join(
-                f"{step}={payload['activation']['presets'].get(step) or ','.join(plugins) or '-'}"
-                for step, plugins in payload["activation"]["steps"].items()
-            ),
-            "planned commands:",
-            *[f"- {entry['step']}: {entry['command']}" for entry in payload["commands"]],
-            f"restart requested: {'yes' if payload['restart_requested'] else 'no'}",
-        ]
-    )
 
 
 def _display_deploy_command(label: str, command: list[str]) -> str:

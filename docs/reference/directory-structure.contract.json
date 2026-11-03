@@ -267,10 +267,16 @@
             "responsibility": "Offline replay shared by the workbench and plugin inspection: image sources, one-frame execution, and selections rebuilt from a recorded controller release."
           },
           {
+            "path": "cli/automa_cli/providers/",
+            "category": "tooling",
+            "commit_policy": "source",
+            "responsibility": "What differs between the vehicles a host can control, and how each vehicle is probed. Host deployment registers its own operations; this package does not import host deployment."
+          },
+          {
             "path": "cli/automa_cli/vehicles/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa vehicles commands, and the vehicle probes, listing and discovered-vehicle and simulator records that hosts and simulators share."
+            "responsibility": "The automa vehicles commands, and the vehicle listing and discovered-vehicle and simulator records that hosts and simulators share."
           },
           {
             "path": "cli/automa_cli/hosts/",

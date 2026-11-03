@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..releases.errors import RuntimeHostError
-from ..vehicles.providers import PROVIDERS
+from ..providers.catalog import PROVIDERS
 from . import staging
 from .local import HOST_START_TIMEOUT_S, ensure_chase_host, host_record
 from .staging import staged_connection, staged_host

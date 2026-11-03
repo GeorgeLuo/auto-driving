@@ -7,7 +7,7 @@ import sys
 
 from ...shared.command_result import CommandResult
 from ...shared.timeout_input import validate_timeout_input
-from ...vehicles.probes import DEFAULT_READINESS_TIMEOUT_S
+from ...providers.probes import DEFAULT_READINESS_TIMEOUT_S
 from .render import render_hosts_status
 from .service import (
     restart_host_automation,

@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from cli.automa_cli.vehicles.probes import (
+from cli.automa_cli.providers.probes import (
     Candidate,
     normalize_chase_url,
 )
@@ -63,10 +63,10 @@ class VehicleStatusTests(unittest.TestCase):
             )
 
         with patch(
-            "cli.automa_cli.vehicles.probes.ChaseSimCar.inspect_passive_capture",
+            "cli.automa_cli.providers.probes.ChaseSimCar.inspect_passive_capture",
             side_effect=_raise_frontend_unresponsive,
         ):
-            from cli.automa_cli.vehicles.probes import probe_chase
+            from cli.automa_cli.providers.probes import probe_chase
 
             probe = probe_chase(candidate, timeout_s=1.0)
 

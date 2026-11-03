@@ -23,8 +23,8 @@ from ..hosts.local import log_tail
 from ..releases.errors import RuntimeHostError
 from ..shared.io.processes import pid_alive
 from ..vehicles.discovery import SIMULATOR_RECORD, SIMULATOR_SCHEMA, created_simulators, simulator_dir
-from ..vehicles.probes import chase_operator_url, normalize_chase_url
-from ..vehicles.providers import CHASE_SIM
+from ..providers.catalog import CHASE_SIM
+from ..providers.probes import chase_operator_url, normalize_chase_url
 
 
 # simulators create runs Metrics UI's headless launcher from this checkout.

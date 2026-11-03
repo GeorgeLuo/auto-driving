@@ -16,13 +16,13 @@ from ..shared.command_result import CommandResult
 from ..shared.io.json_files import write_json_atomically
 from ..shared.paths import RUNTIME_ROOT
 from ..shared.io.processes import pid_alive
-from .probes import (
+from ..providers.probes import (
     DEFAULT_READINESS_TIMEOUT_S,
     Candidate,
     chase_operator_url,
     normalize_chase_url,
 )
-from .providers import CHASE_SIM, PROVIDERS
+from ..providers.catalog import CHASE_SIM, PROVIDERS
 
 # Where vehicles status looks besides the default simulator.
 DISCOVERED = "discovered.json"

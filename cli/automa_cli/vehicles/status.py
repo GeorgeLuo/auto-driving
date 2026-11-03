@@ -8,8 +8,8 @@ from typing import Any
 
 from ..shared.text import indented
 from .discovery import created_simulators, listed_vehicles
-from .probes import DEFAULT_READINESS_TIMEOUT_S, require_positive_timeout
-from .providers import CHASE_SIM, PROVIDERS
+from ..providers.catalog import CHASE_SIM, PROVIDERS
+from ..providers.probes import DEFAULT_READINESS_TIMEOUT_S, require_positive_timeout
 
 
 def get_vehicles_status(*, timeout_s: float = DEFAULT_READINESS_TIMEOUT_S) -> dict[str, Any]:

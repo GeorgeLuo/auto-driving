@@ -9,7 +9,6 @@ from PIL import Image
 from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.workbench.runner import ImageReplayRunner
-from cli.automa_cli.shared.memory_report import evidence_records
 from cli.automa_cli.hosts.step_activations import decision_identity
 from cli.automa_cli.releases.paths import bundle_paths
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
@@ -125,18 +124,16 @@ class LiveRuntimeDecisionViewFixture:
         stream_frame = stream_frame or self._accepted_frame(run_id=run_id)
         frame_path = Path(self._temporary.name) / image_name
         Image.new("RGB", (40, 30), image_color).save(frame_path)
-        cycle = stream_frame["cycle"]
         frame_record = {
-            "frame_id": stream_frame["frame_id"],
-            "frame_index": stream_frame["frame_index"],
-            "captured_at_ms": stream_frame["timestamp_ms"],
+            "frame": {
+                "frame_id": stream_frame["frame_id"],
+                "frame_index": stream_frame["frame_index"],
+                "captured_at_ms": stream_frame["timestamp_ms"],
+            },
             "run_id": run_id,
             "sensor_frame": {
                 "readings": {"front_camera": {"read_id": stream_frame["frame_id"]}}
             },
-            "observation": cycle["observation"],
-            "memory": cycle["memory"],
-            "memory_evidence": evidence_records(cycle["memory"]),
         }
         target.perception.publish_frame(
             frame_path=frame_path, frame_record=frame_record
@@ -150,8 +147,11 @@ class LiveRuntimeDecisionViewFixture:
             frame_path=newer_path,
             frame_record={
                 **frame_record,
-                "frame_id": f"{run_id}-later",
-                "frame_index": frame_record["frame_index"] + 1,
+                "frame": {
+                    **frame_record["frame"],
+                    "frame_id": f"{run_id}-later",
+                    "frame_index": frame_record["frame"]["frame_index"] + 1,
+                },
             },
         )
         exact_image = target.perception.frame(stream_frame["frame_id"])
@@ -159,7 +159,6 @@ class LiveRuntimeDecisionViewFixture:
         self.assertTrue(
             target.decision.publish(
                 report=stream_frame,
-                frame_record=frame_record,
                 image=exact_image,
             )
         )

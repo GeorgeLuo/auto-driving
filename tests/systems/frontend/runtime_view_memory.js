@@ -103,7 +103,13 @@ function publication(plugins, publisher) {
     host_name: "piracer",
     frame: { frame_id: "frame_1" },
     perception: { things: [], plugin_runs: [] },
-    memory: { schema: "memory_report", plugins, evidence_publisher: publisher }
+    cycle: {
+      observation: null,
+      memory: { schema: "memory_report", plugins, evidence_publisher: publisher },
+      proposal: null,
+      plan: null,
+      action: null,
+    }
   };
 }
 
@@ -140,7 +146,7 @@ async function memoryPage() {
   // The cycle's memory step time fills the Update row.
   latest = {
     ...publication([BOUNDED], "bounded_evidence"),
-    cycle: { timing: { steps: [{ step: "observation", duration_ms: 9 }, { step: "memory", duration_ms: 1.25 }] } }
+    timing: { steps: [{ step: "observation", duration_ms: 9 }, { step: "memory", duration_ms: 1.25 }] }
   };
   await ctx.refresh();
   assert.equal(metrics($("ledgerMetrics"))["Update"], "1.25 ms");
@@ -200,7 +206,7 @@ function perceptionPage() {
   assert.equal(frameMetrics()["Memory keys"], "bounded_evidence 2, recording_test 1");
   assert.equal(frameMetrics()["Evidence publisher"], "bounded_evidence");
 
-  render({ ...publication([], null), memory: null });
+  render({ ...publication([], null), cycle: { ...publication([], null).cycle, memory: null } });
   assert.equal(frameMetrics()["Memory keys"], "open /memory");
   assert.equal(frameMetrics()["Evidence publisher"], "—");
 }

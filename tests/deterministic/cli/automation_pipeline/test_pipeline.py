@@ -26,6 +26,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             _write_activations(bundle, plugins=["frame"])
             applied_selections: list[tuple[str, ...]] = []
             frame_selections: dict[str, list[str]] = {}
+            events = []
 
             def wrap_perception(step, mapper):
                 if step != "perception":
@@ -50,7 +51,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             ):
                 result = run_host_automation(
                     host_name=HOST_NAME, num_decisions=3, take_control=False,
-
+                    emit=events.append,
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)
@@ -61,12 +62,18 @@ class AutomationLivePipelineTests(unittest.TestCase):
             automation_dir = Path(bundle["runtime_dir"]) / "automation"
             state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
             self.assertEqual(state["steps"]["perception"]["plugin_ids"], ["floor_plane"])
+            frame_events = [event.data for event in events if event.kind == "frame"]
+            self.assertTrue(frame_events)
+            self.assertEqual(frame_events[-1]["action"], state["last_frame"]["control"]["reason"])
             latest = json.loads((automation_dir / "latest_perception.json").read_text(encoding="utf-8"))
             # The latest copy can be any decided frame, so it is checked against its own frame.
             self.assertEqual(
-                latest["step_activations"]["perception"]["plugins"], frame_selections[latest["frame_id"]],
+                latest["step_activations"]["perception"]["plugins"],
+                frame_selections[latest["frame"]["frame_id"]],
             )
-            self.assertIn("memory", latest)
+            self.assertNotIn("memory", latest)
+            self.assertNotIn("observation", latest)
+            self.assertIn("memory", latest["cycle"])
 
     def test_a_decision_view_failure_is_recorded_and_does_not_stop_automation(self) -> None:
         """A view failure cannot change the completed cycle's authority result."""

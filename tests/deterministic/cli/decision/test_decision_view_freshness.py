@@ -21,17 +21,10 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         stream_frame, _expected_image = self._publish_exact_transaction()
         generation = self.server.decision.generation_id
         self.assertIsNotNone(generation)
-        frame_record = {
-            "frame_id": stream_frame["frame_id"],
-            "frame_index": stream_frame["frame_index"],
-            "captured_at_ms": stream_frame["timestamp_ms"],
-            "run_id": "run-live",
-        }
         rejected_frame = {**stream_frame, "cycle": None}
         self.assertFalse(
             self.server.decision.publish(
                 report=rejected_frame,
-                frame_record=frame_record,
                 image=self.server.perception.frame(stream_frame["frame_id"]),
             )
         )

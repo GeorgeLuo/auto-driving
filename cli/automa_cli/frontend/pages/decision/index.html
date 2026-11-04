@@ -501,7 +501,7 @@
       const decision = latest.decision || {};
       const cycle = decision.cycle || {};
       const plan = decisionPlan();
-      const authority = latest.authority || {};
+      const authority = cycle.action?.authority || {};
       const application = decision.application || {};
       const hostTelemetry = latest.host_telemetry || null;
       const candidate = selectedCandidate();

@@ -133,6 +133,10 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["presets"], {"perception": "lightweight_observer"})
         self.assertEqual(payload["latest_json_path"], LATEST_JSON_PATH)
         self.assertEqual(payload["latest_frame_path"], LATEST_FRAME_PATH)
+        self.assertEqual(
+            payload["cycle"],
+            {"observation": None, "memory": None, "proposal": None, "plan": None, "action": None},
+        )
 
     def test_healthy_publication_includes_detached_perception_and_matching_frame(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
@@ -149,9 +153,12 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["control"]["throttle"], 0.0)
         self.assertEqual(payload["frame"]["frame_id"], "donkey_frame_000000")
         self.assertTrue(payload["frame"]["has_image"])
-        # Idle host has no perception step; publication still carries cycle control.
+        # Idle host has no perception step, so the diagnostic stays absent.
         self.assertIsNone(payload["perception"])
-        self.assertIsNone(payload["memory"])
+        self.assertNotIn("observation", payload)
+        self.assertNotIn("memory", payload)
+        self.assertEqual(sorted(payload["cycle"]), ["action", "memory", "observation", "plan", "proposal"])
+        self.assertIsNone(payload["cycle"]["memory"])
         self.assertEqual(payload["control"]["reason"], "action_plan_invariant_violated")
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
 
@@ -222,12 +229,14 @@ class ObservationPublicationTests(unittest.TestCase):
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
-        self.assertIsNotNone(payload["memory"])
-        state = payload["memory"]["plugins"][0]["state"]
+        self.assertNotIn("memory", payload)
+        report = payload["cycle"]["memory"]
+        self.assertIsNotNone(report)
+        state = report["plugins"][0]["state"]
         self.assertEqual(state["health"], "healthy")
         self.assertEqual(state["record_count"], 1)
         self.assertEqual(state["records"][0]["kind"], "floor_boundary")
-        self.assertEqual(payload["memory"]["evidence_publisher"], "bounded_evidence")
+        self.assertEqual(report["evidence_publisher"], "bounded_evidence")
 
         jpeg, frame_meta = part.publish_latest_frame_jpeg()
         self.assertIsNotNone(jpeg)
@@ -271,7 +280,7 @@ class ObservationPublicationTests(unittest.TestCase):
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
 
-        report = part.publish_latest(now_ms=part.latest_state.completed_at_ms)["memory"]
+        report = part.publish_latest(now_ms=part.latest_state.completed_at_ms)["cycle"]["memory"]
 
         states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
         self.assertEqual(list(states), ["recording_test", "bounded_evidence"])

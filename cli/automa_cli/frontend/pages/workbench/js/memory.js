@@ -6,7 +6,7 @@ var selectedRecordId = null;
 var selectedMemoryPluginId = null;
 var memoryListSignature = "";
 var memoryPluginSignature = "";
-// steps.memory is the memory step's report: every applied plugin by plugin_id,
+// cycle.memory is the memory report: every applied plugin by plugin_id,
 // and the evidence publisher. The panel lists every plugin and shows one
 // plugin's ledger: the plugin the viewer picked, else the evidence publisher.
 // With neither, it asks for a pick.
@@ -61,7 +61,7 @@ function renderMemoryPlugins(memory) {
   });
 }
 function selectMemoryPlugin(pluginId) {
-  var memory = currentPayload("memory");
+  var memory = state && state.cycle ? state.cycle.memory : null;
   var entry = memoryPlugins(memory).find(function (candidate) {
     return candidate.plugin_id === pluginId;
   });
@@ -158,7 +158,7 @@ function clearMemoryLedger() {
 }
 function renderMemory() {
   bindMemoryList();
-  var report = currentPayload("memory");
+  var report = state && state.cycle ? state.cycle.memory : null;
   var plugins = memoryPlugins(report);
   // Keep the viewer's pick across frames; drop it only when a report lists
   // plugins and it is not among them.
@@ -269,7 +269,7 @@ function renderMemory() {
   paintMemorySelection(records);
 }
 function selectRecord(recordId) {
-  var memory = shownMemoryState(currentPayload("memory"));
+  var memory = shownMemoryState(state && state.cycle ? state.cycle.memory : null);
   var records = memory && Array.isArray(memory.records) ? memory.records : [];
   var selected = records.find(function (record) {
     return memoryRecordId(record) === recordId;

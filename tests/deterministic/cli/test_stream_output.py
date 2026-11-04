@@ -240,7 +240,7 @@ class StreamOutputTests(unittest.TestCase):
         with (
             patch.object(memory, "runtime_base_url", return_value="http://host.invalid"),
             patch.object(memory, "fetch_autonomy_status", return_value=status),
-            patch.object(memory, "read_publication", return_value=({"memory": {"plugins": []}}, None)) as read,
+            patch.object(memory, "read_publication", return_value=({"cycle": {"memory": {"plugins": []}}}, None)) as read,
         ):
             text = stream_host_step("memory", host_name="fixture", once=True, output=io.StringIO())
             self.assertEqual(text.exit_code, 2)
@@ -366,7 +366,7 @@ def _offline(step: str):
         with (
             patch.object(memory, "runtime_base_url", return_value="http://host.invalid"),
             patch.object(memory, "fetch_autonomy_status", return_value={"session": {}, "host": {"steps": {}}}),
-            patch.object(memory, "read_publication", return_value=({"memory": {}}, None)),
+            patch.object(memory, "read_publication", return_value=({"cycle": {"memory": {}}}, None)),
         ):
             yield
         return

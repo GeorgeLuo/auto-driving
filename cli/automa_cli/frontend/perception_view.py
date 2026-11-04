@@ -44,10 +44,11 @@ class PerceptionView:
             raise ValueError(f"published frame is empty: {frame_path}")
         content_type = _frame_content_type(frame_path, frame_record)
         published_at_ms = _timestamp_ms()
-        frame_id = str(frame_record.get("frame_id") or "unknown")
+        identity = _frame_identity(frame_record)
+        frame_id = identity["frame_id"]
         width_px, height_px = _image_dimensions(frame_path)
         frame = _frame_payload(
-            frame_record=frame_record,
+            frame_record=identity,
             content_type=content_type,
             published_at_ms=published_at_ms,
             width_px=width_px,
@@ -75,7 +76,7 @@ class PerceptionView:
             self._frame_published_at_ms = published_at_ms
 
     def publish_perception(self, *, frame_record: dict[str, Any]) -> None:
-        frame_id = str(frame_record.get("frame_id") or "unknown")
+        frame_id = _frame_identity(frame_record)["frame_id"]
         with self._lock:
             self._latest_perception_record = frame_record
             self._latest_perception_frame_id = frame_id
@@ -100,7 +101,11 @@ class PerceptionView:
     def health_payload(self) -> dict[str, Any]:
         with self._lock:
             perception_id = self._latest_perception_frame_id
-            source = self._latest_perception_record or {}
+            source = (
+                _frame_identity(self._latest_perception_record)
+                if self._latest_perception_record is not None
+                else {}
+            )
             latest = self._latest_frame or {}
             has_perception = self._latest_perception_record is not None
             return {
@@ -301,6 +306,16 @@ def _view_generation_error(
     return None
 
 
+def _frame_identity(record: Any) -> dict[str, Any]:
+    """Nested publication frame. Capture-only records use the same identity."""
+
+    frame = record.get("frame") if isinstance(record, dict) else None
+    frame_id = frame.get("frame_id") if isinstance(frame, dict) else None
+    if not isinstance(frame_id, str) or not frame_id:
+        raise ValueError("perception publication requires a nested frame with a frame_id")
+    return frame
+
+
 def _publication_payload(
     *,
     host_name: str,
@@ -308,13 +323,10 @@ def _publication_payload(
     perception_record: dict[str, Any] | None,
     generated_at_ms: int,
 ) -> dict[str, Any]:
-    source = perception_record or {}
+    source = perception_record if isinstance(perception_record, dict) else {}
     perception = source.get("perception")
     perception = perception if isinstance(perception, dict) else None
-    # The frame record's memory report: every plugin's state by plugin_id and
-    # the evidence publisher, as the memory step reported them.
-    memory = source.get("memory")
-    memory = memory if isinstance(memory, dict) else None
+    timing = source.get("timing") if isinstance(source.get("timing"), dict) else None
     overlay = _overlay_payload(frame=frame, perception_record=perception_record, now_ms=generated_at_ms)
     return {
         "schema": PUBLICATION_SCHEMA,
@@ -322,18 +334,11 @@ def _publication_payload(
         "generated_at_ms": generated_at_ms,
         "frame": frame,
         "overlay": overlay,
-        "cycle": {
-            "cycle_duration_ms": source.get("cycle_duration_ms"),
-            "perception_duration_ms": source.get("perception_duration_ms"),
-            "timing": source.get("timing") if isinstance(source.get("timing"), dict) else None,
-            "control_source": source.get("control_source"),
-            "control_application": source.get("control_application"),
-            "action_policy": source.get("action_policy"),
-        },
+        "timing": timing,
+        "duration_ms": source.get("duration_ms"),
+        "cycle": source.get("cycle"),
         "perception": perception,
-        "memory": memory,
         "sensor_frame": source.get("sensor_frame"),
-        "observation": source.get("observation"),
         "control": source.get("control"),
         "engine": source.get("engine"),
     }
@@ -378,12 +383,13 @@ def _overlay_payload(
             "result_age_ms": None,
         }
 
-    source_frame_id = perception_record.get("frame_id")
-    source_frame_index = perception_record.get("frame_index")
+    source = _frame_identity(perception_record)
+    source_frame_id = source.get("frame_id")
+    source_frame_index = source.get("frame_index")
     current_frame_index = frame.get("frame_index")
-    source_captured_at_ms = perception_record.get("captured_at_ms")
+    source_captured_at_ms = source.get("captured_at_ms")
     current_captured_at_ms = frame.get("captured_at_ms")
-    completed_at_ms = perception_record.get("perception_completed_at_ms")
+    completed_at_ms = source.get("completed_at_ms")
     frame_lag = _nonnegative_difference(current_frame_index, source_frame_index)
     frame_lag_ms = _nonnegative_difference(current_captured_at_ms, source_captured_at_ms)
     result_age_ms = _nonnegative_difference(now_ms, completed_at_ms)

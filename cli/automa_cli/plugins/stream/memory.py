@@ -56,7 +56,8 @@ def stream_memory(
             if view is not None:
                 view.publish(publication)
             if include_publication:
-                report = publication.get("memory") if isinstance(publication, dict) else None
+                cycle = publication.get("cycle") if isinstance(publication, dict) else None
+                report = cycle.get("memory") if isinstance(cycle, dict) else None
                 source = MemoryPublication(report, fetch_error)
         return live, source
 

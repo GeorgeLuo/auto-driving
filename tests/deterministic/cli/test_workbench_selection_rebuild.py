@@ -95,7 +95,7 @@ class LiveSelectionTests(unittest.TestCase):
                 self.assertIs(runner._steps["memory"], memory)
                 runner.dispatch("pause", run_id=run_id)
             next_frame = runner.dispatch("step", run_id=run_id)
-            self.assertEqual([p["plugin_id"] for p in next_frame["steps"]["perception"]["plugin_runs"]],
+            self.assertEqual([p["plugin_id"] for p in next_frame["perception"]["plugin_runs"]],
                              ["motion_tracks", "frame"])
 
     def test_paused_refresh_executes_only_latest_frame_without_advancing_memory_twice(self):
@@ -116,26 +116,26 @@ class LiveSelectionTests(unittest.TestCase):
             self.assertEqual(refreshed["position"], 4)
             for index, earlier in enumerate(prefix):
                 cached = runner.dispatch("seek", run_id=run_id, position=index)
-                self.assertEqual(cached["steps"], earlier["steps"])
+                self.assertEqual((cached["cycle"], cached["perception"]), (earlier["cycle"], earlier["perception"]))
                 self.assertEqual(cached["timing"], earlier["timing"])
                 self.assertEqual(cached["machine_detail"]["pipeline"], earlier["machine_detail"]["pipeline"])
             self.assertEqual(refreshed["progress"]["completed"], 4)
             # Domain memory matches one execution of the frame with this selection.
-            self.assertEqual(refreshed["steps"]["memory"], before["steps"]["memory"])
-            self.assertEqual(refreshed["steps"]["memory"]["evidence_publisher"], "bounded_evidence")
+            self.assertEqual(refreshed["cycle"]["memory"], before["cycle"]["memory"])
+            self.assertEqual(refreshed["cycle"]["memory"]["evidence_publisher"], "bounded_evidence")
 
     def test_new_motion_plugin_warms_up_and_reenabled_plugin_does_not_restore_old_history(self):
         with image_source(6) as root:
             runner, run_id = self.paused(root)
             runner.dispatch("seek", run_id=run_id, position=2)
             selected = self.select(runner, run_id, ["frame", "motion_tracks"])
-            motion = selected["steps"]["perception"]["plugin_runs"][-1]
+            motion = selected["perception"]["plugin_runs"][-1]
             self.assertEqual(motion["status"], "warming_up")
             runner.dispatch("step", run_id=run_id)
             self.select(runner, run_id, ["frame"])
             self.assertNotIn("perception.motion_tracks.history", runner._shared_memory)
             selected = self.select(runner, run_id, ["frame", "motion_tracks"])
-            self.assertEqual(selected["steps"]["perception"]["plugin_runs"][-1]["status"], "warming_up")
+            self.assertEqual(selected["perception"]["plugin_runs"][-1]["status"], "warming_up")
 
     def test_historical_results_keep_their_selection_and_edits_require_latest_frame(self):
         with image_source(6) as root:
@@ -146,7 +146,7 @@ class LiveSelectionTests(unittest.TestCase):
             self.assertEqual(old["active_perception_plugin_ids"], ["frame"])
             self.assertEqual(old["latest_processed_position"], 3)
             self.assertNotIn("select_plugins", old["controls"]["allowed_actions"])
-            self.assertEqual([p["plugin_id"] for p in old["steps"]["perception"]["plugin_runs"]],
+            self.assertEqual([p["plugin_id"] for p in old["perception"]["plugin_runs"]],
                              ["frame", "floor_plane"])
             with self.assertRaisesRegex(ReplayActionError, "latest processed frame"):
                 self.select(runner, run_id, [])

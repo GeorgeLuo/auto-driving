@@ -135,3 +135,28 @@ class MemoryReport:
                 if isinstance(beliefs, dict) else None
             ),
         )
+
+
+def evidence_records(report: object) -> list[dict[str, Any]] | None:
+    """The evidence publisher's retained records, or None when unavailable.
+
+    A report that is not a dict, a missing publisher, or a missing plugin list
+    yields None. Plugins whose state is not a dict are skipped. The publisher's
+    ``records`` list is returned, or None when that field is not a list.
+    """
+
+    if not isinstance(report, dict):
+        return None
+    publisher = report.get("evidence_publisher")
+    plugins = report.get("plugins")
+    if not isinstance(publisher, str) or not publisher or not isinstance(plugins, list):
+        return None
+    for entry in plugins:
+        if not isinstance(entry, dict) or entry.get("plugin_id") != publisher:
+            continue
+        state = entry.get("state")
+        if not isinstance(state, dict):
+            continue
+        records = state.get("records")
+        return records if isinstance(records, list) else None
+    return None

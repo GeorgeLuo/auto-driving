@@ -22,7 +22,6 @@ from ..publications.host_telemetry import (
     normalize_host_telemetry_record,
 )
 from ...frontend.server import RuntimeViewServer
-from ...shared.memory_report import evidence_records
 
 
 def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:
@@ -31,62 +30,6 @@ def _provider_identity(normalized: dict[str, Any]) -> dict[str, Any]:
         "source_id": normalized["source_id"],
         "run_id": normalized["run_id"],
         "producer_generation_id": normalized["generation_id"],
-    }
-
-
-def _frame_record(normalized: dict[str, Any]) -> dict[str, Any]:
-    mode = normalized["decision"]["application"]["mode"]
-    cycle = normalized["decision"]["cycle"]
-    observation_value = cycle["observation"]
-    observation_value = observation_value if isinstance(observation_value, dict) else None
-    sensor_frame = (
-        observation_value.get("sensor_frame")
-        if isinstance(observation_value, dict)
-        else None
-    )
-    summary = observation_value.get("summary") if isinstance(observation_value, dict) else None
-    summary = [str(item) for item in summary] if isinstance(summary, list) else []
-    perception = None
-    if observation_value is not None:
-        metadata = observation_value.get("metadata")
-        metadata = metadata if isinstance(metadata, dict) else {}
-        limits = metadata.get("limits")
-        perception = {
-            "schema": observation_value.get("perception_schema") or "perception_text",
-            "status": "ok",
-            "text": "\n".join(summary),
-            "lines": summary,
-            "signals": observation_value.get("signals")
-            if isinstance(observation_value.get("signals"), list)
-            else [],
-            "things": observation_value.get("things")
-            if isinstance(observation_value.get("things"), list)
-            else [],
-            "plugin_id": observation_value.get("perception_plugin_id"),
-            "plugin_runs": [],
-            "measurements": {},
-            "limits": limits if isinstance(limits, list) else [],
-        }
-    timing = normalized["decision"]["values"].get("timing")
-    return {
-        "frame_id": normalized["frame_id"],
-        "frame_index": normalized["frame_index"],
-        "captured_at_ms": normalized["timestamp_ms"],
-        "timing": timing if isinstance(timing, dict) else None,
-        "run_id": normalized["run_id"],
-        "sensor_frame": sensor_frame,
-        "perception_completed_at_ms": (
-            observation_value.get("created_at_ms")
-            if isinstance(observation_value, dict)
-            else None
-        ),
-        "perception": perception,
-        "observation": observation_value,
-        "memory": cycle["memory"],
-        "memory_evidence": evidence_records(cycle["memory"]),
-        "action_policy": mode,
-        "control_source": "runtime_host",
-        "control_application": "shared_execution" if mode == "autonomy" else "not_applied",
     }
 
 
@@ -167,18 +110,16 @@ class DecisionViewAdapter:
         image: tuple[bytes, str],
     ) -> bool:
         self.view_server.decision.adopt(_provider_identity(normalized))
-        frame_record = _frame_record(normalized)
         report = decision_view_frame(normalized)
-        frame_record["host_telemetry"] = read_host_telemetry_panel(
-            self.base_url,
-            normalized_decision=normalized,
-            host_name=self.host_name,
-            timeout_s=self.timeout_s,
-        )
         published = self.view_server.decision.publish(
             report=report,
-            frame_record=frame_record,
             image=image,
+            host_telemetry=read_host_telemetry_panel(
+                self.base_url,
+                normalized_decision=normalized,
+                host_name=self.host_name,
+                timeout_s=self.timeout_s,
+            ),
         )
         if not published:
             self.view_server.decision.invalidate_latest()

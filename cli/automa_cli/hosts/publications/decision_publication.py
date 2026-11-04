@@ -1,7 +1,7 @@
 """A host's decision publication, as the CLI reads it.
 
 ``host_publications`` fetches the publication; ``normalize_decision_publication``
-checks it, and the rest turn it into the frame record and text the CLI shows.
+checks it, and the rest turn it into the text the CLI shows.
 """
 
 from __future__ import annotations
@@ -256,43 +256,6 @@ def normalize_decision_publication(
         "max_age_ms": ceiling,
         "advertised_result_age_ms": result_age_ms,
         "report": report,
-    }
-
-
-def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
-    """Adapt an onboard publication, including its memory report."""
-    frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
-    perception = publication.get("perception")
-    observation = publication.get("observation")
-    control = publication.get("control")
-    completed_at_ms = frame.get("completed_at_ms")
-    duration_ms = publication.get("duration_ms")
-    memory = publication.get("memory")
-    return {
-        "frame_id": frame.get("frame_id"),
-        "frame_index": frame.get("frame_index"),
-        "captured_at_ms": frame.get("captured_at_ms"),
-        "perception_completed_at_ms": completed_at_ms,
-        "perception_duration_ms": duration_ms,
-        "cycle_duration_ms": duration_ms,
-        "timing": deepcopy(publication.get("timing"))
-        if isinstance(publication.get("timing"), dict)
-        else None,
-        "perception": perception if isinstance(perception, dict) else None,
-        "observation": observation if isinstance(observation, dict) else None,
-        "memory": memory if isinstance(memory, dict) else None,
-        "control": control if isinstance(control, dict) else None,
-        "generation_id": publication.get("generation_id"),
-        "step_activations": deepcopy(publication.get("step_activations")),
-        "context": deepcopy(publication.get("context")),
-        "presets": deepcopy(publication.get("presets")),
-        "health": publication.get("health"),
-        "result_age_ms": publication.get("result_age_ms"),
-        "action_policy": publication.get("mode"),
-        "control_source": "runtime_host",
-        "control_application": (
-            "shared_execution" if publication.get("mode") == "autonomy" else "not_applied"
-        ),
     }
 
 

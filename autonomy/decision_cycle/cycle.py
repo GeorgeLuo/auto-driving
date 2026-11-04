@@ -248,6 +248,9 @@ def _checked(step: str, record: Any, record_type: type) -> Any:
     return record
 
 
+CYCLE_RECORD_KEYS = ("observation", "memory", "proposal", "plan", "action")
+
+
 def export_cycle_body(result: Any) -> dict[str, Any]:
     """The five cycle records on any completed result, each detached.
 
@@ -257,7 +260,7 @@ def export_cycle_body(result: Any) -> dict[str, Any]:
 
     return {
         key: _to_plain_data(getattr(result, key, None))
-        for key in ("observation", "memory", "proposal", "plan", "action")
+        for key in CYCLE_RECORD_KEYS
     }
 
 

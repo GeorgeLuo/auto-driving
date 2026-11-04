@@ -101,7 +101,7 @@ class PluginUploadFlows(unittest.TestCase):
                 self.assertEqual(shown["run_id"], before["run_id"])
                 self.assertEqual(shown["active_perception_plugin_ids"], before["active_perception_plugin_ids"])
                 self.assertEqual(shown["current_frame"], before["current_frame"])
-                self.assertEqual(shown["steps"], before["steps"])
+                self.assertEqual((shown["cycle"], shown["perception"]), (before["cycle"], before["perception"]))
                 self.assertNotEqual(shown["perception_plugin_catalog"]["digest"],
                                     before["perception_plugin_catalog"]["digest"])
                 ids = [p["id"] for p in shown["perception_plugin_catalog"]["plugins"]]
@@ -124,7 +124,7 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertTrue(first_marker.exists())
             post_action(base, {"action": "pause", "run_id": runner.state()["run_id"]})
             before = get_json(base, "/api/state")
-            self.assertEqual([item["plugin_id"] for item in before["steps"]["perception"]["plugin_runs"]],
+            self.assertEqual([item["plugin_id"] for item in before["perception"]["plugin_runs"]],
                              ["prototype", "frame"])
             prototype(file, next_marker, 2)
             _, second = upload(base, file, "prototype")
@@ -133,7 +133,7 @@ class PluginUploadFlows(unittest.TestCase):
             self.assertEqual(uploaded_source(first["plugin"]["metadata"]["source_file"]).read_bytes(), first_source)
             shown = get_json(base, "/api/state")
             self.assertEqual(shown["current_frame"], before["current_frame"])
-            self.assertEqual(shown["steps"], before["steps"])
+            self.assertEqual((shown["cycle"], shown["perception"]), (before["cycle"], before["perception"]))
             registered = next(p for p in shown["perception_plugin_catalog"]["plugins"] if p["id"] == "prototype")
             self.assertEqual(registered["revision"], second["plugin"]["metadata"]["revision"])
             post_action(base, {"action": "step", "run_id": shown["run_id"]})
@@ -168,13 +168,13 @@ class PluginUploadFlows(unittest.TestCase):
             run_id = before["run_id"]
 
             def cutoff(state):
-                return state["steps"]["perception"]["measurements"]["multi_obstruction_tracks"]["floor_cutoff_y"]
+                return state["perception"]["measurements"]["multi_obstruction_tracks"]["floor_cutoff_y"]
 
             self.assertEqual(cutoff(before), 0.88)
             same = post_action(base, {"action": "select_plugins", "run_id": run_id,
                                      "step": "perception", "active_plugin_ids": ids})["state"]
             self.assertEqual(same["current_frame"], before["current_frame"])
-            self.assertEqual(same["steps"], before["steps"])
+            self.assertEqual((same["cycle"], same["perception"]), (before["cycle"], before["perception"]))
             self.assertEqual(same["machine_detail"]["pipeline"]["perception_preset"], "obstruction_observer")
             # A changed selection then restores catalog defaults, while preserving the displayed frame.
             post_action(base, {"action": "select_plugins", "run_id": run_id,
@@ -183,7 +183,7 @@ class PluginUploadFlows(unittest.TestCase):
                                          "step": "perception", "active_plugin_ids": ids})["state"]
             self.assertEqual(cutoff(restored), default_cutoff)
             self.assertEqual(restored["current_frame"]["frame_id"], before["current_frame"]["frame_id"])
-            self.assertEqual([item["plugin_id"] for item in restored["steps"]["perception"]["plugin_runs"]], ids)
+            self.assertEqual([item["plugin_id"] for item in restored["perception"]["plugin_runs"]], ids)
             post_action(base, {"action": "select_plugins", "run_id": run_id,
                                "step": "memory", "active_plugin_ids": []})
             memory = post_action(base, {"action": "select_plugins", "run_id": run_id,
@@ -211,7 +211,7 @@ class PluginUploadFlows(unittest.TestCase):
                     self.assertTrue(failure["message"])
                 unchanged = get_json(base, "/api/state")
                 self.assertEqual(unchanged["active_perception_plugin_ids"], before["active_perception_plugin_ids"])
-                self.assertEqual(unchanged["steps"], before["steps"])
+                self.assertEqual((unchanged["cycle"], unchanged["perception"]), (before["cycle"], before["perception"]))
                 self.assertEqual(get_json(base, "/api/plugins"), catalog)
             file = root / "broken.py"
             file.write_text("class Prototype:\n    invalid Python !!!\n")

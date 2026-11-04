@@ -138,12 +138,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertTrue(
             server.decision.publish(
                 report=decision_view_frame(normalized),
-                frame_record={
-                    "frame_id": normalized["frame_id"],
-                    "frame_index": normalized["frame_index"],
-                    "captured_at_ms": normalized["timestamp_ms"],
-                    "run_id": normalized["run_id"],
-                },
                 image=(b"physical-fixture-jpeg", "image/jpeg"),
             )
         )
@@ -164,7 +158,10 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
 
         self.assertEqual(payload["identity"]["source_id"], "donkeycar:piracer")
         self.assertEqual(payload["current_image"]["frame_id"], "frame_001")
-        self.assertEqual(payload["authority"]["proposed_applied"], False)
+        self.assertNotIn("authority", payload)
+        self.assertEqual(
+            payload["decision"]["cycle"]["action"]["authority"]["proposed_applied"], False,
+        )
         with urlopen(
             f"{server.url.rstrip('/')}{payload['current_image']['url']}",
             timeout=1.0,

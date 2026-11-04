@@ -27,6 +27,7 @@ from tests.shared.cli.workbench_fixtures import (
     _wait_until,
     image_source,
     post_action,
+    replay_states,
     serve_workbench,
     write_manifest,
 )
@@ -200,14 +201,14 @@ class WorkbenchTests(unittest.TestCase):
             runner = ImageReplayRunner(root, cadence_ms=1000)
             first = runner.start()
             run_id = first["run_id"]
-            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            _wait_until(lambda: runner.state()["progress"]["completed"] >= 1)
             paused = runner.dispatch("pause", run_id=run_id)
             self.assertEqual(paused["phase"], "paused")
             with self.assertRaises(ReplayActionError):
                 runner.dispatch("pause", run_id="stale-run")
             stepped = runner.dispatch("step", run_id=run_id)
             self.assertEqual(stepped["phase"], "paused")
-            self.assertEqual(len(stepped["timeline"]), 2)
+            self.assertEqual(stepped["progress"]["completed"], 2)
             runner.dispatch("resume", run_id=run_id)
             completed = runner.wait(5)
             self.assertEqual(completed["phase"], "completed")
@@ -219,7 +220,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(reset["progress"]["completed"], 0)
             self.assertEqual(reset["progress"]["total"], 3)
             self.assertIsNotNone(reset["source"])
-            self.assertEqual(reset["timeline"], [])
+            self.assertIsNone(reset["timing"])
             restarted = runner.start(cadence_ms=0)
             completed_again = runner.wait(5)
 
@@ -227,17 +228,16 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(completed_again["phase"], "completed")
         self.assertEqual(completed_again["progress"]["completed"], 3)
 
-    def test_each_timeline_frame_carries_every_steps_time(self) -> None:
+    def test_each_displayed_frame_carries_every_steps_time(self) -> None:
         """Regression: perception's slot is a closure, so its time was missing in replay."""
 
         with image_source(2) as root:
             runner = ImageReplayRunner(root, cadence_ms=0)
-            runner.start()
-            completed = runner.wait(5)
+            states = replay_states(runner)
             runner.close()
-        for item in completed["timeline"]:
+        for item in states:
             timing = item["timing"]
-            self.assertEqual(item["duration_ms"], timing["duration_ms"])
+            self.assertEqual(item["summary"]["last_duration_ms"], timing["duration_ms"])
             self.assertEqual([entry["step"] for entry in timing["steps"]], list(STEPS))
             for entry in timing["steps"]:
                 self.assertIsInstance(entry["duration_ms"], float, entry)
@@ -246,18 +246,18 @@ class WorkbenchTests(unittest.TestCase):
     def test_sequential_replay_uses_shared_memory_without_legacy_handoff(self) -> None:
         with image_source(2) as root:
             write_manifest(root, {
-                "camera_frames": [
+                "frames": [
                     {
                         "frame_id": "camera-first",
                         "frame_index": 10,
-                        "captured_at_ms": 1000,
-                        "image": "frame_00.png",
+                        "timestamp_ms": 1000,
+                        "image_path": "frame_00.png",
                     },
                     {
                         "frame_id": "camera-next",
                         "frame_index": 13,
-                        "captured_at_ms": 1080,
-                        "image": "frame_01.png",
+                        "timestamp_ms": 1080,
+                        "image_path": "frame_01.png",
                     },
                 ]
             })
@@ -287,7 +287,7 @@ class WorkbenchTests(unittest.TestCase):
             )
             started = runner.start()
             run_id = started["run_id"]
-            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            _wait_until(lambda: runner.state()["progress"]["completed"] >= 1)
             paused = runner.dispatch("pause", run_id=run_id)
             first_id = paused["current_frame"]["frame_id"]
             calls_after_first = len(perception_step.calls)
@@ -302,16 +302,14 @@ class WorkbenchTests(unittest.TestCase):
                 sought["steps"]["decision"]["frame_id"],
                 sought["current_frame"]["frame_id"],
             )
-            self.assertEqual(
-                sought["current_frame"]["frame_id"],
-                sought["timeline"][-1]["frame"]["frame_id"],
-            )
 
             cached = runner.dispatch("seek", run_id=run_id, position=0)
             self.assertEqual(cached["phase"], "paused")
             self.assertEqual(cached["current_frame"]["frame_id"], first_id)
             self.assertEqual(cached["current_frame"]["position"], 0)
             self.assertEqual(cached["steps"]["decision"]["frame_id"], first_id)
+            self.assertEqual(cached["timing"], paused["timing"])
+            self.assertEqual(cached["summary"], paused["summary"])
             self.assertEqual(len(perception_step.calls), calls_after_first + 2)
             cached_next = runner.dispatch("step", run_id=run_id)
             self.assertEqual(cached_next["current_frame"]["position"], 1)
@@ -351,21 +349,20 @@ class WorkbenchTests(unittest.TestCase):
             )
             try:
                 run_id = runner.start()["run_id"]
-                _wait_until(lambda: len(runner.state()["timeline"]) == 1)
+                _wait_until(lambda: runner.state()["progress"]["completed"] == 1)
                 first = runner.dispatch("pause", run_id=run_id)
                 expected = copy.deepcopy(first)
                 second = runner.dispatch("step", run_id=run_id)
                 self.assertEqual(second["steps"]["memory"]["plugins"][0]["state"]["record_count"], 2)
-                self.assertEqual(second["timeline"][0], expected["timeline"][0])
-                self.assertEqual(second["summary"]["memory_plugins"], second["timeline"][1]["memory_plugins"])
+                self.assertEqual(second["summary"]["memory_plugins"][0]["record_count"], 2)
                 self.assertEqual(second["summary"]["frames_completed"], 2)
                 first["steps"]["memory"]["plugins"][0]["state"]["records"].clear()
                 first["summary"]["memory_plugins"].clear()
-                second["timeline"][0]["memory_effects"].clear()
+                first["timing"]["steps"].clear()
                 cached = runner.dispatch("seek", run_id=run_id, position=0)
                 self.assertEqual(cached["steps"], expected["steps"])
                 self.assertEqual(cached["summary"], expected["summary"])
-                self.assertEqual(cached["timeline"][0], expected["timeline"][0])
+                self.assertEqual(cached["timing"], expected["timing"])
                 self.assertEqual(memory.report["plugins"][0]["state"]["record_count"], 2)
             finally:
                 runner.close()
@@ -386,7 +383,7 @@ class WorkbenchTests(unittest.TestCase):
             _wait_until(lambda: len(perception_step.calls) >= 4)
             live = runner.state()
             self.assertEqual(live["phase"], "running")
-            self.assertLessEqual(len(live["timeline"]), 2)
+            self.assertLessEqual(live["progress"]["completed"], 2)
             runner.dispatch("set_loop", run_id=run_id, loop=False)
             finished = runner.wait(5)
             self.assertEqual(finished["phase"], "completed")
@@ -403,7 +400,7 @@ class WorkbenchTests(unittest.TestCase):
                 {"action": "start", "source_dir": str(root), "cadence_ms": 5000}
             )
             run_id = started["state"]["run_id"]
-            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            _wait_until(lambda: runner.state()["progress"]["completed"] >= 1)
             sought = post({"action": "seek", "run_id": run_id, "position": 2})
             self.assertEqual(sought["state"]["phase"], "paused")
             self.assertEqual(sought["state"]["current_frame"]["position"], 2)
@@ -443,9 +440,9 @@ class WorkbenchTests(unittest.TestCase):
             )
             started = runner.start()
             self.assertEqual(started["controls"]["pace"], "realtime")
-            _wait_until(lambda: len(runner.state()["timeline"]) >= 1)
+            _wait_until(lambda: runner.state()["progress"]["completed"] >= 1)
             first_seen = time.monotonic()
-            _wait_until(lambda: len(runner.state()["timeline"]) >= 2)
+            _wait_until(lambda: runner.state()["progress"]["completed"] >= 2)
             second_seen = time.monotonic()
             completed = runner.wait(3)
 

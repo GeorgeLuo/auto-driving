@@ -44,57 +44,22 @@ class WorkbenchTests(unittest.TestCase):
             with self.assertRaisesRegex(SourceValidationError, "non-decreasing"):
                 normalize_image_directory(root)
 
-    def test_directory_adapter_loads_ordered_camera_frame_stream_manifest(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            frame_root = root / "frames"
-            frame_root.mkdir()
-            _make_images(frame_root, 2)
-            write_manifest(root, {
-                "camera_frames": [
-                    {
-                        "frame_id": "camera-10",
-                        "frame_index": 10,
-                        "captured_at_ms": 1000,
-                        "image": "frames/frame_00.png",
-                    },
-                    {
-                        "frame_id": "camera-13",
-                        "frame_index": 13,
-                        "captured_at_ms": 1080,
-                        "image": "frames/frame_01.png",
-                    },
-                ]
-            })
-
-            feed = normalize_image_directory(root)
-
-        self.assertEqual(
-            [frame.frame_id for frame in feed.frames], ["camera-10", "camera-13"]
-        )
-        self.assertEqual([frame.frame_index for frame in feed.frames], [10, 13])
-        self.assertEqual([frame.timestamp_ms for frame in feed.frames], [1000, 1080])
-        self.assertEqual(
-            [frame.image_path.name for frame in feed.frames if frame.image_path],
-            ["frame_00.png", "frame_01.png"],
-        )
-
     def test_default_frame_limit_accepts_a_high_rate_camera_capture(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             frame_root = root / "frames"
             frame_root.mkdir()
             _make_images(frame_root, 1)
-            camera_frames = [
+            frames = [
                 {
                     "frame_id": f"camera-{index}",
                     "frame_index": index,
-                    "captured_at_ms": 1000 + index * 50,
-                    "image": "frames/frame_00.png",
+                    "timestamp_ms": 1000 + index * 50,
+                    "image_path": "frames/frame_00.png",
                 }
                 for index in range(269)
             ]
-            write_manifest(root, {"camera_frames": camera_frames})
+            write_manifest(root, {"frames": frames})
 
             feed = normalize_image_directory(root)
 
@@ -110,33 +75,22 @@ class WorkbenchTests(unittest.TestCase):
             image_root.mkdir(parents=True)
             _make_images(image_root, 2)
             write_manifest(root, {
-                "schema": "perception_inspect",
-                "selections": {},
                 "source_id": "fixture.sequence",
-                "run_dir": "lab/runs/fixture-run",
-                "source": {
-                    "kind": "images",
-                    "path": "/previous/location/auto-driving/lab/runs/capture",
-                },
                 "frames": [
                     {
                         "frame_id": "capture-b",
                         "frame_index": 5,
-                        "captured_at_ms": 500,
-                        "image_path": (
-                            "frames/"
-                            "frame_01.png"
-                        ),
+                        "timestamp_ms": 500,
+                        "image_path": "frames/frame_01.png",
                     },
                     {
                         "frame_id": "capture-dropout",
                         "frame_index": 6,
-                        "captured_at_ms": 600,
-                        "absent": True,
+                        "timestamp_ms": 600,
                         "absence_reason": "camera dropout",
                     },
                 ],
-            }, name="report.json")
+            })
 
             feed = normalize_image_directory(root)
 
@@ -201,7 +155,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(len(memory_mapper.calls), 1)
             self.assertEqual(memory_state["progress"]["completed"], 0)
 
-    def test_runner_uses_existing_pipeline_and_reports_memory_effects(self) -> None:
+    def test_runner_uses_existing_pipeline_and_reports_memory_summary(self) -> None:
         with image_source(2) as root:
             perception_step = FixtureMapper()
             runner = ImageReplayRunner(
@@ -228,15 +182,11 @@ class WorkbenchTests(unittest.TestCase):
             state["summary"]["memory_plugins"][0]["record_count"],
             ledger["state"]["record_count"],
         )
-        self.assertEqual(
-            state["timeline"][-1]["memory_plugins"][0]["record_count"],
-            ledger["state"]["record_count"],
-        )
         self.assertNotIn("frames", state["source"])
-        self.assertNotIn("perception", state["timeline"][0])
+        self.assertNotIn("timeline", state)
+        self.assertNotIn("memory_effects", state)
         self.assertEqual(state["steps"]["perception"]["status"], "ok")
         self.assertIsNotNone(state["steps"]["observation"]["observation_id"])
-        self.assertTrue(state["timeline"][0]["memory_effects"][0]["added"])
         self.assertTrue(state["cleanup"]["source_read_only"])
         self.assertFalse(state["cleanup"]["movement_control"])
         self.assertFalse(state["machine_detail"]["side_effects"]["simulator"])
@@ -275,11 +225,10 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(decision["authority"]["proposed"]["steering"], 1.0)
         self.assertTrue(decision["authority"]["proposed_applied"])
         self.assertTrue(
-            state["timeline"][0]["frame"]["frame_id"].endswith(
-                state["timeline"][0]["decision"]["selected_proposal_id"].rsplit(":", 1)[1]
+            state["current_frame"]["frame_id"].endswith(
+                decision["plan"]["selected_proposal_id"].rsplit(":", 1)[1]
             )
         )
-        self.assertTrue(state["timeline"][0]["decision"]["proposed_applied"])
         self.assertEqual(
             state["machine_detail"]["pipeline"]["decision_steps"],
             {"proposal": ["avoid_recent_obstruction"], "plan": ["highest_confidence"], "action": ["selected"]},
@@ -301,7 +250,6 @@ class WorkbenchTests(unittest.TestCase):
                     {"frame_id": "present", "image_path": "frame_00.png"},
                     {
                         "frame_id": "absent",
-                        "absent": True,
                         "absence_reason": "dropout",
                     },
                 ]
@@ -317,8 +265,8 @@ class WorkbenchTests(unittest.TestCase):
 
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(len(perception_step.calls), 1)
-        self.assertTrue(state["timeline"][1]["frame"]["absent"])
-        self.assertEqual(state["timeline"][1]["frame"]["absence_reason"], "dropout")
+        self.assertTrue(state["current_frame"]["absent"])
+        self.assertEqual(state["current_frame"]["absence_reason"], "dropout")
         self.assertIsNone(state["steps"]["observation"])
 
     def test_public_state_keeps_frame_and_pipeline_payload_paired(self) -> None:
@@ -333,10 +281,10 @@ class WorkbenchTests(unittest.TestCase):
             self.assertTrue(perception_step.second_started.wait(3))
             try:
                 active = runner.state()
-                self.assertEqual(len(active["timeline"]), 1)
+                self.assertEqual(active["progress"]["completed"], 1)
                 self.assertEqual(
+                    active["steps"]["observation"]["observation_id"],
                     active["current_frame"]["frame_id"],
-                    active["timeline"][0]["frame"]["frame_id"],
                 )
             finally:
                 perception_step.release_second.set()

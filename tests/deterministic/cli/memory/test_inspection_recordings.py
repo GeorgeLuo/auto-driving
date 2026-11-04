@@ -131,32 +131,32 @@ class InspectionRecordingTests(unittest.TestCase):
         memory = replace(memory, plugin_configs={
             "bounded_evidence": {"max_age_ms": 600, "max_records": 16},
         })
+        steps = {"perception": perception.to_payload(), "memory": memory.to_payload()}
         (self.frames / "manifest.json").write_text(
             json.dumps(
                 {
                     "source_id": "recording.fixture",
-                    "steps": {
-                        "perception": perception.to_payload(),
-                        "memory": memory.to_payload(),
-                    },
                     "frames": [
                         {
                             "frame_id": "camera-a",
                             "frame_index": 7,
                             "timestamp_ms": 5000,
                             "image_path": "frame_0.png",
+                            "steps": steps,
                         },
                         {
                             "frame_id": "dropout",
                             "frame_index": 9,
                             "timestamp_ms": 5000,
                             "absence_reason": "camera missing",
+                            "steps": steps,
                         },
                         {
                             "frame_id": "camera-b",
                             "frame_index": 12,
                             "timestamp_ms": 5800,
                             "image_path": "frame_1.png",
+                            "steps": steps,
                         },
                     ],
                 }
@@ -202,11 +202,13 @@ class InspectionRecordingTests(unittest.TestCase):
         (self.frames / "manifest.json").write_text(
             json.dumps(
                 {
-                    "steps": {
-                        step: selection_activation(step, plugins=[]).to_payload()
-                        for step in ("perception", "memory")
-                    },
-                    "frames": [{"image_path": "frame_0.png", "timestamp_ms": 5000}],
+                    "frames": [{
+                        "image_path": "frame_0.png", "timestamp_ms": 5000,
+                        "steps": {
+                            step: selection_activation(step, plugins=[]).to_payload()
+                            for step in ("perception", "memory")
+                        },
+                    }],
                 }
             )
         )
@@ -225,33 +227,24 @@ class InspectionRecordingTests(unittest.TestCase):
         )
         self.assertEqual(override["selections"]["perception"]["plugins"], ["frame"])
 
-    def test_other_report_metadata_does_not_replace_image_directory_source(self) -> None:
-        (self.frames / "report.json").write_text(json.dumps({"results": []}))
-        inspected = self.inspect("memory", self.frames)
-        self.assertEqual(inspected["source"]["frame_count"], 3)
-        self.assertEqual(
-            [frame["timestamp_ms"] for frame in inspected["frames"]], [0, 1000, 2000]
-        )
+    def test_reports_do_not_replace_image_directory_source(self) -> None:
+        reports = [
+            json.dumps({"results": []}),
+            json.dumps({"frames": [{"image_path": "missing.png", "timestamp_ms": 9000}]}),
+            '{"frames":',
+        ]
+        for contents in reports:
+            with self.subTest(contents=contents):
+                (self.frames / "report.json").write_text(contents)
+                inspected = self.inspect("memory", self.frames)
+                self.assertEqual(inspected["source"]["frame_count"], 3)
+                self.assertEqual(
+                    [frame["timestamp_ms"] for frame in inspected["frames"]], [0, 1000, 2000]
+                )
 
-    def test_summary_without_image_inventory_is_rejected(
-        self,
-    ) -> None:
-        (self.frames / "report.json").write_text(
-            json.dumps(
-                {
-                    "perception": {
-                        "preset": "multi_obstruction",
-                        "plugins": ["multi_obstruction_tracks"],
-                    },
-                    "memory": {
-                        "preset": "recency_ledger",
-                        "plugins": ["bounded_evidence"],
-                    },
-                    "frames": [
-                        {"frame_id": "previous", "timestamp_ms": 5000, "plugins": []}
-                    ],
-                }
-            )
+    def test_manifest_frame_without_image_or_absence_is_rejected(self) -> None:
+        (self.frames / "manifest.json").write_text(
+            json.dumps({"frames": [{"frame_id": "previous", "timestamp_ms": 5000}]})
         )
         result = invoke_automa(
             "plugins", "inspect", "memory", str(self.frames), check=False,

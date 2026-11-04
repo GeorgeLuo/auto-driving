@@ -16,6 +16,7 @@ from cli.automa_cli.replay.selections import default_selection
 from cli.automa_cli.plugins.inspect.commands import inspect_step
 from cli.automa_cli.workbench.runner import ImageReplayRunner
 from tests.shared.cli.memory.frame_fixtures import write_frames
+from tests.shared.cli.workbench_fixtures import replay_states
 
 
 class ReplaySelectionTests(unittest.TestCase):
@@ -27,8 +28,10 @@ class ReplaySelectionTests(unittest.TestCase):
             for selection in (None, empty, configured):
                 with self.subTest(selection=selection):
                     (source / "manifest.json").write_text(json.dumps({
-                        "steps": {"memory": selection.to_payload() if selection else None},
-                        "frames": [{"image_path": f"frame_{i}.png"} for i in range(3)],
+                        "frames": [{
+                            "image_path": f"frame_{i}.png",
+                            "steps": {"memory": selection.to_payload() if selection else None},
+                        } for i in range(3)],
                     }))
                     inspected = inspect_step("memory", source=source, json_output=True)
                     self.assertEqual(inspected.exit_code, 0, inspected.message)
@@ -54,9 +57,8 @@ class ReplaySelectionTests(unittest.TestCase):
             default = default_selection("memory")
             empty = replace(default, plugins=())
             (source / "manifest.json").write_text(json.dumps({
-                "steps": {"memory": default.to_payload()},
                 "frames": [
-                    {"image_path": "frame_0.png"},
+                    {"image_path": "frame_0.png", "steps": {"memory": default.to_payload()}},
                     {"image_path": "frame_1.png", "steps": {"memory": None}},
                     {"image_path": "frame_2.png", "steps": {"memory": empty.to_payload()}},
                 ],
@@ -69,11 +71,11 @@ class ReplaySelectionTests(unittest.TestCase):
                 runner = ImageReplayRunner(source, cadence_ms=0, loop=False,
                                            activations={"memory": default} if overridden else None)
                 try:
-                    runner.start()
-                    completed = runner.wait(5)
+                    states = replay_states(runner)
+                    completed = states[-1]
                     self.assertEqual(completed["phase"], "completed", completed.get("failure"))
                     self.assertEqual(json.loads(json.dumps(completed["steps"]["memory"])), expected["frames"][-1]["record"])
-                    self.assertEqual([row["memory_plugins"] for row in completed["timeline"]],
+                    self.assertEqual([row["summary"]["memory_plugins"] for row in states],
                                      [([] if frame["record"] is None else [
                                          {"plugin_id": item["plugin_id"], **{key: item["state"].get(key) for key in
                                           ("health", "record_count", "epoch_id")}}
@@ -81,12 +83,11 @@ class ReplaySelectionTests(unittest.TestCase):
                 finally:
                     runner.close()
 
-    def test_top_level_legacy_config_does_not_select_plugins(self):
+    def test_manifest_root_selections_do_not_select_plugins(self):
         with tempfile.TemporaryDirectory() as directory:
             source = write_frames(Path(directory) / "source", count=1)
-            # Old reports used this executable config; only steps now selects runners.
-            (source / "report.json").write_text(json.dumps({
-                "memory": {"preset": "custom", "config": {"plugins": [], "plugin_specs": {}}},
+            (source / "manifest.json").write_text(json.dumps({
+                "steps": {"memory": None},
                 "frames": [{"image_path": "frame_0.png"}],
             }))
             inspected = inspect_step("memory", source=source, json_output=True)

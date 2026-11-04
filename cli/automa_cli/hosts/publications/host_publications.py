@@ -15,7 +15,6 @@ import urllib.request
 from dataclasses import dataclass
 from copy import deepcopy
 from typing import Any
-from urllib.parse import urlencode
 
 from autonomy.runtime.frame_loop import (
     DECISION_LATEST_PATH,
@@ -27,7 +26,6 @@ from autonomy.runtime.frame_loop import (
 from autonomy.runtime.routes import (
     STATUS_PATH,
     TELEMETRY_LATEST_PATH,
-    TELEMETRY_RECORDS_PATH,
 )
 from ...shared.io import http_json
 from .host_telemetry import HostTelemetryError
@@ -244,7 +242,6 @@ def _fetch_host_telemetry_json(
     url: str,
     *,
     timeout_s: float,
-    query_route: bool,
 ) -> dict[str, Any]:
     request = urllib.request.Request(
         url,
@@ -269,8 +266,6 @@ def _fetch_host_telemetry_json(
             reason = (
                 "method_not_allowed"
                 if status_code == 405
-                else "query_invalid"
-                if query_route and status_code == 400
                 else "publisher_missing"
                 if status_code in {404, 502, 503, 504}
                 else "schema_invalid"
@@ -319,28 +314,4 @@ def fetch_host_telemetry_latest(
     """GET the latest host-boundary telemetry point without following redirects."""
 
     url = f"{base_url.rstrip('/')}{TELEMETRY_LATEST_PATH}"
-    return _fetch_host_telemetry_json(url, timeout_s=timeout_s, query_route=False)
-
-
-def fetch_host_telemetry_records(
-    base_url: str,
-    *,
-    after_sequence: int = 0,
-    limit: int = 128,
-    timeout_s: float = 3.0,
-) -> dict[str, Any]:
-    """GET bounded host telemetry history using the exact contract query."""
-
-    if type(after_sequence) is not int or after_sequence < 0:
-        raise HostTelemetryError(
-            "query_invalid",
-            "after_sequence must be a non-negative integer.",
-        )
-    if type(limit) is not int or not 1 <= limit <= 128:
-        raise HostTelemetryError(
-            "query_invalid",
-            "limit must be an integer from 1 through 128.",
-        )
-    query = urlencode({"after_sequence": after_sequence, "limit": limit})
-    url = f"{base_url.rstrip('/')}{TELEMETRY_RECORDS_PATH}?{query}"
-    return _fetch_host_telemetry_json(url, timeout_s=timeout_s, query_route=True)
+    return _fetch_host_telemetry_json(url, timeout_s=timeout_s)

@@ -105,7 +105,10 @@ class StepSelectionTests(unittest.TestCase):
             original = json.loads(stdout)
             for step in PRESET_STEPS:
                 with self.subTest(step=step):
-                    recorded = copy.deepcopy(original)
+                    recorded = {"frames": [{
+                        "image_path": "frame_00.png",
+                        "steps": copy.deepcopy(original["frames"][0]["steps"]),
+                    }]}
                     # A one-plugin step cannot be left empty by a recording.
                     clearable = step in CLEARABLE_STEPS
                     for frame in recorded["frames"]:

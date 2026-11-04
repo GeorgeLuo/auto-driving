@@ -10,7 +10,9 @@ from PIL import Image
 
 from cli.automa_cli.workbench.runner import ImageReplayRunner
 from cli.automa_cli.replay.source import normalize_image_directory
+from cli.automa_cli.replay.models import SourceValidationError
 from tests.shared.cli.invoke import invoke_automa
+from tests.shared.cli.workbench_fixtures import replay_states
 
 
 def frame_sequence(frames: list[dict]) -> list[tuple]:
@@ -18,7 +20,7 @@ def frame_sequence(frames: list[dict]) -> list[tuple]:
         (
             frame["frame_id"],
             frame["frame_index"],
-            frame.get("timestamp_ms", frame.get("captured_at_ms")),
+            frame["timestamp_ms"],
             frame.get("absence_reason"),
         )
         for frame in frames
@@ -82,31 +84,31 @@ class InspectionSourceTests(unittest.TestCase):
         for recorded in (perception, memory):
             self.assert_shared_sequence(Path(recorded["run_dir"]))
 
-    def test_camera_manifest_and_recordings_preserve_dropout_order_and_timing(
+    def test_manifest_and_recordings_preserve_dropout_order_and_timing(
         self,
     ) -> None:
         (self.source / "manifest.json").write_text(
             json.dumps(
                 {
                     "source_id": "camera.fixture",
-                    "camera_frames": [
+                    "frames": [
                         {
                             "frame_id": "camera-b",
                             "frame_index": 7,
-                            "captured_at_ms": 5000,
-                            "image": "B.png",
+                            "timestamp_ms": 5000,
+                            "image_path": "B.png",
                         },
                         {
                             "frame_id": "dropout",
                             "frame_index": 9,
-                            "captured_at_ms": 5000,
+                            "timestamp_ms": 5000,
                             "absence_reason": "camera missing",
                         },
                         {
                             "frame_id": "camera-a",
                             "frame_index": 12,
-                            "captured_at_ms": 5800,
-                            "image": "a.png",
+                            "timestamp_ms": 5800,
+                            "image_path": "a.png",
                         },
                     ],
                 }
@@ -134,15 +136,15 @@ class InspectionSourceTests(unittest.TestCase):
             self.assert_shared_sequence(recorded_source)
             runner = ImageReplayRunner(recorded_source, cadence_ms=0, loop=False)
             self.addCleanup(runner.close)
-            runner.start()
-            state = runner.wait(5)
+            states = replay_states(runner)
+            state = states[-1]
             self.assertEqual(state["phase"], "completed", state.get("failure"))
             self.assertEqual(state["progress"]["completed"], 3)
             self.assertEqual(
-                [item["frame"]["frame_id"] for item in state["timeline"]],
+                [item["current_frame"]["frame_id"] for item in states],
                 ["camera-b", "dropout", "camera-a"],
             )
-            self.assertTrue(state["timeline"][1]["frame"]["absent"])
+            self.assertTrue(states[1]["current_frame"]["absent"])
 
     def test_recording_with_only_absent_frames_can_be_inspected_and_replayed(
         self,
@@ -194,32 +196,53 @@ class InspectionSourceTests(unittest.TestCase):
                 help_text = invoke_automa("plugins", "inspect", step, "--help").stdout
                 self.assertIn("--max-frames", help_text)
 
-    def test_operation_captures_keep_before_after_order_for_all_consumers(self) -> None:
-        frames = self.source / "frames"
-        frames.mkdir()
-        for name in ("00_before.png", "00_after.png"):
-            Image.new("RGB", (48, 32), (25, 35, 45)).save(frames / name)
-        (self.source / "report.json").write_text(
-            json.dumps(
-                {
-                    "results": [
-                        {
-                            "before_capture": {
-                                "path": "/previous/run/frames/00_before.png"
-                            },
-                            "after_capture": {
-                                "path": "/previous/run/frames/00_after.png"
-                            },
-                        }
-                    ],
-                }
-            )
-        )
-        perception, _ = self.assert_shared_sequence(self.source)
-        self.assertEqual(
-            [Path(frame["image_path"]).name for frame in perception["frames"]],
-            ["00_before.png", "00_after.png"],
-        )
+    def test_invalid_manifests_never_fall_back_to_image_discovery(self) -> None:
+        cases = [
+            ('{"frames":', "could not read manifest"),
+            ('[]', "must contain a JSON object"),
+            ('{}', "frames must be a list"),
+            ('{"frames": {}}', "frames must be a list"),
+            ('{"frames": []}', "contains no frames"),
+            ('{"camera_frames": [{"image": "a.png"}]}', "frames must be a list"),
+            ('{"results": [{"before_capture": {"path": "a.png"}}]}', "frames must be a list"),
+            ('{"frames": ["a.png"]}', "frame 0 must be an object"),
+            ('{"frames": [{"image": "a.png"}]}', "has no image or absence reason"),
+            ('{"frames": [{"absent": true}]}', "has no image or absence reason"),
+        ]
+        for contents, message in cases:
+            with self.subTest(contents=contents):
+                (self.source / "manifest.json").write_text(contents)
+                with self.assertRaisesRegex(SourceValidationError, message):
+                    normalize_image_directory(self.source)
+
+    def test_manifest_paths_must_be_relative_and_contained_without_symlinks(self) -> None:
+        (self.source / "linked.png").symlink_to(self.source / "a.png")
+        cases = [
+            (str(self.source / "a.png"), "must be relative"),
+            ("/original/machine/run/frames/a.png", "must be relative"),
+            ("../images/a.png", "must remain inside"),
+            ("linked.png", "may not traverse symlinks"),
+        ]
+        for image_path, message in cases:
+            with self.subTest(image_path=image_path):
+                (self.source / "manifest.json").write_text(json.dumps({
+                    "run_dir": "/original/machine/run",
+                    "frames": [{"image_path": image_path}],
+                }))
+                with self.assertRaisesRegex(SourceValidationError, message):
+                    normalize_image_directory(self.source)
+
+    def test_invalid_manifest_fails_inspect_before_writing_a_recording(self) -> None:
+        (self.source / "manifest.json").write_text('{"frames": ["a.png"]}')
+        for step in ("perception", "memory"):
+            with self.subTest(step=step):
+                result = invoke_automa(
+                    "plugins", "inspect", step, str(self.source), "--record",
+                    extra_env=self.env, check=False,
+                )
+                self.assertEqual(result.returncode, 2, result.stdout)
+                self.assertIn("manifest frame 0 must be an object", result.stdout)
+                self.assertFalse((self.root / step).exists())
 
     def test_invalid_sources_fail_before_recording_or_plugin_construction(self) -> None:
         (self.source / "a.png").write_bytes(b"not an image")

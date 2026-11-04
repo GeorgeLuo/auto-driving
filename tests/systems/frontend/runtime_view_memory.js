@@ -44,6 +44,8 @@ function pageContext(fetchLatest) {
   const byId = new Map();
   const ctx = {
     console,
+    URLSearchParams,
+    location: { search: "?generation=" + "a".repeat(64) },
     window: { addEventListener() {} },
     setInterval() {},
     fetch: fetchLatest,
@@ -140,7 +142,7 @@ async function memoryPage() {
   // The cycle's memory step time fills the Update row.
   latest = {
     ...publication([BOUNDED], "bounded_evidence"),
-    cycle: { timing: { steps: [{ step: "observation", duration_ms: 9 }, { step: "memory", duration_ms: 1.25 }] } }
+    timing: { steps: [{ step: "observation", duration_ms: 9 }, { step: "memory", duration_ms: 1.25 }] }
   };
   await ctx.refresh();
   assert.equal(metrics($("ledgerMetrics"))["Update"], "1.25 ms");
@@ -203,11 +205,33 @@ function perceptionPage() {
   render({ ...publication([], null), memory: null });
   assert.equal(frameMetrics()["Memory keys"], "open /memory");
   assert.equal(frameMetrics()["Evidence publisher"], "—");
+
+  render({ ...publication([], null), timing: null, duration_ms: 12.5 });
+  assert.equal(frameMetrics()["Cycle"], "12.5 ms");
+  assert.equal(frameMetrics()["Perception"], "—");
+  render({ ...publication([], null), timing: { duration_ms: 0 }, duration_ms: 99 });
+  assert.equal(frameMetrics()["Cycle"], "0 ms");
+}
+
+function decisionPage() {
+  const ctx = pageContext(() => new Promise(() => {}));
+  runPage("cli/automa_cli/frontend/pages/decision/index.html", ctx);
+  const composed = { decision: { cycle: {
+    plan: { status: "composed", candidates: [], contributions: [] }, action: { status: "ok" }
+  } } };
+  assert.equal(ctx.liveStatus(composed).text, "Live | plan composed");
+  assert.equal(ctx.liveStatus({ decision: { cycle: {
+    plan: { status: "idle", candidates: [] }, action: { status: "ok" }
+  } } }).text, "Live | plan idle");
+  assert.equal(ctx.liveStatus({ decision: { cycle: {
+    plan: null, action: { status: "error", reason: "action_plan_invariant_violated" }
+  } } }).text, "Live | action_plan_invariant_violated");
 }
 
 (async () => {
   await memoryPage();
   perceptionPage();
+  decisionPage();
   console.log("runtime view memory ok");
 })().catch((error) => {
   console.error(error);

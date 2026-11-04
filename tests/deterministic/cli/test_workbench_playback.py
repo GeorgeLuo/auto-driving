@@ -191,7 +191,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(reads[0], (None, None))
             self.assertIs(reads[1][0], published[0])
             self.assertEqual(reads[1][1], step_reads[0])
-            self.assertEqual(completed["steps"]["memory"], reports[-1])
+            self.assertEqual(completed["cycle"]["memory"], reports[-1])
             runner.start()
             self.assertEqual(runner.wait(5)["phase"], "completed")
             self.assertEqual(reads[2], (None, None))
@@ -299,7 +299,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(sought["position"], 3)
             self.assertEqual(len(perception_step.calls), calls_after_first + 2)
             self.assertEqual(
-                sought["steps"]["decision"]["frame_id"],
+                sought["cycle"]["action"]["frame_id"],
                 sought["current_frame"]["frame_id"],
             )
 
@@ -307,7 +307,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(cached["phase"], "paused")
             self.assertEqual(cached["current_frame"]["frame_id"], first_id)
             self.assertEqual(cached["current_frame"]["position"], 0)
-            self.assertEqual(cached["steps"]["decision"]["frame_id"], first_id)
+            self.assertEqual(cached["cycle"]["action"]["frame_id"], first_id)
             self.assertEqual(cached["timing"], paused["timing"])
             self.assertEqual(cached["summary"], paused["summary"])
             self.assertEqual(len(perception_step.calls), calls_after_first + 2)
@@ -353,14 +353,14 @@ class WorkbenchTests(unittest.TestCase):
                 first = runner.dispatch("pause", run_id=run_id)
                 expected = copy.deepcopy(first)
                 second = runner.dispatch("step", run_id=run_id)
-                self.assertEqual(second["steps"]["memory"]["plugins"][0]["state"]["record_count"], 2)
+                self.assertEqual(second["cycle"]["memory"]["plugins"][0]["state"]["record_count"], 2)
                 self.assertEqual(second["summary"]["memory_plugins"][0]["record_count"], 2)
                 self.assertEqual(second["summary"]["frames_completed"], 2)
-                first["steps"]["memory"]["plugins"][0]["state"]["records"].clear()
+                first["cycle"]["memory"]["plugins"][0]["state"]["records"].clear()
                 first["summary"]["memory_plugins"].clear()
                 first["timing"]["steps"].clear()
                 cached = runner.dispatch("seek", run_id=run_id, position=0)
-                self.assertEqual(cached["steps"], expected["steps"])
+                self.assertEqual((cached["cycle"], cached["perception"]), (expected["cycle"], expected["perception"]))
                 self.assertEqual(cached["summary"], expected["summary"])
                 self.assertEqual(cached["timing"], expected["timing"])
                 self.assertEqual(memory.report["plugins"][0]["state"]["record_count"], 2)

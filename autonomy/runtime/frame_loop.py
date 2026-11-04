@@ -337,7 +337,8 @@ class FrameLoop:
         """Return one bounded latest frame/result publication computed at read time."""
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
-            return deepcopy(self._publication_from_locked_state(read_at_ms=read_at_ms))
+            publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
+        return deepcopy(publication)
 
     def publish_decision_latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
         """Return the current action result at read time.
@@ -350,7 +351,8 @@ class FrameLoop:
 
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
-            return deepcopy(self._decision_publication_from_locked_state(read_at_ms=read_at_ms))
+            publication = self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
+        return deepcopy(publication)
 
     def read_transaction(self, kind: str) -> tuple[dict[str, Any], LatestObservationState | None, str]:
         """Borrow publication data and its retained frame for HTTP serialization.
@@ -371,7 +373,8 @@ class FrameLoop:
         read_at_ms = timestamp_ms()
         with self._lock:
             latest = self.latest_state
-            publication = deepcopy(self._publication_from_locked_state(read_at_ms=read_at_ms))
+            publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
+        publication = deepcopy(publication)
         return self._jpeg(latest, publication)
 
     def publish_latest_camera(self, *, now_ms: int | None = None) -> dict[str, Any]:
@@ -643,7 +646,6 @@ class FrameLoop:
                 "duration_ms": None,
                 "timing": None,
                 "perception": None,
-                "observation": None,
                 "memory": None,
                 "latest_json_path": LATEST_JSON_PATH,
                 "latest_frame_path": LATEST_FRAME_PATH,
@@ -659,12 +661,10 @@ class FrameLoop:
         else:
             health = PUBLICATION_HEALTH_HEALTHY
 
-        perception = None if latest.cycle is None else latest.cycle.get("perception")
-        observation = None if latest.cycle is None else latest.cycle.get("observation")
-        timing = None if latest.cycle is None else latest.cycle.get("timing")
-        # Republish the memory report through the cycle publication.
-        memory = None if latest.cycle is None else latest.cycle.get("memory")
-        context = latest.context or (latest.cycle or {}).get("context") or {}
+        cycle = latest.cycle or {}
+        perception = cycle.get("perception")
+        timing = cycle.get("timing")
+        context = latest.context or cycle.get("context") or {}
         selections = (context.get("metadata") or {}).get("step_activations")
         if isinstance(selections, dict) and all(step in selections for step in DECISION_STEPS):
             generation_id = activation_generation_id(
@@ -701,8 +701,7 @@ class FrameLoop:
             "duration_ms": latest.duration_ms,
             "timing": timing,
             "perception": perception,
-            "observation": observation,
-            "memory": memory,
+            "memory": cycle.get("memory"),
             "latest_json_path": LATEST_JSON_PATH,
             "latest_frame_path": LATEST_FRAME_PATH,
         }

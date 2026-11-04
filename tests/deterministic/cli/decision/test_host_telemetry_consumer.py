@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import copy
 import math
+from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
 
 from autonomy.runtime.frame_loop import DECISION_PUBLICATION_SCHEMA
+from autonomy.runtime.report import HostReport
 from autonomy.runtime.routes import TELEMETRY_SCHEMA
 import cli.automa_cli.hosts.publications.host_publications as host_publications
 import cli.automa_cli.hosts.publications.host_telemetry as telemetry_api
@@ -134,11 +136,11 @@ def _decision(*, source_frame: dict | None = None) -> dict:
             "stale_after_ms": 1_500,
         },
     )
-    return {"decision": report}
+    return {"report": HostReport.from_dict(report)}
 
 
 def _physical_publication() -> dict:
-    decision = _decision()["decision"]
+    decision = _decision()["report"].to_dict()
     return {
         "schema": DECISION_PUBLICATION_SCHEMA,
         "status": "ready",
@@ -149,6 +151,16 @@ def _physical_publication() -> dict:
         "stale_after_ms": decision["values"]["stale_after_ms"],
         "decision": decision,
     }
+
+
+def _normalized_decision() -> dict:
+    """The publication join and identity actually read: one HostReport."""
+
+    return normalize_decision_publication(
+        _physical_publication(),
+        host_name="piracer",
+        now_ms=NOW_MS,
+    )
 
 
 class HostTelemetryConsumerTests(unittest.TestCase):
@@ -200,7 +212,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
 
         joined = join_host_telemetry_to_decision(
             normalize_host_telemetry_record(_record(), now_ms=NOW_MS),
-            _decision(),
+            normalized,
         )
         with TemporaryDirectory() as temporary:
             view = FakeRuntimeView(Path(temporary))
@@ -220,7 +232,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
 
         read_panel.assert_called_once()
         self.assertIs(read_panel.call_args.kwargs["normalized_decision"], normalized)
-        self.assertEqual(view.decision.kwargs["frame_record"]["host_telemetry"], joined)
+        self.assertEqual(view.decision.kwargs["host_telemetry"], joined)
 
     def _read_panel(self, payload, *, normalized):
         with patch(
@@ -470,8 +482,8 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertTrue(published)
         self.assertFalse(view.decision.invalidated)
         self.assertEqual(view.decision.kwargs["image"], (b"jpeg-bytes", "image/jpeg"))
-        self.assertEqual(view.decision.kwargs["frame_record"]["frame_id"], "frame-1")
-        panel = view.decision.kwargs["frame_record"]["host_telemetry"]
+        self.assertEqual(view.decision.kwargs["report"].frame_id, "frame-1")
+        panel = view.decision.kwargs["host_telemetry"]
         self.assertEqual(panel["status"], "unavailable")
         self.assertEqual(panel["reason"], "publisher_missing")
         self.assertFalse(panel["joined"])
@@ -537,11 +549,12 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self,
     ) -> None:
         point = normalize_host_telemetry_record(_record(), now_ms=NOW_MS)
-        joined = join_host_telemetry_to_decision(point, _decision())
+        decision = _normalized_decision()
+        joined = join_host_telemetry_to_decision(point, decision)
 
         self.assertTrue(joined["joined"])
         self.assertEqual(joined["status"], "healthy")
-        self.assertEqual(joined["identity"], decision_publication_identity(_decision()))
+        self.assertEqual(joined["identity"], decision_publication_identity(decision))
         self.assertNotIn("authority", joined)
         self.assertNotIn("host_application", joined)
 
@@ -549,7 +562,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         mismatched["source_frame"]["captured_at_ms"] += 1
         mismatched_point = normalize_host_telemetry_record(mismatched, now_ms=NOW_MS)
         with self.assertRaisesRegex(ValueError, "exactly match") as raised:
-            join_host_telemetry_to_decision(mismatched_point, _decision())
+            join_host_telemetry_to_decision(mismatched_point, _normalized_decision())
         self.assertEqual(raised.exception.reason, "identity_mismatch")
 
     def test_gap_facts_remain_visible_without_an_interval_claim(self) -> None:
@@ -569,7 +582,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertNotIn("coverage", skipped_point)
         self.assertNotIn("interval_covered", str(skipped_point))
         self.assertNotIn("contiguous", str(skipped_point))
-        joined = join_host_telemetry_to_decision(skipped_point, _decision())
+        joined = join_host_telemetry_to_decision(skipped_point, _normalized_decision())
         self.assertTrue(joined["joined"])
         self.assertEqual(joined["host_tick"]["skipped_since_previous"], 3)
         self.assertEqual(
@@ -589,7 +602,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         unavailable["status"] = "unavailable"
         unavailable["reason"] = "observer_error"
         with self.assertRaises(ValueError) as unavailable_error:
-            join_host_telemetry_to_decision(unavailable, _decision())
+            join_host_telemetry_to_decision(unavailable, _normalized_decision())
         self.assertEqual(unavailable_error.exception.reason, "observer_error")
 
     def test_freshness_and_future_skew_rules_are_deterministic(self) -> None:
@@ -625,10 +638,11 @@ class HostTelemetryConsumerTests(unittest.TestCase):
     def test_decision_timestamp_is_part_of_the_exact_source_identity(self) -> None:
         point = normalize_host_telemetry_record(_record(), now_ms=NOW_MS)
         decision = _decision()
-        decision["decision"]["timestamp_ms"] += 1
+        decision["report"] = replace(decision["report"], timestamp_ms=decision["report"].timestamp_ms + 1)
         with self.assertRaises(ValueError) as raised:
             join_host_telemetry_to_decision(point, decision)
         self.assertEqual(raised.exception.reason, "identity_mismatch")
+        self.assertIn("timestamp", raised.exception.message_text)
 
     def test_invalid_schema_numbers_and_mode_fail_closed(self) -> None:
         invalid_schema = _record()

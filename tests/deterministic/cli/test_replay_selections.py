@@ -41,7 +41,7 @@ class ReplaySelectionTests(unittest.TestCase):
                         runner.start()
                         completed = runner.wait(5)
                         self.assertEqual(completed["phase"], "completed", completed.get("failure"))
-                        self.assertEqual(json.loads(json.dumps(completed["steps"]["memory"])), expected)
+                        self.assertEqual(json.loads(json.dumps(completed["cycle"]["memory"])), expected)
                     finally:
                         runner.close()
                     if selection is None:
@@ -74,7 +74,7 @@ class ReplaySelectionTests(unittest.TestCase):
                     states = replay_states(runner)
                     completed = states[-1]
                     self.assertEqual(completed["phase"], "completed", completed.get("failure"))
-                    self.assertEqual(json.loads(json.dumps(completed["steps"]["memory"])), expected["frames"][-1]["record"])
+                    self.assertEqual(json.loads(json.dumps(completed["cycle"]["memory"])), expected["frames"][-1]["record"])
                     self.assertEqual([row["summary"]["memory_plugins"] for row in states],
                                      [([] if frame["record"] is None else [
                                          {"plugin_id": item["plugin_id"], **{key: item["state"].get(key) for key in
@@ -99,7 +99,7 @@ class ReplaySelectionTests(unittest.TestCase):
                 runner.start()
                 completed = runner.wait(5)
                 self.assertEqual(completed["phase"], "completed", completed.get("failure"))
-                self.assertEqual(json.loads(json.dumps(completed["steps"]["memory"])), expected)
+                self.assertEqual(json.loads(json.dumps(completed["cycle"]["memory"])), expected)
             finally:
                 runner.close()
 

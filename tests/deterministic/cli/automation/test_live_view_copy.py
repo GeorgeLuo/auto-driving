@@ -12,6 +12,7 @@ from unittest.mock import Mock, patch
 from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
+from autonomy.runtime.report import HostReport, ReportApplication
 from cli.automa_cli.hosts.runs import monitor
 from cli.automa_cli.hosts.views import view_feed as viewer
 from cli.automa_cli.plugins.stream import decision, session
@@ -48,8 +49,13 @@ class LiveViewCopyTests(unittest.TestCase):
             return StreamResult(exit_code=0)
         normalized = {
             "result_age_ms": 0, "max_age_ms": 1000,
-            "decision": {"values": {"activation": {"steps": {"plan": {"plugins": []}}}},
-                         "cycle": {"plan": {}}},
+            "report": HostReport(
+                host_name="fixture", run_id="run", generation_id="generation",
+                frame_id="one", frame_index=0, timestamp_ms=1, published_at_ms=1,
+                values={"activation": {"steps": {"plan": {"plugins": []}}}},
+                cycle={"observation": None, "memory": None, "proposal": {}, "plan": {}, "action": {}},
+                application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
+            ),
         }
         with (
             patch.object(decision, "require_valid_activations"),

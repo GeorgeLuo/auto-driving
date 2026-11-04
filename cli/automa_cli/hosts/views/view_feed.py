@@ -6,7 +6,7 @@ from typing import Any
 
 from ...frontend.server import RuntimeViewServer
 from .decision_live import DecisionViewAdapter
-from ..publications.decision_publication import health_error, publication_to_frame_record
+from ..publications.decision_publication import health_error, publication_capture
 from ..publications.host_publications import TransactionCache, fetch_observation_sample
 from ..publications.plugin_catalog import PluginCatalogClient
 from .runtime_view import runtime_view_server
@@ -101,12 +101,12 @@ class ViewFeed:
                 self.server.perception.invalidate_latest(not_live)
                 self._last_capture = None
                 return
-            frame = publication_to_frame_record(publication)
-            capture = (frame.get("frame_id"), frame.get("captured_at_ms"),
-                       frame.get("perception_completed_at_ms"), frame.get("generation_id"))
+            capture = publication_capture(publication)
             if capture != self._last_capture:
                 self.frame_path.write_bytes(jpeg)
-                self.server.perception.publish_matched(frame_path=self.frame_path, frame_record=frame)
+                self.server.perception.publish_matched(
+                    frame_path=self.frame_path, frame_record=publication,
+                )
                 self._last_capture = capture
             self.error = None
         except (ConnectionError, OSError, TypeError, ValueError) as exc:

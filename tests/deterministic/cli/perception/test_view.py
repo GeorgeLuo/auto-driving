@@ -30,23 +30,23 @@ class PerceptionViewTests(unittest.TestCase):
 
             for index in range(MAX_BUFFERED_FRAMES):
                 record = _frame_record()
-                record["frame_id"] = f"frame_{index:06d}"
-                record["frame_index"] = index
+                record["frame"]["frame_id"] = f"frame_{index:06d}"
+                record["frame"]["frame_index"] = index
                 view.publish_frame(frame_path=frame_path, frame_record=record)
                 if index == 0:
-                    self.assertTrue(view.retain_frame(record["frame_id"]))
+                    self.assertTrue(view.retain_frame(record["frame"]["frame_id"]))
 
             overflow = _frame_record()
-            overflow["frame_id"] = f"frame_{MAX_BUFFERED_FRAMES:06d}"
-            overflow["frame_index"] = MAX_BUFFERED_FRAMES
+            overflow["frame"]["frame_id"] = f"frame_{MAX_BUFFERED_FRAMES:06d}"
+            overflow["frame"]["frame_index"] = MAX_BUFFERED_FRAMES
             view.publish_frame(frame_path=frame_path, frame_record=overflow)
             self.assertIsNotNone(view.frame("frame_000000"))
             self.assertIsNone(view.frame("frame_000001"))
 
             view.release_frame("frame_000000")
             next_frame = _frame_record()
-            next_frame["frame_id"] = f"frame_{MAX_BUFFERED_FRAMES + 1:06d}"
-            next_frame["frame_index"] = MAX_BUFFERED_FRAMES + 1
+            next_frame["frame"]["frame_id"] = f"frame_{MAX_BUFFERED_FRAMES + 1:06d}"
+            next_frame["frame"]["frame_index"] = MAX_BUFFERED_FRAMES + 1
             view.publish_frame(frame_path=frame_path, frame_record=next_frame)
             self.assertIsNone(view.frame("frame_000000"))
 
@@ -107,9 +107,9 @@ class PerceptionViewTests(unittest.TestCase):
                 newer_frame_path = root / "newer.png"
                 Image.new("RGB", (64, 48), (90, 70, 50)).save(newer_frame_path)
                 newer_record = _frame_record()
-                newer_record["frame_id"] = "frame_000005"
-                newer_record["frame_index"] = 5
-                newer_record["captured_at_ms"] = 1534
+                newer_record["frame"]["frame_id"] = "frame_000005"
+                newer_record["frame"]["frame_index"] = 5
+                newer_record["frame"]["captured_at_ms"] = 1534
                 server.perception.publish_frame(
                     frame_path=newer_frame_path, frame_record=newer_record
                 )
@@ -226,14 +226,17 @@ class PerceptionViewTests(unittest.TestCase):
 
 def _frame_record() -> dict:
     return {
-        "frame_id": "frame_000004",
-        "frame_index": 4,
-        "captured_at_ms": 1234,
-        "cycle_duration_ms": 17,
-        "perception_duration_ms": 8,
-        "control_source": "simulator",
-        "control_application": "not_applied",
-        "action_policy": "observe_only",
+        "frame": {
+            "frame_id": "frame_000004",
+            "frame_index": 4,
+            "captured_at_ms": 1234,
+            "completed_at_ms": 1242,
+        },
+        "duration_ms": 17,
+        "timing": {
+            "duration_ms": 17,
+            "steps": [{"step": "perception", "duration_ms": 8, "plugins": []}],
+        },
         "sensor_frame": {
             "readings": {
                 "front_camera": {
@@ -286,7 +289,7 @@ def _frame_record() -> dict:
                 },
             ],
         },
-        "observation": None,
+        "memory": None,
         "control": {"steering": 0.0, "throttle": 0.0},
         "engine": {"engine": "idle"},
     }

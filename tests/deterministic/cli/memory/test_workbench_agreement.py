@@ -50,7 +50,7 @@ class WorkbenchAgreesWithInspectTests(unittest.TestCase):
             ],
             [(frame["frame_id"], frame["timestamp_ms"]) for frame in inspected["frames"]],
         )
-        shown = json.loads(json.dumps(completed["steps"]["memory"]))
+        shown = json.loads(json.dumps(completed["cycle"]["memory"]))
         final = inspected["frames"][-1]["record"]
         self.assertEqual(shown["evidence_publisher"], final["evidence_publisher"])
         self.assertEqual(
@@ -84,7 +84,7 @@ class WorkbenchAgreesWithInspectTests(unittest.TestCase):
             [item["summary"]["memory_evidence_publisher"] for item in states],
             [frame["record"]["evidence_publisher"] for frame in inspected["frames"]],
         )
-        shown = plugin_summaries(completed["steps"]["memory"])
+        shown = plugin_summaries(completed["cycle"]["memory"])
         self.assertEqual(shown, plugin_summaries(inspected["frames"][-1]["record"]))
         self.assertEqual(completed["summary"]["memory_plugins"], shown)
         self.assertEqual(

@@ -584,8 +584,8 @@ starts each step from `--perception-preset` or
 `--perception-plugin`, `--memory-preset` or `--memory-plugin`, and
 `--proposal-preset` or `--proposal-plugin`, as `plugins inspect` takes them. With no flag, a step uses its default preset: proposal uses
 `obstruction_avoidance`. The CLI and page show each step's preset, where it has one,
-and ordered plugins. Each frame's detail and timeline entry carry the cycle's
-`timing`: each step's and plugin's time for that frame.
+and ordered plugins. The displayed frame's `timing` carries each step's and
+plugin's time, including when seeking back to a cached frame.
 The page's catalog lists available plugins; its separate **Run order** shows
 execution order. Newly checked plugins run last, and retained plugins keep
 their order. Unchecking every plugin disables its plugins.
@@ -621,13 +621,16 @@ on the viewer. `GET /workbench/api/state` reports schema
 and default configs, `active_<step>_plugin_ids` for the selected execution order,
 and `machine_detail.pipeline.<step>_preset` for the selection's preset name or
 `custom`. The pipeline's `<step>_plugin_report.applied_plugin_ids` reports the
-plugins that were applied. Each frame's `memory_plugins` lists every applied
-memory plugin's health, record count, and epoch, and
-`memory_evidence_publisher` names the plugin whose evidence the step published.
-`steps.memory` is the complete memory step report, with its `plugins[]` and
-`evidence_publisher`. `<step>_plugin_catalog` includes `digest`.
+plugins that were applied. The displayed frame's `summary.memory_plugins` lists
+every applied memory plugin's health, record count, and epoch, and
+`summary.memory_evidence_publisher` names the plugin whose evidence the step
+published. `cycle.memory` is the complete memory step report, with its
+`plugins[]` and `evidence_publisher`. The other cycle records are
+`cycle.observation`, `cycle.proposal`, `cycle.plan`, and `cycle.action`;
+real perception output and cycle timing are in `perception` and `timing`.
+`<step>_plugin_catalog` includes `digest`.
 
-Send `POST /api/action` with an explicit step for any selection; omitting
+Send `POST /workbench/api/action` with an explicit step for any selection; omitting
 `step` is a 400 input error. `active_plugin_ids` is the common request field
 and may be empty. Include the current state's `run_id` during playback:
 

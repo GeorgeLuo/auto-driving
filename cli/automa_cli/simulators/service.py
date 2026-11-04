@@ -49,6 +49,16 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Simulat
     return SimulatorResult(0, "created", url=record["url"])
 
 
+def hosts_at_simulator(ws_url: str) -> list[str]:
+    """Host names created at this simulator. Delete refuses while the list is not empty."""
+
+    return [
+        host["host_name"]
+        for host in local_hosts()
+        if host["provider"] == CHASE_SIM.name and host["vehicle_url"] == ws_url
+    ]
+
+
 def delete_simulator(*, url: str) -> SimulatorResult:
     """End a simulator ``simulators create`` started, unless a host was created at it."""
 
@@ -60,8 +70,7 @@ def delete_simulator(*, url: str) -> SimulatorResult:
     record = next((simulator for simulator in created if simulator["url"] == ws_url), None)
     if record is None:
         return SimulatorResult(2, "missing", url=url, urls=tuple(item["url"] for item in created))
-    hosts = [host["host_name"] for host in local_hosts()
-             if host["provider"] == CHASE_SIM.name and host["vehicle_url"] == ws_url]
+    hosts = hosts_at_simulator(ws_url)
     if hosts:
         return SimulatorResult(2, "blocked", url=ws_url, hosts=tuple(hosts))
     killed = stop_simulator(record)

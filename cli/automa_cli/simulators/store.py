@@ -1,7 +1,8 @@
 """Records of the simulators ``simulators create`` started.
 
-``vehicles status`` reads these records while the process is still alive.
-This module does not start or stop a simulator.
+``simulator_records`` reads every record. ``created_simulators`` keeps the
+ones whose process is still alive, which ``vehicles status`` and
+``simulators delete`` use. This module does not start or stop a simulator.
 """
 
 from __future__ import annotations
@@ -22,8 +23,8 @@ def simulator_dir(port: int) -> Path:
     return RUNTIME_ROOT / SIMULATORS_DIR / str(port)
 
 
-def created_simulators() -> list[dict[str, Any]]:
-    """The record of each simulator ``simulators create`` started that is still running, by port."""
+def simulator_records() -> list[dict[str, Any]]:
+    """Every record ``simulators create`` wrote, including one whose process has exited, by port."""
 
     records = []
     for path in (RUNTIME_ROOT / SIMULATORS_DIR).glob(f"*/{SIMULATOR_RECORD}"):
@@ -31,9 +32,15 @@ def created_simulators() -> list[dict[str, Any]]:
             record = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):
             continue
-        if isinstance(record, dict) and record.get("schema") == SIMULATOR_SCHEMA and pid_alive(record.get("pid")):
+        if isinstance(record, dict) and record.get("schema") == SIMULATOR_SCHEMA:
             records.append(record)
     return sorted(records, key=lambda record: record["port"])
+
+
+def created_simulators() -> list[dict[str, Any]]:
+    """Those records whose process is still alive, by port."""
+
+    return [record for record in simulator_records() if pid_alive(record.get("pid"))]
 
 
 def write_simulator_record(record: dict[str, Any]) -> None:

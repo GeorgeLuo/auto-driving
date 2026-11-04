@@ -5,5 +5,5 @@
 - ``models``: simulator lifecycle outcomes.
 - ``render``: command text from those outcomes.
 - ``process``: the headless simulator process and its process group.
-- ``store``: the record of each simulator create started. ``vehicles`` reads it.
+- ``store``: every record create wrote, and the ones still alive. ``vehicles`` reads the live ones.
 """

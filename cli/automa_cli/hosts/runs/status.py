@@ -15,7 +15,8 @@ from typing import Any
 
 from ...frontend.perception_view import get_perception_view_status
 from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
-from ...releases.errors import RuntimeHostError
+from ..errors import RuntimeHostError
+from ...releases.errors import ReleaseError
 from ...releases.paths import controller_bundle_paths
 from ...releases.store import release_manifest
 from ...shared.io.json_files import read_json
@@ -305,7 +306,7 @@ def collect_automation_status(
             decision = {"deployed": False}
         try:
             release = _release_summary(release_manifest(name))
-        except RuntimeHostError:
+        except ReleaseError:
             release = None
 
         statuses.append(

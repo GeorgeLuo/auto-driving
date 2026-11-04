@@ -16,7 +16,7 @@ from implementations.vehicle.chase_sim.metrics_ws import (
     MetricsUiWsClient,
 )
 
-from ..providers.catalog import CHASE_SIM
+from ..providers.registry import CHASE_SIM
 from ..providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ..providers.urls import chase_operator_url, require_positive_timeout
 from .discovery import local_hosts

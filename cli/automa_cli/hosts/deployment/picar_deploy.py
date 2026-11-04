@@ -21,7 +21,7 @@ from autonomy.runtime.layout import RuntimeLayout
 from ...releases.paths import controller_bundle_paths
 from ...shared.io import http_json
 from ...shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
-from ...shared.progress import ProgressSink, report
+from ..progress import ProgressSink, report
 from ..bundles import (
     controller_bundle_source_summary,
     release_activation_summary,
@@ -40,7 +40,7 @@ from .donkeycar_vendor import (
     ensure_donkeycar_vendor,
     load_donkeycar_vendor_manifest,
 )
-from .models import DeploymentResult
+from .models import CoreResult, UpdateResult
 
 DEPLOY_DIR = ROOT / "deploy" / "targets" / "donkeycar"
 DONKEY_SERVICE_NAME = "automa-donkey.service"
@@ -175,7 +175,7 @@ class PicarTarget:
 def install_picar_core(
     target: PicarTarget, *, dry_run: bool = False,
     verbose: bool = False, emit: ProgressSink | None = None,
-) -> DeploymentResult:
+) -> CoreResult:
     host_name = target.host_name
     report(emit, "selected", host_name=host_name, provider=target.provider, ssh_target=target.ssh_target)
     report(emit, "scope", scope="core")
@@ -200,13 +200,13 @@ def install_picar_core(
             drive_args=None,
             runtime_readiness=None,
         )
-        return DeploymentResult(0, receipt=payload, render_kind="core_update")
+        return CoreResult(0, "plan", receipt=payload)
 
     try:
         report(emit, "step", label="Ensure DonkeyCar vendor source")
         ensure_donkeycar_vendor(emit=emit, verbose=verbose)
     except Exception as exc:
-        return DeploymentResult(2, f"Could not prepare DonkeyCar vendor source: {exc}")
+        return CoreResult(2, "error", f"Could not prepare DonkeyCar vendor source: {exc}")
 
     steps = [
         ("Prepare remote directories", commands[0], None),
@@ -218,17 +218,17 @@ def install_picar_core(
     for label, command, env in steps:
         code = run_step(label, command, env=env, verbose=verbose, emit=emit)
         if code != 0:
-            return DeploymentResult(code, f"{label} failed with exit code {code}.")
+            return CoreResult(code, "error", f"{label} failed with exit code {code}.")
 
     report(emit, "core_synced")
 
-    return DeploymentResult(0, "Core deploy bundle synced.")
+    return CoreResult(0, "synced")
 
 
 def deploy_picar_release(
     target: PicarTarget, *, dry_run: bool, restart: bool, drive_args: str | None,
     verbose: bool, emit: ProgressSink | None,
-) -> DeploymentResult:
+) -> UpdateResult:
     host_name = target.host_name
     report(emit, "selected", host_name=host_name, provider=target.provider, ssh_target=target.ssh_target)
     report(emit, "scope", scope="autonomy")
@@ -240,7 +240,7 @@ def deploy_picar_release(
     try:
         startup = startup_activations(bundle, host_name)
     except ValueError as exc:
-        return DeploymentResult(2, str(exc))
+        return UpdateResult(2, "error", str(exc))
 
     if dry_run:
         release_id = f"autonomy-{source_summary['tree_sha256'][:12]}-preview"
@@ -268,7 +268,7 @@ def deploy_picar_release(
             generation_id=None,
             runtime_verification=None,
         )
-        return DeploymentResult(0, receipt=payload, render_kind="remote_update")
+        return UpdateResult(0, "remote", receipt=payload)
 
     # The deployment stages and ships each step's saved plugins, else its
     # default, replacing whatever it had staged, an unreadable document included.
@@ -301,7 +301,7 @@ def deploy_picar_release(
     for label, command in commands:
         code = run_step(label, command, env=None, verbose=verbose, emit=emit)
         if code != 0:
-            return DeploymentResult(code, f"{label} failed with exit code {code}.")
+            return UpdateResult(code, "error", f"{label} failed with exit code {code}.")
 
     runtime_verification: dict[str, Any] | None = None
     if restart:
@@ -312,7 +312,7 @@ def deploy_picar_release(
             emit=emit,
         )
         if code != 0:
-            return DeploymentResult(code, f"Restart failed with exit code {code}.")
+            return UpdateResult(code, "error", f"Restart failed with exit code {code}.")
 
     deployed_steps = {step: list(activation.plugins) for step, activation in activations.items()}
     generation_id = decision_generation_id(
@@ -326,8 +326,9 @@ def deploy_picar_release(
                 timeout_s=DONKEY_READY_TIMEOUT_S,
             )
         except RuntimeError as exc:
-            return DeploymentResult(
+            return UpdateResult(
                 2,
+                "error",
                 "\n".join(
                     [
                         f"Autonomy release {release_id} was installed and restart was attempted,",
@@ -349,7 +350,7 @@ def deploy_picar_release(
         generation_id=generation_id,
         runtime_verification=runtime_verification,
     )
-    return DeploymentResult(0, receipt=payload, render_kind="remote_update")
+    return UpdateResult(0, "remote", receipt=payload)
 
 
 def resolve_picar_target(configuration: dict[str, Any]) -> PicarTarget:

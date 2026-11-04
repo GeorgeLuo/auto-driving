@@ -14,7 +14,7 @@ from unittest import mock
 
 from cli.automa_cli.hosts import local, staging
 from cli.automa_cli.hosts.local import ensure_chase_host
-from cli.automa_cli.releases.errors import RuntimeHostError
+from cli.automa_cli.hosts.errors import RuntimeHostError
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 

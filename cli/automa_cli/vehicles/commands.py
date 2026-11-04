@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 
-from ..providers.catalog import PROVIDERS
+from ..providers.registry import PROVIDERS
 from ..providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ..shared.cli.timeout_input import validate_timeout_input
 from .discovery import discover_vehicle, remove_vehicle

@@ -6,9 +6,9 @@ import argparse
 import sys
 from typing import TextIO
 
-from ...providers.catalog import PROVIDERS
-from ...shared.progress import ProgressEvent, ProgressSink
-from .render import present_deployment, render_progress
+from ...providers.registry import PROVIDERS
+from ..progress import ProgressEvent, ProgressSink
+from .render import render_create, render_delete, render_progress, render_update
 from .service import create_host, delete_host, update_host
 
 
@@ -43,7 +43,7 @@ def _handle_hosts_create(args: argparse.Namespace) -> int:
         dry_run=args.dry_run, verbose=args.verbose,
         emit=None if args.dry_run else _progress_writer(sys.stderr if args.json else sys.stdout),
     )
-    print(present_deployment(result, json_output=args.json))
+    print(render_create(result, json_output=args.json))
     return result.exit_code
 
 
@@ -53,13 +53,13 @@ def _handle_hosts_update(args: argparse.Namespace) -> int:
         drive_args=args.drive_args, verbose=args.verbose,
         emit=None if args.dry_run else _progress_writer(sys.stderr if args.json else sys.stdout),
     )
-    print(present_deployment(result, json_output=args.json))
+    print(render_update(result, json_output=args.json))
     return result.exit_code
 
 
 def _handle_hosts_delete(args: argparse.Namespace) -> int:
     result = delete_host(host_name=args.host_name, verbose=args.verbose, emit=_progress_writer(sys.stdout))
-    print(present_deployment(result, json_output=False))
+    print(render_delete(result))
     return result.exit_code
 
 

@@ -20,18 +20,43 @@ class ViewState:
 
 
 @dataclass(frozen=True)
+class PerceptionPublication:
+    """What the perception screen shows from the host's latest observation publication.
+
+    The stream reads these fields when the publication arrives; every field is
+    ``None``, and ``text`` empty, when no publication was read. ``text`` is the
+    perception text the publication carries, or a summary of its payload.
+    """
+
+    health: Any = None
+    presets: Any = None
+    mode: Any = None
+    steering: Any = None
+    throttle: Any = None
+    reason: Any = None
+    processed: Any = None
+    cycle_ms: Any = None
+    age_ms: Any = None
+    frame_id: Any = None
+    captured_at_ms: Any = None
+    signal_count: int | None = None
+    thing_count: int | None = None
+    text: str = ""
+
+
+@dataclass(frozen=True)
 class StreamEvent:
     """One probe and the facts a screen needs.
 
-    ``live`` is the public probe. ``source`` is the publication or other
-    material the screen shows beside it. ``view`` is set only while a local
-    view is being served, and it carries that view's addresses rather than
-    the view itself.
+    ``live`` is the public probe. ``source`` is what the screen shows beside
+    it: perception's publication or memory's report. ``view`` is set only while
+    a local view is being served, and it carries that view's addresses rather
+    than the view itself.
     """
 
     step: str
     live: dict[str, Any]
-    source: Any = None
+    source: PerceptionPublication | MemoryPublication | None = None
     view: ViewState | None = None
     host_name: str = ""
     base_url: str = ""
@@ -39,9 +64,13 @@ class StreamEvent:
 
 @dataclass(frozen=True)
 class MemoryPublication:
-    """The memory report a stream read, or why that read failed."""
+    """The memory report a stream read, or why that read failed.
 
-    report: Any = None
+    The report is the memory step's own document, which ``shared.memory_report``
+    reads for every renderer.
+    """
+
+    report: dict[str, Any] | None = None
     error: str | None = None
 
 

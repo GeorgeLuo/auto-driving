@@ -7,15 +7,14 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from cli.automa_cli.shared.command_result import CommandResult
 from cli.automa_cli.hosts.runs.models import StopResult
 from cli.automa_cli.hosts.deployment import picar_deploy, service
-from cli.automa_cli.hosts.deployment.models import DeploymentResult
+from cli.automa_cli.hosts.deployment.models import CoreResult, CreateResult, UpdateResult
 from cli.automa_cli.hosts.deployment.registry import BACKENDS, DeploymentBackend, register_backend
-from cli.automa_cli.hosts.deployment.render import present_deployment
+from cli.automa_cli.hosts.deployment.render import render_create, render_delete, render_update
 from cli.automa_cli.hosts.step_activations import write_host_configuration
 from cli.automa_cli.hosts import staging
-from cli.automa_cli.providers.catalog import PICAR, PROVIDERS
+from cli.automa_cli.providers.registry import PICAR, PROVIDERS
 from cli.automa_cli.providers.models import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.vehicle_fixtures import probe_returning
@@ -74,7 +73,7 @@ class HostLifecycleTests(unittest.TestCase):
         directory.mkdir(parents=True)
         staged = directory / "keep.json"
         staged.write_text("{}")
-        with patch.object(service, "install_picar_core", return_value=CommandResult(2, "ssh failed")):
+        with patch.object(service, "install_picar_core", return_value=CoreResult(2, "error", "ssh failed")):
             result = service.create_host(host_name="test", provider="picar", url="http://example:8887")
         self.assertEqual(result.exit_code, 2)
         self.assertTrue(staged.exists())
@@ -97,8 +96,8 @@ class HostLifecycleTests(unittest.TestCase):
         result = service.update_host(host_name="car", dry_run=True)
         self.assertEqual(result.exit_code, 0)
         self.assertFalse(result.receipt["restart_requested"])
-        self.assertFalse(json.loads(present_deployment(result, json_output=True))["restart_requested"])
-        self.assertTrue(present_deployment(result, json_output=False).startswith("Autonomy update dry run"))
+        self.assertFalse(json.loads(render_update(result, json_output=True))["restart_requested"])
+        self.assertTrue(render_update(result, json_output=False).startswith("Autonomy update dry run"))
 
     def test_delete_chase_stops_host_and_removes_directory(self):
         write_host_fixture(self.root, "test")
@@ -118,11 +117,11 @@ class HostLifecycleTests(unittest.TestCase):
         with patch.object(service, "run_step", return_value=0):
             result = service.delete_host(host_name="car")
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("~/mycar", present_deployment(result, json_output=False))
+        self.assertIn("~/mycar", render_delete(result))
         self.assertFalse((self.root / "car").exists())
 
     def test_failed_new_creation_removes_the_directory(self):
-        with patch.object(service, "install_picar_core", return_value=CommandResult(2, "sync failed")):
+        with patch.object(service, "install_picar_core", return_value=CoreResult(2, "error", "sync failed")):
             result = service.create_host(host_name="car", provider="picar", url="http://example:8887")
         self.assertEqual(result.exit_code, 2)
         self.assertFalse((self.root / "car").exists())
@@ -145,14 +144,43 @@ class HostLifecycleTests(unittest.TestCase):
             "restart": False,
             "source": {"tree_sha256": "abcdef1234567890", "file_count": 3},
         }
-        rendered = present_deployment(DeploymentResult(0, receipt=receipt, render_kind="local_update"), json_output=False)
+        rendered = render_update(UpdateResult(0, "local", receipt=receipt), json_output=False)
         self.assertEqual(
             rendered,
             "Dry run: would package car's controller release (tree abcdef123456, 3 files)\n"
             "Restart the host onto it: no",
         )
-        self.assertEqual(json.loads(present_deployment(DeploymentResult(0, receipt=receipt, render_kind="local_update"), json_output=True))["source"]["file_count"], 3)
-        self.assertEqual(present_deployment(DeploymentResult(2, "missing"), json_output=True), "missing")
+        self.assertEqual(json.loads(render_update(UpdateResult(0, "local", receipt=receipt), json_output=True))["source"]["file_count"], 3)
+        self.assertEqual(render_update(UpdateResult(2, "error", "missing"), json_output=True), "missing")
+
+    def test_created_receipt_keeps_its_order_and_sorts_each_child(self):
+        configuration = {"host_name": "car", "provider": "chase-sim", "vehicle_kind": "chase-sim-ws",
+                         "connection": {"ws_url": "ws://localhost:5050/ws/control"}}
+        release = UpdateResult(0, "local", host_present=False, receipt={
+            "host_name": "car", "dry_run": False, "restarted": False, "generation_id": "g-1",
+            "release": {"archive": "a.tar.gz", "archive_sha256": "abc"},
+            "steps": {"perception": ["frame"]}, "presets": {},
+        })
+        created = CreateResult(0, "created", configuration=configuration, release=release,
+                               host_state={"state": "idle", "url": "http://127.0.0.1:9"})
+        body = json.loads(render_create(created, json_output=True))
+        self.assertEqual(list(body), ["configuration", "result", "host"])
+        self.assertEqual(list(body["configuration"]), list(configuration))
+        self.assertEqual(list(body["result"]), sorted(release.receipt))
+        self.assertEqual(list(body["host"]), ["state", "url"])
+        # The release lines appear once, without the update's own heading and restart line.
+        self.assertEqual(render_create(created, json_output=False).splitlines(), [
+            "Host car created for the chaser at http://localhost:5050/",
+            "Release: a.tar.gz",
+            "Archive SHA-256: abc",
+            "Perception: frame",
+            "Decision generation: g-1",
+            "Host car  idle",
+            "  chaser at http://localhost:5050/",
+            "  attached",
+            "  http://127.0.0.1:9",
+        ])
+        self.assertEqual(render_create(CreateResult(2, "error", "no simulator"), json_output=True), "no simulator")
 
     def test_a_third_provider_is_selected_by_registration(self):
         probe = Mock(side_effect=AssertionError("bench probe"))
@@ -162,7 +190,7 @@ class HostLifecycleTests(unittest.TestCase):
         )
 
         def update_bench(configuration, *, dry_run, restart, drive_args, verbose, emit):
-            return DeploymentResult(0, receipt={
+            return UpdateResult(0, "receipt", receipt={
                 "schema": "bench_update", "host_name": configuration["host_name"], "dry_run": dry_run,
             })
 
@@ -179,14 +207,14 @@ class HostLifecycleTests(unittest.TestCase):
             updated = service.update_host(host_name="car", dry_run=True)
             self.assertEqual(updated.exit_code, 0, updated.message)
             self.assertEqual(updated.receipt["schema"], "bench_update")
-            self.assertEqual(json.loads(present_deployment(updated, json_output=False)), updated.receipt)
+            self.assertEqual(json.loads(render_update(updated, json_output=False)), updated.receipt)
             self.assertTrue(updated.receipt["dry_run"])
             for flags in ([], ["--json"]):
                 command = invoke_automa("hosts", "update", "--name", "car", "--dry-run", *flags,
                                         runtime_root=self.root, check=False)
                 self.assertEqual(command.returncode, 0, command.stderr)
                 self.assertEqual(json.loads(command.stdout), updated.receipt)
-            self.assertEqual(present_deployment(updated, json_output=True).count("bench_update"), 1)
+            self.assertEqual(render_update(updated, json_output=True).count("bench_update"), 1)
             removed = service.delete_host(host_name="car")
             self.assertEqual(removed.message, "Provider 'bench' does not support hosts delete.")
             self.assertEqual(removed.exit_code, 2)

@@ -6,12 +6,16 @@ from typing import Any, Callable
 
 from autonomy.runtime.frame_loop import LATEST_JSON_PATH
 
-from ...hosts.publications.decision_publication import health_error, publication_to_frame_record
+from ...hosts.publications.decision_publication import (
+    health_error,
+    perception_text_from_publication,
+    publication_to_frame_record,
+)
 from ...hosts.publications.host_publications import fetch_observation_publication
 from ...hosts.discovery import runtime_base_url
-from ...releases.errors import RuntimeHostError
+from ...hosts.errors import RuntimeHostError
 from ...shared.timestamps import timestamp_ms
-from .models import StreamEvent, StreamResult
+from .models import PerceptionPublication, StreamEvent, StreamResult
 from .polling import poll_events, preflight_failure, unavailable_probe
 from .session import StreamView, with_view
 
@@ -58,17 +62,17 @@ def stream_perception(
         )
     view = StreamView(host_name, base_url=base_url, timeout_s=timeout_s) if serve_view else None
 
-    def probe() -> tuple[dict[str, Any], Any]:
+    def probe() -> tuple[dict[str, Any], PerceptionPublication]:
         publication, fetch_error = (view.read_observation() if view is not None
                                     else read_publication(base_url, timeout_s=timeout_s))
+        if view is not None:
+            view.publish(publication)
         live = _probe_perception(
             host_name=host_name, base_url=base_url, publication=publication, fetch_error=fetch_error,
         )
-        return live, publication
+        return live, perception_publication(publication)
 
     def outbound(event: StreamEvent) -> None:
-        if view is not None:
-            view.publish(event.source)
         emit(with_view(view, event, host_name=host_name, base_url=base_url))
 
     try:
@@ -78,6 +82,34 @@ def stream_perception(
     finally:
         if view is not None:
             view.close()
+
+
+def perception_publication(publication: dict[str, Any] | None) -> PerceptionPublication:
+    """The fields the perception screen shows, read from the host's observation publication."""
+
+    if not isinstance(publication, dict):
+        publication = {}
+    record = publication_to_frame_record(publication)
+    perception = record["perception"] or {}
+    control = record["control"] or {}
+    signals, things = perception.get("signals"), perception.get("things")
+    return PerceptionPublication(
+        health=publication.get("health"),
+        presets=publication.get("presets"),
+        mode=publication.get("mode"),
+        steering=control.get("steering"),
+        throttle=control.get("throttle"),
+        reason=control.get("reason"),
+        processed=publication.get("processed_count"),
+        cycle_ms=publication.get("duration_ms"),
+        # The host computes the result age on its own clock.
+        age_ms=publication.get("result_age_ms"),
+        frame_id=record["frame_id"],
+        captured_at_ms=record["captured_at_ms"],
+        signal_count=len(signals) if isinstance(signals, list) else None,
+        thing_count=len(things) if isinstance(things, list) else None,
+        text=perception_text_from_publication(publication) if publication else "",
+    )
 
 
 def _probe_perception(

@@ -15,7 +15,7 @@ from ...hosts.publications.decision import (
 )
 from ...hosts.publications.host_publications import fetch_decision_publication
 from ...hosts.discovery import runtime_base_url
-from ...releases.errors import RuntimeHostError
+from ...hosts.errors import RuntimeHostError
 from ...releases.paths import bundle_paths
 from .models import StreamEvent, StreamResult
 from .polling import poll_events, preflight_failure, unavailable_probe

@@ -9,7 +9,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from ..releases.errors import RuntimeHostError
+from .errors import RuntimeHostError
 from ..releases.paths import bundle_root
 from ..shared.paths import RUNTIME_ROOT
 from .step_activations import staging_host

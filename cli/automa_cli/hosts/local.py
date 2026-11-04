@@ -18,10 +18,11 @@ from typing import Any
 from autonomy.runtime.client import RuntimeClient
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA
 
-from ..releases.errors import RuntimeHostError
+from .errors import RuntimeHostError
 from ..releases.store import release_code_dir, release_manifest, release_summary
 from ..shared.io.processes import pid_alive
 from ..shared.paths import ROOT, display_path
+from ..shared.text import automa_command
 from .staging import automation_dir
 
 HOST_RECORD = "host.json"
@@ -92,7 +93,7 @@ def ensure_chase_host(host_name: str, *, timeout_s: float = HOST_START_TIMEOUT_S
         except RuntimeError as exc:
             raise RuntimeHostError(
                 f"The Chase host for {host_name} (pid {record['pid']}) is not answering: {exc}\n"
-                f"Run: ./cli/automa hosts stop --name {host_name}\n" + host_log_tail(host_name)
+                f"Run: {automa_command('hosts', 'stop', '--name', host_name)}\n" + host_log_tail(host_name)
             ) from exc
         running = (record.get("release") or {}).get("archive_sha256")
         if running == latest["archive_sha256"]:
@@ -101,7 +102,7 @@ def ensure_chase_host(host_name: str, *, timeout_s: float = HOST_START_TIMEOUT_S
             raise RuntimeHostError(
                 f"{host_name} is running release {str(running)[:12]}; the latest is "
                 f"{latest['archive_sha256'][:12]}.\n"
-                f"Stop the run first: ./cli/automa hosts stop --name {host_name}"
+                f"Stop the run first: {automa_command('hosts', 'stop', '--name', host_name)}"
             )
         try:
             client.restart(timeout_s=timeout_s)

@@ -9,7 +9,7 @@ from implementations.vehicle.chase_sim.defaults import (
     DEFAULT_CHASE_UI_WS_URL,
 )
 
-from ..providers.catalog import CHASE_SIM, PROVIDERS
+from ..providers.registry import CHASE_SIM, PROVIDERS
 from ..providers.models import DEFAULT_READINESS_TIMEOUT_S, Candidate
 from ..providers.urls import normalize_chase_url
 from ..simulators.store import created_simulators

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..providers.catalog import PROVIDERS
-from ..releases.errors import RuntimeHostError
+from ..providers.registry import PROVIDERS
+from .errors import RuntimeHostError
 from . import staging
 from .local import host_record
 from .staging import staged_connection, staged_host

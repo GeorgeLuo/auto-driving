@@ -15,12 +15,9 @@ from pathlib import Path
 from typing import Any
 
 from ..shared.paths import display_path
+from ..shared.text import automa_command
 from .paths import bundle_root
-from .errors import RuntimeHostError
-
-
-def update_command(host_name: str) -> str:
-    return f"./cli/automa hosts update --name {host_name}"
+from .errors import ReleaseError
 
 
 def release_manifest(
@@ -45,8 +42,8 @@ def release_manifest(
             continue
         return manifest
     named = "No controller release" if wanted is None else f"Controller release {wanted[:12]} is not"
-    raise RuntimeHostError(
-        f"{named} in {display_path(releases)}.\nRun: {update_command(host_name)}"
+    raise ReleaseError(
+        f"{named} in {display_path(releases)}.\nRun: {automa_command('hosts', 'update', '--name', host_name)}"
     )
 
 
@@ -75,14 +72,14 @@ def release_code_dir(
     try:
         digest = hashlib.sha256(archive.read_bytes()).hexdigest()
     except OSError as exc:
-        raise RuntimeHostError(
+        raise ReleaseError(
             f"Controller release archive {display_path(archive)} is unreadable: {exc}\n"
-            f"Run: {update_command(host_name)}"
+            f"Run: {automa_command('hosts', 'update', '--name', host_name)}"
         ) from exc
     if digest != sha:
-        raise RuntimeHostError(
+        raise ReleaseError(
             f"Controller release archive {display_path(archive)} has sha256 {digest[:12]}, "
-            f"not {sha[:12]}.\nRun: {update_command(host_name)}"
+            f"not {sha[:12]}.\nRun: {automa_command('hosts', 'update', '--name', host_name)}"
         )
     pending = releases / f".{sha}.{os.getpid()}.pending"
     shutil.rmtree(pending, ignore_errors=True)

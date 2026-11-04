@@ -11,7 +11,7 @@ from typing import Any
 
 from ...shared.io.json_files import write_json_atomically
 from ...shared.paths import ROOT, display_path
-from ...shared.progress import ProgressSink, report
+from ..progress import ProgressSink, report
 
 VENDOR_MANIFEST_PATH = ROOT / "deploy" / "targets" / "donkeycar" / "donkeycar-vendor.json"
 VENDOR_STATE_FILE = ".automa-vendor-state.json"

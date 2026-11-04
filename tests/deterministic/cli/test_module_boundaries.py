@@ -98,10 +98,12 @@ _MODULE_ROLES = {
     "hosts.deployment.donkeycar_vendor": "operation",
     "hosts.deployment.picar_deploy": "operation",
     "hosts.discovery": "operation",
+    "hosts.errors": "pure",
     "hosts.host_formatting": "pure",
     "hosts.host_status": "operation",
     "hosts.local": "operation",
     "hosts.local_worker": "entrypoint",
+    "hosts.progress": "pure",
     "hosts.publications.decision": "operation",
     "hosts.publications.decision_publication": "pure",
     "hosts.publications.decision_records": "operation",
@@ -129,7 +131,6 @@ _MODULE_ROLES = {
     "plugins.stream.perception": "operation",
     "plugins.stream.polling": "pure",
     "plugins.stream.session": "operation",
-    "providers.catalog": "registry",
     "providers.metadata": "pure",
     "providers.probes": "operation",
     "providers.urls": "pure",
@@ -149,15 +150,14 @@ _MODULE_ROLES = {
     "shared.open_view": "operation",
     "shared.paths": "pure",
     "shared.plugin_catalog": "pure",
-    "shared.progress": "pure",
     "shared.step_hosting": "pure",
     "shared.text": "pure",
     "shared.timestamps": "pure",
     "simulators.process": "operation",
     "vehicles.discovery": "operation",
     "vehicles.status": "operation",
+    "workbench.page_payloads": "pure",
     "workbench.plugins": "operation",
-    "workbench.presentation": "pure",
     "workbench.replay": "operation",
     "workbench.runner": "operation",
 }
@@ -389,12 +389,12 @@ class ModuleBoundaryTests(unittest.TestCase):
         self.assertEqual(violations, [])
 
     def test_concrete_operation_imports_and_unknown_modules_are_rejected(self) -> None:
-        for target in ("providers.catalog", "providers.probes", "hosts.bundles", "workbench.runner",
+        for target in ("providers.registry", "providers.probes", "hosts.bundles", "workbench.runner",
                        "hosts.runs.future_helper"):
             for source in ("plugins.stream.render", "hosts.runs.models", "hosts.step_formatting"):
                 with self.subTest(source=source, target=target):
                     self.assertIsNotNone(_layer_reason(f"{PACKAGE}.{source}", f"{PACKAGE}.{target}"))
-        self.assertIsNotNone(_layer_reason(f"{PACKAGE}.providers.catalog", f"{PACKAGE}.hosts.deployment.service"))
+        self.assertIsNotNone(_layer_reason(f"{PACKAGE}.providers.registry", f"{PACKAGE}.hosts.deployment.service"))
         self.assertIsNotNone(_layer_reason(f"{PACKAGE}.hosts.runs.service", f"{PACKAGE}.shared.io.json_files"))
         self.assertIsNone(_layer_reason(f"{PACKAGE}.vehicles.render", f"{PACKAGE}.providers.metadata"))
         self.assertIsNone(_layer_reason(f"{PACKAGE}.hosts.runs.worker", f"{PACKAGE}.hosts.runs.render"))

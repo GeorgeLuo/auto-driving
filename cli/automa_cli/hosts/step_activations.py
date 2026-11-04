@@ -39,9 +39,10 @@ from implementations.decision_cycle.catalog import (
     selection_activation,
 )
 
-from ..providers.catalog import PROVIDERS
+from ..providers.registry import PROVIDERS
 from ..releases.paths import controller_bundle_paths
 from ..shared.paths import display_path, safe_path_part
+from ..shared.text import automa_command
 from .bundles import release_activation_summary
 
 
@@ -77,7 +78,7 @@ def bundle_activation_problems(
                 "step": step,
                 "activation": display_path(bundle_activation_path(bundle, step)),
                 "reason": str(exc),
-                "command": f"./cli/automa hosts update --name {shlex.quote(host_name)}",
+                "command": automa_command("hosts", "update", "--name", host_name),
             })
     return problems
 
@@ -89,7 +90,7 @@ def absent_step_error(step: str, host_name: str) -> str:
         f"{host_name} runs no {step} step. Arm a plugin for it with "
         f"./cli/automa plugins arm --host-name {host_name} --name {step}/<plugin>, "
         f"or restart it with each step's saved plugins, else its default: "
-        f"./cli/automa hosts update --name {host_name} --restart"
+        f"{automa_command('hosts', 'update', '--name', host_name, '--restart')}"
     )
 
 
@@ -320,7 +321,7 @@ def save_selections(
     saved.
     """
 
-    restart = f"./cli/automa hosts update --name {shlex.quote(host_name)} --restart"
+    restart = automa_command("hosts", "update", "--name", host_name, "--restart")
     saved: dict[str, StepActivation] = {}
     for step, plugins in armed.items():
         staged = read_bundle_activation(bundle, step)

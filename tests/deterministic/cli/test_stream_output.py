@@ -16,10 +16,10 @@ from unittest.mock import Mock, patch
 
 from cli.automa_cli.plugins.stream import decision, memory, perception, session
 from cli.automa_cli.plugins.stream.commands import stream_host_step
-from cli.automa_cli.plugins.stream.models import StreamEvent, ViewState
+from cli.automa_cli.plugins.stream.models import PerceptionPublication, StreamEvent, ViewState
 from cli.automa_cli.plugins.stream.polling import poll_events
 from cli.automa_cli.plugins.stream.render import render_stream
-from cli.automa_cli.releases.errors import RuntimeHostError
+from cli.automa_cli.hosts.errors import RuntimeHostError
 
 
 # A fresh cycle whose plan record is empty.
@@ -308,6 +308,27 @@ class StreamOutputTests(unittest.TestCase):
         self.assertIn("action view: http://view/decision  (latest unavailable: late)", text)
         self.assertEqual(render_stream(event, json_output=True), json.dumps(event.live, sort_keys=True))
         self.assertEqual(render_stream(replace_view(event), json_output=False), "offline")
+
+    def test_perception_screen_formats_the_summary_the_stream_read(self):
+        summary = perception.perception_publication({
+            "health": "healthy", "mode": "observe_only", "processed_count": 12, "duration_ms": 33,
+            "result_age_ms": 40, "presets": {"perception": "lightweight_observer"},
+            "frame": {"frame_id": "f-12", "captured_at_ms": 1000},
+            "perception": {"text": "two things ahead", "signals": [1, 2], "things": [{}]},
+            "control": {"steering": 0.1, "throttle": 0.2, "reason": "hold"},
+        })
+        self.assertEqual((summary.frame_id, summary.signal_count, summary.thing_count, summary.text),
+                         ("f-12", 2, 1, "two things ahead"))
+        self.assertEqual(perception.perception_publication(None), PerceptionPublication())
+        text = render_stream(StreamEvent("perception", {"status": "live"}, source=summary), json_output=False)
+        self.assertIn("presets: perception=lightweight_observer  mode: observe_only", text)
+        self.assertIn("control: steering=0.1  throttle=0.2  reason=hold", text)
+        self.assertIn("cadence: processed=12  cycle_ms=33  age_ms=40", text)
+        self.assertIn("latest: frame=f-12  captured_at_ms=1000  signals=2  things=1", text)
+        unread = render_stream(StreamEvent("perception", {"status": "error"}), json_output=False)
+        self.assertIn("latest: frame=none  captured_at_ms=unknown  signals=unknown  things=unknown", unread)
+        self.assertIn("publication: unavailable", unread)
+        self.assertTrue(unread.endswith("(no latest perception yet)"))
 
     def test_stream_operations_do_not_import_presentation(self):
         forbidden = {"commands", "render"}

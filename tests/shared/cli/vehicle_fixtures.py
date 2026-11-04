@@ -6,7 +6,7 @@ from contextlib import AbstractContextManager
 from dataclasses import replace
 from unittest.mock import Mock, patch
 
-from cli.automa_cli.providers.catalog import PROVIDERS
+from cli.automa_cli.providers.registry import PROVIDERS
 from cli.automa_cli.providers.models import ProbeResult
 
 

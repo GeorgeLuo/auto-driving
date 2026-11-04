@@ -13,7 +13,7 @@ from cli.automa_cli.hosts.runs.render import render_start_result
 from cli.automa_cli.hosts.runs.process import automation_command_matches_host
 from cli.automa_cli.hosts.runs.models import RunResult
 from cli.automa_cli.app import main
-from cli.automa_cli.hosts.runs.models import RECOGNIZED_WORKER_MODULES, WORKER_MODULE
+from cli.automa_cli.hosts.runs.models import WORKER_MODULE
 from cli.automa_cli.hosts.runs.service import (
     _run_configuration,
     run_host_automation,
@@ -44,20 +44,10 @@ class RunConfigurationTests(unittest.TestCase):
         worker = f"python -m {WORKER_MODULE}"
         self.assertTrue(automation_command_matches_host(f"{worker} --name car --timeout-s 5", "car"))
         self.assertTrue(automation_command_matches_host(f"/venv/bin/python3 -m {WORKER_MODULE} --name=car", "car"))
-        legacy = "python -m cli.automa_cli.hosts.automation"
-        self.assertTrue(automation_command_matches_host(f"{legacy} --name car", "car"))
-        previous = "python -m cli.automa_cli.hosts.runs.automation"
-        self.assertTrue(automation_command_matches_host(f"{previous} --name car", "car"))
-        self.assertEqual(
-            set(RECOGNIZED_WORKER_MODULES),
-            {
-                WORKER_MODULE,
-                "cli.automa_cli.hosts.runs.automation",
-                "cli.automa_cli.hosts.automation",
-            },
-        )
-        self.assertTrue(automation_command_matches_host(f"{legacy} --name=car", "car"))
-        self.assertFalse(automation_command_matches_host(f"{legacy} --name car-2", "car"))
+        self.assertTrue(automation_command_matches_host(f"{worker} --name=car", "car"))
+        # Entry points that earlier releases used are no longer this host's worker.
+        for retired in ("cli.automa_cli.hosts.automation", "cli.automa_cli.hosts.runs.automation"):
+            self.assertFalse(automation_command_matches_host(f"python -m {retired} --name car", "car"))
         self.assertFalse(automation_command_matches_host(f"{worker} --name car-2", "car"))
         self.assertFalse(automation_command_matches_host(f"{worker} --host-url http://car", "car"))
         self.assertFalse(automation_command_matches_host("python -m cli.automa_cli.hosts.runtime_hosts car", "car"))

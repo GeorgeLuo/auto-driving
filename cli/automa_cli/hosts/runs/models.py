@@ -1,8 +1,7 @@
 """Values that cross a run's process and module boundaries.
 
-``WORKER_MODULE`` is the background entry point. Stop still recognizes a
-process started as ``runs.automation`` or ``hosts.automation`` before that
-entry point moved. The match is the exact module token, not a prefix.
+``WORKER_MODULE`` is the background entry point. Stop recognizes a worker by
+that exact module token, not a prefix.
 
 ``RunEvent`` carries live facts; ``RunResult`` describes the outcome. ``status_reason`` is the truncated reason status collection and
 status text both use.
@@ -12,24 +11,29 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, get_args
 
 from ...shared.browser_result import BrowserOpenResult
 
 WORKER_MODULE = "cli.automa_cli.hosts.runs.worker"
-RECOGNIZED_WORKER_MODULES = (
-    WORKER_MODULE,
-    "cli.automa_cli.hosts.runs.automation",
-    "cli.automa_cli.hosts.automation",
-)
 
 MAX_STATUS_REASON_CHARS = 240
 
 
+RunEventKind = Literal["startup", "frame"]
+RUN_EVENT_KINDS: tuple[str, ...] = get_args(RunEventKind)
+
+
 @dataclass(frozen=True)
 class RunEvent:
-    kind: str
+    """A live fact from the run monitor: the run's ``startup`` state, or a captured ``frame``."""
+
+    kind: RunEventKind
     data: dict[str, Any]
+
+    def __post_init__(self) -> None:
+        if self.kind not in RUN_EVENT_KINDS:
+            raise ValueError(f"Unknown run event: {self.kind!r}")
 
 
 @dataclass(frozen=True)

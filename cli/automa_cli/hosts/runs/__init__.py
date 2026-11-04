@@ -7,5 +7,5 @@ collects host status, and ``render`` formats that status and the live run
 transcript. The monitor emits optional data events and returns its outcome
 without presentation. ``process`` launches, identifies, waits for, and
 terminates workers. ``models`` holds startup, stop, restart and monitor
-outcomes, along with the worker identities stop recognizes.
+outcomes, along with the worker module stop recognizes.
 """

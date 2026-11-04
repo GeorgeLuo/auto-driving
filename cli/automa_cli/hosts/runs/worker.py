@@ -1,8 +1,8 @@
 """Background entry point for ``hosts run``.
 
 The process runs the host session and records a failure that happens before
-the run has its own state. It formats data events for its standard output. Stop recognizes this module and the
-two entry points it replaced.
+the run has its own state. It formats data events for its standard output. Stop recognizes a worker
+only by this module.
 """
 
 from __future__ import annotations
@@ -46,6 +46,8 @@ class RunOutput:
             self.startup(event.data)
         elif event.kind == "frame":
             self.frame(**event.data, verbose=self.verbose)
+        else:
+            raise ValueError(f"Unknown run event: {event.kind!r}")
 
 
 def _run_worker(argv: list[str]) -> int:

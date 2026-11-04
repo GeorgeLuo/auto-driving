@@ -11,6 +11,7 @@ from autonomy.decision_cycle.activation import STEPS
 from ...hosts.step_formatting import step_lines
 from ...providers.metadata import PROVIDERS
 from ...shared.paths import display_path
+from ...shared.text import automa_command
 from .models import Arming, Definition, ListingResult, Receipt, Recovery, SaveResult, SelectionResult, UploadResult
 
 _SELECTION = {
@@ -97,7 +98,7 @@ def render_save(result: SaveResult, *, json_output: bool) -> str:
         startup = f"{host_name} starts with these plugins; hosts update keeps the saved steps."
     else:
         startup = (f"{host_name} starts with these plugins once they ship: "
-                   f"./cli/automa hosts update --name {shlex.quote(host_name)}")
+                   f"{automa_command('hosts', 'update', '--name', host_name)}")
     return "\n".join([
         f"Host: {host_name}",
         *(f"{row} ({'saved' if entry['saved'] else 'default'})" for row, entry in zip(rows, selections.values())),

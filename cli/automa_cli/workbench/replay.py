@@ -2,7 +2,7 @@
 
 The operation starts the runner and, when asked, the viewer. It reports
 runner state and operational notices through ``emit``. The command formats
-that state. Browser payloads for the workbench page stay in ``presentation``.
+that state. Browser payloads for the workbench page stay in ``page_payloads``.
 """
 
 from __future__ import annotations

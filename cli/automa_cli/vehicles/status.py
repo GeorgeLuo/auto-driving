@@ -6,7 +6,7 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
-from ..providers.catalog import CHASE_SIM, PROVIDERS
+from ..providers.registry import CHASE_SIM, PROVIDERS
 from ..providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ..providers.urls import require_positive_timeout
 from ..simulators.store import created_simulators

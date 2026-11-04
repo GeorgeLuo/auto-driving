@@ -278,7 +278,7 @@
             "path": "cli/automa_cli/providers/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "Provider metadata, URL conventions and result models are separate from the catalog of operational callbacks and network probes. Renderers import metadata. Host deployment registers its own operations; providers do not import deployment."
+            "responsibility": "Provider metadata, URL conventions and result models are separate from the registry of operational callbacks and network probes. Renderers import metadata. Host deployment registers its own operations; providers do not import deployment."
           },
           {
             "path": "cli/automa_cli/vehicles/",

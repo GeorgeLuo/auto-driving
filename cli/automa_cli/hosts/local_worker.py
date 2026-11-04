@@ -11,7 +11,7 @@ from typing import Any
 
 from implementations.runtime.chase_sim.service import RESTART_EXIT_CODE
 
-from ..releases.errors import RuntimeHostError
+from ..releases.errors import ReleaseError
 from ..releases.paths import bundle_root
 from ..releases.store import release_code_dir
 from .local import HOST_RECORD
@@ -57,7 +57,7 @@ def supervise_chase_host(host_name: str) -> int:
     while True:
         try:
             release_dir, release = release_code_dir(host_name)
-        except RuntimeHostError as exc:
+        except ReleaseError as exc:
             print(f"Chase host cannot start: {exc}", file=sys.stderr, flush=True)
             return 2
         print(

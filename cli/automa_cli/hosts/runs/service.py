@@ -12,9 +12,10 @@ from ...frontend.perception_view import (
     get_perception_view_status,
     perception_view_ready,
 )
-from ...providers.catalog import PROVIDERS
+from ...providers.registry import PROVIDERS
 from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
-from ...releases.errors import RuntimeHostError
+from ..errors import RuntimeHostError
+from ...releases.errors import ReleaseError
 from ...releases.paths import bundle_paths
 from ...shared.io.processes import pid_alive
 from ...shared.open_view import launch_browser
@@ -173,7 +174,7 @@ def run_host_automation(
             )
             if base_url is None:
                 raise RuntimeHostError(f"Host {host_name!r} is not running.")
-        except RuntimeHostError as exc:
+        except (RuntimeHostError, ReleaseError) as exc:
             return RunResult(2, str(exc))
     else:
         base_url = host_url

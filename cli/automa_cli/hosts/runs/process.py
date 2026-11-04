@@ -20,7 +20,7 @@ from ...frontend.perception_view import (
 )
 from ...shared.io.processes import pid_alive
 from ...shared.paths import ROOT
-from .models import RECOGNIZED_WORKER_MODULES, WORKER_MODULE
+from .models import WORKER_MODULE
 from .store import mark_automation_startup_error, read_run_state
 
 
@@ -55,7 +55,7 @@ def automation_command_matches_host(command: str, host_name: str) -> bool:
     if not tokens:
         return False
     if not any(
-        tokens[index] == "-m" and tokens[index + 1] in RECOGNIZED_WORKER_MODULES
+        tokens[index] == "-m" and tokens[index + 1] == WORKER_MODULE
         for index in range(len(tokens) - 1)
     ):
         return False

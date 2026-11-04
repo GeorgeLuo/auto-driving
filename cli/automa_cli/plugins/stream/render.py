@@ -8,14 +8,10 @@ from typing import Any
 from autonomy.decision_cycle.memory.interface import BOUNDS, EPOCH_ID, HEALTH, RECORD_COUNT
 from autonomy.runtime.frame_loop import LATEST_FRAME_PATH, LATEST_JSON_PATH
 
-from ...hosts.publications.decision_publication import (
-    perception_text_from_publication,
-    presets_text,
-    publication_to_frame_record,
-)
+from ...hosts.publications.decision_publication import presets_text
 from ...shared.memory_report import evidence_publisher, plugin_ledgers
 from ..step_formatting import format_step_record, format_step_timing
-from .models import MemoryPublication, StreamEvent, ViewState
+from .models import MemoryPublication, PerceptionPublication, StreamEvent, ViewState
 
 _PERCEPTION_PAGES = (("view", ""),)
 _MEMORY_PAGES = (("memory map", "/memory"), ("perception view", "/perception"))
@@ -41,19 +37,8 @@ def render_stream(event: StreamEvent, *, json_output: bool) -> str:
 def _perception_screen(event: StreamEvent) -> str:
     """The perception screen: the probe verdict and the host's latest cycle."""
 
-    publication = event.source if isinstance(event.source, dict) else {}
-    record = publication_to_frame_record(publication)
-    perception = record.get("perception") if isinstance(record.get("perception"), dict) else {}
-    control = record.get("control") if isinstance(record.get("control"), dict) else {}
-    signals = perception.get("signals")
-    things = perception.get("things")
-    cadence = {
-        "processed": publication.get("processed_count"),
-        "cycle_ms": publication.get("duration_ms"),
-        # The host computes the result age on its own clock.
-        "age_ms": publication.get("result_age_ms"),
-    }
-    body = perception_text_from_publication(publication) if publication else ""
+    publication = event.source if isinstance(event.source, PerceptionPublication) else PerceptionPublication()
+    cadence = {"processed": publication.processed, "cycle_ms": publication.cycle_ms, "age_ms": publication.age_ms}
     lines = [
         "automa perception stream",
         "",
@@ -61,27 +46,27 @@ def _perception_screen(event: StreamEvent) -> str:
         f"host: {event.base_url}",
         f"status: {event.live.get('status', 'unknown')}",
         *([f"error: {event.live['error']}"] if event.live.get("error") else []),
-        f"presets: {presets_text(publication.get('presets'))}  mode: {_shown(publication.get('mode'))}",
+        f"presets: {presets_text(publication.presets)}  mode: {_shown(publication.mode)}",
         (
-            f"control: steering={_shown(control.get('steering'))}  "
-            f"throttle={_shown(control.get('throttle'))}  reason={_shown(control.get('reason'))}"
+            f"control: steering={_shown(publication.steering)}  "
+            f"throttle={_shown(publication.throttle)}  reason={_shown(publication.reason)}"
         ),
         "cadence: " + "  ".join(f"{key}={_shown(value)}" for key, value in cadence.items()),
         (
-            f"latest: frame={_shown(record.get('frame_id'), 'none')}  "
-            f"captured_at_ms={_shown(record.get('captured_at_ms'))}  "
-            f"signals={_shown(len(signals) if isinstance(signals, list) else None)}  "
-            f"things={_shown(len(things) if isinstance(things, list) else None)}"
+            f"latest: frame={_shown(publication.frame_id, 'none')}  "
+            f"captured_at_ms={_shown(publication.captured_at_ms)}  "
+            f"signals={_shown(publication.signal_count)}  "
+            f"things={_shown(publication.thing_count)}"
         ),
         *_view_lines(event.view, *_PERCEPTION_PAGES),
         (
-            f"publication: {publication.get('health') or 'unavailable'}  "
+            f"publication: {publication.health or 'unavailable'}  "
             f"json: {LATEST_JSON_PATH}  frame: {LATEST_FRAME_PATH}"
         ),
         "",
         "latest perception",
         "-----------------",
-        body.strip() or "(no latest perception yet)",
+        publication.text.strip() or "(no latest perception yet)",
     ]
     return "\n".join(lines)
 

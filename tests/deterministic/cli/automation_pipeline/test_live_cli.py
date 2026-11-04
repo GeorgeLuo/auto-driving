@@ -19,6 +19,8 @@ from urllib.request import urlopen
 from cli.automa_cli.hosts.publications.host_publications import fetch_observation_sample
 from cli.automa_cli.hosts.views.view_feed import ViewFeed
 from cli.automa_cli.plugins.stream.perception import read_publication as _read_publication
+from cli.automa_cli.plugins.stream.models import StreamEvent, ViewState
+from cli.automa_cli.plugins.stream.render import render_stream
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import HOST_NAME
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.integration.live_host import LiveHostTestCase, stage_runtime as _stage, wait_until
@@ -44,7 +46,12 @@ class LiveCommandsTests(LiveHostTestCase):
 
         with patch("cli.automa_cli.hosts.views.view_feed.fetch_observation_sample", side_effect=sample):
             feed.publish(publication)
-        self.assertIn("ConnectionError: decision route down", feed.decision_line())
+        url, error, page, decision_error = feed.state()
+        self.assertIn("ConnectionError: decision route down", decision_error)
+        screen = render_stream(StreamEvent("plan", {"status": "unavailable"}, view=ViewState(
+            url=url, error=error, decision_page=page, decision_error=decision_error,
+        )), json_output=False)
+        self.assertIn("action view: unavailable (ConnectionError: decision route down)", screen)
         with urlopen(f"{feed.url.rstrip('/')}/api/latest", timeout=5) as response:
             latest = json.load(response)
         # The host may advance after the terminal's publication. The view must

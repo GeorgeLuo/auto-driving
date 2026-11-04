@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 
 from ..hosts.local import log_tail
-from ..releases.errors import RuntimeHostError
 from ..shared.io.processes import pid_alive
 from .store import SIMULATOR_SCHEMA, remove_simulator_record, simulator_dir, write_simulator_record
 
@@ -24,6 +23,10 @@ from .store import SIMULATOR_SCHEMA, remove_simulator_record, simulator_dir, wri
 SIMULATOR_LOG = "simulator.log"
 # The headless launcher prints this line once its simulator is ready.
 SIMULATOR_READY = "CHASE_UI_WS_URL="
+
+
+class SimulatorStartError(RuntimeError):
+    """The simulator exited or timed out before it was ready; the message ends with its log."""
 
 
 def _ended(pid: int) -> bool:
@@ -59,12 +62,12 @@ def _wait_for_simulator(log_path: Path, process: subprocess.Popen[Any], timeout_
             if line.startswith(SIMULATOR_READY):
                 return line.removeprefix(SIMULATOR_READY).strip()
         if process.poll() is not None:
-            raise RuntimeHostError(
+            raise SimulatorStartError(
                 f"The simulator exited with code {process.returncode} before it was ready.\n"
                 + log_tail(log_path, "Simulator")
             )
         if time.monotonic() >= deadline:
-            raise RuntimeHostError(
+            raise SimulatorStartError(
                 f"The simulator was not ready within {timeout_s:g} s.\n" + log_tail(log_path, "Simulator")
             )
         time.sleep(0.1)

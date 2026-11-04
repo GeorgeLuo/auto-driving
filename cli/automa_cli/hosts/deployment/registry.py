@@ -9,16 +9,17 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+
+from .models import CreateResult, DeleteResult, UpdateResult
 
 
 @dataclass(frozen=True)
 class DeploymentBackend:
     """The create, update, and delete operations one provider supports."""
 
-    create: Callable[..., Any] | None = None
-    update: Callable[..., Any] | None = None
-    delete: Callable[..., Any] | None = None
+    create: Callable[..., CreateResult] | None = None
+    update: Callable[..., UpdateResult] | None = None
+    delete: Callable[..., DeleteResult] | None = None
 
 
 BACKENDS: dict[str, DeploymentBackend] = {}

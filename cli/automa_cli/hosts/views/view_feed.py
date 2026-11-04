@@ -63,15 +63,6 @@ class ViewFeed:
             page = self.server.decision.page_url()
         return self.url, self.error, page, self.decision_error
 
-    def decision_line(self) -> str:
-        """The decision page's address, or why it has no decision to show."""
-
-        _url, error, page, decision_error = self.state()
-        if self.server is None or self.url is None or page is None:
-            return _view_line("action view", None, error or decision_error or "no action yet")
-        line = f"action view: {self.url.rstrip('/')}{page}"
-        return f"{line}  (latest unavailable: {decision_error})" if decision_error else line
-
     def read_observation(self) -> tuple[dict[str, Any] | None, str | None]:
         try:
             self._observation = fetch_observation_sample(self.base_url, timeout_s=self.timeout_s,
@@ -126,9 +117,3 @@ class ViewFeed:
     def stop(self) -> None:
         if self.server is not None:
             self.server.stop()
-
-
-def _view_line(label: str, url: str | None, error: str | None, route: str = "") -> str:
-    if url:
-        return f"{label}: {url.rstrip('/') + route if route else url}"
-    return f"{label}: unavailable ({error})" if error else f"{label}: unavailable"

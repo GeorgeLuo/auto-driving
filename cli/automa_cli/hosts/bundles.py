@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 
 from ..shared.paths import ROOT, display_path
-from ..shared.progress import ProgressSink, report
+from .progress import ProgressSink, report
 
 AUTONOMY_DIR = ROOT / "autonomy"
 IMPLEMENTATIONS_DIR = ROOT / "implementations"

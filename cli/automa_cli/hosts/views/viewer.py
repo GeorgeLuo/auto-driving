@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 
-from ...releases.errors import RuntimeHostError
+from ..errors import RuntimeHostError
 from ...shared.open_view import launch_browser
 from ..discovery import local_hosts, runtime_base_url
 from ..publications.decision_publication import health_error

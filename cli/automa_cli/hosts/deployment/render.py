@@ -1,7 +1,7 @@
-"""Format a deployment receipt as text or JSON.
+"""Format deployment results as text or JSON.
 
-The receipt is supplied by the caller. Formatting does not package a release,
-open a connection, or start a host.
+Each renderer takes the result its operation returned. Formatting does not
+package a release, open a connection, or start a host.
 """
 
 from __future__ import annotations
@@ -12,66 +12,83 @@ from typing import Any
 
 from ...providers.metadata import PROVIDERS
 from ...shared.paths import display_path
-from ...shared.progress import ProgressEvent
 from ..host_formatting import host_block
+from ..progress import ProgressEvent
 from ..runs.render import render_stop_result
 from ..step_formatting import step_lines
-from .models import DeploymentResult
+from .models import CreateResult, DeleteResult, UpdateResult
 
 
-def present_deployment(result: DeploymentResult, *, json_output: bool) -> str:
-    """The command's printable receipt. A diagnostic has no receipt."""
+def render_update(result: UpdateResult, *, json_output: bool) -> str:
+    """The update receipt, or the sentence an error shows."""
 
-    if result.render_kind == "stop_failed":
+    if result.kind == "error":
+        return result.message
+    if json_output:
+        return json.dumps(result.receipt, indent=2, sort_keys=True)
+    return _update_text(result)
+
+
+def render_create(result: CreateResult, *, json_output: bool) -> str:
+    """The created host or its plan, or the sentence an error shows.
+
+    A local host plans only its release, so its plan is the release plan. A
+    PiCar's plan and every created host combine the parts into one receipt.
+    """
+
+    if result.kind == "error":
+        return result.message
+    if result.kind == "plan" and result.core is None:
+        return render_update(result.release, json_output=json_output)
+    if result.kind == "plan":
+        if json_output:
+            return _combined_json({"configuration": result.configuration, "dry_run": True,
+                                   "core": result.core.receipt, "host": result.release.receipt})
+        return _format_core_dry_run(result.core.receipt) + "\n" + _format_autonomy_dry_run(result.release.receipt)
+    if result.kind == "created":
+        if json_output:
+            return _combined_json({"configuration": result.configuration, "result": result.release.receipt,
+                                   "host": result.host_state})
+        return _format_created_host(result)
+    raise ValueError(f"Unknown create outcome: {result.kind}")
+
+
+def render_delete(result: DeleteResult) -> str:
+    if result.kind == "error":
+        return result.message
+    if result.kind == "stop_failed":
         return render_stop_result(result.stop)
-    if result.render_kind == "delete_failed":
+    if result.kind == "delete_failed":
         return "Could not stop the PiCar host; its local record was kept."
-    if result.render_kind == "deleted":
+    if result.kind == "deleted":
         stopped = "Stopped the run. " if result.stopped_run else ""
         suffix = "" if result.local else " Harness files stay in ~/mycar on the PiCar."
         return f"{stopped}Stopped host {result.host_name}. Removed {display_path(result.deleted_path)}.{suffix}"
-    if result.exit_code or result.receipt is None:
-        return result.message
-    if json_output:
-        return _json_receipt(result.receipt)
-    return _text_receipt(result)
+    raise ValueError(f"Unknown delete outcome: {result.kind}")
 
 
-def _json_receipt(receipt: dict[str, Any]) -> str:
-    """Create combines child receipts. Those children were previously dumped
-    with sorted keys and then embedded; the outer document keeps its key order.
-    """
+def _combined_json(receipt: dict[str, Any]) -> str:
+    """A receipt of child receipts: each child receipt with sorted keys, the rest in its own order."""
 
-    if "configuration" in receipt and any(key in receipt for key in ("core", "host", "result")):
-        body = dict(receipt)
-        for key in ("core", "host", "result"):
-            if isinstance(body.get(key), dict):
-                body[key] = json.loads(json.dumps(body[key], sort_keys=True))
-        return json.dumps(body, indent=2)
-    return json.dumps(receipt, indent=2, sort_keys=True)
+    body = {key: json.loads(json.dumps(value, sort_keys=True))
+            if key in {"core", "host", "result"} and isinstance(value, dict) else value
+            for key, value in receipt.items()}
+    return json.dumps(body, indent=2)
 
 
-def _text_receipt(result: DeploymentResult) -> str:
+def _update_text(result: UpdateResult) -> str:
     body = result.receipt or {}
-    if result.render_kind == "core_update":
-        return _format_core_dry_run(body)
-    if result.render_kind == "remote_update":
-        if body.get("dry_run"):
-            return _format_autonomy_dry_run(body)
-        return _format_autonomy_update(body)
-    if result.render_kind == "create_plan":
-        core = _format_core_dry_run(body["core"]) if body.get("core") else body.get("core_error", "")
-        host = _format_autonomy_dry_run(body["host"]) if body.get("host") else body.get("host_error", "")
-        return core + "\n" + host
-    if result.render_kind == "create":
-        return _format_created_host(body, child_kind=result.child_render_kind)
-    if result.render_kind == "local_update":
+    if result.kind == "local":
         return _format_local_autonomy(body, host_present=result.host_present)
-    return json.dumps(body, indent=2, sort_keys=True)
+    if result.kind == "remote":
+        return _format_autonomy_dry_run(body) if body.get("dry_run") else _format_autonomy_update(body)
+    if result.kind == "receipt":
+        return json.dumps(body, indent=2, sort_keys=True)
+    raise ValueError(f"Unknown update outcome: {result.kind}")
 
 
 def _format_local_autonomy(body: dict[str, Any], *, host_present: bool | None) -> str:
-    if body.get("dry_run") and "source" in body and "release" not in body:
+    if body.get("dry_run"):
         source = body["source"]
         return "\n".join([
             f"Dry run: would package {body['host_name']}'s controller release "
@@ -95,15 +112,14 @@ def _format_local_autonomy(body: dict[str, Any], *, host_present: bool | None) -
     ])
 
 
-def _format_created_host(body: dict[str, Any], *, child_kind: str) -> str:
-    configuration = body["configuration"]
-    rendered = _text_receipt(DeploymentResult(0, receipt=body["result"], render_kind=child_kind))
+def _format_created_host(result: CreateResult) -> str:
+    configuration = result.configuration
     detail = "\n".join(
-        line for line in rendered.splitlines()
+        line for line in _update_text(result.release).splitlines()
         if not line.startswith(("Host updated:", "Runtime restarted:"))
     )
     lines = [f"Host {configuration['host_name']} created for {_vehicle_label(configuration)}", detail]
-    state = body.get("host")
+    state = result.host_state
     if state:
         vehicle = PROVIDERS[configuration["provider"]]
         url = configuration["connection"][vehicle.url_key]

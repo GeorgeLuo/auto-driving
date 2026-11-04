@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from ...shared.paths import display_path
-from ...shared.text import format_browser_result
+from ...shared.text import automa_command, format_browser_result
 from ..host_formatting import host_block
 from ..step_formatting import format_activation_problems, selection_label, step_lines
 from .models import RestartResult, StartResult, StopResult, status_reason
@@ -96,11 +96,7 @@ def _run_lines(item: dict[str, Any] | None) -> list[str]:
 
 def _release_label(release: Any, host_name: Any) -> str:
     if not isinstance(release, dict):
-        # The same command ``releases.store.update_command`` prints. Rendering
-        # stays here so this module does not import the release store.
-        return (
-            f"none (run `./cli/automa hosts update --name {host_name}` to package one)"
-        )
+        return f"none (run `{automa_command('hosts', 'update', '--name', str(host_name))}` to package one)"
     fields = {"archive": release.get("archive"), "manifest": release.get("manifest")}
     return "  ".join(
         [
@@ -397,7 +393,7 @@ def render_start_result(result: StartResult) -> str:
                     f"action={actual_authority['action_policy'] or 'unknown'}, "
                     f"control={actual_authority['control_application'] or 'unknown'}"
                 ),
-                (f"Recovery: ./cli/automa hosts stop --name {host_name}"),
+                (f"Recovery: {automa_command('hosts', 'stop', '--name', host_name)}"),
             ]
         )
     if result.kind == "view_unready":
@@ -455,7 +451,7 @@ def render_start_result(result: StartResult) -> str:
         capture_lag = startup.get("capture_lag")
         if isinstance(capture_lag, int) and capture_lag > 0:
             lines.append(f"Capture lag: {capture_lag} frames")
-        lines.append(f"Stop: ./cli/automa hosts stop --name {host_name}")
+        lines.append(f"Stop: {automa_command('hosts', 'stop', '--name', host_name)}")
         if browser_line:
             lines.append(browser_line)
     elif startup_status == "completed":

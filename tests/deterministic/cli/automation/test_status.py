@@ -124,7 +124,6 @@ class AutomationStatusTests(unittest.TestCase):
         """Text and JSON come from the host data, including the release command."""
 
         from cli.automa_cli.hosts.runs.render import render_hosts_status
-        from cli.automa_cli.releases.store import update_command
 
         self.assertEqual(render_hosts_status([], host_name=None, json_output=False, long=False), "No hosts found")
         self.assertEqual(
@@ -152,7 +151,7 @@ class AutomationStatusTests(unittest.TestCase):
         text = render_hosts_status([host], host_name="car", json_output=False, long=True)
         self.assertIn("Host car  not running", text)
         self.assertIn("deployment: not deployed", text)
-        self.assertIn(update_command("car"), text)
+        self.assertIn("./cli/automa hosts update --name car", text)
         rendered = json.loads(render_hosts_status([host], host_name="car", json_output=True, long=False))
         self.assertEqual(rendered["schema"], "automa_hosts_status")
         self.assertIsNone(rendered["hosts"][0]["run"]["release"])

@@ -1,8 +1,15 @@
 """Text formatting shared by command output."""
 
+import shlex
 from typing import Any
 
 from .browser_result import BrowserOpenResult
+
+
+def automa_command(*args: str) -> str:
+    """The ``./cli/automa`` command line for ``args``, each quoted for a shell when it needs it."""
+
+    return "./cli/automa " + shlex.join(args)
 
 
 def indented(text: Any) -> list[str]:

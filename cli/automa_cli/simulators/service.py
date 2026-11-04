@@ -12,11 +12,10 @@ import socket
 from pathlib import Path
 
 from ..hosts.discovery import local_hosts
-from ..providers.catalog import CHASE_SIM
+from ..providers.registry import CHASE_SIM
 from ..providers.urls import normalize_chase_url
-from ..releases.errors import RuntimeHostError
 from .models import SimulatorResult
-from .process import start_simulator, stop_simulator
+from .process import SimulatorStartError, start_simulator, stop_simulator
 from .store import created_simulators
 
 # simulators create runs Metrics UI's headless launcher from this checkout.
@@ -45,7 +44,7 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Simulat
         record = start_simulator(_headless_sim_command(port), cwd=ui_dir, port=port, timeout_s=timeout_s)
     except OSError as exc:
         return SimulatorResult(2, "create_error", error=str(exc))
-    except RuntimeHostError as exc:
+    except SimulatorStartError as exc:
         return SimulatorResult(2, "error", error=str(exc))
     return SimulatorResult(0, "created", url=record["url"])
 

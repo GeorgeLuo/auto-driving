@@ -12,7 +12,8 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from cli.automa_cli.hosts.runs import process, service
-from cli.automa_cli.hosts.runs.models import RestartResult, StartResult, StopResult
+from cli.automa_cli.hosts.runs.models import RUN_EVENT_KINDS, RestartResult, RunEvent, StartResult, StopResult
+from cli.automa_cli.hosts.runs.worker import RunOutput
 from cli.automa_cli.hosts.runs.render import render_lifecycle_result
 
 
@@ -136,3 +137,27 @@ class WorkerProcessTests(unittest.TestCase):
         self.assertEqual({phase["status"] for phase in result["phases"].values()}, {"incomplete"})
         self.assertIn("still running", result["reason"])
         terminate.assert_not_called()
+
+
+class RunEventTests(unittest.TestCase):
+    SAMPLES = {
+        "startup": {
+            "host_name": "car", "selections": {"perception": {"plugins": ["frame"], "preset": None}},
+            "run_dir": None, "control_source": "runtime_host", "action_policy": "observe_only",
+            "decision": {"generation_id": "g-1"}, "num_decisions": None,
+            "published_view": {"available": True, "url": "http://127.0.0.1:9/"},
+        },
+        "frame": {"frame_id": "f-1", "signals": 2, "things": 1, "action": "hold", "count": 1},
+    }
+
+    def test_every_run_event_kind_is_written(self):
+        self.assertEqual(set(self.SAMPLES), set(RUN_EVENT_KINDS))
+        for kind, data in self.SAMPLES.items():
+            with self.subTest(kind=kind):
+                output = io.StringIO()
+                RunOutput(output)(RunEvent(kind, data))
+                self.assertTrue(output.getvalue().strip())
+
+    def test_an_unknown_run_event_cannot_be_emitted(self):
+        with self.assertRaisesRegex(ValueError, "Unknown run event"):
+            RunEvent("paused", {})

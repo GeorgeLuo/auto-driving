@@ -16,6 +16,7 @@ from cli.automa_cli.replay.selections import default_selection
 from cli.automa_cli.plugins.inspect.commands import inspect_step
 from cli.automa_cli.workbench.runner import ImageReplayRunner
 from tests.shared.cli.memory.frame_fixtures import write_frames
+from tests.shared.cli.workbench_fixtures import replay_states
 
 
 class ReplaySelectionTests(unittest.TestCase):
@@ -70,11 +71,11 @@ class ReplaySelectionTests(unittest.TestCase):
                 runner = ImageReplayRunner(source, cadence_ms=0, loop=False,
                                            activations={"memory": default} if overridden else None)
                 try:
-                    runner.start()
-                    completed = runner.wait(5)
+                    states = replay_states(runner)
+                    completed = states[-1]
                     self.assertEqual(completed["phase"], "completed", completed.get("failure"))
                     self.assertEqual(json.loads(json.dumps(completed["steps"]["memory"])), expected["frames"][-1]["record"])
-                    self.assertEqual([row["memory_plugins"] for row in completed["timeline"]],
+                    self.assertEqual([row["summary"]["memory_plugins"] for row in states],
                                      [([] if frame["record"] is None else [
                                          {"plugin_id": item["plugin_id"], **{key: item["state"].get(key) for key in
                                           ("health", "record_count", "epoch_id")}}

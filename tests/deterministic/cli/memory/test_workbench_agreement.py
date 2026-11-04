@@ -11,6 +11,7 @@ from cli.automa_cli.plugins.inspect.commands import inspect_step
 from cli.automa_cli.shared.memory_report import plugin_summaries
 from cli.automa_cli.workbench.runner import ImageReplayRunner
 from tests.shared.cli.memory.frame_fixtures import write_frames
+from tests.shared.cli.workbench_fixtures import replay_states
 
 
 class WorkbenchAgreesWithInspectTests(unittest.TestCase):
@@ -39,13 +40,13 @@ class WorkbenchAgreesWithInspectTests(unittest.TestCase):
             inspected = json.loads(result.message)
             runner = ImageReplayRunner(inspected["run_dir"], cadence_ms=0, loop=False)
             self.addCleanup(runner.close)
-            runner.start()
-            completed = runner.wait(5)
+            states = replay_states(runner)
+            completed = states[-1]
         self.assertEqual(completed["phase"], "completed")
         self.assertEqual(
             [
-                (item["frame"]["frame_id"], item["frame"]["timestamp_ms"])
-                for item in completed["timeline"]
+                (item["current_frame"]["frame_id"], item["current_frame"]["timestamp_ms"])
+                for item in states
             ],
             [(frame["frame_id"], frame["timestamp_ms"]) for frame in inspected["frames"]],
         )
@@ -67,19 +68,20 @@ class WorkbenchAgreesWithInspectTests(unittest.TestCase):
             inspected = json.loads(result.message)
 
             runner = ImageReplayRunner(frames, cadence_ms=0, loop=False)
-            runner.start()
-            completed = runner.wait(10)
+            self.addCleanup(runner.close)
+            states = replay_states(runner)
+            completed = states[-1]
 
         self.assertEqual(completed["phase"], "completed")
         self.assertEqual(
             completed["active_memory_plugin_ids"], inspected["selections"]["memory"]["plugins"]
         )
         self.assertEqual(
-            [item["memory_plugins"] for item in completed["timeline"]],
+            [item["summary"]["memory_plugins"] for item in states],
             [plugin_summaries(frame["record"]) for frame in inspected["frames"]],
         )
         self.assertEqual(
-            [item["memory_evidence_publisher"] for item in completed["timeline"]],
+            [item["summary"]["memory_evidence_publisher"] for item in states],
             [frame["record"]["evidence_publisher"] for frame in inspected["frames"]],
         )
         shown = plugin_summaries(completed["steps"]["memory"])

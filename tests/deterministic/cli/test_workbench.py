@@ -155,7 +155,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(len(memory_mapper.calls), 1)
             self.assertEqual(memory_state["progress"]["completed"], 0)
 
-    def test_runner_uses_existing_pipeline_and_reports_memory_effects(self) -> None:
+    def test_runner_uses_existing_pipeline_and_reports_memory_summary(self) -> None:
         with image_source(2) as root:
             perception_step = FixtureMapper()
             runner = ImageReplayRunner(
@@ -182,15 +182,11 @@ class WorkbenchTests(unittest.TestCase):
             state["summary"]["memory_plugins"][0]["record_count"],
             ledger["state"]["record_count"],
         )
-        self.assertEqual(
-            state["timeline"][-1]["memory_plugins"][0]["record_count"],
-            ledger["state"]["record_count"],
-        )
         self.assertNotIn("frames", state["source"])
-        self.assertNotIn("perception", state["timeline"][0])
+        self.assertNotIn("timeline", state)
+        self.assertNotIn("memory_effects", state)
         self.assertEqual(state["steps"]["perception"]["status"], "ok")
         self.assertIsNotNone(state["steps"]["observation"]["observation_id"])
-        self.assertTrue(state["timeline"][0]["memory_effects"][0]["added"])
         self.assertTrue(state["cleanup"]["source_read_only"])
         self.assertFalse(state["cleanup"]["movement_control"])
         self.assertFalse(state["machine_detail"]["side_effects"]["simulator"])
@@ -229,11 +225,10 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(decision["authority"]["proposed"]["steering"], 1.0)
         self.assertTrue(decision["authority"]["proposed_applied"])
         self.assertTrue(
-            state["timeline"][0]["frame"]["frame_id"].endswith(
-                state["timeline"][0]["decision"]["selected_proposal_id"].rsplit(":", 1)[1]
+            state["current_frame"]["frame_id"].endswith(
+                decision["plan"]["selected_proposal_id"].rsplit(":", 1)[1]
             )
         )
-        self.assertTrue(state["timeline"][0]["decision"]["proposed_applied"])
         self.assertEqual(
             state["machine_detail"]["pipeline"]["decision_steps"],
             {"proposal": ["avoid_recent_obstruction"], "plan": ["highest_confidence"], "action": ["selected"]},
@@ -270,8 +265,8 @@ class WorkbenchTests(unittest.TestCase):
 
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(len(perception_step.calls), 1)
-        self.assertTrue(state["timeline"][1]["frame"]["absent"])
-        self.assertEqual(state["timeline"][1]["frame"]["absence_reason"], "dropout")
+        self.assertTrue(state["current_frame"]["absent"])
+        self.assertEqual(state["current_frame"]["absence_reason"], "dropout")
         self.assertIsNone(state["steps"]["observation"])
 
     def test_public_state_keeps_frame_and_pipeline_payload_paired(self) -> None:
@@ -286,10 +281,10 @@ class WorkbenchTests(unittest.TestCase):
             self.assertTrue(perception_step.second_started.wait(3))
             try:
                 active = runner.state()
-                self.assertEqual(len(active["timeline"]), 1)
+                self.assertEqual(active["progress"]["completed"], 1)
                 self.assertEqual(
+                    active["steps"]["observation"]["observation_id"],
                     active["current_frame"]["frame_id"],
-                    active["timeline"][0]["frame"]["frame_id"],
                 )
             finally:
                 perception_step.release_second.set()

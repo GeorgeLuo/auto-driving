@@ -210,3 +210,17 @@ def _wait_until(predicate, timeout: float = 3.0) -> None:
             return
         time.sleep(0.01)
     raise AssertionError("condition did not become true before timeout")
+
+
+def replay_states(runner: ProductionImageReplayRunner) -> list[dict]:
+    """Collect displayed frames through pause/step without automatic playback races."""
+    run_id = runner.start(cadence_ms=30000)["run_id"]
+    _wait_until(lambda: runner.state()["current_frame"] is not None or runner.state()["phase"] == "failed")
+    state = runner.state()
+    if state["phase"] == "running":
+        state = runner.dispatch("pause", run_id=run_id)
+    states = [state]
+    while state["phase"] == "paused":
+        state = runner.dispatch("step", run_id=run_id)
+        states.append(state)
+    return states

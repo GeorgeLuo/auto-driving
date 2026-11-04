@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import copy
 import tempfile
 import unittest
 from dataclasses import replace
@@ -103,7 +102,8 @@ class LiveSelectionTests(unittest.TestCase):
         with image_source(6) as root:
             runner, run_id = self.paused(root)
             before = runner.dispatch("seek", run_id=run_id, position=3)
-            prefix = copy.deepcopy(before["timeline"][:3])
+            prefix = [runner.dispatch("seek", run_id=run_id, position=index) for index in range(3)]
+            runner.dispatch("seek", run_id=run_id, position=3)
             memory = runner._steps["memory"]
             with mock.patch.object(replay, "run_frame", wraps=replay.run_frame) as frames:
                 self.select(runner, run_id, ["frame"])
@@ -114,8 +114,12 @@ class LiveSelectionTests(unittest.TestCase):
             self.assertIs(runner._steps["memory"], memory)
             self.assertEqual(refreshed["phase"], "paused")
             self.assertEqual(refreshed["position"], 4)
-            self.assertEqual(refreshed["timeline"][:3], prefix)
-            self.assertEqual(len(refreshed["timeline"]), 4)
+            for index, earlier in enumerate(prefix):
+                cached = runner.dispatch("seek", run_id=run_id, position=index)
+                self.assertEqual(cached["steps"], earlier["steps"])
+                self.assertEqual(cached["timing"], earlier["timing"])
+                self.assertEqual(cached["machine_detail"]["pipeline"], earlier["machine_detail"]["pipeline"])
+            self.assertEqual(refreshed["progress"]["completed"], 4)
             # Domain memory matches one execution of the frame with this selection.
             self.assertEqual(refreshed["steps"]["memory"], before["steps"]["memory"])
             self.assertEqual(refreshed["steps"]["memory"]["evidence_publisher"], "bounded_evidence")
@@ -160,7 +164,7 @@ class LiveSelectionTests(unittest.TestCase):
             self.assertEqual(selected["position"], 1)
             self.assertEqual(selected["latest_processed_position"], 0)
             runner.dispatch("step", run_id=run_id)
-            self.assertEqual(len(runner.state()["timeline"]), 1)
+            self.assertEqual(runner.state()["progress"]["completed"], 1)
             runner.dispatch("reset", run_id=run_id)
             self.assertIsNone(runner._frame_checkpoint)
             self.assertIsNone(runner.state()["latest_processed_position"])

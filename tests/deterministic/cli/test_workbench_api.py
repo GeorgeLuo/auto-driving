@@ -201,7 +201,7 @@ class WorkbenchTests(unittest.TestCase):
             )
             run_id = started["state"]["run_id"]
             _wait_until(lambda: runner.state()["position"] == 1)
-            first_id = runner.state()["timeline"][0]["frame"]["frame_id"]
+            first_id = runner.state()["current_frame"]["frame_id"]
             selected = post(
                 {
                     "action": "select_plugins",
@@ -245,7 +245,7 @@ class WorkbenchTests(unittest.TestCase):
             started = runner.start()
             run_id = started["run_id"]
             _wait_until(lambda: runner.state()["position"] == 1)
-            first_id = runner.state()["timeline"][0]["frame"]["frame_id"]
+            first_id = runner.state()["current_frame"]["frame_id"]
             selected = runner.dispatch(
                 "select_plugins",
                 step="perception",
@@ -297,7 +297,11 @@ class WorkbenchTests(unittest.TestCase):
 
             latest = json.loads(urlopen(base + "api/state", timeout=2).read())
             self.assertEqual(latest["phase"], "completed")
-            frame_id = state["timeline"][0]["frame"]["frame_id"]
+            self.assertNotIn("timeline", latest)
+            self.assertNotIn("memory_effects", latest)
+            self.assertEqual(latest["timing"], state["timing"])
+            self.assertEqual(latest["timing"]["duration_ms"], latest["summary"]["last_duration_ms"])
+            frame_id = state["current_frame"]["frame_id"]
             query = urlencode({"run_id": run_id, "frame_id": frame_id})
             frame = urlopen(
                 base + "api/frame?" + query,
@@ -344,4 +348,4 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(bad_payload["boundary"], "input")
             self.doCleanups()
             self.assertIsNone(runner.state()["source"])
-            self.assertEqual(runner.state()["timeline"], [])
+            self.assertIsNone(runner.state()["timing"])

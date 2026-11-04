@@ -351,7 +351,6 @@ def cycle_frame(result: DecisionCycleResult, *, host_name: str, run_id: str) -> 
     generation = activation_generation_id(
         {step: steps[step] for step in DECISION_STEPS}, prefix="decision",
     )
-    cycle = result.export_cycle()
     return {
         "host_name": host_name, "run_id": run_id,
         "frame_id": context.frame_id, "frame_index": context.frame_index,
@@ -359,13 +358,12 @@ def cycle_frame(result: DecisionCycleResult, *, host_name: str, run_id: str) -> 
         "perception_completed_at_ms": result.completed_at_ms,
         "perception_duration_ms": result.duration_ms,
         "cycle_duration_ms": result.duration_ms,
-        "timing": copy.deepcopy(result.timing),
         "generation_id": generation, "step_activations": steps,
         "context": context.to_dict(), "sensor_frame": context.sensor_frame.to_dict(),
         "perception": result.perception.to_dict() if result.perception else None,
-        **cycle,
-        "control": result.control_record(),
-        "action_policy": read_mode(context.shared_memory),
+        "observation": result.observation.to_dict() if result.observation else None,
+        "memory": result.memory, "control": result.control_record(),
+        "decision_cycle": result.to_dict(), "action_policy": read_mode(context.shared_memory),
         "user_steering": read_user_steering(context.shared_memory),
         "user_throttle": read_user_throttle(context.shared_memory),
     }

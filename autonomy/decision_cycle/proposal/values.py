@@ -19,36 +19,11 @@ from autonomy.decision_cycle.confidence import optional_confidence
 from autonomy.serialization import (
     deep_freeze,
     frozen_mapping_to_dict,
-    require_canonical_export,
-    require_exact_keys,
 )
 from autonomy.vehicle import clamp_unit
 
 ACTION_PROPOSAL_SCHEMA = "action_proposal"
 PROPOSED_VEHICLE_COMMAND_SCHEMA = "proposed_vehicle_command"
-COMMAND_EXACT_KEYS = frozenset(
-    {"schema", "steering", "throttle", "gear", "normalized"}
-)
-PROPOSAL_EXACT_KEYS = frozenset(
-    {
-        "schema",
-        "proposal_id",
-        "plugin_id",
-        "frame_id",
-        "lifecycle",
-        "freshness",
-        "confidence",
-        "reason",
-        "command",
-        "assumptions",
-        "source_refs",
-        "available",
-        "metadata",
-    }
-)
-SOURCE_REF_EXACT_KEYS = frozenset(
-    {"kind", "id", "frame_id", "observation_id", "plugin_id", "note"}
-)
 MAX_REASON = 240
 MAX_ASSUMPTION = 64
 MAX_ASSUMPTIONS = 8
@@ -146,26 +121,6 @@ class ProposedVehicleCommand:
             gear=str(data.get("gear") or "hold"),
             schema=str(data.get("schema") or PROPOSED_VEHICLE_COMMAND_SCHEMA),
         )
-
-    @classmethod
-    def decode(cls, payload: object, *, field: str) -> "ProposedVehicleCommand":
-        """The command, when ``payload`` is exactly its export."""
-
-        if not isinstance(payload, dict):
-            raise ValueError(f"{field} must be a ProposedVehicleCommand object.")
-        if payload.get("schema") != PROPOSED_VEHICLE_COMMAND_SCHEMA:
-            raise ValueError(
-                f"{field}.schema must be {PROPOSED_VEHICLE_COMMAND_SCHEMA!r}."
-            )
-        require_exact_keys(payload, COMMAND_EXACT_KEYS, field=field)
-        try:
-            command = cls.from_dict(payload)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"{field} failed ProposedVehicleCommand construction: {exc}"
-            ) from exc
-        require_canonical_export(payload, command.to_dict(), field=field)
-        return command
 
 
 @dataclass(frozen=True)
@@ -410,38 +365,6 @@ class ActionProposal:
             proposal_id=str(data.get("proposal_id") or ""),
             schema=str(data.get("schema") or ACTION_PROPOSAL_SCHEMA),
         )
-
-    @classmethod
-    def decode(cls, payload: object, *, field: str) -> "ActionProposal":
-        """The candidate, when ``payload`` is exactly its export."""
-
-        if not isinstance(payload, dict):
-            raise ValueError(f"{field} must be an ActionProposal object.")
-        if payload.get("schema") != ACTION_PROPOSAL_SCHEMA:
-            raise ValueError(f"{field}.schema must be {ACTION_PROPOSAL_SCHEMA!r}.")
-        require_exact_keys(payload, PROPOSAL_EXACT_KEYS, field=field)
-        command = payload.get("command")
-        if command is not None:
-            ProposedVehicleCommand.decode(command, field=f"{field}.command")
-        refs = payload.get("source_refs")
-        if not isinstance(refs, list):
-            raise ValueError(f"{field}.source_refs must be a list.")
-        for index, ref in enumerate(refs):
-            if not isinstance(ref, dict):
-                raise ValueError(f"{field}.source_refs[{index}] must be an object.")
-            require_exact_keys(
-                ref,
-                SOURCE_REF_EXACT_KEYS,
-                field=f"{field}.source_refs[{index}]",
-            )
-        try:
-            proposal = cls.from_dict(payload)
-        except (TypeError, ValueError) as exc:
-            raise ValueError(
-                f"{field} failed ActionProposal construction: {exc}"
-            ) from exc
-        require_canonical_export(payload, proposal.to_dict(), field=field)
-        return proposal
 
 
 def synthetic_error_proposal(

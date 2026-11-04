@@ -10,11 +10,15 @@ from autonomy.decision_cycle.action.runner import ActionRunner
 from autonomy.decision_cycle.action.selected import SelectedAction
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.runner import PlanRunner
-from autonomy.decision_cycle.plan.values import ACTION_PLAN_SCHEMA, ActionPlan
+from autonomy.decision_cycle.plan.values import ACTION_PLAN_SCHEMA
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
-from autonomy.runtime.report import align_decision_records
 from autonomy.vehicle import SensorFrame
+from cli.automa_cli.hosts.publications.decision import (
+    DecisionSurfaceError,
+    _require_aggregate_cycle_alignment,
+    _strict_decode_plan,
+)
 from cli.automa_cli.hosts.publications.decision_records import DecisionRecords
 from tests.deterministic.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     WeightedMeanPlan,
@@ -55,13 +59,14 @@ def _composed_cycle() -> DecisionRecords:
 class ComposedPlanDecodeTests(unittest.TestCase):
     def test_a_composed_plan_round_trips(self) -> None:
         plan = _composed_cycle().plan
-        self.assertEqual(ActionPlan.decode(plan.to_dict(), field="cycle.plan"), plan)
+        self.assertEqual(_strict_decode_plan(plan.to_dict(), field="cycle.plan"), plan)
 
     def test_a_plan_with_another_schema_is_rejected(self) -> None:
         payload = _composed_cycle().plan.to_dict()
         payload["schema"] = "other"
-        with self.assertRaises(ValueError) as raised:
-            ActionPlan.decode(payload, field="cycle.plan")
+        with self.assertRaises(DecisionSurfaceError) as raised:
+            _strict_decode_plan(payload, field="cycle.plan")
+        self.assertEqual(raised.exception.error_code, "latest_frame_invalid")
         self.assertIn(ACTION_PLAN_SCHEMA, str(raised.exception))
 
     def test_a_junk_command_or_reason_is_rejected_by_field(self) -> None:
@@ -73,35 +78,23 @@ class ComposedPlanDecodeTests(unittest.TestCase):
             with self.subTest(key=key):
                 payload = _composed_cycle().plan.to_dict()
                 payload[key] = value
-                with self.assertRaises(ValueError) as raised:
-                    ActionPlan.decode(payload, field="cycle.plan")
+                with self.assertRaises(DecisionSurfaceError) as raised:
+                    _strict_decode_plan(payload, field="cycle.plan")
                 self.assertIn(message, str(raised.exception))
 
 
 class ComposedPlanAlignmentTests(unittest.TestCase):
     def test_authority_proposed_is_the_composed_command(self) -> None:
-        cycle = _composed_cycle()
-        align_decision_records(
-            frame_id=FRAME["frame_id"],
-            timestamp_ms=FRAME["timestamp_ms"],
-            proposal=cycle.proposal,
-            plan=cycle.plan,
-            action=cycle.action,
-        )
+        _require_aggregate_cycle_alignment(FRAME, _composed_cycle())
 
     def test_authority_proposed_other_than_the_plan_command_is_rejected(self) -> None:
         cycle = _composed_cycle()
         other = ProposedVehicleCommand(steering=0.5, throttle=0.0, gear="hold")
         authority = replace(cycle.authority, proposed=other, proposed_applied=False)
-        action = replace(cycle.action, authority=authority)
-        with self.assertRaisesRegex(ValueError, "authority.proposed must equal the plan command."):
-            align_decision_records(
-                frame_id=FRAME["frame_id"],
-                timestamp_ms=FRAME["timestamp_ms"],
-                proposal=cycle.proposal,
-                plan=cycle.plan,
-                action=action,
-            )
+        cycle = replace(cycle, action=replace(cycle.action, authority=authority))
+        with self.assertRaises(DecisionSurfaceError) as raised:
+            _require_aggregate_cycle_alignment(FRAME, cycle)
+        self.assertIn("authority.proposed must equal the plan command.", str(raised.exception))
 
 
 if __name__ == "__main__":

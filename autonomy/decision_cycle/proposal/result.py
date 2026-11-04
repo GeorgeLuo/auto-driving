@@ -14,12 +14,8 @@ from typing import Any
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
 from autonomy.decision_cycle.proposal.values import ActionProposal
-from autonomy.serialization import require_canonical_export, require_exact_keys
 
 PROPOSAL_RESULT_SCHEMA = "proposal_result"
-PROPOSAL_RECORD_EXACT_KEYS = frozenset(
-    {"schema", "frame_id", "status", "reason", "candidates"}
-)
 
 
 @dataclass(frozen=True)
@@ -59,36 +55,3 @@ class ProposalResult:
             "reason": self.reason,
             "candidates": [candidate.to_dict() for candidate in self.candidates],
         }
-
-    @classmethod
-    def decode(cls, payload: object, *, field: str = "cycle.proposal") -> "ProposalResult":
-        """The proposal step, when ``payload`` is exactly its export."""
-
-        if not isinstance(payload, dict):
-            raise ValueError(f"{field} must be an object.")
-        require_exact_keys(payload, PROPOSAL_RECORD_EXACT_KEYS, field=field)
-        if payload.get("schema") != PROPOSAL_RESULT_SCHEMA:
-            raise ValueError(f"{field}.schema must be {PROPOSAL_RESULT_SCHEMA!r}.")
-        if payload.get("status") not in {"ok", "error"}:
-            raise ValueError(f"{field}.status must be ok or error.")
-        if type(payload.get("reason")) is not str:
-            raise ValueError(f"{field}.reason must be a string.")
-        raw_candidates = payload.get("candidates")
-        if not isinstance(raw_candidates, list):
-            raise ValueError(f"{field}.candidates must be a list.")
-        candidates = tuple(
-            ActionProposal.decode(item, field=f"{field}.candidates[{index}]")
-            for index, item in enumerate(raw_candidates)
-        )
-        try:
-            proposal = cls(
-                frame_id=str(payload["frame_id"]),
-                status=str(payload["status"]),
-                reason=str(payload["reason"]),
-                candidates=candidates,
-                schema=str(payload["schema"]),
-            )
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{field} failed ProposalResult construction: {exc}") from exc
-        require_canonical_export(payload, proposal.to_dict(), field=field)
-        return proposal

@@ -32,8 +32,7 @@ class RecordingTransferTests(unittest.TestCase):
             self.addCleanup(host.close)
             recording = RunRecording(options["recording_root"], host_name=HOST_NAME)
             host.start(RunConfiguration(mode="observe_only", num_decisions=2), recording=recording)
-            first = host.run(frame(root, 1))
-            timings = {first.context.frame_id: first.timing}
+            host.run(frame(root, 1))
             export_dir = runtime_root / "automation" / "runs" / recording.run_id
             state = {"recorded_count": 0, "host_name": HOST_NAME}
 
@@ -50,8 +49,7 @@ class RecordingTransferTests(unittest.TestCase):
                     # The CLI has read the old manifest. A host append commits
                     # before that CLI write, forcing the former lost-update race.
                     appended = True
-                    second = host.run(frame(root, 2))
-                    timings[second.context.frame_id] = second.timing
+                    host.run(frame(root, 2))
                 original_write(path, payload)
 
             with patch.object(recording_module, "write_json_atomically", side_effect=write_with_host_append):
@@ -72,9 +70,6 @@ class RecordingTransferTests(unittest.TestCase):
                                  (recording.root / entry["image_path"]).read_bytes())
                 record = Path("perception") / entry["frame_id"] / "perception.json"
                 self.assertEqual((export_dir / record).read_bytes(), (recording.root / record).read_bytes())
-                saved = json.loads((recording.root / record).read_text())
-                self.assertEqual(saved["timing"], timings[entry["frame_id"]])
-                self.assertTrue(any(step["plugins"] for step in saved["timing"]["steps"]))
 
 
 if __name__ == "__main__":

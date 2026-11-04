@@ -8,9 +8,12 @@ from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
-from autonomy.runtime.report import decode_decision_records
-from cli.automa_cli.hosts.publications.decision import _require_runner_plan_alignment
-from cli.automa_cli.hosts.publications.decision_records import DecisionRecords, DecisionRunners
+from cli.automa_cli.hosts.publications.decision import (
+    DecisionSurfaceError,
+    _require_exact_cycle_export,
+    _require_runner_plan_alignment,
+)
+from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
 from autonomy.decision_cycle.action.publication import MODE_KEY
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from tests.shared.cli.decision.decision_surfaces_fixtures import packaged_decision_steps
@@ -57,20 +60,15 @@ def _applied_cycle() -> dict:
     return records.to_dict()
 
 
-def _records(payload: dict) -> DecisionRecords:
-    decoded = decode_decision_records(payload)
-    return DecisionRecords(proposal=decoded.proposal, plan=decoded.plan, action=decoded.action)
-
-
 class ActionAuthorityDecodeTests(unittest.TestCase):
     def test_authority_rejects_a_non_string_drive_mode_gate(self) -> None:
         payload = _applied_cycle()
         payload["action"]["authority"]["drive_mode_gate"] = 7
-        with self.assertRaisesRegex(ValueError, "drive_mode_gate"):
-            decode_decision_records(payload)
+        with self.assertRaisesRegex(DecisionSurfaceError, "drive_mode_gate"):
+            _require_exact_cycle_export(payload)
 
     def test_mode_action_applied_cycle_is_accepted(self) -> None:
-        cycle = _records(_applied_cycle())
+        cycle = _require_exact_cycle_export(_applied_cycle())
         _require_runner_plan_alignment(cycle, packaged_decision_steps("mode"))
 
         self.assertTrue(cycle.authority.proposed_applied)
@@ -81,7 +79,7 @@ class ActionAuthorityDecodeTests(unittest.TestCase):
         # is not run again here.
         payload = _applied_cycle()
         payload["plan"]["metadata"] = {"observation_id": "obs-1"}
-        cycle = _records(payload)
+        cycle = _require_exact_cycle_export(payload)
         _require_runner_plan_alignment(cycle, packaged_decision_steps("mode"))
         self.assertEqual(cycle.plan.metadata, {"observation_id": "obs-1"})
 

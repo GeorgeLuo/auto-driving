@@ -331,7 +331,7 @@ class DecisionView:
     def publish(
         self,
         *,
-        report: HostReport | dict[str, Any],
+        report: dict[str, Any],
         frame_record: dict[str, Any],
         image: tuple[bytes, str] | None,
     ) -> bool:
@@ -341,7 +341,7 @@ class DecisionView:
             self.invalidate_latest()
             return False
         try:
-            parsed = report if isinstance(report, HostReport) else HostReport.from_dict(report)
+            parsed = HostReport.from_dict(report)
             diagnostic_ceiling(parsed.values)
             identity = self.identity
             if (

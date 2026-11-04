@@ -226,7 +226,7 @@ def find_best_similarity_group(
             residual = np.abs(predicted - dst_complex)
             inliers = residual <= residual_threshold
             count = int(inliers.sum())
-            if count < 4:
+            if count < 4 or (best_score is not None and count < best_score[0]):
                 continue
 
             median_residual = float(np.median(residual[inliers]))

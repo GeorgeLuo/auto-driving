@@ -42,6 +42,10 @@ jobs:
         run: |
           if python3 -m pyflakes tests | grep "undefined name"; then exit 1; fi
 
+      - name: Check for retired vocabulary
+        run: |
+          if git grep -n -i snapshot -- ':!docs/deprecated' ':!.github/workflows/tests.yml'; then exit 1; fi
+
       - name: Run deterministic tests with coverage
         run: |
           python3 -m coverage run tests/run.py

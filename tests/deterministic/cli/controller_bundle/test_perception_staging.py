@@ -9,8 +9,9 @@ import numpy as np
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from autonomy.decision_cycle.activation import step_activation
-from cli.automa_cli.bundles import controller_bundle_paths, sync_controller_bundle
-from cli.automa_cli.step_hosting import load_staged_runner
+from autonomy.runtime.plugin_loader import load_runner
+from cli.automa_cli.hosts.bundles import sync_controller_bundle
+from cli.automa_cli.releases.paths import controller_bundle_paths
 from implementations.decision_cycle.catalog import step_plugins
 
 
@@ -18,8 +19,8 @@ class PerceptionStagingTests(unittest.TestCase):
     def test_staged_bundle_keeps_feed_and_plugin_types_consistent(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             bundle = controller_bundle_paths(Path(tmp) / "vehicle")
-            sync_controller_bundle(bundle, output=None)
-            mapper = load_staged_runner(
+            sync_controller_bundle(bundle, emit=None)
+            mapper = load_runner(
                 step_activation(
                     "perception",
                     ["frame"],

@@ -14,7 +14,7 @@ import secrets
 import threading
 import time
 from copy import deepcopy
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
@@ -35,19 +35,19 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 logger = logging.getLogger(__name__)
 
-ONBOARD_OBSERVATION_STATE_SCHEMA = "automa_onboard_observation_state_v0"
-OBSERVATION_PUBLICATION_SCHEMA = "automa_physical_observation_publication_v0"
-DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication_v0"
-LATEST_FRAME_PATH = "/autonomy/observation/latest/frame.jpg"
-OBSERVATION_TRANSACTION_PATH = "/autonomy/observation/transaction"
-OBSERVATION_TRANSACTION_SCHEMA = "automa_observation_transaction_v0"
-LATEST_JSON_PATH = "/autonomy/observation/latest"
-CAMERA_LATEST_FRAME_PATH = "/autonomy/camera/latest/frame.jpg"
-CAMERA_LATEST_JSON_PATH = "/autonomy/camera/latest"
-CAMERA_PUBLICATION_SCHEMA = "automa_physical_camera_publication_v0"
-DECISION_LATEST_PATH = "/autonomy/decision/latest"
-DECISION_TRANSACTION_PATH = "/autonomy/decision/transaction"
-DECISION_TRANSACTION_SCHEMA = "automa_decision_transaction_v0"
+ONBOARD_OBSERVATION_STATE_SCHEMA = "automa_onboard_observation_state"
+OBSERVATION_PUBLICATION_SCHEMA = "automa_physical_observation_publication"
+DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication"
+LATEST_FRAME_PATH = "/host/observation/latest/frame.jpg"
+OBSERVATION_TRANSACTION_PATH = "/host/observation/transaction"
+OBSERVATION_TRANSACTION_SCHEMA = "automa_observation_transaction"
+LATEST_JSON_PATH = "/host/observation/latest"
+CAMERA_LATEST_FRAME_PATH = "/host/camera/latest/frame.jpg"
+CAMERA_LATEST_JSON_PATH = "/host/camera/latest"
+CAMERA_PUBLICATION_SCHEMA = "automa_physical_camera_publication"
+DECISION_LATEST_PATH = "/host/decision/latest"
+DECISION_TRANSACTION_PATH = "/host/decision/transaction"
+DECISION_TRANSACTION_SCHEMA = "automa_decision_transaction"
 
 PUBLICATION_HEALTH_ABSENT = "absent"
 PUBLICATION_HEALTH_WARMING = "warming"
@@ -215,7 +215,7 @@ class FrameLoop:
         *,
         host: AutonomyCycleHost,
         presets: dict[str, str] | None = None,
-        vehicle_id: str | None = None,
+        host_name: str | None = None,
         source_id: str | None = None,
         decision_activations: dict[str, dict[str, Any] | None] | None = None,
         generation_id: str | None = None,
@@ -262,9 +262,9 @@ class FrameLoop:
         self._session_frame_id: str | None = None
         self._last_control = AutonomyControl(reason="observation-warming").to_dict()
         self._last_cycle: dict[str, Any] | None = None
-        self.vehicle_id = vehicle_id
+        self.host_name = host_name
         self.source_id = source_id or (
-            f"{runtime}:{vehicle_id}" if isinstance(vehicle_id, str) and vehicle_id else None
+            f"{runtime}:{host_name}" if isinstance(host_name, str) and host_name else None
         )
         self.decision_activations = (
             deepcopy(dict(decision_activations))
@@ -337,7 +337,7 @@ class FrameLoop:
         """Return one bounded latest frame/result publication computed at read time."""
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
-            return self._publication_from_locked_state(read_at_ms=read_at_ms)
+            return deepcopy(self._publication_from_locked_state(read_at_ms=read_at_ms))
 
     def publish_decision_latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
         """Return the current action result at read time.
@@ -350,59 +350,28 @@ class FrameLoop:
 
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
-            return self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
+            return deepcopy(self._decision_publication_from_locked_state(read_at_ms=read_at_ms))
 
-    def transaction_snapshot(self, kind: str) -> tuple[dict[str, Any], LatestObservationState | None, str]:
-        """Snapshot publication, capture and content revision before JPEG work."""
+    def read_transaction(self, kind: str) -> tuple[dict[str, Any], LatestObservationState | None, str]:
+        """Borrow publication data and its retained frame for HTTP serialization.
+
+        Completed frame data is replaced, rather than updated in place. The
+        route may retain these references across JPEG work without copying
+        report contents, including when an ETag avoids serialization entirely.
+        Callers must only read the borrowed nested values.
+        """
         with self._lock:
             publication = (self._decision_publication_from_locked_state(read_at_ms=timestamp_ms())
                            if kind == "decision" else self._publication_from_locked_state(read_at_ms=timestamp_ms()))
             revision = f"{self.run_id}:{kind}:{self._publication_revision}:{self._queue_generation}"
             return publication, self.latest_state, revision
 
-    def reset_memory(self) -> dict[str, Any]:
-        """Reset the live memory step under the same lock as observation cycles.
-
-        Clears retained memory on the step and detaches memory from the latest
-        published observation so operators see an empty map immediately.
-        """
-        with self._lock:
-            try:
-                report = self.host.reset_memory()
-            except Exception as exc:  # noqa: BLE001 - operator boundary
-                return {
-                    "ok": False,
-                    "status": "error",
-                    "error": f"{type(exc).__name__}: {exc}",
-                }
-            if report is None:
-                return {
-                    "ok": False,
-                    "status": "absent",
-                    "error": "no memory step is activated",
-                }
-            # Replace the published memory report until the next cycle.
-            if self.latest_state is not None and isinstance(self.latest_state.cycle, dict):
-                cycle = dict(self.latest_state.cycle)
-                cycle["memory"] = deepcopy(report)
-                self.latest_state = replace(self.latest_state, cycle=cycle)
-                self._publication_revision += 1
-            self._memory_update_halted = False
-            step = self.host.step("memory")
-            step_status = step.status() if step is not None and callable(getattr(step, "status", None)) else None
-            return {
-                "ok": True,
-                "status": "reset",
-                "report": deepcopy(report),
-                "memory": step_status,
-            }
-
     def publish_latest_frame_jpeg(self) -> tuple[bytes | None, dict[str, Any]]:
         """Return the exact processed frame JPEG with matching publication metadata."""
         read_at_ms = timestamp_ms()
         with self._lock:
             latest = self.latest_state
-            publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
+            publication = deepcopy(self._publication_from_locked_state(read_at_ms=read_at_ms))
         return self._jpeg(latest, publication)
 
     def publish_latest_camera(self, *, now_ms: int | None = None) -> dict[str, Any]:
@@ -464,10 +433,10 @@ class FrameLoop:
 
     def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
         with self._lifecycle_lock:
-            if record and (self.recording_root is None or self.vehicle_id is None):
-                raise RuntimeError("recording requires a runtime directory and vehicle identity")
+            if record and (self.recording_root is None or self.host_name is None):
+                raise RuntimeError("recording requires a runtime directory and host identity")
             recording = RunRecording(
-                self.recording_root, vehicle_id=self.vehicle_id, encode_image=self._recording_jpeg,
+                self.recording_root, host_name=self.host_name, encode_image=self._recording_jpeg,
             ) if record else None
             with self._lock:
                 self._session_frame_id = None
@@ -482,6 +451,13 @@ class FrameLoop:
                 self._discard_pending_locked()
             status = self.host.stop(reason=reason, error=error)
             return status
+
+    def stop_after_error(self, exc: Exception) -> None:
+        """End the run ``exc`` broke; a loop thread outlives a stop that fails too."""
+        try:
+            self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
+        except Exception:  # noqa: BLE001 - the host's last error records both
+            logger.exception("Stopping the run after %s failed", type(exc).__name__)
 
     def shutdown(self) -> None:
         with self._lock:
@@ -634,7 +610,7 @@ class FrameLoop:
         self._queue_generation += 1
 
     def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
-        """Build a publication from the currently locked state and counters."""
+        """Build a read-only publication view borrowing completed frame data."""
         latest = self.latest_state
         processed_count = self.processed_count
         presets = dict(self.presets)
@@ -683,11 +659,11 @@ class FrameLoop:
         else:
             health = PUBLICATION_HEALTH_HEALTHY
 
-        perception = None if latest.cycle is None else deepcopy(latest.cycle.get("perception"))
-        observation = None if latest.cycle is None else deepcopy(latest.cycle.get("observation"))
-        timing = None if latest.cycle is None else deepcopy(latest.cycle.get("timing"))
+        perception = None if latest.cycle is None else latest.cycle.get("perception")
+        observation = None if latest.cycle is None else latest.cycle.get("observation")
+        timing = None if latest.cycle is None else latest.cycle.get("timing")
         # Republish the memory report through the cycle publication.
-        memory = None if latest.cycle is None else deepcopy(latest.cycle.get("memory"))
+        memory = None if latest.cycle is None else latest.cycle.get("memory")
         context = latest.context or (latest.cycle or {}).get("context") or {}
         selections = (context.get("metadata") or {}).get("step_activations")
         if isinstance(selections, dict) and all(step in selections for step in DECISION_STEPS):
@@ -708,7 +684,7 @@ class FrameLoop:
             "processed_count": processed_count,
             "presets": dict(latest.presets),
             "generation_id": generation_id,
-            "step_activations": deepcopy(selections),
+            "step_activations": selections,
             "context": recorded_context(context),
             "frame": {
                 "frame_id": latest.frame_id,
@@ -718,7 +694,7 @@ class FrameLoop:
                 "has_image": latest.image is not None,
                 "frame_path": LATEST_FRAME_PATH,
             },
-            "control": deepcopy(latest.control),
+            "control": latest.control,
             "mode": latest.mode,
             "status": latest.status,
             "error": latest.error,
@@ -735,9 +711,9 @@ class FrameLoop:
         """Validate runtime-owned identity supplied to the publication owner."""
 
         try:
-            if self.vehicle_id is None:
-                return "vehicle_id_missing"
-            require_ascii_id(self.vehicle_id, field_name="vehicle_id")
+            if self.host_name is None:
+                return "host_name_missing"
+            require_ascii_id(self.host_name, field_name="host_name")
             if self.source_id is None:
                 return "source_id_missing"
             require_ascii_id(self.source_id, field_name="source_id")
@@ -804,7 +780,7 @@ class FrameLoop:
         published_at_ms: int,
         status: str,
     ) -> tuple[dict[str, Any] | None, str | None]:
-        """Capture the shared ``vehicle_report_v0`` for this completed cycle.
+        """Capture the shared ``host_report`` for this completed cycle.
 
         Runtime identity (source, activation, and the capture frame) goes in
         ``values``, with the display freshness limit. A failed cycle that
@@ -831,7 +807,7 @@ class FrameLoop:
         try:
             report = report_from_host_result(
                 records,
-                vehicle_id=self.vehicle_id,
+                host_name=self.host_name,
                 run_id=self.run_id,
                 generation_id=self.generation_id,
                 published_at_ms=published_at_ms,
@@ -875,7 +851,7 @@ class FrameLoop:
         }
 
     def _decision_publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
-        """Build the decision wire payload, fail-closed at read time."""
+        """Borrow the decision record, failing closed at read time."""
 
         latest = self.latest_state
         if latest is None:
@@ -925,7 +901,7 @@ class FrameLoop:
             "read_at_ms": read_at_ms,
             "result_age_ms": age_ms,
             "stale_after_ms": threshold_ms,
-            "decision": deepcopy(decision),
+            "decision": decision,
         }
 
     def _decision_worker(self) -> None:
@@ -956,7 +932,7 @@ class FrameLoop:
                         with self._lock:
                             current = generation == self._queue_generation
                         if current:
-                            self.stop(reason="error", error=f"{type(exc).__name__}: {exc}")
+                            self.stop_after_error(exc)
                     continue
                 with self._lock:
                     if generation != self._queue_generation:

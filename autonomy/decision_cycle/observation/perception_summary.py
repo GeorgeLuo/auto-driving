@@ -52,14 +52,11 @@ def observation_from_perception(
         summary=summary,
         things=tuple(thing.to_dict() for thing in perception.things),
         signals=tuple(signal.to_dict() for signal in perception.signals),
-        artifacts=dict(perception.artifacts),
         metadata={
             "limits": list(perception.limits),
             **(metadata or {}),
         },
     )
-
-
 
 
 class PerceptionSummary:

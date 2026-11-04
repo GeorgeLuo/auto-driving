@@ -15,7 +15,8 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.runtime_view import RuntimeViewServer
+from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.workbench.runner import ImageReplayRunner
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
@@ -26,8 +27,8 @@ from tests.support.cli_runner import AUTOMA_PATH
 
 def upload(base: str, file: Path, plugin_id: str, *, step: str = "perception", check=True):
     result = invoke_automa(
-        "vehicles", "plugins", "upload", "--url", base, "--file", str(file),
-        "--step", step, "--plugin-id", plugin_id, "--entrypoint", "prototype:Prototype", "--json",
+        "plugins", "upload", "--url", base, "--file", str(file),
+        "--name", f"{step}/{plugin_id}", "--entrypoint", "prototype:Prototype", "--json",
         check=check,
     )
     return result, json.loads(result.stdout)
@@ -59,8 +60,9 @@ class PluginUploadFlows(unittest.TestCase):
                 self.addCleanup(host.close)
                 host.follow_activations({}, root / "runtime")
                 identity = host.applied_decision()
-                view = RuntimeViewServer(vehicle_id="chase-sim-chaser", automation_dir=root / "automation",
-                                         port=0, plugin_catalog=PluginCatalogAPI(host.catalog)).start()
+                view = RuntimeViewServer(host_name="chase-sim-chaser", automation_dir=root / "automation",
+                                         port=0, plugin_catalog=PluginCatalogAPI(host.catalog),
+                                         replay_runner_factory=ImageReplayRunner).start()
                 self.addCleanup(view.stop)
                 file = root / "prototype.py"
                 file.write_text("raise RuntimeError('must not import on upload')")

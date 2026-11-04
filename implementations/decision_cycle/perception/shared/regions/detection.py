@@ -30,7 +30,6 @@ def detect_regions(
         sr=color_radius,
         maxLevel=1,
     )
-    smoothed_rgb = cv2.cvtColor(smoothed_bgr, cv2.COLOR_BGR2RGB)
     lab = cv2.cvtColor(smoothed_bgr, cv2.COLOR_BGR2LAB)
     quantized = (
         (lab[..., 0].astype(np.int32) // 24) * 169
@@ -104,7 +103,6 @@ def detect_regions(
         "working_width": width,
         "working_height": height,
         "component_count": component_count,
-        "smoothed_rgb": smoothed_rgb,
     }
 
 

@@ -1,0 +1,16 @@
+{
+  "default": {"preset": "most_confident"},
+  "presets": {
+    "most_confident": {
+      "description": "Select the most confident active candidate; otherwise plan idle.",
+      "plugins": ["highest_confidence"]
+    }
+  },
+  "plugins": [
+    {
+      "spec": "implementations.decision_cycle.plan.plugins.highest_confidence.plugin:HighestConfidencePlan",
+      "description": "Select the most confident active candidate; otherwise plan idle.",
+      "default_config": {}
+    }
+  ]
+}

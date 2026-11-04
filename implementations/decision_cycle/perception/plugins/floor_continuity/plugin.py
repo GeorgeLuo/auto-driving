@@ -1,12 +1,7 @@
 from __future__ import annotations
 
-import json
-from dataclasses import asdict
-from pathlib import Path
 from typing import Any
 
-import cv2
-import numpy as np
 
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
@@ -52,12 +47,6 @@ class FloorContinuityPlugin:
             "boundaries may be objects, walls, shadows, surface changes, or errors",
             "single-frame evidence does not establish identity, distance, or persistence",
         ),
-        diagnostic_artifacts=(
-            "floor_mask",
-            "boundary_mask",
-            "overlay",
-            "summary",
-        ),
     )
 
     def __init__(self, **config: Any) -> None:
@@ -95,19 +84,6 @@ class FloorContinuityPlugin:
         for index, boundary in enumerate(analysis.boundaries):
             things.append(_boundary_thing(index, boundary, analysis))
 
-        if inputs.diagnostics.enabled:
-            output_dir = inputs.diagnostics.directory
-            assert output_dir is not None
-            inputs.diagnostics.register(
-                _write_diagnostics(
-                    frame.rgb,
-                    analysis,
-                    self.config,
-                    output_dir,
-                    inputs.frame_id,
-                    self.plugin_id,
-                )
-            )
 
         floor_visible = (
             float(analysis.measurements["floor_fraction_roi"])
@@ -175,75 +151,3 @@ def _zone(centroid: tuple[float, float]) -> str:
     horizontal = "left" if x < 0.4 else "right" if x > 0.6 else "center"
     vertical = "near" if y > 0.66 else "far" if y < 0.33 else "mid"
     return f"{vertical}_{horizontal}"
-
-
-def _write_diagnostics(
-    source_rgb: np.ndarray,
-    analysis: FloorContinuityAnalysis,
-    config: FloorContinuityConfig,
-    output_dir: Path,
-    frame_id: str,
-    plugin_id: str = FloorContinuityPlugin.plugin_id,
-) -> dict[str, str]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    source_size = (analysis.source_width, analysis.source_height)
-    floor_mask = cv2.resize(
-        analysis.floor_mask.astype(np.uint8) * 255,
-        source_size,
-        interpolation=cv2.INTER_NEAREST,
-    )
-    boundary_mask = cv2.resize(
-        analysis.boundary_mask.astype(np.uint8) * 255,
-        source_size,
-        interpolation=cv2.INTER_NEAREST,
-    )
-    overlay = np.array(source_rgb, copy=True)
-    floor_pixels = floor_mask > 0
-    overlay[floor_pixels] = (
-        0.72 * overlay[floor_pixels]
-        + 0.28 * np.array([42, 190, 92], dtype=np.float32)
-    ).astype(np.uint8)
-    boundary_pixels = boundary_mask > 0
-    overlay[boundary_pixels] = np.array([238, 67, 52], dtype=np.uint8)
-    for boundary in analysis.boundaries:
-        x1, y1, x2, y2 = boundary["bbox_xyxy_norm"]
-        cv2.rectangle(
-            overlay,
-            (
-                int(round(x1 * max(analysis.source_width - 1, 1))),
-                int(round(y1 * max(analysis.source_height - 1, 1))),
-            ),
-            (
-                int(round(x2 * max(analysis.source_width - 1, 1))),
-                int(round(y2 * max(analysis.source_height - 1, 1))),
-            ),
-            (255, 218, 35),
-            2,
-        )
-
-    floor_path = output_dir / "floor_mask.png"
-    boundary_path = output_dir / "boundary_mask.png"
-    overlay_path = output_dir / "overlay.png"
-    summary_path = output_dir / "summary.json"
-    cv2.imwrite(str(floor_path), floor_mask)
-    cv2.imwrite(str(boundary_path), boundary_mask)
-    cv2.imwrite(str(overlay_path), cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
-    summary_path.write_text(
-        json.dumps(
-            {
-                "frame_id": frame_id,
-                "plugin_id": plugin_id,
-                "config": asdict(config),
-                "measurements": analysis.measurements,
-            },
-            indent=2,
-            sort_keys=True,
-        ),
-        encoding="utf-8",
-    )
-    return {
-        "floor_mask": str(floor_path),
-        "boundary_mask": str(boundary_path),
-        "overlay": str(overlay_path),
-        "summary": str(summary_path),
-    }

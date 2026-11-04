@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import contextlib
 import io
+import re
 import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
 from autonomy.decision_cycle.steps import STEP_RUNNERS
@@ -47,7 +49,7 @@ class DeclaredIdTests(unittest.TestCase):
             contextlib.redirect_stderr(stderr),
         ):
             code = app.main(
-                ["vehicles", "update", "action", "--id", "chase-sim-chaser", "--plugin", "hold", "--dry-run"]
+                ["plugins", "list", "--step", "action"]
             )
         self.assertEqual(code, 2)
         self.assertIn("error: duplicate action plugin id 'selected'", stderr.getvalue())
@@ -141,6 +143,22 @@ class PresetActivationTests(unittest.TestCase):
             catalog.selection_activation("memory", preset="recency_ledger", plugins=[])
         with self.assertRaisesRegex(ValueError, r"unknown perception preset 'nope'"):
             catalog.selection_activation("perception", preset="nope")
+
+
+class CatalogFileTests(unittest.TestCase):
+    def test_every_step_reads_its_own_catalog_file(self) -> None:
+        for step in catalog.STEPS:
+            with self.subTest(step=step):
+                self.assertTrue(catalog.catalog_path(step).is_file())
+
+    def test_a_malformed_catalog_file_is_named_in_the_error(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "action" / "catalog.json"
+            path.parent.mkdir()
+            path.write_text('{"plugins": [', encoding="utf-8")
+            with mock.patch.object(catalog, "CATALOG_DIR", Path(tmp)):
+                with self.assertRaisesRegex(ValueError, re.escape(str(path))):
+                    catalog._read_catalog("action")
 
 
 if __name__ == "__main__":

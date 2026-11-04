@@ -37,7 +37,7 @@ class PluginCatalogAPITests(unittest.TestCase):
                 result = api(payload)
                 self.assertEqual((result["ok"], result["status"]), (False, "failed"))
                 self.assertIn(error, result["error"])
-        self.assertEqual(catalog.snapshot(), (0, ()))
+        self.assertEqual(catalog.read(), (0, ()))
 
     def test_a_host_catalog_forwards_arm_requests_and_requires_selections(self) -> None:
         requests = []

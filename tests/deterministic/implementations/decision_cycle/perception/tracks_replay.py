@@ -15,7 +15,6 @@ from typing import Any
 import cv2
 import numpy as np
 
-from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink
 from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginInputs
 from implementations.decision_cycle.perception.feeds.camera import CameraFrame
@@ -27,11 +26,6 @@ BASELINES = Path(__file__).with_name("baselines")
 IMAGE_WIDTH, IMAGE_HEIGHT = 320, 240
 # Left edge of the obstruction per frame; None is a frame with nothing in view.
 OBSTRUCTION_LEFT_EDGES = (0.20, 0.23, 0.26, 0.29, 0.32, None, None, 0.40, 0.43)
-
-
-class QuietDiagnostics(PerceptionDiagnosticSink):
-    def __init__(self) -> None:
-        super().__init__(output_dir=None, plugin_id="replay", allowed_artifacts=())
 
 
 def obstruction_image(left_edge: float | None) -> np.ndarray:
@@ -68,7 +62,6 @@ def perceive_frame(
             frame_id,
             timestamp_ms,
             {"frame": camera_frame},
-            QuietDiagnostics(),
             {"sequence_index": index},
             shared_memory=shared_memory,
         )

@@ -23,6 +23,8 @@ from autonomy.vehicle import (
     run_vehicle_pulse,
 )
 
+VEHICLE_KIND = "picar-donkey-http"
+
 
 def _timestamp_ms() -> int:
     return int(time.time() * 1000)
@@ -47,7 +49,7 @@ class PiCar(CarInterface):
         self.client = DonkeyClient(base_url=base_url, timeout_s=timeout_s)
         self._capabilities = VehicleCapabilities(
             vehicle_id=vehicle_id,
-            vehicle_kind="picar-donkey-http",
+            vehicle_kind=VEHICLE_KIND,
             sensors={
                 FRONT_CAMERA_SENSOR_ID: {
                     "sensor_kind": "camera",

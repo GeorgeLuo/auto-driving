@@ -343,20 +343,20 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
             self._git(root, "commit", "-qm", "head")
             head = self._git(root, "rev-parse", "HEAD").strip()
 
-            snapshot = report_to_dict(analyze_tree(root, ref=head))
+            report = report_to_dict(analyze_tree(root, ref=head))
             self.assertEqual(
-                [item["path"] for item in snapshot["source_inventory"]],
+                [item["path"] for item in report["source_inventory"]],
                 sorted(names + [empty_name]),
             )
             self.assertTrue(
                 all(
                     item["size_bytes"] > 0
-                    for item in snapshot["source_inventory"]
+                    for item in report["source_inventory"]
                     if item["path"] in names
                 )
             )
             self.assertEqual(
-                {item["path"] for item in snapshot["head"]["callables"]},
+                {item["path"] for item in report["head"]["callables"]},
                 set(names),
             )
 
@@ -405,9 +405,9 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
             self._git(root, "commit", "-qm", "head")
             head = self._git(root, "rev-parse", "HEAD").strip()
 
-            snapshot = report_to_dict(analyze_tree(root))
-            split = snapshot["head"]["production_test_split"]
-            by_class = snapshot["head"]["by_class"]
+            report = report_to_dict(analyze_tree(root))
+            split = report["head"]["production_test_split"]
+            by_class = report["head"]["by_class"]
             self.assertEqual(split["classes"], ["production", "tests"])
             self.assertEqual(split["raw_loc"]["production"], by_class["production"]["raw_loc"])
             self.assertEqual(split["raw_loc"]["tests"], by_class["tests"]["raw_loc"])
@@ -422,7 +422,7 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
                 1000,
             )
             self.assertTrue(
-                any(item["source_class"] == "docs/configuration" for item in snapshot["source_inventory"])
+                any(item["source_class"] == "docs/configuration" for item in report["source_inventory"])
             )
 
             report = analyze_diff(base, head, path=root)

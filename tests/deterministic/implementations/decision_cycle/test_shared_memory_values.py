@@ -12,7 +12,6 @@ import numpy as np
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.perception.diagnostics.sink import PerceptionDiagnosticSink
 from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch
 from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginInputs,
@@ -49,11 +48,6 @@ from tests.deterministic.implementations.decision_cycle.perception.tracks_replay
 )
 
 
-class _QuietDiagnostics(PerceptionDiagnosticSink):
-    def __init__(self) -> None:
-        super().__init__(output_dir=None, plugin_id="replay", allowed_artifacts=())
-
-
 def _round_trip(memory: dict[str, Any]) -> dict[str, Any]:
     return shared_memory_from_document(json.loads(json.dumps(shared_memory_document(memory))))
 
@@ -83,7 +77,6 @@ def _inputs(
         f"frame_{index}",
         timestamp_ms,
         {"frame": frame},
-        _QuietDiagnostics(),
         {"sequence_index": index},
         shared_memory=memory,
         prior_things=prior_things,

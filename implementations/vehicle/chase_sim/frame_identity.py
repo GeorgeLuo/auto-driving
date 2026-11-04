@@ -29,10 +29,10 @@ class ChaseCaptureValidationError(ValueError):
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            "schema": "automa_cli_error_v1",
-            "error": self.code,
+            "schema": "automa_cli_error",
+            "error_code": self.code,
+            "error": self.detail,
             "layer": "capture",
-            "message": self.detail,
             "details": {"path": self.path},
             "recovery": None,
             "exit_code": 1,
@@ -229,7 +229,7 @@ def validate_chase_sensor_capture(
         )
 
     return {
-        "schema": "chase_sensor_capture_v1",
+        "schema": "chase_sensor_capture",
         "capture_id": capture_id,
         "actor_id": actor_id,
         "game_id": game_id,
@@ -330,7 +330,7 @@ def evaluate_chase_evaluator_reference(
         )
 
     bounded = {
-        "schema": "chaser_reference_v1",
+        "schema": "chaser_reference",
         "evaluator_only": True,
         "capture_id": sensor["capture_id"],
         "actor_id": sensor["actor_id"],
@@ -476,25 +476,12 @@ def score_reference_alignment_batch(
     )
     return {
         "passed": passed,
+        "error_code": "evaluator_reference_unavailable" if missing_reference else None,
         "error": (
-            {
-                "schema": "automa_cli_error_v1",
-                "error": "evaluator_reference_unavailable",
-                "layer": "capture",
-                "message": (
-                    "Reference alignment requires a valid evaluator actor-control "
-                    "reference for every candidate frame; sensor perception remains usable."
-                ),
-                "details": {
-                    "required_procedure": "chaser_reference_alignment",
-                    "missing_reference_frames": missing_reference,
-                },
-                "recovery": (
-                    "Use sensor-only perception, or rerun the reference-dependent "
-                    "procedure when evaluator_reference.status=available."
-                ),
-                "exit_code": 1,
-            }
+            "Reference alignment requires a valid evaluator actor-control "
+            "reference for every candidate frame; sensor perception remains usable. "
+            "Recovery: use sensor-only perception, or rerun the reference-dependent "
+            "procedure when evaluator_reference.status=available."
             if missing_reference
             else None
         ),

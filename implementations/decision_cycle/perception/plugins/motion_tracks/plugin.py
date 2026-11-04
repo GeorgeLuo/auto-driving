@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from copy import copy
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image
 
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
@@ -68,7 +67,6 @@ class MotionTracksPlugin:
             "scene tracks are image-space motion evidence, not persistent object identities",
             "camera motion, occlusion, frame drops, and weak texture can merge or split tracks",
         ),
-        diagnostic_artifacts=("scene_motion", "summary", "scene_tracks"),
     )
 
     def __init__(
@@ -167,23 +165,15 @@ class MotionTracksPlugin:
             result = self._analyze(
                 previous_rgb,
                 current_rgb,
-                inputs.diagnostics.directory,
                 frame,
             )
         finally:
             self._cache_current_frame(current_rgb)
-        if result.output_files:
-            inputs.diagnostics.register(result.output_files)
         candidates = [
             _group_candidate(group, frame.width_px, frame.height_px, self.min_group_size)
             for group in result.groups
         ]
         expired_ids = self._update_tracks(candidates)
-        inputs.diagnostics.emit(
-            "scene_tracks",
-            "scene_tracks.png",
-            lambda path: _write_track_overlay(current_rgb, self._tracks, path),
-        )
         things = tuple(_track_thing(track) for track in sorted(self._tracks.values(), key=lambda item: item.track_id))
         visible_count = sum(1 for track in self._tracks.values() if track.missed_frames == 0)
         confidence = _overall_track_confidence(things)
@@ -284,13 +274,12 @@ class MotionTracksPlugin:
         self,
         previous_rgb: np.ndarray,
         current_rgb: np.ndarray,
-        output_dir: Path | None,
         front,
     ):
         return analyze_scene_motion_images(
             Image.fromarray(previous_rgb, mode="RGB"),
             Image.fromarray(current_rgb, mode="RGB"),
-            output_dir,
+            None,
             image_a_label="previous_frame",
             image_b_label=str(front.source_path) if front.source_path is not None else "current_frame",
             max_features=self.max_features,
@@ -461,39 +450,3 @@ def _zone_from_bbox(bbox: tuple[float, float, float, float]) -> str:
     horizontal = "left" if cx < 0.45 else "right" if cx > 0.55 else "center"
     vertical = "near" if cy > 0.66 else "far" if cy < 0.33 else "mid"
     return f"{vertical}_{horizontal}"
-
-
-def _write_track_overlay(
-    rgb: np.ndarray,
-    tracks: dict[int, _SceneTrack],
-    output_path: Path,
-) -> None:
-    image = Image.fromarray(rgb, mode="RGB")
-    draw = ImageDraw.Draw(image)
-    width, height = image.size
-    colors = [
-        (46, 204, 113),
-        (52, 152, 219),
-        (241, 196, 15),
-        (155, 89, 182),
-        (231, 76, 60),
-    ]
-    for track_id, track in sorted(tracks.items()):
-        color = (140, 140, 140) if track.missed_frames else colors[(track_id - 1) % len(colors)]
-        x1, y1, x2, y2 = track.bbox
-        box = [
-            int(round(x1 * max(width - 1, 1))),
-            int(round(y1 * max(height - 1, 1))),
-            int(round(x2 * max(width - 1, 1))),
-            int(round(y2 * max(height - 1, 1))),
-        ]
-        draw.rectangle(box, outline=color, width=3)
-        label = (
-            f"t{track_id} age={track.age_frames} "
-            f"support={track.support_frames} miss={track.missed_frames}"
-        )
-        text_y = max(0, box[1] - 14)
-        draw.rectangle([box[0], text_y, min(width - 1, box[0] + len(label) * 7), text_y + 13], fill=(0, 0, 0))
-        draw.text((box[0] + 2, text_y), label, fill=color)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    image.save(output_path)

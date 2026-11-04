@@ -2,13 +2,14 @@ const fs = require("fs"), vm = require("vm");
 const sent = [], replies = [];
 const node = () => ({ addEventListener() {}, getAttribute() { return "false"; }, setAttribute() {}, replaceWith() {} });
 const elements = new Proxy({}, { get: (t, k) => (k in t ? t[k] : (t[k] = node())) });
-const snapshot = (phase) => ({ phase, run_id: "run-1", controls: { allowed_actions: [] } });
+const makeState = (phase) => ({ phase, run_id: "run-1", controls: { allowed_actions: [] } });
 let pluginToggleWaiting = false;
 const ctx = {
   elements, state: null, actionInFlight: false, stateRequestGeneration: 0,
   imageRequestGeneration: 0, lastImageKey: "", loadedImageKey: "",
   Image: function () {}, window: { addEventListener() {} },
   text: (v) => String(v), setText() {}, setNotice() {}, setButton() {}, renderPlugins() {},
+  currentFrame() { return ctx.state && ctx.state.current_frame; },
   selectedRunId: () => "run-1", clearRecordSelection() {}, schedulePoll() {}, pollDelay: () => 0,
   settlePluginDraft() {}, revertPluginDraft() {},
   render(next) { if (next) ctx.state = next; },
@@ -21,12 +22,12 @@ const ctx = {
     const body = JSON.parse(init.body);
     sent.push(body.action === "seek" ? "seek:" + body.position : body.action);
     return new Promise((resolve) => replies.push((phase) => resolve({
-      ok: true, json: async () => ({ ok: true, state: snapshot(phase) }),
+      ok: true, json: async () => ({ ok: true, state: makeState(phase) }),
     })));
   },
 };
 vm.createContext(ctx);
-vm.runInContext(fs.readFileSync("cli/automa_cli/workbench_page/js/transport.js", "utf8"), ctx);
+vm.runInContext(fs.readFileSync("cli/automa_cli/frontend/pages/workbench/js/transport.js", "utf8"), ctx);
 const eq = (a, b, m) => { if (JSON.stringify(a) !== JSON.stringify(b)) { console.log("FAIL", m, JSON.stringify(a), JSON.stringify(b)); process.exit(1); } };
 const settle = async () => { for (let i = 0; i < 10; i++) await new Promise((r) => setImmediate(r)); };
 const reply = async (phase) => { replies.shift()(phase); await settle(); };
@@ -35,7 +36,7 @@ elements.seekBar.max = "9";
 
 (async () => {
   // a seek made during an unrelated request is sent once that request settles
-  ctx.state = snapshot("paused");
+  ctx.state = makeState("paused");
   ctx.action("step");
   ctx.beginScrub(); scrubTo(4); ctx.endScrub();
   eq(sent, ["step"], "seek waits for the request in flight");
@@ -46,12 +47,13 @@ elements.seekBar.max = "9";
 
   // a resume waiting behind the seek survives a plugin selection sent first
   sent.length = 0;
-  ctx.state = snapshot("running");
+  ctx.state = makeState("running");
   ctx.beginScrub(); scrubTo(3);
   eq(sent, ["pause"], "scrubbing a running replay pauses it first");
   await reply("paused");
-  eq(sent, ["pause", "seek:3"], "seek sent after the pause");
+  eq(sent, ["pause"], "dragging previews without sending intermediate seeks");
   ctx.endScrub();
+  eq(sent, ["pause", "seek:3"], "final seek sent on release");
   pluginToggleWaiting = true;
   await reply("paused");
   eq(sent, ["pause", "seek:3", "select_plugins"], "plugin selection goes out after the seek");
@@ -60,5 +62,25 @@ elements.seekBar.max = "9";
   eq(sent, ["pause", "seek:3", "select_plugins", "resume"], "resume sent once the selection settled");
   await reply("running");
   eq(ctx.pendingResume, false, "nothing left pending");
+
+  // A second drag supersedes an unfinished catch-up; an old answer cannot
+  // replace the newer frame or leave the seek marked in flight.
+  sent.length = 0;
+  ctx.state = makeState("paused");
+  ctx.beginScrub(); scrubTo(8); ctx.endScrub();
+  ctx.beginScrub(); scrubTo(2); ctx.endScrub();
+  eq(sent, ["seek:8", "seek:2"], "new seek is sent without waiting for catch-up");
+  replies[1]("paused"); replies.splice(1, 1); await settle();
+  eq(ctx.seekInFlight, false, "latest seek is settled");
+  replies.shift()("running"); await settle();
+  eq(ctx.state.phase, "paused", "late old response cannot overwrite latest state");
+
+  // pause is sent even while a slower action still owns actionInFlight
+  sent.length = 0;
+  ctx.actionInFlight = true;
+  ctx.state = makeState("running");
+  ctx.action("pause");
+  eq(sent, ["pause"], "pause is sent while another action is in flight");
+  ctx.actionInFlight = false;
   console.log("seek ok");
 })();

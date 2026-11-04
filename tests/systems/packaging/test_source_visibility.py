@@ -20,7 +20,7 @@ class SourceVisibilityTests(unittest.TestCase):
             self.assertNotEqual(result.returncode, 0, source_path)
 
         generated = subprocess.run(
-            ["git", "check-ignore", "-q", "runtime/vehicles/example/state.json"],
+            ["git", "check-ignore", "-q", "runtime/hosts/example/state.json"],
             cwd=ROOT,
             check=False,
         )

@@ -92,7 +92,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(throttle, 0.0)
         self.assertEqual(control["reason"], "action_plan_invariant_violated")
         self.assertIsNone(generation)
-        self.assertEqual(cycle["schema"], "decision_cycle_result_v1")
+        self.assertEqual(cycle["schema"], "decision_cycle_result")
         self.assertEqual(cycle["context"]["frame_id"], "donkey_frame_000000")
 
     def test_manual_mode_runs_cycle_and_forces_zero_pilot_outputs(self) -> None:
@@ -197,7 +197,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         host = _pushy_host()
         part = AutonomyPilotPart(host=host, controller=controller)
 
-        part.start(RunConfiguration(mode="autonomy"))
+        part.start(RunConfiguration(mode="autonomy", num_decisions=None))
         self.assertEqual((controller.mode, controller.mode_latch), ("local", "local"))
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="local")
         self.assertEqual(host.run_state, "running")
@@ -208,7 +208,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
             ("user", "user", 0.0, 0.0),
         )
 
-        part.start(RunConfiguration(mode="observe_only"))
+        part.start(RunConfiguration(mode="observe_only", num_decisions=None))
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         self.assertEqual(host.run_state, "running")

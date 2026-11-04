@@ -28,7 +28,7 @@ The browser install is only for the systems test that opens Chromium. CI does no
 
 Either suite takes `-k PATTERN` to run only the tests whose ID (`module.Class.method`) matches, as unittest's `-k` does: a substring, or a glob when it contains `*`. Repeat it to widen the match, for example `python3 tests/run.py --systems journeys -k upload -k arming`. A pattern that matches no test fails the run.
 
-The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. CI also fails when `python3 -m pyflakes tests` reports an undefined name, which catches a broken systems import without running the suite.
+The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. CI also fails when `python3 -m pyflakes tests` reports an undefined name, which catches a broken systems import without running the suite, and when a tracked file outside `docs/deprecated/` uses a word the workflow's retired-vocabulary step lists. Run that step's `git grep` line before pushing to check locally.
 
 ## Validating a change
 
@@ -44,7 +44,7 @@ Run the tests your change reaches, not every suite. `commands` and `journeys` to
 | Plugin upload, arming, disarming, or the plugin catalog | `--systems journeys -k journeys.plugins` |
 | Automation runs, streams, recordings, or replay | `--systems journeys -k automation_pipeline` |
 | The Chase runtime host | `--systems journeys -k runtime_host` |
-| `cli/automa_cli/workbench_page/js/` | `--systems frontend` |
+| `cli/automa_cli/frontend/pages/` | `--systems frontend` |
 | `deploy/`, the release bundle, or the import surface | `--systems packaging` |
 | `qca/` | `--systems qca` |
 
@@ -60,15 +60,15 @@ File a test by what its behavior needs, not by what its setup happens to call.
 
 A test that runs in this process goes under `deterministic/`, next to the codebase package it exercises. An in-process test that crosses packages goes under `deterministic/integration/`. Setup alone does not make a systems test: if only the arrangement starts a program, arrange it in-process instead.
 
-Calling `automa` does not make a systems test either. Starting `cli/automa` costs about two seconds per command, so a test that needs only a command's exit code and output runs it with `invoke_automa` from `shared/cli/invoke.py`, which returns what `run_automa` does without starting a program. Keep `run_automa` for a test of the executable itself or of a command that must run in its own process, such as `automation run`, which starts the worker. A systems test that needs one such command runs its other commands with `invoke_automa`. `invoke_automa` shares this process's imported modules, so a command whose result depends on a fresh import, such as replaying an uploaded plugin after its source is removed, needs `run_automa`. A module that reads an environment variable when it is imported needs an entry in `IMPORT_TIME_ENV` there, or commands run in this process miss a test's value.
+Calling `automa` does not make a systems test either. Starting `cli/automa` costs about two seconds per command, so a test that needs only a command's exit code and output runs it with `invoke_automa` from `shared/cli/invoke.py`, which returns what `run_automa` does without starting a program. Keep `run_automa` for a test of the executable itself or of a command that must run in its own process, such as `hosts run`, which starts the worker. A systems test that needs one such command runs its other commands with `invoke_automa`. `invoke_automa` shares this process's imported modules, so a command whose result depends on a fresh import, such as replaying an uploaded plugin after its source is removed, needs `run_automa`. A module that reads an environment variable when it is imported needs an entry in `IMPORT_TIME_ENV` there, or commands run in this process miss a test's value.
 
 A test whose behavior needs another program goes under `systems/`, in the group for the surface it drives:
 
 | Group | Covers | Starts |
 |---|---|---|
-| `commands/<family>/` | `automa` commands whose behavior needs another program: `help` through the executable, `simulators` against a fake `simeval`, and `automation` recovery around a running process | `cli/automa`, `simeval`, or a child process |
+| `commands/<family>/` | `automa` commands whose behavior needs another program: `help` through the executable, `simulators` against a fake headless launcher, and `automation` recovery around a running process | `cli/automa` or a child process |
 | `journeys/` | Flows that cross commands and hosts: the automation pipeline, plugin upload and arming, and the runtime host lifecycle | `cli/automa`, runtime hosts, and Chromium for one upload test |
-| `frontend/` | Workbench page scripts in `cli/automa_cli/workbench_page/js/`. Each test keeps its `.js` driver beside it | `node`; skipped when it is missing |
+| `frontend/` | Runtime viewer and workbench page scripts in `cli/automa_cli/frontend/pages/`. Each test keeps its `.js` driver beside it | `node`; skipped when it is missing |
 | `packaging/` | Fresh-interpreter import order, source visibility, and the Pi installer, service, and runner scripts | A fresh Python, `bash`, and `git` |
 | `qca/` | The QCA analyzer against a scratch repository | `git` |
 | `live/` | Bounded checks against a real simulator or Pi | Only with `--live-sim` or `--live-pi` |
@@ -98,7 +98,7 @@ Support code must not call internal command handlers, calculate expected applica
 PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-sim
 ```
 
-This command runs the systems suite. It may launch local simulator and UI processes. It first requires a usable Chase frontend, then enables one bounded automation smoke test. That test stays skipped in `python3 tests/run.py --systems`.
+This command runs the systems suite and enables one bounded automation smoke test against the Chase simulator already running at `CHASE_UI_WS_URL` (default `ws://localhost:5050/ws/control`). That test stays skipped in `python3 tests/run.py --systems`.
 
 ## Live Pi Boundary
 
@@ -114,4 +114,4 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --live-pi \
   --pi-timeout-s 3
 ```
 
-This path sends read-only requests to `/autonomy/status`. It requires an available runtime host with a loaded action step, in mode `manual`. It does not send drive or mode-change requests, restart the runtime, use SSH, capture frames, or move the vehicle. An unreachable or unsafe endpoint is reported as `unavailable` with exit code 2 before the test suite starts; it is not converted into a passing skip. The live Pi test stays skipped unless this flag is set.
+This path sends read-only requests to `/host/status`. It requires an available runtime host with a loaded action step, in mode `manual`. It does not send drive or mode-change requests, restart the runtime, use SSH, capture frames, or move the vehicle. An unreachable or unsafe endpoint is reported as `unavailable` with exit code 2 before the test suite starts; it is not converted into a passing skip. The live Pi test stays skipped unless this flag is set.

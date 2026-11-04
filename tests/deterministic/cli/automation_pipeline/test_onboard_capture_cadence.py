@@ -15,7 +15,9 @@ from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.frame_loop import DECISION_TRANSACTION_PATH
 from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli import runtime_monitor
+from cli.automa_cli.hosts.runs import monitor
+from cli.automa_cli.hosts.runs.worker import RunOutput
+from cli.automa_cli.hosts.runs.render import render_run_result
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
 
@@ -35,7 +37,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
         part = _part(perception)
         image = np.zeros((2, 2, 3), dtype=np.uint8)
         try:
-            part.start(RunConfiguration(mode="observe_only"))
+            part.start(RunConfiguration(mode="observe_only", num_decisions=None))
             part.run(image_array=image, mode="user")
             perception.wait_started(0)
             part.run(image_array=np.full_like(image, 1), mode="user")
@@ -59,7 +61,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
     def test_memory_halt_keeps_capturing_without_deciding(self):
         held = _part(GatedPerception(2, blocked=()), memory=_failing_memory)
         try:
-            held.start(RunConfiguration(mode="observe_only"))
+            held.start(RunConfiguration(mode="observe_only", num_decisions=None))
             held.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
             held.wait_for_cycle()
             self.assertTrue(held.observation_status()["memory_update_halted"])
@@ -77,7 +79,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 perception = GatedPerception(1)
                 part = _part(perception)
                 try:
-                    part.start(RunConfiguration(mode="observe_only", num_decisions=int(bounded)))
+                    part.start(RunConfiguration(mode="observe_only", num_decisions=1 if bounded else None))
                     image = np.zeros((2, 2, 3), dtype=np.uint8)
                     part.run(image_array=image, mode="user")
                     perception.wait_started(0)
@@ -108,17 +110,17 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
             polls = 0
 
             def host_status(self):
-                return {"autonomy": part.host.status()}
+                return {"host": part.host.status()}
 
             def start(self, configuration, *, record=False):
                 if record:
                     part.recording_root = root / "host-runs"
-                    part.vehicle_id = "picar-test"
+                    part.host_name = "picar-test"
                     part.recording_root.mkdir(parents=True, exist_ok=True)
                 # A bound of 3 would end the session inside the start, and a
                 # recorded terminal session is drained before the monitor reads
                 # the live publication.
-                status = part.start(replace(configuration, num_decisions=0), record=record)
+                status = part.start(replace(configuration, num_decisions=None), record=record)
                 part.run(image_array=image, mode="user")
                 part.wait_for_cycle()
                 return {"ok": True, "host_run_id": part.run_id, "session": status}
@@ -158,18 +160,19 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 # Substitute HTTP reads and lifecycle transport only. Host, workers,
                 # publications, monitor polling, loopback view and records are real.
                 with (
-                    patch.object(runtime_monitor, "RuntimeClient", return_value=RuntimeClient()),
-                    patch.object(runtime_monitor, "fetch_observation_sample", side_effect=sample),
-                    patch("cli.automa_cli.decision_live.fetch_decision_transaction", side_effect=transaction),
+                    patch.object(monitor, "RuntimeClient", return_value=RuntimeClient()),
+                    patch.object(monitor, "fetch_observation_sample", side_effect=sample),
+                    patch("cli.automa_cli.hosts.views.decision_live.fetch_decision_transaction", side_effect=transaction),
                 ):
                     started = time.monotonic()
-                    code, message = runtime_monitor.monitor_runtime(
-                        vehicle_id="picar-test", base_url="http://picar.invalid", automation_dir=root,
+                    outcome = monitor.monitor_runtime(
+                        host_name="picar-test", base_url="http://picar.invalid", automation_dir=root,
                         selections={"perception": {"preset": "gated", "plugins": [], "activation": "perception/active.json"}},
                         decision={"generation_id": "test", "steps": {}, "published": False},
                         configuration=RunConfiguration(mode="observe_only", num_decisions=3),
-                        timeout_s=0.2, record=True, verbose=True, output=output,
+                        timeout_s=0.2, record=True, verbose=True, emit=RunOutput(output, verbose=True),
                     )
+                    code, message = outcome.exit_code, render_run_result(outcome.state, state_path=str(outcome.state_path))
                 self.assertEqual(code, 0, message)
                 self.assertLess(time.monotonic() - started, 2.0, "monitor waited after the worker was free")
                 state = json.loads((root / "state.json").read_text())

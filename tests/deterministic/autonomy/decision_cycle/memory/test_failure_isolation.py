@@ -9,7 +9,6 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.memory.runner import DEFAULT_MAX_DIAGNOSTIC_CHARS, MemoryRunner
 from autonomy.decision_cycle.memory.interface import FAILURE_POLICY
-from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.decision_cycle.activation import read_step_activation
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import (
     _valid_payload,
@@ -27,12 +26,10 @@ def _runner(tmp: str, spec: str | None = None) -> MemoryRunner:
 
 
 class MemoryFailureIsolationTests(unittest.TestCase):
-    def test_missing_observation_follows_policy_and_schema_matches_proposal(self) -> None:
+    def test_missing_observation_follows_policy(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runner = _runner(tmp)
             runtime = runner.plugins["recording_test"]
-            self.assertEqual(runner.describe_schema()["inputs"][0],
-                             ProposalRunner.from_plugins({}).describe_schema()["inputs"][0])
             for policy, observation, called in (
                 ("invoke", None, True), ("skip_plugin", None, False),
                 ("skip_plugin", Observation("obs", 90, {}), True),
@@ -45,8 +42,6 @@ class MemoryFailureIsolationTests(unittest.TestCase):
                     shared = {} if observation is None else {OBSERVATION_KEY: observation}
                     runner.update(DecisionFrameContext("frame", 0, 100, shared_memory=shared))
                     self.assertEqual(runtime.update_count - previous, int(called))
-                    expected = "plugins are still called" if policy == "invoke" else "plugins are skipped"
-                    self.assertIn(expected, runner.describe_schema()["inputs"][0]["missing_behavior"])
 
     def test_large_update_exception_keeps_bounded_status_diagnostic(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

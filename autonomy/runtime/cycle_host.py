@@ -36,7 +36,7 @@ from autonomy.decision_cycle.cycle import (
     timestamp_ms,
 )
 from autonomy.decision_cycle.steps import (
-    STEP_RUNNERS, decision_steps, load_decision_steps, snapshot_step_activations,
+    STEP_RUNNERS, decision_steps, load_decision_steps, applied_step_activations,
 )
 from autonomy.decision_cycle.action.publication import write_host_inputs
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
@@ -71,7 +71,7 @@ class AutonomyCycleHost:
         self.last_context: DecisionFrameContext | None = None
         self._session_lock = threading.RLock()
         self._session_view: dict[str, Any] = {}
-        self.configuration = RunConfiguration(mode="manual")
+        self.configuration = RunConfiguration(mode="manual", num_decisions=None)
         self.run_state = "pre_start"
         self.run_decisions = 0
         self.recording: RunRecording | None = None
@@ -142,7 +142,7 @@ class AutonomyCycleHost:
         for step in STEPS:
             if step in activations:
                 self.watch_selection(step, step_activation_path(runtime_root, step), activations[step])
-        loaded = snapshot_step_activations(self.steps)
+        loaded = applied_step_activations(self.steps)
         decision = {step: loaded[step] for step in DECISION_STEPS}
         self.use_applied_decision({
             "generation_id": activation_generation_id(decision, prefix="decision"),
@@ -169,7 +169,7 @@ class AutonomyCycleHost:
             return requested
 
     def arm(self, selections: Mapping[str, Any]) -> dict[str, Any]:
-        """Add/update named definitions from one catalog snapshot and load them now.
+        """Add/update named definitions from one catalog read and load them now.
 
         A step that runs exactly one plugin swaps it for the named definition.
         Loading between cycles answers the request with any import or
@@ -180,7 +180,7 @@ class AutonomyCycleHost:
         if not isinstance(selections, Mapping) or not selections:
             raise ValueError("arming requires a selection map of steps to ordered plugin IDs")
         with self._lock:
-            _, available = self.catalog.snapshot()
+            _, available = self.catalog.read()
             definitions = {(item.step, item.plugin_id): item for item in available}
             requested = {}
             for step, ids in selections.items():
@@ -208,7 +208,7 @@ class AutonomyCycleHost:
         if not isinstance(selections, Mapping) or not selections:
             raise ValueError("disarming requires a selection map of steps to ordered plugin IDs")
         with self._lock:
-            _, available = self.catalog.snapshot()
+            _, available = self.catalog.read()
             known = {(item.step, item.plugin_id) for item in available}
             requested = {}
             for step, ids in selections.items():
@@ -338,22 +338,23 @@ class AutonomyCycleHost:
         applied = self._applied_decision
         return None if applied is None else deepcopy(applied)
 
-    def _record_applied_decision(self) -> None:
+    def _record_applied_decision(self, activations: dict[str, Any] | None = None) -> None:
         """Derive identity from applied definitions, including uploaded revisions."""
 
         applied = self._applied_decision
         if applied is None:
             return
         steps = dict(applied["steps"])
-        snapshot = snapshot_step_activations(self.steps)
+        if activations is None:
+            activations = applied_step_activations(self.steps)
         for step in DECISION_STEPS:
-            if step in snapshot:
-                steps[step] = snapshot[step]
+            if step in activations:
+                steps[step] = activations[step]
         try:
             generation_id = activation_generation_id(steps, prefix="decision")
         except (TypeError, ValueError):
             return
-        self._applied_decision = {"generation_id": generation_id, "steps": steps}
+        self._applied_decision = {"generation_id": generation_id, "steps": deepcopy(steps)}
 
     def run(
         self, context: DecisionFrameContext, *, mode: str | None = None,
@@ -392,28 +393,27 @@ class AutonomyCycleHost:
                             )
                         self.run_decisions += 1
                         if (
-                            self.configuration.num_decisions
+                            self.configuration.num_decisions is not None
                             and self.run_decisions >= self.configuration.num_decisions
                         ):
                             self.stop(reason="completed")
                     self._refresh_session_view()
                 self.cycle_count += 1
                 self.last_result = result
-                self._record_applied_decision()
             except Exception as exc:
                 self._cycle_in_progress = None
                 self._record_frame_context(context)
+                self.error_count += 1
+                self.last_error = "".join(
+                    traceback.format_exception_only(type(exc), exc)
+                ).strip()
                 try:
                     if self.execution is not None:
                         self.execution.cycle_failed(ticket)
                 finally:
                     with self._session_lock:
                         if run_generation == self._run_generation:
-                            self.stop(reason="error")
-                self.error_count += 1
-                self.last_error = "".join(
-                    traceback.format_exception_only(type(exc), exc)
-                ).strip()
+                            self.stop(reason="error", error=self.last_error)
                 raise
             finally:
                 if self._step_reports_wanted:
@@ -423,14 +423,15 @@ class AutonomyCycleHost:
 
     def _record_frame_context(self, context: DecisionFrameContext) -> DecisionFrameContext:
         """Retain the applied selections even when a frame produces no cycle result."""
+        activations = applied_step_activations(self.steps)
+        self._record_applied_decision(activations)
         self.last_context = replace(context, metadata={
-            **context.metadata, "step_activations": snapshot_step_activations(self.steps),
+            **context.metadata, "step_activations": activations,
         })
         return self.last_context
 
-    def start(self, configuration: RunConfiguration | None = None, *,
+    def start(self, configuration: RunConfiguration, *,
               recording: RunRecording | None = None) -> dict[str, Any]:
-        configuration = configuration or RunConfiguration()
         with self._session_lock:
             self.stop()
             self.last_error = None
@@ -462,7 +463,9 @@ class AutonomyCycleHost:
                     self.set_mode("manual")
             except Exception as exc:
                 self.run_state = "error"
-                self.last_error = f"{type(exc).__name__}: {exc}"
+                # The error that stopped the run stays its cause.
+                failure = f"stop failed: {type(exc).__name__}: {exc}"
+                self.last_error = failure if error is None else f"{error}; {failure}"
                 self._refresh_session_view()
                 raise
             self.run_state = reason
@@ -580,29 +583,6 @@ class AutonomyCycleHost:
         self._step_reports = steps
         self._step_reports_wanted = False
         return steps
-
-    def reset_memory(self) -> dict[str, Any] | None:
-        """Reset the memory step when present.
-
-        Clears the host map and keeps only the fresh state memory plugins
-        wrote while resetting (such as a new epoch). Returns the memory report
-        after the reset, or ``None`` when no memory step is configured.
-        """
-
-        with self._lock:
-            memory = self.cycle.steps.memory
-            if memory is None:
-                self.shared_memory.clear()
-                return None
-            if not callable(getattr(memory, "reset", None)) or not callable(
-                getattr(memory, "report", None)
-            ):
-                raise TypeError("configured memory step does not support reset")
-            fresh = memory.reset(self.shared_memory)
-            self.shared_memory.clear()
-            self.shared_memory.update(fresh)
-            self._refresh_step_reports()
-            return memory.report()
 
 
 def sync_live_selection(

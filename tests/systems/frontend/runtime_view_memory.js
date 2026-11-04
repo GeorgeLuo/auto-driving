@@ -65,6 +65,9 @@ function pageContext(fetchLatest) {
 
 function runPage(path, ctx) {
   const html = fs.readFileSync(path, "utf8");
+  for (const [, name] of html.matchAll(/<script src="\/static\/shared\/([a-z]+\.js)"><\/script>/g)) {
+    vm.runInContext(fs.readFileSync(`cli/automa_cli/frontend/pages/shared/${name}`, "utf8"), ctx);
+  }
   const script = html.match(/<script>([\s\S]*)<\/script>/)[1];
   vm.runInContext(script, ctx);
 }
@@ -96,11 +99,11 @@ const RECORDING = {
 
 function publication(plugins, publisher) {
   return {
-    schema: "automa_perception_publication_v2",
-    vehicle_id: "piracer",
+    schema: "automa_perception_publication",
+    host_name: "piracer",
     frame: { frame_id: "frame_1" },
     perception: { things: [], plugin_runs: [] },
-    memory: { schema: "memory_report_v1", plugins, evidence_publisher: publisher }
+    memory: { schema: "memory_report", plugins, evidence_publisher: publisher }
   };
 }
 
@@ -111,7 +114,7 @@ async function settle() {
 async function memoryPage() {
   let latest = publication([BOUNDED], "bounded_evidence");
   const ctx = pageContext(async () => ({ ok: true, json: async () => latest }));
-  runPage("cli/automa_cli/memory_view.html", ctx);
+  runPage("cli/automa_cli/frontend/pages/memory/index.html", ctx);
   await settle();
   const $ = (id) => ctx.document.getElementById(id);
   const pluginRows = () => $("pluginList").querySelectorAll(".plugin-row").map((button) => ({
@@ -185,7 +188,7 @@ async function memoryPage() {
 
 function perceptionPage() {
   const ctx = pageContext(() => new Promise(() => {}));
-  runPage("cli/automa_cli/perception_view.html", ctx);
+  runPage("cli/automa_cli/frontend/pages/perception/index.html", ctx);
   const frameMetrics = () => metrics(ctx.document.getElementById("frameMetrics"));
   const render = (payload) => vm.runInContext(`latest = ${JSON.stringify(payload)}; renderData();`, ctx);
 

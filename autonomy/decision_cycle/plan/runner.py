@@ -5,21 +5,17 @@ the action step then fails closed, when the proposal step failed or the plan
 plugin raised or returned a plan that does not match this frame, its
 candidates, or its own plugin ID. Without a proposal step the plan has no
 candidates. A failed proposal and a plugin failure follow ``FAILURE_POLICY``
-in ``interface``; ``describe_schema`` reports the step's contract.
+in ``interface``.
 """
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.plan.interface import (
-    FAILURE_POLICY,
-    PLAN_SCHEMA,
-    composition_declaration,
-)
+from autonomy.decision_cycle.plan.interface import FAILURE_POLICY
 from autonomy.decision_cycle.plan.plugin import PlanPlugin
-from autonomy.decision_cycle.plan.values import ACTION_PLAN_SCHEMA, ActionPlan
+from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.runner import StepRunner, describe_exception
 from autonomy.plugins import PluginDefinition
@@ -28,54 +24,10 @@ from autonomy.plugins import PluginDefinition
 class PlanRunner(StepRunner[PlanPlugin]):
     step: ClassVar[str] = "plan"
     single_plugin: ClassVar[bool] = True
-    schema_name = PLAN_SCHEMA
-    failure_policy = FAILURE_POLICY
 
     def validate_plugin(self, plugin: PlanPlugin, definition: PluginDefinition) -> None:
         if not callable(getattr(plugin, "plan", None)):
             raise TypeError(f"plan plugin {definition.entrypoint} must implement plan()")
-
-    def _describe_schema(self) -> dict[str, Any]:
-        failed_proposal = (
-            "a failed proposal skips the plugin and the step returns no plan"
-            if FAILURE_POLICY.missing_input == "skip_plugin"
-            else "a failed proposal is still passed to the plugin"
-        )
-        return {
-            **super()._describe_schema(),
-            "inputs": [
-                {
-                    "name": "candidates",
-                    "required": False,
-                    "source": "the proposal step's candidates",
-                    "missing_behavior": (
-                        f"{failed_proposal}; an absent proposal step calls the "
-                        "plugin with no candidates"
-                    ),
-                },
-                {
-                    "name": "shared_memory",
-                    "required": False,
-                    "source": "the host map on the frame context",
-                    "missing_behavior": "absent keys are unknown",
-                },
-            ],
-            "output": {
-                "schema": ACTION_PLAN_SCHEMA,
-                "records": [
-                    {
-                        "record": "ActionPlan",
-                        "meaning": "one plan; its selector_id is the plugin ID",
-                    }
-                ],
-                "invalid_plan_behavior": (
-                    "a plugin error, or a plan whose frame_id, candidates, or "
-                    "selector_id does not match, returns no plan and the action "
-                    "step holds"
-                ),
-            },
-            "composition": composition_declaration(),
-        }
 
     def __call__(
         self, context: DecisionFrameContext, proposal: ProposalResult | None

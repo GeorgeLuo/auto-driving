@@ -12,6 +12,11 @@ if [[ "${DRIVE_ARGS_B64}" != "-" && "${DRIVE_ARGS_B64}" != b64:* ]]; then
   exit 2
 fi
 
+if [[ "${ACTION}" == "stop" ]]; then
+  sudo systemctl disable --now "${SERVICE_NAME}"
+  exit 0
+fi
+
 if [[ "${ACTION}" != "restart" ]]; then
   echo "Unsupported service action: ${ACTION}" >&2
   exit 2
@@ -24,7 +29,7 @@ if [[ "${DRIVE_ARGS_B64}" != "-" ]]; then
 fi
 
 if ! sudo systemctl cat "${SERVICE_NAME}" >/dev/null 2>&1; then
-  echo "${SERVICE_NAME} is not installed; run 'automa vehicles update core' first." >&2
+  echo "${SERVICE_NAME} is not installed; create a host first." >&2
   exit 3
 fi
 

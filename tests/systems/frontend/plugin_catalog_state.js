@@ -42,7 +42,7 @@ const ctx = {
   setTimeout(callback, delay) { assert.strictEqual(delay, 500); timers.push(callback); }
 };
 vm.createContext(ctx);
-const html = fs.readFileSync('cli/automa_cli/plugin_catalog.html', 'utf8');
+const html = fs.readFileSync('cli/automa_cli/frontend/pages/plugins/index.html', 'utf8');
 // The server fills in the steps' run order.
 vm.runInContext(html.match(/<script>([\s\S]*)<\/script>/)[1].replace('__PLUGIN_STEPS__', JSON.stringify(steps)), ctx);
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise(resolve => setImmediate(resolve)); };
@@ -105,7 +105,7 @@ function cells(plugin) {
   await poll();
   assert(nodes.get('catalog').classList.contains('stale'));
   assert.strictEqual(nodes.get('status').hidden, false);
-  assert(nodes.get('status').textContent.includes('Showing stale snapshot'));
+  assert(nodes.get('status').textContent.includes('Showing stale catalog'));
   for (const row of nodes.get('plugins').children) assert.strictEqual(row.children[2].children[0].ariaLabel, 'Unknown');
   failure = null;
   httpOk = false;

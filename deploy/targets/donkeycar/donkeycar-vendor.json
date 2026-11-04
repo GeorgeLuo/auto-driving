@@ -1,5 +1,5 @@
 {
-  "schema": "automa_donkeycar_vendor_v0",
+  "schema": "automa_donkeycar_vendor",
   "source": {
     "repo_url": "https://github.com/waveshareteam/donkeycar",
     "revision": "96e008e939fa8d71213a9f4929279a031a91993f",

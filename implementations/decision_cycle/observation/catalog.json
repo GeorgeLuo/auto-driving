@@ -1,0 +1,10 @@
+{
+  "default": {"plugins": ["perception_summary"]},
+  "plugins": [
+    {
+      "spec": "autonomy.decision_cycle.observation.perception_summary:PerceptionSummary",
+      "description": "Perception evidence plus the sensor frame as the frame record.",
+      "default_config": {}
+    }
+  ]
+}

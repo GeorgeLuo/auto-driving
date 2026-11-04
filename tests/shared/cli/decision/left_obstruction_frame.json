@@ -7,8 +7,8 @@
     "metadata": {},
     "observation_id": "obs_001",
     "perception_plugin_id": "lightweight_observer",
-    "perception_schema": "perception_text_v0",
-    "schema": "decision_observation_v1",
+    "perception_schema": "perception_text",
+    "schema": "decision_observation",
     "sensor_frame": {},
     "signals": [],
     "summary": [

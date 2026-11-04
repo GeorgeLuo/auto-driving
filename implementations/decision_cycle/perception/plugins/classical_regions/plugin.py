@@ -1,11 +1,7 @@
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import Any
 
-import cv2
-import numpy as np
 
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
@@ -43,11 +39,6 @@ class ClassicalRegionPlugin:
             "lighting can split one surface or merge adjacent surfaces",
             "single-frame regions do not estimate depth or persistence",
         ),
-        diagnostic_artifacts=(
-            "classical_regions",
-            "classical_smoothed",
-            "classical_summary",
-        ),
     )
 
     def __init__(
@@ -79,16 +70,6 @@ class ClassicalRegionPlugin:
             max_regions=self.max_regions,
         )
         things = tuple(_proposal_thing(index, proposal) for index, proposal in enumerate(proposals))
-        if inputs.diagnostics.enabled:
-            output_dir = inputs.diagnostics.directory
-            assert output_dir is not None
-            artifacts = _write_artifacts(
-                frame.rgb,
-                diagnostic["smoothed_rgb"],
-                proposals,
-                output_dir,
-            )
-            inputs.diagnostics.register(artifacts)
 
         return PerceptionEvidenceBatch(
             signals=(
@@ -146,46 +127,3 @@ def _mean_confidence(things: tuple[PerceivedThing, ...]) -> float:
     if not things:
         return 0.0
     return float(sum(thing.confidence for thing in things) / len(things))
-
-
-def _write_artifacts(
-    rgb: np.ndarray,
-    smoothed_rgb: np.ndarray,
-    proposals: list[dict[str, Any]],
-    output_dir: Path,
-) -> dict[str, str]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    height, width = rgb.shape[:2]
-    overlay = rgb.copy()
-    palette = np.array([
-        [38, 166, 91],
-        [43, 116, 189],
-        [218, 135, 39],
-        [172, 74, 184],
-        [201, 72, 74],
-    ], dtype=np.uint8)
-    for index, proposal in enumerate(proposals):
-        mask = cv2.resize(
-            proposal["mask"].astype(np.uint8), (width, height), interpolation=cv2.INTER_NEAREST
-        ).astype(bool)
-        color = palette[index % len(palette)]
-        overlay[mask] = (0.55 * overlay[mask] + 0.45 * color).astype(np.uint8)
-    overlay_path = output_dir / "regions.png"
-    smoothed_path = output_dir / "smoothed.png"
-    summary_path = output_dir / "summary.json"
-    cv2.imwrite(str(overlay_path), cv2.cvtColor(overlay, cv2.COLOR_RGB2BGR))
-    cv2.imwrite(str(smoothed_path), cv2.cvtColor(smoothed_rgb, cv2.COLOR_RGB2BGR))
-    summary_path.write_text(
-        json.dumps({
-            "regions": [
-                {key: value for key, value in proposal.items() if key != "mask"}
-                for proposal in proposals
-            ],
-        }, indent=2),
-        encoding="utf-8",
-    )
-    return {
-        "classical_regions": str(overlay_path),
-        "classical_smoothed": str(smoothed_path),
-        "classical_summary": str(summary_path),
-    }

@@ -1,0 +1,20 @@
+{
+  "default": {"plugins": ["selected"]},
+  "plugins": [
+    {
+      "spec": "autonomy.decision_cycle.action.selected:SelectedAction",
+      "description": "Authorize the selected plan; shared runtime owns movement authority.",
+      "default_config": {}
+    },
+    {
+      "spec": "autonomy.decision_cycle.action.hold:HoldAction",
+      "description": "Record the selected command and always authorize idle control.",
+      "default_config": {}
+    },
+    {
+      "spec": "implementations.decision_cycle.action.mode.plugin:ModeAction",
+      "description": "Apply the selected command in a live drive mode (autonomy, local); otherwise authorize idle control.",
+      "default_config": {}
+    }
+  ]
+}

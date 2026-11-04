@@ -11,11 +11,14 @@ from unittest import mock
 from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli import runtime_monitor
-from cli.automa_cli.run_record import control_application, control_source
+from cli.automa_cli.hosts.runs import monitor
+from cli.automa_cli.hosts.runs.worker import RunOutput
+from cli.automa_cli.hosts.runs.render import render_run_result
+from cli.automa_cli.hosts.runs.models import run_exit_code
+from cli.automa_cli.hosts.runs.store import CONTROL_SOURCE, control_application
 
 
-VEHICLE_ID = "picar-test"
+HOST_NAME = "picar-test"
 SELECTIONS = {
     "perception": {"activation": "perception/active.json", "source": "staged", "preset": "lane-preset", "plugins": ["lanes"]},
     "memory": {"activation": "memory/active.json", "source": "staged", "preset": None, "plugins": ["recent"]},
@@ -75,9 +78,15 @@ def _session(status: str, processed: int) -> dict:
 
 def _host(camera: int, *, last_error: str | None = None) -> dict:
     return {
-        "autonomy": {
+        "host": {
             "components": {"observation": {"frames_received": camera, "frames_dropped": 0}},
-            "steps": {"memory": {"plugin_ids": ["recent"], "last_error": None}, "proposal": None},
+            "steps": {
+                "memory": {
+                    "plugin_ids": ["recent"], "plugin_configs": {"recent": {}}, "run_count": 2, "failure_count": 0,
+                    "last_error": None,
+                },
+                "proposal": None,
+            },
             "cycle_count": camera,
             "error_count": 0 if last_error is None else 1,
             "last_error": last_error,
@@ -103,6 +112,53 @@ def _publication(index: int) -> dict:
 
 
 class RuntimeMonitorTests(unittest.TestCase):
+    def test_run_transcript_formats_supplied_state(self) -> None:
+        state = {
+            "host_name": "car",
+            "status": "completed",
+            "frames_received": 3,
+            "frames_dropped": 1,
+            "processed_count": 2,
+            "control_source": "runtime_host",
+            "action_policy": "autonomy",
+            "recording": False,
+            "latest": {"perception_text": "latest_perception.txt"},
+            "selections": {
+                "perception": {"plugins": ["lanes"], "preset": "lane-preset"},
+                "memory": {"plugins": [], "preset": None},
+            },
+            "published_view": {"available": True, "url": "http://127.0.0.1:9/"},
+            "decision": {"generation_id": "gen-1"},
+            "num_decisions": 2,
+            "run_dir": None,
+        }
+        output = io.StringIO()
+        transcript = RunOutput(output)
+        transcript.startup(state)
+        transcript.frame("frame-1", signals=1, things=0, action="steer-left", count=1, verbose=False)
+        transcript.frame("frame-2", signals=1, things=0, action="hold", count=2, verbose=False)
+        code, message = run_exit_code(state), render_run_result(state, state_path="automation/state.json")
+
+        self.assertEqual(
+            output.getvalue().splitlines(),
+            [
+                "Run started on host car.",
+                "Perception: lane-preset (lanes)",
+                "Memory: (no plugins)",
+                "Recording: off; latest frame and perception are overwritten each iteration",
+                "Control source: runtime host",
+                "Action policy: autonomy",
+                "Decision generation: gen-1",
+                "Runtime view: http://127.0.0.1:9/",
+                "Decisions: 2",
+                "frame-1: signals=1 things=0 action=steer-left",
+            ],
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("Run completed on host car.", message)
+        self.assertIn("State: automation/state.json", message)
+        self.assertIn("Frames received: 3", message)
+
     def _monitor(self, automation_dir: Path, *, sessions: list[dict], hosts: list[dict]):
         jpeg = io.BytesIO()
         Image.new("RGB", (4, 4)).save(jpeg, format="JPEG")
@@ -115,12 +171,12 @@ class RuntimeMonitorTests(unittest.TestCase):
         client = _FakeClient(sessions, hosts)
         output = io.StringIO()
         with (
-            mock.patch.object(runtime_monitor, "RuntimeClient", return_value=client),
-            mock.patch.object(runtime_monitor, "fetch_observation_sample", side_effect=sample),
-            mock.patch.object(runtime_monitor, "DecisionViewAdapter", _FakeDecisionView),
+            mock.patch.object(monitor, "RuntimeClient", return_value=client),
+            mock.patch.object(monitor, "fetch_observation_sample", side_effect=sample),
+            mock.patch.object(monitor, "DecisionViewAdapter", _FakeDecisionView),
         ):
-            code, message = runtime_monitor.monitor_runtime(
-                vehicle_id=VEHICLE_ID,
+            outcome = monitor.monitor_runtime(
+                host_name=HOST_NAME,
                 base_url=client.base_url,
                 automation_dir=automation_dir,
                 selections=copy.deepcopy(SELECTIONS),
@@ -129,15 +185,16 @@ class RuntimeMonitorTests(unittest.TestCase):
                 timeout_s=1.0,
                 record=False,
                 verbose=False,
-                output=output,
+                emit=RunOutput(output),
             )
+            code, message = outcome.exit_code, render_run_result(outcome.state, state_path=str(outcome.state_path))
         state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
         return client, code, message, output.getvalue().splitlines(), state
 
     def test_a_run_prints_and_records_the_host_session(self) -> None:
         hosts = [_host(10), _host(11), _host(13)]
         for host, count in zip(hosts, (4, 5, 6)):
-            host["autonomy"]["components"]["observation"]["frames_dropped"] = count
+            host["host"]["components"]["observation"]["frames_dropped"] = count
         with tempfile.TemporaryDirectory() as tmp:
             automation_dir = Path(tmp) / "automation"
             client, code, message, lines, state = self._monitor(
@@ -154,12 +211,14 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(
             [line for line in lines if not line.startswith("Runtime view: ")],
             [
-                f"Automation running: {VEHICLE_ID}",
-                "Perception: lane-preset (lanes)",
+                f"Run started on host {HOST_NAME}.",
+                # The lines name what the host runs, not what was staged:
+                # it reports no perception step.
+                "Perception: (no plugins)",
                 "Memory: recent",
                 "Proposal: (no plugins)",
                 "Recording: off; latest frame and perception are overwritten each iteration",
-                "Control source: vehicle runtime host",
+                "Control source: runtime host",
                 "Action policy: autonomy",
                 "Decision generation: gen-1",
                 "Decisions: 2",
@@ -171,7 +230,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(
             message.splitlines()[:6],
             [
-                f"Automation completed: {VEHICLE_ID}",
+                f"Run completed on host {HOST_NAME}.",
                 "Frames received: 3",
                 "Frames dropped before decision: 2",
                 "Decisions completed: 2",
@@ -179,7 +238,7 @@ class RuntimeMonitorTests(unittest.TestCase):
                 "Action policy: autonomy",
             ],
         )
-        self.assertEqual(message.splitlines()[-1], "Ready for: inspect stopped deployment")
+        self.assertNotIn("ready for:", message.lower())
         self.assertEqual(
             (state["status"], state["stop_reason"], state["run_id"]),
             ("completed", "completed", "host-1"),
@@ -188,7 +247,11 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(state["control_application"], "shared_execution")
         self.assertEqual(state["execution"]["mode"], "manual")
         self.assertEqual(
-            state["steps"]["memory"], {"plugin_ids": ["recent"], "preset": None, "last_error": None}
+            state["steps"]["memory"],
+            {
+                "plugin_ids": ["recent"], "plugin_configs": {"recent": {}}, "preset": None, "run_count": 2,
+                "failure_count": 0, "last_error": None,
+            },
         )
         # Every selection records its step's host report, or that the host has none.
         self.assertEqual(state["selections"]["memory"]["status"]["plugin_ids"], ["recent"])
@@ -201,8 +264,8 @@ class RuntimeMonitorTests(unittest.TestCase):
 
     def test_a_missing_capture_counter_is_unavailable_rather_than_zero(self) -> None:
         with self.assertRaisesRegex(RuntimeError, "does not report"):
-            runtime_monitor._frames_received({"components": {"observation": {}}})
-        self.assertEqual(runtime_monitor._frames_received(_host(0)["autonomy"]), 0)
+            monitor._frames_received({"components": {"observation": {}}})
+        self.assertEqual(monitor._frames_received(_host(0)["host"]), 0)
 
     def test_a_host_cycle_error_fails_the_run_with_the_host_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -217,7 +280,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual(
             message.splitlines()[:2],
-            [f"Automation failed for {VEHICLE_ID}.", "Reason: RuntimeError: plan failed"],
+            [f"The run on host {HOST_NAME} failed.", "Reason: RuntimeError: plan failed"],
         )
         self.assertEqual((state["status"], state["stop_reason"]), ("error", "error"))
         self.assertEqual(state["readiness"]["blocking_layer"], "automation_worker")
@@ -225,10 +288,10 @@ class RuntimeMonitorTests(unittest.TestCase):
 
 class ControlRecordTests(unittest.TestCase):
     def test_every_vehicle_runs_on_its_host_and_applies_only_autonomy(self) -> None:
-        autonomy = RunConfiguration(mode="autonomy")
-        observe = RunConfiguration(mode="observe_only")
+        autonomy = RunConfiguration(mode="autonomy", num_decisions=None)
+        observe = RunConfiguration(mode="observe_only", num_decisions=None)
 
-        self.assertEqual([control_source(autonomy), control_source(observe)], ["runtime_host"] * 2)
+        self.assertEqual(CONTROL_SOURCE, "runtime_host")
         self.assertEqual(
             [control_application(autonomy), control_application(observe)],
             ["shared_execution", "not_applied"],
@@ -237,22 +300,22 @@ class ControlRecordTests(unittest.TestCase):
 
 class MonitorPacingTests(unittest.TestCase):
     def test_missing_or_invalid_counters_require_a_host_update(self):
-        for read, counter in ((runtime_monitor._frames_received, "frames_received"),
-                              (runtime_monitor._frames_dropped, "frames_dropped")):
+        for read, counter in ((monitor._frames_received, "frames_received"),
+                              (monitor._frames_dropped, "frames_dropped")):
             for host in ({}, {"components": []}, {"components": {"observation": []}},
                          *({"components": {"observation": {counter: value}}}
                            for value in (None, True, -1, 1.5, "2"))):
                 with self.subTest(counter=counter, host=host), self.assertRaisesRegex(RuntimeError, "update"):
                     read(host)
-        self.assertEqual(runtime_monitor._frames_dropped(_host(2)["autonomy"]), 0)
+        self.assertEqual(monitor._frames_dropped(_host(2)["host"]), 0)
 
     def test_adaptive_pause_keeps_a_gap_on_fast_and_slow_hosts(self):
         for elapsed_ms, expected_ms in [(5, 1000 / 30 - 5), (20, 20), (30, 30),
                                         (100, 100), (200, 100)]:
             with self.subTest(elapsed_ms=elapsed_ms), mock.patch.object(
-                runtime_monitor.time, "monotonic", return_value=10 + elapsed_ms / 1000,
+                monitor.time, "monotonic", return_value=10 + elapsed_ms / 1000,
             ):
-                self.assertAlmostEqual(runtime_monitor._pause_s(10, 1 / 30) * 1000, expected_ms)
+                self.assertAlmostEqual(monitor.pause_s(10, 1 / 30) * 1000, expected_ms)
 
 
 if __name__ == "__main__":

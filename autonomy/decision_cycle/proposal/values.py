@@ -22,8 +22,8 @@ from autonomy.serialization import (
 )
 from autonomy.vehicle import clamp_unit
 
-ACTION_PROPOSAL_SCHEMA = "action_proposal_v0"
-PROPOSED_VEHICLE_COMMAND_SCHEMA = "proposed_vehicle_command_v0"
+ACTION_PROPOSAL_SCHEMA = "action_proposal"
+PROPOSED_VEHICLE_COMMAND_SCHEMA = "proposed_vehicle_command"
 MAX_REASON = 240
 MAX_ASSUMPTION = 64
 MAX_ASSUMPTIONS = 8

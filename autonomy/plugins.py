@@ -208,7 +208,7 @@ class LocalPluginCatalog:
                 if item_step == step
             )
 
-    def snapshot(self) -> tuple[int, tuple[PluginDefinition, ...]]:
+    def read(self) -> tuple[int, tuple[PluginDefinition, ...]]:
         """Read a catalog version and its definitions together."""
 
         with self._lock:
@@ -389,7 +389,7 @@ class PluginSelectionRuntime(Generic[_T]):
     ) -> tuple[tuple[PluginDefinition, _T], ...]:
         """Reset removed instances and publish the prepared selection.
 
-        The prepared snapshot is published as staged; the manager is not read
+        The prepared selection is published as staged; the manager is not read
         again. A reset failure leaves the previous publication in place and
         drops the preparation.
         """
@@ -420,7 +420,7 @@ class PluginSelectionRuntime(Generic[_T]):
     ) -> tuple[tuple[PluginDefinition, _T], ...]:
         """Apply the manager's current selection and return its instances.
 
-        The selection is snapshotted once. If the manager changes during
+        The selected definitions are read once. If the manager changes during
         application, the new selection is picked up by the next call. This
         restages from the manager and does not commit an earlier preparation.
         """

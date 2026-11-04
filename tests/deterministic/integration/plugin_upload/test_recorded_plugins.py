@@ -17,8 +17,9 @@ from autonomy.plugins import uploaded_source
 from autonomy.runtime.plugin_loader import load_runner
 from autonomy.runtime.recording import RunRecording
 from autonomy.runtime.session import RunConfiguration
-from cli.automa_cli.runtime_view import RuntimeViewServer
-from implementations.decision_cycle.catalog import SELECTABLE_STEPS
+from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.workbench.runner import ImageReplayRunner
+from implementations.decision_cycle.catalog import PRESET_STEPS
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
@@ -39,7 +40,7 @@ class RecordedPluginFlows(unittest.TestCase):
         with image_source(1) as root:
             host = create_picar_host(steps=decision_steps())
             self.addCleanup(host.close)
-            recording = RunRecording(root / "runs", vehicle_id="picar")
+            recording = RunRecording(root / "runs", host_name="picar")
             host.start(RunConfiguration(mode="observe_only", num_decisions=1), recording=recording)
             file = root / "prototype.py"
             write_plugin(file, "proposal", "prototype", 1)
@@ -57,7 +58,7 @@ class RecordedPluginFlows(unittest.TestCase):
         with image_source(1) as root:
             host = create_picar_host(steps=decision_steps())
             self.addCleanup(host.close)
-            recording = RunRecording(root / "runs", vehicle_id="picar")
+            recording = RunRecording(root / "runs", host_name="picar")
             host.start(RunConfiguration(mode="observe_only", num_decisions=3), recording=recording)
             for index, module in enumerate(("implementations.bundle_only", "implementations.bundle_only", "implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin")):
                 bundle = root / f"bundle-{index}"
@@ -93,14 +94,15 @@ class RecordedPluginFlows(unittest.TestCase):
                         else create_picar_host(steps=decision_steps()))
                 self.addCleanup(host.close)
                 host.follow_activations({}, root / "runtime")
-                view = RuntimeViewServer(vehicle_id=vehicle, automation_dir=root / "automation",
-                                         port=0, plugin_catalog=host.plugin_catalog).start()
+                view = RuntimeViewServer(host_name=vehicle, automation_dir=root / "automation",
+                                         port=0, plugin_catalog=host.plugin_catalog,
+                                         replay_runner_factory=ImageReplayRunner).start()
                 self.addCleanup(view.stop)
-                recording = RunRecording(root / "runs", vehicle_id=vehicle)
+                recording = RunRecording(root / "runs", host_name=vehicle)
                 host.start(RunConfiguration(mode="observe_only", num_decisions=3), recording=recording)
                 host.run(frame(root, 0))
                 originals = set()
-                for step in SELECTABLE_STEPS:
+                for step in PRESET_STEPS:
                     file = root / f"{step}.py"
                     write_plugin(file, step, f"prototype-{step}", 1)
                     _, receipt = upload(view.url, file, step, f"prototype-{step}", arm=True)
@@ -139,7 +141,7 @@ class RecordedPluginFlows(unittest.TestCase):
                 moved = root / "moved"
                 shutil.move(recording.root, moved)
                 self.assertEqual(json.loads((moved / "manifest.json").read_text()), before)
-                cli = invoke_automa("vehicles", "workbench", "replay", str(moved), "--cadence-ms", "0")
+                cli = invoke_automa("workbench", str(moved), "--cadence-ms", "0")
                 self.assertIn("phase: completed", cli.stdout)
                 base, run_id = replay(self, moved)
                 for position, revision in ((1, 1), (2, 2)):
@@ -149,12 +151,13 @@ class RecordedPluginFlows(unittest.TestCase):
                     self.assertEqual(restored["metadata"]["memory"]["count"], position)
                 # Seeking back must survive state polling and a live availability change.
                 earlier = post_action(base, {"action": "seek", "run_id": run_id, "position": 0})["state"]
-                self.assertEqual(earlier["active_perception_plugin_ids"], [])
+                self.assertEqual(earlier["active_perception_plugin_ids"], ["prototype-perception"])
+                self.assertIsNone(earlier["steps"]["perception"])
                 write_plugin(root / "unselected.py", "perception", "unselected", 3)
                 upload(base, root / "unselected.py", "perception", "unselected")
                 for _ in range(3):
                     polled = get_json(base, "/api/state")
-                    for step in SELECTABLE_STEPS:
+                    for step in PRESET_STEPS:
                         self.assertEqual(polled[f"active_{step}_plugin_ids"], earlier[f"active_{step}_plugin_ids"])
                     self.assertEqual(polled["machine_detail"]["pipeline"], earlier["machine_detail"]["pipeline"])
                     self.assertEqual(polled["steps"], earlier["steps"])

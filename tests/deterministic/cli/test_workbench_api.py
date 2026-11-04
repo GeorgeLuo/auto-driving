@@ -5,7 +5,6 @@ from functools import partial
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
-from cli.automa_cli.workbench import WorkbenchServer
 from tests.shared.cli.workbench_fixtures import (
     FixtureMapper,
     ImageReplayRunner,
@@ -157,11 +156,9 @@ class WorkbenchTests(unittest.TestCase):
     def test_page_files_are_served_and_nothing_else(self) -> None:
         import re
 
-        server = WorkbenchServer(ImageReplayRunner(cadence_ms=0)).start()
-        self.addCleanup(server.stop)
-        base = server.url
+        base = serve_workbench(self, ImageReplayRunner(cadence_ms=0))
         page = urlopen(base, timeout=2).read().decode("utf-8")
-        paths = re.findall(r'(?:src|href)="/static/([^"]+)"', page)
+        paths = re.findall(r'(?:src|href)="static/([^"]+)"', page)
         self.assertIn("workbench.css", paths)
         self.assertIn("shared/float.css", paths)
         self.assertEqual(
@@ -175,14 +172,14 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(served.status, 200)
             self.assertIn("javascript" if path.endswith(".js") else "css", served.headers["Content-Type"])
         for blocked in (
-            "static/../workbench_server.py", "static/js/../index.html", "static/index.html", "static/js/missing.js",
+            "static/../workbench_view.py", "static/js/../index.html", "static/index.html", "static/js/missing.js",
             "static/shared/../loopback_http.py", "static/shared/missing.js",
         ):
             with self.assertRaises(HTTPError) as caught:
                 urlopen(base + blocked, timeout=2)
             self.assertEqual(caught.exception.code, 404)
 
-    def test_loopback_api_selection_reprocesses_the_displayed_frame(self) -> None:
+    def test_loopback_api_selection_applies_on_the_next_frame(self) -> None:
         with image_source(3) as root:
             runner = ImageReplayRunner(cadence_ms=30000)
             base = serve_workbench(self, runner)
@@ -216,19 +213,25 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(
                 selected["state"]["active_perception_plugin_ids"], ["floor_continuity"]
             )
+            # A running change waits for the next frame. The displayed result
+            # stays the one already computed.
+            shown = selected["state"]
+            self.assertEqual(shown["phase"], "running")
+            self.assertEqual(shown["position"], 1)
+            self.assertEqual(shown["current_frame"]["frame_id"], first_id)
+            self.assertEqual(
+                [run["plugin_id"] for run in shown["steps"]["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
+            post({"action": "pause", "run_id": run_id})
+            stepped = post({"action": "step", "run_id": run_id})["state"]
+            self.assertEqual(
+                [run["plugin_id"] for run in stepped["steps"]["perception"]["plugin_runs"]],
+                ["floor_continuity"],
+            )
             post({"action": "reset", "run_id": run_id})
 
-        # The response already shows the displayed frame under the new
-        # selection, without waiting out the cadence.
-        reprocessed = selected["state"]
-        self.assertEqual(reprocessed["position"], 1)
-        self.assertEqual(reprocessed["current_frame"]["frame_id"], first_id)
-        self.assertEqual(
-            [run["plugin_id"] for run in reprocessed["steps"]["perception"]["plugin_runs"]],
-            ["floor_continuity"],
-        )
-
-    def test_running_empty_selection_reprocesses_the_displayed_frame(self) -> None:
+    def test_running_empty_selection_applies_on_the_next_frame(self) -> None:
         with image_source(3) as root:
             runner = ImageReplayRunner(
                 root,
@@ -253,8 +256,14 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(selected["active_perception_plugin_ids"], [])
             self.assertEqual(selected["position"], 1)
             self.assertEqual(selected["current_frame"]["frame_id"], first_id)
-            self.assertEqual(list(selected["steps"]["perception"]["plugin_runs"] or ()), [])
-            self.assertEqual(selected["steps"]["perception"]["status"], "empty")
+            self.assertEqual(
+                [run["plugin_id"] for run in selected["steps"]["perception"]["plugin_runs"]],
+                ["classical_regions"],
+            )
+            runner.dispatch("pause", run_id=run_id)
+            stepped = runner.dispatch("step", run_id=run_id)
+            self.assertEqual(list(stepped["steps"]["perception"]["plugin_runs"] or ()), [])
+            self.assertEqual(stepped["steps"]["perception"]["status"], "empty")
             runner.dispatch("reset", run_id=run_id)
 
     def test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv(
@@ -262,9 +271,7 @@ class WorkbenchTests(unittest.TestCase):
     ) -> None:
         with image_source(1) as root:
             runner = ImageReplayRunner(cadence_ms=0)
-            server = WorkbenchServer(runner).start()
-            self.addCleanup(server.stop)
-            base = server.url
+            base = serve_workbench(self, runner)
             self.assertIsNotNone(base)
 
             served = urlopen(base, timeout=2)
@@ -288,9 +295,6 @@ class WorkbenchTests(unittest.TestCase):
             state = runner.wait(5)
             self.assertEqual(state["phase"], "completed")
 
-            health = json.loads(urlopen(base + "api/health", timeout=2).read())
-            self.assertTrue(health["available"])
-            self.assertTrue(health["persistent_across_terminal_state"])
             latest = json.loads(urlopen(base + "api/state", timeout=2).read())
             self.assertEqual(latest["phase"], "completed")
             frame_id = state["timeline"][0]["frame"]["frame_id"]
@@ -338,6 +342,6 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(error.exception.code, 400)
             bad_payload = json.loads(error.exception.read())
             self.assertEqual(bad_payload["boundary"], "input")
-            server.stop()
+            self.doCleanups()
             self.assertIsNone(runner.state()["source"])
             self.assertEqual(runner.state()["timeline"], [])

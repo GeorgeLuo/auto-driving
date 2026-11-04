@@ -15,7 +15,7 @@ const ctx = {
   setText(id, value) { elements[id].textContent = value; }
 };
 vm.createContext(ctx);
-vm.runInContext(fs.readFileSync("cli/automa_cli/workbench_page/js/perception.js", "utf8"), ctx);
+vm.runInContext(fs.readFileSync("cli/automa_cli/frontend/pages/workbench/js/perception.js", "utf8"), ctx);
 
 ctx.renderPerception();
 assert.equal(elements.perceptionSummary.textContent, "no output");

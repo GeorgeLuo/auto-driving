@@ -59,7 +59,6 @@ class ObservationAdaptationTests(unittest.TestCase):
                     properties={"appearance": {"color": "red"}},
                 ),
             ),
-            artifacts={"overlay": "artifacts/overlay.png"},
             limits=("relative image location only",),
         )
 
@@ -78,7 +77,6 @@ class ObservationAdaptationTests(unittest.TestCase):
         self.assertEqual(observation.summary, perception.lines[:12])
         self.assertEqual(observation.signals[0]["signal_id"], "path_clear")
         self.assertEqual(observation.things[0]["thing_id"], "region_1")
-        self.assertEqual(observation.artifacts["overlay"], "artifacts/overlay.png")
         self.assertEqual(observation.metadata["limits"], list(perception.limits))
         self.assertEqual(observation.metadata["source"], "test-observe-step")
 

@@ -431,7 +431,7 @@ class UploadedSourceTests(unittest.TestCase):
                 step="proposal", plugin_id="broken", entrypoint="broken:Plugin",
                 source=b"class Plugin:\n    def (\n", filename="broken.py",
             )
-        self.assertEqual(catalog.snapshot(), (0, ()))
+        self.assertEqual(catalog.read(), (0, ()))
 
     def test_each_revision_keeps_its_source_and_imports_by_content(self) -> None:
         catalog = LocalPluginCatalog()

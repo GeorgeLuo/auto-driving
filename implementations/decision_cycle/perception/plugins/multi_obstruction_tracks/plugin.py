@@ -79,7 +79,6 @@ class MultiObstructionTracksPlugin:
             "camera motion and lighting can split, merge, or misassociate regions",
             "lost tracks are dropped after a bounded grace period",
         ),
-        diagnostic_artifacts=("edge_summary",),
     )
 
     def __init__(
@@ -201,8 +200,6 @@ class MultiObstructionTracksPlugin:
         }
 
         track_events = {str(track_id): event for track_id, event in events.items()}
-        if inputs.diagnostics.enabled:
-            inputs.diagnostics.emit_json("edge_summary", "edge_summary.json", detector_summary)
         return PerceptionEvidenceBatch(
             things=things,
             signals=(

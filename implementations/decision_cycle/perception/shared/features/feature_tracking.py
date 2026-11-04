@@ -5,6 +5,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any
 
+import cv2
 import numpy as np
 from PIL import Image, ImageDraw
 
@@ -156,7 +157,6 @@ def match_keypoints(
 ) -> list[FeatureMatch]:
     matches: list[FeatureMatch] = []
     height, width = gray_b.shape
-    patch_size = patch_radius * 2 + 1
 
     for x, y in keypoints:
         patch = extract_patch(gray_a, x, y, patch_radius)
@@ -177,11 +177,11 @@ def match_keypoints(
 
         region = gray_b[top - patch_radius:bottom + patch_radius + 1,
                         left - patch_radius:right + patch_radius + 1].astype(np.float32)
-        windows = np.lib.stride_tricks.sliding_window_view(region, (patch_size, patch_size))
-        means = windows.mean(axis=(-1, -2), keepdims=True)
-        centered = windows - means
-        norms = np.sqrt((centered * centered).sum(axis=(-1, -2)))
-        scores = (centered * patch_norm).sum(axis=(-1, -2)) / np.maximum(norms * patch_scale, 1e-6)
+        # The mean shift reduces float32 cancellation in low-contrast patches.
+        # OpenCV computes the same normalized correlation without materializing
+        # a search-window-by-patch array for every feature.
+        region -= float(patch.mean())
+        scores = cv2.matchTemplate(region, patch_norm, cv2.TM_CCOEFF_NORMED)
 
         best_flat = int(np.argmax(scores))
         best_y, best_x = np.unravel_index(best_flat, scores.shape)

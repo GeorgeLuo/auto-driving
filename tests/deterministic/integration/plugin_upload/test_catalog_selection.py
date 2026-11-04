@@ -43,11 +43,11 @@ class CatalogSelectionTests(unittest.TestCase):
         for vehicle, host in hosts(self.activations):
             with self.subTest(vehicle=vehicle), image_source(1) as root, closing(host):
                 host.follow_activations(self.activations, root / "runtime")
-                snapshot = host.plugin_catalog()["arming"]
-                self.assertEqual(set(snapshot["applied"]), set(STEPS))
-                self.assertEqual(set(snapshot["requested"]), set(STEPS))
+                arming = host.plugin_catalog()["arming"]
+                self.assertEqual(set(arming["applied"]), set(STEPS))
+                self.assertEqual(set(arming["requested"]), set(STEPS))
                 for step in STEPS:
-                    self.assertEqual(ids(snapshot, "applied", step), list(host.step(step).plugin_ids))
+                    self.assertEqual(ids(arming, "applied", step), list(host.step(step).plugin_ids))
                 for step in ("observation", "plan"):
                     write_plugin(root / f"{step}.py", step, swaps[step], 1)
                     host.catalog.upload(step=step, plugin_id=swaps[step], entrypoint="prototype:Prototype",
@@ -59,13 +59,13 @@ class CatalogSelectionTests(unittest.TestCase):
                 self.assertEqual(armed["status"], "requested")
                 for step, plugin_id in swaps.items():
                     self.assertEqual(ids(armed["arming"], "requested", step), [plugin_id])
-                    self.assertEqual(ids(armed["arming"], "applied", step), ids(snapshot, "applied", step))
+                    self.assertEqual(ids(armed["arming"], "applied", step), ids(arming, "applied", step))
                 self.assertEqual(host.session_status(), session)
                 host.run(frame(root, 1))
                 adopted = host.plugin_catalog()["arming"]
                 self.assertEqual(adopted["status"], "applied")
                 for step in STEPS:
-                    expected = [swaps[step]] if step in swaps else ids(snapshot, "applied", step)
+                    expected = [swaps[step]] if step in swaps else ids(arming, "applied", step)
                     self.assertEqual(ids(adopted, "applied", step), expected)
                     self.assertEqual(ran(host, step), expected)
                 # The swapped plan records the plugin that built it.
@@ -91,7 +91,7 @@ class CatalogSelectionTests(unittest.TestCase):
         for vehicle, host in hosts(self.activations):
             with self.subTest(vehicle=vehicle), image_source(1) as root, closing(host):
                 host.follow_activations(self.activations, root / "runtime")
-                snapshot = host.plugin_catalog()["arming"]
+                arming = host.plugin_catalog()["arming"]
                 session = host.session_status()
                 for step, plugins in RESTAGED.items():
                     write_step_activation(step_activation_path(root / "runtime", step),
@@ -101,13 +101,13 @@ class CatalogSelectionTests(unittest.TestCase):
                 self.assertEqual(pending["status"], "requested")
                 for step, plugins in RESTAGED.items():
                     self.assertEqual(ids(pending, "requested", step), list(plugins))
-                    self.assertEqual(pending["applied"][step], snapshot["applied"][step])
+                    self.assertEqual(pending["applied"][step], arming["applied"][step])
                 self.assertEqual(host.session_status(), session)
                 host.run(frame(root, 1))
                 adopted = host.plugin_catalog()["arming"]
                 self.assertEqual(adopted["status"], "applied")
                 for step in STEPS:
-                    expected = list(RESTAGED[step]) if step in RESTAGED else ids(snapshot, "applied", step)
+                    expected = list(RESTAGED[step]) if step in RESTAGED else ids(arming, "applied", step)
                     self.assertEqual(ids(adopted, "applied", step), expected)
 
                 # A restage the step cannot run reports the failure and keeps its plugin.

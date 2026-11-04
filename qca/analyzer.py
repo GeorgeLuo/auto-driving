@@ -102,7 +102,7 @@ class CallableMetrics:
 
 
 @dataclass
-class SnapshotMetrics:
+class TreeMetrics:
     file_count: int = 0
     included_file_count: int = 0
     raw_loc: int = 0
@@ -168,8 +168,8 @@ class ReportIdentity:
 class Report:
     identity: ReportIdentity
     source_inventory: list[SourceFile]
-    head: SnapshotMetrics
-    base: SnapshotMetrics | None = None
+    head: TreeMetrics
+    base: TreeMetrics | None = None
     diff: DiffMetrics | None = None
     observations: list[dict[str, Any]] = field(default_factory=list)
     factors: dict[str, dict[str, Any]] = field(default_factory=dict)
@@ -342,7 +342,7 @@ def _analyze_revision(
         tree = _resolve_tree(paths[0], ref=ref)
         reader: _SourceReader = _TreeReader(tree)
         inventory = _inventory(reader, config)
-        head = _measure_snapshot(reader, inventory)
+        head = _measure_tree(reader, inventory)
         identity = _identity(
             mode="tree",
             analyzed_path=tree.scope_rel,
@@ -374,7 +374,7 @@ def _analyze_revision(
     analyzed_path = " ".join(pathspecs)
     reader = _MappingReader(sources)
     inventory = _inventory(reader, config)
-    head = _measure_snapshot(reader, inventory)
+    head = _measure_tree(reader, inventory)
     return Report(
         identity=_identity(
             mode="tree",
@@ -403,7 +403,7 @@ def analyze_sources(
     policy = config or AnalyzerConfig()
     reader = _MappingReader(sources)
     inventory = _inventory(reader, policy)
-    head = _measure_snapshot(reader, inventory)
+    head = _measure_tree(reader, inventory)
     identity = _identity(
         mode="tree",
         analyzed_path=analyzed_path,
@@ -467,8 +467,8 @@ def analyze_diff(
         repo_for_identity = repo_root
     base_inventory = _inventory(base_reader, policy)
     head_inventory = _inventory(head_reader, policy)
-    base_snapshot = _measure_snapshot(base_reader, base_inventory)
-    head_snapshot = _measure_snapshot(head_reader, head_inventory)
+    base_metrics = _measure_tree(base_reader, base_inventory)
+    head_metrics = _measure_tree(head_reader, head_inventory)
     file_diffs = _read_git_diff(
         repo_root=repo_root,
         base_sha=base_sha,
@@ -476,7 +476,7 @@ def analyze_diff(
         pathspecs=pathspecs,
     )
     file_diffs = _scope_file_diffs(file_diffs, strip, scope_is_file=scope_is_file)
-    diff = _derive_diff(base_snapshot, head_snapshot, base_inventory, head_inventory, file_diffs)
+    diff = _derive_diff(base_metrics, head_metrics, base_inventory, head_inventory, file_diffs)
     identity = _identity(
         mode="diff",
         analyzed_path=analyzed_path,
@@ -489,10 +489,10 @@ def analyze_diff(
     return Report(
         identity=identity,
         source_inventory=head_inventory,
-        head=head_snapshot,
-        base=base_snapshot,
+        head=head_metrics,
+        base=base_metrics,
         diff=diff,
-        observations=_observations(head_snapshot, base_snapshot, diff),
+        observations=_observations(head_metrics, base_metrics, diff),
         factors=compare_factors(
             measure_factors(
                 _factor_sources(base_reader, base_inventory),
@@ -527,7 +527,7 @@ def _finding_markdown(item: dict[str, Any]) -> str:
     return f"- `{location}`{indicator}: {item.get('message', '')}"
 
 
-def _snapshot_production_test_markdown(split: dict[str, Any]) -> list[str]:
+def _tree_production_test_markdown(split: dict[str, Any]) -> list[str]:
     if not split:
         return []
     files = split["files"]
@@ -537,7 +537,7 @@ def _snapshot_production_test_markdown(split: dict[str, Any]) -> list[str]:
         "",
         "### Production vs tests",
         "",
-        "Denominator is `production+tests`. Core snapshot LOC still includes `tooling/scripts` and `experimental/lab`.",
+        "Denominator is `production+tests`. Core tree LOC still includes `tooling/scripts` and `experimental/lab`.",
         "",
         "| Class | Files | Raw LOC | Raw share | Effective Python LOC | Effective share |",
         "| --- | ---: | ---: | ---: | ---: | ---: |",
@@ -642,7 +642,7 @@ def render_markdown(report: Report) -> str:
         f"- working-tree digest: `{identity['working_tree_digest'] or '(none)'}`",
         f"- path: `{identity['analyzed_path']}`",
         "",
-        "## Snapshot",
+        "## Tree",
         "",
         "| Metric | Value |",
         "| --- | ---: |",
@@ -659,7 +659,7 @@ def render_markdown(report: Report) -> str:
     lines.extend(
         [
             "",
-            "### Snapshot by source class",
+            "### Tree by source class",
             "",
             "| Source class | Files | All raw LOC | Core Python effective LOC |",
             "| --- | ---: | ---: | ---: |",
@@ -670,7 +670,7 @@ def render_markdown(report: Report) -> str:
             lines.append(
                 f"| `{source_class}` | {values['files']} | {values['raw_loc']} | {values['effective_loc']} |"
             )
-    lines.extend(_snapshot_production_test_markdown(payload["head"].get("production_test_split") or {}))
+    lines.extend(_tree_production_test_markdown(payload["head"].get("production_test_split") or {}))
     if payload["diff"] is not None:
         diff = payload["diff"]
         lines.extend(
@@ -1050,8 +1050,8 @@ def _diff_line_split(sides: dict[str, dict[str, int]]) -> dict[str, Any]:
     }
 
 
-def snapshot_production_test_split(by_class: dict[str, dict[str, int]]) -> dict[str, Any]:
-    """Derive production vs tests size shares from a snapshot class table."""
+def tree_production_test_split(by_class: dict[str, dict[str, int]]) -> dict[str, Any]:
+    """Derive production vs tests size shares from a tree class table."""
 
     production = by_class.get("production") or {"files": 0, "raw_loc": 0, "effective_loc": 0}
     tests = by_class.get("tests") or {"files": 0, "raw_loc": 0, "effective_loc": 0}
@@ -1122,8 +1122,8 @@ def production_test_split_summary(split: dict[str, Any]) -> str:
     )
 
 
-def _measure_snapshot(reader: _SourceReader, inventory: list[SourceFile]) -> SnapshotMetrics:
-    metrics = SnapshotMetrics(
+def _measure_tree(reader: _SourceReader, inventory: list[SourceFile]) -> TreeMetrics:
+    metrics = TreeMetrics(
         file_count=len(inventory),
         included_file_count=sum(item.included for item in inventory),
         by_class={source_class: {"files": 0, "raw_loc": 0, "effective_loc": 0} for source_class in SOURCE_CLASSES},
@@ -1164,7 +1164,7 @@ def _measure_snapshot(reader: _SourceReader, inventory: list[SourceFile]) -> Sna
     )
     for bucket in metrics.by_class.values():
         bucket.setdefault("logical_loc", 0)
-    metrics.production_test_split = snapshot_production_test_split(metrics.by_class)
+    metrics.production_test_split = tree_production_test_split(metrics.by_class)
     return metrics
 
 
@@ -1426,8 +1426,8 @@ def _scope_file_diffs(
 
 
 def _derive_diff(
-    base: SnapshotMetrics,
-    head: SnapshotMetrics,
+    base: TreeMetrics,
+    head: TreeMetrics,
     base_inventory: list[SourceFile],
     head_inventory: list[SourceFile],
     file_diffs: list[DiffFile],
@@ -1707,20 +1707,20 @@ def _is_inspectable_public_symbol(symbol: str) -> bool:
 
 
 def _observations(
-    head: SnapshotMetrics,
-    base: SnapshotMetrics | None,
+    head: TreeMetrics,
+    base: TreeMetrics | None,
     diff: DiffMetrics | None,
 ) -> list[dict[str, Any]]:
     observations: list[dict[str, Any]] = [
-        {"id": "snapshot.files", "value": head.file_count},
-        {"id": "snapshot.included_files", "value": head.included_file_count},
-        {"id": "snapshot.raw_loc", "value": head.raw_loc},
-        {"id": "snapshot.effective_loc", "value": head.effective_loc},
-        {"id": "snapshot.logical_loc", "value": head.logical_loc},
-        {"id": "snapshot.decision_burden", "value": head.decision_burden},
-        {"id": "snapshot.unsupported_files", "value": head.unsupported_files},
-        {"id": "snapshot.syntax_errors", "value": head.syntax_errors},
-        {"id": "snapshot.production_test_split", "value": head.production_test_split},
+        {"id": "tree.files", "value": head.file_count},
+        {"id": "tree.included_files", "value": head.included_file_count},
+        {"id": "tree.raw_loc", "value": head.raw_loc},
+        {"id": "tree.effective_loc", "value": head.effective_loc},
+        {"id": "tree.logical_loc", "value": head.logical_loc},
+        {"id": "tree.decision_burden", "value": head.decision_burden},
+        {"id": "tree.unsupported_files", "value": head.unsupported_files},
+        {"id": "tree.syntax_errors", "value": head.syntax_errors},
+        {"id": "tree.production_test_split", "value": head.production_test_split},
     ]
     if base is not None and diff is not None:
         observations.extend(

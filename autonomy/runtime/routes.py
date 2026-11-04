@@ -33,14 +33,12 @@ from autonomy.runtime.plugin_catalog import catalog_write_error
 
 logger = logging.getLogger(__name__)
 
-STATUS_PATH = "/autonomy/status"
-RUNTIME_PATH = "/autonomy/runtime"
+STATUS_PATH = "/host/status"
+RUNTIME_PATH = "/host/runtime"
 PLUGINS_PATH = "/api/plugins"
-MEMORY_RESET_PATH = "/autonomy/memory/reset"
-TELEMETRY_LATEST_PATH = "/autonomy/telemetry/latest"
-TELEMETRY_RECORDS_PATH = "/autonomy/telemetry/records"
-MEMORY_RESET_SCHEMA = "automa_memory_reset_v0"
-TELEMETRY_SCHEMA = "automa_host_boundary_telemetry_v0"
+TELEMETRY_LATEST_PATH = "/host/telemetry/latest"
+TELEMETRY_RECORDS_PATH = "/host/telemetry/records"
+TELEMETRY_SCHEMA = "automa_host_boundary_telemetry"
 RESTART_DELAY_S = 0.2
 
 Response = tuple[int, dict[str, str], bytes]
@@ -83,7 +81,6 @@ class RuntimeRoutes:
             ("GET", DECISION_LATEST_PATH): self._decision,
             ("GET", OBSERVATION_TRANSACTION_PATH): partial(self._transaction, "observation"),
             ("GET", DECISION_TRANSACTION_PATH): partial(self._transaction, "decision"),
-            ("POST", MEMORY_RESET_PATH): self._memory_reset,
             ("GET", TELEMETRY_LATEST_PATH): self._telemetry_latest,
             ("GET", TELEMETRY_RECORDS_PATH): self._telemetry_records,
         }
@@ -122,10 +119,10 @@ class RuntimeRoutes:
             "ok": True,
             "host_run_id": self.loop.run_id,
             "runtime": self.loop.runtime,
-            "vehicle_id": self.loop.vehicle_id,
+            "host_name": self.loop.host_name,
             "mode": session["execution"]["mode"],
             "session": session,
-            "autonomy": self.host.status(),
+            "host": self.host.status(),
         }
 
     @staticmethod
@@ -228,7 +225,7 @@ class RuntimeRoutes:
 
     def _transaction(self, kind: str, query: dict[str, list[str]], body: bytes,
                      request_headers: Mapping[str, str]) -> Response:
-        publication, capture, revision = self.loop.transaction_snapshot(kind)
+        publication, capture, revision = self.loop.read_transaction(kind)
         usable = (publication.get("status") == "ready" if kind == "decision"
                   else publication.get("health") in {"healthy", "stale"})
         state = publication.get("status") if kind == "decision" else publication.get("health")
@@ -258,20 +255,6 @@ class RuntimeRoutes:
         }
         status, json_headers, encoded = json_response(payload, 200 if jpeg is not None else 503)
         return status, {**json_headers, **headers}, encoded
-
-    def _memory_reset(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:
-        payload = {"schema": MEMORY_RESET_SCHEMA, **self.loop.reset_memory()}
-        autonomy = self.host.status()
-        payload["autonomy"] = autonomy
-        steps = autonomy.get("steps")
-        if isinstance(steps, dict) and isinstance(steps.get("memory"), dict):
-            payload.setdefault("memory", steps["memory"])
-        status = 200 if payload.get("ok") else 409
-        if payload.get("status") == "absent":
-            status = 503
-        elif payload.get("status") == "error":
-            status = 500
-        return json_response(payload, status)
 
     def _telemetry_unavailable(self, field: str, reason: str, status: int) -> Response:
         return json_response({

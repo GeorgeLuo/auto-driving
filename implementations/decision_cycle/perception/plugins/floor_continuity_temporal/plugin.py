@@ -17,7 +17,6 @@ from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginInputs,
 )
 from implementations.decision_cycle.perception.feeds.camera import (
-    CameraFrame,
     FRONT_CAMERA_RGB_INPUT,
 )
 from implementations.decision_cycle.perception.plugins.floor_continuity.plugin import FloorContinuityPlugin
@@ -61,13 +60,6 @@ class TemporalFloorContinuityPlugin:
             "held geometry is evidence continuity, not object identity",
             "smoothing can lag a genuine obstacle crossing or suppress a new obstacle",
             "the base cue remains heuristic and does not establish traversability",
-        ),
-        diagnostic_artifacts=(
-            "floor_mask",
-            "boundary_mask",
-            "overlay",
-            "summary",
-            "temporal_summary",
         ),
     )
 
@@ -138,7 +130,6 @@ class TemporalFloorContinuityPlugin:
         return batch
 
     def _perceive_frame(self, inputs: PerceptionPluginInputs) -> PerceptionEvidenceBatch:
-        frame = inputs.require("frame", CameraFrame)
         base = self._base.perceive(inputs)
         raw = [thing for thing in base.things if thing.kind == "floor_boundary"]
         selected, association = self._select(raw)
@@ -185,19 +176,6 @@ class TemporalFloorContinuityPlugin:
                 "max_hold_frames": self.max_hold_frames,
             }
         )
-        if inputs.diagnostics.enabled:
-            inputs.diagnostics.emit_json(
-                "temporal_summary",
-                "temporal_summary.json",
-                {
-                    "frame_id": inputs.frame_id,
-                    "raw_boundary_count": len(raw),
-                    "selected": selected.to_dict() if selected is not None else None,
-                    "association": association,
-                    "age_frames": self._age,
-                    "missed_frames": self._misses,
-                },
-            )
         return PerceptionEvidenceBatch(
             signals=tuple(signals),
             things=tuple(things),

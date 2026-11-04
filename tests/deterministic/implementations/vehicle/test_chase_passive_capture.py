@@ -227,7 +227,11 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
 
                 exc = raised.exception
                 self.assertEqual(exc.code, "frontend_disconnected")
-                self.assertEqual(exc.to_dict()["layer"], "simulator_frontend")
+                envelope = exc.to_dict()
+                self.assertEqual(envelope["layer"], "simulator_frontend")
+                self.assertEqual(envelope["schema"], "automa_cli_error")
+                self.assertEqual((envelope["error_code"], envelope["error"]), (exc.code, exc.detail))
+                self.assertNotIn("message", envelope)
                 self.assertEqual(exc.details["protocol_code"], protocol_code)
                 self.assertEqual(
                     exc.details["protocol_error"]["code"],

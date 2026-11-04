@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from contextlib import contextmanager
 from pathlib import Path
@@ -9,9 +10,11 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.plugins import PluginDefinition
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from cli.automa_cli.runtime_view import RuntimeViewServer
+from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.hosts.publications.plugin_catalog import PluginCatalogClient
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.chase_sim import create_host as create_chase_host
+from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
 from tests.shared.cli.invoke import invoke_automa
@@ -22,6 +25,7 @@ from tests.shared.cli.workbench_fixtures import (
     post_action,
     serve_workbench,
 )
+from tests.support.runtime_fixtures import write_host_fixture, write_json
 
 
 def frame(root, index):
@@ -55,8 +59,9 @@ def plugin_host(root, vehicle="chase", activations=None):
     host = (create_chase_host(ChaseSimCar(), steps=steps) if vehicle == "chase"
             else create_picar_host(steps=steps))
     host.follow_activations(selected, root / "runtime")
-    view = RuntimeViewServer(vehicle_id=vehicle, automation_dir=root / "automation",
-                             port=0, plugin_catalog=host.plugin_catalog).start()
+    view = RuntimeViewServer(host_name=vehicle, automation_dir=root / "automation",
+                             port=0, plugin_catalog=host.plugin_catalog,
+                             replay_runner_factory=ImageReplayRunner).start()
     try:
         yield host, view.url
     finally:
@@ -64,9 +69,19 @@ def plugin_host(root, vehicle="chase", activations=None):
         host.close()
 
 
+def name_host(runtime_root: Path, base: str, provider: str) -> None:
+    """Name the host serving ``base`` "one" under ``runtime_root``, so ``--host-name one`` reaches it."""
+
+    write_host_fixture(runtime_root, "one", provider=provider, url=base)
+    if provider == "chase-sim":
+        write_json(runtime_root / "one/bundle/runtime/automation/host.json", {
+            "schema": HOST_RECORD_SCHEMA, "host_name": "one", "pid": os.getpid(), "base_url": base,
+        })
+
+
 def upload(base, file, step, plugin_id, *, arm=False, check=True):
-    command = ["vehicles", "plugins", "upload", "--url", base, "--file", str(file),
-               "--step", step, "--plugin-id", plugin_id, "--entrypoint", "prototype:Prototype", "--json"]
+    command = ["plugins", "upload", "--url", base, "--file", str(file),
+               "--name", f"{step}/{plugin_id}", "--entrypoint", "prototype:Prototype", "--json"]
     if arm:
         command.append("--arm")
     result = invoke_automa(*command, check=check)
@@ -74,13 +89,13 @@ def upload(base, file, step, plugin_id, *, arm=False, check=True):
 
 
 def catalog(base):
-    return json.loads(invoke_automa("vehicles", "plugins", "status", "--url", base, "--json").stdout)
+    return PluginCatalogClient(base)()
 
 
 def arm_step(base, step, *ids):
-    command = ["vehicles", "plugins", "arm", "--url", base, "--step", step, "--json"]
+    command = ["plugins", "arm", "--url", base, "--json"]
     for plugin_id in ids:
-        command.extend(["--plugin", plugin_id])
+        command.extend(["--name", f"{step}/{plugin_id}"])
     return json.loads(invoke_automa(*command).stdout)
 
 

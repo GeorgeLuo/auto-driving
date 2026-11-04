@@ -22,7 +22,7 @@ def measure_factors(
 
     One shared analysis context is used so families with the same parse mode
     reuse syntax trees.  ``revision`` is the Git SHA for immutable revisions
-    and remains ``None`` for in-memory or working-tree snapshots.
+    and remains ``None`` for in-memory or working-tree source sets.
     """
 
     context = AnalysisContext.from_sources(sources, revision=revision)
@@ -51,7 +51,7 @@ def compare_factors(
                 key: head_metrics.get(key, 0) - base_metrics.get(key, 0)
                 for key in sorted(set(base_metrics) | set(head_metrics))
             },
-            "snapshot_finding_count": len(head["findings"]),
+            "scope_finding_count": len(head["findings"]),
             "findings": [item for item in head["findings"] if _touches(item, changed_paths)],
             "finding_scope": "changed files; metrics cover the configured Python scope",
         }

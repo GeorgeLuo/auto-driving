@@ -12,13 +12,14 @@ stay empty. ``load_decision_steps`` reads
 
 from __future__ import annotations
 
-from dataclasses import replace
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.action.runner import ActionRunner
 from autonomy.decision_cycle.activation import (
     STEPS,
+    STEP_ACTIVATION_SCHEMA,
     StepActivation,
     read_step_activation_if_present,
     require_step,
@@ -71,42 +72,45 @@ def step_runner(activation: StepActivation) -> Any:
     return STEP_RUNNERS[activation.step].from_activation(activation)
 
 
-def snapshot_runner_activation(runner: Any, step: str) -> StepActivation | None:
-    """Preserve staged context while describing the definitions actually applied."""
+def applied_step_activations(steps: DecisionSteps) -> dict[str, Any]:
+    """Detached activation payloads for the definitions the runners actually use.
 
-    loaded = getattr(runner, "activation", None)
-    if not hasattr(runner, "applied"):
-        return replace(loaded, plugins=tuple(runner.plugin_ids)) if loaded is not None else None
-    definitions = [definition for definition, _ in runner.applied]
-    # A runner with nothing applied is disabled, so recordings replay it empty.
-    loaded = loaded or step_activation(step, [], {})
-    specs, configs = dict(loaded.plugin_specs), dict(loaded.plugin_configs)
-    for item in definitions:
-        specs[item.plugin_id] = item.executable_entrypoint
-        if item.config:
-            configs[item.plugin_id] = dict(item.config)
-        else:
-            configs.pop(item.plugin_id, None)
-    return replace(loaded, plugins=tuple(item.plugin_id for item in definitions),
-                   plugin_specs=specs, plugin_configs=configs)
-
-
-def snapshot_step_activations(steps: DecisionSteps) -> dict[str, Any]:
-    """Detached executable selections actually applied by the frame's runners.
-
-    A pending selection is not a running selection. Unconfigured callables
-    have no executable activation and are omitted.
+    Preserve loaded specs and metadata for replay, replacing selected IDs and
+    configs with the applied definitions. Unconfigured callables are omitted.
     """
-    snapshot: dict[str, Any] = {}
+    activations: dict[str, Any] = {}
     for step in STEPS:
         runner = getattr(steps, step)
         if runner is None:
-            snapshot[step] = None
+            activations[step] = None
             continue
-        activation = snapshot_runner_activation(runner, step)
-        if activation is not None:
-            snapshot[step] = activation.to_payload()
-    return snapshot
+        loaded = getattr(runner, "activation", None)
+        if not hasattr(runner, "applied"):
+            if loaded is not None:
+                payload = loaded.to_payload()
+                payload["plugins"] = list(runner.plugin_ids)
+                activations[step] = payload
+            continue
+        definitions = [definition for definition, _ in runner.applied]
+        specs = dict(loaded.plugin_specs) if loaded is not None else {}
+        configs = dict(loaded.plugin_configs) if loaded is not None else {}
+        for definition in definitions:
+            specs[definition.plugin_id] = definition.executable_entrypoint
+            if definition.config:
+                configs[definition.plugin_id] = definition.config
+            else:
+                configs.pop(definition.plugin_id, None)
+        payload = {
+            "schema": STEP_ACTIVATION_SCHEMA,
+            "step": step,
+            "plugins": [definition.plugin_id for definition in definitions],
+            "plugin_specs": specs,
+            "plugin_configs": deepcopy(configs),
+        }
+        if loaded is not None and loaded.metadata:
+            payload["metadata"] = deepcopy(dict(loaded.metadata))
+        activations[step] = payload
+    return activations
 
 
 def decision_steps(

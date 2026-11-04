@@ -13,6 +13,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
     require_safe_int,
 )
+from autonomy.decision_cycle.timing import step_timing
 from autonomy.runtime.frame_loop import DECISION_PUBLICATION_SCHEMA
 from autonomy.runtime.report import HostReport, diagnostic_ceiling
 from .publication_fields import PublicationError, require_id, require_mapping
@@ -258,6 +259,32 @@ def presets_text(presets: object) -> str:
     if not isinstance(presets, dict) or not presets:
         return "none"
     return " ".join(f"{step}={preset}" for step, preset in presets.items())
+
+
+def publication_part(publication: object, key: str) -> dict[str, Any]:
+    """An object field of an observation publication, or ``{}`` when it has none."""
+
+    value = publication.get(key) if isinstance(publication, dict) else None
+    return value if isinstance(value, dict) else {}
+
+
+def publication_capture(publication: dict[str, Any]) -> tuple[Any, ...]:
+    """What identifies one observation: its frame, capture, completion, and generation."""
+
+    frame = publication_part(publication, "frame")
+    return (
+        frame.get("frame_id"),
+        frame.get("captured_at_ms"),
+        frame.get("completed_at_ms"),
+        publication.get("generation_id"),
+    )
+
+
+def perception_duration_ms(publication: dict[str, Any]) -> Any:
+    """The perception step's duration from the cycle timing, or None without it."""
+
+    step = step_timing(publication_part(publication, "timing") or None, "perception")
+    return None if step is None else step.get("duration_ms")
 
 
 def perception_text_from_publication(publication: dict[str, Any]) -> str:

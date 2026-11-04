@@ -71,6 +71,10 @@ function setText(id, value, fallback) {
 function currentFrame() {
   return state && state.current_frame ? state.current_frame : null;
 }
+// One record of the displayed cycle: observation, memory, proposal, plan, or action.
+function currentCycle(key) {
+  return state && state.cycle ? state.cycle[key] : null;
+}
 function clearRecordSelection() {
   selectedRecordId = null;
   renderedStepsKey = "";

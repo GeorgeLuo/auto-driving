@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from autonomy.decision_cycle.timing import step_timing
 from autonomy.runtime.frame_loop import LATEST_JSON_PATH
 
 from ...hosts.publications.decision_publication import (
     health_error,
+    perception_duration_ms,
     perception_text_from_publication,
+    publication_part,
 )
 from ...hosts.publications.host_publications import fetch_observation_publication
 from ...hosts.discovery import runtime_base_url
@@ -89,9 +90,9 @@ def perception_publication(publication: dict[str, Any] | None) -> PerceptionPubl
 
     if not isinstance(publication, dict):
         publication = {}
-    frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
-    perception = publication.get("perception") if isinstance(publication.get("perception"), dict) else {}
-    control = publication.get("control") if isinstance(publication.get("control"), dict) else {}
+    frame = publication_part(publication, "frame")
+    perception = publication_part(publication, "perception")
+    control = publication_part(publication, "control")
     signals, things = perception.get("signals"), perception.get("things")
     return PerceptionPublication(
         health=publication.get("health"),
@@ -156,18 +157,13 @@ def _probe_latest_perception(
 ) -> dict[str, Any]:
     """The latest frame's perception, as every provider's live probe reports it."""
 
-    frame_record = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
-    perception_step = step_timing(publication.get("timing"), "perception")
+    frame_record = publication_part(publication, "frame")
     frame = {
         "frame_id": frame_record.get("frame_id"),
         "frame_index": frame_record.get("frame_index"),
         "captured_at_ms": frame_record.get("captured_at_ms"),
         "perception_completed_at_ms": frame_record.get("completed_at_ms"),
-        "perception_duration_ms": (
-            perception_step.get("duration_ms")
-            if perception_step is not None
-            else publication.get("duration_ms")
-        ),
+        "perception_duration_ms": perception_duration_ms(publication),
         "age_ms": age_ms,
     }
     perception = publication.get("perception")

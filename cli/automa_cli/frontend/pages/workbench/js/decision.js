@@ -3,8 +3,7 @@
 "use strict";
 
 function renderDecision() {
-  var cycle = state && state.cycle ? state.cycle : null;
-  var action = cycle ? cycle.action : null;
+  var action = currentCycle("action");
   var frame = currentFrame();
   if (!action) {
     setText("decisionSummary", "no cycle");
@@ -18,7 +17,7 @@ function renderDecision() {
     elements.decisionCandidates.textContent = "";
     return;
   }
-  var plan = (cycle && cycle.plan) || {};
+  var plan = currentCycle("plan") || {};
   var authority = action.authority || {};
   var proposed = authority.proposed || {};
   var selected = plan.selected_proposal_id || "none";

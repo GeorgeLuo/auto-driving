@@ -61,7 +61,7 @@ function renderMemoryPlugins(memory) {
   });
 }
 function selectMemoryPlugin(pluginId) {
-  var memory = state && state.cycle ? state.cycle.memory : null;
+  var memory = currentCycle("memory");
   var entry = memoryPlugins(memory).find(function (candidate) {
     return candidate.plugin_id === pluginId;
   });
@@ -158,7 +158,7 @@ function clearMemoryLedger() {
 }
 function renderMemory() {
   bindMemoryList();
-  var report = state && state.cycle ? state.cycle.memory : null;
+  var report = currentCycle("memory");
   var plugins = memoryPlugins(report);
   // Keep the viewer's pick across frames; drop it only when a report lists
   // plugins and it is not among them.
@@ -269,7 +269,7 @@ function renderMemory() {
   paintMemorySelection(records);
 }
 function selectRecord(recordId) {
-  var memory = shownMemoryState(state && state.cycle ? state.cycle.memory : null);
+  var memory = shownMemoryState(currentCycle("memory"));
   var records = memory && Array.isArray(memory.records) ? memory.records : [];
   var selected = records.find(function (record) {
     return memoryRecordId(record) === recordId;

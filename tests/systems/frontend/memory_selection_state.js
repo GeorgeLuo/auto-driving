@@ -42,6 +42,7 @@ const ctx = {
   },
   setText(id, value, fallback) { elements[id].textContent = ctx.text(value, fallback); },
   setNotice(message) { ctx.notice = message; },
+  currentCycle(key) { return ctx.state.cycle ? ctx.state.cycle[key] : null; },
   document: { createElement() { return fakeElement(); } }
 };
 vm.createContext(ctx);

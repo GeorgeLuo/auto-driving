@@ -11,23 +11,22 @@ from pathlib import Path
 from typing import Any
 
 from ..shared.io.processes import pid_alive
-from ..shared.paths import RUNTIME_ROOT
+from ..shared.paths import RUNTIME_ROOT, SIMULATORS_DIR
 
 
-SIMULATORS = "simulators"
 SIMULATOR_RECORD = "simulator.json"
 SIMULATOR_SCHEMA = "automa_created_simulator"
 
 
 def simulator_dir(port: int) -> Path:
-    return RUNTIME_ROOT / SIMULATORS / str(port)
+    return RUNTIME_ROOT / SIMULATORS_DIR / str(port)
 
 
 def created_simulators() -> list[dict[str, Any]]:
     """The record of each simulator ``simulators create`` started that is still running, by port."""
 
     records = []
-    for path in (RUNTIME_ROOT / SIMULATORS).glob(f"*/{SIMULATOR_RECORD}"):
+    for path in (RUNTIME_ROOT / SIMULATORS_DIR).glob(f"*/{SIMULATOR_RECORD}"):
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):

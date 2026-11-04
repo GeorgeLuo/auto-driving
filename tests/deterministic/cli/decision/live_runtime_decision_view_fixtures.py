@@ -10,7 +10,8 @@ from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.workbench.runner import ImageReplayRunner
 from cli.automa_cli.shared.memory_report import evidence_records
-from cli.automa_cli.hosts.step_activations import decision_identity, host_bundle
+from cli.automa_cli.hosts.step_activations import decision_identity
+from cli.automa_cli.releases.paths import bundle_paths
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
     published_cycle,
     frame_inputs,
@@ -41,7 +42,7 @@ class LiveRuntimeDecisionViewFixture:
         self.vehicle_runtime = self.runtime_root / "chase-sim-chaser"
         self.runtime_dir = self.vehicle_runtime / "bundle" / "runtime"
         self.automation_dir = self.runtime_dir / "automation"
-        self.activation = decision_identity(host_bundle("chase-sim-chaser", self.runtime_root))
+        self.activation = decision_identity(bundle_paths("chase-sim-chaser", self.runtime_root))
         self.server = RuntimeViewServer(
             host_name="chase-sim-chaser",
             automation_dir=self.automation_dir,

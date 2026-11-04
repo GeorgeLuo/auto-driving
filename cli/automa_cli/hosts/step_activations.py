@@ -14,8 +14,6 @@ generation by the content of their activations.
 from __future__ import annotations
 
 import json
-import shlex
-import time
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from pathlib import Path
@@ -40,14 +38,23 @@ from implementations.decision_cycle.catalog import (
 )
 
 from ..providers.registry import PROVIDERS
-from ..releases.paths import controller_bundle_paths
-from ..shared.paths import display_path, safe_path_part
+from ..shared.paths import SIMULATORS_DIR, display_path, safe_path_part
 from ..shared.text import automa_command
+from ..shared.timestamps import timestamp_ms
 from .bundles import release_activation_summary
 
 
-def host_bundle(host_name: str, runtime_root: Path) -> dict[str, str]:
-    return controller_bundle_paths(Path(runtime_root) / safe_path_part(host_name))
+HOST_NAME_RULE = "Host names may contain letters, digits, dots, underscores and hyphens, excluding . and .."
+
+
+def host_name_error(host_name: str) -> str | None:
+    """Why ``host_name`` cannot name a host, or None when it can."""
+
+    if host_name in {".", ".."} or safe_path_part(host_name) != host_name or not host_name:
+        return HOST_NAME_RULE
+    if host_name == SIMULATORS_DIR:
+        return f"{host_name!r} is reserved for created simulators' records; choose another host name."
+    return None
 
 
 def bundle_activation_path(bundle: dict[str, str], step: str) -> Path:
@@ -99,8 +106,8 @@ def staging_host(
 ) -> tuple[dict[str, Any] | None, str | None]:
     """Read the explicit host record; directory names and activations are not identity."""
 
-    if host_name in {".", ".."} or safe_path_part(host_name) != host_name or not host_name:
-        return None, "Host names may contain letters, digits, dots, underscores and hyphens, excluding . and .."
+    if (error := host_name_error(host_name)) is not None:
+        return None, error
     path = Path(runtime_root) / host_name / "host-configuration.json"
     if not path.is_file():
         names = host_names(runtime_root)
@@ -125,8 +132,8 @@ def host_names(runtime_root: Path) -> list[str]:
 def write_host_configuration(runtime_root: Path, configuration: dict[str, Any]) -> Path:
     """Create a host identity without overwriting an existing host."""
     host_name = configuration["host_name"]
-    if host_name in {".", ".."} or safe_path_part(host_name) != host_name or not host_name:
-        raise ValueError("Invalid host name")
+    if (error := host_name_error(host_name)) is not None:
+        raise ValueError(error)
     path = Path(runtime_root) / host_name / "host-configuration.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as stream:
@@ -163,7 +170,7 @@ def staging_metadata(
 
     metadata: dict[str, Any] = {
         "host_name": host_name,
-        "activated_at_ms": int(time.time() * 1000),
+        "activated_at_ms": timestamp_ms(),
         "controller_bundle": {
             "root_dir": bundle["root_dir"],
             "autonomy_dir": bundle["autonomy_dir"],
@@ -270,7 +277,7 @@ def startup_activations(bundle: dict[str, str], host_name: str) -> dict[str, Ste
             raise ValueError("\n".join([
                 f"{host_name}'s saved {step} plugins are not all in the catalog: {exc}",
                 "Change them on the running host with plugins arm or disarm, then save them again: "
-                f"./cli/automa plugins save --host-name {shlex.quote(host_name)} --step {step}",
+                + automa_command("plugins", "save", "--host-name", host_name, "--step", step),
             ])) from exc
         activations[step] = replace_metadata(rebuilt, {**rebuilt.metadata, "saved": True})
     return activations
@@ -439,5 +446,5 @@ __all__ = [
     "startup_activations",
     "host_names",
     "write_host_configuration",
-    "host_bundle",
+    "host_name_error",
 ]

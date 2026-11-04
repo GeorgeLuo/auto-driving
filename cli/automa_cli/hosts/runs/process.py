@@ -41,7 +41,7 @@ def pid_matches_automation(pid: int, host_name: str) -> bool:
 def automation_command_matches_host(command: str, host_name: str) -> bool:
     """Pure check: command is a host run for exactly *host_name*.
 
-    Requires ``-m`` naming a current or pre-move worker module and an exact ``--name <host_name>``
+    Requires ``-m`` naming the worker module and an exact ``--name <host_name>``
     argument pair (token equality, not substring).
     """
 
@@ -115,7 +115,10 @@ def worker_command(
         sys.executable,
         "-m",
         WORKER_MODULE,
-        *(["--host-url", host_url] if host_url is not None else ["--name", host_name]),
+        # The host name identifies the run to stop and status, including a run on an existing host.
+        "--name",
+        host_name,
+        *(["--host-url", host_url] if host_url is not None else []),
         "--timeout-s",
         str(timeout_s),
     ]

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-import time
 from dataclasses import asdict, dataclass, field
 from typing import Any
+
+from ..shared.timestamps import timestamp_ms
 
 DEFAULT_READINESS_TIMEOUT_S = 5.0
 
@@ -26,7 +27,7 @@ class ProbeResult:
     vehicle: dict[str, Any] | None = None
     error: str | None = None
     diagnostics: dict[str, Any] = field(default_factory=dict)
-    checked_at_ms: int = field(default_factory=lambda: int(time.time() * 1000))
+    checked_at_ms: int = field(default_factory=timestamp_ms)
 
     def to_dict(self) -> dict[str, Any]:
         data = {

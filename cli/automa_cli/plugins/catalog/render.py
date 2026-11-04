@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import shlex
 from typing import Any
 
 from autonomy.decision_cycle.activation import STEPS
@@ -228,8 +227,8 @@ def _catalog_version(version: int | None, host_run_id: str | None) -> str:
     return f"Catalog version: {version}" + (f" (host run {host_run_id})" if host_run_id else "")
 
 
-def _target_args(url: str | None, host_name: str | None) -> str:
-    return f"--url {shlex.quote(url)}" if url else f"--host-name {shlex.quote(host_name)}"
+def _target_args(url: str | None, host_name: str | None) -> tuple[str, str]:
+    return ("--url", url) if url else ("--host-name", host_name)
 
 
 def _recovery_text(recovery: Recovery) -> str | None:
@@ -243,11 +242,9 @@ def _recovery_text(recovery: Recovery) -> str | None:
         # The error already says why the vehicle's host cannot be reached.
         if recovery.host_name:
             return None
-        return (f"Check that the catalog host at {recovery.url} is running, then retry "
-                f"./cli/automa plugins list {_target_args(recovery.url, recovery.host_name)} --long")
-    command = f"./cli/automa plugins list {_target_args(recovery.url, recovery.host_name)}"
-    if recovery.step:
-        command += f" --step {recovery.step}"
-    if recovery.long:
-        command += " --long"
-    return command
+        retry = automa_command("plugins", "list", *_target_args(recovery.url, recovery.host_name), "--long")
+        return f"Check that the catalog host at {recovery.url} is running, then retry {retry}"
+    return automa_command(
+        "plugins", "list", *_target_args(recovery.url, recovery.host_name),
+        *(("--step", recovery.step) if recovery.step else ()), *(("--long",) if recovery.long else ()),
+    )

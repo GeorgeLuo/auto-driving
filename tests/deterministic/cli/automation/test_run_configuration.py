@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import shlex
 import tempfile
 import unittest
 from pathlib import Path
@@ -96,7 +97,7 @@ class RunConfigurationTests(unittest.TestCase):
             for count, flags in ((["--num-decisions", "3"], []), (["--num-decisions", "3"], ["--unbounded"]), ([], [])):
                 with (
                     self.subTest(verb=verb, count=count, flags=flags),
-                    patch(f"cli.automa_cli.hosts.runs.commands.{target}", return_value=(RestartResult(0) if target == "restart_host_automation" else StartResult(0, "error"))) as run,
+                    patch(f"cli.automa_cli.hosts.runs.commands.{target}", return_value=(RestartResult(0, "started") if target == "restart_host_automation" else StartResult(0, "error"))) as run,
                     contextlib.redirect_stdout(io.StringIO()),
                 ):
                     code = main(["hosts", verb, "--name", "picar-test", *count, *flags])
@@ -105,6 +106,23 @@ class RunConfigurationTests(unittest.TestCase):
                     self.assertEqual(run.call_args.kwargs["num_decisions"], 3 if count else None)
                     if target != "restart_host_automation":
                         self.assertIsNone(run.call_args.kwargs["host_url"])
+
+    def test_run_and_restart_refuse_a_bad_timeout_before_acting(self):
+        for verb, target in (
+            ("run", "start_host_automation_background"),
+            ("restart", "restart_host_automation"),
+        ):
+            for timeout in ("-1", "nan", "0"):
+                with (
+                    self.subTest(verb=verb, timeout=timeout),
+                    patch(f"cli.automa_cli.hosts.runs.commands.{target}") as act,
+                    contextlib.redirect_stdout(io.StringIO()) as stdout,
+                ):
+                    code = main(["hosts", verb, "--name", "car", "--observe-only", "--timeout-s", timeout])
+                self.assertEqual(code, 2)
+                self.assertIn(f"automa hosts {verb}: --timeout-s must be a finite number greater than zero",
+                              stdout.getvalue())
+                act.assert_not_called()
 
     def test_retired_foreground_flag_is_refused(self):
         with (
@@ -216,12 +234,13 @@ class RunConfigurationTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0, render_start_result(result))
         return popen.call_args.args[0]
 
-    def test_background_command_names_the_host_url(self):
+    def test_background_command_names_the_host_and_its_url(self):
         command = self._background_command(num_decisions=1, take_control=True)
         self.assertEqual(command[1:3], ["-m", WORKER_MODULE])
-        self.assertIn("--host-url", command)
-        self.assertIn("http://127.0.0.1:54355", command)
-        self.assertNotIn("--name", command)
+        self.assertEqual(command[command.index("--host-url") + 1], "http://127.0.0.1:54355")
+        # Stop and status recognize the run by the name the host reported.
+        self.assertEqual(command[command.index("--name") + 1], "chase-sim-chaser")
+        self.assertTrue(automation_command_matches_host(shlex.join(command), "chase-sim-chaser"))
 
     def test_worker_runs_the_configuration_the_background_command_names(self):
         for kwargs, expected in (

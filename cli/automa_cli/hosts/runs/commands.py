@@ -254,6 +254,14 @@ def _handle_hosts_status(args: argparse.Namespace) -> int:
 
 
 def _handle_hosts_restart(args: argparse.Namespace) -> int:
+    # Refuse a bad timeout before the stop, so a restart never stops a run it cannot start again.
+    if not validate_timeout_input(
+        args.timeout_s,
+        command="automa hosts restart",
+        json_output=False,
+        human_stream=sys.stdout,
+    ):
+        return 2
     result = restart_host_automation(
         host_name=args.host_name,
         timeout_s=args.timeout_s,

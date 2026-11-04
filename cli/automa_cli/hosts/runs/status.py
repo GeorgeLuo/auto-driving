@@ -25,6 +25,7 @@ from ...shared.paths import display_path, safe_path_part
 from ...shared.timestamps import timestamp_ms
 from .. import staging
 from ..discovery import running_base_url
+from ..host_formatting import perception_stream_command
 from ..host_status import read_hosts
 from ..publications.host_publications import host_state
 from ..step_activations import (
@@ -73,7 +74,7 @@ def _host_runtime_status(
     if not view.get("available"):
         view = {
             **view,
-            "reason": f"start `./cli/automa plugins stream --step perception --host-name {host_name}` to host it",
+            "reason": f"start `{perception_stream_command(host_name)}` to host it",
         }
     return {
         "process": {
@@ -452,8 +453,8 @@ def _worker_status(*, pid: Any, pid_alive: bool, run_status: Any) -> str:
     if run_status == "error":
         return "error"
     if pid_alive:
-        return "starting" if run_status in {"launching", "starting"} else "running"
-    if run_status in {"launching", "starting", "running"}:
+        return "starting" if run_status == "starting" else "running"
+    if run_status in {"starting", "running"}:
         return "stale"
     if run_status in {"completed", "stopped"}:
         return str(run_status)

@@ -6,12 +6,12 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ...shared.paths import RUNTIME_ROOT
-from ..step_activations import host_bundle
+from ...releases.paths import bundle_paths
 
 
 def runtime_view_dir(host_name: str, *, runtime_root: Path = RUNTIME_ROOT) -> Path:
     """A standalone view uses the same bundle runtime layout for every vehicle."""
-    bundle = host_bundle(host_name, runtime_root)
+    bundle = bundle_paths(host_name, runtime_root)
     return Path(bundle["runtime_dir"]) / "view"
 
 

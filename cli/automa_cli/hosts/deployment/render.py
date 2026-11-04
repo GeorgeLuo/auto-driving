@@ -12,7 +12,7 @@ from typing import Any
 
 from ...providers.metadata import PROVIDERS
 from ...shared.paths import display_path
-from ..host_formatting import host_block
+from ..host_formatting import host_block, vehicle_label
 from ..progress import ProgressEvent
 from ..runs.render import render_stop_result
 from ..step_formatting import step_lines
@@ -62,7 +62,7 @@ def render_delete(result: DeleteResult) -> str:
         return "Could not stop the PiCar host; its local record was kept."
     if result.kind == "deleted":
         stopped = "Stopped the run. " if result.stopped_run else ""
-        suffix = "" if result.local else " Harness files stay in ~/mycar on the PiCar."
+        suffix = f" Harness files stay in {result.harness_dir} on the PiCar." if result.harness_dir else ""
         return f"{stopped}Stopped host {result.host_name}. Removed {display_path(result.deleted_path)}.{suffix}"
     raise ValueError(f"Unknown delete outcome: {result.kind}")
 
@@ -118,7 +118,7 @@ def _format_created_host(result: CreateResult) -> str:
         line for line in _update_text(result.release).splitlines()
         if not line.startswith(("Host updated:", "Runtime restarted:"))
     )
-    lines = [f"Host {configuration['host_name']} created for {_vehicle_label(configuration)}", detail]
+    lines = [f"Host {configuration['host_name']} created for {vehicle_label(configuration)}", detail]
     state = result.host_state
     if state:
         vehicle = PROVIDERS[configuration["provider"]]
@@ -131,11 +131,6 @@ def _format_created_host(result: CreateResult) -> str:
             "vehicle_url": vehicle.operator_url(url),
         }))
     return "\n".join(lines)
-
-
-def _vehicle_label(configuration: dict[str, Any]) -> str:
-    vehicle = PROVIDERS[configuration["provider"]]
-    return f"the {vehicle.label} at {vehicle.operator_url(configuration['connection'][vehicle.url_key])}"
 
 
 def _format_core_dry_run(payload: dict[str, Any]) -> str:

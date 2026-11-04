@@ -13,7 +13,7 @@ from typing import Any
 
 from ...shared.paths import display_path
 from ...shared.text import automa_command, format_browser_result
-from ..host_formatting import host_block
+from ..host_formatting import host_block, perception_stream_command
 from ..step_formatting import format_activation_problems, selection_label, step_lines
 from .models import RestartResult, StartResult, StopResult, status_reason
 
@@ -414,7 +414,7 @@ def render_start_result(result: StartResult) -> str:
                 *([browser_line] if browser_line else []),
                 f"State: {display_path(state_path)}",
                 _log_status_line(existing, log_path),
-                f"Stream: ./cli/automa plugins stream --step perception --host-name {host_name}",
+                f"Stream: {perception_stream_command(host_name)}",
             ]
         )
     if result.kind == "launch_failed":
@@ -469,8 +469,8 @@ def render_start_result(result: StartResult) -> str:
         [
             f"State: {display_path(state_path)}",
             _log_status_line(process_record, log_path),
-            f"Stream: ./cli/automa plugins stream --step perception --host-name {host_name}",
-            f"Status: ./cli/automa hosts status --name {host_name} --long",
+            f"Stream: {perception_stream_command(host_name)}",
+            f"Status: {automa_command('hosts', 'status', '--name', host_name, '--long')}",
         ]
     )
     return "\n".join(lines)
@@ -550,15 +550,19 @@ def render_lifecycle_result(result: StartResult | StopResult | RestartResult) ->
     if isinstance(result, StopResult):
         return render_stop_result(result)
     if isinstance(result, RestartResult):
-        if result.kind == "restart_failed":
-            return f"Could not restart {result.host_name}: {result.error}"
-        if result.problems:
-            return format_activation_problems(result.problems)
-        if result.error:
-            return result.error
+        return _render_restart_result(result)
+    raise TypeError(f"Not a lifecycle result: {type(result).__name__}")
+
+
+def _render_restart_result(result: RestartResult) -> str:
+    if result.kind == "error":
+        return format_activation_problems(result.problems) if result.problems else result.error
+    if result.kind == "restart_failed":
+        return f"Could not restart {result.host_name}: {result.error}"
+    if result.kind in {"stop_failed", "start_failed", "started"}:
         return "\n\n".join(
             text
             for child in (result.stop, result.start)
             if child is not None and (text := render_lifecycle_result(child))
         )
-    raise TypeError(f"Not a lifecycle result: {type(result).__name__}")
+    raise ValueError(f"Unknown restart outcome: {result.kind}")

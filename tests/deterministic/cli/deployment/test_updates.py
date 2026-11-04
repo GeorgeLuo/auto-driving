@@ -117,7 +117,7 @@ class HostLifecycleTests(unittest.TestCase):
         with patch.object(service, "run_step", return_value=0):
             result = service.delete_host(host_name="car")
         self.assertEqual(result.exit_code, 0)
-        self.assertIn("~/mycar", render_delete(result))
+        self.assertIn("Harness files stay in /home/piracer/mycar on the PiCar.", render_delete(result))
         self.assertFalse((self.root / "car").exists())
 
     def test_failed_new_creation_removes_the_directory(self):
@@ -224,6 +224,13 @@ class HostLifecycleTests(unittest.TestCase):
             self.assertEqual(created.exit_code, 2)
             self.assertFalse((self.root / "other").exists())
         probe.assert_not_called()
+
+    def test_simulators_is_not_a_host_name(self):
+        result = service.create_host(host_name="simulators", provider="chase-sim", url="http://localhost:5050")
+        self.assertEqual(result.exit_code, 2)
+        self.assertEqual(result.message, "'simulators' is reserved for created simulators' records; choose another host name.")
+        self.assertFalse(self.root.exists())
+        self.assertEqual(service.delete_host(host_name="simulators").message, result.message)
 
     def test_host_name_cannot_escape_runtime_root(self):
         for name in ("..", ".", "../car", "car/name"):

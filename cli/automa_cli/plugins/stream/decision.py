@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import DECISION_STEPS
@@ -16,6 +15,7 @@ from ...hosts.publications.decision import (
 from ...hosts.publications.host_publications import fetch_decision_publication
 from ...hosts.discovery import runtime_base_url
 from ...hosts.errors import RuntimeHostError
+from ...shared.timestamps import timestamp_ms
 from ...releases.paths import bundle_paths
 from .models import StreamEvent, StreamResult
 from .polling import poll_events, preflight_failure, unavailable_probe
@@ -66,7 +66,7 @@ def stream_decision(
                 details={"reason": "missing", "transport": str(exc)},
             ) from exc
         normalized = accept_decision_publication(
-            publication, host_name=host_name, now_ms=int(time.time() * 1000),
+            publication, host_name=host_name, now_ms=timestamp_ms(),
         )
         report = normalized["decision"]
         activation = report["values"]["activation"]

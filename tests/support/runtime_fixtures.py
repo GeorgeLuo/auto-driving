@@ -118,12 +118,13 @@ def stage_step(runtime_root: Path, host_name: str, step: str, *, preset: str | N
     With neither ``preset`` nor ``plugins`` the step's default is written.
     """
     from cli.automa_cli.hosts.bundles import sync_controller_bundle
-    from cli.automa_cli.hosts.step_activations import host_bundle, stage_activation, staging_host
+    from cli.automa_cli.hosts.step_activations import stage_activation, staging_host
+    from cli.automa_cli.releases.paths import bundle_paths
 
     write_host_fixture(runtime_root, host_name)
     vehicle, unknown = staging_host(host_name, runtime_root=runtime_root)
     assert unknown is None, unknown
-    bundle = host_bundle(host_name, runtime_root)
+    bundle = bundle_paths(host_name, runtime_root)
     return stage_activation(
         bundle, selection_activation(step, preset=preset, plugins=plugins),
         host_name=host_name, release=sync_controller_bundle(bundle, emit=None), vehicle=vehicle,

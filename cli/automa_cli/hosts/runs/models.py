@@ -117,8 +117,10 @@ class StopResult:
 
 @dataclass(frozen=True)
 class RestartResult:
+    """A stop and then a start. ``start_failed`` stopped the run, but the new run did not start."""
+
     exit_code: int
-    kind: Literal["error", "stop_failed", "restart_failed", "started"] = "started"
+    kind: Literal["error", "stop_failed", "restart_failed", "start_failed", "started"]
     host_name: str = ""
     stop: StopResult | None = None
     start: StartResult | None = None

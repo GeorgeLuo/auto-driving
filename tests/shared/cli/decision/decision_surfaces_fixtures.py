@@ -27,8 +27,8 @@ from cli.automa_cli.hosts.publications.decision_records import DecisionRecords, 
 from cli.automa_cli.hosts.step_activations import (
     decision_generation_id,
     decision_identity,
-    host_bundle,
 )
+from cli.automa_cli.releases.paths import bundle_paths
 
 
 LEFT_OBSTRUCTION_FRAME = Path(__file__).with_name("left_obstruction_frame.json")
@@ -216,7 +216,7 @@ class DecisionSurfaceFixture:
         return self._identity(host_name)
 
     def _identity(self, host_name: str = "chase-sim-chaser") -> dict:
-        return decision_identity(host_bundle(host_name, self.runtime_root))
+        return decision_identity(bundle_paths(host_name, self.runtime_root))
 
     def _sample_cycle(self, action: str = "hold") -> DecisionRecords:
         cycle = sample_records(action)

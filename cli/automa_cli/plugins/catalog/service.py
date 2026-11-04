@@ -14,10 +14,10 @@ from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, catalog
 
 from ...hosts.discovery import runtime_base_url
 from ...hosts.publications.plugin_catalog import PluginCatalogClient
+from ...releases.paths import bundle_paths
 from ...hosts.step_activations import (
     bundle_activation_path,
     bundle_activation_problems,
-    host_bundle,
     save_selections,
     staging_host,
 )
@@ -147,7 +147,7 @@ def save_plugins(*, host_name: str, step: str | None = None) -> SaveResult:
         configuration, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
         if error:
             raise ValueError(error)
-        bundle = host_bundle(host_name, RUNTIME_ROOT)
+        bundle = bundle_paths(host_name, RUNTIME_ROOT)
         problems = bundle_activation_problems(bundle, host_name, steps=steps)
         if problems:
             raise ValueError(format_activation_problems(problems))

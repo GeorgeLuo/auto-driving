@@ -18,10 +18,6 @@ from .polling import poll_events, preflight_failure, unavailable_probe
 from .session import StreamView, with_view
 
 MEMORY_LIVE_SCHEMA = "host_memory_live"
-LIVE_STEP_SCHEMAS = {
-    "memory": MEMORY_LIVE_SCHEMA,
-    **{step: f"host_{step}_live" for step in ("proposal", "plan", "action")},
-}
 
 
 def stream_memory(
@@ -52,7 +48,7 @@ def stream_memory(
     view = StreamView(host_name, base_url=base_url, timeout_s=timeout_s) if serve_view else None
 
     def probe() -> tuple[dict[str, Any], Any]:
-        live = _probe_step("memory", host_name=host_name, base_url=base_url, timeout_s=timeout_s)
+        live = _probe_memory(host_name=host_name, base_url=base_url, timeout_s=timeout_s)
         source = None
         if include_publication or view is not None:
             publication, fetch_error = (view.read_observation() if view is not None
@@ -77,23 +73,20 @@ def stream_memory(
 def probe_live_memory(*, host_name: str, timeout_s: float = 3.0) -> dict[str, Any]:
     """Return a normalized live-memory probe without requiring stream mode."""
 
-    return probe_live_step("memory", host_name=host_name, timeout_s=timeout_s)
-
-
-def probe_live_step(step: str, *, host_name: str, timeout_s: float = 3.0) -> dict[str, Any]:
-    """``step`` as the host runs it: its runner's status
-    under ``/host/status``, not what any view last rendered."""
-
     try:
         base_url = runtime_base_url(host_name)
     except RuntimeHostError as exc:
-        return unavailable_probe(LIVE_STEP_SCHEMAS[step], host_name, str(exc))
-    return _probe_step(step, host_name=host_name, base_url=base_url, timeout_s=timeout_s)
+        return unavailable_probe(MEMORY_LIVE_SCHEMA, host_name, str(exc))
+    return _probe_memory(host_name=host_name, base_url=base_url, timeout_s=timeout_s)
 
 
-def _probe_step(step: str, *, host_name: str, base_url: str, timeout_s: float) -> dict[str, Any]:
+def _probe_memory(*, host_name: str, base_url: str, timeout_s: float) -> dict[str, Any]:
+    """Memory as the host runs it: its runner's status under ``/host/status``,
+    not what any view last rendered."""
+
+    step = "memory"
     probe: dict[str, Any] = {
-        "schema": LIVE_STEP_SCHEMAS[step],
+        "schema": MEMORY_LIVE_SCHEMA,
         "host_name": host_name,
         "endpoint": f"{base_url}/host/status",
         "probed_at_ms": timestamp_ms(),
@@ -110,7 +103,7 @@ def _probe_step(step: str, *, host_name: str, base_url: str, timeout_s: float) -
     runner = steps.get(step) if isinstance(steps.get(step), dict) else None
     if runner is None:
         return {**probe, "status": "absent", "error": absent_step_error(step, host_name)}
-    fields = _live_step_fields(step, runner)
+    fields = _memory_fields(runner)
     # The host's cycle times each step call; the runner keeps only its
     # plugins' times.
     last_cycle = autonomy.get("last_cycle") if isinstance(autonomy.get("last_cycle"), dict) else {}
@@ -119,27 +112,21 @@ def _probe_step(step: str, *, host_name: str, base_url: str, timeout_s: float) -
     return {**probe, "status": "live", **fields}
 
 
-def _live_step_fields(step: str, status: dict[str, Any]) -> dict[str, Any]:
-    """The runner status fields a live probe reports; memory adds its ledgers."""
+def _memory_fields(status: dict[str, Any]) -> dict[str, Any]:
+    """The memory runner's status fields a live probe reports, with its ledgers."""
 
-    fields = {
+    return {
         "activation": status.get("activation"),
         "plugin_ids": status.get("plugin_ids", []),
         "selected_plugin_ids": status.get("selected_plugin_ids", []),
         "plugin_report": status.get("plugin_report"),
         "last_error": status.get("last_error"),
         "failure_count": status.get("failure_count"),
+        "plugins": _probe_plugins(status),
+        "evidence_publisher": evidence_publisher(status),
+        "update_count": status.get("update_count"),
+        "reset_count": status.get("reset_count"),
     }
-    if step == "memory":
-        fields.update(
-            plugins=_probe_plugins(status),
-            evidence_publisher=evidence_publisher(status),
-            update_count=status.get("update_count"),
-            reset_count=status.get("reset_count"),
-        )
-    else:
-        fields["run_count"] = status.get("run_count")
-    return fields
 
 
 def _probe_plugins(status: dict[str, Any]) -> list[dict[str, Any]]:

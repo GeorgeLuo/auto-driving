@@ -11,10 +11,10 @@ from autonomy.decision_cycle.activation import STEPS
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
 from cli.automa_cli.hosts.step_activations import (
     ensure_step_activations,
-    host_bundle,
     staging_host,
     startup_activations,
 )
+from cli.automa_cli.releases.paths import bundle_paths
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, selection_activation
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
@@ -30,7 +30,7 @@ def update(runtime_root: Path) -> dict[str, Path]:
 
     configuration, error = staging_host("one", runtime_root=runtime_root)
     assert error is None, error
-    bundle = host_bundle("one", runtime_root)
+    bundle = bundle_paths("one", runtime_root)
     return ensure_step_activations(
         host_name="one", bundle=bundle, release=sync_controller_bundle(bundle, emit=None),
         activations=startup_activations(bundle, "one"), vehicle=configuration,

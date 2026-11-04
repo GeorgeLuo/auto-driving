@@ -27,8 +27,10 @@ class ReplaySelectionTests(unittest.TestCase):
             for selection in (None, empty, configured):
                 with self.subTest(selection=selection):
                     (source / "manifest.json").write_text(json.dumps({
-                        "steps": {"memory": selection.to_payload() if selection else None},
-                        "frames": [{"image_path": f"frame_{i}.png"} for i in range(3)],
+                        "frames": [{
+                            "image_path": f"frame_{i}.png",
+                            "steps": {"memory": selection.to_payload() if selection else None},
+                        } for i in range(3)],
                     }))
                     inspected = inspect_step("memory", source=source, json_output=True)
                     self.assertEqual(inspected.exit_code, 0, inspected.message)
@@ -54,9 +56,8 @@ class ReplaySelectionTests(unittest.TestCase):
             default = default_selection("memory")
             empty = replace(default, plugins=())
             (source / "manifest.json").write_text(json.dumps({
-                "steps": {"memory": default.to_payload()},
                 "frames": [
-                    {"image_path": "frame_0.png"},
+                    {"image_path": "frame_0.png", "steps": {"memory": default.to_payload()}},
                     {"image_path": "frame_1.png", "steps": {"memory": None}},
                     {"image_path": "frame_2.png", "steps": {"memory": empty.to_payload()}},
                 ],
@@ -81,12 +82,11 @@ class ReplaySelectionTests(unittest.TestCase):
                 finally:
                     runner.close()
 
-    def test_top_level_legacy_config_does_not_select_plugins(self):
+    def test_manifest_root_selections_do_not_select_plugins(self):
         with tempfile.TemporaryDirectory() as directory:
             source = write_frames(Path(directory) / "source", count=1)
-            # Old reports used this executable config; only steps now selects runners.
-            (source / "report.json").write_text(json.dumps({
-                "memory": {"preset": "custom", "config": {"plugins": [], "plugin_specs": {}}},
+            (source / "manifest.json").write_text(json.dumps({
+                "steps": {"memory": None},
                 "frames": [{"image_path": "frame_0.png"}],
             }))
             inspected = inspect_step("memory", source=source, json_output=True)

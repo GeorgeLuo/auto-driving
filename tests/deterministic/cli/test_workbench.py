@@ -44,57 +44,22 @@ class WorkbenchTests(unittest.TestCase):
             with self.assertRaisesRegex(SourceValidationError, "non-decreasing"):
                 normalize_image_directory(root)
 
-    def test_directory_adapter_loads_ordered_camera_frame_stream_manifest(self) -> None:
-        with TemporaryDirectory() as directory:
-            root = Path(directory)
-            frame_root = root / "frames"
-            frame_root.mkdir()
-            _make_images(frame_root, 2)
-            write_manifest(root, {
-                "camera_frames": [
-                    {
-                        "frame_id": "camera-10",
-                        "frame_index": 10,
-                        "captured_at_ms": 1000,
-                        "image": "frames/frame_00.png",
-                    },
-                    {
-                        "frame_id": "camera-13",
-                        "frame_index": 13,
-                        "captured_at_ms": 1080,
-                        "image": "frames/frame_01.png",
-                    },
-                ]
-            })
-
-            feed = normalize_image_directory(root)
-
-        self.assertEqual(
-            [frame.frame_id for frame in feed.frames], ["camera-10", "camera-13"]
-        )
-        self.assertEqual([frame.frame_index for frame in feed.frames], [10, 13])
-        self.assertEqual([frame.timestamp_ms for frame in feed.frames], [1000, 1080])
-        self.assertEqual(
-            [frame.image_path.name for frame in feed.frames if frame.image_path],
-            ["frame_00.png", "frame_01.png"],
-        )
-
     def test_default_frame_limit_accepts_a_high_rate_camera_capture(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)
             frame_root = root / "frames"
             frame_root.mkdir()
             _make_images(frame_root, 1)
-            camera_frames = [
+            frames = [
                 {
                     "frame_id": f"camera-{index}",
                     "frame_index": index,
-                    "captured_at_ms": 1000 + index * 50,
-                    "image": "frames/frame_00.png",
+                    "timestamp_ms": 1000 + index * 50,
+                    "image_path": "frames/frame_00.png",
                 }
                 for index in range(269)
             ]
-            write_manifest(root, {"camera_frames": camera_frames})
+            write_manifest(root, {"frames": frames})
 
             feed = normalize_image_directory(root)
 
@@ -110,33 +75,22 @@ class WorkbenchTests(unittest.TestCase):
             image_root.mkdir(parents=True)
             _make_images(image_root, 2)
             write_manifest(root, {
-                "schema": "perception_inspect",
-                "selections": {},
                 "source_id": "fixture.sequence",
-                "run_dir": "lab/runs/fixture-run",
-                "source": {
-                    "kind": "images",
-                    "path": "/previous/location/auto-driving/lab/runs/capture",
-                },
                 "frames": [
                     {
                         "frame_id": "capture-b",
                         "frame_index": 5,
-                        "captured_at_ms": 500,
-                        "image_path": (
-                            "frames/"
-                            "frame_01.png"
-                        ),
+                        "timestamp_ms": 500,
+                        "image_path": "frames/frame_01.png",
                     },
                     {
                         "frame_id": "capture-dropout",
                         "frame_index": 6,
-                        "captured_at_ms": 600,
-                        "absent": True,
+                        "timestamp_ms": 600,
                         "absence_reason": "camera dropout",
                     },
                 ],
-            }, name="report.json")
+            })
 
             feed = normalize_image_directory(root)
 
@@ -301,7 +255,6 @@ class WorkbenchTests(unittest.TestCase):
                     {"frame_id": "present", "image_path": "frame_00.png"},
                     {
                         "frame_id": "absent",
-                        "absent": True,
                         "absence_reason": "dropout",
                     },
                 ]

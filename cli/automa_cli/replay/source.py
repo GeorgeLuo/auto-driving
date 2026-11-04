@@ -1,5 +1,6 @@
 """Bounded image-directory input shared by offline inspection and the workbench.
 
+Recordings use manifest.json with object entries and archive-relative image paths.
 Frame indices order a recording. Timestamps may repeat at millisecond
 resolution, but cannot go backwards; replay keeps the recorded times.
 Unmanifested images use case-insensitive filename order and synthetic one-second
@@ -40,7 +41,6 @@ WORKBENCH_UNSUPPORTED_IMAGE_EXTENSIONS = {
     ".avif",
 }
 
-_MANIFEST_NAMES = ("manifest.json", "report.json")
 _SOURCE_ID_RE = re.compile(r"^[A-Za-z0-9_.:-]{1,128}$")
 
 
@@ -83,35 +83,8 @@ def normalize_image_directory(
     if (source_path / UPLOADED_SOURCES_DIR).is_dir():
         # Replay imports the uploaded plugins a recording ran from the sources it carries.
         add_uploaded_source_root(source_path / UPLOADED_SOURCES_DIR)
-    if (
-        manifest is not None
-        and "frames" not in manifest
-        and "camera_frames" not in manifest
-    ):
-        captures = _startup_capture_entries(source_path, manifest)
-        if captures:
-            manifest = {**manifest, "frames": captures}
-    if manifest_path is not None and manifest_path.name == "report.json":
-        if "frames" not in manifest and "camera_frames" not in manifest:
-            # Unrelated reports have no image inventory.
-            manifest_path, manifest = None, None
     if manifest is not None:
         entries = manifest.get("frames")
-        if entries is None and "camera_frames" in manifest:
-            camera_entries = manifest["camera_frames"]
-            if not isinstance(camera_entries, list):
-                raise SourceValidationError(
-                    f"manifest {manifest_path.name} camera_frames must be a list"
-                )
-            entries = []
-            for entry in camera_entries:
-                if not isinstance(entry, dict):
-                    entries.append(entry)
-                    continue
-                normalized_entry = dict(entry)
-                if "image_path" not in normalized_entry and "image" in normalized_entry:
-                    normalized_entry["image_path"] = normalized_entry["image"]
-                entries.append(normalized_entry)
         if not isinstance(entries, list):
             raise SourceValidationError(
                 f"manifest {manifest_path.name} frames must be a list"
@@ -131,18 +104,6 @@ def normalize_image_directory(
         )
 
     source_id = _source_id(source_path, manifest)
-    recorded_root = _recorded_root(manifest)
-    try:
-        defaults = recorded_selections(manifest or {})
-        if defaults:
-            payloads = {step: value.to_payload() if value else None for step, value in defaults.items()}
-            entries = [
-                {**entry, "steps": {**payloads, **entry.get("steps", {})}}
-                if isinstance(entry, dict) else {"image_path": entry, "steps": payloads}
-                for entry in entries
-            ]
-    except (TypeError, ValueError) as exc:
-        raise SourceValidationError(f"invalid recorded selections: {exc}") from exc
     try:
         windows = control_application_windows([
             entry.get(CONTROL_APPLICATION_CHANGE_FIELD) if isinstance(entry, dict) else None
@@ -156,7 +117,6 @@ def normalize_image_directory(
             position=position,
             entry=entry,
             source_path=source_path,
-            recorded_root=recorded_root,
             max_image_bytes=max_image_bytes,
             control_applications=windows[position],
         )
@@ -195,7 +155,6 @@ def normalize_image_file(
         position=0,
         entry={"image_path": path.name},
         source_path=path.parent,
-        recorded_root=None,
         max_image_bytes=max_image_bytes,
     )
     return ImageSource(source_path=path, source_id=source_id, frames=(frame,))
@@ -209,25 +168,23 @@ load_image_source = normalize_image_directory
 
 
 def read_image_manifest(source_path: Path) -> tuple[Path | None, dict[str, Any] | None]:
-    """Read an ordered manifest or a report containing a capture inventory."""
-    for name in _MANIFEST_NAMES:
-        path = source_path / name
-        if not os.path.lexists(path):
-            continue
-        if path.is_symlink() or not path.is_file():
-            raise SourceValidationError(f"manifest is not a regular file: {path.name}")
-        try:
-            payload = json.loads(path.read_text(encoding="utf-8"))
-        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-            raise SourceValidationError(
-                f"could not read manifest {path.name}: {exc}"
-            ) from exc
-        if not isinstance(payload, dict):
-            raise SourceValidationError(
-                f"manifest {path.name} must contain a JSON object"
-            )
-        return path, payload
-    return None, None
+    """Read manifest.json; reports are output and never define replay inputs."""
+    path = source_path / "manifest.json"
+    if not os.path.lexists(path):
+        return None, None
+    if path.is_symlink() or not path.is_file():
+        raise SourceValidationError(f"manifest is not a regular file: {path.name}")
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise SourceValidationError(
+            f"could not read manifest {path.name}: {exc}"
+        ) from exc
+    if not isinstance(payload, dict):
+        raise SourceValidationError(
+            f"manifest {path.name} must contain a JSON object"
+        )
+    return path, payload
 
 
 def _source_id(source_path: Path, manifest: dict[str, Any] | None) -> str:
@@ -248,19 +205,10 @@ def _source_id(source_path: Path, manifest: dict[str, Any] | None) -> str:
     return f"image-directory:{name[:80]}:{digest}"
 
 
-def _recorded_root(manifest: dict[str, Any] | None) -> Path | None:
-    if manifest is None or not isinstance(manifest.get("run_dir"), str):
-        return None
-    value = manifest["run_dir"].strip()
-    return Path(value).expanduser() if value else None
-
-
 def _lexical_image_paths(source_path: Path) -> list[Path]:
     def supported_files(directory: Path) -> list[Path]:
         paths: list[Path] = []
         for path in sorted(directory.iterdir(), key=lambda item: item.name.casefold()):
-            if path.name in _MANIFEST_NAMES:
-                continue
             suffix = path.suffix.lower()
             if suffix in WORKBENCH_UNSUPPORTED_IMAGE_EXTENSIONS:
                 raise SourceValidationError(f"unsupported image format: {path.name}")
@@ -285,62 +233,28 @@ def _lexical_image_paths(source_path: Path) -> list[Path]:
     return []
 
 
-def _startup_capture_entries(source_path: Path, manifest: dict[str, Any]) -> list[dict[str, Any]]:
-    """Keep operation captures in before/after order through the common adapter."""
-
-    results = manifest.get("results")
-    if not isinstance(results, list):
-        return []
-    entries: list[dict[str, Any]] = []
-    for result in results:
-        if not isinstance(result, dict):
-            continue
-        for key in ("before_capture", "after_capture"):
-            capture = result.get(key)
-            value = capture.get("path") if isinstance(capture, dict) else None
-            if not isinstance(value, str) or not value.strip():
-                continue
-            declared = Path(value).expanduser()
-            candidate = declared if declared.is_absolute() else source_path / declared
-            if not candidate.is_file() or not _is_within(
-                candidate.resolve(), source_path
-            ):
-                archived = source_path / "frames" / declared.name
-                if archived.is_file():
-                    candidate = archived
-            entry: dict[str, Any] = {"image_path": str(candidate)}
-            if "captured_at_ms" in capture:
-                entry["timestamp_ms"] = capture["captured_at_ms"]
-            entries.append(entry)
-    return entries
-
-
 def _build_frame(
     *,
     source_id: str,
     position: int,
     entry: Any,
     source_path: Path,
-    recorded_root: Path | None,
     max_image_bytes: int,
     control_applications: tuple[ControlApplication, ...] | None = None,
 ) -> ReplayFrame:
-    if isinstance(entry, str):
-        entry = {"image_path": entry}
     if not isinstance(entry, dict):
         raise SourceValidationError(
-            f"manifest frame {position} must be a string or object"
+            f"manifest frame {position} must be an object"
         )
 
     absence_reason = _absence_reason(entry)
     image_path: Path | None = None
     image_metadata: dict[str, Any] = {}
     raw_image = entry.get("image_path")
-    if raw_image is not None and str(raw_image).strip():
+    if isinstance(raw_image, str) and raw_image.strip():
         image_path = _resolve_image_path(
             source_path,
-            str(raw_image),
-            recorded_root=recorded_root,
+            raw_image,
             position=position,
         )
         image_metadata = _validate_image_path(
@@ -363,7 +277,7 @@ def _build_frame(
         label=f"frame {position} frame_index",
     )
     timestamp_ms = _nonnegative_int(
-        entry.get("timestamp_ms", entry.get("captured_at_ms")),
+        entry.get("timestamp_ms"),
         default=position * 1000,
         label=f"frame {position} timestamp_ms",
     )
@@ -408,63 +322,35 @@ def _resolve_image_path(
     source_path: Path,
     value: str,
     *,
-    recorded_root: Path | None,
     position: int,
 ) -> Path:
-    declared = Path(value).expanduser()
-    allowed_root = source_path
+    declared = Path(value)
     if declared.is_absolute():
-        candidate = declared
-        if (
-            not _is_within(candidate.resolve(), source_path)
-            and recorded_root is not None
-        ):
-            relative = _recorded_relative_path(declared, recorded_root)
-            if relative is not None:
-                candidate = source_path / relative
-    else:
-        if ".." in declared.parts:
-            raise SourceValidationError(
-                f"manifest frame {position} image path must remain inside the source"
-            )
-        candidate = source_path / declared
+        raise SourceValidationError(
+            f"manifest frame {position} image path must be relative to the source"
+        )
+    if ".." in declared.parts:
+        raise SourceValidationError(
+            f"manifest frame {position} image path must remain inside the source"
+        )
+    candidate = source_path / declared
 
     resolved = candidate.resolve()
-    if not _is_within(resolved, allowed_root):
+    if not _is_within(resolved, source_path):
         raise SourceValidationError(
             f"manifest frame {position} image escapes the source"
         )
-    if _path_contains_symlink(candidate, allowed_root):
+    if _path_contains_symlink(candidate, source_path):
         raise SourceValidationError(
             f"manifest frame {position} image path may not traverse symlinks"
         )
     return resolved
 
 
-def _recorded_relative_path(path: Path, recorded_root: Path) -> Path | None:
-    try:
-        return path.relative_to(recorded_root)
-    except ValueError:
-        pass
-    if recorded_root.is_absolute():
-        return None
-    root_parts = recorded_root.parts
-    if not root_parts:
-        return None
-    path_parts = path.parts
-    for start in range(len(path_parts) - len(root_parts), -1, -1):
-        if path_parts[start : start + len(root_parts)] == root_parts:
-            trailing = path_parts[start + len(root_parts) :]
-            return Path(*trailing) if trailing else None
-    return None
-
-
 def _absence_reason(entry: dict[str, Any]) -> str | None:
     reason = entry.get("absence_reason")
     if isinstance(reason, str) and reason.strip():
         return reason.strip()[:240]
-    if entry.get("absent") is True:
-        return "absent"
     return None
 
 

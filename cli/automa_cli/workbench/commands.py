@@ -45,7 +45,7 @@ def register_workbench(
     )
     workbench.add_argument(
         "source_dir",
-        help="Directory containing supported images and optional ordered manifest.",
+        help="Directory of images or a recording with manifest.json and relative image paths; report.json is output only.",
     )
     for step_name in WORKBENCH_SELECTABLE_STEPS:
         add_selection_args(workbench, step_name, verb="replay", flag_prefix=f"{step_name}-")

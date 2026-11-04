@@ -9,11 +9,10 @@ from pathlib import Path
 
 from PIL import Image
 from dataclasses import replace
-from cli.automa_cli.replay.selections import default_selection, selection_report
+from cli.automa_cli.replay.selections import default_selection
 from cli.automa_cli.shared.memory_report import plugin_summaries
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
 from implementations.decision_cycle.catalog import selection_activation
-from cli.automa_cli.replay.source import normalize_image_directory
 from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
@@ -373,52 +372,6 @@ class PerceptionInspectTests(unittest.TestCase):
             ["frame"],
         )
 
-    def test_inspect_manifest_remaps_archived_frame_copy(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            frames = root / "frames"
-            frames.mkdir()
-            archived = frames / "frame_000000.png"
-            Image.new("RGB", (8, 8), (10, 20, 30)).save(archived)
-            manifest = {
-                "run_dir": "/original/machine/run",
-                "frames": [
-                    {
-                        "image_path": "/original/machine/run/frames/frame_000000.png",
-                    }
-                ]
-            }
-
-            (root / "report.json").write_text(json.dumps(manifest))
-            paths = [frame.image_path for frame in normalize_image_directory(root).frames]
-
-        self.assertEqual(paths, [archived.resolve()])
-
-    def test_startup_report_inspect_preserves_before_after_order(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            frames = root / "frames"
-            frames.mkdir()
-            after = frames / "00_after.png"
-            before = frames / "00_before.png"
-            Image.new("RGB", (8, 8), (20, 20, 20)).save(after)
-            Image.new("RGB", (8, 8), (10, 10, 10)).save(before)
-            manifest = {
-                "results": [
-                    {
-                        "before_capture": {"path": str(before)},
-                        "after_capture": {"path": str(after)},
-                    }
-                ]
-            }
-
-            (root / "report.json").write_text(json.dumps(manifest))
-            paths = [frame.image_path for frame in normalize_image_directory(root).frames]
-
-        self.assertEqual(
-            [path.name for path in paths], ["00_before.png", "00_after.png"]
-        )
-
 
 class MemoryInspectTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -445,9 +398,7 @@ class MemoryInspectTests(unittest.TestCase):
             plugin_specs={**dict(bounded.plugin_specs), "recording_test": RECORDING_SPEC},
             plugin_configs={**dict(bounded.plugin_configs), "recording_test": {}},
         )
-        (run / "report.json").write_text(json.dumps({
-            "schema": "memory_inspect",
-            "selections": {"memory": selection_report(selection)},
+        (run / "manifest.json").write_text(json.dumps({
             "frames": [{"image_path": f"frame_{index}.png", "steps": {"memory": selection.to_payload()}}
                        for index in range(3)],
         }))
@@ -473,9 +424,7 @@ class MemoryInspectTests(unittest.TestCase):
 
         selection = selection_activation("perception", preset="multi_obstruction")
         run = write_frames(self.tmp / "run")
-        (run / "report.json").write_text(json.dumps({
-            "schema": "perception_inspect",
-            "selections": {"perception": selection_report(selection)},
+        (run / "manifest.json").write_text(json.dumps({
             "frames": [{
                 "image_path": f"frame_{index}.png", "timestamp_ms": 5000 + 400 * index,
                 "steps": {"perception": selection.to_payload()},

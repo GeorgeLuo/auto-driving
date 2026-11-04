@@ -39,8 +39,8 @@ def register_simulators(subcommands: argparse._SubParsersAction) -> None:
         "delete",
         help="End a simulator that simulators create started.",
         description=(
-            "End the simulator simulators create started at --url. Exits 2 when no created "
-            "simulator has that URL or a host was created at it."
+            "End the simulator simulators create started at --url, or remove its record when "
+            "it has exited. Exits 2 when no created simulator has that URL or a host was created at it."
         ),
     )
     simulators_delete.add_argument("--url", required=True, help="The simulator's URL from simulators create.")

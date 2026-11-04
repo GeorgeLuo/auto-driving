@@ -11,6 +11,7 @@ class SimulatorResult:
     urls: tuple[str, ...] = ()
     hosts: tuple[str, ...] = ()
     killed: bool = False
+    exited: bool = False
 
 
 @dataclass(frozen=True)

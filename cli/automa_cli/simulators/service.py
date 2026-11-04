@@ -15,8 +15,9 @@ from ..hosts.discovery import local_hosts
 from ..providers.registry import CHASE_SIM
 from ..providers.urls import normalize_chase_url
 from .models import SimulatorResult
+from ..shared.io.processes import pid_alive
 from .process import SimulatorStartError, start_simulator, stop_simulator
-from .store import created_simulators
+from .store import remove_simulator_record, simulator_records
 
 # simulators create runs Metrics UI's headless launcher from this checkout.
 METRICS_UI_DIR_ENV = "AUTOMA_METRICS_UI_DIR"
@@ -60,19 +61,26 @@ def hosts_at_simulator(ws_url: str) -> list[str]:
 
 
 def delete_simulator(*, url: str) -> SimulatorResult:
-    """End a simulator ``simulators create`` started, unless a host was created at it."""
+    """End a simulator ``simulators create`` started, unless a host was created at it.
+
+    A simulator whose process has exited, which ``simulators status`` still
+    lists, has only its record removed: its pid is not signalled.
+    """
 
     try:
         ws_url = normalize_chase_url(url)
     except ValueError as exc:
         return SimulatorResult(2, "error", error=str(exc))
-    created = created_simulators()
-    record = next((simulator for simulator in created if simulator["url"] == ws_url), None)
+    records = simulator_records()
+    record = next((simulator for simulator in records if simulator["url"] == ws_url), None)
     if record is None:
-        return SimulatorResult(2, "missing", url=url, urls=tuple(item["url"] for item in created))
+        return SimulatorResult(2, "missing", url=url, urls=tuple(item["url"] for item in records))
     hosts = hosts_at_simulator(ws_url)
     if hosts:
         return SimulatorResult(2, "blocked", url=ws_url, hosts=tuple(hosts))
+    if not pid_alive(record.get("pid")):
+        remove_simulator_record(record)
+        return SimulatorResult(0, "deleted", url=ws_url, exited=True)
     killed = stop_simulator(record)
     return SimulatorResult(0, "deleted", url=ws_url, killed=killed)
 

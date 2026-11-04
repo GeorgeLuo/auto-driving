@@ -140,7 +140,9 @@ class CreatedSimulatorTests(unittest.TestCase):
         self.assertIn("CHASE_UI_WS_URL=", shown.stdout)
         deleted = self.automa("simulators", "delete", "--url", self.url)
         self.assertEqual((deleted.returncode, deleted.stdout),
-                         (2, f"No created simulator at {self.url}. None created.\n"))
+                         (0, f"Deleted Simulator (chase-sim) at {self.url}, which had exited\n"))
+        self.assertEqual(self.records(), [])
+        self.assertEqual(self.automa("simulators", "status").stdout, "None created.\n")
 
     def test_delete_refuses_while_a_host_was_created_at_the_simulator(self) -> None:
         self.automa("simulators", "create")

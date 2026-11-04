@@ -66,7 +66,9 @@ def render_simulator_result(result: SimulatorResult) -> str:
     if result.kind == "created":
         return f"Created {CHASE_SIM.heading_at(result.url)}"
     if result.kind == "deleted":
-        return f"Deleted {CHASE_SIM.heading_at(result.url)}" + (", killed" if result.killed else "")
+        return f"Deleted {CHASE_SIM.heading_at(result.url)}" + (
+            ", which had exited" if result.exited else ", killed" if result.killed else ""
+        )
     if result.kind == "missing":
         names = ", ".join(chase_operator_url(url) for url in result.urls)
         return f"No created simulator at {result.url}. " + (f"Created: {names}." if names else "None created.")

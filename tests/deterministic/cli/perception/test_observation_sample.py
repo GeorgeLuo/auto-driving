@@ -166,7 +166,7 @@ class ObservationSampleTests(unittest.TestCase):
             with patch.object(viewer, "fetch_observation_sample", return_value=(_publication("second"), b"jpeg")):
                 feed.publish(_publication("first"))
             frame = feed.server.perception.publish_matched.call_args.kwargs["frame_record"]
-            self.assertEqual(frame["frame_id"], "second")
+            self.assertEqual(frame["frame"]["frame_id"], "second")
             self.assertEqual(feed.frame_path.read_bytes(), b"jpeg")
             self.assertIsNone(feed.error)
 

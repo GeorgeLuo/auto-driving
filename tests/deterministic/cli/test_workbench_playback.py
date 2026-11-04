@@ -299,7 +299,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(sought["position"], 3)
             self.assertEqual(len(perception_step.calls), calls_after_first + 2)
             self.assertEqual(
-                sought["steps"]["decision"]["frame_id"],
+                sought["steps"]["action"]["frame_id"],
                 sought["current_frame"]["frame_id"],
             )
 
@@ -307,7 +307,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(cached["phase"], "paused")
             self.assertEqual(cached["current_frame"]["frame_id"], first_id)
             self.assertEqual(cached["current_frame"]["position"], 0)
-            self.assertEqual(cached["steps"]["decision"]["frame_id"], first_id)
+            self.assertEqual(cached["steps"]["action"]["frame_id"], first_id)
             self.assertEqual(cached["timing"], paused["timing"])
             self.assertEqual(cached["summary"], paused["summary"])
             self.assertEqual(len(perception_step.calls), calls_after_first + 2)

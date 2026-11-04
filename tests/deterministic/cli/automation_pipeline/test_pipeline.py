@@ -64,7 +64,8 @@ class AutomationLivePipelineTests(unittest.TestCase):
             latest = json.loads((automation_dir / "latest_perception.json").read_text(encoding="utf-8"))
             # The latest copy can be any decided frame, so it is checked against its own frame.
             self.assertEqual(
-                latest["step_activations"]["perception"]["plugins"], frame_selections[latest["frame_id"]],
+                latest["step_activations"]["perception"]["plugins"],
+                frame_selections[latest["frame"]["frame_id"]],
             )
             self.assertIn("memory", latest)
 

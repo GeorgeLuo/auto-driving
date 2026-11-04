@@ -12,6 +12,8 @@ from urllib.request import urlopen
 
 from PIL import Image
 
+from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
+
 VIEW_SCHEMA = "automa_perception_view"
 PUBLICATION_SCHEMA = "automa_perception_publication"
 VIEW_RECORD_NAME = "perception_view.json"
@@ -44,10 +46,11 @@ class PerceptionView:
             raise ValueError(f"published frame is empty: {frame_path}")
         content_type = _frame_content_type(frame_path, frame_record)
         published_at_ms = _timestamp_ms()
-        frame_id = str(frame_record.get("frame_id") or "unknown")
+        identity = _identity(frame_record)
+        frame_id = str(identity.get("frame_id") or "unknown")
         width_px, height_px = _image_dimensions(frame_path)
         frame = _frame_payload(
-            frame_record=frame_record,
+            frame_record=identity,
             content_type=content_type,
             published_at_ms=published_at_ms,
             width_px=width_px,
@@ -75,7 +78,7 @@ class PerceptionView:
             self._frame_published_at_ms = published_at_ms
 
     def publish_perception(self, *, frame_record: dict[str, Any]) -> None:
-        frame_id = str(frame_record.get("frame_id") or "unknown")
+        frame_id = str(_identity(frame_record).get("frame_id") or "unknown")
         with self._lock:
             self._latest_perception_record = frame_record
             self._latest_perception_frame_id = frame_id
@@ -100,7 +103,7 @@ class PerceptionView:
     def health_payload(self) -> dict[str, Any]:
         with self._lock:
             perception_id = self._latest_perception_frame_id
-            source = self._latest_perception_record or {}
+            source = _identity(self._latest_perception_record)
             latest = self._latest_frame or {}
             has_perception = self._latest_perception_record is not None
             return {
@@ -301,6 +304,44 @@ def _view_generation_error(
     return None
 
 
+def _identity(record: Any) -> dict[str, Any]:
+    """Nested publication frame when it carries an id; otherwise the flat record."""
+
+    if not isinstance(record, dict):
+        return {}
+    nested = record.get("frame")
+    if isinstance(nested, dict) and "frame_id" in nested:
+        return nested
+    return record
+
+
+def _completed_at_ms(record: Any) -> Any:
+    if isinstance(record, dict):
+        nested = record.get("frame")
+        if isinstance(nested, dict) and "frame_id" in nested:
+            return nested.get("completed_at_ms")
+        return record.get("perception_completed_at_ms")
+    return None
+
+
+def _duration_ms(record: Any) -> Any:
+    if not isinstance(record, dict):
+        return None
+    if record.get("duration_ms") is not None:
+        return record.get("duration_ms")
+    timing = record.get("timing")
+    if isinstance(timing, dict) and timing.get("duration_ms") is not None:
+        return timing["duration_ms"]
+    return record.get("cycle_duration_ms")
+
+
+def _cycle_body(record: Any) -> dict[str, Any] | None:
+    cycle = record.get("cycle") if isinstance(record, dict) else None
+    if isinstance(cycle, dict) and all(key in cycle for key in CYCLE_RECORD_KEYS):
+        return {key: cycle[key] for key in CYCLE_RECORD_KEYS}
+    return None
+
+
 def _publication_payload(
     *,
     host_name: str,
@@ -308,13 +349,14 @@ def _publication_payload(
     perception_record: dict[str, Any] | None,
     generated_at_ms: int,
 ) -> dict[str, Any]:
-    source = perception_record or {}
+    source = perception_record if isinstance(perception_record, dict) else {}
     perception = source.get("perception")
     perception = perception if isinstance(perception, dict) else None
-    # The frame record's memory report: every plugin's state by plugin_id and
-    # the evidence publisher, as the memory step reported them.
     memory = source.get("memory")
     memory = memory if isinstance(memory, dict) else None
+    observation = source.get("observation")
+    observation = observation if isinstance(observation, dict) else None
+    timing = source.get("timing") if isinstance(source.get("timing"), dict) else None
     overlay = _overlay_payload(frame=frame, perception_record=perception_record, now_ms=generated_at_ms)
     return {
         "schema": PUBLICATION_SCHEMA,
@@ -322,18 +364,13 @@ def _publication_payload(
         "generated_at_ms": generated_at_ms,
         "frame": frame,
         "overlay": overlay,
-        "cycle": {
-            "cycle_duration_ms": source.get("cycle_duration_ms"),
-            "perception_duration_ms": source.get("perception_duration_ms"),
-            "timing": source.get("timing") if isinstance(source.get("timing"), dict) else None,
-            "control_source": source.get("control_source"),
-            "control_application": source.get("control_application"),
-            "action_policy": source.get("action_policy"),
-        },
+        "timing": timing,
+        "duration_ms": _duration_ms(source),
+        "cycle": _cycle_body(source),
         "perception": perception,
         "memory": memory,
         "sensor_frame": source.get("sensor_frame"),
-        "observation": source.get("observation"),
+        "observation": observation,
         "control": source.get("control"),
         "engine": source.get("engine"),
     }
@@ -378,12 +415,13 @@ def _overlay_payload(
             "result_age_ms": None,
         }
 
-    source_frame_id = perception_record.get("frame_id")
-    source_frame_index = perception_record.get("frame_index")
+    source = _identity(perception_record)
+    source_frame_id = source.get("frame_id")
+    source_frame_index = source.get("frame_index")
     current_frame_index = frame.get("frame_index")
-    source_captured_at_ms = perception_record.get("captured_at_ms")
+    source_captured_at_ms = source.get("captured_at_ms")
     current_captured_at_ms = frame.get("captured_at_ms")
-    completed_at_ms = perception_record.get("perception_completed_at_ms")
+    completed_at_ms = _completed_at_ms(perception_record)
     frame_lag = _nonnegative_difference(current_frame_index, source_frame_index)
     frame_lag_ms = _nonnegative_difference(current_captured_at_ms, source_captured_at_ms)
     result_age_ms = _nonnegative_difference(now_ms, completed_at_ms)

@@ -1005,7 +1005,7 @@ class ImageReplayRunner:
                         }
                 outcome = run_frame(frame, steps=steps, shared_memory=self._shared_memory)
                 result = outcome.result
-                presented_steps = displayed_steps(outcome)
+                presented_steps = displayed_steps(result)
                 with self._condition:
                     self._publish_frame_locked(frame, outcome, presented_steps)
                     if result.perception is not None and _safe_status(

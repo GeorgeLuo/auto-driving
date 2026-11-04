@@ -482,7 +482,7 @@
       const plugin = shownPlugin();
       const state = shownState();
       const publisher = evidencePublisher();
-      const steps = latest?.cycle?.timing?.steps;
+      const steps = latest?.timing?.steps;
       const memoryTiming = Array.isArray(steps) ? steps.find((step) => step?.step === "memory") : null;
       const fingerprint = [
         latest?.host_name || "",

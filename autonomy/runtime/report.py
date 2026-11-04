@@ -25,7 +25,7 @@ from typing import Any, Mapping
 
 from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.action_identifiers import require_ascii_id, require_safe_int
-from autonomy.decision_cycle.cycle import export_cycle_body
+from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, export_cycle_body
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.runtime.execution import require_mode
@@ -47,7 +47,7 @@ REPORT_EXACT_KEYS = frozenset(
         "values",
     }
 )
-CYCLE_EXACT_KEYS = frozenset({"observation", "memory", "proposal", "plan", "action"})
+CYCLE_EXACT_KEYS = frozenset(CYCLE_RECORD_KEYS)
 APPLICATION_EXACT_KEYS = frozenset({"applied", "mode", "reason", "steering", "throttle"})
 
 
@@ -194,7 +194,7 @@ class HostReport:
                 _json_copy(self.cycle[key], field=f"cycle.{key}"),
                 key=key,
             )
-            for key in ("observation", "memory", "proposal", "plan", "action")
+            for key in CYCLE_RECORD_KEYS
         }
         object.__setattr__(self, "cycle", cycle)
         if not isinstance(self.application, ReportApplication):

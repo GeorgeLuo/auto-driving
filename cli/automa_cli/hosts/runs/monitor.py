@@ -22,7 +22,7 @@ from autonomy.vehicle.vehicle import FRONT_CAMERA_SENSOR_ID
 from autonomy.runtime.client import RuntimeClient
 from ...shared.paths import display_path
 from ...frontend.perception_view import perception_view_ready
-from ..publications.decision_publication import perception_text_from_publication, publication_to_frame_record
+from ..publications.decision_publication import perception_text_from_publication
 from ..publications.host_publications import fetch_observation_sample, TransactionCache
 from ...shared.timestamps import timestamp_ms
 from .models import RunEvent, RunResult, run_exit_code
@@ -97,6 +97,37 @@ def _copy_latest_decision(
         stop.wait(pause_s(started, DECISION_COPY_INTERVAL_S))
 
 
+def _shown_frame(publication: dict[str, Any]) -> dict[str, Any]:
+    """Frame identity and durations the status line reads from one publication."""
+
+    frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
+    timing = publication.get("timing") if isinstance(publication.get("timing"), dict) else None
+    duration_ms = (
+        timing.get("duration_ms")
+        if isinstance(timing, dict) and timing.get("duration_ms") is not None
+        else publication.get("duration_ms")
+    )
+    perception_ms = duration_ms
+    steps = timing.get("steps") if isinstance(timing, dict) else None
+    if isinstance(steps, list):
+        for item in steps:
+            if isinstance(item, dict) and item.get("step") == "perception":
+                perception_ms = item.get("duration_ms")
+                break
+    perception = publication.get("perception")
+    return {
+        "frame_id": frame.get("frame_id"),
+        "frame_index": frame.get("frame_index"),
+        "captured_at_ms": frame.get("captured_at_ms"),
+        "perception_completed_at_ms": frame.get("completed_at_ms"),
+        "perception_duration_ms": perception_ms,
+        "cycle_duration_ms": duration_ms,
+        "generation_id": publication.get("generation_id"),
+        "perception": perception if isinstance(perception, dict) else {},
+        "control": publication.get("control"),
+    }
+
+
 def _copy_latest_perception(
     base_url: str, server: RuntimeViewServer, stop: threading.Event,
     copied: dict[str, Any], *, frames_dir: Path, json_path: Path, text_path: Path,
@@ -112,22 +143,22 @@ def _copy_latest_perception(
                 publication, jpeg = fetch_observation_sample(base_url, timeout_s=timeout_s, cache=cache)
                 if stop.is_set():
                     break
-                frame = publication_to_frame_record(publication)
-                capture = (frame.get("frame_id"), frame.get("captured_at_ms"),
-                           frame.get("perception_completed_at_ms"), frame.get("generation_id"))
+                shown = _shown_frame(publication)
+                capture = (shown["frame_id"], shown["captured_at_ms"],
+                           shown["perception_completed_at_ms"], shown["generation_id"])
                 if jpeg is None:
                     server.perception.invalidate_latest()
                     last_capture = None
                     copied["error"] = publication.get("error") or publication.get("health")
-                elif capture != last_capture and frame.get("frame_id"):
-                    frame.update(identity)
+                elif capture != last_capture and shown["frame_id"]:
+                    recorded = {**publication, **identity}
                     frame_path = frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
                     frame_path.write_bytes(jpeg)
-                    server.perception.publish_matched(frame_path=frame_path, frame_record=frame)
-                    write_json_atomically(json_path, frame)
+                    server.perception.publish_matched(frame_path=frame_path, frame_record=recorded)
+                    write_json_atomically(json_path, recorded)
                     text_path.write_text(perception_text_from_publication(publication) + "\n", encoding="utf-8")
                     last_capture = capture
-                    copied["frame"] = frame
+                    copied["frame"] = shown
                     copied["error"] = None
             except Exception as exc:
                 server.perception.invalidate_latest()

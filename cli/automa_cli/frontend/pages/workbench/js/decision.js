@@ -3,9 +3,9 @@
 "use strict";
 
 function renderDecision() {
-  var cycle = currentPayload("decision");
+  var action = currentPayload("action");
   var frame = currentFrame();
-  if (!cycle) {
+  if (!action) {
     setText("decisionSummary", "no cycle");
     setText("decisionFrameIdentity", frame ? frame.frame_id : null);
     setText("decisionStatus", null);
@@ -17,14 +17,14 @@ function renderDecision() {
     elements.decisionCandidates.textContent = "";
     return;
   }
-  var plan = cycle.plan || {};
-  var authority = cycle.authority || {};
+  var plan = currentPayload("plan") || {};
+  var authority = action.authority || {};
   var proposed = authority.proposed || {};
   var selected = plan.selected_proposal_id || "none";
   var candidates = Array.isArray(plan.candidates) ? plan.candidates : [];
-  setText("decisionSummary", text(cycle.status, "unknown") + " · " + selected);
-  setText("decisionFrameIdentity", frame ? frame.frame_id : cycle.frame_id);
-  setText("decisionStatus", text(cycle.status, "unknown") + " / " + text(plan.status, "no plan"));
+  setText("decisionSummary", text(action.status, "unknown") + " · " + selected);
+  setText("decisionFrameIdentity", frame ? frame.frame_id : action.frame_id);
+  setText("decisionStatus", text(action.status, "unknown") + " / " + text(plan.status, "no plan"));
   var planCommand = plan.command || null;
   var contributions = Array.isArray(plan.contributions) ? plan.contributions : [];
   setText("decisionSelected", plan.status === "composed"
@@ -40,7 +40,7 @@ function renderDecision() {
     : "none");
   setText("decisionAuthority", typeof authority.proposed_applied === "boolean"
     ? text(authority.gate_id, "gate") + " · proposed_applied=" + authority.proposed_applied + " · Host delivery: absent" : "unavailable");
-  setText("decisionReason", cycle.reason || (plan.reason || "—"));
+  setText("decisionReason", action.reason || (plan.reason || "—"));
   var sourceRefs = [];
   candidates.forEach(function (candidate) {
     (candidate.source_refs || []).forEach(function (source) { sourceRefs.push(source); });

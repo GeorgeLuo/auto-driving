@@ -25,6 +25,7 @@ from autonomy.decision_cycle.activation import (
     activation_presets,
 )
 from autonomy.decision_cycle.context import DecisionFrameContext, recorded_context
+from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost
@@ -645,6 +646,7 @@ class FrameLoop:
                 "perception": None,
                 "observation": None,
                 "memory": None,
+                "cycle": {key: None for key in CYCLE_RECORD_KEYS},
                 "latest_json_path": LATEST_JSON_PATH,
                 "latest_frame_path": LATEST_FRAME_PATH,
             }
@@ -659,12 +661,13 @@ class FrameLoop:
         else:
             health = PUBLICATION_HEALTH_HEALTHY
 
-        perception = None if latest.cycle is None else latest.cycle.get("perception")
-        observation = None if latest.cycle is None else latest.cycle.get("observation")
-        timing = None if latest.cycle is None else latest.cycle.get("timing")
+        cycle = latest.cycle or {}
+        perception = cycle.get("perception")
+        observation = cycle.get("observation")
+        timing = cycle.get("timing")
         # Republish the memory report through the cycle publication.
-        memory = None if latest.cycle is None else latest.cycle.get("memory")
-        context = latest.context or (latest.cycle or {}).get("context") or {}
+        memory = cycle.get("memory")
+        context = latest.context or cycle.get("context") or {}
         selections = (context.get("metadata") or {}).get("step_activations")
         if isinstance(selections, dict) and all(step in selections for step in DECISION_STEPS):
             generation_id = activation_generation_id(
@@ -703,6 +706,7 @@ class FrameLoop:
             "perception": perception,
             "observation": observation,
             "memory": memory,
+            "cycle": {key: cycle.get(key) for key in CYCLE_RECORD_KEYS},
             "latest_json_path": LATEST_JSON_PATH,
             "latest_frame_path": LATEST_FRAME_PATH,
         }

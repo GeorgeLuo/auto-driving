@@ -1,36 +1,39 @@
 """Browser payloads for the workbench's live state and replay history.
 
-Terminal text for a CLI replay is ``render``. This module turns a frame
-outcome into the dictionaries the workbench page reads.
+Terminal text for a CLI replay is ``render``. This module turns a completed
+cycle into the dictionaries the workbench page reads.
 """
 
 from __future__ import annotations
 
-import copy
 from typing import Any
 
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
 
-from ..replay.models import FrameOutcome
 from ..shared.memory_report import evidence_publisher, plugin_summaries
 
 
 def empty_steps() -> dict[str, Any]:
     """The per-step payloads of the displayed frame, before any frame ran."""
 
-    return {"perception": None, "observation": None, "memory": None, "decision": None}
-
-
-def displayed_steps(outcome: FrameOutcome) -> dict[str, Any]:
-    """The cycle's records grouped for the workbench, detached from runner outputs."""
-
-    result = outcome.result
     return {
-        "perception": result.perception.to_dict() if result.perception else None,
-        "observation": result.observation.to_dict() if result.observation else None,
-        "memory": copy.deepcopy(result.memory),
-        "decision": copy.deepcopy(outcome.decision),
+        "perception": None,
+        "observation": None,
+        "memory": None,
+        "proposal": None,
+        "plan": None,
+        "action": None,
+    }
+
+
+def displayed_steps(result: Any) -> dict[str, Any]:
+    """Perception plus the exported cycle body, detached from runner outputs."""
+
+    perception = getattr(result, "perception", None)
+    return {
+        "perception": perception.to_dict() if perception is not None else None,
+        **result.export_cycle(),
     }
 
 

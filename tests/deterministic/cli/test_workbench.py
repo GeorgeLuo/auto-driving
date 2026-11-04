@@ -150,7 +150,9 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(memory_state["phase"], "failed")
             self.assertEqual(memory_state["failure_boundary"], "memory")
             self.assertIsNone(memory_state["steps"]["memory"])
-            self.assertIsNone(memory_state["steps"]["decision"])
+            self.assertIsNone(memory_state["steps"]["proposal"])
+            self.assertIsNone(memory_state["steps"]["plan"])
+            self.assertIsNone(memory_state["steps"]["action"])
             self.assertIn("injected memory failure", memory_state["failure"]["message"])
             self.assertEqual(len(memory_mapper.calls), 1)
             self.assertEqual(memory_state["progress"]["completed"], 0)
@@ -213,20 +215,21 @@ class WorkbenchTests(unittest.TestCase):
             runner.start()
             state = runner.wait(5)
 
-        decision = state["steps"]["decision"]
+        action = state["steps"]["action"]
+        plan = state["steps"]["plan"]
         self.assertEqual(state["phase"], "completed")
-        self.assertEqual(decision["frame_id"], state["current_frame"]["frame_id"])
-        self.assertEqual(decision["plan"]["status"], "selected")
+        self.assertEqual(action["frame_id"], state["current_frame"]["frame_id"])
+        self.assertEqual(plan["status"], "selected")
         self.assertTrue(
-            decision["plan"]["selected_proposal_id"].startswith(
+            plan["selected_proposal_id"].startswith(
                 "avoid_recent_obstruction:"
             )
         )
-        self.assertEqual(decision["authority"]["proposed"]["steering"], 1.0)
-        self.assertTrue(decision["authority"]["proposed_applied"])
+        self.assertEqual(action["authority"]["proposed"]["steering"], 1.0)
+        self.assertTrue(action["authority"]["proposed_applied"])
         self.assertTrue(
             state["current_frame"]["frame_id"].endswith(
-                decision["plan"]["selected_proposal_id"].rsplit(":", 1)[1]
+                plan["selected_proposal_id"].rsplit(":", 1)[1]
             )
         )
         self.assertEqual(

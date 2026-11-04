@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import unittest
 from cli.automa_cli.shared.memory_report import evidence_publisher, plugin_states
-from cli.automa_cli.hosts.publications.decision_publication import publication_to_frame_record
 from cli.automa_cli.frontend.perception_view import (
     PUBLICATION_SCHEMA,
     _publication_payload,
@@ -62,8 +61,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
             }),
             "control": {"steering": 0.0, "throttle": 0.0},
         }
-        frame_record = publication_to_frame_record(publication)
-        recorded = dict(plugin_states(frame_record["memory"]))
+        recorded = dict(plugin_states(publication["memory"]))
         self.assertEqual(recorded["bounded_evidence"]["health"], "healthy")
         self.assertEqual(recorded["bounded_evidence"]["records"][0]["kind"], "floor_boundary")
 
@@ -77,10 +75,13 @@ class MemoryViewPublicationTests(unittest.TestCase):
                 "height_px": 480,
                 "url": "/frame?v=donkey_frame_1",
             },
-            perception_record=frame_record,
+            perception_record=publication,
             generated_at_ms=200,
         )
         self.assertEqual(view_payload["schema"], PUBLICATION_SCHEMA)
+        self.assertEqual(view_payload["duration_ms"], 12)
+        self.assertIsNone(view_payload["cycle"])
+        self.assertNotIn("control_source", view_payload)
         self.assertEqual(PUBLICATION_SCHEMA, "automa_perception_publication")
         self.assertEqual(evidence_publisher(view_payload["memory"]), "bounded_evidence")
         shown = dict(plugin_states(view_payload["memory"]))
@@ -95,18 +96,16 @@ class MemoryViewPublicationTests(unittest.TestCase):
         # the publisher.
         runner, _shared = two_plugin_runner()
         report = runner.report()
-        frame_record = publication_to_frame_record(
-            {
-                "health": "healthy",
-                "frame": {"frame_id": "donkey_frame_1", "frame_index": 1, "has_image": True},
-                "perception": {"things": []},
-                "memory": report,
-            }
-        )
+        publication = {
+            "health": "healthy",
+            "frame": {"frame_id": "donkey_frame_1", "frame_index": 1, "has_image": True},
+            "perception": {"things": []},
+            "memory": report,
+        }
         view_payload = _publication_payload(
             host_name="piracer",
             frame={"frame_id": "donkey_frame_1", "frame_index": 1},
-            perception_record=frame_record,
+            perception_record=publication,
             generated_at_ms=200,
         )
         self.assertEqual(view_payload["memory"], report)

@@ -133,6 +133,10 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["presets"], {"perception": "lightweight_observer"})
         self.assertEqual(payload["latest_json_path"], LATEST_JSON_PATH)
         self.assertEqual(payload["latest_frame_path"], LATEST_FRAME_PATH)
+        self.assertEqual(
+            payload["cycle"],
+            {"observation": None, "memory": None, "proposal": None, "plan": None, "action": None},
+        )
 
     def test_healthy_publication_includes_detached_perception_and_matching_frame(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
@@ -149,9 +153,12 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["control"]["throttle"], 0.0)
         self.assertEqual(payload["frame"]["frame_id"], "donkey_frame_000000")
         self.assertTrue(payload["frame"]["has_image"])
-        # Idle host has no perception step; publication still carries cycle control.
+        # Idle host has no perception step, so the diagnostic stays absent.
         self.assertIsNone(payload["perception"])
         self.assertIsNone(payload["memory"])
+        self.assertEqual(sorted(payload["cycle"]), ["action", "memory", "observation", "plan", "proposal"])
+        self.assertEqual(payload["cycle"]["observation"], payload["observation"])
+        self.assertEqual(payload["cycle"]["memory"], payload["memory"])
         self.assertEqual(payload["control"]["reason"], "action_plan_invariant_violated")
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
 

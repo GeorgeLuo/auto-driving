@@ -624,9 +624,9 @@
       appendMetric(metrics, "Overlay source", latest.overlay?.source_frame_id || "pending");
       appendMetric(metrics, "Overlay lag", overlayLagText(latest.overlay));
       appendMetric(metrics, "Result age", formatAge(latest.overlay?.result_age_ms));
-      const steps = latest.cycle?.timing?.steps;
+      const steps = latest.timing?.steps;
       const perceptionTiming = Array.isArray(steps) ? steps.find((step) => step?.step === "perception") : null;
-      appendMetric(metrics, "Cycle", formatMs(latest.cycle?.cycle_duration_ms));
+      appendMetric(metrics, "Cycle", formatMs(latest.timing?.duration_ms ?? latest.duration_ms));
       appendMetric(metrics, "Perception", formatMs(perceptionTiming?.duration_ms));
       appendMetric(metrics, "Confidence", confidenceText(latest.perception?.confidence));
       appendMetric(metrics, "Status", latest.perception?.status || "unknown");

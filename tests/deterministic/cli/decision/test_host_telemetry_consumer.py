@@ -220,7 +220,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
 
         read_panel.assert_called_once()
         self.assertIs(read_panel.call_args.kwargs["normalized_decision"], normalized)
-        self.assertEqual(view.decision.kwargs["frame_record"]["host_telemetry"], joined)
+        self.assertEqual(view.decision.kwargs["host_telemetry"], joined)
 
     def _read_panel(self, payload, *, normalized):
         with patch(
@@ -470,8 +470,8 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertTrue(published)
         self.assertFalse(view.decision.invalidated)
         self.assertEqual(view.decision.kwargs["image"], (b"jpeg-bytes", "image/jpeg"))
-        self.assertEqual(view.decision.kwargs["frame_record"]["frame_id"], "frame-1")
-        panel = view.decision.kwargs["frame_record"]["host_telemetry"]
+        self.assertEqual(view.decision.kwargs["report"].frame_id, "frame-1")
+        panel = view.decision.kwargs["host_telemetry"]
         self.assertEqual(panel["status"], "unavailable")
         self.assertEqual(panel["reason"], "publisher_missing")
         self.assertFalse(panel["joined"])

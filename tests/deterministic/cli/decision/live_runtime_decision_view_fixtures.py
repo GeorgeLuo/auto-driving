@@ -159,7 +159,6 @@ class LiveRuntimeDecisionViewFixture:
         self.assertTrue(
             target.decision.publish(
                 report=stream_frame,
-                frame_record=frame_record,
                 image=exact_image,
             )
         )

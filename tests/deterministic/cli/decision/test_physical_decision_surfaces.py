@@ -138,12 +138,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         self.assertTrue(
             server.decision.publish(
                 report=decision_view_frame(normalized),
-                frame_record={
-                    "frame_id": normalized["frame_id"],
-                    "frame_index": normalized["frame_index"],
-                    "captured_at_ms": normalized["timestamp_ms"],
-                    "run_id": normalized["run_id"],
-                },
                 image=(b"physical-fixture-jpeg", "image/jpeg"),
             )
         )

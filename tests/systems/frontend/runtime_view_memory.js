@@ -140,7 +140,7 @@ async function memoryPage() {
   // The cycle's memory step time fills the Update row.
   latest = {
     ...publication([BOUNDED], "bounded_evidence"),
-    cycle: { timing: { steps: [{ step: "observation", duration_ms: 9 }, { step: "memory", duration_ms: 1.25 }] } }
+    timing: { steps: [{ step: "observation", duration_ms: 9 }, { step: "memory", duration_ms: 1.25 }] }
   };
   await ctx.refresh();
   assert.equal(metrics($("ledgerMetrics"))["Update"], "1.25 ms");

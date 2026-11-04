@@ -25,10 +25,8 @@ from implementations.runtime.picar.host_telemetry import (
 )
 from .publication_fields import PublicationError, require_id, require_mapping
 
-HOST_TELEMETRY_RECORDS_SCHEMA = "automa_host_boundary_telemetry_records"
 HOST_TELEMETRY_PANEL_SCHEMA = "automa_host_boundary_telemetry_panel"
 HOST_TELEMETRY_NORMALIZED_SCHEMA = "automa_host_boundary_telemetry_normalized"
-HOST_TELEMETRY_RECORDS_NORMALIZED_SCHEMA = "automa_host_boundary_telemetry_records_normalized"
 
 
 class HostTelemetryError(PublicationError):
@@ -133,7 +131,7 @@ def _host_strict_copy(value: object, *, field: str) -> Any:
         ) from exc
 
 
-def _host_status_error(publication: dict[str, Any], *, records: bool = False) -> None:
+def _host_status_error(publication: dict[str, Any]) -> None:
     status = publication.get("status")
     if status == "healthy":
         return
@@ -179,10 +177,9 @@ def _host_status_error(publication: dict[str, Any], *, records: bool = False) ->
             str(reason),
             f"Host telemetry producer reported an error: {reason}.",
         )
-    route = "records" if records else "latest"
     raise _host_telemetry_error(
         "field_invalid",
-        f"Host telemetry {route} status is invalid.",
+        "Host telemetry latest status is invalid.",
         field="status",
     )
 
@@ -229,12 +226,6 @@ def host_telemetry_failure(
         "application": None,
         "limits": None,
         "freshness": None,
-        "coverage": {
-            "status": "unavailable",
-            "reason": reason,
-            "interval_covered": False,
-            "record_count": 0,
-        },
         "record": None,
         "details": deepcopy(details or {}),
     }
@@ -271,13 +262,10 @@ def normalize_host_telemetry_record(
     *,
     now_ms: int,
     host_name: str | None = None,
-    previous_record: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Normalize one producer record and enforce the amended consumer contract.
+    """Validate one latest host telemetry point.
 
-    The latest route is intentionally point-oriented.  It never turns the
-    latest point into interval coverage; callers use the records route for
-    contiguous capture claims.
+    Sequence, gap, and skipped values remain producer facts on the point.
     """
 
     if type(now_ms) is not int or now_ms < 0:
@@ -516,73 +504,6 @@ def normalize_host_telemetry_record(
             field="host_tick.published_at_ms",
         )
 
-    previous_tick: dict[str, Any] | None = None
-    if previous_record is not None:
-        if "host_tick" in previous_record and isinstance(previous_record.get("host_tick"), dict):
-            previous_tick = previous_record["host_tick"]
-        elif "record" in previous_record and isinstance(previous_record.get("record"), dict):
-            previous_tick = previous_record["record"].get("host_tick")
-    coverage_status = "point"
-    coverage_reason = "coverage_gap"
-    interval_covered = False
-    if previous_tick is not None:
-        previous_sequence = previous_tick.get("sequence")
-        previous_observed_at_ms = previous_tick.get("observed_at_ms")
-        if type(previous_sequence) is not int or type(previous_observed_at_ms) is not int:
-            raise _host_telemetry_error(
-                "field_invalid",
-                "Previous host telemetry record has invalid ordering fields.",
-            )
-        if sequence < previous_sequence:
-            raise _host_telemetry_error(
-                "sequence_regressed",
-                "Host telemetry sequence regressed.",
-                field="host_tick.sequence",
-            )
-        if sequence == previous_sequence:
-            raise _host_telemetry_error(
-                "sequence_duplicate",
-                "Host telemetry sequence was duplicated.",
-                field="host_tick.sequence",
-            )
-        expected_skipped = sequence - previous_sequence - 1
-        expected_gap = observed_at_ms - previous_observed_at_ms
-        if expected_gap < 0:
-            raise _host_telemetry_error(
-                "sequence_regressed",
-                "Host telemetry observation clock regressed.",
-                field="host_tick.observed_at_ms",
-            )
-        if gap_since_previous_ms != expected_gap or skipped_since_previous != expected_skipped:
-            raise _host_telemetry_error(
-                "field_invalid",
-                "Host telemetry gap/skipped fields do not match adjacent records.",
-                field="host_tick",
-                details={
-                    "expected_gap_since_previous_ms": expected_gap,
-                    "actual_gap_since_previous_ms": gap_since_previous_ms,
-                    "expected_skipped_since_previous": expected_skipped,
-                    "actual_skipped_since_previous": skipped_since_previous,
-                },
-            )
-        if expected_skipped > 0 or expected_gap > limits["max_gap_ms"]:
-            coverage_status = "limited"
-            coverage_reason = "sequence_gap"
-        else:
-            coverage_status = "contiguous"
-            coverage_reason = ""
-            interval_covered = True
-    elif sequence > 1:
-        # A latest point can still be consumed, but it cannot prove the
-        # interval preceding it.  The producer-reported gap is retained in
-        # the point model and the records route is required for coverage.
-        if (skipped_since_previous or 0) > 0 or (
-            gap_since_previous_ms is not None
-            and gap_since_previous_ms > limits["max_gap_ms"]
-        ):
-            coverage_status = "limited"
-            coverage_reason = "sequence_gap"
-
     detached_record = _host_strict_copy(record, field="record")
     normalized_host_tick = {
         "sequence": sequence,
@@ -609,8 +530,8 @@ def normalize_host_telemetry_record(
     )
     return {
         "schema": HOST_TELEMETRY_NORMALIZED_SCHEMA,
-        "status": "limited" if coverage_status == "limited" else "healthy",
-        "reason": coverage_reason if coverage_status == "limited" else "",
+        "status": "healthy",
+        "reason": "",
         "record": detached_record,
         "identity": identity,
         "source_frame": deepcopy(identity["source_frame"]),
@@ -635,256 +556,7 @@ def normalize_host_telemetry_record(
             "max_gap_ms": limits["max_gap_ms"],
             "future_skew_tolerance_ms": limits["future_skew_tolerance_ms"],
         },
-        "coverage": {
-            "status": coverage_status,
-            "reason": coverage_reason,
-            "interval_covered": interval_covered,
-            "sequence": sequence,
-            "record_count": 1,
-        },
     }
-
-
-def _host_records_result(
-    *,
-    status: str,
-    reason: str,
-    records: list[dict[str, Any]],
-    after_sequence: int,
-    limit: int,
-    coverage: dict[str, Any],
-    details: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    return {
-        "schema": HOST_TELEMETRY_RECORDS_NORMALIZED_SCHEMA,
-        "status": status,
-        "reason": reason,
-        "after_sequence": after_sequence,
-        "limit": limit,
-        "records": records,
-        "coverage": coverage,
-        "details": deepcopy(details or {}),
-    }
-
-
-def normalize_host_telemetry_records(
-    publication: object,
-    *,
-    now_ms: int,
-    after_sequence: int = 0,
-    limit: int = 128,
-    host_name: str | None = None,
-) -> dict[str, Any]:
-    """Normalize bounded history and report interval coverage explicitly."""
-
-    if type(now_ms) is not int or now_ms < 0:
-        raise ValueError("now_ms must be a non-negative non-bool int")
-    if type(after_sequence) is not int or after_sequence < 0:
-        raise ValueError("after_sequence must be a non-negative integer")
-    if type(limit) is not int or not 1 <= limit <= 128:
-        raise ValueError("limit must be an integer from 1 through 128")
-    if not isinstance(publication, dict):
-        raise _host_telemetry_error(
-            "schema_invalid",
-            "Host telemetry records publication must be an object.",
-        )
-    schema = publication.get("schema")
-    if schema not in {HOST_TELEMETRY_RECORDS_SCHEMA, TELEMETRY_SCHEMA}:
-        raise _host_telemetry_error(
-            "schema_invalid",
-            "Host telemetry records schema is invalid.",
-            field="schema",
-        )
-    try:
-        _host_status_error(publication, records=True)
-    except HostTelemetryError as exc:
-        return _host_records_result(
-            status=_host_panel_status(exc.reason),
-            reason=exc.reason,
-            records=[],
-            after_sequence=after_sequence,
-            limit=limit,
-            coverage={
-                "status": "unavailable",
-                "reason": exc.reason,
-                "interval_covered": False,
-                "record_count": 0,
-            },
-            details=exc.details,
-        )
-
-    raw_records = publication.get("records")
-    if not isinstance(raw_records, list):
-        raise _host_telemetry_error(
-            "field_invalid",
-            "Host telemetry records.records must be an array.",
-            field="records",
-        )
-    if len(raw_records) > limit:
-        raise _host_telemetry_error(
-            "field_invalid",
-            "Host telemetry records response exceeds the requested limit.",
-            field="records",
-            details={"count": len(raw_records), "limit": limit},
-        )
-    coverage_payload = publication.get("coverage")
-    coverage_payload = coverage_payload if isinstance(coverage_payload, dict) else {}
-    coverage_reason = publication.get("coverage_reason")
-    if not isinstance(coverage_reason, str) or not coverage_reason:
-        coverage_reason = coverage_payload.get("reason")
-    if not isinstance(coverage_reason, str) or not coverage_reason:
-        coverage_reason = ""
-    history_evicted = coverage_reason == "history_evicted"
-    explicit_baseline = bool(
-        coverage_payload.get("baseline") is True
-        or coverage_payload.get("explicit_baseline") is True
-    )
-    complete_declared = coverage_payload.get("complete")
-    normalized_records: list[dict[str, Any]] = []
-    previous: dict[str, Any] | None = None
-    failure: HostTelemetryError | None = None
-    for index, raw_record in enumerate(raw_records):
-        try:
-            normalized = normalize_host_telemetry_record(
-                raw_record,
-                now_ms=now_ms,
-                host_name=host_name,
-                previous_record=previous,
-            )
-            if previous is not None and normalized["identity"] != {
-                **previous["identity"],
-                "source_frame": normalized["identity"]["source_frame"],
-            }:
-                # Only the source-frame component may change across a valid
-                # history sequence.  A runtime/session change closes coverage.
-                if any(
-                    normalized["identity"].get(key) != previous["identity"].get(key)
-                    for key in ("host_name", "source_id", "run_id", "generation_id", "activation")
-                ):
-                    raise _host_telemetry_error(
-                        "identity_mismatch",
-                        "Host telemetry history changed runtime identity.",
-                        field=f"records[{index}].identity",
-                    )
-            normalized_records.append(normalized)
-            previous = normalized
-            if normalized["coverage"]["status"] == "limited":
-                failure = _host_telemetry_error(
-                    "sequence_gap",
-                    "Host telemetry history contains an uncovered sequence interval.",
-                    field=f"records[{index}].host_tick",
-                )
-                break
-        except HostTelemetryError as exc:
-            failure = exc
-            break
-
-    if failure is not None:
-        return _host_records_result(
-            status=_host_panel_status(failure.reason),
-            reason=failure.reason,
-            records=normalized_records,
-            after_sequence=after_sequence,
-            limit=limit,
-            coverage={
-                "status": "limited",
-                "reason": failure.reason,
-                "coverage_reason": coverage_reason or failure.reason,
-                "interval_covered": False,
-                "record_count": len(normalized_records),
-                "first_sequence": (
-                    normalized_records[0]["host_tick"]["sequence"]
-                    if normalized_records
-                    else None
-                ),
-                "last_sequence": (
-                    normalized_records[-1]["host_tick"]["sequence"]
-                    if normalized_records
-                    else None
-                ),
-            },
-            details=failure.details,
-        )
-
-    if not normalized_records:
-        return _host_records_result(
-            status="limited",
-            reason="coverage_gap",
-            records=[],
-            after_sequence=after_sequence,
-            limit=limit,
-            coverage={
-                "status": "limited",
-                "reason": "coverage_gap",
-                "coverage_reason": coverage_reason or "empty_interval",
-                "interval_covered": False,
-                "record_count": 0,
-            },
-        )
-
-    first_sequence = normalized_records[0]["host_tick"]["sequence"]
-    last_sequence = normalized_records[-1]["host_tick"]["sequence"]
-    if first_sequence != after_sequence + 1 and not explicit_baseline:
-        return _host_records_result(
-            status="limited",
-            reason="coverage_gap",
-            records=normalized_records,
-            after_sequence=after_sequence,
-            limit=limit,
-            coverage={
-                "status": "limited",
-                "reason": "coverage_gap",
-                "coverage_reason": coverage_reason or "missing_baseline",
-                "interval_covered": False,
-                "record_count": len(normalized_records),
-                "first_sequence": first_sequence,
-                "last_sequence": last_sequence,
-            },
-        )
-
-    interval_covered = all(
-        item["coverage"]["status"] == "contiguous" for item in normalized_records[1:]
-    )
-    if not explicit_baseline and first_sequence == 1:
-        # Sequence 1 is a valid explicit baseline.  It does not claim a
-        # covered interval before itself, but the returned interval is valid.
-        interval_covered = interval_covered and True
-    if history_evicted or complete_declared is False:
-        interval_covered = False
-    if not interval_covered:
-        reason = "coverage_gap"
-        return _host_records_result(
-            status="limited",
-            reason=reason,
-            records=normalized_records,
-            after_sequence=after_sequence,
-            limit=limit,
-            coverage={
-                "status": "limited",
-                "reason": reason,
-                "coverage_reason": coverage_reason or "incomplete",
-                "interval_covered": False,
-                "record_count": len(normalized_records),
-                "first_sequence": first_sequence,
-                "last_sequence": last_sequence,
-            },
-        )
-    return _host_records_result(
-        status="healthy",
-        reason="",
-        records=normalized_records,
-        after_sequence=after_sequence,
-        limit=limit,
-        coverage={
-            "status": "complete",
-            "reason": "",
-            "coverage_reason": coverage_reason,
-            "interval_covered": True,
-            "record_count": len(normalized_records),
-            "first_sequence": first_sequence,
-            "last_sequence": last_sequence,
-        },
-    )
 
 
 def _decision_source_frame(decision: dict[str, Any]) -> dict[str, Any]:
@@ -1018,7 +690,6 @@ def _host_telemetry_panel_from_normalized(
         "application": deepcopy(normalized.get("application")),
         "limits": deepcopy(normalized.get("limits")),
         "freshness": deepcopy(normalized.get("freshness")),
-        "coverage": deepcopy(normalized.get("coverage")),
         "record": deepcopy(normalized.get("record")),
         "details": {},
     }

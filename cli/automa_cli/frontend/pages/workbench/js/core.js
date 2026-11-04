@@ -71,9 +71,6 @@ function setText(id, value, fallback) {
 function currentFrame() {
   return state && state.current_frame ? state.current_frame : null;
 }
-function currentPayload(key) {
-  return state && state.steps ? state.steps[key] : null;
-}
 function clearRecordSelection() {
   selectedRecordId = null;
   renderedStepsKey = "";

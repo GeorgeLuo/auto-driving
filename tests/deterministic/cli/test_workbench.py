@@ -119,7 +119,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(broken_state["phase"], "failed")
             self.assertEqual(broken_state["failure_boundary"], "source")
             self.assertEqual(broken_mapper.calls, [])
-            self.assertIsNone(broken_state["steps"]["perception"])
+            self.assertIsNone(broken_state["perception"])
 
     def test_runner_fails_closed_on_mapper_and_memory_errors(self) -> None:
         with image_source(2) as root:
@@ -133,7 +133,7 @@ class WorkbenchTests(unittest.TestCase):
             state = runner.wait(5) if started["phase"] == "running" else started
             self.assertEqual(state["phase"], "failed")
             self.assertEqual(state["failure_boundary"], "perception")
-            self.assertEqual(state["steps"]["perception"]["status"], "error")
+            self.assertEqual(state["perception"]["status"], "error")
 
             memory_mapper = FixtureMapper()
             memory_runner = ImageReplayRunner(
@@ -149,10 +149,10 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertEqual(memory_state["phase"], "failed")
             self.assertEqual(memory_state["failure_boundary"], "memory")
-            self.assertIsNone(memory_state["steps"]["memory"])
-            self.assertIsNone(memory_state["steps"]["proposal"])
-            self.assertIsNone(memory_state["steps"]["plan"])
-            self.assertIsNone(memory_state["steps"]["action"])
+            self.assertIsNone(memory_state["cycle"]["memory"])
+            self.assertIsNone(memory_state["cycle"]["proposal"])
+            self.assertIsNone(memory_state["cycle"]["plan"])
+            self.assertIsNone(memory_state["cycle"]["action"])
             self.assertIn("injected memory failure", memory_state["failure"]["message"])
             self.assertEqual(len(memory_mapper.calls), 1)
             self.assertEqual(memory_state["progress"]["completed"], 0)
@@ -173,9 +173,9 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(state["progress"]["completed"], 2)
         self.assertEqual(len(perception_step.calls), 2)
         self.assertEqual(
-            state["steps"]["observation"]["metadata"]["source"], "perception_summary"
+            state["cycle"]["observation"]["metadata"]["source"], "perception_summary"
         )
-        ledger = state["steps"]["memory"]["plugins"][0]
+        ledger = state["cycle"]["memory"]["plugins"][0]
         self.assertEqual(ledger["state"]["health"], "healthy")
         self.assertGreaterEqual(ledger["state"]["record_count"], 2)
         self.assertEqual(state["summary"]["memory_evidence_publisher"], ledger["plugin_id"])
@@ -187,8 +187,8 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn("frames", state["source"])
         self.assertNotIn("timeline", state)
         self.assertNotIn("memory_effects", state)
-        self.assertEqual(state["steps"]["perception"]["status"], "ok")
-        self.assertIsNotNone(state["steps"]["observation"]["observation_id"])
+        self.assertEqual(state["perception"]["status"], "ok")
+        self.assertIsNotNone(state["cycle"]["observation"]["observation_id"])
         self.assertTrue(state["cleanup"]["source_read_only"])
         self.assertFalse(state["cleanup"]["movement_control"])
         self.assertFalse(state["machine_detail"]["side_effects"]["simulator"])
@@ -215,8 +215,8 @@ class WorkbenchTests(unittest.TestCase):
             runner.start()
             state = runner.wait(5)
 
-        action = state["steps"]["action"]
-        plan = state["steps"]["plan"]
+        action = state["cycle"]["action"]
+        plan = state["cycle"]["plan"]
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(action["frame_id"], state["current_frame"]["frame_id"])
         self.assertEqual(plan["status"], "selected")
@@ -270,7 +270,7 @@ class WorkbenchTests(unittest.TestCase):
         self.assertEqual(len(perception_step.calls), 1)
         self.assertTrue(state["current_frame"]["absent"])
         self.assertEqual(state["current_frame"]["absence_reason"], "dropout")
-        self.assertIsNone(state["steps"]["observation"])
+        self.assertIsNone(state["cycle"]["observation"])
 
     def test_public_state_keeps_frame_and_pipeline_payload_paired(self) -> None:
         with image_source(2) as root:
@@ -286,7 +286,7 @@ class WorkbenchTests(unittest.TestCase):
                 active = runner.state()
                 self.assertEqual(active["progress"]["completed"], 1)
                 self.assertEqual(
-                    active["steps"]["observation"]["observation_id"],
+                    active["cycle"]["observation"]["observation_id"],
                     active["current_frame"]["frame_id"],
                 )
             finally:

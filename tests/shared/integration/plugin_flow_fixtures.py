@@ -119,7 +119,7 @@ def replay(test, recording: Path):
 def candidate(state, plugin_id):
     return next(
         item
-        for item in state["steps"]["proposal"]["candidates"]
+        for item in state["cycle"]["proposal"]["candidates"]
         if item["plugin_id"] == plugin_id
     )
 

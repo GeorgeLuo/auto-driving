@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qs, urlencode
 
+from autonomy.decision_cycle.memory.interface import evidence_records
 from autonomy.runtime.report import HostReport, diagnostic_ceiling
 
 
@@ -78,24 +79,6 @@ def _supported_image_bbox(location: Any) -> bool:
         values.append(normalized)
     x1, y1, x2, y2 = values
     return x2 > x1 and y2 > y1
-
-
-def _publisher_records(memory: Any) -> list[dict[str, Any]] | None:
-    """The evidence publisher's records on a cycle memory report."""
-
-    if not isinstance(memory, dict):
-        return None
-    publisher = memory.get("evidence_publisher")
-    plugins = memory.get("plugins")
-    if not isinstance(publisher, str) or not publisher or not isinstance(plugins, list):
-        return None
-    for entry in plugins:
-        if not isinstance(entry, dict) or entry.get("plugin_id") != publisher:
-            continue
-        state = entry.get("state")
-        records = state.get("records") if isinstance(state, dict) else None
-        return records if isinstance(records, list) else None
-    return None
 
 
 def _evidence_projection(
@@ -456,14 +439,12 @@ class DecisionView:
             {"generation": generation, "id": transaction.transaction_id}
         )
         cycle = report["cycle"] if isinstance(report.get("cycle"), dict) else {}
-        action = cycle.get("action") if isinstance(cycle.get("action"), dict) else None
-        authority = action.get("authority") if isinstance(action, dict) else None
         observation = cycle.get("observation")
         evidence = _evidence_projection(
             transaction_id=transaction.transaction_id,
             frame_id=report["frame_id"],
             observation=observation,
-            evidence_input=_publisher_records(cycle.get("memory")),
+            evidence_input=evidence_records(cycle.get("memory")),
         )
         return {
             "schema": DECISION_VIEW_SCHEMA,
@@ -493,7 +474,6 @@ class DecisionView:
                 "url": image_url,
             },
             "evidence": evidence,
-            "authority": _json_copy(authority) if isinstance(authority, dict) else None,
             "host_telemetry": _json_copy(transaction.host_telemetry)
             if isinstance(transaction.host_telemetry, dict)
             else None,

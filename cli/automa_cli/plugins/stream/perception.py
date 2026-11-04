@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
+from autonomy.decision_cycle.timing import step_timing
 from autonomy.runtime.frame_loop import LATEST_JSON_PATH
 
 from ...hosts.publications.decision_publication import (
@@ -147,16 +148,6 @@ def _probe_perception(
     )
 
 
-def _perception_duration_ms(publication: dict[str, Any]) -> Any:
-    timing = publication.get("timing")
-    steps = timing.get("steps") if isinstance(timing, dict) else None
-    if isinstance(steps, list):
-        for item in steps:
-            if isinstance(item, dict) and item.get("step") == "perception":
-                return item.get("duration_ms")
-    return publication.get("duration_ms")
-
-
 def _probe_latest_perception(
     probe: dict[str, Any],
     publication: dict[str, Any],
@@ -166,12 +157,17 @@ def _probe_latest_perception(
     """The latest frame's perception, as every provider's live probe reports it."""
 
     frame_record = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
+    perception_step = step_timing(publication.get("timing"), "perception")
     frame = {
         "frame_id": frame_record.get("frame_id"),
         "frame_index": frame_record.get("frame_index"),
         "captured_at_ms": frame_record.get("captured_at_ms"),
         "perception_completed_at_ms": frame_record.get("completed_at_ms"),
-        "perception_duration_ms": _perception_duration_ms(publication),
+        "perception_duration_ms": (
+            perception_step.get("duration_ms")
+            if perception_step is not None
+            else publication.get("duration_ms")
+        ),
         "age_ms": age_ms,
     }
     perception = publication.get("perception")

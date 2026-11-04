@@ -3,7 +3,7 @@ import json
 import unittest
 from copy import deepcopy
 from urllib.request import urlopen
-from cli.automa_cli.shared.memory_report import evidence_records
+from autonomy.decision_cycle.memory.interface import evidence_records
 from tests.deterministic.cli.decision.live_runtime_decision_view_fixtures import LiveRuntimeDecisionViewFixture
 
 
@@ -20,9 +20,11 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self.assertEqual(payload["status"], "current")
         self.assertEqual(payload["decision"]["frame_id"], stream_frame["frame_id"])
         self.assertEqual(payload["current_image"]["frame_id"], stream_frame["frame_id"])
-        self.assertFalse(payload["authority"]["proposed_applied"])
-        self.assertIn("authorized_output", payload["authority"])
-        self.assertNotIn("host_application", payload["authority"])
+        authority = payload["decision"]["cycle"]["action"]["authority"]
+        self.assertNotIn("authority", payload)
+        self.assertFalse(authority["proposed_applied"])
+        self.assertIn("authorized_output", authority)
+        self.assertNotIn("host_application", authority)
 
         with urlopen(
             f"{self.server.url.rstrip('/')}{payload['current_image']['url']}",

@@ -20,7 +20,6 @@ from cli.automa_cli.frontend.decision_view import DecisionView
 from cli.automa_cli.plugins.inspect.replay import read_replay_source
 from cli.automa_cli.replay.frames import run_frame
 from cli.automa_cli.replay.selections import default_selection
-from cli.automa_cli.workbench.page_payloads import displayed_steps
 from tests.shared.cli.memory.frame_fixtures import write_frames
 from tests.shared.cli.workbench_fixtures import (
     ErrorMemory,
@@ -50,22 +49,16 @@ class ViewerCycleAgreementTests(unittest.TestCase):
                 replay_frame, steps={"perception": mapper}, shared_memory={},
             ).result
 
-            steps = displayed_steps(result)
-            self.assertEqual(set(steps), {"perception", *CYCLE_RECORD_KEYS})
-            self.assertNotIn("decision", steps)
-            self.assertEqual(
-                {key: steps[key] for key in CYCLE_RECORD_KEYS},
-                result.export_cycle(),
-            )
-            self.assertEqual(steps["perception"], result.perception.to_dict())
-            self.assertIsNotNone(steps["observation"])
-            self.assertIsNone(steps["proposal"])
-            self.assertIsNone(steps["plan"])
-            self.assertIsNone(steps["action"])
+            cycle = result.export_cycle()
+            self.assertEqual(set(cycle), set(CYCLE_RECORD_KEYS))
+            self.assertIsNotNone(cycle["observation"])
+            self.assertIsNone(cycle["proposal"])
+            self.assertIsNone(cycle["plan"])
+            self.assertIsNone(cycle["action"])
 
             result.observation.metadata["injected"] = "source"
-            steps["observation"]["metadata"]["injected"] = "caller"
-            retained = displayed_steps(result)
+            cycle["observation"]["metadata"]["injected"] = "caller"
+            retained = result.export_cycle()
             self.assertNotIn("injected", retained["observation"]["metadata"])
 
             absent = run_frame(
@@ -76,12 +69,14 @@ class ViewerCycleAgreementTests(unittest.TestCase):
                 steps={"perception": mapper},
                 shared_memory={},
             ).result
-            absent_steps = displayed_steps(absent)
-            self.assertIsNone(absent_steps["perception"])
+            absent_cycle = absent.export_cycle()
             self.assertIsNone(absent.perception)
-            self.assertIsNotNone(absent_steps["observation"])
-            self.assertEqual(absent_steps["observation"]["observation_id"], absent.observation.observation_id)
-            self.assertIsNone(absent_steps["action"])
+            self.assertIsNotNone(absent_cycle["observation"])
+            self.assertEqual(
+                absent_cycle["observation"]["observation_id"],
+                absent.observation.observation_id,
+            )
+            self.assertIsNone(absent_cycle["action"])
 
     def test_live_payload_uses_the_report_cycle_without_synthesized_perception(self) -> None:
         with image_source(1) as root:
@@ -143,18 +138,21 @@ class ViewerCycleAgreementTests(unittest.TestCase):
                 payload["freshness"]["captured_at_ms"],
                 payload["freshness"]["published_at_ms"],
             )
-            self.assertEqual(payload["authority"], cycle["action"]["authority"])
+            self.assertNotIn("authority", payload)
             self.assertFalse(payload["decision"]["application"]["applied"])
-            self.assertEqual(payload["authority"]["authorized_output"]["steering"], 0.25)
+            self.assertEqual(cycle["action"]["authority"]["authorized_output"]["steering"], 0.25)
             self.assertEqual(payload["host_telemetry"]["reason"], "publisher_missing")
 
             payload["decision"]["cycle"]["observation"]["metadata"]["labels"].append("caller")
-            payload["authority"]["authorized_output"]["steering"] = 1
+            payload["decision"]["cycle"]["action"]["authority"]["authorized_output"]["steering"] = 1
             again = view.latest_payload(
                 generation=view.generation_id, now_ms=published_at_ms + 10,
             )
             self.assertEqual(again["decision"]["cycle"]["observation"]["metadata"]["labels"], ["first"])
-            self.assertEqual(again["authority"]["authorized_output"]["steering"], 0.25)
+            self.assertEqual(
+                again["decision"]["cycle"]["action"]["authority"]["authorized_output"]["steering"],
+                0.25,
+            )
 
     def test_workbench_timing_follows_the_displayed_frame_and_clears(self) -> None:
         with image_source(4) as root:
@@ -167,17 +165,17 @@ class ViewerCycleAgreementTests(unittest.TestCase):
                 paused = runner.dispatch("pause", run_id=run_id)
                 later = runner.dispatch("seek", run_id=run_id, position=2)
                 self.assertEqual(
-                    later["steps"]["action"]["frame_id"], later["current_frame"]["frame_id"],
+                    later["cycle"]["action"]["frame_id"], later["current_frame"]["frame_id"],
                 )
                 self.assertEqual(later["timing"], runner.state()["timing"])
                 restored = runner.dispatch("seek", run_id=run_id, position=0)
                 self.assertEqual(restored["timing"], paused["timing"])
-                self.assertEqual(restored["steps"]["action"]["frame_id"], paused["current_frame"]["frame_id"])
+                self.assertEqual(restored["cycle"]["action"]["frame_id"], paused["current_frame"]["frame_id"])
                 returned = runner.dispatch("seek", run_id=run_id, position=2)
                 self.assertEqual(returned["timing"], later["timing"])
                 cleared = runner.dispatch("reset", run_id=run_id)
                 self.assertIsNone(cleared["timing"])
-                self.assertIsNone(cleared["steps"]["action"])
+                self.assertIsNone(cleared["cycle"]["action"])
             finally:
                 runner.close()
 
@@ -191,8 +189,8 @@ class ViewerCycleAgreementTests(unittest.TestCase):
             state = failed.wait(5) if started["phase"] == "running" else started
             self.assertEqual(state["phase"], "failed")
             self.assertIsNone(state["timing"])
-            self.assertIsNone(state["steps"]["perception"])
-            self.assertIsNone(state["steps"]["action"])
+            self.assertIsNone(state["perception"])
+            self.assertIsNone(state["cycle"]["action"])
 
     def test_returned_workbench_state_does_not_own_the_retained_cycle(self) -> None:
         with image_source(1) as root:
@@ -201,16 +199,16 @@ class ViewerCycleAgreementTests(unittest.TestCase):
             )
             runner.start()
             state = runner.wait(5)
-            applied = state["steps"]["action"]["authority"]["proposed_applied"]
-            state["steps"]["memory"]["plugins"][0]["state"]["record_count"] = 999
-            state["steps"]["action"]["authority"]["proposed_applied"] = not applied
-            state["steps"]["observation"]["metadata"]["injected"] = True
+            applied = state["cycle"]["action"]["authority"]["proposed_applied"]
+            state["cycle"]["memory"]["plugins"][0]["state"]["record_count"] = 999
+            state["cycle"]["action"]["authority"]["proposed_applied"] = not applied
+            state["cycle"]["observation"]["metadata"]["injected"] = True
             retained = runner.state()
             self.assertNotEqual(
-                retained["steps"]["memory"]["plugins"][0]["state"]["record_count"], 999,
+                retained["cycle"]["memory"]["plugins"][0]["state"]["record_count"], 999,
             )
-            self.assertEqual(retained["steps"]["action"]["authority"]["proposed_applied"], applied)
-            self.assertNotIn("injected", retained["steps"]["observation"]["metadata"])
+            self.assertEqual(retained["cycle"]["action"]["authority"]["proposed_applied"], applied)
+            self.assertNotIn("injected", retained["cycle"]["observation"]["metadata"])
 
 
 if __name__ == "__main__":

@@ -110,7 +110,7 @@ function drawOverlay() {
   canvas.height = image.naturalHeight;
   var context = canvas.getContext("2d");
   context.clearRect(0, 0, canvas.width, canvas.height);
-  var observation = currentPayload("observation");
+  var observation = state && state.cycle ? state.cycle.observation : null;
   var things = observation && Array.isArray(observation.things) ? observation.things : [];
   var labels = [];
   context.strokeStyle = "rgba(57, 255, 20, .95)";

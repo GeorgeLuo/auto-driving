@@ -40,9 +40,11 @@ class PerceptionCommandTests(unittest.TestCase):
             frame_path = Path(tmp) / "current-frame.png"
             Image.new("RGB", (16, 12), (20, 40, 60)).save(frame_path)
             frame_record = {
-                "frame_id": "frame_000002",
-                "frame_index": 2,
-                "captured_at_ms": 1000,
+                "frame": {
+                    "frame_id": "frame_000002",
+                    "frame_index": 2,
+                    "captured_at_ms": 1000,
+                },
                 "perception": {"things": [], "signals": []},
                 "sensor_frame": {
                     "readings": {

@@ -152,7 +152,7 @@ class RecordedPluginFlows(unittest.TestCase):
                 # Seeking back must survive state polling and a live availability change.
                 earlier = post_action(base, {"action": "seek", "run_id": run_id, "position": 0})["state"]
                 self.assertEqual(earlier["active_perception_plugin_ids"], ["prototype-perception"])
-                self.assertIsNone(earlier["steps"]["perception"])
+                self.assertIsNone(earlier["perception"])
                 write_plugin(root / "unselected.py", "perception", "unselected", 3)
                 upload(base, root / "unselected.py", "perception", "unselected")
                 for _ in range(3):
@@ -160,7 +160,7 @@ class RecordedPluginFlows(unittest.TestCase):
                     for step in PRESET_STEPS:
                         self.assertEqual(polled[f"active_{step}_plugin_ids"], earlier[f"active_{step}_plugin_ids"])
                     self.assertEqual(polled["machine_detail"]["pipeline"], earlier["machine_detail"]["pipeline"])
-                    self.assertEqual(polled["steps"], earlier["steps"])
+                    self.assertEqual((polled["cycle"], polled["perception"]), (earlier["cycle"], earlier["perception"]))
                     self.assertEqual(polled["current_frame"], earlier["current_frame"])
                     catalog = polled["perception_plugin_catalog"]["plugins"]
                     self.assertIn("unselected", [item["id"] for item in catalog])

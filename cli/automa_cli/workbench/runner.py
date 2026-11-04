@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
+from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.plugins import LocalPluginCatalog
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
@@ -57,11 +58,7 @@ from .plugins import (
     PluginCatalogError,
     packaged_plugin_catalog,
 )
-from .page_payloads import (
-    displayed_steps,
-    empty_steps,
-    frame_summary,
-)
+from .page_payloads import frame_summary
 
 
 def _safe_status(value: Any) -> str:
@@ -848,7 +845,10 @@ class ImageReplayRunner:
         cached: dict[str, Any],
     ) -> None:
         self._state["current_frame"] = frame.to_dict()
-        self._set_steps_locked(copy.deepcopy(cached["steps"]))
+        self._set_displayed_locked(
+            copy.deepcopy(cached["cycle"]),
+            copy.deepcopy(cached["perception"]),
+        )
         # Execution selections stay live while cached results show their own pipeline.
         if "pipeline" in cached:
             self._state["machine_detail"]["pipeline"] = copy.deepcopy(cached["pipeline"])
@@ -1005,9 +1005,8 @@ class ImageReplayRunner:
                         }
                 outcome = run_frame(frame, steps=steps, shared_memory=self._shared_memory)
                 result = outcome.result
-                presented_steps = displayed_steps(result)
                 with self._condition:
-                    self._publish_frame_locked(frame, outcome, presented_steps)
+                    self._publish_frame_locked(frame, outcome)
                     if result.perception is not None and _safe_status(
                         result.perception.status
                     ) in {
@@ -1026,7 +1025,9 @@ class ImageReplayRunner:
             except Exception as exc:  # noqa: BLE001 - per-frame isolation boundary
                 with self._condition:
                     self._state["current_frame"] = frame.to_dict()
-                    self._set_steps_locked(empty_steps())
+                    self._set_displayed_locked(
+                        {key: None for key in CYCLE_RECORD_KEYS}, None,
+                    )
                     self._state["timing"] = None
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "pipeline"),
@@ -1036,14 +1037,14 @@ class ImageReplayRunner:
                     self._condition.notify_all()
                 return False
 
-    def _publish_frame_locked(
-        self, frame: ReplayFrame, outcome: FrameOutcome, steps: dict[str, Any],
-    ) -> None:
+    def _publish_frame_locked(self, frame: ReplayFrame, outcome: FrameOutcome) -> None:
         """Publish a processed frame and cache its presentation under the condition lock."""
 
         result = outcome.result
+        perception = result.perception.to_dict() if result.perception is not None else None
+        cycle = result.export_cycle()
         self._state["current_frame"] = frame.to_dict()
-        self._set_steps_locked(steps)
+        self._set_displayed_locked(cycle, perception)
         self._state["progress"]["completed"] = frame.position + 1
         self._state["progress"]["percent"] = (
             round(
@@ -1056,7 +1057,7 @@ class ImageReplayRunner:
         self._state["summary"] = frame_summary(
             perception=result.perception,
             observation=result.observation,
-            memory=steps["memory"],
+            memory=cycle["memory"],
             duration_ms=result.duration_ms,
             frames_completed=self._state["progress"]["completed"],
             frames_total=self._state["progress"].get("total", 0),
@@ -1065,7 +1066,8 @@ class ImageReplayRunner:
         pipeline.update(self._step_reports())
         self._state["timing"] = copy.deepcopy(result.timing)
         self._history[frame.frame_id] = {
-            "steps": copy.deepcopy(steps),
+            "cycle": copy.deepcopy(cycle),
+            "perception": copy.deepcopy(perception),
             "pipeline": copy.deepcopy(pipeline),
             "summary": copy.deepcopy(self._state["summary"]),
             "timing": copy.deepcopy(result.timing),
@@ -1194,7 +1196,8 @@ class ImageReplayRunner:
             "progress": {"completed": 0, "total": 0, "percent": 0.0},
             "summary": frame_summary(frames_completed=0, frames_total=0),
             "machine_detail": self._machine_detail(),
-            "steps": empty_steps(),
+            "cycle": {key: None for key in CYCLE_RECORD_KEYS},
+            "perception": None,
             "steps_revision": 0,
             "timing": None,
             "failure": None,
@@ -1245,10 +1248,11 @@ class ImageReplayRunner:
             "last_transition": None,
         }
 
-    def _set_steps_locked(self, steps: dict[str, Any]) -> None:
-        """Replace the displayed frame's step payloads; the revision tells the page they changed."""
+    def _set_displayed_locked(self, cycle: dict[str, Any], perception: Any) -> None:
+        """Replace the displayed cycle and perception; the revision tells the page they changed."""
 
-        self._state["steps"] = steps
+        self._state["cycle"] = cycle
+        self._state["perception"] = perception
         self._state["steps_revision"] = int(self._state.get("steps_revision", 0)) + 1
 
     def _record_action_locked(self, action: str, **fields: Any) -> None:

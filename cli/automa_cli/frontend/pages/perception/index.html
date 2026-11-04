@@ -626,15 +626,15 @@
       appendMetric(metrics, "Result age", formatAge(latest.overlay?.result_age_ms));
       const steps = latest.timing?.steps;
       const perceptionTiming = Array.isArray(steps) ? steps.find((step) => step?.step === "perception") : null;
-      appendMetric(metrics, "Cycle", formatMs(latest.timing?.duration_ms ?? latest.duration_ms));
+      appendMetric(metrics, "Cycle", formatMs(latest.timing?.duration_ms));
       appendMetric(metrics, "Perception", formatMs(perceptionTiming?.duration_ms));
       appendMetric(metrics, "Confidence", confidenceText(latest.perception?.confidence));
       appendMetric(metrics, "Status", latest.perception?.status || "unknown");
-      appendMetric(metrics, "Memory keys", memoryKeysText(latest.memory));
+      appendMetric(metrics, "Memory keys", memoryKeysText(latest.cycle?.memory));
       appendMetric(
         metrics,
         "Evidence publisher",
-        latest.memory ? latest.memory.evidence_publisher || "none" : "—"
+        latest.cycle?.memory ? latest.cycle.memory.evidence_publisher || "none" : "—"
       );
 
       const runs = document.getElementById("pluginRuns");

@@ -36,7 +36,6 @@ const ctx = {
   elements,
   notice: "",
   state: { phase: "paused", active_memory_plugin_ids: [] },
-  currentPayload(key) { return ctx.state.steps ? ctx.state.steps[key] : null; },
   text(value, fallback) {
     if (value === null || value === undefined || value === "") return fallback || "—";
     return String(value);
@@ -98,7 +97,7 @@ function recordIds() {
 ctx.state = {
   phase: "paused",
   active_memory_plugin_ids: ["bounded_evidence", "recording_test"],
-  steps: { memory: twoPluginReport("bounded_evidence") }
+  cycle: { memory: twoPluginReport("bounded_evidence") }
 };
 ctx.renderMemory();
 assert.deepEqual(pluginRows(), [
@@ -126,16 +125,16 @@ assert.deepEqual(recordIds(), ["rec-1"]);
 assert.equal(ctx.document.activeElement.getAttribute("data-plugin-id"), "recording_test");
 
 // The pick holds on the next frame while the report lists that plugin.
-ctx.state.steps = { memory: twoPluginReport("bounded_evidence") };
-ctx.state.steps.memory.plugins[1].state.record_count = 2;
-ctx.state.steps.memory.plugins[1].state.records.push(record("rec-2"));
+ctx.state.cycle = { memory: twoPluginReport("bounded_evidence") };
+ctx.state.cycle.memory.plugins[1].state.record_count = 2;
+ctx.state.cycle.memory.plugins[1].state.records.push(record("rec-2"));
 ctx.renderMemory();
 assert.deepEqual(recordIds(), ["rec-1", "rec-2"]);
 assert.equal(ctx.document.activeElement.getAttribute("data-plugin-id"), "recording_test");
 assert(elements.memoryPlugins.children.includes(ctx.document.activeElement));
 
 // With no publisher and no listed pick, no plugin is shown by position.
-ctx.state.steps = { memory: {
+ctx.state.cycle = { memory: {
   schema: "memory_report",
   plugins: [
     { plugin_id: "alpha", state: { record_count: 0, records: [] } },

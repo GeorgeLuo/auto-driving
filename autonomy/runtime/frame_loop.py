@@ -644,8 +644,6 @@ class FrameLoop:
                 "duration_ms": None,
                 "timing": None,
                 "perception": None,
-                "observation": None,
-                "memory": None,
                 "cycle": {key: None for key in CYCLE_RECORD_KEYS},
                 "latest_json_path": LATEST_JSON_PATH,
                 "latest_frame_path": LATEST_FRAME_PATH,
@@ -663,10 +661,7 @@ class FrameLoop:
 
         cycle = latest.cycle or {}
         perception = cycle.get("perception")
-        observation = cycle.get("observation")
         timing = cycle.get("timing")
-        # Republish the memory report through the cycle publication.
-        memory = cycle.get("memory")
         context = latest.context or cycle.get("context") or {}
         selections = (context.get("metadata") or {}).get("step_activations")
         if isinstance(selections, dict) and all(step in selections for step in DECISION_STEPS):
@@ -704,8 +699,6 @@ class FrameLoop:
             "duration_ms": latest.duration_ms,
             "timing": timing,
             "perception": perception,
-            "observation": observation,
-            "memory": memory,
             "cycle": {key: cycle.get(key) for key in CYCLE_RECORD_KEYS},
             "latest_json_path": LATEST_JSON_PATH,
             "latest_frame_path": LATEST_FRAME_PATH,

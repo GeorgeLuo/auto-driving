@@ -26,7 +26,7 @@ function render(nextState, options) {
       remember(SOURCE_DIR_KEY, sourcePath);
     }
   }
-  var perception = currentPayload("perception");
+  var perception = state ? state.perception : null;
   var displayedFrame = currentFrame();
   setText("perceptionStatus", displayedFrame && displayedFrame.absent
     ? "absent" : perception && perception.status);

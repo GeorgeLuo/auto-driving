@@ -98,7 +98,7 @@ def serve():
 
 
 def runs(current: dict) -> list[str]:
-    perception = current["steps"]["perception"] or {}
+    perception = current["perception"] or {}
     return [run["plugin_id"] for run in perception.get("plugin_runs") or []]
 
 
@@ -136,7 +136,7 @@ def check_parity() -> list[str]:
                     problems.append(f"{label}: seek landed at {shown['position'] - 1}")
                 record = want["record"]
                 if record is None:
-                    if shown["steps"]["perception"] is not None:
+                    if shown["perception"] is not None:
                         problems.append(f"{label}: absent frame has a perception record")
                     continue
                 if entry.get("perception_status") != record["status"]:
@@ -145,7 +145,7 @@ def check_parity() -> list[str]:
                     )
                 got_runs = [
                     {key: run.get(key) for key in RUN_KEYS}
-                    for run in (shown["steps"]["perception"] or {}).get("plugin_runs") or []
+                    for run in (shown["perception"] or {}).get("plugin_runs") or []
                 ]
                 want_runs = [{key: run.get(key) for key in RUN_KEYS} for run in record["plugin_runs"]]
                 if got_runs != want_runs:
@@ -256,7 +256,7 @@ def check_memory_selector() -> list[str]:
                 problems.append(f"{label}: timeline holds {len(selected['timeline'])} of {position} frames")
             shown = [
                 entry["plugin_id"]
-                for entry in (selected["steps"]["memory"] or {}).get("plugins", [])
+                for entry in (selected["cycle"]["memory"] or {}).get("plugins", [])
             ]
             if shown != expected:
                 problems.append(f"{label}: memory step shows {shown}, expected {expected}")

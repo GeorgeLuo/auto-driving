@@ -3,7 +3,7 @@
 "use strict";
 
 function renderPerception() {
-  var perception = currentPayload("perception");
+  var perception = state ? state.perception : null;
   if (!perception) {
     var frame = currentFrame();
     var absent = frame && frame.absent;

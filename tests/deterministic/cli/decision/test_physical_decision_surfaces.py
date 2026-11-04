@@ -158,7 +158,10 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
 
         self.assertEqual(payload["identity"]["source_id"], "donkeycar:piracer")
         self.assertEqual(payload["current_image"]["frame_id"], "frame_001")
-        self.assertEqual(payload["authority"]["proposed_applied"], False)
+        self.assertNotIn("authority", payload)
+        self.assertEqual(
+            payload["decision"]["cycle"]["action"]["authority"]["proposed_applied"], False,
+        )
         with urlopen(
             f"{server.url.rstrip('/')}{payload['current_image']['url']}",
             timeout=1.0,

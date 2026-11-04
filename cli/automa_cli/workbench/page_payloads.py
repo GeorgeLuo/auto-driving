@@ -14,29 +14,6 @@ from autonomy.decision_cycle.perception.interface import PerceptionText
 from ..shared.memory_report import evidence_publisher, plugin_summaries
 
 
-def empty_steps() -> dict[str, Any]:
-    """The per-step payloads of the displayed frame, before any frame ran."""
-
-    return {
-        "perception": None,
-        "observation": None,
-        "memory": None,
-        "proposal": None,
-        "plan": None,
-        "action": None,
-    }
-
-
-def displayed_steps(result: Any) -> dict[str, Any]:
-    """Perception plus the exported cycle body, detached from runner outputs."""
-
-    perception = getattr(result, "perception", None)
-    return {
-        "perception": perception.to_dict() if perception is not None else None,
-        **result.export_cycle(),
-    }
-
-
 def frame_summary(
     *,
     perception: PerceptionText | None = None,

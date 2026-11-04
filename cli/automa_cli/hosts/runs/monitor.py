@@ -16,6 +16,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from autonomy.decision_cycle.timing import step_timing
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.recording import write_recorded_frame
 from autonomy.vehicle.vehicle import FRONT_CAMERA_SENSOR_ID
@@ -97,37 +98,6 @@ def _copy_latest_decision(
         stop.wait(pause_s(started, DECISION_COPY_INTERVAL_S))
 
 
-def _shown_frame(publication: dict[str, Any]) -> dict[str, Any]:
-    """Frame identity and durations the status line reads from one publication."""
-
-    frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
-    timing = publication.get("timing") if isinstance(publication.get("timing"), dict) else None
-    duration_ms = (
-        timing.get("duration_ms")
-        if isinstance(timing, dict) and timing.get("duration_ms") is not None
-        else publication.get("duration_ms")
-    )
-    perception_ms = duration_ms
-    steps = timing.get("steps") if isinstance(timing, dict) else None
-    if isinstance(steps, list):
-        for item in steps:
-            if isinstance(item, dict) and item.get("step") == "perception":
-                perception_ms = item.get("duration_ms")
-                break
-    perception = publication.get("perception")
-    return {
-        "frame_id": frame.get("frame_id"),
-        "frame_index": frame.get("frame_index"),
-        "captured_at_ms": frame.get("captured_at_ms"),
-        "perception_completed_at_ms": frame.get("completed_at_ms"),
-        "perception_duration_ms": perception_ms,
-        "cycle_duration_ms": duration_ms,
-        "generation_id": publication.get("generation_id"),
-        "perception": perception if isinstance(perception, dict) else {},
-        "control": publication.get("control"),
-    }
-
-
 def _copy_latest_perception(
     base_url: str, server: RuntimeViewServer, stop: threading.Event,
     copied: dict[str, Any], *, frames_dir: Path, json_path: Path, text_path: Path,
@@ -143,14 +113,14 @@ def _copy_latest_perception(
                 publication, jpeg = fetch_observation_sample(base_url, timeout_s=timeout_s, cache=cache)
                 if stop.is_set():
                     break
-                shown = _shown_frame(publication)
-                capture = (shown["frame_id"], shown["captured_at_ms"],
-                           shown["perception_completed_at_ms"], shown["generation_id"])
+                frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
+                capture = (frame.get("frame_id"), frame.get("captured_at_ms"),
+                           frame.get("completed_at_ms"), publication.get("generation_id"))
                 if jpeg is None:
                     server.perception.invalidate_latest()
                     last_capture = None
                     copied["error"] = publication.get("error") or publication.get("health")
-                elif capture != last_capture and shown["frame_id"]:
+                elif capture != last_capture and frame.get("frame_id"):
                     recorded = {**publication, **identity}
                     frame_path = frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
                     frame_path.write_bytes(jpeg)
@@ -158,7 +128,7 @@ def _copy_latest_perception(
                     write_json_atomically(json_path, recorded)
                     text_path.write_text(perception_text_from_publication(publication) + "\n", encoding="utf-8")
                     last_capture = capture
-                    copied["frame"] = shown
+                    copied["publication"] = publication
                     copied["error"] = None
             except Exception as exc:
                 server.perception.invalidate_latest()
@@ -195,7 +165,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
     recording_id = None
     copier = None
     perception_copier = None
-    perception_copy: dict[str, Any] = {"frame": None, "error": None, "ready": threading.Event()}
+    perception_copy: dict[str, Any] = {"publication": None, "error": None, "ready": threading.Event()}
     stop_copy = threading.Event()
     copied: dict[str, tuple[bool, str] | None] = {"result": None}
     state = new_run_state(
@@ -283,7 +253,12 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
             if run_dir is not None and session["status"] != "running":
                 break
             # Both view copiers run independently of this status/export pass.
-            frame = perception_copy["frame"]
+            publication = perception_copy["publication"]
+            frame = (
+                publication.get("frame")
+                if isinstance(publication, dict) and isinstance(publication.get("frame"), dict)
+                else None
+            )
             frame_id = frame.get("frame_id") if frame else None
             capture = (frame_id, frame.get("captured_at_ms")) if frame else None
             if frame_id and capture != last_capture:
@@ -292,9 +267,11 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                     state["decision"]["latest_frame_publish_skips"] += 1
                     state["decision"]["latest_frame_publish_skip_reason"] = result[1]
                 captured_at_ms = frame.get("captured_at_ms")
-                found = frame["perception"] or {}
+                found = publication.get("perception") if isinstance(publication.get("perception"), dict) else {}
                 signals, things = len(found.get("signals") or []), len(found.get("things") or [])
-                completed_at_ms = frame.get("perception_completed_at_ms")
+                completed_at_ms = frame.get("completed_at_ms")
+                timing = publication.get("timing") if isinstance(publication.get("timing"), dict) else None
+                perception_step = step_timing(timing, "perception")
                 state["last_capture"] = {
                     "frame_id": frame_id,
                     "frame_index": frame.get("frame_index"),
@@ -306,23 +283,30 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                     "frame_index": frame.get("frame_index"),
                     "captured_at_ms": captured_at_ms,
                     "perception_completed_at_ms": completed_at_ms,
-                    "perception_duration_ms": frame.get("perception_duration_ms"),
+                    "perception_duration_ms": (
+                        perception_step.get("duration_ms")
+                        if perception_step is not None
+                        else publication.get("duration_ms")
+                    ),
                     "capture_to_perception_ms": (
                         completed_at_ms - captured_at_ms
                         if isinstance(completed_at_ms, int) and isinstance(captured_at_ms, int)
                         else None
                     ),
-                    "cycle_duration_ms": frame.get("cycle_duration_ms"),
+                    "cycle_duration_ms": (
+                        timing.get("duration_ms") if timing is not None else publication.get("duration_ms")
+                    ),
                     "perception_json": display_path(latest_json_path),
                     "perception_text": display_path(latest_text_path),
                     "things": things,
                     "signals": signals,
-                    "control": frame.get("control"),
-                    "generation_id": frame.get("generation_id"),
+                    "control": publication.get("control"),
+                    "generation_id": publication.get("generation_id"),
                 }
                 last_capture = capture
                 frames_seen += 1
-                action = (frame.get("control") or {}).get("reason")
+                control = publication.get("control") if isinstance(publication.get("control"), dict) else {}
+                action = control.get("reason")
                 if emit is not None:
                     emit(RunEvent("frame", dict(frame_id=frame_id, signals=signals,
                                                things=things, action=action, count=frames_seen)))

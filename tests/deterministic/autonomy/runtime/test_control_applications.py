@@ -79,7 +79,21 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             for item in batch["frames"]:
                 frame = item["frame"]
                 saved = recording.root / "perception" / frame["frame_id"] / "perception.json"
-                self.assertNotIn(CONTROL_APPLICATION_CHANGE_FIELD, saved.read_text())
+                saved_text = saved.read_text()
+                self.assertNotIn(CONTROL_APPLICATION_CHANGE_FIELD, saved_text)
+                recorded_frame = json.loads(saved_text)
+                self.assertNotIn("decision_cycle", recorded_frame)
+                for key in (
+                    "perception",
+                    "observation",
+                    "memory",
+                    "proposal",
+                    "plan",
+                    "action",
+                    "control",
+                    "context",
+                ):
+                    self.assertIn(key, recorded_frame)
                 write_recorded_frame(exported, frame, base64.b64decode(item["image_base64"]),
                                      item["image_extension"], {})
             self.assertEqual(json.loads((exported / RECORDING_MANIFEST_NAME).read_text()), manifest)

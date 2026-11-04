@@ -25,6 +25,8 @@ from autonomy.decision_cycle.proposal.values import ActionProposal, ProposedVehi
 from autonomy.serialization import (
     deep_freeze,
     frozen_mapping_to_dict,
+    require_canonical_export,
+    require_exact_keys,
 )
 from autonomy.decision_cycle.action_identifiers import (
     plan_id_for,
@@ -33,6 +35,24 @@ from autonomy.decision_cycle.action_identifiers import (
 )
 
 ACTION_PLAN_SCHEMA = "action_plan"
+PLAN_EXACT_KEYS = frozenset(
+    {
+        "schema",
+        "plan_id",
+        "frame_id",
+        "timestamp_ms",
+        "status",
+        "command",
+        "reason",
+        "confidence",
+        "selected_proposal_id",
+        "contributions",
+        "candidates",
+        "selector_id",
+        "metadata",
+    }
+)
+CONTRIBUTION_EXACT_KEYS = frozenset({"proposal_id", "plugin_id", "weight", "role"})
 
 
 @dataclass(frozen=True)
@@ -188,6 +208,68 @@ class ActionPlan:
             "selector_id": self.selector_id,
             "metadata": frozen_mapping_to_dict(self.metadata),
         }
+
+    @classmethod
+    def decode(cls, payload: object, *, field: str = "cycle.plan") -> "ActionPlan":
+        """The plan, when ``payload`` is exactly its export."""
+
+        if not isinstance(payload, dict):
+            raise ValueError(f"{field} must be an ActionPlan object.")
+        if payload.get("schema") != ACTION_PLAN_SCHEMA:
+            raise ValueError(f"{field}.schema must be {ACTION_PLAN_SCHEMA!r}.")
+        require_exact_keys(payload, PLAN_EXACT_KEYS, field=field)
+        candidates_raw = payload.get("candidates")
+        if not isinstance(candidates_raw, list):
+            raise ValueError(f"{field}.candidates must be a list.")
+        candidates = tuple(
+            ActionProposal.decode(item, field=f"{field}.candidates[{index}]")
+            for index, item in enumerate(candidates_raw)
+        )
+        contributions_raw = payload.get("contributions")
+        if not isinstance(contributions_raw, list):
+            raise ValueError(f"{field}.contributions must be a list.")
+        contributions: list[PlanContribution] = []
+        for index, item in enumerate(contributions_raw):
+            if not isinstance(item, dict):
+                raise ValueError(f"{field}.contributions[{index}] must be an object.")
+            require_exact_keys(
+                item,
+                CONTRIBUTION_EXACT_KEYS,
+                field=f"{field}.contributions[{index}]",
+            )
+            contributions.append(
+                PlanContribution(
+                    proposal_id=str(item["proposal_id"]),
+                    plugin_id=str(item["plugin_id"]),
+                    weight=float(item["weight"]),
+                    role=str(item["role"]),
+                )
+            )
+        command = (
+            None
+            if payload["command"] is None
+            else ProposedVehicleCommand.decode(payload["command"], field=f"{field}.command")
+        )
+        try:
+            plan = cls(
+                frame_id=str(payload["frame_id"]),
+                timestamp_ms=payload["timestamp_ms"],
+                status=str(payload["status"]),
+                candidates=candidates,
+                selected_proposal_id=payload.get("selected_proposal_id"),
+                contributions=tuple(contributions),
+                command=command,
+                reason=payload["reason"],
+                confidence=payload["confidence"],
+                selector_id=str(payload["selector_id"]),
+                metadata=dict(payload.get("metadata") or {}),
+                plan_id=str(payload.get("plan_id") or ""),
+                schema=str(payload.get("schema") or ACTION_PLAN_SCHEMA),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field} failed ActionPlan construction: {exc}") from exc
+        require_canonical_export(payload, plan.to_dict(), field=field)
+        return plan
 
 
 def _finite_weight(value: Any) -> float:

@@ -21,7 +21,9 @@ host-owned map every step's plugins share.
 from __future__ import annotations
 
 import time
-from dataclasses import asdict, dataclass, is_dataclass
+from copy import deepcopy
+from dataclasses import asdict, dataclass, field, is_dataclass
+from threading import Lock
 from typing import Any, Callable
 
 from autonomy.decision_cycle.action.result import ActionResult
@@ -92,6 +94,8 @@ class DecisionCycleResult:
     application: ControlApplication | None = None
     timing: dict[str, Any] | None = None
     schema: str = DECISION_CYCLE_RESULT_SCHEMA
+    _cycle_export: dict[str, Any] | None = field(default=None, init=False, repr=False, compare=False)
+    _export_lock: Any = field(default_factory=Lock, init=False, repr=False, compare=False)
 
     @property
     def duration_ms(self) -> float | int:
@@ -107,7 +111,22 @@ class DecisionCycleResult:
             "application": self.application.to_dict() if self.application is not None else None,
         }
 
+    def export_cycle(self) -> dict[str, Any]:
+        """Copy the retained cycle body, serializing its records only on first use.
+
+        The retained body owns its nested values. Each caller gets a copy so
+        changing a publication cannot alter later recordings or status reads.
+        Replacing a result starts a new export, including when its records change.
+        """
+
+        with self._export_lock:
+            if self._cycle_export is None:
+                object.__setattr__(self, "_cycle_export", deepcopy(export_cycle_body(self)))
+            cycle = self._cycle_export
+        return deepcopy(cycle)
+
     def to_dict(self) -> dict[str, Any]:
+        cycle = self.export_cycle()
         return {
             "schema": self.schema,
             "started_at_ms": self.started_at_ms,
@@ -115,11 +134,11 @@ class DecisionCycleResult:
             "duration_ms": self.duration_ms,
             "context": self.context.to_dict(),
             "perception": _record(self.perception),
-            "observation": _record(self.observation),
-            "memory": _to_plain_data(self.memory),
-            "proposal": _record(self.proposal),
-            "plan": _record(self.plan),
-            "action": _record(self.action),
+            "observation": cycle["observation"],
+            "memory": cycle["memory"],
+            "proposal": cycle["proposal"],
+            "plan": cycle["plan"],
+            "action": cycle["action"],
             "control": self.control.to_dict(),
             "application": self.application.to_dict() if self.application is not None else None,
             "timing": _to_plain_data(self.timing),
@@ -227,6 +246,19 @@ def _checked(step: str, record: Any, record_type: type) -> Any:
     if record is not None and not isinstance(record, record_type):
         raise TypeError(f"{step} step must return {record_type.__name__} or None")
     return record
+
+
+def export_cycle_body(result: Any) -> dict[str, Any]:
+    """The five cycle records on any completed result, each detached.
+
+    Reports and recordings share this body. Each keeps its own identity,
+    timing, perception, and delivery fields beside it.
+    """
+
+    return {
+        key: _to_plain_data(getattr(result, key, None))
+        for key in ("observation", "memory", "proposal", "plan", "action")
+    }
 
 
 def _record(value: Any) -> Any:

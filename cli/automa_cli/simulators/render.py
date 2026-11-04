@@ -1,7 +1,31 @@
 """Format supplied simulator results without performing operations."""
-from ..providers.metadata import CHASE_SIM
+from __future__ import annotations
+
+from typing import Any
+
+from ..providers.metadata import CHASE_SIM, PROVIDERS
 from ..providers.urls import chase_operator_url
+from ..shared.text import indented
 from .models import SimulatorResult
+
+
+def simulator_lines(vehicle: dict[str, Any]) -> list[str]:
+    """The heading, frontend, error, and pid lines a simulator block prints.
+
+    ``vehicles status`` uses these for a simulator. Lines that only one command
+    knows stay with that command.
+    """
+
+    heading = f"{PROVIDERS[vehicle['provider']].heading}  {vehicle['state']} at {vehicle['url']}"
+    lines = [heading]
+    if vehicle.get("frontend") == "connected" and vehicle.get("game"):
+        lines.append(f"  frontend connected, game {vehicle['game']}")
+    elif vehicle.get("frontend"):
+        lines.append(f"  frontend {vehicle['frontend']}")
+    lines += indented(vehicle.get("error"))
+    if vehicle.get("pid"):
+        lines.append(f"  created by simulators create, pid {vehicle['pid']}")
+    return lines
 
 
 def render_simulator_result(result: SimulatorResult) -> str:

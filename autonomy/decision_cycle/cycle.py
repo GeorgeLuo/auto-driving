@@ -107,7 +107,13 @@ class DecisionCycleResult:
             "application": self.application.to_dict() if self.application is not None else None,
         }
 
+    def export_cycle(self) -> dict[str, Any]:
+        """Observation, memory, proposal, plan, and action, serialized once."""
+
+        return export_cycle_body(self)
+
     def to_dict(self) -> dict[str, Any]:
+        cycle = self.export_cycle()
         return {
             "schema": self.schema,
             "started_at_ms": self.started_at_ms,
@@ -115,11 +121,11 @@ class DecisionCycleResult:
             "duration_ms": self.duration_ms,
             "context": self.context.to_dict(),
             "perception": _record(self.perception),
-            "observation": _record(self.observation),
-            "memory": _to_plain_data(self.memory),
-            "proposal": _record(self.proposal),
-            "plan": _record(self.plan),
-            "action": _record(self.action),
+            "observation": cycle["observation"],
+            "memory": cycle["memory"],
+            "proposal": cycle["proposal"],
+            "plan": cycle["plan"],
+            "action": cycle["action"],
             "control": self.control.to_dict(),
             "application": self.application.to_dict() if self.application is not None else None,
             "timing": _to_plain_data(self.timing),
@@ -227,6 +233,19 @@ def _checked(step: str, record: Any, record_type: type) -> Any:
     if record is not None and not isinstance(record, record_type):
         raise TypeError(f"{step} step must return {record_type.__name__} or None")
     return record
+
+
+def export_cycle_body(result: Any) -> dict[str, Any]:
+    """The five cycle records on any completed result, each detached.
+
+    Reports and recordings share this body. Each keeps its own identity,
+    timing, perception, and delivery fields beside it.
+    """
+
+    return {
+        key: _to_plain_data(getattr(result, key, None))
+        for key in ("observation", "memory", "proposal", "plan", "action")
+    }
 
 
 def _record(value: Any) -> Any:

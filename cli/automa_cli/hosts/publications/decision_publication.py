@@ -255,6 +255,7 @@ def normalize_decision_publication(
         "result_age_ms": age_ms,
         "max_age_ms": ceiling,
         "advertised_result_age_ms": result_age_ms,
+        "report": report,
     }
 
 

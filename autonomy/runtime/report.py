@@ -7,8 +7,9 @@ recorded after the cycle. Each vehicle transports the document itself.
 
 ``cycle`` contains the observation, memory, proposal, plan, and action records.
 Observation, memory, and plan may be null when their steps produce no record.
-All five keys stay required. Proposal and action stay objects, so the typed
-cycle check can reconstruct them.
+All five keys stay required. Proposal and action stay objects.
+``decode_records`` reconstructs those three decision records and checks that
+they describe this frame.
 
 ``values["timing"]`` is the cycle's ``timing`` record from
 ``autonomy.decision_cycle.timing``: its total and each step's and plugin's
@@ -22,8 +23,13 @@ import time
 from dataclasses import dataclass
 from typing import Any, Mapping
 
+from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.action_identifiers import require_ascii_id, require_safe_int
+from autonomy.decision_cycle.cycle import export_cycle_body
+from autonomy.decision_cycle.plan.values import ActionPlan
+from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.runtime.execution import require_mode
+from autonomy.serialization import canonical_json_utf8, json_ready, require_canonical_export
 
 REPORT_SCHEMA = "host_report"
 REPORT_EXACT_KEYS = frozenset(
@@ -234,6 +240,101 @@ class HostReport:
             values=payload["values"],
         )
 
+    def decode_records(self) -> "DecodedDecision":
+        """Typed proposal, plan, and action, aligned to this frame."""
+
+        decoded = decode_decision_records(self.cycle)
+        align_decision_records(
+            frame_id=self.frame_id,
+            timestamp_ms=self.timestamp_ms,
+            proposal=decoded.proposal,
+            plan=decoded.plan,
+            action=decoded.action,
+        )
+        return decoded
+
+
+@dataclass(frozen=True)
+class DecodedDecision:
+    """The proposal, plan, and action records of one decoded cycle."""
+
+    proposal: ProposalResult
+    plan: ActionPlan | None
+    action: ActionResult
+
+
+def decode_decision_records(cycle: Mapping[str, Any]) -> DecodedDecision:
+    """Reconstruct the decision records and require a lossless export."""
+
+    proposal_payload = cycle.get("proposal")
+    action_payload = cycle.get("action")
+    if not isinstance(proposal_payload, dict) or not isinstance(action_payload, dict):
+        raise ValueError("cycle.proposal and cycle.action must be objects.")
+    proposal = ProposalResult.decode(proposal_payload)
+    action = ActionResult.decode(action_payload)
+    plan_payload = cycle.get("plan")
+    plan = None if plan_payload is None else ActionPlan.decode(plan_payload)
+    exported = {
+        "proposal": proposal.to_dict(),
+        "plan": plan.to_dict() if plan is not None else None,
+        "action": action.to_dict(),
+    }
+    require_canonical_export(
+        {key: cycle[key] for key in exported}, exported, field="cycle"
+    )
+    return DecodedDecision(proposal=proposal, plan=plan, action=action)
+
+
+def align_decision_records(
+    *,
+    frame_id: str,
+    timestamp_ms: int,
+    proposal: ProposalResult,
+    plan: ActionPlan | None,
+    action: ActionResult,
+) -> None:
+    """Frame, candidate, timing, and authority alignment across the three records."""
+
+    cycle_frame_id = action.frame_id
+    if frame_id != cycle_frame_id:
+        raise ValueError("stream frame_id must equal cycle.frame_id.")
+    if action.authority.frame_id != cycle_frame_id:
+        raise ValueError("authority.frame_id must equal cycle.frame_id.")
+    if proposal.frame_id != cycle_frame_id:
+        raise ValueError("proposal.frame_id must equal cycle.frame_id.")
+    if proposal.status != "ok" and action.status != "error":
+        raise ValueError("A failed proposal step must end the action with status error.")
+    if plan is not None and sorted(item.proposal_id for item in plan.candidates) != sorted(
+        item.proposal_id for item in proposal.candidates
+    ):
+        raise ValueError("plan candidates must be the proposal step's candidates.")
+    if plan is not None and plan.frame_id != cycle_frame_id:
+        raise ValueError("plan.frame_id must equal cycle.frame_id.")
+    if plan is not None and plan.timestamp_ms != timestamp_ms:
+        raise ValueError("plan.timestamp_ms must equal the cycle timestamp_ms.")
+
+    proposed = action.authority.proposed
+    if action.status == "error" or plan is None or plan.status == "idle":
+        if proposed is not None:
+            raise ValueError(
+                "authority.proposed must be null when plan is idle/absent or the cycle failed."
+            )
+        return
+    mismatch = "authority.proposed must equal the plan command."
+    command = None if plan is None else plan.command
+    if proposed is None or command is None:
+        raise ValueError(mismatch)
+    try:
+        same = canonical_json_utf8(json_ready(proposed.to_dict())) == canonical_json_utf8(
+            json_ready(command.to_dict())
+        )
+    except ValueError as exc:
+        raise ValueError(
+            f"authority.proposed/plan command are not strictly JSON-serializable: {exc}"
+        ) from exc
+    if not same:
+        raise ValueError(mismatch)
+
 
 def delivery_values(application: Any) -> dict[str, Any]:
     """Delivery detail that is not one of the named application fields.
@@ -273,13 +374,6 @@ def diagnostic_ceiling(values: Mapping[str, Any] | None) -> int:
     return raw
 
 
-def _export_record(record: Any, *, field: str) -> dict[str, Any]:
-    export = record.to_dict() if callable(getattr(record, "to_dict", None)) else record
-    if not isinstance(export, Mapping):
-        raise TypeError(f"{field} must be an object")
-    return dict(export)
-
-
 def report_from_host_result(
     result: Any,
     *,
@@ -306,13 +400,13 @@ def report_from_host_result(
         raise TypeError("host result must include a frame, proposal, and action")
     if application is None or getattr(application, "control", None) is None:
         raise TypeError("host result must include its control application")
-    plan = getattr(result, "plan", None)
     control = application.control
     values = {} if values is None else dict(values)
-    observation = getattr(result, "observation", None)
     timing = getattr(result, "timing", None)
     if timing is not None:
         values["timing"] = timing
+    export = getattr(result, "export_cycle", None)
+    cycle = export() if callable(export) else export_cycle_body(result)
     return HostReport(
         host_name=host_name,
         run_id=run_id,
@@ -323,13 +417,7 @@ def report_from_host_result(
         published_at_ms=(
             int(time.time() * 1000) if published_at_ms is None else int(published_at_ms)
         ),
-        cycle={
-            "observation": None if observation is None else observation.to_dict(),
-            "memory": getattr(result, "memory", None),
-            "proposal": _export_record(proposal, field="cycle.proposal"),
-            "plan": None if plan is None else _export_record(plan, field="cycle.plan"),
-            "action": _export_record(action, field="cycle.action"),
-        },
+        cycle=cycle,
         application=ReportApplication(
             applied=application.applied,
             mode=application.mode,

@@ -17,8 +17,23 @@ from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
 from autonomy.runtime.control import AutonomyControl
+from autonomy.serialization import require_canonical_export, require_exact_keys
 
 AUTHORITY_RESULT_SCHEMA = "authority_result"
+AUTHORITY_EXACT_KEYS = frozenset(
+    {
+        "schema",
+        "frame_id",
+        "proposed",
+        "authorized_output",
+        "proposed_applied",
+        "proposed_equals_authorized",
+        "cycle_status",
+        "cycle_reason",
+        "gate_id",
+        "drive_mode_gate",
+    }
+)
 COMMAND_EPS = 1e-9
 
 
@@ -135,6 +150,69 @@ class AuthorityResult:
             "gate_id": self.gate_id,
             "drive_mode_gate": self.drive_mode_gate,
         }
+
+    @classmethod
+    def decode(cls, payload: object, *, field: str = "cycle.action.authority") -> "AuthorityResult":
+        """The authority record, when ``payload`` is exactly its export."""
+
+        if not isinstance(payload, dict):
+            raise ValueError(f"{field} must be an AuthorityResult object.")
+        if payload.get("schema") != AUTHORITY_RESULT_SCHEMA:
+            raise ValueError(f"{field}.schema must be {AUTHORITY_RESULT_SCHEMA!r}.")
+        require_exact_keys(payload, AUTHORITY_EXACT_KEYS, field=field)
+        gate_id = payload.get("gate_id")
+        try:
+            require_ascii_id(gate_id, field_name="gate_id")
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field}.gate_id must be an action plugin id: {exc}") from exc
+        if type(payload.get("proposed_applied")) is not bool:
+            raise ValueError(f"{field}.proposed_applied must be a bool.")
+        authorized_output = payload.get("authorized_output")
+        # Imported here: the hold plugin imports this module's decision type.
+        from autonomy.decision_cycle.action.hold import HoldAction, idle_output
+
+        if gate_id == HoldAction.plugin_id:
+            if payload.get("proposed_applied") is not False:
+                raise ValueError(f"{field}.proposed_applied must be false for the hold gate.")
+            require_canonical_export(
+                authorized_output,
+                idle_output(),
+                field=f"{field}.authorized_output",
+            )
+        else:
+            try:
+                control = AutonomyControl(**authorized_output)
+            except TypeError as exc:
+                raise ValueError(
+                    f"{field}.authorized_output is not a control output: {exc}"
+                ) from exc
+            require_canonical_export(
+                authorized_output,
+                control_output(control),
+                field=f"{field}.authorized_output",
+            )
+        proposed_payload = payload.get("proposed")
+        proposed = (
+            None
+            if proposed_payload is None
+            else ProposedVehicleCommand.decode(proposed_payload, field=f"{field}.proposed")
+        )
+        try:
+            authority = cls(
+                frame_id=str(payload["frame_id"]),
+                gate_id=str(gate_id),
+                proposed=proposed,
+                cycle_status=str(payload["cycle_status"]),
+                cycle_reason=str(payload.get("cycle_reason") or ""),
+                authorized_output=dict(authorized_output),
+                drive_mode_gate=payload.get("drive_mode_gate"),
+                proposed_applied=payload["proposed_applied"],
+                schema=str(payload.get("schema") or AUTHORITY_RESULT_SCHEMA),
+            )
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{field} failed AuthorityResult construction: {exc}") from exc
+        require_canonical_export(payload, authority.to_dict(), field=field)
+        return authority
 
 
 def build_authority(

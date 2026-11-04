@@ -6,13 +6,6 @@ import math
 from urllib.parse import urlparse, urlunparse
 
 
-def normalize_http_url(url: str) -> str:
-    value = url.strip().rstrip("/")
-    if "://" not in value:
-        value = f"http://{value}"
-    return value
-
-
 def normalize_chase_url(url: str) -> str:
     """Normalize an operator HTTP/WS Metrics UI URL to its control WebSocket."""
 

@@ -5,12 +5,12 @@ import io
 import json
 import shutil
 import tarfile
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from ..shared.paths import ROOT, display_path
+from ..shared.timestamps import timestamp_ms
 from .progress import ProgressSink, report
 
 AUTONOMY_DIR = ROOT / "autonomy"
@@ -50,7 +50,7 @@ def package_controller_bundle(bundle: dict[str, str]) -> dict[str, Any]:
         ]
     )
     tree_sha256 = _tree_sha256(entries)
-    created_at_ms = int(time.time() * 1000)
+    created_at_ms = timestamp_ms()
     release_stem = f"autonomy-{tree_sha256[:12]}-{created_at_ms}"
     pending_archive = release_dir / f".{release_stem}.tar.gz.pending"
     archive_path = release_dir / f"{release_stem}.tar.gz"

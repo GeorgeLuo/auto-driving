@@ -54,9 +54,9 @@ def _run_worker(argv: list[str]) -> int:
     """Run in the foreground for hosts run, reporting a failure before the run starts."""
 
     parser = argparse.ArgumentParser(prog=WORKER_MODULE)
-    target = parser.add_mutually_exclusive_group(required=True)
-    target.add_argument("--name", dest="host_name")
-    target.add_argument("--host-url")
+    # ``--name`` is the run's host; ``--host-url`` names that host's existing runtime when it was given.
+    parser.add_argument("--name", dest="host_name", required=True)
+    parser.add_argument("--host-url")
     parser.add_argument("--timeout-s", type=float, required=True)
     parser.add_argument("--num-decisions", type=int)
     parser.add_argument("--unbounded", action="store_true")
@@ -65,7 +65,7 @@ def _run_worker(argv: list[str]) -> int:
     parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
     result = run_host_automation(
-        host_name=args.host_name,
+        host_name=None if args.host_url else args.host_name,
         host_url=args.host_url,
         timeout_s=args.timeout_s,
         num_decisions=args.num_decisions,
@@ -80,7 +80,7 @@ def _run_worker(argv: list[str]) -> int:
         message = format_activation_problems(result.problems)
     if message:
         print(message)
-    if args.host_name:
+    if args.host_url is None:
         record_host_automation_terminal_result(host_name=args.host_name, result=result)
     return result.exit_code
 

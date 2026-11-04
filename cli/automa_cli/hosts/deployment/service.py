@@ -19,12 +19,14 @@ from ...providers.registry import PROVIDERS
 from ...providers.models import Candidate
 from ..errors import RuntimeHostError
 from ...releases.errors import ReleaseError
+from ...releases.paths import bundle_paths
 from ...releases.store import release_code_dir
 from ...shared.io.processes import pid_alive
 from ...shared.paths import RUNTIME_ROOT, safe_path_part
 from ..progress import ProgressSink
 from ..bundles import controller_bundle_source_summary, sync_controller_bundle
 from ..discovery import running_base_url
+from ..host_formatting import vehicle_label
 from ..local import ensure_chase_host, host_record, stop_chase_host
 from ..publications.host_publications import host_state
 from ..runs.service import stop_host_automation
@@ -32,7 +34,7 @@ from ..staging import automation_dir, staged_host
 from ..step_activations import (
     decision_generation_id,
     ensure_step_activations,
-    host_bundle,
+    host_name_error,
     read_bundle_activation,
     staging_host,
     startup_activations,
@@ -44,6 +46,7 @@ from .picar_deploy import (
     DONKEY_READY_TIMEOUT_S,
     deploy_picar_release,
     donkey_service_control_command,
+    harness_dir,
     install_picar_core,
     resolve_picar_target,
     run_step,
@@ -108,7 +111,7 @@ def _update_local_autonomy(
 
     from autonomy.runtime.client import RuntimeClient
 
-    bundle = host_bundle(host_name, RUNTIME_ROOT)
+    bundle = bundle_paths(host_name, RUNTIME_ROOT)
     source_summary = controller_bundle_source_summary()
     if dry_run:
         return UpdateResult(0, "local", receipt={
@@ -163,14 +166,14 @@ def create_host(
     drive_args: str | None = None, dry_run: bool = False,
     verbose: bool = False, emit: ProgressSink | None = None,
 ) -> CreateResult:
-    if host_name in {".", ".."} or safe_path_part(host_name) != host_name or not host_name:
-        return CreateResult(2, "error", "Host names may contain letters, digits, dots, underscores and hyphens, excluding . and ..")
+    if (error := host_name_error(host_name)) is not None:
+        return CreateResult(2, "error", error)
     if provider not in PROVIDERS:
         return CreateResult(2, "error", f"Provider must be one of {', '.join(PROVIDERS)} (got {provider!r}).")
     directory = RUNTIME_ROOT / safe_path_part(host_name)
     if (directory / "host-configuration.json").exists():
         existing, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
-        return CreateResult(2, "error", error or f"Host {host_name!r} already exists: {_vehicle_label(existing)}.")
+        return CreateResult(2, "error", error or f"Host {host_name!r} already exists: {vehicle_label(existing)}.")
     backend = backend_for(provider)
     if backend is None or backend.create is None:
         return CreateResult(2, "error", unsupported_operation(provider, "create"))
@@ -276,11 +279,6 @@ def _install_created_host(
         return CreateResult(2, "error", f"Could not create host {host_name!r}: {exc}{suffix}")
 
 
-def _vehicle_label(configuration: dict[str, Any]) -> str:
-    vehicle = PROVIDERS[configuration["provider"]]
-    return f"the {vehicle.label} at {vehicle.operator_url(configuration['connection'][vehicle.url_key])}"
-
-
 def delete_host(*, host_name: str, verbose: bool = False, emit: ProgressSink | None = None) -> DeleteResult:
     configuration, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
     if error:
@@ -299,6 +297,7 @@ def _delete_recorded_host(
     stopped, failure = _stop_active_automation(host_name)
     if failure is not None:
         return failure
+    remote_harness = None
     if local:
         stop_chase_host(host_name)
     else:
@@ -309,9 +308,11 @@ def _delete_recorded_host(
             env=None, verbose=verbose, emit=emit,
         )
         if code:
-            return DeleteResult(code, "delete_failed", host_name=host_name, local=False)
+            return DeleteResult(code, "delete_failed", host_name=host_name)
+        remote_harness = harness_dir(target.pi_home)
     shutil.rmtree(directory)
-    return DeleteResult(0, "deleted", host_name=host_name, deleted_path=directory, stopped_run=stopped, local=local)
+    return DeleteResult(0, "deleted", host_name=host_name, deleted_path=directory, stopped_run=stopped,
+                        harness_dir=remote_harness)
 
 
 def _stop_active_automation(host_name: str) -> tuple[bool, DeleteResult | None]:

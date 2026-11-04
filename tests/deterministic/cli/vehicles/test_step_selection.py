@@ -14,10 +14,10 @@ from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from cli.automa_cli.hosts.step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     bundle_activation_path,
-    host_bundle,
     read_bundle_activation,
     stage_activation,
 )
+from cli.automa_cli.releases.paths import bundle_paths
 from cli.automa_cli.workbench.runner import ImageReplayRunner
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PRESETS,
@@ -49,7 +49,7 @@ class StepSelectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
-            bundle = host_bundle(VEHICLE, root)
+            bundle = bundle_paths(VEHICLE, root)
             stage_activation(bundle, selection_activation("perception", plugins=["frame"]), host_name=VEHICLE)
             stage_activation(bundle, selection_activation("proposal", preset="obstruction_avoidance"), host_name=VEHICLE)
             unreadable = bundle_activation_path(bundle, "memory")
@@ -71,7 +71,7 @@ class StepSelectionTests(unittest.TestCase):
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
             self._update(root)
-            bundle = host_bundle(VEHICLE, root)
+            bundle = bundle_paths(VEHICLE, root)
             documents = {
                 step: json.loads(bundle_activation_path(bundle, step).read_text(encoding="utf-8"))
                 for step in STEPS

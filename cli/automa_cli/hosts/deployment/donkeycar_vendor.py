@@ -4,7 +4,6 @@ import hashlib
 import json
 import shutil
 import subprocess
-import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -12,6 +11,7 @@ from typing import Any
 from ...shared.io.json_files import write_json_atomically
 from ...shared.paths import ROOT, display_path
 from ..progress import ProgressSink, report
+from ...shared.timestamps import timestamp_ms
 
 VENDOR_MANIFEST_PATH = ROOT / "deploy" / "targets" / "donkeycar" / "donkeycar-vendor.json"
 VENDOR_STATE_FILE = ".automa-vendor-state.json"
@@ -188,5 +188,5 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 
 def _write_json(path: Path, payload: dict[str, Any]) -> None:
-    payload = {**payload, "prepared_at_ms": int(time.time() * 1000)}
+    payload = {**payload, "prepared_at_ms": timestamp_ms()}
     write_json_atomically(path, payload)

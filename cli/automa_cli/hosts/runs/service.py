@@ -236,7 +236,7 @@ def start_host_automation_background(
             if isinstance(existing_state, dict)
             else "unknown"
         )
-        if existing_status in {"launching", "starting"}:
+        if existing_status == "starting":
             return StartResult(
                 2,
                 "starting",
@@ -390,14 +390,14 @@ def restart_host_automation(
             unbounded=unbounded,
         )
     except (TypeError, ValueError) as exc:
-        return RestartResult(2, kind="error", error=str(exc))
+        return RestartResult(2, "error", host_name, error=str(exc))
     bundle = bundle_paths(host_name)
     problems = bundle_activation_problems(bundle, host_name)
     if problems:
-        return RestartResult(2, kind="error", problems=problems)
+        return RestartResult(2, "error", host_name, problems=problems)
     stop_result = stop_host_automation(host_name=host_name, wait_s=wait_s)
     if stop_result.exit_code != 0:
-        return RestartResult(stop_result.exit_code, kind="stop_failed", stop=stop_result)
+        return RestartResult(stop_result.exit_code, "stop_failed", host_name, stop=stop_result)
 
     # A fresh host process loads the staged specs and configs; a Chase host
     # with none running starts on the latest release with the run.
@@ -408,7 +408,7 @@ def restart_host_automation(
                 timeout_s=max(30.0, timeout_s)
             )
         except (RuntimeError, TimeoutError) as exc:
-            return RestartResult(2, kind="restart_failed", host_name=host_name, error=str(exc))
+            return RestartResult(2, "restart_failed", host_name, error=str(exc))
 
     start_result = start_host_automation_background(
         host_name=host_name,
@@ -421,7 +421,8 @@ def restart_host_automation(
         log_to_disk=log_to_disk,
         open_view=open_view,
     )
-    return RestartResult(start_result.exit_code, stop=stop_result, start=start_result)
+    kind = "start_failed" if start_result.exit_code else "started"
+    return RestartResult(start_result.exit_code, kind, host_name, stop=stop_result, start=start_result)
 
 
 def stop_host_automation(

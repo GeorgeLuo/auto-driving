@@ -17,12 +17,20 @@ DISCOVERED_SCHEMA = "automa_discovered_vehicles"
 
 
 def discovered_vehicles() -> list[dict[str, str]]:
-    """The ``{provider, url}`` of each vehicle ``vehicles discover`` listed, oldest first."""
+    """The ``{provider, url}`` of each vehicle ``vehicles discover`` listed, oldest first.
 
-    path = RUNTIME_ROOT / DISCOVERED
-    if not path.is_file():
+    Like the other records, an unreadable list or entry is skipped rather than failing the command.
+    """
+
+    try:
+        document = json.loads((RUNTIME_ROOT / DISCOVERED).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
         return []
-    return json.loads(path.read_text(encoding="utf-8"))["vehicles"]
+    vehicles = document.get("vehicles") if isinstance(document, dict) else None
+    return [
+        vehicle for vehicle in (vehicles if isinstance(vehicles, list) else [])
+        if isinstance(vehicle, dict) and isinstance(vehicle.get("provider"), str) and isinstance(vehicle.get("url"), str)
+    ]
 
 
 def write_discovered_vehicles(vehicles: list[dict[str, str]]) -> None:

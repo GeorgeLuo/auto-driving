@@ -140,3 +140,22 @@ class DiscoveredVehicleTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+
+class DiscoveredRecordTests(unittest.TestCase):
+    def test_an_unreadable_record_lists_no_vehicles(self):
+        from unittest.mock import patch
+
+        from cli.automa_cli.vehicles import store
+
+        good = {"provider": "picar", "url": "http://car:8887"}
+        for content in ("not json", "[]", json.dumps({"vehicles": "car"}), json.dumps({"schema": "x"}),
+                        json.dumps({"vehicles": [good, "car", {"provider": "picar"}]})):
+            with self.subTest(content=content), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                (root / store.DISCOVERED).write_text(content, encoding="utf-8")
+                with patch.object(store, "RUNTIME_ROOT", root):
+                    expected = [good] if "car:8887" in content else []
+                    self.assertEqual(store.discovered_vehicles(), expected)
+        with tempfile.TemporaryDirectory() as directory, patch.object(store, "RUNTIME_ROOT", Path(directory)):
+            self.assertEqual(store.discovered_vehicles(), [])

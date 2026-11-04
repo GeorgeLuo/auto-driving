@@ -15,7 +15,7 @@ from cli.automa_cli.hosts.runs import monitor
 from cli.automa_cli.hosts.runs.worker import RunOutput
 from cli.automa_cli.hosts.runs.render import render_run_result
 from cli.automa_cli.hosts.runs.models import run_exit_code
-from cli.automa_cli.hosts.runs.store import control_application, control_source
+from cli.automa_cli.hosts.runs.store import CONTROL_SOURCE, control_application
 
 
 HOST_NAME = "picar-test"
@@ -291,7 +291,7 @@ class ControlRecordTests(unittest.TestCase):
         autonomy = RunConfiguration(mode="autonomy", num_decisions=None)
         observe = RunConfiguration(mode="observe_only", num_decisions=None)
 
-        self.assertEqual([control_source(autonomy), control_source(observe)], ["runtime_host"] * 2)
+        self.assertEqual(CONTROL_SOURCE, "runtime_host")
         self.assertEqual(
             [control_application(autonomy), control_application(observe)],
             ["shared_execution", "not_applied"],

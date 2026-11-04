@@ -62,7 +62,10 @@ class CreateResult:
 
 @dataclass(frozen=True)
 class DeleteResult:
-    """Deleting a host: ``deleted``, a remote stop that failed, a run that would not stop, or an ``error``."""
+    """Deleting a host: ``deleted``, a remote stop that failed, a run that would not stop, or an ``error``.
+
+    ``harness_dir`` is set for a PiCar, whose harness files stay on the Pi.
+    """
 
     exit_code: int
     kind: Literal["deleted", "delete_failed", "stop_failed", "error"]
@@ -71,4 +74,4 @@ class DeleteResult:
     stop: StopResult | None = None
     deleted_path: Path | None = None
     stopped_run: bool = False
-    local: bool = True
+    harness_dir: str | None = None

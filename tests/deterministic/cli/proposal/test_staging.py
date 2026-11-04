@@ -11,8 +11,8 @@ from autonomy.decision_cycle.activation import (
 from autonomy.decision_cycle.steps import load_decision_steps
 from cli.automa_cli.hosts.step_activations import (
     bundle_activation_path,
-    host_bundle,
 )
+from cli.automa_cli.releases.paths import bundle_paths
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
     DecisionSurfaceFixture,
     packaged_decision_steps,
@@ -22,7 +22,7 @@ from tests.shared.cli.decision.decision_surfaces_fixtures import (
 class ProposalStagingTests(DecisionSurfaceFixture, unittest.TestCase):
     def test_staged_steps_load_their_plugins_from_the_staged_bundle(self) -> None:
         self._stage()
-        bundle = host_bundle("chase-sim-chaser", self.runtime_root)
+        bundle = bundle_paths("chase-sim-chaser", self.runtime_root)
         activation_path = bundle_activation_path(bundle, "proposal")
         original = read_step_activation(activation_path, "proposal")
         plugin_path = Path(bundle["root_dir"]) / (

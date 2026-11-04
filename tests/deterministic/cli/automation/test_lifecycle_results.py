@@ -100,7 +100,7 @@ class LifecycleResultTests(unittest.TestCase):
         with patch.object(service, "stop_host_automation", return_value=failure), \
              patch.object(service, "start_host_automation_background") as start:
             result = service.restart_host_automation(host_name="car", take_control=False)
-        self.assertEqual(result, RestartResult(2, kind="stop_failed", stop=failure))
+        self.assertEqual(result, RestartResult(2, "stop_failed", "car", stop=failure))
         self.assertEqual(render_lifecycle_result(result), "Could not stop car: offline")
         start.assert_not_called()
 
@@ -110,7 +110,7 @@ class LifecycleResultTests(unittest.TestCase):
         with patch.object(service, "stop_host_automation", return_value=stopped), \
              patch.object(service, "start_host_automation_background", return_value=started):
             result = service.restart_host_automation(host_name="car", take_control=False)
-        self.assertEqual(result, RestartResult(2, stop=stopped, start=started))
+        self.assertEqual(result, RestartResult(2, "start_failed", "car", stop=stopped, start=started))
         self.assertEqual(render_lifecycle_result(result),
                          render_lifecycle_result(stopped) + "\n\n" + render_lifecycle_result(started))
 

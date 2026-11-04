@@ -88,7 +88,7 @@ class LiveCommandsTests(LiveHostTestCase):
                     self.assertIsInstance(live["last_duration_ms"], float)
         terminal = self.stream("perception", "--once", "--no-clear")
         self.assertEqual(terminal.returncode, 0, terminal.stdout + terminal.stderr)
-        self.assertIn(f"host: {self.host.base_url}", terminal.stdout)
+        self.assertIn(f"host: {HOST_NAME}\nurl: {self.host.base_url}\n", terminal.stdout)
 
     def viewer(self, *target: str):
         return invoke_automa("hosts", "viewer", *target, runtime_root=self.runtime_root, check=False)

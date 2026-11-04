@@ -18,6 +18,7 @@ from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 from ...shared.io.json_files import read_json, write_json_atomically
 from ...shared.paths import display_path
 from ...shared.timestamps import timestamp_ms
+from ..host_formatting import perception_stream_command
 from ..staging import automation_dir as host_automation_dir
 from .models import RunResult
 
@@ -25,8 +26,8 @@ RUN_STATE_SCHEMA = "automa_automation_run_state"
 READINESS_SCHEMA = "automa_cli_readiness"
 
 
-def control_source(configuration: RunConfiguration) -> str:
-    return "runtime_host"
+# Every run's host applies its own wheel commands.
+CONTROL_SOURCE = "runtime_host"
 
 
 def control_application(configuration: RunConfiguration) -> str:
@@ -285,7 +286,7 @@ def record_host_automation_terminal_result(
     automation_dir = host_automation_dir(host_name)
     state_path = automation_dir / "state.json"
     state = read_json(state_path)
-    if not isinstance(state, dict) or state.get("status") not in {"launching", "starting"}:
+    if not isinstance(state, dict) or state.get("status") != "starting":
         return
     completed_at_ms = timestamp_ms()
     write_json_atomically(
@@ -352,7 +353,7 @@ def initialize_automation_startup(
             pid=None,
             configuration=configuration,
             record=record,
-            control_source=control_source(configuration),
+            control_source=CONTROL_SOURCE,
             automation_dir=automation_dir,
             front_camera_path=(
                 automation_dir / "latest" / "frames" / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
@@ -433,7 +434,7 @@ def record_background_worker(
         "latest_perception_text": display_path(
             automation_dir / "latest_perception.txt"
         ),
-        "stream_command": f"./cli/automa plugins stream --step perception --host-name {host_name}",
+        "stream_command": perception_stream_command(host_name),
     }
     write_json_atomically(automation_dir / "process.json", record)
     return record

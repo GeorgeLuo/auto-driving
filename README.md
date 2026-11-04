@@ -671,8 +671,9 @@ creation with `--drive-args=--js`, or on a later update:
 
 Pass `--drive-args=` with `--restart` to restore controller-free startup.
 `hosts delete --name piracer` stops and disables the service and removes the
-local host directory. Harness files stay in `~/mycar` on the Pi. A failed SSH stop
-keeps the local record so deletion can be retried.
+local host directory. Harness files stay in `mycar` under the Pi home, and the
+command prints that path. A failed SSH stop keeps the local record so deletion
+can be retried.
 
 ### Physical Activation State
 

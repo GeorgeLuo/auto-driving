@@ -43,7 +43,7 @@ def _perception_screen(event: StreamEvent) -> str:
         "automa perception stream",
         "",
         f"host: {event.host_name}",
-        f"host: {event.base_url}",
+        f"url: {event.base_url}",
         f"status: {event.live.get('status', 'unknown')}",
         *([f"error: {event.live['error']}"] if event.live.get("error") else []),
         f"presets: {presets_text(publication.presets)}  mode: {_shown(publication.mode)}",
@@ -77,7 +77,7 @@ def _memory_screen(event: StreamEvent) -> str:
 
     source = event.source if isinstance(event.source, MemoryPublication) else MemoryPublication()
     lines = [
-        format_live_memory_screen(host_name=event.host_name, live=event.live),
+        _live_memory_screen(host_name=event.host_name, live=event.live),
         "",
         *_view_lines(event.view, *_MEMORY_PAGES),
     ]
@@ -122,14 +122,10 @@ def _format_stream_frame(step: str, frame: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def format_live_memory_screen(*, host_name: str, live: dict[str, Any]) -> str:
-    return format_live_step_screen("memory", host_name=host_name, live=live)
-
-
-def format_live_step_screen(step: str, *, host_name: str, live: dict[str, Any]) -> str:
+def _live_memory_screen(*, host_name: str, live: dict[str, Any]) -> str:
     status = str(live.get("status") or "unknown")
     lines = [
-        f"Live {step}: {host_name} [{status}]",
+        f"Live memory: {host_name} [{status}]",
     ]
     if live.get("endpoint"):
         lines.append(f"Endpoint: {live.get('endpoint')}")
@@ -137,22 +133,17 @@ def format_live_step_screen(step: str, *, host_name: str, live: dict[str, Any]) 
         lines.append(f"Mode: {live.get('mode')}  session: {live.get('session_status') or 'unknown'}")
     if status == "live":
         lines.append(f"Applied plugins: {', '.join(live.get('plugin_ids', [])) or 'none'}")
-        if step == "memory":
-            lines.extend(_format_plugin_ledgers(_live_plugins(live)))
-            lines.extend(
-                [
-                    f"Evidence publisher: {live.get('evidence_publisher') or 'none'}",
-                    (
-                        f"Counters: updates={live.get('update_count')} "
-                        f"resets={live.get('reset_count')} "
-                        f"failures={live.get('failure_count')}"
-                    ),
-                ]
-            )
-        else:
-            lines.append(
-                f"Counters: runs={live.get('run_count')} failures={live.get('failure_count')}"
-            )
+        lines.extend(_format_plugin_ledgers(_live_plugins(live)))
+        lines.extend(
+            [
+                f"Evidence publisher: {live.get('evidence_publisher') or 'none'}",
+                (
+                    f"Counters: updates={live.get('update_count')} "
+                    f"resets={live.get('reset_count')} "
+                    f"failures={live.get('failure_count')}"
+                ),
+            ]
+        )
         if live.get("last_duration_ms") is not None:
             lines.append(f"Last duration: {live.get('last_duration_ms')} ms")
         if live.get("last_error"):

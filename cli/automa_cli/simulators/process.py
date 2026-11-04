@@ -16,6 +16,7 @@ from typing import Any
 
 from ..hosts.local import log_tail
 from ..shared.io.processes import pid_alive
+from ..shared.timestamps import timestamp_ms
 from .store import SIMULATOR_SCHEMA, remove_simulator_record, simulator_dir, write_simulator_record
 
 
@@ -97,7 +98,7 @@ def start_simulator(command: list[str], *, cwd: Path, port: int, timeout_s: floa
             "url": _wait_for_simulator(log_path, process, timeout_s),
             "metrics_ui_dir": str(cwd),
             "config": "default",
-            "started_at_ms": int(time.time() * 1000),
+            "started_at_ms": timestamp_ms(),
         }
         write_simulator_record(record)
         return record

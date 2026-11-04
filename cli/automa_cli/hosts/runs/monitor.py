@@ -29,7 +29,7 @@ from .models import RunEvent, RunResult, run_exit_code
 from collections.abc import Callable
 from copy import deepcopy
 from .store import (
-    control_source, finish_run as record_completion, frame_readiness,
+    CONTROL_SOURCE, finish_run as record_completion, frame_readiness,
     new_run_state, record_host_status,
 )
 from ...frontend.server import RuntimeViewServer
@@ -170,7 +170,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
     state = new_run_state(
         host_name=host_name, run_id=None, status="starting", pid=os.getpid(),
         configuration=configuration, record=record,
-        control_source=control_source(configuration),
+        control_source=CONTROL_SOURCE,
         automation_dir=automation_dir,
         front_camera_path=automation_dir / "latest" / "frames" / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg",
         run_dir=None, published_view={"status": "starting", "available": False, "url": None},

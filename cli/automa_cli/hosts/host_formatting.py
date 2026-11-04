@@ -6,7 +6,20 @@ from datetime import datetime
 from typing import Any
 
 from ..providers.metadata import PROVIDERS
-from ..shared.text import indented
+from ..shared.text import automa_command, indented
+
+
+def vehicle_label(configuration: dict[str, Any]) -> str:
+    """The vehicle a host configuration names: ``the chaser at http://localhost:5050/``."""
+
+    vehicle = PROVIDERS[configuration["provider"]]
+    return f"the {vehicle.label} at {vehicle.operator_url(configuration['connection'][vehicle.url_key])}"
+
+
+def perception_stream_command(host_name: str) -> str:
+    """The command that streams a host's perception and serves its local runtime view."""
+
+    return automa_command("plugins", "stream", "--step", "perception", "--host-name", host_name)
 
 
 def host_state_text(host: dict[str, Any]) -> str:

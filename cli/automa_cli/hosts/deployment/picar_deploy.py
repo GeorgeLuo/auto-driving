@@ -22,6 +22,7 @@ from ...releases.paths import controller_bundle_paths
 from ...shared.io import http_json
 from ...shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
 from ..progress import ProgressSink, report
+from ...shared.timestamps import timestamp_ms
 from ..bundles import (
     controller_bundle_source_summary,
     release_activation_summary,
@@ -170,6 +171,12 @@ class PicarTarget:
     provider: str
     ssh_target: str
     pi_home: str
+
+
+def harness_dir(pi_home: str) -> str:
+    """Where the mycar app harness lives on the Pi; deleting a host leaves it there."""
+
+    return f"{pi_home}/mycar"
 
 
 def install_picar_core(
@@ -371,7 +378,7 @@ def _write_remote_activation_files(
 
     deploy_dir = host_dir / "deploy" / "donkeycar" / release_id
     deploy_dir.mkdir(parents=True, exist_ok=True)
-    remote_app_root = f"{target.pi_home}/mycar"
+    remote_app_root = harness_dir(target.pi_home)
     remote_release_root = f"{remote_app_root}/runtime/controller-releases/{release_id}"
     remote_artifact_dir = f"{remote_app_root}/runtime/controller-artifacts/{release_id}"
     remote_release = release_activation_summary(release)
@@ -416,7 +423,7 @@ def _write_remote_activation_files(
         json.dumps(
             {
                 "schema": "automa_physical_autonomy_deployment",
-                "created_at_ms": int(time.time() * 1000),
+                "created_at_ms": timestamp_ms(),
                 "host_name": target.host_name,
                 "ssh_target": target.ssh_target,
                 "release_id": release_id,
@@ -439,7 +446,7 @@ def _autonomy_sync_commands(
     archive_sha256: str,
     deploy_files: list[Path],
 ) -> list[tuple[str, list[str]]]:
-    remote_app_root = f"{target.pi_home}/mycar"
+    remote_app_root = harness_dir(target.pi_home)
     remote_runtime = f"{remote_app_root}/runtime"
     remote_artifact_dir = f"{remote_runtime}/controller-artifacts/{release_id}"
     remote_release_root = f"{remote_runtime}/controller-releases/{release_id}"
@@ -886,7 +893,7 @@ def _core_sync_commands(
             "mkdir",
             "-p",
             f"{pi_home}/projects/donkeycar",
-            f"{pi_home}/mycar",
+            harness_dir(pi_home),
             f"{pi_home}/.config/automa/systemd",
         ],
         [
@@ -909,7 +916,7 @@ def _core_sync_commands(
             "--exclude=implementations",
             "--exclude=runtime",
             f"{DEPLOY_DIR / 'app'}/",
-            f"{ssh_target}:{pi_home}/mycar/",
+            f"{ssh_target}:{harness_dir(pi_home)}/",
         ],
         [
             "rsync",

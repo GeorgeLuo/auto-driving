@@ -405,6 +405,8 @@ def report_from_host_result(
     timing = getattr(result, "timing", None)
     if timing is not None:
         values["timing"] = timing
+    export = getattr(result, "export_cycle", None)
+    cycle = export() if callable(export) else export_cycle_body(result)
     return HostReport(
         host_name=host_name,
         run_id=run_id,
@@ -415,7 +417,7 @@ def report_from_host_result(
         published_at_ms=(
             int(time.time() * 1000) if published_at_ms is None else int(published_at_ms)
         ),
-        cycle=export_cycle_body(result),
+        cycle=cycle,
         application=ReportApplication(
             applied=application.applied,
             mode=application.mode,

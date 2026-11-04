@@ -39,7 +39,7 @@ class ViewerWithoutHostTests(unittest.TestCase):
         self.addCleanup(self.server.stop)
 
     def test_pages_are_served_without_a_host(self) -> None:
-        for route in ("", "perception", "memory", "plugins", "api/health"):
+        for route in ("", "perception", "memory", "learning", "plugins", "api/health"):
             with self.subTest(route=route):
                 with urlopen(f"{self.server.url}{route}", timeout=1.0) as response:
                     self.assertEqual(response.status, 200)
@@ -55,7 +55,7 @@ class ViewerWithoutHostTests(unittest.TestCase):
     def test_splash_marks_every_page_unavailable(self) -> None:
         html = _read_text(self.server.url)
         self.assertIn(f'class="status-dot error" title="{NOT_CONNECTED_ERROR}"', html)
-        for label in ("Perception", "Memory", "Action", "Plugins"):
+        for label in ("Perception", "Memory", "Learning", "Action", "Plugins"):
             self.assertIn(
                 f'<span class="nav unavailable" title="{NOT_CONNECTED_ERROR}">{label}</span>',
                 html,
@@ -118,7 +118,7 @@ class ConnectedSplashTests(unittest.TestCase):
         html = _read_text(server.url)
 
         self.assertIn('class="status-dot live"', html)
-        for href in ("/perception", "/memory", "/plugins", "/workbench/"):
+        for href in ("/perception", "/memory", "/learning", "/plugins", "/workbench/"):
             self.assertIn(f'<a class="nav" href="{href}">', html)
         self.assertIn('<span class="nav unavailable" title="Action view unavailable">Action</span>', html)
 

@@ -231,6 +231,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                 raise RuntimeError("the runtime host restarted during this run")
             session = runtime["session"]
             host = _host_status(client)
+            server.learning.ingest(host)
             dropped = _frames_dropped(host)
             state.update(
                 frames_dropped=max(0, dropped - dropped_base),

@@ -88,6 +88,7 @@ _OPERATION_ROLES = {"service", "store", "monitor", "registry", "operation"}
 _MODULE_ROLES = {
     "app": "entrypoint",
     "frontend.decision_view": "operation",
+    "frontend.learning_history": "operation",
     "frontend.loopback_http": "operation",
     "frontend.perception_view": "operation",
     "frontend.plugin_catalog": "operation",

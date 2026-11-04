@@ -112,10 +112,10 @@ canonical directory contract is
 The command groups intentionally distinguish different kinds of state:
 
 The live worker's local browser entrypoint is **Automa**, with links to
-**Perception** at `/perception` and **Memory** at `/memory`. The automation
-command's `--open-view` option opens this shared entrypoint. Both pages use the
-same worker lifetime and publication APIs; perception owns its image buffer,
-while `RuntimeViewServer` owns the listener, routes, and shutdown.
+**Perception** at `/perception`, **Memory** at `/memory`, and **Learning** at
+`/learning`. The automation command's `--open-view` option opens this shared
+entrypoint. These pages use the same worker lifetime; perception owns its image
+buffer, while `RuntimeViewServer` owns the listener, routes, and shutdown.
 
 | Command | Reads or changes |
 |---|---|
@@ -123,7 +123,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles status` | Shows the default simulator, created simulators, and discovered vehicle environments with their reachability and endpoints. |
 | `vehicles discover` | Lists the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url` in `vehicles status` once it can take a host; `--force` lists it regardless. The default simulator (`CHASE_UI_WS_URL`, else `http://localhost:5050`) is always listed. |
 | `vehicles remove` | Stops listing the discovered vehicle at `--url`. The default simulator cannot be removed. |
-| `hosts viewer` | Serves the runtime viewer (Perception, Memory, Action and Plugins) fed from the host named by `--name`, or at `--host-url` (the URL `hosts status` shows for it), and opens it in the browser until interrupted. Exits 2 when no such host exists, it is not running, or it does not answer. |
+| `hosts viewer` | Serves the runtime viewer (Perception, Memory, Learning, Action and Plugins) fed from the host named by `--name`, or at `--host-url` (the URL `hosts status` shows for it), and opens it in the browser until interrupted. Exits 2 when no such host exists, it is not running, or it does not answer. |
 | `hosts status` | Shows each host's state and whether its simulator lists it. `--long` adds its deployment and the release `hosts update` last packaged, then each step's staged selection, `saved` when `plugins save` saved it and otherwise the step's `default`, beside the selection the running host applied with its runs, failures and last error, then the run and its view. A step reads `as staged` only when the host runs the staged plugins with their staged configs; restaged configs wait for a restart, so until then status names the plugins whose configs differ. An invalid staged step and an unavailable host are each reported without hiding the other. `--json` carries the same under each host's `run`. With `--name`, exits 1 when that host is missing, stopped, not answering, or reports an error. |
 | `plugins list` | Offline: lists the packaged catalog, each step's `implementations/decision_cycle/<step>/catalog.json`, by step, defaults first and marked; `--step` filters and `--json` adds each definition's entrypoint, default config and description. With `--host-name` (or a runtime `--url`), lists what that host has armed instead; `--long` lists the host's whole catalog, packaged and uploaded, with its version and the armed plugins marked. A workbench `--url` arms nothing and lists only with `--long`. Exits 2 while the host's last arming failed. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
 | `plugins upload` | With `--host-name` (or a runtime or workbench `--url`), stores `--file` in that existing catalog as `--name <step>/<plugin>` with its `--entrypoint` and optional `--config`, refusing source that does not compile. `--arm` also arms it through the same operation as `plugins arm`. |
@@ -137,6 +137,13 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `hosts update` | Packages a versioned release for the vehicle's host and stages each step's `plugins save` selection with it, else the step's default (`plugins list` marks the defaults), replacing whatever else each step had staged: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `hosts run\|stop\|restart\|status` | Starts, stops, restarts or inspects a run on the host. Status includes the vehicle endpoint, host URL and simulator attachment. `stop` ends the run; the host stays attached until `hosts delete`. |
 | `simulators create` | Starts a headless Chase simulator from the Metrics UI checkout at `AUTOMA_METRICS_UI_DIR`, with its launcher's default configuration, on the first free port from 5051, and prints its URL. It runs until `simulators delete --url` ends it, which refuses while a host was created at it. |
+
+The **Learning** page charts published beliefs and memory plugin status by
+data shape: values, confidence, checks, trials, withdrawal reasons and plugin
+state. A run keeps sampled history in its CLI process; `hosts viewer` and
+terminal streams collect history while the page is open. History is bounded
+per series and is not replayed from recordings. A trial that opens and closes
+between polls may be missed.
 
 The runtime viewer's **Plugins** table refreshes every 500 ms. Revision columns
 are hidden by default; **Show revisions** reveals them for debugging. **Enabled**

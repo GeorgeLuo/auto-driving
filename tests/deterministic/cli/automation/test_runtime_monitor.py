@@ -11,6 +11,7 @@ from unittest import mock
 from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
+from autonomy.decision_cycle.memory.beliefs import Belief
 from cli.automa_cli.hosts.runs import monitor
 from cli.automa_cli.hosts.runs.worker import RunOutput
 from cli.automa_cli.hosts.runs.render import render_run_result
@@ -112,6 +113,27 @@ def _publication(index: int) -> dict:
 
 
 class RuntimeMonitorTests(unittest.TestCase):
+    def test_run_collects_learning_before_a_browser_opens(self) -> None:
+        hosts = [_host(count) for count in (10, 11, 12)]
+        for count, host in enumerate(hosts):
+            host["host"]["last_cycle"] = {"context": {"timestamp_ms": 100 * count}}
+            belief = Belief("learner.samples", count, "learner", 100 * count)
+            host["host"]["steps"]["memory"]["beliefs"] = {belief.belief_id: belief.to_dict()}
+        servers = []
+        factory = monitor.runtime_view_server
+
+        def build(**options):
+            server = factory(**options)
+            servers.append(server)
+            return server
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(monitor, "runtime_view_server", side_effect=build):
+            _, code, _, _, _ = self._monitor(Path(tmp), sessions=[_session("running", 1), _session("completed", 2)],
+                                           hosts=hosts)
+        self.assertEqual(code, 0)
+        track = servers[0].learning.payload()["beliefs"]["learner.samples"]
+        self.assertEqual([[t, value] for _, t, value in track["series"]["/value"]], [[100, 1], [200, 2]])
+
     def test_run_transcript_formats_supplied_state(self) -> None:
         state = {
             "host_name": "car",

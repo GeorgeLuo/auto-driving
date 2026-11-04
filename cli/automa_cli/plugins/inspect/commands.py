@@ -35,7 +35,9 @@ def register_inspect(commands: argparse._SubParsersAction) -> None:
                 f"every step's selection and restages it per frame; --preset or --plugin overrides "
                 f"{step_name}. Otherwise each step uses its default. Absent frames have a null "
                 f"record and reset temporal state. Unmanifested images use filename order and "
-                f"times 0, 1000, 2000, ... ms. Recorded frames replay with their recorded drive mode."
+                f"times 0, 1000, 2000, ... ms. Recordings use manifest.json with per-frame inputs "
+                f"and relative image_path values; report.json is output only. Recorded frames "
+                f"replay with their recorded drive mode."
             ),
         )
         step_inspect.add_argument(

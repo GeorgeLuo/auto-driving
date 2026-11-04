@@ -246,18 +246,18 @@ class WorkbenchTests(unittest.TestCase):
     def test_sequential_replay_uses_shared_memory_without_legacy_handoff(self) -> None:
         with image_source(2) as root:
             write_manifest(root, {
-                "camera_frames": [
+                "frames": [
                     {
                         "frame_id": "camera-first",
                         "frame_index": 10,
-                        "captured_at_ms": 1000,
-                        "image": "frame_00.png",
+                        "timestamp_ms": 1000,
+                        "image_path": "frame_00.png",
                     },
                     {
                         "frame_id": "camera-next",
                         "frame_index": 13,
-                        "captured_at_ms": 1080,
-                        "image": "frame_01.png",
+                        "timestamp_ms": 1080,
+                        "image_path": "frame_01.png",
                     },
                 ]
             })

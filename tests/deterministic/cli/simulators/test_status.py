@@ -5,10 +5,12 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from cli.automa_cli.providers.urls import chase_operator_url, normalize_chase_url
 from cli.automa_cli.shared.io.processes import pid_alive
 from cli.automa_cli.shared.paths import display_path
+from cli.automa_cli.simulators.status import simulators_status
 from cli.automa_cli.simulators.store import SIMULATOR_SCHEMA
 from tests.deterministic.cli.simulators.test_store import _dead_pid
 from tests.shared.cli.invoke import invoke_automa
@@ -130,6 +132,33 @@ class SimulatorsStatusTests(unittest.TestCase):
         self.assertEqual(simulator["log_tail"], ["launcher said ready"])
         self.assertIsNone(simulator["frontend"])
         self.assertNotIn("log_text", simulator)
+
+    def test_an_exited_simulator_without_a_log_has_no_tail(self) -> None:
+        url = "ws://127.0.0.1:5053/ws/control"
+        log_path = self.write_record(port=5053, url=url, pid=_dead_pid())
+
+        listed = self.status()
+        [simulator] = json.loads(self.status("--json").stdout)["simulators"]
+
+        self.assertIn(f"  (no simulator log at {display_path(log_path)})", listed.stdout)
+        self.assertEqual(simulator["state"], "exited")
+        self.assertIsNone(simulator["log_tail"])
+
+    def test_json_is_the_document_simulators_status_returns(self) -> None:
+        self.write_record(port=5052, url="ws://127.0.0.1:5052/ws/control", pid=_dead_pid(), log="ready\n")
+        returned = []
+
+        def keep(**kwargs):
+            returned.append(simulators_status(**kwargs))
+            return returned[-1]
+
+        with patch("cli.automa_cli.simulators.commands.simulators_status", keep):
+            machine = json.loads(self.status("--json").stdout)
+
+        [status] = returned
+        self.assertEqual(status.exit_code, 0)
+        self.assertEqual(machine, status.payload)
+        self.assertEqual(status.created, ("http://127.0.0.1:5052/",))
 
     def test_an_unreachable_simulator_fails_only_when_named(self) -> None:
         closed = closed_url()

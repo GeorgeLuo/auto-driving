@@ -6,14 +6,8 @@ from typing import Any
 
 from ..providers.metadata import CHASE_SIM, PROVIDERS
 from ..providers.urls import chase_operator_url
-from ..shared.text import indented
-from .models import SimulatorResult
-
-# Printed with or without --long. ``log_text`` is the indented block only.
-_STATUS_FIELDS = (
-    "url", "port", "pid", "state", "frontend", "game", "error", "hosts",
-    "started_at_ms", "metrics_ui_dir", "config", "log", "log_tail",
-)
+from ..shared.text import format_log_tail, indented
+from .models import SimulatorResult, SimulatorsStatus
 
 
 def simulator_lines(vehicle: dict[str, Any]) -> list[str]:
@@ -35,24 +29,14 @@ def simulator_lines(vehicle: dict[str, Any]) -> list[str]:
     return lines
 
 
-def render_simulators_status(
-    simulators: list[dict[str, Any]],
-    *,
-    url: str | None,
-    created: tuple[str, ...],
-    json_output: bool,
-    long: bool,
-) -> str:
-    """Text for a terminal, or ``automa_simulators_status`` JSON."""
+def render_simulators_status(status: SimulatorsStatus, *, url: str | None, json_output: bool, long: bool) -> str:
+    """Text for a terminal, or the ``automa_simulators_status`` document as JSON."""
 
     if json_output:
-        payload = {
-            "schema": "automa_simulators_status",
-            "simulators": [{field: simulator[field] for field in _STATUS_FIELDS} for simulator in simulators],
-        }
-        return json.dumps(payload, indent=2, sort_keys=True)
+        return json.dumps(status.payload, indent=2, sort_keys=True)
+    simulators = status.payload["simulators"]
     if url is not None and not simulators:
-        names = ", ".join(created)
+        names = ", ".join(status.created)
         return f"No created simulator at {url}. " + (f"Created: {names}." if names else "None created.")
     if not simulators:
         return "None created."
@@ -69,8 +53,8 @@ def _status_block(simulator: dict[str, Any], *, long: bool) -> str:
     if long:
         lines.append(f"  Metrics UI checkout {simulator['metrics_ui_dir']}, config {simulator['config']}")
         lines.append(f"  log {simulator['log']}")
-    if simulator.get("log_text"):
-        lines += indented(simulator["log_text"])
+    if simulator["state"] == "exited":
+        lines += indented(format_log_tail("Simulator", simulator["log"], simulator["log_tail"]))
     return "\n".join(lines)
 
 

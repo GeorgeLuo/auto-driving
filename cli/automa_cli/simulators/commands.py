@@ -122,8 +122,6 @@ def _handle_simulators_status(args: argparse.Namespace) -> int:
     except ValueError as exc:
         print(str(exc))
         return 2
-    exit_code, simulators, created = simulators_status(url=ws_url, timeout_s=args.timeout_s)
-    print(render_simulators_status(
-        simulators, url=args.url, created=created, json_output=args.json, long=args.long,
-    ))
-    return exit_code
+    status = simulators_status(url=ws_url, timeout_s=args.timeout_s)
+    print(render_simulators_status(status, url=args.url, json_output=args.json, long=args.long))
+    return status.exit_code

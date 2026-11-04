@@ -22,7 +22,7 @@ from .errors import RuntimeHostError
 from ..releases.store import release_code_dir, release_manifest, release_summary
 from ..shared.io.processes import pid_alive
 from ..shared.paths import ROOT, display_path
-from ..shared.text import automa_command
+from ..shared.text import automa_command, format_log_tail
 from .staging import automation_dir
 
 HOST_RECORD = "host.json"
@@ -44,11 +44,17 @@ def host_record(host_name: str) -> dict[str, Any] | None:
 
 
 def log_tail(path: Path, name: str) -> str:
+    return format_log_tail(name, display_path(path), read_log_tail(path))
+
+
+def read_log_tail(path: Path) -> list[str] | None:
+    """The log's last ``LOG_TAIL_LINES`` lines, or ``None`` when it cannot be read."""
+
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
-        return f"(no {name.lower()} log at {display_path(path)})"
-    return "\n".join([f"{name} log {display_path(path)}:", *lines[-LOG_TAIL_LINES:]])
+        return None
+    return lines[-LOG_TAIL_LINES:]
 
 
 def host_log_tail(host_name: str) -> str:

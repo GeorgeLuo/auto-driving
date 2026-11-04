@@ -4,6 +4,7 @@ import json
 import unittest
 from types import SimpleNamespace
 from cli.automa_cli.hosts.runs.models import StartResult
+from cli.automa_cli.simulators.models import SimulatorsStatus
 from unittest.mock import patch
 
 from tests.shared.cli.invoke import invoke_automa
@@ -113,7 +114,7 @@ class TimeoutInputTests(unittest.TestCase):
             if command[0] == "hosts":
                 status = SimpleNamespace(exit_code=0, message="ok")
             elif command[0] == "simulators":
-                status = (0, [], ())
+                status = SimulatorsStatus(0, {"schema": "automa_simulators_status", "simulators": []})
             else:
                 status = {"vehicles": [{"provider": "chase-sim", "url": "http://localhost:5050/", "state": "running"}]}
             with self.subTest(command=command), patch(target, return_value=status) as get_status:

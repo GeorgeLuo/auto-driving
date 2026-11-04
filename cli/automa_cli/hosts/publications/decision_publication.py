@@ -219,8 +219,6 @@ def normalize_decision_publication(
             field="decision.values.activation.steps",
         )
 
-    # Cycle reconstruction and frame/activation alignment belong to the
-    # shared report reader. This adapter owns only the HTTP envelope.
     if type(now_ms) is not int:
         raise ValueError("now_ms must be a non-bool int")
     age_ms = int(now_ms) - published_at_ms

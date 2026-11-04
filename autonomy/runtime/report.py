@@ -8,8 +8,6 @@ recorded after the cycle. Each vehicle transports the document itself.
 ``cycle`` contains the observation, memory, proposal, plan, and action records.
 Observation, memory, and plan may be null when their steps produce no record.
 All five keys stay required. Proposal and action stay objects.
-``decode_records`` reconstructs those three decision records and checks that
-they describe this frame.
 
 ``values["timing"]`` is the cycle's ``timing`` record from
 ``autonomy.decision_cycle.timing``: its total and each step's and plugin's
@@ -23,19 +21,9 @@ import time
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.action_identifiers import require_ascii_id, require_safe_int
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, DecisionCycleResult
-from autonomy.decision_cycle.plan.values import ActionPlan
-from autonomy.decision_cycle.proposal.result import ProposalResult
-from autonomy.decision_cycle.records import DecisionRecords
 from autonomy.runtime.execution import require_mode
-from autonomy.serialization import (
-    canonical_json_utf8,
-    json_ready,
-    require_canonical_export,
-    require_exact_keys,
-)
 
 REPORT_SCHEMA = "host_report"
 REPORT_EXACT_KEYS = frozenset(
@@ -55,6 +43,16 @@ REPORT_EXACT_KEYS = frozenset(
 )
 CYCLE_EXACT_KEYS = frozenset(CYCLE_RECORD_KEYS)
 APPLICATION_EXACT_KEYS = frozenset({"applied", "mode", "reason", "steering", "throttle"})
+
+
+def _exact_keys(payload: Mapping[str, Any], expected: frozenset[str], *, field: str) -> None:
+    actual = set(payload)
+    missing = sorted(expected - actual)
+    extra = sorted(actual - expected)
+    if missing or extra:
+        raise ValueError(
+            f"{field} keys must be {sorted(expected)}; missing={missing} extra={extra}"
+        )
 
 
 def _json_copy(value: object, *, field: str) -> Any:
@@ -134,7 +132,7 @@ class ReportApplication:
     def from_dict(cls, payload: object) -> "ReportApplication":
         if not isinstance(payload, Mapping):
             raise ValueError("application must be an object")
-        require_exact_keys(payload, APPLICATION_EXACT_KEYS, field="application")
+        _exact_keys(payload, APPLICATION_EXACT_KEYS, field="application")
         return cls(
             applied=payload["applied"],
             mode=payload["mode"],
@@ -184,7 +182,7 @@ class HostReport:
         )
         if not isinstance(self.cycle, Mapping):
             raise ValueError("cycle must be an object")
-        require_exact_keys(self.cycle, CYCLE_EXACT_KEYS, field="cycle")
+        _exact_keys(self.cycle, CYCLE_EXACT_KEYS, field="cycle")
         cycle = {
             key: _cycle_record(
                 _json_copy(self.cycle[key], field=f"cycle.{key}"),
@@ -221,7 +219,9 @@ class HostReport:
     def from_dict(cls, payload: object) -> "HostReport":
         if not isinstance(payload, Mapping):
             raise ValueError("report must be an object")
-        require_exact_keys(payload, REPORT_EXACT_KEYS, field="report")
+        if payload.get("schema") != REPORT_SCHEMA:
+            raise ValueError(f"report.schema must be {REPORT_SCHEMA!r}")
+        _exact_keys(payload, REPORT_EXACT_KEYS, field="report")
         return cls(
             schema=payload["schema"],
             host_name=payload["host_name"],
@@ -235,92 +235,6 @@ class HostReport:
             application=ReportApplication.from_dict(payload["application"]),
             values=payload["values"],
         )
-
-    def decode_records(self) -> DecisionRecords:
-        """Typed proposal, plan, and action, aligned to this frame."""
-
-        decoded = decode_decision_records(self.cycle)
-        align_decision_records(
-            frame_id=self.frame_id,
-            timestamp_ms=self.timestamp_ms,
-            proposal=decoded.proposal,
-            plan=decoded.plan,
-            action=decoded.action,
-        )
-        return decoded
-
-
-def decode_decision_records(cycle: Mapping[str, Any]) -> DecisionRecords:
-    """Reconstruct the decision records and require a lossless export."""
-
-    proposal_payload = cycle.get("proposal")
-    action_payload = cycle.get("action")
-    if not isinstance(proposal_payload, dict) or not isinstance(action_payload, dict):
-        raise ValueError("cycle.proposal and cycle.action must be objects.")
-    proposal = ProposalResult.decode(proposal_payload)
-    action = ActionResult.decode(action_payload)
-    plan_payload = cycle.get("plan")
-    plan = None if plan_payload is None else ActionPlan.decode(plan_payload)
-    exported = {
-        "proposal": proposal.to_dict(),
-        "plan": plan.to_dict() if plan is not None else None,
-        "action": action.to_dict(),
-    }
-    require_canonical_export(
-        {key: cycle[key] for key in exported}, exported, field="cycle"
-    )
-    return DecisionRecords(proposal=proposal, plan=plan, action=action)
-
-
-def align_decision_records(
-    *,
-    frame_id: str,
-    timestamp_ms: int,
-    proposal: ProposalResult,
-    plan: ActionPlan | None,
-    action: ActionResult,
-) -> None:
-    """Frame, candidate, timing, and authority alignment across the three records."""
-
-    cycle_frame_id = action.frame_id
-    if frame_id != cycle_frame_id:
-        raise ValueError("stream frame_id must equal cycle.frame_id.")
-    if action.authority.frame_id != cycle_frame_id:
-        raise ValueError("authority.frame_id must equal cycle.frame_id.")
-    if proposal.frame_id != cycle_frame_id:
-        raise ValueError("proposal.frame_id must equal cycle.frame_id.")
-    if proposal.status != "ok" and action.status != "error":
-        raise ValueError("A failed proposal step must end the action with status error.")
-    if plan is not None and sorted(item.proposal_id for item in plan.candidates) != sorted(
-        item.proposal_id for item in proposal.candidates
-    ):
-        raise ValueError("plan candidates must be the proposal step's candidates.")
-    if plan is not None and plan.frame_id != cycle_frame_id:
-        raise ValueError("plan.frame_id must equal cycle.frame_id.")
-    if plan is not None and plan.timestamp_ms != timestamp_ms:
-        raise ValueError("plan.timestamp_ms must equal the cycle timestamp_ms.")
-
-    proposed = action.authority.proposed
-    if action.status == "error" or plan is None or plan.status == "idle":
-        if proposed is not None:
-            raise ValueError(
-                "authority.proposed must be null when plan is idle/absent or the cycle failed."
-            )
-        return
-    mismatch = "authority.proposed must equal the plan command."
-    command = None if plan is None else plan.command
-    if proposed is None or command is None:
-        raise ValueError(mismatch)
-    try:
-        same = canonical_json_utf8(json_ready(proposed.to_dict())) == canonical_json_utf8(
-            json_ready(command.to_dict())
-        )
-    except ValueError as exc:
-        raise ValueError(
-            f"authority.proposed/plan command are not strictly JSON-serializable: {exc}"
-        ) from exc
-    if not same:
-        raise ValueError(mismatch)
 
 
 def delivery_values(application: Any) -> dict[str, Any]:

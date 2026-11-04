@@ -12,17 +12,12 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from autonomy.decision_cycle.action.hold import HoldAction
 from autonomy.decision_cycle.action.values import AuthorityResult
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
 from autonomy.runtime.control import AutonomyControl
-from autonomy.serialization import require_canonical_export, require_exact_keys
 
 ACTION_RESULT_SCHEMA = "action_result"
-ACTION_RECORD_EXACT_KEYS = frozenset(
-    {"schema", "frame_id", "status", "reason", "authority"}
-)
 
 
 @dataclass(frozen=True)
@@ -80,31 +75,3 @@ class ActionResult:
             "reason": self.reason,
             "authority": self.authority.to_dict(),
         }
-
-    @classmethod
-    def decode(cls, payload: object, *, field: str = "cycle.action") -> "ActionResult":
-        """The action step, when ``payload`` is exactly its export."""
-
-        if not isinstance(payload, dict):
-            raise ValueError(f"{field} must be an object.")
-        if payload.get("schema") != ACTION_RESULT_SCHEMA:
-            raise ValueError(f"{field}.schema must be {ACTION_RESULT_SCHEMA!r}.")
-        require_exact_keys(payload, ACTION_RECORD_EXACT_KEYS, field=field)
-        if payload.get("status") not in {"ok", "error"}:
-            raise ValueError(f"{field}.status must be ok or error.")
-        if type(payload.get("reason")) is not str:
-            raise ValueError(f"{field}.reason must be a string.")
-        authority = AuthorityResult.decode(payload.get("authority"), field=f"{field}.authority")
-        HoldAction.validate_authority(authority, field=f"{field}.authority")
-        try:
-            action = cls(
-                frame_id=str(payload["frame_id"]),
-                status=str(payload["status"]),
-                reason=str(payload["reason"]),
-                authority=authority,
-                schema=str(payload["schema"]),
-            )
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"{field} failed ActionResult construction: {exc}") from exc
-        require_canonical_export(payload, action.to_dict(), field=field)
-        return action

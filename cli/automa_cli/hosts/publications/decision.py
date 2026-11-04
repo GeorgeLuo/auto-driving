@@ -1,26 +1,21 @@
 """Acceptance of a vehicle's published decision cycle.
 
-A runtime host publishes one report per cycle. Autonomy decodes its proposal,
-plan, and action records. This module accepts the report when those records
-and its generation agree with the step activations it names.
+A runtime host publishes one report per cycle. This module accepts the report
+when its envelope names the requested host and it is fresh enough to show.
 """
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 from typing import Any
 
-from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
-from autonomy.decision_cycle.records import DecisionRecords
 from autonomy.runtime.report import HostReport
 
-from ..step_activations import bundle_activation_problems, proposal_plugin_ids
+from ..step_activations import bundle_activation_problems
 from ..step_formatting import format_activation_problems
 from .decision_publication import (
     DecisionPublicationError,
     normalize_decision_publication,
 )
-from .decision_records import activations_from_payloads
 
 ERROR_SCHEMA = "host_decision_error"
 
@@ -81,58 +76,6 @@ def require_valid_activations(
         )
 
 
-def _require_identity_steps(identity: object, *, error_code: str) -> dict[str, Any]:
-    """The decision steps of an identity; its generation ID must match their content."""
-
-    if not isinstance(identity, dict) or not isinstance(identity.get("steps"), dict):
-        raise DecisionSurfaceError(
-            error_code,
-            "The decision identity names no proposal, plan, and action steps.",
-        )
-    steps = identity["steps"]
-    if set(steps) != set(DECISION_STEPS):
-        raise DecisionSurfaceError(
-            "activation_invalid" if error_code == "activation_missing" else error_code,
-            f"Decision identity must name exactly the steps {list(DECISION_STEPS)!r}.",
-        )
-    if steps.get("proposal") is None:
-        raise DecisionSurfaceError(
-            error_code,
-            "The decision identity has no proposal step. "
-            "Arm one with: ./cli/automa plugins arm --host-name <host> --name proposal/<plugin>",
-        )
-    try:
-        expected = activation_generation_id(activations_from_payloads(steps), prefix="decision")
-    except (TypeError, ValueError) as exc:
-        raise DecisionSurfaceError(
-            "activation_invalid" if error_code == "activation_missing" else error_code,
-            f"Decision step activations are invalid: {exc}",
-        ) from exc
-    if identity.get("generation_id") != expected:
-        raise DecisionSurfaceError(
-            "activation_invalid" if error_code == "activation_missing" else error_code,
-            "Decision generation_id does not match its step activations.",
-        )
-    return steps
-
-
-def _require_report_cycle_alignment(report: HostReport) -> None:
-    """The same typed cycle and staged-step checks for every report transport."""
-
-    activation = report.values.get("activation")
-    steps = _require_identity_steps(activation, error_code="latest_frame_invalid")
-    try:
-        decoded = report.decode_records()
-    except (TypeError, ValueError) as exc:
-        raise DecisionSurfaceError("latest_frame_invalid", str(exc)) from exc
-    _require_runner_plan_alignment(decoded, steps)
-    if not isinstance(activation, dict) or report.generation_id != activation.get("generation_id"):
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "Report generation does not match its step activations.",
-        )
-
-
 def accept_decision_publication(
     publication: object,
     *,
@@ -143,7 +86,7 @@ def accept_decision_publication(
     """Normalize and accept a host's decision publication without fabricating local state."""
 
     try:
-        normalized = normalize_decision_publication(
+        return normalize_decision_publication(
             publication,
             host_name=host_name,
             now_ms=now_ms,
@@ -163,65 +106,6 @@ def accept_decision_publication(
             host_name=host_name,
             details={"reason": "incomplete"},
         ) from exc
-
-    try:
-        _require_report_cycle_alignment(normalized["report"])
-    except DecisionSurfaceError as exc:
-        raise DecisionSurfaceError(
-            "decision_publication_unavailable",
-            f"Decision publication is invalid: {exc.message_text}",
-            host_name=host_name,
-            details={"reason": "mismatched", "source_error_code": exc.error_code, **exc.details},
-        ) from exc
-    return normalized
-
-
-def _require_runner_plan_alignment(
-    cycle: DecisionRecords,
-    steps: Mapping[str, Any],
-) -> None:
-    """Enforce the staged action plugin and the plan's candidate membership."""
-
-    action_plugins = (steps.get("action") or {}).get("plugins") or []
-    expected_gate = action_plugins[0] if len(action_plugins) == 1 else None
-    if cycle.authority.gate_id != expected_gate:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            f"cycles must come from the staged {expected_gate!r} action plugin.",
-            details={
-                "field": "cycle.action.authority.gate_id",
-                "expected_gate_id": expected_gate,
-                "got_gate_id": cycle.authority.gate_id,
-            },
-        )
-    if cycle.status == "error":
-        if cycle.plan is not None and cycle.proposal.status != "ok":
-            raise DecisionSurfaceError(
-                "latest_frame_invalid",
-                "a failed proposal step must not be followed by a plan.",
-                details={"field": "cycle.plan"},
-            )
-        return
-
-    plan = cycle.plan
-    if plan is None:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "ok cycle must include an action plan.",
-            details={"field": "cycle.plan"},
-        )
-    expected_plugins = tuple(sorted(proposal_plugin_ids(dict(steps))))
-    actual_plugins = tuple(candidate.plugin_id for candidate in plan.candidates)
-    if actual_plugins != expected_plugins:
-        raise DecisionSurfaceError(
-            "latest_frame_invalid",
-            "cycle.plan candidates must match the staged proposal plugins exactly.",
-            details={
-                "field": "cycle.plan.candidates",
-                "expected_plugins": list(expected_plugins),
-                "got_plugins": list(actual_plugins),
-            },
-        )
 
 
 def decision_view_frame(normalized: dict[str, Any]) -> HostReport:

@@ -1,11 +1,11 @@
-"""Frozen JSON storage and the shared exact-key check."""
+"""Frozen JSON storage."""
 
 from __future__ import annotations
 
 import pickle
 import unittest
 
-from autonomy.serialization import FrozenJsonObject, deep_freeze, require_exact_keys
+from autonomy.serialization import FrozenJsonObject, deep_freeze
 
 
 class JsonStorageTests(unittest.TestCase):
@@ -19,17 +19,6 @@ class JsonStorageTests(unittest.TestCase):
         self.assertEqual(restored, frozen)
         with self.assertRaises(TypeError):
             restored["a"] = {}
-
-    def test_exact_keys_name_the_missing_and_extra_fields(self) -> None:
-        with self.assertRaises(ValueError) as raised:
-            require_exact_keys(
-                {"schema": "record", "obsolete": 1},
-                frozenset({"schema", "frame_id"}),
-                field="value",
-            )
-        message = str(raised.exception)
-        self.assertIn("missing=['frame_id']", message)
-        self.assertIn("extra=['obsolete']", message)
 
 
 if __name__ == "__main__":

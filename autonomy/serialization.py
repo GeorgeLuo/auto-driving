@@ -3,10 +3,8 @@
 ``canonical_json_utf8`` encodes a value with sorted keys and compact
 separators. ``canonical_json_size_bytes`` is the UTF-8 length of that
 encoding, also available as ``canonical_json_bytes``. ``ensure_strict_json_value``
-round-trips a value through the same encoding. ``json_ready``,
-``require_exact_keys``, and ``require_canonical_export`` compare a decoded
-record with the export it claims to be. ``deep_freeze`` stores JSON objects
-as ``FrozenJsonObject`` and JSON arrays as tuples.
+round-trips a value through the same encoding. ``deep_freeze`` stores JSON
+objects as ``FrozenJsonObject`` and JSON arrays as tuples.
 """
 
 from __future__ import annotations
@@ -69,48 +67,6 @@ def ensure_strict_json_value(value: Any) -> Any:
         return json.loads(_canonical_json_text(value))
     except (TypeError, ValueError) as exc:
         raise _strict_json_error(exc) from exc
-
-
-def json_ready(value: Any) -> Any:
-    """Lists and string-keyed objects, so a typed export can be compared as JSON."""
-
-    if isinstance(value, tuple):
-        return [json_ready(item) for item in value]
-    if isinstance(value, list):
-        return [json_ready(item) for item in value]
-    if isinstance(value, dict):
-        return {str(key): json_ready(item) for key, item in value.items()}
-    return value
-
-
-def require_exact_keys(
-    payload: Mapping[str, Any],
-    exact: frozenset[str],
-    *,
-    field: str,
-) -> None:
-    """Reject a record whose keys are not exactly its export."""
-
-    actual = set(payload)
-    expected = set(exact)
-    missing = sorted(expected - actual)
-    extra = sorted(actual - expected)
-    if missing or extra:
-        raise ValueError(
-            f"{field} keys must be {sorted(expected)}; missing={missing} extra={extra}"
-        )
-
-
-def require_canonical_export(payload: object, exported: object, *, field: str) -> None:
-    """Reject a record that is not the canonical JSON of its typed export."""
-
-    try:
-        left = canonical_json_utf8(json_ready(payload))
-        right = canonical_json_utf8(json_ready(exported))
-    except ValueError as exc:
-        raise ValueError(f"{field} is not strictly JSON-serializable: {exc}") from exc
-    if left != right:
-        raise ValueError(f"{field} is not a complete lossless typed export.")
 
 
 class FrozenJsonObject(Mapping[str, Any]):

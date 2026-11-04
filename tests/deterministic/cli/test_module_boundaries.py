@@ -154,6 +154,7 @@ _MODULE_ROLES = {
     "shared.text": "pure",
     "shared.timestamps": "pure",
     "simulators.process": "operation",
+    "simulators.status": "operation",
     "vehicles.discovery": "operation",
     "vehicles.status": "operation",
     "workbench.page_payloads": "pure",

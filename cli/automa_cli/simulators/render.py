@@ -1,12 +1,19 @@
 """Format supplied simulator results without performing operations."""
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from ..providers.metadata import CHASE_SIM, PROVIDERS
 from ..providers.urls import chase_operator_url
 from ..shared.text import indented
 from .models import SimulatorResult
+
+# Printed with or without --long. ``log_text`` is the indented block only.
+_STATUS_FIELDS = (
+    "url", "port", "pid", "state", "frontend", "game", "error", "hosts",
+    "started_at_ms", "metrics_ui_dir", "config", "log", "log_tail",
+)
 
 
 def simulator_lines(vehicle: dict[str, Any]) -> list[str]:
@@ -26,6 +33,45 @@ def simulator_lines(vehicle: dict[str, Any]) -> list[str]:
     if vehicle.get("pid"):
         lines.append(f"  created by simulators create, pid {vehicle['pid']}")
     return lines
+
+
+def render_simulators_status(
+    simulators: list[dict[str, Any]],
+    *,
+    url: str | None,
+    created: tuple[str, ...],
+    json_output: bool,
+    long: bool,
+) -> str:
+    """Text for a terminal, or ``automa_simulators_status`` JSON."""
+
+    if json_output:
+        payload = {
+            "schema": "automa_simulators_status",
+            "simulators": [{field: simulator[field] for field in _STATUS_FIELDS} for simulator in simulators],
+        }
+        return json.dumps(payload, indent=2, sort_keys=True)
+    if url is not None and not simulators:
+        names = ", ".join(created)
+        return f"No created simulator at {url}. " + (f"Created: {names}." if names else "None created.")
+    if not simulators:
+        return "None created."
+    return "\n\n".join(_status_block(simulator, long=long) for simulator in simulators)
+
+
+def _status_block(simulator: dict[str, Any], *, long: bool) -> str:
+    lines = simulator_lines({**simulator, "provider": CHASE_SIM.name})
+    hosts = simulator["hosts"]
+    if len(hosts) == 1:
+        lines.append(f"  used by host {hosts[0]}")
+    elif hosts:
+        lines.append(f"  used by hosts {', '.join(hosts)}")
+    if long:
+        lines.append(f"  Metrics UI checkout {simulator['metrics_ui_dir']}, config {simulator['config']}")
+        lines.append(f"  log {simulator['log']}")
+    if simulator.get("log_text"):
+        lines += indented(simulator["log_text"])
+    return "\n".join(lines)
 
 
 def render_simulator_result(result: SimulatorResult) -> str:

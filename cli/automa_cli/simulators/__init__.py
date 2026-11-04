@@ -1,6 +1,7 @@
 """``automa simulators``: the commands.
 
 - ``commands``: the ``simulators`` parser and its handlers.
+- ``status``: ``simulators status``, including a record whose process has exited.
 - ``service``: ``simulators create`` and ``delete``, returning lifecycle facts.
 - ``models``: simulator lifecycle outcomes.
 - ``render``: command text. ``simulator_lines`` is the simulator block ``vehicles status`` prints.

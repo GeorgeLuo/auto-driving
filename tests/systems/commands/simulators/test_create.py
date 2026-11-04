@@ -133,6 +133,11 @@ class CreatedSimulatorTests(unittest.TestCase):
         os.waitpid(record["pid"], 0)
 
         self.assertEqual(len(self.status_blocks()), 1)
+        shown = self.automa("simulators", "status")
+        self.assertEqual(shown.returncode, 0, shown.stderr)
+        self.assertIn(f"exited at {self.url}", shown.stdout)
+        self.assertIn("Simulator log", shown.stdout)
+        self.assertIn("CHASE_UI_WS_URL=", shown.stdout)
         deleted = self.automa("simulators", "delete", "--url", self.url)
         self.assertEqual((deleted.returncode, deleted.stdout),
                          (2, f"No created simulator at {self.url}. None created.\n"))

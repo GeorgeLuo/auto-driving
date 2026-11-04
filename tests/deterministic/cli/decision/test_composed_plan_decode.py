@@ -15,7 +15,7 @@ from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
 from autonomy.runtime.report import align_decision_records
 from autonomy.vehicle import SensorFrame
-from cli.automa_cli.hosts.publications.decision_records import DecisionRecords
+from autonomy.decision_cycle.records import DecisionRecords
 from tests.deterministic.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     WeightedMeanPlan,
     _active_proposal,

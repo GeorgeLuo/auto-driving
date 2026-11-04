@@ -1,19 +1,16 @@
-"""The proposal, plan, and action records of one cycle, for decision tools.
+"""Run the proposal, plan, and action steps for one recorded frame.
 
-The decision tools (stream, apply, inspect, view) read the three decision
-steps' records together. ``DecisionRecords`` holds them and answers the
-questions the tools ask of a frame (its status, plan, and authority).
-``DecisionRunners`` builds the three steps' runners from activation payloads
-and runs them for one frame, as the cycle would after memory. A payload a
-vehicle recorded runs on the controller release it names, as in every replay.
+``DecisionRecords`` lives in ``autonomy.decision_cycle.records``. It holds the
+three records and answers the questions the decision tools ask of a frame.
+``DecisionRunners`` builds those steps' runners from activation payloads and
+runs them, as the cycle would after memory. A payload a vehicle recorded runs
+on the controller release it names, as in every replay.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from typing import Any, Mapping
 
-from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.action.runner import ActionRunner
 from autonomy.decision_cycle.activation import (
     DECISION_STEPS,
@@ -22,57 +19,11 @@ from autonomy.decision_cycle.activation import (
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.runner import PlanRunner
-from autonomy.decision_cycle.plan.values import ActionPlan
-from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
+from autonomy.decision_cycle.records import DecisionRecords
 from autonomy.decision_cycle.steps import builtin_activation
-from autonomy.runtime.control import AutonomyControl
 
 from ...replay.selections import recorded_runner
-
-
-@dataclass(frozen=True)
-class DecisionRecords:
-    proposal: ProposalResult
-    plan: ActionPlan | None
-    action: ActionResult
-
-    @property
-    def frame_id(self) -> str:
-        return self.action.frame_id
-
-    @property
-    def status(self) -> str:
-        return self.action.status
-
-    @property
-    def reason(self) -> str:
-        return self.action.reason
-
-    @property
-    def authority(self):
-        return self.action.authority
-
-    @property
-    def control(self) -> AutonomyControl | None:
-        return self.action.control
-
-    def to_dict(self) -> dict[str, Any]:
-        return {
-            "proposal": self.proposal.to_dict(),
-            "plan": self.plan.to_dict() if self.plan is not None else None,
-            "action": self.action.to_dict(),
-        }
-
-    @classmethod
-    def from_cycle(cls, cycle: Any) -> "DecisionRecords | None":
-        """The decision records of a ``DecisionCycleResult``, when it has them."""
-
-        proposal = getattr(cycle, "proposal", None)
-        action = getattr(cycle, "action", None)
-        if not isinstance(proposal, ProposalResult) or not isinstance(action, ActionResult):
-            return None
-        return cls(proposal=proposal, plan=getattr(cycle, "plan", None), action=action)
 
 
 def activations_from_payloads(

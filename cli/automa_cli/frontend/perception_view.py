@@ -336,11 +336,9 @@ def _publication_payload(
         "overlay": overlay,
         "timing": timing,
         "duration_ms": source.get("duration_ms"),
-        "cycle": source.get("cycle"),
+        "memory": source.get("memory"),
         "perception": perception,
-        "sensor_frame": source.get("sensor_frame"),
         "control": source.get("control"),
-        "engine": source.get("engine"),
     }
 
 

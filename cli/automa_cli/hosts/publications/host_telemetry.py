@@ -17,6 +17,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
     require_safe_int,
 )
+from autonomy.runtime.report import HostReport
 from autonomy.runtime.routes import TELEMETRY_SCHEMA
 from implementations.runtime.picar.host_telemetry import (
     HOST_TELEMETRY_LIMITS,
@@ -559,59 +560,58 @@ def normalize_host_telemetry_record(
     }
 
 
-def _decision_source_frame(decision: dict[str, Any]) -> dict[str, Any]:
-    values = decision.get("values") if isinstance(decision.get("values"), dict) else {}
-    candidates = (
-        values.get("source_frame"),
-        decision.get("source_frame"),
-        decision.get("frame"),
-    )
+def _decision_source_frame(report: HostReport) -> dict[str, Any]:
+    """The one source frame carried on the report's values."""
+
+    values = report.values if isinstance(report.values, dict) else {}
+    candidate = values.get("source_frame")
     required = {"frame_id", "frame_index", "captured_at_ms", "completed_at_ms"}
-    candidate: object
-    for candidate in candidates:
-        if isinstance(candidate, dict) and required.issubset(candidate):
-            try:
-                frame = {
-                    "frame_id": _host_require_id(candidate.get("frame_id"), field="decision.source_frame.frame_id"),
-                    "frame_index": _host_require_nonnegative_int(
-                        candidate.get("frame_index"), field="decision.source_frame.frame_index"
-                    ),
-                    "captured_at_ms": _host_require_epoch_ms(
-                        candidate.get("captured_at_ms"), field="decision.source_frame.captured_at_ms"
-                    ),
-                    "completed_at_ms": _host_require_epoch_ms(
-                        candidate.get("completed_at_ms"), field="decision.source_frame.completed_at_ms"
-                    ),
-                }
-            except HostTelemetryError as exc:
-                raise _host_telemetry_error(
-                    "identity_mismatch",
-                    "Decision source-frame identity is invalid.",
-                    details=exc.details,
-                ) from exc
-            if frame["captured_at_ms"] > frame["completed_at_ms"]:
-                raise _host_telemetry_error(
-                    "identity_mismatch",
-                    "Decision source-frame timestamps are invalid.",
-                )
-            return frame
-    raise _host_telemetry_error(
-        "identity_mismatch",
-        "Decision publication cannot expose the complete source-frame identity.",
-        field="decision.source_frame",
-    )
+    if not isinstance(candidate, dict) or not required.issubset(candidate):
+        raise _host_telemetry_error(
+            "identity_mismatch",
+            "Decision publication cannot expose the complete source-frame identity.",
+            field="decision.values.source_frame",
+        )
+    try:
+        frame = {
+            "frame_id": _host_require_id(
+                candidate.get("frame_id"), field="decision.values.source_frame.frame_id"
+            ),
+            "frame_index": _host_require_nonnegative_int(
+                candidate.get("frame_index"), field="decision.values.source_frame.frame_index"
+            ),
+            "captured_at_ms": _host_require_epoch_ms(
+                candidate.get("captured_at_ms"), field="decision.values.source_frame.captured_at_ms"
+            ),
+            "completed_at_ms": _host_require_epoch_ms(
+                candidate.get("completed_at_ms"),
+                field="decision.values.source_frame.completed_at_ms",
+            ),
+        }
+    except HostTelemetryError as exc:
+        raise _host_telemetry_error(
+            "identity_mismatch",
+            "Decision source-frame identity is invalid.",
+            details=exc.details,
+        ) from exc
+    if frame["captured_at_ms"] > frame["completed_at_ms"]:
+        raise _host_telemetry_error(
+            "identity_mismatch",
+            "Decision source-frame timestamps are invalid.",
+        )
+    return frame
 
 
 def decision_publication_identity(normalized_decision: dict[str, Any]) -> dict[str, Any]:
     """Extract the exact composite identity needed for a telemetry join."""
 
-    decision = normalized_decision.get("decision")
-    if not isinstance(decision, dict):
+    report = normalized_decision.get("report")
+    if not isinstance(report, HostReport):
         raise _host_telemetry_error(
             "identity_mismatch",
-            "Decision publication has no decision object.",
+            "Decision publication has no decision report.",
         )
-    values = decision.get("values") if isinstance(decision.get("values"), dict) else {}
+    values = report.values if isinstance(report.values, dict) else {}
     activation = values.get("activation") if isinstance(values.get("activation"), dict) else None
     if not isinstance(activation, dict):
         raise _host_telemetry_error(
@@ -619,16 +619,11 @@ def decision_publication_identity(normalized_decision: dict[str, Any]) -> dict[s
             "Decision publication cannot expose activation identity.",
         )
     try:
-        host_name = _host_require_id(decision.get("host_name"), field="decision.host_name")
         source_id = _host_require_id(values.get("source_id"), field="decision.values.source_id")
-        run_id = _host_require_id(decision.get("run_id"), field="decision.run_id")
-        generation_id = _host_require_id(
-            decision.get("generation_id"), field="decision.generation_id"
-        )
         activation_generation_id = _host_require_id(
             activation.get("generation_id"), field="decision.values.activation.generation_id"
         )
-        source_frame = _decision_source_frame(decision)
+        source_frame = _decision_source_frame(report)
     except HostTelemetryError as exc:
         if exc.reason == "identity_mismatch":
             raise
@@ -637,22 +632,25 @@ def decision_publication_identity(normalized_decision: dict[str, Any]) -> dict[s
             "Decision publication cannot expose exact telemetry identity.",
             details=exc.details,
         ) from exc
+    host_name = report.host_name
+    run_id = report.run_id
+    generation_id = report.generation_id
     if activation_generation_id != generation_id:
         raise _host_telemetry_error(
             "identity_mismatch",
             "Decision activation generation does not match its envelope.",
         )
-    if decision.get("frame_id") != source_frame["frame_id"]:
+    if report.frame_id != source_frame["frame_id"]:
         raise _host_telemetry_error(
             "identity_mismatch",
             "Decision frame_id does not match its source-frame identity.",
         )
-    if decision.get("frame_index") != source_frame["frame_index"]:
+    if report.frame_index != source_frame["frame_index"]:
         raise _host_telemetry_error(
             "identity_mismatch",
             "Decision frame_index does not match its source-frame identity.",
         )
-    if decision.get("timestamp_ms") != source_frame["captured_at_ms"]:
+    if report.timestamp_ms != source_frame["captured_at_ms"]:
         raise _host_telemetry_error(
             "identity_mismatch",
             "Decision timestamp does not match its source-frame identity.",

@@ -11,6 +11,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, activation_generation_id
+from autonomy.decision_cycle.records import DecisionRecords
 from autonomy.runtime.report import HostReport
 
 from ..step_activations import bundle_activation_problems, proposal_plugin_ids
@@ -19,7 +20,7 @@ from .decision_publication import (
     DecisionPublicationError,
     normalize_decision_publication,
 )
-from .decision_records import DecisionRecords, activations_from_payloads
+from .decision_records import activations_from_payloads
 
 ERROR_SCHEMA = "host_decision_error"
 
@@ -124,8 +125,7 @@ def _require_report_cycle_alignment(report: HostReport) -> None:
         decoded = report.decode_records()
     except (TypeError, ValueError) as exc:
         raise DecisionSurfaceError("latest_frame_invalid", str(exc)) from exc
-    cycle = DecisionRecords(proposal=decoded.proposal, plan=decoded.plan, action=decoded.action)
-    _require_runner_plan_alignment(cycle, steps)
+    _require_runner_plan_alignment(decoded, steps)
     if not isinstance(activation, dict) or report.generation_id != activation.get("generation_id"):
         raise DecisionSurfaceError(
             "latest_frame_invalid",

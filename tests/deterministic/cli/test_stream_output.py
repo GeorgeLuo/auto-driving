@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from autonomy.runtime.report import HostReport, ReportApplication
 from cli.automa_cli.plugins.stream import decision, memory, perception, session
 from cli.automa_cli.plugins.stream.commands import stream_host_step
 from cli.automa_cli.plugins.stream.models import PerceptionPublication, StreamEvent, ViewState
@@ -25,8 +26,13 @@ from cli.automa_cli.hosts.errors import RuntimeHostError
 # A fresh cycle whose plan record is empty.
 NORMALIZED = {
     "result_age_ms": 0, "max_age_ms": 1000,
-    "decision": {"host_name": "fixture", "frame_id": "next",
-                 "values": {"activation": {"steps": {"plan": {"plugins": []}}}}, "cycle": {"plan": {}}},
+    "report": HostReport(
+        host_name="fixture", run_id="run", generation_id="generation",
+        frame_id="next", frame_index=0, timestamp_ms=1, published_at_ms=1,
+        values={"activation": {"steps": {"plan": {"plugins": []}}}},
+        cycle={"observation": None, "memory": None, "proposal": {}, "plan": {}, "action": {}},
+        application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
+    ),
 }
 OFFLINE = "Could not read the decision publication at http://host.invalid: offline"
 ROOT = Path(__file__).resolve().parents[3]
@@ -240,7 +246,7 @@ class StreamOutputTests(unittest.TestCase):
         with (
             patch.object(memory, "runtime_base_url", return_value="http://host.invalid"),
             patch.object(memory, "fetch_autonomy_status", return_value=status),
-            patch.object(memory, "read_publication", return_value=({"cycle": {"memory": {"plugins": []}}}, None)) as read,
+            patch.object(memory, "read_publication", return_value=({"memory": {"plugins": []}}, None)) as read,
         ):
             text = stream_host_step("memory", host_name="fixture", once=True, output=io.StringIO())
             self.assertEqual(text.exit_code, 2)
@@ -366,7 +372,7 @@ def _offline(step: str):
         with (
             patch.object(memory, "runtime_base_url", return_value="http://host.invalid"),
             patch.object(memory, "fetch_autonomy_status", return_value={"session": {}, "host": {"steps": {}}}),
-            patch.object(memory, "read_publication", return_value=({"cycle": {"memory": {}}}, None)),
+            patch.object(memory, "read_publication", return_value=({"memory": {}}, None)),
         ):
             yield
         return

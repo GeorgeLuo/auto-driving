@@ -10,7 +10,8 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
 from autonomy.runtime.report import decode_decision_records
 from cli.automa_cli.hosts.publications.decision import _require_runner_plan_alignment
-from cli.automa_cli.hosts.publications.decision_records import DecisionRecords, DecisionRunners
+from autonomy.decision_cycle.records import DecisionRecords
+from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
 from autonomy.decision_cycle.action.publication import MODE_KEY
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from tests.shared.cli.decision.decision_surfaces_fixtures import packaged_decision_steps

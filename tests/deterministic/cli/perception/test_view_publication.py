@@ -36,38 +36,32 @@ class MemoryViewPublicationTests(unittest.TestCase):
                     }
                 ]
             },
-            "cycle": {
-                "observation": None,
-                "proposal": None,
-                "plan": None,
-                "action": None,
-                "memory": memory_report({
-                    "schema": "bounded_evidence_ledger",
-                    "health": "healthy",
-                    "epoch_id": "epoch-2",
-                    "record_count": 1,
-                    "records": [
-                        {
-                            "record_id": "thing:floor_boundary_000",
-                            "kind": "floor_boundary",
-                            "label": "boundary",
-                            "confidence": 0.8,
-                            "location": {
-                                "frame": "image",
-                                "zone": "left",
-                                "bbox_xyxy_norm": [0.1, 0.2, 0.3, 0.4],
-                            },
-                            "origin": {
-                                "frame_id": "donkey_frame_0",
-                                "observation_id": "obs-0",
-                            },
-                        }
-                    ],
-                }),
-            },
+            "memory": memory_report({
+                "schema": "bounded_evidence_ledger",
+                "health": "healthy",
+                "epoch_id": "epoch-2",
+                "record_count": 1,
+                "records": [
+                    {
+                        "record_id": "thing:floor_boundary_000",
+                        "kind": "floor_boundary",
+                        "label": "boundary",
+                        "confidence": 0.8,
+                        "location": {
+                            "frame": "image",
+                            "zone": "left",
+                            "bbox_xyxy_norm": [0.1, 0.2, 0.3, 0.4],
+                        },
+                        "origin": {
+                            "frame_id": "donkey_frame_0",
+                            "observation_id": "obs-0",
+                        },
+                    }
+                ],
+            }),
             "control": {"steering": 0.0, "throttle": 0.0},
         }
-        recorded = dict(plugin_states(publication["cycle"]["memory"]))
+        recorded = dict(plugin_states(publication["memory"]))
         self.assertEqual(recorded["bounded_evidence"]["health"], "healthy")
         self.assertEqual(recorded["bounded_evidence"]["records"][0]["kind"], "floor_boundary")
 
@@ -86,12 +80,14 @@ class MemoryViewPublicationTests(unittest.TestCase):
         )
         self.assertEqual(view_payload["schema"], PUBLICATION_SCHEMA)
         self.assertEqual(view_payload["duration_ms"], 12)
-        self.assertNotIn("memory", view_payload)
+        self.assertNotIn("cycle", view_payload)
         self.assertNotIn("observation", view_payload)
         self.assertNotIn("control_source", view_payload)
+        self.assertNotIn("sensor_frame", view_payload)
+        self.assertNotIn("engine", view_payload)
         self.assertEqual(PUBLICATION_SCHEMA, "automa_perception_publication")
-        self.assertEqual(evidence_publisher(view_payload["cycle"]["memory"]), "bounded_evidence")
-        shown = dict(plugin_states(view_payload["cycle"]["memory"]))
+        self.assertEqual(evidence_publisher(view_payload["memory"]), "bounded_evidence")
+        shown = dict(plugin_states(view_payload["memory"]))
         self.assertEqual(shown["bounded_evidence"]["epoch_id"], "epoch-2")
         self.assertEqual(
             shown["bounded_evidence"]["records"][0]["origin"]["frame_id"],
@@ -107,13 +103,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
             "health": "healthy",
             "frame": {"frame_id": "donkey_frame_1", "frame_index": 1, "has_image": True},
             "perception": {"things": []},
-            "cycle": {
-                "observation": None,
-                "memory": report,
-                "proposal": None,
-                "plan": None,
-                "action": None,
-            },
+            "memory": report,
         }
         view_payload = _publication_payload(
             host_name="piracer",
@@ -121,13 +111,13 @@ class MemoryViewPublicationTests(unittest.TestCase):
             perception_record=publication,
             generated_at_ms=200,
         )
-        self.assertNotIn("memory", view_payload)
-        self.assertEqual(view_payload["cycle"]["memory"], report)
-        states = dict(plugin_states(view_payload["cycle"]["memory"]))
+        self.assertNotIn("cycle", view_payload)
+        self.assertEqual(view_payload["memory"], report)
+        states = dict(plugin_states(view_payload["memory"]))
         self.assertEqual(tuple(states), TWO_PLUGIN_IDS)
         self.assertEqual(states["bounded_evidence"]["record_count"], 1)
         self.assertEqual(len(states["recording_test"]["records"]), 1)
-        self.assertEqual(evidence_publisher(view_payload["cycle"]["memory"]), "bounded_evidence")
+        self.assertEqual(evidence_publisher(view_payload["memory"]), "bounded_evidence")
 
 
 if __name__ == "__main__":

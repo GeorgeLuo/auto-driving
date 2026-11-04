@@ -66,9 +66,9 @@ class ProposalResult:
 
         if not isinstance(payload, dict):
             raise ValueError(f"{field} must be an object.")
-        require_exact_keys(payload, PROPOSAL_RECORD_EXACT_KEYS, field=field)
         if payload.get("schema") != PROPOSAL_RESULT_SCHEMA:
             raise ValueError(f"{field}.schema must be {PROPOSAL_RESULT_SCHEMA!r}.")
+        require_exact_keys(payload, PROPOSAL_RECORD_EXACT_KEYS, field=field)
         if payload.get("status") not in {"ok", "error"}:
             raise ValueError(f"{field}.status must be ok or error.")
         if type(payload.get("reason")) is not str:

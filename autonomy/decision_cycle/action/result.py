@@ -12,6 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from autonomy.decision_cycle.action.hold import HoldAction
 from autonomy.decision_cycle.action.values import AuthorityResult
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
@@ -86,14 +87,15 @@ class ActionResult:
 
         if not isinstance(payload, dict):
             raise ValueError(f"{field} must be an object.")
-        require_exact_keys(payload, ACTION_RECORD_EXACT_KEYS, field=field)
         if payload.get("schema") != ACTION_RESULT_SCHEMA:
             raise ValueError(f"{field}.schema must be {ACTION_RESULT_SCHEMA!r}.")
+        require_exact_keys(payload, ACTION_RECORD_EXACT_KEYS, field=field)
         if payload.get("status") not in {"ok", "error"}:
             raise ValueError(f"{field}.status must be ok or error.")
         if type(payload.get("reason")) is not str:
             raise ValueError(f"{field}.reason must be a string.")
         authority = AuthorityResult.decode(payload.get("authority"), field=f"{field}.authority")
+        HoldAction.validate_authority(authority, field=f"{field}.authority")
         try:
             action = cls(
                 frame_id=str(payload["frame_id"]),

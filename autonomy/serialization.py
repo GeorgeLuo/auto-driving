@@ -89,10 +89,16 @@ def require_exact_keys(
     *,
     field: str,
 ) -> None:
-    """Reject a record that has any key other than its export."""
+    """Reject a record whose keys are not exactly its export."""
 
-    if set(payload) != set(exact):
-        raise ValueError(f"{field} key set is not exact export.")
+    actual = set(payload)
+    expected = set(exact)
+    missing = sorted(expected - actual)
+    extra = sorted(actual - expected)
+    if missing or extra:
+        raise ValueError(
+            f"{field} keys must be {sorted(expected)}; missing={missing} extra={extra}"
+        )
 
 
 def require_canonical_export(payload: object, exported: object, *, field: str) -> None:
@@ -156,6 +162,11 @@ class FrozenJsonObject(Mapping[str, Any]):
         )
         memo[id(self)] = cloned
         return cloned
+
+    def __reduce__(self) -> tuple[Any, tuple[dict[str, Any]]]:
+        # MappingProxyType does not pickle. Restore through ``__init__``, which
+        # seals a new proxy. Nested frozen objects stay frozen objects.
+        return (FrozenJsonObject, (dict(self._data),))
 
     def to_plain(self) -> dict[str, Any]:
         return {key: frozen_mapping_to_dict(value) for key, value in self._data.items()}

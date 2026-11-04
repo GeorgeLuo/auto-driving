@@ -71,9 +71,9 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 latest["step_activations"]["perception"]["plugins"],
                 frame_selections[latest["frame"]["frame_id"]],
             )
-            self.assertNotIn("memory", latest)
+            self.assertNotIn("cycle", latest)
             self.assertNotIn("observation", latest)
-            self.assertIn("memory", latest["cycle"])
+            self.assertIn("memory", latest)
 
     def test_a_decision_view_failure_is_recorded_and_does_not_stop_automation(self) -> None:
         """A view failure cannot change the completed cycle's authority result."""

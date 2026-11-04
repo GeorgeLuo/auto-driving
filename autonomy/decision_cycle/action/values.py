@@ -168,29 +168,17 @@ class AuthorityResult:
         if type(payload.get("proposed_applied")) is not bool:
             raise ValueError(f"{field}.proposed_applied must be a bool.")
         authorized_output = payload.get("authorized_output")
-        # Imported here: the hold plugin imports this module's decision type.
-        from autonomy.decision_cycle.action.hold import HoldAction, idle_output
-
-        if gate_id == HoldAction.plugin_id:
-            if payload.get("proposed_applied") is not False:
-                raise ValueError(f"{field}.proposed_applied must be false for the hold gate.")
-            require_canonical_export(
-                authorized_output,
-                idle_output(),
-                field=f"{field}.authorized_output",
-            )
-        else:
-            try:
-                control = AutonomyControl(**authorized_output)
-            except TypeError as exc:
-                raise ValueError(
-                    f"{field}.authorized_output is not a control output: {exc}"
-                ) from exc
-            require_canonical_export(
-                authorized_output,
-                control_output(control),
-                field=f"{field}.authorized_output",
-            )
+        try:
+            control = AutonomyControl(**authorized_output)
+        except TypeError as exc:
+            raise ValueError(
+                f"{field}.authorized_output is not a control output: {exc}"
+            ) from exc
+        require_canonical_export(
+            authorized_output,
+            control_output(control),
+            field=f"{field}.authorized_output",
+        )
         proposed_payload = payload.get("proposed")
         proposed = (
             None

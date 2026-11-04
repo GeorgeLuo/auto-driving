@@ -68,7 +68,9 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         self.assertEqual(accepted["source_id"], "donkeycar:piracer")
         self.assertEqual(accepted["generation_id"], packaged_identity()["generation_id"])
-        self.assertNotIn("producer_pid", accepted["decision"])
+        self.assertNotIn("decision", accepted)
+        self.assertNotIn("publication", accepted)
+        self.assertNotIn("producer_pid", accepted["report"].to_dict())
 
         unavailable_cases: list[tuple[str, object]] = [
             ("missing", None),

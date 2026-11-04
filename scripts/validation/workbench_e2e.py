@@ -27,7 +27,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SOURCE = ROOT / "lab/runs/cv-synthesis-20260921/experiment-3/bright-motion-20s-20260921-133121"
+SOURCE = ROOT / "lab/runs/cv-synthesis-20260921/experiment-3/bright-motion-20s-20260921-133121/frames"
 PERCEPTION_PRESET = "multi_obstruction"
 RUN_KEYS = ("plugin_id", "status", "error", "signal_count", "thing_count")
 
@@ -67,6 +67,15 @@ class Workbench:
         )
         return json.load(urllib.request.urlopen(request, timeout=60))["state"]
 
+    def pause(self, run_id: str) -> dict:
+        paused = self.act(action="pause", run_id=run_id)
+        # An in-flight frame may finish after pause responds. An unchanged
+        # selection waits for that boundary without processing another frame.
+        return self.act(
+            action="select_plugins", run_id=run_id, step="perception",
+            active_plugin_ids=paused["active_perception_plugin_ids"],
+        )
+
     def wait_for(self, condition, timeout: float = 120.0) -> dict:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -89,7 +98,7 @@ def serve():
         "workbench", str(SOURCE), "--serve", "--port", str(port), "--cadence-ms", "0",
         "--perception-preset", PERCEPTION_PRESET,
     )
-    server = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+    server = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.DEVNULL)
     try:
         yield Workbench(f"http://127.0.0.1:{port}/workbench")
     finally:
@@ -107,6 +116,8 @@ def check_parity() -> list[str]:
 
     report = inspect_report()
     expected = report["frames"]
+    if not expected:
+        return ["inspect returned no frames"]
     problems: list[str] = []
     inspected = report["selections"]["perception"]
     try:
@@ -120,40 +131,42 @@ def check_parity() -> list[str]:
                     f"workbench runs {served} {plugins}, "
                     f"inspect runs {inspected['preset']} {inspected['config']['plugins']}"
                 )
-            workbench.act(action="pause", run_id=run_id)
+            done = workbench.pause(run_id)
             # Seeking ahead processes the unseen frames; chunks keep each request short.
-            for ahead in range(50, len(expected) + 49, 50):
-                done = workbench.act(action="seek", run_id=run_id, position=min(ahead, len(expected)) - 1)
+            for start in range(0, len(expected), 50):
+                done = workbench.act(action="seek", run_id=run_id, position=min(start + 49, len(expected) - 1))
             if done.get("failure"):
                 problems.append(f"run failed: {done['failure']!r}")
-            if len(done["timeline"]) != len(expected):
-                problems.append(f"frames: inspect {len(expected)}, workbench {len(done['timeline'])}")
-            for index, want in enumerate(expected[: len(done["timeline"])]):
+            completed = done["latest_processed_position"] + 1
+            if completed != len(expected) or done["progress"]["total"] != len(expected):
+                problems.append(f"frames: inspect {len(expected)}, workbench {completed} of {done['progress']['total']}")
+            for index, want in enumerate(expected):
                 shown = workbench.act(action="seek", run_id=run_id, position=index)
                 label = f"frame {index}"
-                entry = shown["timeline"][index]
                 if shown["position"] != index + 1:
                     problems.append(f"{label}: seek landed at {shown['position'] - 1}")
+                if shown["current_frame"]["frame_id"] != want["frame_id"]:
+                    problems.append(f"{label}: frame identity differs from inspect")
                 record = want["record"]
+                perception = shown["perception"]
                 if record is None:
-                    if shown["perception"] is not None:
+                    if perception is not None:
                         problems.append(f"{label}: absent frame has a perception record")
-                    continue
-                if entry.get("perception_status") != record["status"]:
-                    problems.append(
-                        f"{label}: status {entry.get('perception_status')!r}, inspect {record['status']!r}"
-                    )
-                got_runs = [
-                    {key: run.get(key) for key in RUN_KEYS}
-                    for run in (shown["perception"] or {}).get("plugin_runs") or []
-                ]
-                want_runs = [{key: run.get(key) for key in RUN_KEYS} for run in record["plugin_runs"]]
-                if got_runs != want_runs:
-                    problems.append(f"{label}: plugin runs {got_runs}, inspect {want_runs}")
-                if not (entry.get("decision") or {}).get("status"):
+                else:
+                    if (perception or {}).get("status") != record["status"]:
+                        problems.append(f"{label}: status {(perception or {}).get('status')!r}, inspect {record['status']!r}")
+                    got_runs = [
+                        {key: run.get(key) for key in RUN_KEYS}
+                        for run in (perception or {}).get("plugin_runs") or []
+                    ]
+                    want_runs = [{key: run.get(key) for key in RUN_KEYS} for run in record["plugin_runs"]]
+                    if got_runs != want_runs:
+                        problems.append(f"{label}: plugin runs {got_runs}, inspect {want_runs}")
+                cycle = shown["cycle"]
+                if not (cycle["action"] or {}).get("status"):
                     problems.append(f"{label}: no decision status")
-                plugins = entry.get("memory_plugins") or []
-                if not plugins or any(item.get("record_count") is None for item in plugins):
+                plugins = (cycle["memory"] or {}).get("plugins") or []
+                if not plugins or any((item.get("state") or {}).get("record_count") is None for item in plugins):
                     problems.append(f"{label}: no memory record count")
                 if len(problems) > 20:
                     break
@@ -179,7 +192,7 @@ def check_selector() -> list[str]:
             current = wait_for(lambda s: s["position"] >= 3)
             run_id = current["run_id"]
             original = list(current["active_perception_plugin_ids"])
-            paused = act(action="pause", run_id=run_id)
+            paused = workbench.pause(run_id)
             frame_id = paused["current_frame"]["frame_id"]
             selected = act(
                 action="select_plugins", run_id=run_id, step="perception",
@@ -187,8 +200,8 @@ def check_selector() -> list[str]:
             )
             if selected["current_frame"]["frame_id"] != frame_id or runs(selected) != ["floor_continuity"]:
                 problems.append(f"paused selection did not refresh {frame_id}: {runs(selected)}")
-            if len(selected["timeline"]) != paused["position"]:
-                problems.append(f"timeline holds {len(selected['timeline'])} of {paused['position']} frames")
+            if selected["latest_processed_position"] + 1 != paused["position"]:
+                problems.append("selection changed the processed frame count")
             sought = act(action="seek", run_id=run_id, position=0)
             if runs(sought) != original:
                 problems.append(f"earlier frame was rewritten to {runs(sought)}")
@@ -197,7 +210,7 @@ def check_selector() -> list[str]:
             latest = act(action="seek", run_id=run_id, position=selected["latest_processed_position"])
             if latest["phase"] != "paused" or runs(latest) != ["floor_continuity"]:
                 problems.append(f"return to latest showed {runs(latest)} in phase {latest['phase']}")
-            target = len(latest["timeline"]) + 10
+            target = latest["position"] + 10
             ahead = act(action="seek", run_id=run_id, position=target)
             if ahead["position"] != target + 1 or runs(ahead) != ["floor_continuity"]:
                 problems.append(f"seek past recorded frames to {target} landed at {ahead['position'] - 1}")
@@ -211,12 +224,12 @@ def check_selector() -> list[str]:
             if running["phase"] != "running":
                 problems.append(f"running selection left phase {running['phase']}")
             act(action="set_loop", run_id=run_id, loop=True)
-            wait_for(lambda s: s["position"] > len(s["timeline"]) - 1 and s["position"] > 200)
+            wait_for(lambda s: s["position"] > 200 and s["latest_processed_position"] == s["position"] - 1)
             looped = wait_for(lambda s: 0 < s["position"] < 20)
-            if runs(looped) != ["classical_regions"] or len(looped["timeline"]) != looped["position"]:
+            if runs(looped) != ["classical_regions"] or looped["latest_processed_position"] + 1 != looped["position"]:
                 problems.append(
                     f"loop pass did not reprocess: position {looped['position']}, "
-                    f"timeline {len(looped['timeline'])}, runs {runs(looped)}"
+                    f"processed {looped['latest_processed_position'] + 1}, runs {runs(looped)}"
                 )
     except (TimeoutError, OSError, KeyError) as exc:
         problems.append(f"selector check failed: {type(exc).__name__}: {exc}")
@@ -242,7 +255,7 @@ def check_memory_selector() -> list[str]:
         with serve() as workbench:
             current = workbench.wait_for(lambda s: s["position"] >= 5)
             run_id = current["run_id"]
-            paused = workbench.act(action="pause", run_id=run_id)
+            paused = workbench.pause(run_id)
             position, frame_id = paused["position"], paused["current_frame"]["frame_id"]
             selected = workbench.act(
                 action="select_plugins", run_id=run_id, step="memory", active_plugin_ids=expected,
@@ -252,8 +265,8 @@ def check_memory_selector() -> list[str]:
                 problems.append(f"{label}: workbench memory {applied}, plugins list {expected}")
             if selected["position"] != position or selected["current_frame"]["frame_id"] != frame_id:
                 problems.append(f"{label}: displayed frame moved to {selected['current_frame']['frame_id']}")
-            if len(selected["timeline"]) != position:
-                problems.append(f"{label}: timeline holds {len(selected['timeline'])} of {position} frames")
+            if selected["latest_processed_position"] + 1 != position:
+                problems.append(f"{label}: selection changed the processed frame count")
             shown = [
                 entry["plugin_id"]
                 for entry in (selected["cycle"]["memory"] or {}).get("plugins", [])

@@ -44,6 +44,8 @@ function pageContext(fetchLatest) {
   const byId = new Map();
   const ctx = {
     console,
+    URLSearchParams,
+    location: { search: "?generation=" + "a".repeat(64) },
     window: { addEventListener() {} },
     setInterval() {},
     fetch: fetchLatest,
@@ -103,13 +105,7 @@ function publication(plugins, publisher) {
     host_name: "piracer",
     frame: { frame_id: "frame_1" },
     perception: { things: [], plugin_runs: [] },
-    cycle: {
-      observation: null,
-      memory: { schema: "memory_report", plugins, evidence_publisher: publisher },
-      proposal: null,
-      plan: null,
-      action: null,
-    }
+    memory: { schema: "memory_report", plugins, evidence_publisher: publisher }
   };
 }
 
@@ -206,14 +202,36 @@ function perceptionPage() {
   assert.equal(frameMetrics()["Memory keys"], "bounded_evidence 2, recording_test 1");
   assert.equal(frameMetrics()["Evidence publisher"], "bounded_evidence");
 
-  render({ ...publication([], null), cycle: { ...publication([], null).cycle, memory: null } });
+  render({ ...publication([], null), memory: null });
   assert.equal(frameMetrics()["Memory keys"], "open /memory");
   assert.equal(frameMetrics()["Evidence publisher"], "—");
+
+  render({ ...publication([], null), timing: null, duration_ms: 12.5 });
+  assert.equal(frameMetrics()["Cycle"], "12.5 ms");
+  assert.equal(frameMetrics()["Perception"], "—");
+  render({ ...publication([], null), timing: { duration_ms: 0 }, duration_ms: 99 });
+  assert.equal(frameMetrics()["Cycle"], "0 ms");
+}
+
+function decisionPage() {
+  const ctx = pageContext(() => new Promise(() => {}));
+  runPage("cli/automa_cli/frontend/pages/decision/index.html", ctx);
+  const composed = { decision: { cycle: {
+    plan: { status: "composed", candidates: [], contributions: [] }, action: { status: "ok" }
+  } } };
+  assert.equal(ctx.liveStatus(composed).text, "Live | plan composed");
+  assert.equal(ctx.liveStatus({ decision: { cycle: {
+    plan: { status: "idle", candidates: [] }, action: { status: "ok" }
+  } } }).text, "Live | plan idle");
+  assert.equal(ctx.liveStatus({ decision: { cycle: {
+    plan: null, action: { status: "error", reason: "action_plan_invariant_violated" }
+  } } }).text, "Live | action_plan_invariant_violated");
 }
 
 (async () => {
   await memoryPage();
   perceptionPage();
+  decisionPage();
   console.log("runtime view memory ok");
 })().catch((error) => {
   console.error(error);

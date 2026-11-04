@@ -25,7 +25,6 @@ from autonomy.decision_cycle.activation import (
     activation_presets,
 )
 from autonomy.decision_cycle.context import DecisionFrameContext, recorded_context
-from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost
@@ -338,7 +337,8 @@ class FrameLoop:
         """Return one bounded latest frame/result publication computed at read time."""
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
-            return deepcopy(self._publication_from_locked_state(read_at_ms=read_at_ms))
+            publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
+        return deepcopy(publication)
 
     def publish_decision_latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
         """Return the current action result at read time.
@@ -351,7 +351,8 @@ class FrameLoop:
 
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
-            return deepcopy(self._decision_publication_from_locked_state(read_at_ms=read_at_ms))
+            publication = self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
+        return deepcopy(publication)
 
     def read_transaction(self, kind: str) -> tuple[dict[str, Any], LatestObservationState | None, str]:
         """Borrow publication data and its retained frame for HTTP serialization.
@@ -372,7 +373,8 @@ class FrameLoop:
         read_at_ms = timestamp_ms()
         with self._lock:
             latest = self.latest_state
-            publication = deepcopy(self._publication_from_locked_state(read_at_ms=read_at_ms))
+            publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
+        publication = deepcopy(publication)
         return self._jpeg(latest, publication)
 
     def publish_latest_camera(self, *, now_ms: int | None = None) -> dict[str, Any]:
@@ -644,7 +646,7 @@ class FrameLoop:
                 "duration_ms": None,
                 "timing": None,
                 "perception": None,
-                "cycle": {key: None for key in CYCLE_RECORD_KEYS},
+                "memory": None,
                 "latest_json_path": LATEST_JSON_PATH,
                 "latest_frame_path": LATEST_FRAME_PATH,
             }
@@ -699,7 +701,7 @@ class FrameLoop:
             "duration_ms": latest.duration_ms,
             "timing": timing,
             "perception": perception,
-            "cycle": {key: cycle.get(key) for key in CYCLE_RECORD_KEYS},
+            "memory": cycle.get("memory"),
             "latest_json_path": LATEST_JSON_PATH,
             "latest_frame_path": LATEST_FRAME_PATH,
         }

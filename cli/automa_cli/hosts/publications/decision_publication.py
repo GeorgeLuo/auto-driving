@@ -6,7 +6,6 @@ checks it, and the rest turn it into the text the CLI shows.
 
 from __future__ import annotations
 
-from copy import deepcopy
 from functools import partial
 from typing import Any
 
@@ -181,9 +180,7 @@ def normalize_decision_publication(
         if type(max_age_ms) is not int or max_age_ms <= 0:
             raise ValueError("max_age_ms must be a positive non-bool int")
         ceiling = int(max_age_ms)
-    decision = report.to_dict()
     values = report.values
-
     decision_host_name = report.host_name
     if decision_host_name != host_name:
         raise _publication_error(
@@ -241,8 +238,6 @@ def normalize_decision_publication(
         )
 
     return {
-        "publication": deepcopy(publication),
-        "decision": deepcopy(decision),
         "host_name": decision_host_name,
         "source_id": source_id,
         "run_id": run_id,

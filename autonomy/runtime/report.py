@@ -25,11 +25,17 @@ from typing import Any, Mapping
 
 from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.action_identifiers import require_ascii_id, require_safe_int
-from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, export_cycle_body
+from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, DecisionCycleResult
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.decision_cycle.proposal.result import ProposalResult
+from autonomy.decision_cycle.records import DecisionRecords
 from autonomy.runtime.execution import require_mode
-from autonomy.serialization import canonical_json_utf8, json_ready, require_canonical_export
+from autonomy.serialization import (
+    canonical_json_utf8,
+    json_ready,
+    require_canonical_export,
+    require_exact_keys,
+)
 
 REPORT_SCHEMA = "host_report"
 REPORT_EXACT_KEYS = frozenset(
@@ -49,16 +55,6 @@ REPORT_EXACT_KEYS = frozenset(
 )
 CYCLE_EXACT_KEYS = frozenset(CYCLE_RECORD_KEYS)
 APPLICATION_EXACT_KEYS = frozenset({"applied", "mode", "reason", "steering", "throttle"})
-
-
-def _exact_keys(payload: Mapping[str, Any], expected: frozenset[str], *, field: str) -> None:
-    actual = set(payload)
-    missing = sorted(expected - actual)
-    extra = sorted(actual - expected)
-    if missing or extra:
-        raise ValueError(
-            f"{field} keys must be {sorted(expected)}; missing={missing} extra={extra}"
-        )
 
 
 def _json_copy(value: object, *, field: str) -> Any:
@@ -138,7 +134,7 @@ class ReportApplication:
     def from_dict(cls, payload: object) -> "ReportApplication":
         if not isinstance(payload, Mapping):
             raise ValueError("application must be an object")
-        _exact_keys(payload, APPLICATION_EXACT_KEYS, field="application")
+        require_exact_keys(payload, APPLICATION_EXACT_KEYS, field="application")
         return cls(
             applied=payload["applied"],
             mode=payload["mode"],
@@ -188,7 +184,7 @@ class HostReport:
         )
         if not isinstance(self.cycle, Mapping):
             raise ValueError("cycle must be an object")
-        _exact_keys(self.cycle, CYCLE_EXACT_KEYS, field="cycle")
+        require_exact_keys(self.cycle, CYCLE_EXACT_KEYS, field="cycle")
         cycle = {
             key: _cycle_record(
                 _json_copy(self.cycle[key], field=f"cycle.{key}"),
@@ -225,7 +221,7 @@ class HostReport:
     def from_dict(cls, payload: object) -> "HostReport":
         if not isinstance(payload, Mapping):
             raise ValueError("report must be an object")
-        _exact_keys(payload, REPORT_EXACT_KEYS, field="report")
+        require_exact_keys(payload, REPORT_EXACT_KEYS, field="report")
         return cls(
             schema=payload["schema"],
             host_name=payload["host_name"],
@@ -240,7 +236,7 @@ class HostReport:
             values=payload["values"],
         )
 
-    def decode_records(self) -> "DecodedDecision":
+    def decode_records(self) -> DecisionRecords:
         """Typed proposal, plan, and action, aligned to this frame."""
 
         decoded = decode_decision_records(self.cycle)
@@ -254,16 +250,7 @@ class HostReport:
         return decoded
 
 
-@dataclass(frozen=True)
-class DecodedDecision:
-    """The proposal, plan, and action records of one decoded cycle."""
-
-    proposal: ProposalResult
-    plan: ActionPlan | None
-    action: ActionResult
-
-
-def decode_decision_records(cycle: Mapping[str, Any]) -> DecodedDecision:
+def decode_decision_records(cycle: Mapping[str, Any]) -> DecisionRecords:
     """Reconstruct the decision records and require a lossless export."""
 
     proposal_payload = cycle.get("proposal")
@@ -282,7 +269,7 @@ def decode_decision_records(cycle: Mapping[str, Any]) -> DecodedDecision:
     require_canonical_export(
         {key: cycle[key] for key in exported}, exported, field="cycle"
     )
-    return DecodedDecision(proposal=proposal, plan=plan, action=action)
+    return DecisionRecords(proposal=proposal, plan=plan, action=action)
 
 
 def align_decision_records(
@@ -375,7 +362,7 @@ def diagnostic_ceiling(values: Mapping[str, Any] | None) -> int:
 
 
 def report_from_host_result(
-    result: Any,
+    result: DecisionCycleResult,
     *,
     host_name: str,
     run_id: str,
@@ -392,21 +379,19 @@ def report_from_host_result(
     ``values["timing"]``.
     """
 
-    context = getattr(result, "context", None)
-    proposal = getattr(result, "proposal", None)
-    action = getattr(result, "action", None)
-    application = getattr(result, "application", None)
-    if context is None or proposal is None or action is None:
+    context = result.context
+    proposal = result.proposal
+    action = result.action
+    application = result.application
+    if proposal is None or action is None:
         raise TypeError("host result must include a frame, proposal, and action")
-    if application is None or getattr(application, "control", None) is None:
+    if application is None or application.control is None:
         raise TypeError("host result must include its control application")
     control = application.control
     values = {} if values is None else dict(values)
-    timing = getattr(result, "timing", None)
-    if timing is not None:
-        values["timing"] = timing
-    export = getattr(result, "export_cycle", None)
-    cycle = export() if callable(export) else export_cycle_body(result)
+    if result.timing is not None:
+        values["timing"] = result.timing
+    cycle = result.export_cycle()
     return HostReport(
         host_name=host_name,
         run_id=run_id,

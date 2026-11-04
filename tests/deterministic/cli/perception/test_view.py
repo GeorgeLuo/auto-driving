@@ -289,13 +289,7 @@ def _frame_record() -> dict:
                 },
             ],
         },
-        "cycle": {
-            "observation": None,
-            "memory": None,
-            "proposal": None,
-            "plan": None,
-            "action": None,
-        },
+        "memory": None,
         "control": {"steering": 0.0, "throttle": 0.0},
         "engine": {"engine": "idle"},
     }

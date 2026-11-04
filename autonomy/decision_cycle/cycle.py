@@ -38,6 +38,10 @@ from autonomy.decision_cycle.timing import clock, cycle_timing, elapsed_ms
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 
+# One lock for every result. It stays out of the dataclass so copy, pickle,
+# and asdict do not have to carry a lock.
+_CYCLE_EXPORT_LOCK = Lock()
+
 
 DECISION_CYCLE_RESULT_SCHEMA = "decision_cycle_result"
 
@@ -94,8 +98,10 @@ class DecisionCycleResult:
     application: ControlApplication | None = None
     timing: dict[str, Any] | None = None
     schema: str = DECISION_CYCLE_RESULT_SCHEMA
+    # Retained on this object only. ``replace`` builds a new result, so a host
+    # can record context and application before the first export without
+    # serializing the five records again.
     _cycle_export: dict[str, Any] | None = field(default=None, init=False, repr=False, compare=False)
-    _export_lock: Any = field(default_factory=Lock, init=False, repr=False, compare=False)
 
     @property
     def duration_ms(self) -> float | int:
@@ -112,18 +118,19 @@ class DecisionCycleResult:
         }
 
     def export_cycle(self) -> dict[str, Any]:
-        """Copy the retained cycle body, serializing its records only on first use.
+        """Copy the cycle body, serializing its five records once for this result.
 
-        The retained body owns its nested values. Each caller gets a copy so
-        changing a publication cannot alter later recordings or status reads.
-        Replacing a result starts a new export, including when its records change.
+        The retained body stays on this object. Each caller gets a copy, so a
+        publication cannot change a later recording or status read. Replacing
+        context or application builds a new result; that result serializes when
+        it is first exported, not when it is replaced.
         """
 
-        with self._export_lock:
+        with _CYCLE_EXPORT_LOCK:
             if self._cycle_export is None:
                 object.__setattr__(self, "_cycle_export", deepcopy(export_cycle_body(self)))
-            cycle = self._cycle_export
-        return deepcopy(cycle)
+            retained = self._cycle_export
+        return deepcopy(retained)
 
     def to_dict(self) -> dict[str, Any]:
         cycle = self.export_cycle()

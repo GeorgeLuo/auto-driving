@@ -7,7 +7,7 @@ from typing import Any
 from ...frontend.server import RuntimeViewServer
 from .decision_live import DecisionViewAdapter
 from ..publications.decision_publication import health_error, publication_to_frame_record
-from ..publications.host_publications import TransactionCache, fetch_observation_sample
+from ..publications.host_publications import TransactionCache, fetch_observation_sample, fetch_autonomy_status
 from ..publications.plugin_catalog import PluginCatalogClient
 from .runtime_view import runtime_view_server
 from .view_discovery import runtime_view_dir
@@ -40,6 +40,7 @@ class ViewFeed:
                 host_name=host_name,
                 automation_dir=runtime_dir,
                 plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
+                learning_source=self.read_learning,
             ).start()
             self.decision = DecisionViewAdapter(
                 host_name=host_name, base_url=base_url, view_server=self.server, timeout_s=timeout_s,
@@ -74,6 +75,15 @@ class ViewFeed:
             if self.server is not None:
                 self.server.perception.invalidate_latest(self.error)
             return None, self.error
+
+    def read_learning(self) -> dict[str, Any]:
+        """Read the host status without presenting a failed HTTP response as live history."""
+
+        status = fetch_autonomy_status(self.base_url, timeout_s=self.timeout_s)
+        host = status.get("host")
+        if status.get("http_status", 200) != 200 or not isinstance(host, dict):
+            raise ConnectionError(str(status.get("error") or "the host did not report its status"))
+        return host
 
     def publish(self, publication: dict[str, Any] | None) -> None:
         if self.server is None or self.decision is None:

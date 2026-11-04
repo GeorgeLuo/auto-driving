@@ -33,6 +33,7 @@ from .loopback_http import (
     validate_loopback_host,
 )
 from .plugin_catalog import serve_plugin_catalog
+from .learning_history import LearningHistory
 from .workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY, ReplayRunner, serve_workbench_route
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
@@ -46,6 +47,7 @@ NOT_CONNECTED_ERROR = "not connected to a host"
 RUNTIME_HOST_ROUTES = frozenset({
     PLUGIN_CATALOG_PATH,
     "/api/latest",
+    "/api/learning",
     "/frame",
     "/api/decision/latest",
     "/api/decision/image",
@@ -55,6 +57,7 @@ WORKBENCH_PREFIX = "/workbench"
 HOME_PAGE_PATH = PAGES_DIR / "home" / "index.html"
 PERCEPTION_PAGE_PATH = PAGES_DIR / "perception" / "index.html"
 MEMORY_PAGE_PATH = PAGES_DIR / "memory" / "index.html"
+LEARNING_PAGE_PATH = PAGES_DIR / "learning" / "index.html"
 DECISION_PAGE_PATH = PAGES_DIR / "decision" / "index.html"
 PLUGINS_PAGE_PATH = PAGES_DIR / "plugins" / "index.html"
 
@@ -78,6 +81,7 @@ class RuntimeViewServer:
         worker_pid: int | None = None,
         decision_identity: dict[str, Any] | None = None,
         plugin_catalog: Callable | None = None,
+        learning_source: Callable[[], object] | None = None,
         connected: bool = True,
         hosts: Callable[[], list[dict[str, Any]]] | None = None,
         replay_runner: ReplayRunner | None = None,
@@ -93,6 +97,9 @@ class RuntimeViewServer:
         self._replay_runner_factory = replay_runner_factory
         self._replay_runner_lock = threading.Lock()
         self.plugin_catalog = plugin_catalog
+        self.learning_source = learning_source
+        self._learning_source_lock = threading.Lock()
+        self.learning = LearningHistory()
         self.automation_dir = automation_dir
         self.host = host
         self.preferred_port = _host_view_port(host_name) if port is None else int(port)
@@ -123,6 +130,14 @@ class RuntimeViewServer:
             if self._replay_runner is None:
                 self._replay_runner = self._replay_runner_factory()
             return self._replay_runner
+
+    def learning_payload(self, since: int) -> dict[str, Any]:
+        """Sample an external source in order, or read history the run monitor feeds."""
+
+        with self._learning_source_lock:
+            if self.learning_source is not None:
+                self.learning.ingest(self.learning_source())
+            return {**self.learning.payload(since), "host_name": self.host_name}
 
     def start(self) -> "RuntimeViewServer":
         if self._httpd is not None:
@@ -179,11 +194,12 @@ class RuntimeViewServer:
         if not self.connected:
             return "\n".join(
                 _unavailable_nav(label, NOT_CONNECTED_ERROR)
-                for label in ("Perception", "Memory", "Action", "Plugins")
+                for label in ("Perception", "Memory", "Learning", "Action", "Plugins")
             )
         return "\n".join((
             _nav_link("Perception", "/perception"),
             _nav_link("Memory", "/memory"),
+            _nav_link("Learning", "/learning"),
             self.decision_navigation_html(),
             _nav_link("Plugins", "/plugins"),
         ))
@@ -319,6 +335,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             "/perception.html": PERCEPTION_PAGE_PATH,
             "/memory": MEMORY_PAGE_PATH,
             "/memory.html": MEMORY_PAGE_PATH,
+            "/learning": LEARNING_PAGE_PATH,
         }
         if route in {"/", "/index.html"}:
             try:
@@ -385,6 +402,22 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         if route == "/api/hosts":
             hosts = self.server.publisher.hosts
             self._send_json(200, {"hosts": [] if hosts is None else hosts()}, include_body=include_body)
+            return
+        if route == "/api/learning":
+            values = parse_qs(request.query, keep_blank_values=True).get("since", ["0"])
+            try:
+                if len(values) != 1 or not values[0].isascii() or not values[0].isdigit():
+                    raise ValueError("since must be a non-negative integer")
+                since = int(values[0])
+            except ValueError:
+                self._send_json(400, {"error": "since must be a non-negative integer"}, include_body=include_body)
+                return
+            try:
+                payload = self.server.publisher.learning_payload(since)
+            except (ConnectionError, RuntimeError, OSError, ValueError) as exc:
+                self._send_json(503, {"error": str(exc)}, include_body=include_body)
+                return
+            self._send_json(200, payload, include_body=include_body)
             return
         if route == "/api/latest":
             body = self.server.publisher.perception.latest_json()

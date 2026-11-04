@@ -86,8 +86,11 @@ Confidence is `None` before the first check, then
 `(support + 1) / (support + contradict + 2)` over the retained checks, so it
 never reaches 0 or 1. A belief is corroborated when at least two different
 methods each have more supports than contradictions. Revising a value keeps
-its open trials; withdrawal drops trials without scoring them. The plugin
-chooses whether to keep its checks. Reports and recordings include belief
+its checks and open trials. `withdrawn(reason=...)` drops trials without
+scoring them; `discarded(reason)` drops checks that no longer test the value.
+Both count drops by method and reason in `withdrawals` and `discards`.
+Opening past the trial bound counts as `displaced`. The runtime viewer’s
+Learning page charts these reasons. Reports and recordings include belief
 summaries and confidence; consumers do not yet use confidence
 to choose behavior. The framework leaves checks and retention policy to each
 plugin.

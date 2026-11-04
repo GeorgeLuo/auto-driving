@@ -359,6 +359,7 @@ def cycle_frame(result: DecisionCycleResult, *, host_name: str, run_id: str) -> 
         "perception_completed_at_ms": result.completed_at_ms,
         "perception_duration_ms": result.duration_ms,
         "cycle_duration_ms": result.duration_ms,
+        "timing": copy.deepcopy(result.timing),
         "generation_id": generation, "step_activations": steps,
         "context": context.to_dict(), "sensor_frame": context.sensor_frame.to_dict(),
         "perception": result.perception.to_dict() if result.perception else None,

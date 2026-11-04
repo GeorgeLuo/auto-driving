@@ -8,7 +8,7 @@ from pathlib import Path
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS, ONE_PLUGIN_STEPS
 
-from .render import render_listing, render_mutation, render_save
+from .render import render_listing, render_save, render_selection, render_upload
 from .service import arm_plugins, disarm_plugins, list_plugins, save_plugins, upload_plugin
 
 
@@ -135,19 +135,19 @@ def _handle_upload(args: argparse.Namespace) -> int:
     step, plugin_id = args.name
     result = upload_plugin(url=args.url, host_name=args.host_name, file=args.file, step=step, plugin_id=plugin_id,
                            entrypoint=args.entrypoint, config=args.config, arm=args.arm)
-    print(render_mutation(result, json_output=args.json))
+    print(render_upload(result, json_output=args.json))
     return result.exit_code
 
 
 def _handle_arm(args: argparse.Namespace) -> int:
     result = arm_plugins(url=args.url, host_name=args.host_name, plugins=args.plugins)
-    print(render_mutation(result, json_output=args.json))
+    print(render_selection(result, json_output=args.json))
     return result.exit_code
 
 
 def _handle_disarm(args: argparse.Namespace) -> int:
     result = disarm_plugins(url=args.url, host_name=args.host_name, plugins=args.plugins, step=args.step)
-    print(render_mutation(result, json_output=args.json))
+    print(render_selection(result, json_output=args.json))
     return result.exit_code
 
 

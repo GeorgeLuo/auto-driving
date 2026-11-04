@@ -29,7 +29,7 @@ def hung_url() -> Iterator[str]:
 
 @contextmanager
 def answering(body: bytes | None, status: int = 200) -> Iterator[str]:
-    """A host that answers every GET with ``body``, or closes without a reply when it is None."""
+    """A host that answers every GET and POST with ``body``, or closes without a reply when it is None."""
 
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self) -> None:
@@ -39,6 +39,10 @@ def answering(body: bytes | None, status: int = 200) -> Iterator[str]:
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
+
+        def do_POST(self) -> None:
+            self.rfile.read(int(self.headers.get("Content-Length") or 0))
+            self.do_GET()
 
         def log_message(self, *_args: object) -> None:
             pass

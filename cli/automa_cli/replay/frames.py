@@ -56,7 +56,7 @@ def sensor_frame_for_replay_frame(frame: ReplayFrame) -> SensorFrame | None:
 
 
 def decision_view(result: Any) -> dict[str, Any] | None:
-    """The decision steps' records for the workbench timeline."""
+    """The decision steps' records for the displayed workbench frame."""
 
     action = result.action
     if action is None:

@@ -89,7 +89,7 @@ class WorkbenchTests(unittest.TestCase):
             started = runner.start(cadence_ms=30000)
             run_id = started["run_id"]
             _wait_until(lambda: runner.state()["position"] == 1)
-            first_id = runner.state()["timeline"][0]["frame"]["frame_id"]
+            first_id = runner.state()["current_frame"]["frame_id"]
             perception_step = runner._steps["perception"]
             runner._shared_memory["retention-marker"] = "dropped"
             selected = runner.dispatch(
@@ -152,7 +152,7 @@ class WorkbenchTests(unittest.TestCase):
             )
             run_id, paused = _pause_after_first_frame(runner)
             position = paused["position"]
-            timeline_len = len(paused["timeline"])
+            completed_count = paused["progress"]["completed"]
             first_id = paused["current_frame"]["frame_id"]
             self.assertEqual(_plugin_ids(paused["steps"]["perception"]), ["classical_regions"])
             recorded_report = paused["machine_detail"]["pipeline"]["perception_plugin_report"]
@@ -166,7 +166,7 @@ class WorkbenchTests(unittest.TestCase):
             )
             self.assertEqual(both["phase"], "paused")
             self.assertEqual(both["position"], position)
-            self.assertEqual(len(both["timeline"]), timeline_len)
+            self.assertEqual(both["progress"]["completed"], completed_count)
             self.assertEqual(
                 both["active_perception_plugin_ids"], ["floor_continuity", "classical_regions"]
             )
@@ -240,7 +240,7 @@ class WorkbenchTests(unittest.TestCase):
             # Past the recorded frames, from an earlier position.
             ahead = runner.dispatch("seek", run_id=run_id, position=2)
             self.assertEqual(ahead["position"], 3)
-            self.assertEqual(len(ahead["timeline"]), 3)
+            self.assertEqual(ahead["progress"]["completed"], 3)
             self.assertEqual(_plugin_ids(ahead["steps"]["perception"]), ["floor_continuity"])
             runner.dispatch("reset", run_id=run_id)
 
@@ -269,7 +269,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(runner._steps["memory"].update_count, 5)
             self.assertEqual(both["phase"], "paused")
             self.assertEqual(both["position"], 4)
-            self.assertEqual(len(both["timeline"]), 4)
+            self.assertEqual(both["progress"]["completed"], 4)
             self.assertEqual(both["current_frame"]["frame_id"], frame_id)
             self.assertEqual(
                 _plugin_ids(both["steps"]["perception"]), ["floor_continuity", "classical_regions"]
@@ -296,7 +296,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(_plugin_ids(back["steps"]["perception"]), ["classical_regions"])
             reset = runner.dispatch("reset", run_id=run_id)
             self.assertEqual(reset["phase"], "idle")
-            self.assertEqual(reset["timeline"], [])
+            self.assertIsNone(reset["timing"])
             self.assertEqual(runner._shared_memory, {})
 
     def test_running_perception_selection_keeps_the_pass_and_the_replay_finishes(self) -> None:
@@ -313,7 +313,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertIs(runner._steps["memory"], memory_step)
             state = runner.wait(10)
         self.assertEqual(state["phase"], "completed")
-        self.assertEqual(len(state["timeline"]), 12)
+        self.assertEqual(state["progress"]["completed"], 12)
         # Earlier frames were not processed again.
         self.assertEqual(memory_step.update_count, 12)
         self.assertEqual(_plugin_ids(state["steps"]["perception"]), ["floor_continuity"])
@@ -494,7 +494,8 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
             frame_id = shown["current_frame"]["frame_id"]
             self.assertEqual(runner._steps["memory"].update_count, 4)
             before = runner._steps["memory"]
-            earlier = [item["frame"]["frame_id"] for item in shown["timeline"][:3]]
+            earlier = [runner.dispatch("seek", run_id=run_id, position=index) for index in range(3)]
+            runner.dispatch("seek", run_id=run_id, position=3)
 
             selected = runner.dispatch(
                 "select_plugins", run_id=run_id, step="memory", active_plugin_ids=[]
@@ -505,10 +506,13 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
             self.assertEqual(runner._steps["memory"].plugin_ids, ())
             self.assertEqual(selected["phase"], "paused")
             self.assertEqual(selected["position"], 4)
-            self.assertEqual(len(selected["timeline"]), 4)
-            self.assertEqual(
-                [item["frame"]["frame_id"] for item in selected["timeline"][:3]], earlier
-            )
+            self.assertEqual(selected["progress"]["completed"], 4)
+            for index, old in enumerate(earlier):
+                cached = runner.dispatch("seek", run_id=run_id, position=index)
+                self.assertEqual(cached["steps"], old["steps"])
+                self.assertEqual(cached["summary"], old["summary"])
+                self.assertEqual(cached["timing"], old["timing"])
+            runner.dispatch("seek", run_id=run_id, position=3)
             self.assertEqual(selected["current_frame"]["frame_id"], frame_id)
             self.assertEqual(selected["active_memory_plugin_ids"], [])
             self.assertEqual(
@@ -564,7 +568,7 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
             self.assertIs(runner._steps["memory"], memory_step)
             state = runner.wait(10)
         self.assertEqual(state["phase"], "completed")
-        self.assertEqual(len(state["timeline"]), 12)
+        self.assertEqual(state["progress"]["completed"], 12)
         self.assertEqual(memory_step.update_count, 12)
         self.assertEqual(state["steps"]["memory"], _empty_memory_report())
         self.assertEqual(
@@ -591,7 +595,8 @@ class WorkbenchMemorySelectionTests(unittest.TestCase):
             self.assertIn("cannot prepare memory", str(caught.exception))
             self.assertEqual(state["phase"], "paused")
             self.assertEqual(state["position"], paused["position"])
-            self.assertEqual(state["timeline"], paused["timeline"])
+            self.assertEqual(state["steps"], paused["steps"])
+            self.assertEqual(state["timing"], paused["timing"])
             self.assertEqual(state["failure_boundary"], "plugin_catalog")
             self.assertEqual(state["active_memory_plugin_ids"], ["bounded_evidence"])
             self.assertIs(runner._steps["memory"], before)

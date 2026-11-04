@@ -12,6 +12,7 @@ from cli.automa_cli.workbench.runner import ImageReplayRunner
 from cli.automa_cli.replay.source import normalize_image_directory
 from cli.automa_cli.replay.models import SourceValidationError
 from tests.shared.cli.invoke import invoke_automa
+from tests.shared.cli.workbench_fixtures import replay_states
 
 
 def frame_sequence(frames: list[dict]) -> list[tuple]:
@@ -135,15 +136,15 @@ class InspectionSourceTests(unittest.TestCase):
             self.assert_shared_sequence(recorded_source)
             runner = ImageReplayRunner(recorded_source, cadence_ms=0, loop=False)
             self.addCleanup(runner.close)
-            runner.start()
-            state = runner.wait(5)
+            states = replay_states(runner)
+            state = states[-1]
             self.assertEqual(state["phase"], "completed", state.get("failure"))
             self.assertEqual(state["progress"]["completed"], 3)
             self.assertEqual(
-                [item["frame"]["frame_id"] for item in state["timeline"]],
+                [item["current_frame"]["frame_id"] for item in states],
                 ["camera-b", "dropout", "camera-a"],
             )
-            self.assertTrue(state["timeline"][1]["frame"]["absent"])
+            self.assertTrue(states[1]["current_frame"]["absent"])
 
     def test_recording_with_only_absent_frames_can_be_inspected_and_replayed(
         self,

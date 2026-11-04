@@ -60,9 +60,7 @@ from .plugins import (
 from .page_payloads import (
     displayed_steps,
     empty_steps,
-    frame_detail,
     frame_summary,
-    timeline_item,
 )
 
 
@@ -695,7 +693,7 @@ class ImageReplayRunner:
         self._steps = steps
         self._shared_memory = {}
         self._history.clear()
-        self._state["timeline"] = []
+        self._state["timing"] = None
         self._state["latest_processed_position"] = None
         self._state["current_frame"] = None
         self._set_position_locked(0)
@@ -861,10 +859,8 @@ class ImageReplayRunner:
             round((completed / total) * 100.0, 2) if total else 100.0
         )
         self._state["position"] = completed
-        self._state["summary"] = copy.deepcopy(cached.get("summary")) or frame_summary(
-            frames_completed=completed, frames_total=total,
-            duration_ms=cached.get("duration_ms"),
-        )
+        self._state["summary"] = copy.deepcopy(cached["summary"])
+        self._state["timing"] = copy.deepcopy(cached["timing"])
         if completed >= total:
             self._wrap_or_complete_locked()
 
@@ -1006,7 +1002,6 @@ class ImageReplayRunner:
                         self._frame_checkpoint = {
                             "memory": copy.deepcopy(self._shared_memory),
                             "publisher": memory.evidence_publisher if isinstance(memory, MemoryRunner) else None,
-                            "previous_memory": copy.deepcopy(self._state["steps"]["memory"]),
                         }
                 outcome = run_frame(frame, steps=steps, shared_memory=self._shared_memory)
                 result = outcome.result
@@ -1032,6 +1027,7 @@ class ImageReplayRunner:
                 with self._condition:
                     self._state["current_frame"] = frame.to_dict()
                     self._set_steps_locked(empty_steps())
+                    self._state["timing"] = None
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "pipeline"),
                         message=f"{type(exc).__name__}: {exc}",
@@ -1046,7 +1042,6 @@ class ImageReplayRunner:
         """Publish a processed frame and cache its presentation under the condition lock."""
 
         result = outcome.result
-        previous_memory = self._frame_checkpoint["previous_memory"]
         self._state["current_frame"] = frame.to_dict()
         self._set_steps_locked(steps)
         self._state["progress"]["completed"] = frame.position + 1
@@ -1066,23 +1061,15 @@ class ImageReplayRunner:
             frames_completed=self._state["progress"]["completed"],
             frames_total=self._state["progress"].get("total", 0),
         )
-        detail = frame_detail(
-            frame=frame,
-            outcome=outcome,
-            steps=steps,
-            previous_memory=previous_memory,
-        )
-        detail.update({
-            f"{step}_plugin_report": outcome.plugin_reports.get(step)
-            for step in WORKBENCH_SELECTABLE_STEPS
-        })
-        pipeline = self._state.get("machine_detail", {}).get("pipeline", {})
+        pipeline = self._state["machine_detail"]["pipeline"]
         pipeline.update(self._step_reports())
-        detail["configuration"] = self._plugin_configuration()
-        detail["pipeline"] = copy.deepcopy(pipeline)
-        detail["summary"] = copy.deepcopy(self._state["summary"])
-        self._history[frame.frame_id] = detail
-        self._upsert_timeline_locked(detail)
+        self._state["timing"] = copy.deepcopy(result.timing)
+        self._history[frame.frame_id] = {
+            "steps": copy.deepcopy(steps),
+            "pipeline": copy.deepcopy(pipeline),
+            "summary": copy.deepcopy(self._state["summary"]),
+            "timing": copy.deepcopy(result.timing),
+        }
         self._state["position"] = frame.position + 1
         self._state["latest_processed_position"] = frame.position
         self._state["controls"] = self._controls()
@@ -1209,7 +1196,7 @@ class ImageReplayRunner:
             "machine_detail": self._machine_detail(),
             "steps": empty_steps(),
             "steps_revision": 0,
-            "timeline": [],
+            "timing": None,
             "failure": None,
             "failure_boundary": None,
             "recovery_action": "start",
@@ -1269,17 +1256,6 @@ class ImageReplayRunner:
         detail = self._state.setdefault("machine_detail", self._machine_detail())
         detail["last_transition"] = item
         self._state["controls"] = self._controls()
-
-    def _upsert_timeline_locked(self, detail: dict[str, Any]) -> None:
-        item = timeline_item(detail)
-        frame_id = item["frame"]["frame_id"]
-        timeline = self._state["timeline"]
-        for index, existing in enumerate(timeline):
-            existing_frame = existing.get("frame") if isinstance(existing, dict) else None
-            if isinstance(existing_frame, dict) and existing_frame.get("frame_id") == frame_id:
-                timeline[index] = item
-                return
-        timeline.append(item)
 
     def _decision_step_plugins(self) -> dict[str, list[str]]:
         return {

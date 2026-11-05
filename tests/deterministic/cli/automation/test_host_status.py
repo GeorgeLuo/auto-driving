@@ -6,7 +6,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from cli.automa_cli.hosts.runs.status import _host_runtime_status
+from cli.automa_cli.hosts.runs.status import hosts_status
+from tests.support.runtime_fixtures import write_host_fixture
 from tests.support.fake_hosts import answering
 
 
@@ -20,7 +21,9 @@ class HostRuntimeStatusTests(unittest.TestCase):
         ), mock.patch(
             "cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)
         ):
-            return _host_runtime_status(HOST_NAME, url, timeout_s=1.0)["process"]
+            write_host_fixture(Path(tmp), HOST_NAME, provider="picar", url=url)
+            _, payload = hosts_status(host_name=HOST_NAME, include_runs=True)
+            return payload["hosts"][0]["run"]["process"]
 
     def test_a_reply_that_is_not_a_host_status_is_a_worker_error(self) -> None:
         for body, reason in (

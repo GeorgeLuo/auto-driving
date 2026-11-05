@@ -16,7 +16,7 @@ from unittest import mock
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import builtin_activation
 from cli.automa_cli.hosts.runs.service import run_host_automation
-from cli.automa_cli.hosts.runs.status import collect_automation_status
+from cli.automa_cli.hosts.runs.status import hosts_status
 from cli.automa_cli.hosts.runs.store import step_status
 from tests.shared.cli.invoke import invoke_automa
 from tests.support.runtime_fixtures import stage_step, write_json
@@ -54,8 +54,8 @@ class StepFairnessTests(unittest.TestCase):
                 yield root
 
     def _status(self) -> dict:
-        (status,) = collect_automation_status(host_name=VEHICLE, view_timeout_s=0)
-        return status
+        _, payload = hosts_status(host_name=VEHICLE, include_runs=True, view_timeout_s=0)
+        return payload["hosts"][0]["run"]
 
     def test_a_run_starts_with_any_single_step_staged(self) -> None:
         """Regression: a run was refused unless perception was staged, and it

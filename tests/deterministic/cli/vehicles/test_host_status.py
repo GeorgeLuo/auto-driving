@@ -14,8 +14,11 @@ from typing import Iterator
 from unittest import mock
 
 from autonomy.decision_cycle.activation import step_activation
+from cli.automa_cli.frontend import perception_view
 from cli.automa_cli.releases.paths import controller_bundle_paths
 from cli.automa_cli.hosts.local import HOST_RECORD
+from cli.automa_cli.hosts.publications.host_publications import host_state
+from cli.automa_cli.hosts.runs.status import hosts_status
 from cli.automa_cli.providers.urls import chase_operator_url
 from implementations.decision_cycle.catalog import preset_activation
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, write_host_record
@@ -26,7 +29,7 @@ from tests.shared.cli.invoke import invoke_automa
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_hosts import answering, closed_url, hung_url
 from tests.support.fake_metrics_ui import fake_metrics_ui
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import write_host_fixture, write_json
 
 
 def _host_blocks(stdout: str) -> list[list[str]]:
@@ -95,10 +98,11 @@ class HostStatusTests(unittest.TestCase):
         self.enterContext(_attached(self.server, "chase-sim-chaser", host.base_url))
 
         # The run lines use the host's one /host/status read.
-        with mock.patch("cli.automa_cli.hosts.runs.status.host_state", side_effect=AssertionError("read twice")):
+        with mock.patch("cli.automa_cli.hosts.host_status.host_state", wraps=host_state) as read:
             human = self.status()
             long = self.status("--long")
             machine = json.loads(self.status("--json").stdout)
+        self.assertEqual(read.call_count, 3)
 
         self.assertEqual((human.returncode, long.returncode), (0, 0), human.stderr + long.stderr)
         [block] = _host_blocks(human.stdout)
@@ -117,6 +121,82 @@ class HostStatusTests(unittest.TestCase):
              "attached": True, "local": "host record", "state": "pre_start", "mode": "manual", "decision_count": 0},
         )
         self.assertEqual(entry["run"]["host_name"], "chase-sim-chaser")
+
+    def test_run_detail_reuses_discovery_and_checks_the_selected_view_once(self) -> None:
+        """A live host without a monitor used to discover and probe its run view twice."""
+
+        host = self.host()
+        health = json.dumps({
+            "schema": perception_view.VIEW_SCHEMA, "available": True, "url": "http://127.0.0.1/",
+            "has_perception": True, "latest_perception_frame_id": "frame-1", "perception_frame_buffered": True,
+        }).encode()
+        with answering(health) as view_url:
+            automation = self.runtime_root / "chase-sim-chaser/bundle/runtime/automation"
+            write_json(automation / perception_view.VIEW_RECORD_NAME, {"url": view_url})
+            reads = []
+            read_text = Path.read_text
+
+            def read(path, *args, **kwargs):
+                reads.append(path)
+                return read_text(path, *args, **kwargs)
+
+            with mock.patch.object(Path, "read_text", read), mock.patch.object(
+                perception_view, "urlopen", wraps=perception_view.urlopen,
+            ) as health_requests:
+                result = self.status("--json")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        [entry] = json.loads(result.stdout)["hosts"]
+        self.assertEqual(entry["run"]["process"]["process_record"], f"{host.base_url}/host/status")
+        self.assertTrue(entry["run"]["published_view"]["available"])
+        self.assertEqual(health_requests.call_count, 1)
+        self.assertEqual(reads.count(self.runtime_root / "chase-sim-chaser/host-configuration.json"), 1)
+        self.assertEqual(reads.count(automation / HOST_RECORD), 1)
+
+    def test_live_host_uses_the_standalone_view_when_its_run_view_is_unavailable(self) -> None:
+        self.host()
+        warming = {"schema": perception_view.VIEW_SCHEMA, "available": False}
+        ready = {
+            **warming, "available": True, "url": "http://127.0.0.1/", "has_perception": True,
+            "latest_perception_frame_id": "frame-1", "perception_frame_buffered": True,
+        }
+        with answering(json.dumps(warming).encode()) as run_url, answering(json.dumps(ready).encode()) as view_url:
+            runtime = self.runtime_root / "chase-sim-chaser/bundle/runtime"
+            write_json(runtime / "automation" / perception_view.VIEW_RECORD_NAME, {"url": run_url})
+            write_json(runtime / "view" / perception_view.VIEW_RECORD_NAME, {"url": view_url})
+            with mock.patch.object(perception_view, "urlopen", wraps=perception_view.urlopen) as health_requests:
+                result = self.status("--json")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        view = json.loads(result.stdout)["hosts"][0]["run"]["published_view"]
+        self.assertTrue(view["available"])
+        self.assertEqual(view["latest_perception_frame_id"], "frame-1")
+        self.assertEqual(health_requests.call_count, 2)
+
+    def test_live_host_view_fallbacks_share_the_deadline_across_hosts(self) -> None:
+        """An exhausted run-view budget must not restart for standalone views or later hosts."""
+
+        reply = json.dumps({"ok": True, "session": {"status": "pre_start"}, "host": {"error_count": 0}}).encode()
+        with answering(reply) as host_url, hung_url() as view_url:
+            for name in ("one", "two", "three"):
+                _record(self.runtime_root, name, host_url, self.server.url)
+                for directory in ("automation", "view"):
+                    write_json(
+                        self.runtime_root / name / "bundle/runtime" / directory / perception_view.VIEW_RECORD_NAME,
+                        {"url": view_url},
+                    )
+            with mock.patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", self.runtime_root), mock.patch(
+                "cli.automa_cli.releases.paths.RUNTIME_ROOT", self.runtime_root,
+            ), mock.patch.object(perception_view, "urlopen", wraps=perception_view.urlopen) as health_requests:
+                started = time.monotonic()
+                code, payload = hosts_status(include_runs=True, timeout_s=0.2, view_timeout_s=0.05)
+                elapsed = time.monotonic() - started
+
+        self.assertEqual(code, 0)
+        self.assertEqual(len(payload["hosts"]), 3)
+        self.assertTrue(all(not host["run"]["published_view"]["available"] for host in payload["hosts"]))
+        self.assertEqual(health_requests.call_count, 1)
+        self.assertLess(elapsed, 0.5, f"view fallbacks restarted the deadline: {elapsed:.3f}s")
 
     def test_a_host_with_only_a_local_record_is_not_attached(self) -> None:
         host = self.host()

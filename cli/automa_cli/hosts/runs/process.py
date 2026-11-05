@@ -214,7 +214,7 @@ def wait_for_automation_startup(
                 state.get("run_id") if isinstance(state.get("run_id"), str) else None
             )
             remaining = deadline - time.monotonic()
-            if remaining >= 0.05:
+            if remaining > 0:
                 view = get_perception_view_status(
                     automation_dir,
                     timeout_s=min(0.25, remaining),
@@ -227,10 +227,8 @@ def wait_for_automation_startup(
                 if perception_view_ready(view):
                     return {
                         "status": "ready",
-                        "frame_id": view["latest_perception_frame_id"],
+                        "frame_id": view["latest_frame_id"],
                         "view_url": view.get("url"),
-                        "capture_lag": view.get("capture_lag"),
-                        "capture_lag_ms": view.get("capture_lag_ms"),
                         "phases": {
                             "capture": {"status": "complete"},
                             "perception": {

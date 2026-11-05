@@ -29,7 +29,7 @@ def register_simulators(subcommands: argparse._SubParsersAction) -> None:
         help="Start a headless Chase simulator that vehicles status lists.",
         description=(
             "Start a headless Chase simulator with Metrics UI's default headless configuration, "
-            "from the Metrics UI checkout at AUTOMA_METRICS_UI_DIR, on the first free port from 5050. "
+            "from the Metrics UI checkout at AUTOMA_METRICS_UI_DIR, on the first free port from 5051. "
             "It runs until simulators delete. Exits 2 when it is not ready within 45 s."
         ),
     )
@@ -120,8 +120,8 @@ def _handle_simulators_status(args: argparse.Namespace) -> int:
     try:
         ws_url = normalize_chase_url(args.url) if args.url is not None else None
     except ValueError as exc:
-        print(str(exc))
+        print(f"automa simulators status: {exc}", file=sys.stderr)
         return 2
-    status = simulators_status(url=ws_url, timeout_s=args.timeout_s)
-    print(render_simulators_status(status, url=args.url, json_output=args.json, long=args.long))
-    return status.exit_code
+    exit_code, status = simulators_status(url=ws_url, timeout_s=args.timeout_s)
+    print(render_simulators_status(status, json_output=args.json, long=args.long))
+    return exit_code

@@ -4,8 +4,7 @@ import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
-from types import SimpleNamespace
-
+from autonomy.decision_cycle.cycle import DecisionCycleResult
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.action.publication import MODE_KEY
 from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON
@@ -21,9 +20,10 @@ from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
+from autonomy.decision_cycle.records import DecisionRecords
 from autonomy.runtime.report import report_from_host_result
 from implementations.decision_cycle.catalog import packaged_activation
-from cli.automa_cli.hosts.publications.decision_records import DecisionRecords, DecisionRunners
+from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
 from cli.automa_cli.hosts.step_activations import (
     decision_generation_id,
     decision_identity,
@@ -98,22 +98,26 @@ def host_result_for_records(
     mode: str = "observe_only",
     observation: Observation | None = None,
     memory: dict | None = None,
-) -> SimpleNamespace:
-    """A host cycle result whose application the shared report can publish."""
+) -> DecisionCycleResult:
+    """A completed host cycle whose application the shared report can publish."""
 
     control = records.control or AutonomyControl()
-    return SimpleNamespace(
+    return DecisionCycleResult(
         context=DecisionFrameContext(
             frame_id=frame_id,
             frame_index=frame_index,
             timestamp_ms=timestamp_ms,
             shared_memory={MODE_KEY: mode},
         ),
+        perception=None,
+        observation=observation,
+        memory=memory,
         proposal=records.proposal,
         plan=records.plan,
         action=records.action,
-        observation=observation,
-        memory=memory,
+        control=control,
+        started_at_ms=timestamp_ms,
+        completed_at_ms=timestamp_ms,
         application=ControlApplication(
             frame_id=frame_id,
             mode=mode,

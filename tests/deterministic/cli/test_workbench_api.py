@@ -76,9 +76,9 @@ class WorkbenchTests(unittest.TestCase):
             raw_state = runner.wait(5)
             self.assertEqual(raw_started["state"]["active_perception_plugin_ids"], [])
             self.assertEqual(raw_state["phase"], "completed")
-            self.assertEqual(raw_state["steps"]["perception"]["status"], "empty")
-            self.assertEqual(raw_state["steps"]["perception"]["plugin_runs"], ())
-            self.assertEqual(raw_state["steps"]["perception"]["things"], ())
+            self.assertEqual(raw_state["perception"]["status"], "empty")
+            self.assertEqual(raw_state["perception"]["plugin_runs"], ())
+            self.assertEqual(raw_state["perception"]["things"], ())
             selected = post(
                 {
                     "action": "select_plugins",
@@ -104,7 +104,7 @@ class WorkbenchTests(unittest.TestCase):
         )
         self.assertEqual(state["phase"], "completed")
         self.assertEqual(
-            [item["plugin_id"] for item in state["steps"]["perception"]["plugin_runs"]],
+            [item["plugin_id"] for item in state["perception"]["plugin_runs"]],
             ["classical_regions"],
         )
 
@@ -220,13 +220,13 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(shown["position"], 1)
             self.assertEqual(shown["current_frame"]["frame_id"], first_id)
             self.assertEqual(
-                [run["plugin_id"] for run in shown["steps"]["perception"]["plugin_runs"]],
+                [run["plugin_id"] for run in shown["perception"]["plugin_runs"]],
                 ["classical_regions"],
             )
             post({"action": "pause", "run_id": run_id})
             stepped = post({"action": "step", "run_id": run_id})["state"]
             self.assertEqual(
-                [run["plugin_id"] for run in stepped["steps"]["perception"]["plugin_runs"]],
+                [run["plugin_id"] for run in stepped["perception"]["plugin_runs"]],
                 ["floor_continuity"],
             )
             post({"action": "reset", "run_id": run_id})
@@ -257,13 +257,13 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(selected["position"], 1)
             self.assertEqual(selected["current_frame"]["frame_id"], first_id)
             self.assertEqual(
-                [run["plugin_id"] for run in selected["steps"]["perception"]["plugin_runs"]],
+                [run["plugin_id"] for run in selected["perception"]["plugin_runs"]],
                 ["classical_regions"],
             )
             runner.dispatch("pause", run_id=run_id)
             stepped = runner.dispatch("step", run_id=run_id)
-            self.assertEqual(list(stepped["steps"]["perception"]["plugin_runs"] or ()), [])
-            self.assertEqual(stepped["steps"]["perception"]["status"], "empty")
+            self.assertEqual(list(stepped["perception"]["plugin_runs"] or ()), [])
+            self.assertEqual(stepped["perception"]["status"], "empty")
             runner.dispatch("reset", run_id=run_id)
 
     def test_loopback_api_persists_after_terminal_state_and_rejects_raw_argv(

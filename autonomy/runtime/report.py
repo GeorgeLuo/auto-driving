@@ -7,8 +7,7 @@ recorded after the cycle. Each vehicle transports the document itself.
 
 ``cycle`` contains the observation, memory, proposal, plan, and action records.
 Observation, memory, and plan may be null when their steps produce no record.
-All five keys stay required. Proposal and action stay objects, so the typed
-cycle check can reconstruct them.
+All five keys stay required. Proposal and action stay objects.
 
 ``values["timing"]`` is the cycle's ``timing`` record from
 ``autonomy.decision_cycle.timing``: its total and each step's and plugin's
@@ -23,6 +22,7 @@ from dataclasses import dataclass
 from typing import Any, Mapping
 
 from autonomy.decision_cycle.action_identifiers import require_ascii_id, require_safe_int
+from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, DecisionCycleResult
 from autonomy.runtime.execution import require_mode
 
 REPORT_SCHEMA = "host_report"
@@ -41,7 +41,7 @@ REPORT_EXACT_KEYS = frozenset(
         "values",
     }
 )
-CYCLE_EXACT_KEYS = frozenset({"observation", "memory", "proposal", "plan", "action"})
+CYCLE_EXACT_KEYS = frozenset(CYCLE_RECORD_KEYS)
 APPLICATION_EXACT_KEYS = frozenset({"applied", "mode", "reason", "steering", "throttle"})
 
 
@@ -188,7 +188,7 @@ class HostReport:
                 _json_copy(self.cycle[key], field=f"cycle.{key}"),
                 key=key,
             )
-            for key in ("observation", "memory", "proposal", "plan", "action")
+            for key in CYCLE_RECORD_KEYS
         }
         object.__setattr__(self, "cycle", cycle)
         if not isinstance(self.application, ReportApplication):
@@ -219,6 +219,8 @@ class HostReport:
     def from_dict(cls, payload: object) -> "HostReport":
         if not isinstance(payload, Mapping):
             raise ValueError("report must be an object")
+        if payload.get("schema") != REPORT_SCHEMA:
+            raise ValueError(f"report.schema must be {REPORT_SCHEMA!r}")
         _exact_keys(payload, REPORT_EXACT_KEYS, field="report")
         return cls(
             schema=payload["schema"],
@@ -273,15 +275,8 @@ def diagnostic_ceiling(values: Mapping[str, Any] | None) -> int:
     return raw
 
 
-def _export_record(record: Any, *, field: str) -> dict[str, Any]:
-    export = record.to_dict() if callable(getattr(record, "to_dict", None)) else record
-    if not isinstance(export, Mapping):
-        raise TypeError(f"{field} must be an object")
-    return dict(export)
-
-
 def report_from_host_result(
-    result: Any,
+    result: DecisionCycleResult,
     *,
     host_name: str,
     run_id: str,
@@ -298,21 +293,19 @@ def report_from_host_result(
     ``values["timing"]``.
     """
 
-    context = getattr(result, "context", None)
-    proposal = getattr(result, "proposal", None)
-    action = getattr(result, "action", None)
-    application = getattr(result, "application", None)
-    if context is None or proposal is None or action is None:
+    context = result.context
+    proposal = result.proposal
+    action = result.action
+    application = result.application
+    if proposal is None or action is None:
         raise TypeError("host result must include a frame, proposal, and action")
-    if application is None or getattr(application, "control", None) is None:
+    if application is None or application.control is None:
         raise TypeError("host result must include its control application")
-    plan = getattr(result, "plan", None)
     control = application.control
     values = {} if values is None else dict(values)
-    observation = getattr(result, "observation", None)
-    timing = getattr(result, "timing", None)
-    if timing is not None:
-        values["timing"] = timing
+    if result.timing is not None:
+        values["timing"] = result.timing
+    cycle = result.export_cycle()
     return HostReport(
         host_name=host_name,
         run_id=run_id,
@@ -323,13 +316,7 @@ def report_from_host_result(
         published_at_ms=(
             int(time.time() * 1000) if published_at_ms is None else int(published_at_ms)
         ),
-        cycle={
-            "observation": None if observation is None else observation.to_dict(),
-            "memory": getattr(result, "memory", None),
-            "proposal": _export_record(proposal, field="cycle.proposal"),
-            "plan": None if plan is None else _export_record(plan, field="cycle.plan"),
-            "action": _export_record(action, field="cycle.action"),
-        },
+        cycle=cycle,
         application=ReportApplication(
             applied=application.applied,
             mode=application.mode,

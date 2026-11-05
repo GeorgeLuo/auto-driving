@@ -136,7 +136,7 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `hosts delete` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. |
 | `hosts update` | Packages a versioned release for the vehicle's host and stages each step's `plugins save` selection with it, else the step's default (`plugins list` marks the defaults), replacing whatever else each step had staged: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `hosts run\|stop\|restart\|status` | Starts, stops, restarts or inspects a run on the host. Status includes the vehicle endpoint, host URL and simulator attachment. `stop` ends the run; the host stays attached until `hosts delete`. |
-| `simulators create` | Starts a headless Chase simulator from the Metrics UI checkout at `AUTOMA_METRICS_UI_DIR`, with its launcher's default configuration, on the first free port from 5050, and prints its URL. It runs until `simulators delete --url` ends it, which refuses while a host was created at it and removes only the record of one that has exited. `vehicles remove` stops listing it without ending it. |
+| `simulators create` | Starts a headless Chase simulator from the Metrics UI checkout at `AUTOMA_METRICS_UI_DIR`, with its launcher's default configuration, on the first free port from 5051, and prints its URL. It runs until `simulators delete --url` ends it, which refuses while a host was created at it and removes only the record of one that has exited. `vehicles remove` stops listing it without ending it. |
 | `simulators status` | Shows each simulator `simulators create` started, whether it answers, its frontend, and the hosts created at it. `--long` adds its Metrics UI checkout, configuration and log. `--json` prints `automa_simulators_status`. With `--url`, exits 1 when that simulator is missing, exited, or unreachable. |
 
 The runtime viewer's **Plugins** table refreshes every 500 ms. Revision columns
@@ -320,11 +320,11 @@ While a host's run is active, `hosts status --long` reports a
 loopback URL for a live frame-and-data view. The page polls the worker's
 in-memory publication. Camera capture runs independently from perception, so a
 slow plugin consumes the newest available frame instead of accumulating a
-backlog. The page displays the latest camera frame with the newest available
-overlay and reports its source frame, frame lag, and elapsed result age. It can
-independently hide regions, labels, or finding kinds. Only image-coordinate
-findings are drawn over the camera frame; findings in other coordinate systems
-remain available in the data panel.
+backlog. The page displays the latest camera frame with the findings perception
+completed for it, and reports the elapsed result age. It can independently hide
+regions, labels, or finding kinds. Only image-coordinate findings are drawn over
+the camera frame; findings in other coordinate systems remain available in the
+data panel.
 
 Stop or restart the worker:
 
@@ -585,8 +585,8 @@ starts each step from `--perception-preset` or
 `--perception-plugin`, `--memory-preset` or `--memory-plugin`, and
 `--proposal-preset` or `--proposal-plugin`, as `plugins inspect` takes them. With no flag, a step uses its default preset: proposal uses
 `obstruction_avoidance`. The CLI and page show each step's preset, where it has one,
-and ordered plugins. Each frame's detail and timeline entry carry the cycle's
-`timing`: each step's and plugin's time for that frame.
+and ordered plugins. The displayed frame's `timing` carries each step's and
+plugin's time, including when seeking back to a cached frame.
 The page's catalog lists available plugins; its separate **Run order** shows
 execution order. Newly checked plugins run last, and retained plugins keep
 their order. Unchecking every plugin disables its plugins.
@@ -622,13 +622,16 @@ on the viewer. `GET /workbench/api/state` reports schema
 and default configs, `active_<step>_plugin_ids` for the selected execution order,
 and `machine_detail.pipeline.<step>_preset` for the selection's preset name or
 `custom`. The pipeline's `<step>_plugin_report.applied_plugin_ids` reports the
-plugins that were applied. Each frame's `memory_plugins` lists every applied
-memory plugin's health, record count, and epoch, and
-`memory_evidence_publisher` names the plugin whose evidence the step published.
-`steps.memory` is the complete memory step report, with its `plugins[]` and
-`evidence_publisher`. `<step>_plugin_catalog` includes `digest`.
+plugins that were applied. The displayed frame's `summary.memory_plugins` lists
+every applied memory plugin's health, record count, and epoch, and
+`summary.memory_evidence_publisher` names the plugin whose evidence the step
+published. `cycle.memory` is the complete memory step report, with its
+`plugins[]` and `evidence_publisher`. The other cycle records are
+`cycle.observation`, `cycle.proposal`, `cycle.plan`, and `cycle.action`;
+real perception output and cycle timing are in `perception` and `timing`.
+`<step>_plugin_catalog` includes `digest`.
 
-Send `POST /api/action` with an explicit step for any selection; omitting
+Send `POST /workbench/api/action` with an explicit step for any selection; omitting
 `step` is a 400 input error. `active_plugin_ids` is the common request field
 and may be empty. Include the current state's `run_id` during playback:
 

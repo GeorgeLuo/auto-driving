@@ -7,9 +7,10 @@ from typing import Any
 
 from autonomy.decision_cycle.action.hold import HoldAction, idle_output
 from autonomy.decision_cycle.confidence import confidence_text
+from autonomy.decision_cycle.memory.interface import evidence_records
 from autonomy.decision_cycle.timing import step_timing
 
-from ..shared.memory_report import evidence_publisher, evidence_records, plugin_summaries
+from ..shared.memory_report import evidence_publisher, plugin_summaries
 
 _RETAINED_SHOWN = 12
 

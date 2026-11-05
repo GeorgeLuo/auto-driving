@@ -94,12 +94,12 @@ UI checkout whose packages are installed:
 ```sh
 export AUTOMA_METRICS_UI_DIR=~/path/to/metrics-ui
 ./cli/automa simulators create
-./cli/automa simulators delete --url http://127.0.0.1:5050/
+./cli/automa simulators delete --url http://127.0.0.1:5051/
 ```
 
 `simulators create` runs Metrics UI's headless launcher
 (`scripts/play-chase-headless.mjs`) with its default configuration on the first
-free port from 5050, and prints `Created Simulator (chase-sim) at <URL>` once
+free port from 5051, and prints `Created Simulator (chase-sim) at <URL>` once
 the launcher reports it ready. A launcher that exits or is not ready within
 45 s is ended, and the command exits 2 with the end of its log
 (`runtime/hosts/simulators/<port>/simulator.log`). The simulator outlives

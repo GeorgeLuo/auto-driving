@@ -7,14 +7,11 @@ from typing import Any
 from autonomy.plugins import DuplicatePluginIdError
 
 from .hosts.commands import register_hosts
-from .hosts.runs.commands import get_hosts_status
 from .hosts.views.runtime_view import runtime_view_server, serve_viewer
 from .plugins.commands import register_plugins
 from .shared.text import format_browser_result
 from .simulators.commands import register_simulators
 from .vehicles.commands import register_vehicles
-from .vehicles.render import format_vehicles_status
-from .vehicles.status import get_vehicles_status
 from .viewer_commands import VIEWER_READS, VIEWER_WRITES
 from .workbench.commands import register_workbench
 
@@ -91,20 +88,9 @@ def _handle_open_viewer(args: argparse.Namespace) -> int:
 
 
 def _handle_status(args: argparse.Namespace) -> int:
-    result = get_hosts_status(long=False, json_output=False)
-    if result.message:
-        print(result.message)
-    try:
-        payload = get_vehicles_status()
-    except ValueError as exc:
-        print(f"automa vehicles status: {exc}", file=sys.stderr)
-        return 2
-    if result.message:
-        print()
-    print(format_vehicles_status(payload))
-    if payload["vehicles"] and all(vehicle["state"] == "unreachable" for vehicle in payload["vehicles"]):
-        return 1
-    return 0
+    main(["hosts", "status"])
+    print()
+    return main(["vehicles", "status"])
 
 
 def main(argv: list[str] | None = None) -> int:

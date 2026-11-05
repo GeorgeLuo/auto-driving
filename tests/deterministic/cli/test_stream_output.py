@@ -14,6 +14,7 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from autonomy.runtime.report import HostReport, ReportApplication
 from cli.automa_cli.plugins.stream import decision, memory, perception, session
 from cli.automa_cli.plugins.stream.commands import stream_host_step
 from cli.automa_cli.plugins.stream.models import PerceptionPublication, StreamEvent, ViewState
@@ -25,8 +26,13 @@ from cli.automa_cli.hosts.errors import RuntimeHostError
 # A fresh cycle whose plan record is empty.
 NORMALIZED = {
     "result_age_ms": 0, "max_age_ms": 1000,
-    "decision": {"host_name": "fixture", "frame_id": "next",
-                 "values": {"activation": {"steps": {"plan": {"plugins": []}}}}, "cycle": {"plan": {}}},
+    "report": HostReport(
+        host_name="fixture", run_id="run", generation_id="generation",
+        frame_id="next", frame_index=0, timestamp_ms=1, published_at_ms=1,
+        values={"activation": {"steps": {"plan": {"plugins": []}}}},
+        cycle={"observation": None, "memory": None, "proposal": {}, "plan": {}, "action": {}},
+        application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
+    ),
 }
 OFFLINE = "Could not read the decision publication at http://host.invalid: offline"
 ROOT = Path(__file__).resolve().parents[3]

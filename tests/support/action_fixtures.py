@@ -2,18 +2,16 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, replace
+from dataclasses import replace
 from typing import Any, Callable
 
-from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.action.runner import ActionRunner
 from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
-from autonomy.decision_cycle.plan.values import ActionPlan
-from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
+from autonomy.decision_cycle.records import DecisionRecords
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.control import AutonomyControl
 
@@ -91,31 +89,6 @@ def action_runner(plugin: Any | None = None) -> ActionRunner:
     if plugin is None:
         return decision_steps().action
     return ActionRunner.from_plugins({plugin.plugin_id: plugin})
-
-
-@dataclass(frozen=True)
-class DecisionRecords:
-    """The proposal, plan, and action records of one cycle."""
-
-    proposal: ProposalResult
-    plan: ActionPlan | None
-    action: ActionResult
-
-    @property
-    def status(self) -> str:
-        return self.action.status
-
-    @property
-    def reason(self) -> str:
-        return self.action.reason
-
-    @property
-    def authority(self):
-        return self.action.authority
-
-    @property
-    def control(self) -> AutonomyControl:
-        return self.action.control
 
 
 class DecisionChain:

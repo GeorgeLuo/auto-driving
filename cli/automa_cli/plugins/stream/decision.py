@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from copy import deepcopy
 from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import DECISION_STEPS
@@ -68,23 +69,30 @@ def stream_decision(
         normalized = accept_decision_publication(
             publication, host_name=host_name, now_ms=timestamp_ms(),
         )
-        report = normalized["decision"]
-        activation = report["values"]["activation"]
-        return {
+        report = normalized["report"]
+        activation = report.values["activation"]
+        cycle = report.cycle
+        frame = {
             "schema": f"host_{step}_stream",
-            **{key: report.get(key) for key in (
-                "host_name", "run_id", "generation_id", "frame_id", "frame_index", "timestamp_ms",
-            )},
+            "host_name": report.host_name,
+            "run_id": report.run_id,
+            "generation_id": report.generation_id,
+            "frame_id": report.frame_id,
+            "frame_index": report.frame_index,
+            "timestamp_ms": report.timestamp_ms,
             # The host computes the result age on its own clock.
             "freshness": {"age_ms": normalized["result_age_ms"], "max_age_ms": normalized["max_age_ms"]},
             "plugins": list((activation["steps"].get(step) or {}).get("plugins") or []),
-            "record": report["cycle"][step],
+            "record": deepcopy(cycle[step]),
             # The cycle's timing; a host that does not publish it leaves None.
-            "timing": report["values"].get("timing"),
-            **({"application": report["application"]} if step == "action" else {}),
-            **({key: report["cycle"][key] for key in ("observation", "memory")}
-               if step == "proposal" else {}),
+            "timing": deepcopy(report.values.get("timing")),
         }
+        if step == "action":
+            frame["application"] = report.application.to_dict()
+        if step == "proposal":
+            frame["observation"] = deepcopy(cycle["observation"])
+            frame["memory"] = deepcopy(cycle["memory"])
+        return frame
 
     def probe() -> tuple[dict[str, Any], None]:
         if view is not None:

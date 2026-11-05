@@ -15,7 +15,7 @@ from .simulators.service import create_simulator, delete_simulator
 from .simulators.status import simulators_status
 from .vehicles.discovery import discover_vehicle, remove_vehicle
 from .vehicles.render import render_vehicle_result
-from .vehicles.status import get_vehicles_status
+from .vehicles.status import vehicles_status
 
 
 def _url(body: dict[str, Any]) -> str:
@@ -55,8 +55,8 @@ def _delete(body: dict[str, Any]) -> dict[str, Any]:
 
 
 VIEWER_READS = {
-    "/api/vehicles": get_vehicles_status,
-    "/api/simulators": lambda: simulators_status().payload,
+    "/api/vehicles": lambda: vehicles_status()[1],
+    "/api/simulators": lambda: simulators_status()[1],
 }
 VIEWER_WRITES = {
     "/api/vehicles/discover": _discover,

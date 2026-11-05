@@ -252,6 +252,7 @@ def _install_created_host(
     directory = RUNTIME_ROOT / safe_path_part(host_name)
     made_directory = not directory.exists()
     write_host_configuration(RUNTIME_ROOT, configuration)
+    core = None
     try:
         if not local:
             core = install_picar_core(resolve_picar_target(configuration), verbose=verbose, emit=emit)
@@ -267,7 +268,9 @@ def _install_created_host(
         if local:
             base_url = ensure_chase_host(host_name)
             state = host_state(base_url, host_name=host_name, timeout_s=5.0)
-        return CreateResult(0, "created", configuration=configuration, release=result, host_state=state)
+        return CreateResult(
+            0, "created", configuration=configuration, core=core, release=result, host_state=state,
+        )
     except (OSError, RuntimeError, ValueError) as exc:
         if local:
             stop_chase_host(host_name)

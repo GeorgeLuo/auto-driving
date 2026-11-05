@@ -101,10 +101,8 @@ class HostLifecycleTests(unittest.TestCase):
         result = service.update_host(host_name="car", dry_run=True)
         self.assertEqual(result.exit_code, 0)
         self.assertFalse(result.receipt["restart_requested"])
-        rendered = render_update(result, json_output=False)
-        self.assertEqual(json.loads(rendered)["restart_requested"], False)
-        self.assertTrue(json.loads(rendered)["dry_run"])
-        self.assertEqual(rendered, render_update(result, json_output=True))
+        self.assertFalse(json.loads(render_update(result, json_output=True))["restart_requested"])
+        self.assertTrue(render_update(result, json_output=False).startswith("Autonomy update dry run"))
 
     def test_delete_chase_stops_host_and_removes_directory(self):
         write_host_fixture(self.root, "test")
@@ -126,6 +124,15 @@ class HostLifecycleTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertIn("Harness files stay in /home/piracer/mycar on the PiCar.", render_delete(result))
         self.assertFalse((self.root / "car").exists())
+
+    def test_created_picar_receipt_carries_the_synced_core(self):
+        core = CoreResult(0, "synced", receipt={"schema": "host_core_update", "dry_run": False})
+        release = UpdateResult(0, "remote", receipt={"schema": "host_autonomy_update"})
+        with patch.object(service, "install_picar_core", return_value=core), \
+             patch.object(service, "update_host", return_value=release):
+            result = service.create_host(host_name="car", provider="picar", url="http://example:8887")
+        body = json.loads(render_create(result, json_output=True))
+        self.assertEqual((body["dry_run"], body["core"], body["release"]), (False, core.receipt, release.receipt))
 
     def test_failed_new_creation_removes_the_directory(self):
         with patch.object(service, "install_picar_core", return_value=CoreResult(2, "error", "sync failed")):
@@ -152,12 +159,15 @@ class HostLifecycleTests(unittest.TestCase):
             "source": {"tree_sha256": "abcdef1234567890", "file_count": 3},
         }
         rendered = render_update(UpdateResult(0, "local", receipt=receipt), json_output=False)
-        self.assertEqual(json.loads(rendered), receipt)
-        self.assertEqual(rendered, render_update(UpdateResult(0, "local", receipt=receipt), json_output=True))
-        self.assertEqual(json.loads(rendered)["source"]["file_count"], 3)
+        self.assertEqual(
+            rendered,
+            "Dry run: would package car's controller release (tree abcdef123456, 3 files)\n"
+            "Restart the host onto it: no",
+        )
+        self.assertEqual(json.loads(render_update(UpdateResult(0, "local", receipt=receipt), json_output=True))["source"]["file_count"], 3)
         self.assertEqual(render_update(UpdateResult(2, "error", "missing"), json_output=True), "missing")
 
-    def test_create_chase_dry_run_uses_the_create_envelope(self):
+    def test_create_chase_dry_run_prints_the_create_receipt_with_json(self):
         result = invoke_automa(
             "hosts", "create", "--name", "car", "--provider", "chase-sim",
             "--url", "http://localhost:5050", "--dry-run", "--json",
@@ -179,10 +189,10 @@ class HostLifecycleTests(unittest.TestCase):
             runtime_root=self.root, check=False,
         )
         self.assertEqual(plain.returncode, 0, plain.stdout + plain.stderr)
-        self.assertEqual(plain.stdout, result.stdout)
+        self.assertTrue(plain.stdout.startswith("Dry run: would package car's controller release"), plain.stdout)
         self.assertFalse(self.root.exists())
 
-    def test_created_receipt_uses_the_create_envelope(self):
+    def test_created_receipt_has_the_create_schema(self):
         configuration = {"host_name": "car", "provider": "chase-sim", "vehicle_kind": "chase-sim-ws",
                          "connection": {"ws_url": "ws://localhost:5050/ws/control"}}
         release = UpdateResult(0, "local", host_present=False, receipt={

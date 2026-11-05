@@ -7,8 +7,7 @@ import tempfile
 import time
 import unittest
 from pathlib import Path
-from tests.support.runtime_fixtures import stage_step, write_host_fixture
-from unittest.mock import patch
+from tests.support.runtime_fixtures import stage_step, write_host_fixture, runtime_root_env
 from urllib.request import urlopen
 
 from cli.automa_cli.hosts.discovery import runtime_base_url
@@ -82,7 +81,7 @@ class PluginArmingFlows(unittest.TestCase):
 
             def host_catalog():
                 # Adoption at the host's next cycle shows only in its catalog API.
-                with patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime), patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime):
+                with runtime_root_env(runtime):
                     return catalog(runtime_base_url("chase-sim-chaser"))
 
             # Only perception is staged, so the uploaded proposal is the step's one plugin.
@@ -188,7 +187,7 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(after["armed"], [])
             finally:
                 cli("stop", "--name", "chase-sim-chaser", check=False)
-                with patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime), patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime):
+                with runtime_root_env(runtime):
                     stop_chase_host("chase-sim-chaser")
 
 

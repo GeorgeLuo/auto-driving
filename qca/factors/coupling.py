@@ -1,4 +1,4 @@
-"""Compatibility wrapper for independently testable coupling indicators."""
+"""Coupling factor: imports and public contracts through one shared context."""
 
 from __future__ import annotations
 
@@ -33,32 +33,6 @@ def analyze_coupling_context(
         "coupling": _coupling_indicator.analyze(context),
         "contracts": _contracts_indicator.analyze(context),
     }
-
-
-# Preserve the helper names that were part of the factor's practical import
-# surface while keeping their implementation in the indicator owners.
-_module_names = _coupling_indicator._module_names
-_module = _coupling_indicator._module
-_package = _coupling_indicator._package
-_index = _coupling_indicator._index
-_lookup_resolution = _coupling_indicator._lookup_resolution
-_unresolved_suffix = _coupling_indicator._unresolved_suffix
-_from_resolution = _coupling_indicator._from_resolution
-_coupling = _coupling_indicator._coupling
-_edge = _coupling_indicator._edge
-_resolution_fields = _coupling_indicator._resolution_fields
-_set_edge_resolution = _coupling_indicator._set_edge_resolution
-_scc_cycles = _coupling_indicator._scc_cycles
-
-_contracts = _contracts_indicator._contracts
-_public_callables = _contracts_indicator._public_callables
-_signature = _contracts_indicator._signature
-_return_shapes = _contracts_indicator._return_shapes
-_cli_call = _contracts_indicator._cli_call
-_cli_dest = _contracts_indicator._cli_dest
-_add_cli_surface = _contracts_indicator._add_cli_surface
-_literal = _contracts_indicator._literal
-_expr = _contracts_indicator._expr
 
 
 __all__ = ["analyze_coupling", "analyze_coupling_context"]

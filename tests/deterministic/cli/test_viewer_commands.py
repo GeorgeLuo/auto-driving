@@ -12,20 +12,17 @@ from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
 from cli.automa_cli.frontend.server import RuntimeViewServer
-from cli.automa_cli.hosts import staging
 from cli.automa_cli.providers.urls import chase_operator_url
-from cli.automa_cli.simulators import store as simulator_store
-from cli.automa_cli.vehicles import store as vehicle_store
 from cli.automa_cli.viewer_commands import VIEWER_READS, VIEWER_WRITES
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner
 from tests.support.fake_metrics_ui import fake_metrics_ui
+from tests.support.runtime_fixtures import runtime_root_env
 
 
 class ViewerCommandTests(unittest.TestCase):
     def setUp(self) -> None:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
-        for module in (vehicle_store, simulator_store, staging):
-            self.enterContext(mock.patch.object(module, "RUNTIME_ROOT", root))
+        self.enterContext(runtime_root_env(root))
         self.server = RuntimeViewServer(
             host_name="viewer", automation_dir=None, port=0, connected=False,
             reads=VIEWER_READS, writes=VIEWER_WRITES, replay_runner_factory=ImageReplayRunner,

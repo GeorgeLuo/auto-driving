@@ -38,7 +38,7 @@ from implementations.decision_cycle.catalog import (
 )
 
 from ..providers.registry import PROVIDERS
-from ..shared.paths import SIMULATORS_DIR, display_path, safe_path_part
+from ..shared.paths import SIMULATORS_DIR, display_path, runtime_root as cli_runtime_root, safe_path_part
 from ..shared.text import automa_command
 from ..shared.timestamps import timestamp_ms
 from .bundles import release_activation_summary
@@ -102,15 +102,19 @@ def absent_step_error(step: str, host_name: str) -> str:
 
 
 def staging_host(
-    host_name: str, *, runtime_root: Path,
+    host_name: str, *, runtime_root: Path | None = None,
 ) -> tuple[dict[str, Any] | None, str | None]:
-    """Read the explicit host record; directory names and activations are not identity."""
+    """Read the explicit host record; directory names and activations are not identity.
+
+    Omit ``runtime_root`` to use the CLI runtime root.
+    """
 
     if (error := host_name_error(host_name)) is not None:
         return None, error
-    path = Path(runtime_root) / host_name / "host-configuration.json"
+    root = cli_runtime_root() if runtime_root is None else runtime_root
+    path = root / host_name / "host-configuration.json"
     if not path.is_file():
-        names = host_names(runtime_root)
+        names = host_names(root)
         known = f"Hosts: {', '.join(names)}." if names else "No hosts exist."
         return None, f"No host {host_name!r}. {known}"
     try:

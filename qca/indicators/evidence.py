@@ -35,7 +35,7 @@ def build_evidence(
     family: str = "default",
     related_nodes: Sequence[LocatedNode] = (),
     pattern: dict[str, Any] | None = None,
-    uncertainty: list[str] | str | None = None,
+    uncertainty: list[str] | None = None,
     inspection_question: str | None = None,
     primary_reason: str | None = None,
 ) -> dict[str, Any]:
@@ -84,12 +84,8 @@ def build_evidence(
 
     if uncertainty is None:
         uncertainty_value: list[str] = []
-    elif isinstance(uncertainty, str):
-        # Existing detector adapters used one concise uncertainty label.  Keep
-        # that call shape compatible while storing the stable list form.
-        uncertainty_value = [uncertainty]
     elif not isinstance(uncertainty, list) or not all(isinstance(item, str) for item in uncertainty):
-        raise TypeError("uncertainty must be a list of strings or a string")
+        raise TypeError("uncertainty must be a list of strings")
     else:
         uncertainty_value = list(uncertainty)
     if inspection_question is not None and not isinstance(inspection_question, str):
@@ -120,7 +116,7 @@ def enrich_finding(
     family: str = "default",
     related_nodes: Sequence[LocatedNode] = (),
     pattern: dict[str, Any] | None = None,
-    uncertainty: list[str] | str | None = None,
+    uncertainty: list[str] | None = None,
     inspection_question: str | None = None,
     primary_reason: str | None = None,
 ) -> dict[str, Any]:

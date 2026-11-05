@@ -4,11 +4,10 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 
 from cli.automa_cli.shared.io.processes import pid_alive
-from cli.automa_cli.simulators import store as simulator_store
 from cli.automa_cli.simulators.store import SIMULATOR_SCHEMA, created_simulators, simulator_records, write_simulator_record
+from tests.support.runtime_fixtures import runtime_root_env
 
 
 def _dead_pid() -> int:
@@ -25,7 +24,7 @@ class SimulatorRecordTests(unittest.TestCase):
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         live = {"schema": SIMULATOR_SCHEMA, "pid": os.getpid(), "port": 5051, "url": "ws://127.0.0.1:5051/ws/control"}
         dead = {"schema": SIMULATOR_SCHEMA, "pid": _dead_pid(), "port": 5052, "url": "ws://127.0.0.1:5052/ws/control"}
-        with patch.object(simulator_store, "RUNTIME_ROOT", root):
+        with runtime_root_env(root):
             write_simulator_record(live)
             write_simulator_record(dead)
             (root / "simulators" / "5050").mkdir(parents=True)

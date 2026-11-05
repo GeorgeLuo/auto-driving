@@ -7,7 +7,7 @@ from autonomy.decision_cycle.proposal.values import (
     SourceRef,
     synthetic_error_proposal,
 )
-from autonomy.serialization import canonical_json_bytes
+from autonomy.serialization import canonical_json_size_bytes
 from autonomy.decision_cycle.action.hold import idle_output
 from autonomy.decision_cycle.action.values import proposed_equals_authorized
 from tests.deterministic.autonomy.decision_cycle.action_proposal_plan_fixtures import (
@@ -143,7 +143,7 @@ class RunnerBoundaryTests(unittest.TestCase):
                     prop = build(plugin_id, pad)
                 except ValueError:
                     break
-                size = canonical_json_bytes(prop.to_dict())
+                size = canonical_json_size_bytes(prop.to_dict())
                 if size == 4096:
                     exact = prop
                     break
@@ -151,19 +151,19 @@ class RunnerBoundaryTests(unittest.TestCase):
                 exact, f"could not craft 4096-byte proposal for {plugin_id}"
             )
             assert exact is not None
-            self.assertEqual(canonical_json_bytes(exact.to_dict()), 4096)
+            self.assertEqual(canonical_json_size_bytes(exact.to_dict()), 4096)
             self.assertEqual(len(exact.plugin_id), 64)
             candidates.append(exact)
 
         plan_metadata = None
         for pad in range(0, 1200):
             meta = {"pad": "m" * pad}
-            if canonical_json_bytes(meta) == 1024:
+            if canonical_json_size_bytes(meta) == 1024:
                 plan_metadata = meta
                 break
         self.assertIsNotNone(plan_metadata)
         assert plan_metadata is not None
-        self.assertEqual(canonical_json_bytes(plan_metadata), 1024)
+        self.assertEqual(canonical_json_size_bytes(plan_metadata), 1024)
 
         plan = select_highest_confidence_plan(
             frame_id=frame,
@@ -175,7 +175,7 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(len(plan.candidates), 6)
         self.assertEqual(plan.status, "selected")
         self.assertTrue(plan.selected_proposal_id.endswith(":" + frame))
-        self.assertEqual(canonical_json_bytes(plan.to_dict()["metadata"]), 1024)
+        self.assertEqual(canonical_json_size_bytes(plan.to_dict()["metadata"]), 1024)
 
 
     def test_metadata_round_trip_preserves_object_array_identity(self) -> None:

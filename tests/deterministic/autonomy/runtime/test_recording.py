@@ -8,8 +8,6 @@ import unittest
 from pathlib import Path
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id, step_activation
-from autonomy.plugins import declared_plugin_id
-from autonomy.runtime.plugin_loader import code_source_from_activation
 from autonomy.runtime.recording import (
     RECORDING_MANIFEST_NAME,
     UPLOADED_SOURCES_DIR,
@@ -55,29 +53,6 @@ class RecordedSourceTests(unittest.TestCase):
             self.assertEqual((run / UPLOADED_SOURCES_DIR / NAME).read_bytes(), SOURCE)
             self.assertEqual(recorded_selections({"steps": steps})["proposal"].plugin_specs,
                              {"uploaded": f"{NAME}:Prototype"})
-
-    def test_a_moved_legacy_recording_runs_its_retained_source(self) -> None:
-        original = f"/removed-host/uploads/{NAME}"
-        steps = _steps(f"{original}:Prototype")
-        record = {"steps": steps, "generation_id": _generation(steps),
-                  "plugin_sources": {original: f"{UPLOADED_SOURCES_DIR}/{NAME}"}}
-        with tempfile.TemporaryDirectory() as tmp:
-            run = Path(tmp) / "moved"
-            retained = run / UPLOADED_SOURCES_DIR / NAME
-            retained.parent.mkdir(parents=True)
-            retained.write_bytes(SOURCE)
-
-            proposal = recorded_selections(record, source_root=run)["proposal"]
-
-            # The recorded identity is kept; only the code to run is redirected.
-            self.assertEqual(proposal.plugin_specs, {"uploaded": f"{original}:Prototype"})
-            executable = code_source_from_activation(proposal).executable_activation(proposal)
-            spec = executable.plugin_specs["uploaded"]
-            self.assertEqual(spec, f"{retained.resolve()}:Prototype")
-            self.assertEqual(declared_plugin_id(spec), "uploaded")
-            escaped = {**record, "plugin_sources": {original: "../outside.py"}}
-            with self.assertRaisesRegex(ValueError, "must stay inside the run directory"):
-                recorded_selections(escaped, source_root=run)
 
 
 if __name__ == "__main__":

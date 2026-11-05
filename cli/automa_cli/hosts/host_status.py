@@ -118,7 +118,7 @@ def _listed_agents(endpoint: str, remaining: Callable[[], float]) -> list[dict[s
 def _host_entry(host_name: Any, url: str | None, pid: Any = None, local: str | None = None,
                 provider: str | None = None, vehicle_url: str | None = None, error: str | None = None) -> dict[str, Any]:
     return {
-        "host_name": host_name, "url": url, "pid": pid, "attached": None, "attached_since": None,
+        "host_name": host_name, "url": url, "pid": pid, "attached": None, "attached_since": None, "simulator": None,
         "provider": provider, "vehicle_url": vehicle_url,
         "local": local, "state": None, "mode": None, "decision_count": None, "error_count": None,
         "last_frame_at_ms": None, "error": error,

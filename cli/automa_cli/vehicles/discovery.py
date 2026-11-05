@@ -10,6 +10,7 @@ from ..simulators.store import created_simulators, simulator_records
 from .models import VehicleResult
 from .store import (
     discovered_vehicles,
+    simulator_mark,
     untracked_simulators,
     write_discovered_vehicles,
     write_untracked_simulators,
@@ -49,9 +50,9 @@ def _dedupe_candidates(candidates: list[Candidate]) -> list[Candidate]:
 def discover_vehicle(*, provider: str, url: str, force: bool = False) -> VehicleResult:
     """List a vehicle in vehicles status once it can take a host, or regardless with ``force``.
 
-    A simulator ``simulators create`` started is already listed. Discovering
-    one ``vehicles remove`` stopped listing probes it, clears that mark, and
-    writes no discovered entry.
+    A simulator that ``simulators create`` started is already listed. After
+    ``vehicles remove``, discovering it probes it and clears its mark, without
+    writing a discovered entry.
     """
 
     vehicle = PROVIDERS[provider]
@@ -87,12 +88,15 @@ def remove_vehicle(*, url: str) -> VehicleResult:
         if _same_url(CHASE_SIM.name, url, record.get("url")) and not _is_untracked(record)
     ]
     if not removed and not created:
-        return VehicleResult(2, "missing", url=url, vehicles=tuple(_listed_entries()))
+        return VehicleResult(2, "missing", url=url, vehicles=_entries(listed_vehicles()))
     if removed:
         write_discovered_vehicles([vehicle for vehicle in discovered if vehicle not in removed])
     for record in created:
         _remember_untracked(record)
-    return VehicleResult(0, "removed", vehicles=tuple(_removed_entries(removed, created)))
+    return VehicleResult(0, "removed", vehicles=_entries(_dedupe_candidates([
+        *(Candidate(vehicle["provider"], vehicle["url"], "discovered") for vehicle in removed),
+        *(Candidate(CHASE_SIM.name, record["url"], "created") for record in created),
+    ])))
 
 
 def _created_record(url: str) -> dict[str, Any] | None:
@@ -108,38 +112,14 @@ def _same_url(provider: str, given: str, stored: object) -> bool:
         return False
 
 
-def _listed_entries() -> list[dict[str, str]]:
-    return [{"provider": candidate.provider, "url": candidate.url} for candidate in listed_vehicles()]
+def _entries(candidates: list[Candidate]) -> tuple[dict[str, str], ...]:
+    """The ``{provider, url}`` a result names each vehicle by."""
 
-
-def _removed_entries(discovered: list[dict[str, str]], created: list[dict[str, Any]]) -> list[dict[str, str]]:
-    entries = [*discovered, *({"provider": CHASE_SIM.name, "url": record["url"]} for record in created)]
-    unique: list[dict[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-    for entry in entries:
-        key = (entry["provider"], entry["url"])
-        if key in seen:
-            continue
-        seen.add(key)
-        unique.append({"provider": entry["provider"], "url": entry["url"]})
-    return unique
-
-
-def _simulator_mark(record: dict[str, Any]) -> dict[str, Any] | None:
-    """The identity a mark keeps: the record's url and pid, and its start when it has one."""
-
-    url, pid = record.get("url"), record.get("pid")
-    if not isinstance(url, str) or type(pid) is not int:
-        return None
-    mark: dict[str, Any] = {"url": url, "pid": pid}
-    started = record.get("started_at_ms")
-    if type(started) is int:
-        mark["started_at_ms"] = started
-    return mark
+    return tuple({"provider": candidate.provider, "url": candidate.url} for candidate in candidates)
 
 
 def _is_untracked(record: dict[str, Any]) -> bool:
-    mark = _simulator_mark(record)
+    mark = simulator_mark(record)
     return mark is not None and mark in untracked_simulators()
 
 
@@ -148,14 +128,14 @@ def _marks_for_records() -> list[dict[str, Any]]:
 
     identities = []
     for record in simulator_records():
-        mark = _simulator_mark(record)
+        mark = simulator_mark(record)
         if mark is not None:
             identities.append(mark)
     return [mark for mark in untracked_simulators() if mark in identities]
 
 
 def _remember_untracked(record: dict[str, Any]) -> None:
-    mark = _simulator_mark(record)
+    mark = simulator_mark(record)
     if mark is None:
         return
     marks = _marks_for_records()
@@ -165,5 +145,5 @@ def _remember_untracked(record: dict[str, Any]) -> None:
 
 
 def _forget_untracked(record: dict[str, Any]) -> None:
-    mark = _simulator_mark(record)
+    mark = simulator_mark(record)
     write_untracked_simulators([item for item in _marks_for_records() if item != mark])

@@ -39,10 +39,11 @@ are replaced by the `hosts update` that `hosts status --long` prints.
 ./cli/automa hosts status --name chase-sim-chaser
 ```
 
-`vehicles status` is read-only. It lists each simulator `simulators create`
-started that is still listed, then each vehicle `vehicles discover` listed,
-with its provider, URL and reachability. With nothing listed it prints
-`None listed.` Use the provider and URL with `hosts create`.
+`vehicles status` is read-only. It lists each simulator that `simulators create`
+started and `vehicles remove` has not stopped listing, then each vehicle that
+`vehicles discover` listed, with its provider, URL and reachability. With
+nothing listed it prints `None listed.` Use the provider and URL with
+`hosts create`.
 
 `hosts status` prints a block for each created host: its state, its vehicle
 and that vehicle's URL, whether its simulator lists it, and the host URL and
@@ -79,11 +80,11 @@ To list a simulator or a PiCar:
 it can take a host: a simulator whose frontend is connected with the Chase game
 loaded, or a PiCar whose machine answers. Otherwise it exits 2 and says why;
 `--force` lists it anyway. The provider is required because a PiCar without its
-harness answers nothing that names it. A simulator `simulators create` started
-is already listed. Discovering it again writes nothing; discovering one
-`vehicles remove` stopped listing lists it again and does not write a second
-record. `vehicles remove` stops listing a vehicle. That simulator keeps
-running; `simulators delete` ends it. An HTTP(S) Metrics UI origin is resolved
+harness answers nothing that names it. A simulator that `simulators create`
+started is already listed, so discovering it writes nothing. `vehicles remove`
+stops listing a vehicle; a created simulator keeps running until
+`simulators delete`. After `vehicles remove`, discovering that simulator lists
+it again without writing a second record. An HTTP(S) Metrics UI origin is resolved
 to the same origin at `/ws/control`, and an explicit non-root WS(S) path is
 preserved, so either form names the same simulator.
 

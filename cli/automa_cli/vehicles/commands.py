@@ -32,8 +32,8 @@ def register_vehicles(subcommands: argparse._SubParsersAction) -> None:
         "status",
         help="Show listed vehicle environments.",
         description=(
-            "Show each simulator simulators create started that is still listed, "
-            "then each vehicle vehicles discover listed. "
+            "Show each simulator that simulators create started and vehicles remove has not "
+            "stopped listing, then each vehicle that vehicles discover listed. "
             "Exits 1 when a vehicle is listed and none is reachable."
         ),
     )
@@ -58,9 +58,9 @@ def register_vehicles(subcommands: argparse._SubParsersAction) -> None:
         description=(
             "List a vehicle in vehicles status once it can take a host: a simulator "
             "with its frontend connected and the Chase game loaded, or a PiCar whose "
-            "machine answers. Exits 2 otherwise, unless --force. A simulator "
-            "simulators create started is already listed. Discovering one vehicles "
-            "remove stopped listing lists it again and writes no discovered entry."
+            "machine answers. Exits 2 otherwise, unless --force. A simulator that "
+            "simulators create started is already listed; after vehicles remove, "
+            "discovering it lists it again without writing a second record."
         ),
     )
     discover.add_argument("--provider", required=True, choices=PROVIDERS,
@@ -73,8 +73,8 @@ def register_vehicles(subcommands: argparse._SubParsersAction) -> None:
         "remove",
         help="Stop listing a vehicle in vehicles status.",
         description=(
-            "Stop listing a vehicle. A simulator simulators create started keeps running; "
-            "simulators delete ends it. vehicles discover lists it again."
+            "Stop listing a vehicle. A simulator that simulators create started keeps "
+            "running until simulators delete, and vehicles discover lists it again."
         ),
     )
     remove.add_argument("--url", required=True, help="The URL the vehicle is listed at, in either form.")

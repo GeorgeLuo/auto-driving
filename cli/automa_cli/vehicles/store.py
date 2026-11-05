@@ -58,7 +58,7 @@ def untracked_simulators() -> list[dict[str, Any]]:
     simulators = document.get("simulators") if isinstance(document, dict) else None
     marks = []
     for simulator in simulators if isinstance(simulators, list) else []:
-        mark = _untracked_mark(simulator)
+        mark = simulator_mark(simulator)
         if mark is not None:
             marks.append(mark)
     return marks
@@ -68,7 +68,13 @@ def write_untracked_simulators(simulators: list[dict[str, Any]]) -> None:
     write_json_atomically(RUNTIME_ROOT / UNTRACKED, {"schema": UNTRACKED_SCHEMA, "simulators": simulators})
 
 
-def _untracked_mark(simulator: object) -> dict[str, Any] | None:
+def simulator_mark(simulator: object) -> dict[str, Any] | None:
+    """The identity a mark keeps, from a simulator record or a stored mark.
+
+    It is the ``url`` and ``pid``, and ``started_at_ms`` when there is one.
+    ``None`` when any of them is malformed.
+    """
+
     if not isinstance(simulator, dict):
         return None
     url, pid = simulator.get("url"), simulator.get("pid")

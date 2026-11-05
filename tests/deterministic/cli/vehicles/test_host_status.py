@@ -111,10 +111,11 @@ class HostStatusTests(unittest.TestCase):
         self.assertEqual((machine["schema"], machine["host_name"]), ("automa_hosts_status", None))
         [entry] = machine["hosts"]
         self.assertEqual(
-            {key: entry[key] for key in ("host_name", "provider", "vehicle_url", "attached", "local", "state", "mode",
-                                         "decision_count")},
+            {key: entry[key] for key in ("host_name", "provider", "vehicle_url", "attached", "simulator", "local", "state",
+                                         "mode", "decision_count")},
             {"host_name": "chase-sim-chaser", "provider": "chase-sim", "vehicle_url": chase_operator_url(self.server.url),
-             "attached": True, "local": "host record", "state": "pre_start", "mode": "manual", "decision_count": 0},
+             "attached": True, "simulator": None, "local": "host record", "state": "pre_start", "mode": "manual",
+             "decision_count": 0},
         )
         self.assertEqual(entry["run"]["host_name"], "chase-sim-chaser")
 

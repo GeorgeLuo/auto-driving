@@ -10,8 +10,7 @@ class SimulatorResult:
     error: str | None = None
     urls: tuple[str, ...] = ()
     hosts: tuple[str, ...] = ()
-    killed: bool = False
-    exited: bool = False
+    ended: Literal['exited', 'stopped', 'killed', None] = None
 
 
 @dataclass(frozen=True)

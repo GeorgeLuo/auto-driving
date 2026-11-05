@@ -189,11 +189,13 @@ class SimulatorsStatusTests(unittest.TestCase):
         self.assertEqual(json.loads(machine.stdout)["simulators"], [])
 
     def test_a_bad_url_or_timeout_exits_2(self) -> None:
-        bad_url = self.status("--url", "ftp://example.com")
+        bad_url = self.status("--url", "ftp://example.com", "--json")
         bad_timeout = self.status("--timeout-s", "0")
 
         self.assertEqual(bad_url.returncode, 2)
-        self.assertIn("scheme", bad_url.stdout)
+        self.assertIn("automa simulators status:", bad_url.stderr)
+        self.assertIn("scheme", bad_url.stderr)
+        self.assertEqual(bad_url.stdout, "")
         self.assertEqual(bad_timeout.returncode, 2)
         self.assertIn("--timeout-s", bad_timeout.stderr)
         self.assertEqual(bad_timeout.stdout, "")

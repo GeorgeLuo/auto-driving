@@ -120,7 +120,7 @@ def _handle_simulators_status(args: argparse.Namespace) -> int:
     try:
         ws_url = normalize_chase_url(args.url) if args.url is not None else None
     except ValueError as exc:
-        print(str(exc))
+        print(f"automa simulators status: {exc}", file=sys.stderr)
         return 2
     status = simulators_status(url=ws_url, timeout_s=args.timeout_s)
     print(render_simulators_status(status, url=args.url, json_output=args.json, long=args.long))

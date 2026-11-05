@@ -3,9 +3,8 @@
 ``WORKER_MODULE`` is the background entry point. Stop recognizes a worker by
 that exact module token, not a prefix.
 
-``RunEvent`` carries live facts; ``RunResult`` describes the outcome.
-``HostsStatus`` is the hosts-status document and its exit. ``status_reason``
-is the truncated reason status collection and status text both use.
+``RunEvent`` carries live facts; ``RunResult`` describes the outcome. ``status_reason`` is the truncated reason status collection and
+status text both use.
 """
 
 from __future__ import annotations
@@ -50,17 +49,6 @@ def run_exit_code(state: dict[str, Any]) -> int:
     if state["status"] == "error":
         return 2
     return 130 if state.get("stop_reason") == "keyboard_interrupt" else 0
-
-
-@dataclass(frozen=True)
-class HostsStatus:
-    """The exit code and ``automa_hosts_status`` document for ``hosts status``.
-
-    ``payload`` is what ``--json`` prints. ``payload["hosts"]`` is what text prints.
-    """
-
-    exit_code: int
-    payload: dict[str, Any]
 
 
 def status_reason(value: Any, *, fallback: str) -> str:

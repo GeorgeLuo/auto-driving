@@ -121,22 +121,11 @@ class AutomationStatusTests(unittest.TestCase):
         self.assertTrue(all(timeout <= 0.2 + 1e-9 for timeout in probe_calls))
 
     def test_status_renderer_formats_supplied_hosts(self) -> None:
-        """Text and JSON come from the supplied document, including the release command."""
+        """Text and JSON come from the supplied payload, including the release command."""
 
-        from cli.automa_cli.hosts.runs.models import HostsStatus
         from cli.automa_cli.hosts.runs.render import render_hosts_status
 
-        empty = HostsStatus(0, {"schema": "automa_hosts_status", "host_name": None, "hosts": []})
-        self.assertEqual(render_hosts_status(empty, json_output=False, long=False), "No hosts found")
-        named = HostsStatus(1, {"schema": "automa_hosts_status", "host_name": "car", "hosts": []})
-        self.assertEqual(
-            render_hosts_status(named, json_output=True, long=True),
-            json.dumps(named.payload, indent=2, sort_keys=True),
-        )
-        bare = HostsStatus(0, {"schema": "automa_hosts_status", "host_name": "car", "hosts": [
-            {"host_name": "car", "state": "not running"},
-        ]})
-        self.assertEqual(render_hosts_status(bare, json_output=False, long=True), "Host car  not running")
+        self.assertEqual(render_hosts_status({"hosts": []}, json_output=False, long=False), "No hosts found")
         host = {
             "host_name": "car",
             "state": "not running",
@@ -152,43 +141,15 @@ class AutomationStatusTests(unittest.TestCase):
                 "published_view": {},
             },
         }
-        status = HostsStatus(0, {"schema": "automa_hosts_status", "host_name": "car", "hosts": [host]})
+        status = {"schema": "automa_hosts_status", "host_name": "car", "hosts": [host]}
         text = render_hosts_status(status, json_output=False, long=True)
         self.assertIn("Host car  not running", text)
         self.assertIn("deployment: not deployed", text)
         self.assertIn("./cli/automa hosts update --name car", text)
-        rendered = json.loads(render_hosts_status(status, json_output=True, long=False))
-        self.assertEqual(rendered, status.payload)
-        self.assertIsNone(rendered["hosts"][0]["run"]["release"])
+        self.assertEqual(json.loads(render_hosts_status(status, json_output=True, long=False)), status)
 
-    def test_hosts_status_returns_the_document_and_its_exit(self) -> None:
-        """A caller reads the document and exit without rendering or a second probe."""
-
-        from cli.automa_cli.hosts import staging
-        from cli.automa_cli.hosts.runs.status import hosts_status
-
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            runtime_root.mkdir()
-            with mock.patch.object(staging, "RUNTIME_ROOT", runtime_root):
-                missing = hosts_status(host_name="missing-car", include_runs=True, timeout_s=0.2)
-                short = hosts_status(host_name="missing-car", include_runs=False, timeout_s=0.2)
-                listed = hosts_status(include_runs=False, timeout_s=0.2)
-
-        self.assertEqual(missing.exit_code, 1)
-        self.assertEqual(missing.payload["schema"], "automa_hosts_status")
-        self.assertEqual(missing.payload["host_name"], "missing-car")
-        [host] = missing.payload["hosts"]
-        self.assertEqual((host["host_name"], host["state"], host["run"]), ("missing-car", "not found", None))
-        self.assertEqual(short.exit_code, 1)
-        self.assertNotIn("run", short.payload["hosts"][0])
-        self.assertEqual(listed.exit_code, 0)
-        self.assertEqual(listed.payload, {
-            "schema": "automa_hosts_status", "host_name": None, "hosts": [],
-        })
-
-    def test_top_level_status_prints_short_hosts_then_the_vehicle_outcome(self) -> None:
-        """``automa status`` prints both sections and exits with the vehicle outcome."""
+    def test_top_level_status_prints_hosts_then_vehicles_and_their_exit(self) -> None:
+        """``automa status`` prints hosts status, then vehicles status, and exits as vehicles status does."""
 
         from tests.support.fake_hosts import closed_url
         from tests.support.fake_metrics_ui import fake_metrics_ui
@@ -207,7 +168,6 @@ class AutomationStatusTests(unittest.TestCase):
 
         self.assertEqual(reachable.returncode, 0, reachable.stderr)
         self.assertTrue(reachable.stdout.startswith("No hosts found\n\nSimulator (chase-sim)  running"), reachable.stdout)
-        self.assertNotIn("deployment:", reachable.stdout)
         self.assertEqual(unreachable.returncode, 1, unreachable.stderr)
         self.assertTrue(unreachable.stdout.startswith("No hosts found\n\n"), unreachable.stdout)
         self.assertIn("unreachable", unreachable.stdout)

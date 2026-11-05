@@ -104,15 +104,15 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
     ):
         return 2
     try:
-        status = vehicles_status(timeout_s=args.timeout_s)
+        exit_code, status = vehicles_status(timeout_s=args.timeout_s)
     except ValueError as exc:
         print(f"automa vehicles status: {exc}", file=sys.stderr)
         return 2
     if args.json:
-        print(json.dumps(status.payload, indent=2, sort_keys=True))
+        print(json.dumps(status, indent=2, sort_keys=True))
     else:
-        print(format_vehicles_status(status.payload))
-    return status.exit_code
+        print(format_vehicles_status(status))
+    return exit_code
 
 
 def _handle_vehicles_discover(args: argparse.Namespace) -> int:

@@ -7,15 +7,11 @@ from typing import Any
 from autonomy.plugins import DuplicatePluginIdError
 
 from .hosts.commands import register_hosts
-from .hosts.runs.render import render_hosts_status
-from .hosts.runs.status import hosts_status
 from .hosts.views.runtime_view import runtime_view_server, serve_viewer
 from .plugins.commands import register_plugins
 from .shared.text import format_browser_result
 from .simulators.commands import register_simulators
 from .vehicles.commands import register_vehicles
-from .vehicles.render import format_vehicles_status
-from .vehicles.status import vehicles_status
 from .workbench.commands import register_workbench
 
 
@@ -87,19 +83,9 @@ def _handle_open_viewer(args: argparse.Namespace) -> int:
 
 
 def _handle_status(args: argparse.Namespace) -> int:
-    hosts = hosts_status()
-    message = render_hosts_status(hosts, json_output=False, long=False)
-    if message:
-        print(message)
-    try:
-        vehicles = vehicles_status()
-    except ValueError as exc:
-        print(f"automa vehicles status: {exc}", file=sys.stderr)
-        return 2
-    if message:
-        print()
-    print(format_vehicles_status(vehicles.payload))
-    return vehicles.exit_code
+    main(["hosts", "status"])
+    print()
+    return main(["vehicles", "status"])
 
 
 def main(argv: list[str] | None = None) -> int:

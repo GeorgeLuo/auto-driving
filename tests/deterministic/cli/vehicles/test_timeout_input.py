@@ -2,10 +2,9 @@ from __future__ import annotations
 
 import json
 import unittest
+from cli.automa_cli.hosts.runs.models import StartResult
 from unittest.mock import patch
 
-from cli.automa_cli.hosts.runs.models import HostsStatus, StartResult
-from cli.automa_cli.vehicles.models import VehiclesStatus
 from tests.shared.cli.invoke import invoke_automa
 
 
@@ -16,10 +15,6 @@ STATUS_COMMANDS = {
     ("vehicles", "status"): "cli.automa_cli.vehicles.commands.vehicles_status",
     ("hosts", "status"): "cli.automa_cli.hosts.runs.commands.hosts_status",
 }
-REACHABLE_VEHICLES = VehiclesStatus(0, {"schema": "automa_vehicles_status", "vehicles": [
-    {"provider": "chase-sim", "url": "http://localhost:5050/", "state": "running"},
-]})
-QUIET_HOSTS = HostsStatus(0, {"schema": "automa_hosts_status", "host_name": None, "hosts": []})
 
 
 def _invoke(*args: str) -> tuple[int, str, str]:
@@ -83,15 +78,14 @@ class TimeoutInputTests(unittest.TestCase):
 
     def test_valid_positive_timeout_reaches_each_consumer_unchanged(self) -> None:
         with patch(
-            "cli.automa_cli.vehicles.commands.vehicles_status",
-            return_value=REACHABLE_VEHICLES,
+            "cli.automa_cli.vehicles.commands.vehicles_status", return_value=(0, {"vehicles": []}),
         ) as get_status:
             code, _, _ = _invoke("vehicles", "status", "--timeout-s", "1.25")
         self.assertEqual(code, 0)
         get_status.assert_called_once_with(timeout_s=1.25)
 
         with patch(
-            "cli.automa_cli.hosts.runs.commands.hosts_status", return_value=QUIET_HOSTS,
+            "cli.automa_cli.hosts.runs.commands.hosts_status", return_value=(0, {"hosts": []}),
         ) as get_hosts:
             code, _, _ = _invoke("hosts", "status", "--timeout-s", "1.25")
         self.assertEqual(code, 0)
@@ -115,7 +109,7 @@ class TimeoutInputTests(unittest.TestCase):
         for command, target in STATUS_COMMANDS.items():
             with self.subTest(command=command), patch(
                 target,
-                return_value=QUIET_HOSTS if command[0] == "hosts" else REACHABLE_VEHICLES,
+                return_value=(0, {"hosts": []}) if command[0] == "hosts" else (0, {"vehicles": []}),
             ) as get_status:
                 code, _, _ = _invoke(*command)
             self.assertEqual(code, 0)

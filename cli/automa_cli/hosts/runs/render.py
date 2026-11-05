@@ -15,26 +15,26 @@ from ...shared.paths import display_path
 from ...shared.text import automa_command, format_browser_result
 from ..host_formatting import host_block, perception_stream_command
 from ..step_formatting import format_activation_problems, selection_label, step_lines
-from .models import HostsStatus, RestartResult, StartResult, StopResult, status_reason
+from .models import RestartResult, StartResult, StopResult, status_reason
 
 # A run's host owns its wheel commands. The label is the words status and the
 # live transcript print; the stored value stays ``runtime_host``.
 _CONTROL_SOURCE_LABELS = {"runtime_host": "runtime host"}
 
 
-def render_hosts_status(status: HostsStatus, *, json_output: bool, long: bool) -> str:
-    """Text for a terminal, or the supplied ``automa_hosts_status`` document as JSON."""
+def render_hosts_status(status: dict[str, Any], *, json_output: bool, long: bool) -> str:
+    """Text for a terminal, or ``automa_hosts_status`` JSON."""
 
     if json_output:
-        return json.dumps(status.payload, indent=2, sort_keys=True)
-    return _format_hosts_status(status.payload["hosts"], long=long)
+        return json.dumps(status, indent=2, sort_keys=True)
+    return _format_hosts_status(status["hosts"], long=long)
 
 
 def _format_hosts_status(hosts: list[dict[str, Any]], *, long: bool) -> str:
     if not hosts:
         return "No hosts found"
     return "\n\n".join(
-        "\n".join([host_block(host), *(_run_lines(host.get("run")) if long else [])])
+        "\n".join([host_block(host), *(_run_lines(host["run"]) if long else [])])
         for host in hosts
     )
 

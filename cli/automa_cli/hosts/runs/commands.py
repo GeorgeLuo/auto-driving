@@ -216,15 +216,13 @@ def _handle_hosts_status(args: argparse.Namespace) -> int:
         human_stream=sys.stderr,
     ):
         return 2
-    status = hosts_status(
+    exit_code, status = hosts_status(
         host_name=args.host_name,
         timeout_s=args.timeout_s,
         include_runs=args.long or args.json,
     )
-    message = render_hosts_status(status, json_output=args.json, long=args.long)
-    if message:
-        print(message)
-    return status.exit_code
+    print(render_hosts_status(status, json_output=args.json, long=args.long))
+    return exit_code
 
 
 def _handle_hosts_restart(args: argparse.Namespace) -> int:

@@ -97,7 +97,7 @@ def _handle_status(args: argparse.Namespace) -> int:
     if result.message:
         print()
     print(format_vehicles_status(payload))
-    if all(vehicle["state"] == "unreachable" for vehicle in payload["vehicles"]):
+    if payload["vehicles"] and all(vehicle["state"] == "unreachable" for vehicle in payload["vehicles"]):
         return 1
     return 0
 

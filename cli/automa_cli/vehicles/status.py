@@ -13,11 +13,11 @@ from .discovery import listed_vehicles
 def get_vehicles_status(*, timeout_s: float = DEFAULT_READINESS_TIMEOUT_S) -> dict[str, Any]:
     """Each listed vehicle's state.
 
-    Status looks at the default simulator, each simulator ``simulators
-    create`` started, then each vehicle ``vehicles discover`` listed. A
-    simulator runs when its server answers; its frontend is connected when a
-    browser has the page open. Every vehicle is probed in parallel within the
-    one deadline.
+    Status looks at each simulator ``simulators create`` started that is
+    still listed, then each vehicle ``vehicles discover`` listed. Nothing is
+    listed implicitly. A simulator runs when its server answers; its frontend
+    is connected when a browser has the page open. Every vehicle is probed in
+    parallel within the one deadline.
     """
 
     candidates = listed_vehicles()

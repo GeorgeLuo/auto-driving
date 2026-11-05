@@ -2,37 +2,32 @@
 
 from __future__ import annotations
 
-import os
-
-from implementations.vehicle.chase_sim.defaults import (
-    CHASE_UI_WS_URL_ENV,
-    DEFAULT_CHASE_UI_WS_URL,
-)
+from typing import Any
 
 from ..providers.registry import CHASE_SIM, PROVIDERS
 from ..providers.models import DEFAULT_READINESS_TIMEOUT_S, Candidate
-from ..providers.urls import normalize_chase_url
-from ..simulators.store import created_simulators
+from ..simulators.store import created_simulators, simulator_records
 from .models import VehicleResult
-from .store import discovered_vehicles, write_discovered_vehicles
-
-
-def default_chase_url() -> str:
-    """The simulator status always lists: ``CHASE_UI_WS_URL``, else localhost:5050."""
-
-    return normalize_chase_url(os.environ.get(CHASE_UI_WS_URL_ENV, DEFAULT_CHASE_UI_WS_URL))
+from .store import (
+    discovered_vehicles,
+    untracked_simulators,
+    write_discovered_vehicles,
+    write_untracked_simulators,
+)
 
 
 def listed_vehicles() -> list[Candidate]:
-    """Where vehicles status looks: the default simulator, each created simulator, then each discovered vehicle."""
+    """Where vehicles status looks: each created simulator still listed, then each discovered vehicle."""
 
-    return _dedupe_candidates([
-        Candidate(CHASE_SIM.name, default_chase_url(), "default"), *_created_candidates(), *_discovered_candidates(),
-    ])
+    return _dedupe_candidates([*_created_candidates(), *_discovered_candidates()])
 
 
 def _created_candidates() -> list[Candidate]:
-    return [Candidate(CHASE_SIM.name, simulator["url"], "created") for simulator in created_simulators()]
+    return [
+        Candidate(CHASE_SIM.name, simulator["url"], "created")
+        for simulator in created_simulators()
+        if not _is_untracked(simulator)
+    ]
 
 
 def _discovered_candidates() -> list[Candidate]:
@@ -52,40 +47,123 @@ def _dedupe_candidates(candidates: list[Candidate]) -> list[Candidate]:
 
 
 def discover_vehicle(*, provider: str, url: str, force: bool = False) -> VehicleResult:
-    """List a vehicle in vehicles status once it can take a host, or regardless with ``force``."""
+    """List a vehicle in vehicles status once it can take a host, or regardless with ``force``.
+
+    A simulator ``simulators create`` started is already listed. Discovering
+    one ``vehicles remove`` stopped listing probes it, clears that mark, and
+    writes no discovered entry.
+    """
 
     vehicle = PROVIDERS[provider]
     try:
         url = vehicle.normalize_url(url)
     except ValueError as exc:
         return VehicleResult(2, "error", error=str(exc))
+    created = _created_record(url) if provider == CHASE_SIM.name else None
+    if created is not None and not _is_untracked(created):
+        return VehicleResult(0, "listed", url=url, provider=provider)
     listed = discovered_vehicles()
     entry = {"provider": provider, "url": url}
-    if entry in listed or (provider == CHASE_SIM.name and url == default_chase_url()):
+    if created is None and entry in listed:
         return VehicleResult(0, "listed", url=url, provider=provider)
     probe = vehicle.probe(Candidate(provider, url, "discovered"), timeout_s=DEFAULT_READINESS_TIMEOUT_S)
     ready = vehicle.can_take_host(probe)
     if not ready and not force:
         return VehicleResult(2, "unready", url=url, provider=provider, ready=False, error=probe.error)
+    if created is not None:
+        _forget_untracked(created)
+        return VehicleResult(0, "discovered", url=url, provider=provider, ready=ready, error=probe.error)
     write_discovered_vehicles([*listed, entry])
     return VehicleResult(0, "discovered", url=url, provider=provider, ready=ready, error=probe.error)
 
 
 def remove_vehicle(*, url: str) -> VehicleResult:
-    """Stop listing a discovered vehicle; the default simulator stays."""
+    """Stop listing a vehicle. A created simulator keeps running."""
 
-    def normalized(provider: str) -> str | None:
-        try:
-            return PROVIDERS[provider].normalize_url(url)
-        except ValueError:
-            return None
+    discovered = discovered_vehicles()
+    removed = [vehicle for vehicle in discovered if _same_url(vehicle["provider"], url, vehicle["url"])]
+    created = [
+        record for record in created_simulators()
+        if _same_url(CHASE_SIM.name, url, record.get("url")) and not _is_untracked(record)
+    ]
+    if not removed and not created:
+        return VehicleResult(2, "missing", url=url, vehicles=tuple(_listed_entries()))
+    if removed:
+        write_discovered_vehicles([vehicle for vehicle in discovered if vehicle not in removed])
+    for record in created:
+        _remember_untracked(record)
+    return VehicleResult(0, "removed", vehicles=tuple(_removed_entries(removed, created)))
 
-    default = default_chase_url()
-    if normalized(CHASE_SIM.name) == default:
-        return VehicleResult(2, "default", url=default)
-    listed = discovered_vehicles()
-    removed = [vehicle for vehicle in listed if normalized(vehicle["provider"]) == vehicle["url"]]
-    if not removed:
-        return VehicleResult(2, "missing", url=url, vehicles=tuple(listed))
-    write_discovered_vehicles([vehicle for vehicle in listed if vehicle not in removed])
-    return VehicleResult(0, "removed", vehicles=tuple(removed))
+
+def _created_record(url: str) -> dict[str, Any] | None:
+    return next((record for record in created_simulators() if record.get("url") == url), None)
+
+
+def _same_url(provider: str, given: str, stored: object) -> bool:
+    if not isinstance(stored, str):
+        return False
+    try:
+        return PROVIDERS[provider].normalize_url(given) == stored
+    except ValueError:
+        return False
+
+
+def _listed_entries() -> list[dict[str, str]]:
+    return [{"provider": candidate.provider, "url": candidate.url} for candidate in listed_vehicles()]
+
+
+def _removed_entries(discovered: list[dict[str, str]], created: list[dict[str, Any]]) -> list[dict[str, str]]:
+    entries = [*discovered, *({"provider": CHASE_SIM.name, "url": record["url"]} for record in created)]
+    unique: list[dict[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for entry in entries:
+        key = (entry["provider"], entry["url"])
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append({"provider": entry["provider"], "url": entry["url"]})
+    return unique
+
+
+def _simulator_mark(record: dict[str, Any]) -> dict[str, Any] | None:
+    """The identity a mark keeps: the record's url and pid, and its start when it has one."""
+
+    url, pid = record.get("url"), record.get("pid")
+    if not isinstance(url, str) or type(pid) is not int:
+        return None
+    mark: dict[str, Any] = {"url": url, "pid": pid}
+    started = record.get("started_at_ms")
+    if type(started) is int:
+        mark["started_at_ms"] = started
+    return mark
+
+
+def _is_untracked(record: dict[str, Any]) -> bool:
+    mark = _simulator_mark(record)
+    return mark is not None and mark in untracked_simulators()
+
+
+def _marks_for_records() -> list[dict[str, Any]]:
+    """Marks that still name a simulator record. One whose record is gone is dropped."""
+
+    identities = []
+    for record in simulator_records():
+        mark = _simulator_mark(record)
+        if mark is not None:
+            identities.append(mark)
+    return [mark for mark in untracked_simulators() if mark in identities]
+
+
+def _remember_untracked(record: dict[str, Any]) -> None:
+    mark = _simulator_mark(record)
+    if mark is None:
+        return
+    marks = _marks_for_records()
+    if mark not in marks:
+        marks.append(mark)
+    write_untracked_simulators(marks)
+
+
+def _forget_untracked(record: dict[str, Any]) -> None:
+    mark = _simulator_mark(record)
+    write_untracked_simulators([item for item in _marks_for_records() if item != mark])

@@ -2,7 +2,7 @@
 
 - ``commands``: the ``vehicles`` parser and its handlers.
 - ``discovery``: ``vehicles discover`` and ``remove``, and the vehicles status lists.
-- ``store``: the discovered-vehicle records those commands keep.
+- ``store``: the discovered-vehicle records and untracked-simulator marks those commands keep.
 - ``status``: collecting ``vehicles status``.
 - ``models``: discovery and removal outcomes.
 - ``render``: status and operation text from supplied facts.

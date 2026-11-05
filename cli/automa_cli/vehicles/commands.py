@@ -30,11 +30,11 @@ def register_vehicles(subcommands: argparse._SubParsersAction) -> None:
 
     status = vehicle_commands.add_parser(
         "status",
-        help="Show discovered vehicle environments.",
+        help="Show listed vehicle environments.",
         description=(
-            "Show the default simulator (CHASE_UI_WS_URL, else http://localhost:5050), "
-            "and each vehicle that vehicles discover listed. "
-            "Exits 1 when no vehicle is reachable."
+            "Show each simulator simulators create started that is still listed, "
+            "then each vehicle vehicles discover listed. "
+            "Exits 1 when a vehicle is listed and none is reachable."
         ),
     )
     status.add_argument(
@@ -58,7 +58,9 @@ def register_vehicles(subcommands: argparse._SubParsersAction) -> None:
         description=(
             "List a vehicle in vehicles status once it can take a host: a simulator "
             "with its frontend connected and the Chase game loaded, or a PiCar whose "
-            "machine answers. Exits 2 otherwise, unless --force."
+            "machine answers. Exits 2 otherwise, unless --force. A simulator "
+            "simulators create started is already listed. Discovering one vehicles "
+            "remove stopped listing lists it again and writes no discovered entry."
         ),
     )
     discover.add_argument("--provider", required=True, choices=PROVIDERS,
@@ -69,10 +71,13 @@ def register_vehicles(subcommands: argparse._SubParsersAction) -> None:
     discover.set_defaults(handler=_handle_vehicles_discover)
     remove = vehicle_commands.add_parser(
         "remove",
-        help="Stop listing a discovered vehicle in vehicles status.",
-        description="Stop listing a discovered vehicle. The default simulator is always listed.",
+        help="Stop listing a vehicle in vehicles status.",
+        description=(
+            "Stop listing a vehicle. A simulator simulators create started keeps running; "
+            "simulators delete ends it. vehicles discover lists it again."
+        ),
     )
-    remove.add_argument("--url", required=True, help="The URL the vehicle was discovered at, in either form.")
+    remove.add_argument("--url", required=True, help="The URL the vehicle is listed at, in either form.")
     remove.set_defaults(handler=_handle_vehicles_remove)
 
 
@@ -83,8 +88,8 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "automa vehicles commands",
                 "",
                 "- discover     list a vehicle in status",
-                "- remove       stop listing a discovered vehicle",
-                "- status       show discovered vehicle environments",
+                "- remove       stop listing a vehicle",
+                "- status       show listed vehicle environments",
                 "- help         show this summary",
                 "",
                 "Detailed help:",
@@ -112,7 +117,7 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
         print(format_vehicles_status(payload))
-    if all(vehicle["state"] == "unreachable" for vehicle in payload["vehicles"]):
+    if payload["vehicles"] and all(vehicle["state"] == "unreachable" for vehicle in payload["vehicles"]):
         return 1
     return 0
 

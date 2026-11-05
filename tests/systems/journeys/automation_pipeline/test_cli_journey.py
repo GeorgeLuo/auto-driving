@@ -101,6 +101,11 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                         "vehicles", "status", "--json", runtime_root=runtime_root, extra_env=env,
                     ).stdout)
 
+                discovered = invoke_automa(
+                    "vehicles", "discover", "--provider", "chase-sim", "--url", ws_url,
+                    runtime_root=runtime_root, extra_env=env,
+                )
+                self.assertEqual(discovered.returncode, 0, discovered.stdout)
                 initial = simulator()
                 self.assertEqual([vehicle["state"] for vehicle in initial["vehicles"]], ["running"])
                 self.assertNotIn("hosts", initial)

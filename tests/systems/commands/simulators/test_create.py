@@ -49,17 +49,16 @@ class CreatedSimulatorTests(unittest.TestCase):
         for part in ("scripts/play-chase-headless.mjs", "node_modules/.bin/tsx"):
             (self.ui_dir / part).parent.mkdir(parents=True, exist_ok=True)
             (self.ui_dir / part).touch()
-        self.default = self.enterContext(fake_metrics_ui())
+        self.occupied = self.enterContext(fake_metrics_ui())
         self.port = _free_port()
         self.url = f"http://127.0.0.1:{self.port}/"
-        # The default simulator answers on the first port, so create skips it.
+        # The first port is in use, so create takes the next one.
         self.enterContext(patch("cli.automa_cli.simulators.service.SIMULATOR_PORTS",
-                                [self.default.server_address[1], self.port]))
+                                [self.occupied.server_address[1], self.port]))
         self.addCleanup(self.end_simulators)
 
     def env(self, launcher: str | None = None) -> dict[str, str]:
         return {
-            "CHASE_UI_WS_URL": self.default.url,
             "AUTOMA_METRICS_UI_DIR": str(self.ui_dir),
             "AUTOMA_HEADLESS_SIM_COMMAND": launcher or fake_headless_sim_command(),
         }
@@ -88,20 +87,20 @@ class CreatedSimulatorTests(unittest.TestCase):
         [record] = self.records()
         self.assertEqual((record["port"], record["url"], record["config"]),
                          (self.port, f"ws://127.0.0.1:{self.port}/ws/control", "default"))
-        self.assertEqual(self.status_blocks()[1], [
+        self.assertEqual(self.status_blocks(), [[
             f"Simulator (chase-sim)  running at {self.url}",
             "  frontend connected, game chase",
             f"  created by simulators create, pid {record['pid']}",
-        ])
+        ]])
         vehicles = json.loads(self.automa("vehicles", "status", "--json").stdout)["vehicles"]
-        self.assertEqual([vehicle["pid"] for vehicle in vehicles], [None, record["pid"]])
+        self.assertEqual([vehicle["pid"] for vehicle in vehicles], [record["pid"]])
 
         deleted = self.automa("simulators", "delete", "--url", self.url)
 
         self.assertEqual((deleted.returncode, deleted.stdout), (0, f"Deleted Simulator (chase-sim) at {self.url}\n"))
         self.assertTrue(_gone(record["pid"]))
         self.assertEqual(self.records(), [])
-        self.assertEqual(len(self.status_blocks()), 1)
+        self.assertEqual(self.automa("vehicles", "status").stdout, "None listed.\n")
 
     def test_a_launcher_that_exits_before_it_is_ready_records_nothing(self) -> None:
         result = self.automa("simulators", "create", launcher=_launcher(
@@ -132,7 +131,7 @@ class CreatedSimulatorTests(unittest.TestCase):
         os.killpg(record["pid"], signal.SIGKILL)
         os.waitpid(record["pid"], 0)
 
-        self.assertEqual(len(self.status_blocks()), 1)
+        self.assertEqual(self.automa("vehicles", "status").stdout, "None listed.\n")
         shown = self.automa("simulators", "status")
         self.assertEqual(shown.returncode, 0, shown.stderr)
         self.assertIn(f"exited at {self.url}", shown.stdout)
@@ -168,6 +167,24 @@ class CreatedSimulatorTests(unittest.TestCase):
             f"Cannot create a simulator: {self.ui_dir} has no node_modules/.bin/tsx; its packages are not installed.\n"
         )))
         self.assertEqual(self.records(), [])
+
+    def test_vehicles_remove_untracks_a_created_simulator_without_stopping_it(self) -> None:
+        self.automa("simulators", "create")
+        [record] = self.records()
+        before = self.automa("simulators", "status").stdout
+        removed = self.automa("vehicles", "remove", "--url", self.url)
+
+        self.assertEqual((removed.returncode, removed.stdout), (0, f"Removed Simulator (chase-sim) at {self.url}\n"))
+        self.assertEqual(self.automa("vehicles", "status").stdout, "None listed.\n")
+        self.assertEqual(self.automa("simulators", "status").stdout, before)
+        self.assertFalse(_gone(record["pid"]))
+        self.assertEqual(self.records()[0]["pid"], record["pid"])
+
+        again = self.automa("vehicles", "discover", "--provider", "chase-sim", "--url", self.url)
+
+        self.assertEqual((again.returncode, again.stdout), (0, f"Discovered Simulator (chase-sim) at {self.url}\n"))
+        self.assertFalse((self.runtime_root / "discovered.json").exists())
+        self.assertEqual(len(self.status_blocks()), 1)
 
 
 if __name__ == "__main__":

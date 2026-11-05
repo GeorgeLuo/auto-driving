@@ -33,6 +33,6 @@ class OperationResultTests(unittest.TestCase):
 
     def test_not_found_preserves_available_records(self):
         result = VehicleResult(2, "missing", url="http://absent", vehicles=())
-        self.assertEqual(render_vehicle_result(result), "No discovered vehicle at http://absent. None discovered.")
+        self.assertEqual(render_vehicle_result(result), "No listed vehicle at http://absent. None listed.")
         simulator = SimulatorResult(2, "missing", url="http://absent")
         self.assertEqual(render_simulator_result(simulator), "No created simulator at http://absent. None created.")

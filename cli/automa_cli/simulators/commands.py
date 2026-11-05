@@ -29,7 +29,7 @@ def register_simulators(subcommands: argparse._SubParsersAction) -> None:
         help="Start a headless Chase simulator that vehicles status lists.",
         description=(
             "Start a headless Chase simulator with Metrics UI's default headless configuration, "
-            "from the Metrics UI checkout at AUTOMA_METRICS_UI_DIR, on the first free port from 5051. "
+            "from the Metrics UI checkout at AUTOMA_METRICS_UI_DIR, on the first free port from 5050. "
             "It runs until simulators delete. Exits 2 when it is not ready within 45 s."
         ),
     )

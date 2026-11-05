@@ -1,4 +1,5 @@
 from __future__ import annotations
+import io
 import json
 import tempfile
 import time
@@ -22,6 +23,12 @@ from tests.shared.cli.decision.decision_surfaces_fixtures import (
 
 
 SOURCE_ID = "runtime-host"
+
+
+def _png_bytes(color: tuple[int, int, int]) -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", (40, 30), color).save(buffer, format="PNG")
+    return buffer.getvalue()
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -116,53 +123,19 @@ class LiveRuntimeDecisionViewFixture:
         *,
         server: RuntimeViewServer | None = None,
         run_id: str = "run-live",
-        image_name: str = "decision-frame.png",
         image_color: tuple[int, int, int] = (20, 80, 150),
         stream_frame: dict | None = None,
     ) -> tuple[dict, bytes]:
         target = self.server if server is None else server
         stream_frame = stream_frame or self._accepted_frame(run_id=run_id)
-        frame_path = Path(self._temporary.name) / image_name
-        Image.new("RGB", (40, 30), image_color).save(frame_path)
-        frame_record = {
-            "frame": {
-                "frame_id": stream_frame["frame_id"],
-                "frame_index": stream_frame["frame_index"],
-                "captured_at_ms": stream_frame["timestamp_ms"],
-            },
-            "run_id": run_id,
-            "sensor_frame": {
-                "readings": {"front_camera": {"read_id": stream_frame["frame_id"]}}
-            },
-        }
-        target.perception.publish_frame(
-            frame_path=frame_path, frame_record=frame_record
-        )
-
-        # A newer camera capture becomes perception's default frame first. The
-        # decision must still select the exact buffered frame above by ID.
-        newer_path = Path(self._temporary.name) / f"{image_name}.later.png"
-        Image.new("RGB", (40, 30), (210, 40, 30)).save(newer_path)
-        target.perception.publish_frame(
-            frame_path=newer_path,
-            frame_record={
-                **frame_record,
-                "frame": {
-                    **frame_record["frame"],
-                    "frame_id": f"{run_id}-later",
-                    "frame_index": frame_record["frame"]["frame_index"] + 1,
-                },
-            },
-        )
-        exact_image = target.perception.frame(stream_frame["frame_id"])
-        self.assertIsNotNone(exact_image)
+        frame_bytes = _png_bytes(image_color)
         self.assertTrue(
             target.decision.publish(
                 report=stream_frame,
-                image=exact_image,
+                image=(frame_bytes, "image/png"),
             )
         )
-        return stream_frame, frame_path.read_bytes()
+        return stream_frame, frame_bytes
 
     def _latest_payload(self) -> dict:
         generation = self.server.decision.generation_id

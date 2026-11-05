@@ -49,11 +49,9 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             timeout_s=0.1,
         )
         with patch("cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel", return_value={}), \
-                patch.object(server.perception, "publish_frame") as frame, \
-                patch.object(server.perception, "publish_perception") as perception:
+                patch.object(server.perception, "publish") as perception:
             self.assertTrue(adapter.publish_frame(normalized, (b"fixture-jpeg", "image/jpeg")))
         self.assertIsNotNone(server.decision.health_payload()["latest_transaction_id"])
-        frame.assert_not_called()
         perception.assert_not_called()
 
     def test_physical_decision_acceptance_rejects_bounded_unavailable_cases(

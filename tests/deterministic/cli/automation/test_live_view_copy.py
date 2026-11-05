@@ -13,6 +13,7 @@ from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.report import HostReport, ReportApplication
+from cli.automa_cli.frontend.perception_view import PerceptionView
 from cli.automa_cli.hosts.runs import monitor
 from cli.automa_cli.hosts.views import view_feed as viewer
 from cli.automa_cli.plugins.stream import decision, session
@@ -132,6 +133,15 @@ class LiveViewCopyTests(unittest.TestCase):
 
                 published = wait_until(latest, message="perception waited for recording export")
                 self.assertEqual(published["frame"]["frame_id"], "donkey_frame_000001")
+                served, content_type = holder["server"].perception.frame()
+                self.assertEqual(content_type, "image/jpeg")
+                self.assertEqual(served, output.getvalue())
+                # The run's latest files follow the view's publication.
+                front_camera = root / "latest" / "frames" / "latest_front_camera.jpg"
+                wait_until(
+                    lambda: front_camera.exists() and front_camera.read_bytes() == output.getvalue(),
+                    message="the monitor did not export the published frame",
+                )
                 self.assertTrue(worker.is_alive())
                 self.assertFalse(export_release.is_set())
             finally:
@@ -139,3 +149,46 @@ class LiveViewCopyTests(unittest.TestCase):
                 worker.join(3)
             self.assertFalse(worker.is_alive())
             self.assertEqual(results[0].exit_code, 0, results)
+
+    def test_a_failed_export_clears_the_view_and_the_next_poll_retries_the_capture(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image = io.BytesIO()
+            Image.new("RGB", (4, 5)).save(image, "JPEG")
+            jpeg = image.getvalue()
+            first, second = _publication(1), _publication(2)
+            identity = {"run_id": "run-1", "control_source": "runtime_host"}
+            server = Mock(perception=PerceptionView(host_name="fixture"))
+            copied = {"publication": None, "ready": threading.Event()}
+            stop = threading.Event()
+            shown = []
+            write_json = monitor.write_json_atomically
+
+            def export_json(path, record):
+                if len(shown) == 1:
+                    raise PermissionError("export blocked")
+                write_json(path, record)
+
+            def after_poll(_timeout):
+                latest = server.perception.latest_json()
+                shown.append(json.loads(latest)["frame"]["frame_id"] if latest else server.perception.unavailable_reason)
+                if len(shown) == 3:
+                    stop.set()
+
+            with (
+                patch.object(monitor, "fetch_observation_sample", side_effect=[(first, jpeg), (second, jpeg), (second, jpeg)]),
+                patch.object(monitor, "write_json_atomically", side_effect=export_json),
+                patch.object(stop, "wait", side_effect=after_poll),
+            ):
+                monitor._copy_latest_perception(
+                    "http://host.invalid", server, stop, copied,
+                    front_camera_path=root / "frame.jpg", json_path=root / "latest_perception.json",
+                    text_path=root / "latest_perception.txt", identity=identity, timeout_s=0.1,
+                )
+            self.assertEqual(shown, [
+                first["frame"]["frame_id"], "PermissionError: export blocked", second["frame"]["frame_id"],
+            ])
+            self.assertEqual(json.loads((root / "latest_perception.json").read_text()), {**second, **identity})
+            self.assertEqual((root / "latest_perception.txt").read_text(), "signal id=lane\n")
+            self.assertEqual((root / "frame.jpg").read_bytes(), jpeg)
+            self.assertEqual(copied["publication"], second)

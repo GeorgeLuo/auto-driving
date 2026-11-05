@@ -3,7 +3,7 @@ import unittest
 from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
 )
-from autonomy.serialization import canonical_json_bytes
+from autonomy.serialization import canonical_json_size_bytes
 from tests.deterministic.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
 )
@@ -48,7 +48,7 @@ class RunnerBoundaryTests(unittest.TestCase):
             object.__setattr__(
                 proposal, "metadata", FrozenJsonObject({"pad": "x" * 5000})
             )
-            self.assertGreater(canonical_json_bytes(proposal.to_dict()), 4096)
+            self.assertGreater(canonical_json_size_bytes(proposal.to_dict()), 4096)
             return proposal
 
         engine = decision_chain(

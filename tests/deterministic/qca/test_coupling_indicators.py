@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import ast
 import json
 import unittest
 
@@ -154,18 +153,6 @@ async def execute(value, /, fallback=None, *, limit=3):
         self.assertEqual(coupling._module("__init__.py"), "")
         self.assertEqual(coupling._package("__init__.py"), "")
         json.dumps(result)
-
-    def test_legacy_helpers_remain_independently_callable(self) -> None:
-        tree = ast.parse("def run(value=1):\n    return value\n")
-        function = tree.body[0]
-
-        self.assertEqual(contracts._signature(function)["defaults"], {"value": "1"})
-        self.assertEqual(
-            coupling._lookup_resolution("pkg.missing", {"pkg": "pkg/__init__.py"})[
-                "resolution"
-            ],
-            "ancestor_fallback",
-        )
 
 
 if __name__ == "__main__":

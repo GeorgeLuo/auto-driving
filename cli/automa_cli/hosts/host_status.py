@@ -1,8 +1,9 @@
 """Each local host's state, and whether its simulator lists it.
 
 A host's configuration names its vehicle. A Chase host is attached when its
-simulator lists it; a PiCar's host is its staged connection. ``hosts status``
-and the runtime view's host list read hosts here.
+simulator lists it; a PiCar's host is its staged connection. When the
+simulator's agent list cannot be read, the host says the simulator is not
+answering. ``hosts status`` and the runtime view's host list read hosts here.
 """
 
 from __future__ import annotations
@@ -78,6 +79,8 @@ def read_hosts(
         # The agent list is read at the simulator's control endpoint; status reports its page.
         host["vehicle_url"] = chase_operator_url(host["vehicle_url"])
         if listed is None:
+            # attached stays unknown. The attachment line says the simulator is not answering.
+            host["simulator"] = "not answering"
             continue
         host["attached"] = False
         for agent in listed:

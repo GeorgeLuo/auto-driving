@@ -209,12 +209,15 @@ class AutomationStatusTests(unittest.TestCase):
         self.assertEqual(steps["action"]["plugins"], ["selected"])
         self.assertEqual(run["process"]["status"], "running")
         self.assertTrue(run["process"]["running"])
+        # The fixture's simulator does not answer, so status says so instead of the local record.
+        self.assertIsNone(host["attached"])
+        self.assertEqual(host["simulator"], "not answering")
 
         # The host block comes first, then the host's run.
         self.assertTrue(human.stdout.startswith(
             f"Host {HOST_NAME}  not running\n"
             "  chaser at http://localhost:5050/\n"
-            "  local host record\n"
+            "  simulator not answering\n"
             "  deployment: deployed\n"
             f"  release: {run['release']['tree_sha256']}\n"
             "  steps: staged; applied unavailable (the run has not reported its steps)\n"

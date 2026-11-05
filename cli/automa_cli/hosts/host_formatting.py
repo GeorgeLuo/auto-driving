@@ -59,6 +59,8 @@ def _attachment_text(host: dict[str, Any]) -> str | None:
     if host.get("attached"):
         since = host.get("attached_since")
         return f"attached since {_local_time(since)}" if since else "attached"
+    if host.get("simulator") == "not answering":
+        return "simulator not answering"
     local = "local host record" if host.get("local") == "host record" else host.get("local")
     # A PiCar is not a simulator host.
     if local == "staged connection" or host.get("attached") is None:

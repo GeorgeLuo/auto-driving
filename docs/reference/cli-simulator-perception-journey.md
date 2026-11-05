@@ -46,7 +46,8 @@ with its provider, URL and reachability. With nothing listed it prints
 
 `hosts status` prints a block for each created host: its state, its vehicle
 and that vehicle's URL, whether its simulator lists it, and the host URL and
-pid. `--long` adds each host's deployment, run and
+pid. When the simulator's agent list cannot be read, the attachment line says
+the simulator is not answering. `--long` adds each host's deployment, run and
 view under its block. `--name` selects one host; `--json` emits
 `automa_hosts_status` with a `hosts` array whose entries carry the host's
 `run` detail. Host names are chosen at creation and do not identify the
@@ -254,6 +255,7 @@ environments in `vehicles` with provider, URL, state and error. Simulator
 entries also include frontend, game and created-process information.
 `hosts status --json` reports hosts separately, with their host names, the http
 URLs of their vehicles, their runtime URLs and their simulator attachment.
+When the simulator does not answer, `simulator` is `not answering`.
 
 An absent or malformed evaluator reference does not block camera perception.
 It is excluded from perception, observation, memory, and decision inputs.

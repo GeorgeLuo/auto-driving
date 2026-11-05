@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 from implementations.vehicle.chase_sim.car import ChaseSimCar
+from implementations.vehicle.chase_sim.defaults import get_default_chase_ui_ws_url
 from tests.support.cli_runner import run_automa
 
 
@@ -30,11 +31,21 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
             def cli(*args: str, check: bool = True):
                 return run_automa(*args, runtime_root=runtime_root, check=check)
 
+            target = get_default_chase_ui_ws_url()
+            discovered = cli("vehicles", "discover", "--provider", "chase-sim", "--url", target, check=False)
+            if discovered.returncode != 0:
+                self.fail(
+                    "no Chase simulator runs at CHASE_UI_WS_URL; set it to the URL simulators create printed\n"
+                    + discovered.stdout
+                )
             vehicles = json.loads(cli("vehicles", "status", "--json").stdout)["vehicles"]
             simulator = next((vehicle for vehicle in vehicles
                               if vehicle["provider"] == "chase-sim" and vehicle["state"] == "running"), None)
             if simulator is None:
-                self.fail("no Chase simulator runs at CHASE_UI_WS_URL; set it to the URL simulators create printed")
+                self.fail(
+                    "no Chase simulator runs at CHASE_UI_WS_URL; set it to the URL simulators create printed\n"
+                    + discovered.stdout
+                )
             _assert_passive_preserved()
             cli("hosts", "create", "--name", "chase-sim-chaser", "--provider", "chase-sim",
                 "--url", simulator["url"])

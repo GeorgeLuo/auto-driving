@@ -101,6 +101,7 @@ class VehicleStatusTests(unittest.TestCase):
             "\n"
             "PiCar (picar)  unreachable at http://pi.local: timed out"
         ))
+        self.assertEqual(format_vehicles_status({"vehicles": []}), "None listed.")
 
     def test_retired_discovery_command_is_unavailable(self):
         result = invoke_automa("vehicles", "active", check=False)

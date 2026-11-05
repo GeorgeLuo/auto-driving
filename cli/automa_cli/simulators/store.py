@@ -2,8 +2,10 @@
 
 ``simulator_records`` reads every record, which ``simulators status`` and
 ``simulators delete`` use. ``created_simulators`` keeps the ones whose
-process is still alive, which ``vehicles`` uses. This module does not start
-or stop a simulator.
+process is still alive, which ``vehicles`` uses. ``vehicles remove`` sets a
+record's ``listed`` to false to stop listing it, and ``vehicles discover``
+sets it back; a record without it is listed. This module does not start or
+stop a simulator.
 """
 
 from __future__ import annotations

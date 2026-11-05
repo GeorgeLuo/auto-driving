@@ -50,17 +50,16 @@ class AutomationStatusTests(unittest.TestCase):
         from tests.support.fake_hosts import closed_url
         from tests.support.fake_metrics_ui import fake_metrics_ui
 
-        with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui() as server:
-            runtime_root = Path(tmp) / "vehicles"
+        def status_listing(tmp: str, name: str, url: str):
+            runtime_root = Path(tmp) / name
             runtime_root.mkdir()
-            reachable = invoke_automa(
-                "status", runtime_root=runtime_root,
-                extra_env={"CHASE_UI_WS_URL": server.url}, check=False,
-            )
-            unreachable = invoke_automa(
-                "status", runtime_root=runtime_root,
-                extra_env={"CHASE_UI_WS_URL": closed_url()}, check=False,
-            )
+            invoke_automa("vehicles", "discover", "--provider", "chase-sim", "--url", url, "--force",
+                          runtime_root=runtime_root)
+            return invoke_automa("status", runtime_root=runtime_root, check=False)
+
+        with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui() as server:
+            reachable = status_listing(tmp, "reachable", server.url)
+            unreachable = status_listing(tmp, "unreachable", closed_url())
 
         self.assertEqual(reachable.returncode, 0, reachable.stderr)
         self.assertTrue(reachable.stdout.startswith("No hosts found\n\nSimulator (chase-sim)  running"), reachable.stdout)
@@ -122,12 +121,15 @@ class AutomationStatusTests(unittest.TestCase):
         self.assertEqual(steps["action"]["plugins"], ["selected"])
         self.assertEqual(run["process"]["status"], "running")
         self.assertTrue(run["process"]["running"])
+        # The fixture's simulator does not answer, so status says so instead of the local record.
+        self.assertIsNone(host["attached"])
+        self.assertEqual(host["simulator"], "not answering")
 
         # The host block comes first, then the host's run.
         self.assertTrue(human.stdout.startswith(
             f"Host {HOST_NAME}  not running\n"
             "  chaser at http://localhost:5050/\n"
-            "  local host record\n"
+            "  simulator not answering\n"
             "  deployment: deployed\n"
             f"  release: {run['release']['tree_sha256']}\n"
             "  steps: staged; applied unavailable (the run has not reported its steps)\n"

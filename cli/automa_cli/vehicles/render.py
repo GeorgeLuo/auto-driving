@@ -5,13 +5,15 @@ from __future__ import annotations
 from typing import Any
 
 from ..providers.metadata import PROVIDERS
-from ..providers.urls import chase_operator_url
 from ..simulators.render import simulator_lines
 from .models import VehicleResult
 
 
 def format_vehicles_status(status: dict[str, Any]) -> str:
-    return "\n\n".join(_vehicle_block(vehicle) for vehicle in status.get("vehicles") or [])
+    vehicles = status.get("vehicles") or []
+    if not vehicles:
+        return "None listed."
+    return "\n\n".join(_vehicle_block(vehicle) for vehicle in vehicles)
 
 
 def _vehicle_block(vehicle: dict[str, Any]) -> str:
@@ -25,11 +27,9 @@ def _vehicle_block(vehicle: dict[str, Any]) -> str:
 def render_vehicle_result(result: VehicleResult) -> str:
     if result.kind == "error":
         return result.error or ""
-    if result.kind == "default":
-        return f"{chase_operator_url(result.url)} is the default simulator and is always listed."
     if result.kind == "missing":
         names = ", ".join(PROVIDERS[v["provider"]].heading_at(v["url"]) for v in result.vehicles)
-        return f"No discovered vehicle at {result.url}. " + (f"Discovered: {names}." if names else "None discovered.")
+        return f"No listed vehicle at {result.url}. " + (f"Listed: {names}." if names else "None listed.")
     if result.kind == "removed":
         return "\n".join(f"Removed {PROVIDERS[v['provider']].heading_at(v['url'])}" for v in result.vehicles)
     vehicle = PROVIDERS[result.provider]

@@ -5,7 +5,7 @@ from typing import Literal
 @dataclass(frozen=True)
 class VehicleResult:
     exit_code: int
-    kind: Literal['error', 'listed', 'unready', 'discovered', 'default', 'missing', 'removed']
+    kind: Literal['error', 'listed', 'unready', 'discovered', 'missing', 'removed']
     url: str = ""
     provider: str = ""
     ready: bool = True

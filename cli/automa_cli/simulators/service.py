@@ -21,7 +21,7 @@ from .store import simulator_records
 # simulators create runs Metrics UI's headless launcher from this checkout.
 METRICS_UI_DIR_ENV = "AUTOMA_METRICS_UI_DIR"
 HEADLESS_SIM_SCRIPT = "scripts/play-chase-headless.mjs"
-# 5050 stays the default simulator's.
+# 5050 is Metrics UI's own port, which ChaseSimCar() reaches without a URL.
 SIMULATOR_PORTS = range(5051, 5100)
 SIMULATOR_START_TIMEOUT_S = 45.0
 
@@ -30,8 +30,8 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Simulat
     """Start a headless Chase simulator on the first free port in ``SIMULATOR_PORTS``.
 
     Metrics UI's launcher runs it with its default configuration and checks
-    it is ready. It outlives this command, and ``vehicles status`` lists it
-    until ``delete_simulator`` ends it.
+    it is ready. It outlives this command. ``vehicles status`` lists it until
+    ``vehicles remove`` stops listing it or ``delete_simulator`` ends it.
     """
 
     ui_dir, error = _metrics_ui_dir()

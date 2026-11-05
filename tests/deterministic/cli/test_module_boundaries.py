@@ -87,6 +87,7 @@ _NAMED_ROLES = {name: name for name in ("commands", "service", "models", "render
 _OPERATION_ROLES = {"service", "store", "monitor", "registry", "operation"}
 _MODULE_ROLES = {
     "app": "entrypoint",
+    "viewer_commands": "commands",  # the viewer's adapter: runs services, renders their results
     "frontend.decision_view": "operation",
     "frontend.loopback_http": "operation",
     "frontend.perception_view": "operation",

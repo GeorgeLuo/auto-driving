@@ -121,18 +121,11 @@ class AutomationStatusTests(unittest.TestCase):
         self.assertTrue(all(timeout <= 0.2 + 1e-9 for timeout in probe_calls))
 
     def test_status_renderer_formats_supplied_hosts(self) -> None:
-        """Text and JSON come from the host data, including the release command."""
+        """Text and JSON come from the supplied payload, including the release command."""
 
         from cli.automa_cli.hosts.runs.render import render_hosts_status
 
-        self.assertEqual(render_hosts_status([], host_name=None, json_output=False, long=False), "No hosts found")
-        self.assertEqual(
-            render_hosts_status([], host_name="car", json_output=True, long=True),
-            json.dumps(
-                {"schema": "automa_hosts_status", "host_name": "car", "hosts": []},
-                indent=2, sort_keys=True,
-            ),
-        )
+        self.assertEqual(render_hosts_status({"hosts": []}, json_output=False, long=False), "No hosts found")
         host = {
             "host_name": "car",
             "state": "not running",
@@ -148,13 +141,37 @@ class AutomationStatusTests(unittest.TestCase):
                 "published_view": {},
             },
         }
-        text = render_hosts_status([host], host_name="car", json_output=False, long=True)
+        status = {"schema": "automa_hosts_status", "host_name": "car", "hosts": [host]}
+        text = render_hosts_status(status, json_output=False, long=True)
         self.assertIn("Host car  not running", text)
         self.assertIn("deployment: not deployed", text)
         self.assertIn("./cli/automa hosts update --name car", text)
-        rendered = json.loads(render_hosts_status([host], host_name="car", json_output=True, long=False))
-        self.assertEqual(rendered["schema"], "automa_hosts_status")
-        self.assertIsNone(rendered["hosts"][0]["run"]["release"])
+        self.assertEqual(json.loads(render_hosts_status(status, json_output=True, long=False)), status)
+
+    def test_top_level_status_prints_hosts_then_vehicles_and_their_exit(self) -> None:
+        """``automa status`` prints hosts status, then vehicles status, and exits as vehicles status does."""
+
+        from tests.support.fake_hosts import closed_url
+        from tests.support.fake_metrics_ui import fake_metrics_ui
+
+        with tempfile.TemporaryDirectory() as tmp, fake_metrics_ui() as server:
+            runtime_root = Path(tmp) / "vehicles"
+            runtime_root.mkdir()
+            reachable = invoke_automa(
+                "status", runtime_root=runtime_root,
+                extra_env={"CHASE_UI_WS_URL": server.url}, check=False,
+            )
+            unreachable = invoke_automa(
+                "status", runtime_root=runtime_root,
+                extra_env={"CHASE_UI_WS_URL": closed_url()}, check=False,
+            )
+
+        self.assertEqual(reachable.returncode, 0, reachable.stderr)
+        self.assertTrue(reachable.stdout.startswith("No hosts found\n\nSimulator (chase-sim)  running"), reachable.stdout)
+        self.assertEqual(unreachable.returncode, 1, unreachable.stderr)
+        self.assertTrue(unreachable.stdout.startswith("No hosts found\n\n"), unreachable.stdout)
+        self.assertIn("unreachable", unreachable.stdout)
+        self.assertEqual(unreachable.stderr, "")
 
     def test_no_hosts_are_found_in_human_and_json_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

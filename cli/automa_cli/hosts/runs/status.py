@@ -139,8 +139,8 @@ def hosts_status(
     host_name: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     include_runs: bool = False,
-) -> tuple[int, list[dict[str, Any]]]:
-    """Each host's state and attachment.
+) -> tuple[int, dict[str, Any]]:
+    """The exit and the ``automa_hosts_status`` payload: each host's state and attachment.
 
     ``include_runs`` adds its deployment, release, steps, run and view. JSON
     status includes that data, and plain text includes it with ``--long``.
@@ -163,7 +163,7 @@ def hosts_status(
         }
         for host in hosts:
             host["run"] = runs.get(host["host_name"])
-    return exit_code, hosts
+    return exit_code, {"schema": "automa_hosts_status", "host_name": host_name, "hosts": hosts}
 
 
 def collect_automation_status(

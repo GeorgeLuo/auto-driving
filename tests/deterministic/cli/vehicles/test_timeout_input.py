@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import unittest
-from types import SimpleNamespace
 from cli.automa_cli.hosts.runs.models import StartResult
 from unittest.mock import patch
 
@@ -13,8 +12,8 @@ INVALID_TIMEOUTS = ("0", "-1", "nan", "-nan", "inf", "+inf", "-inf")
 TIMEOUT_MESSAGE = "--timeout-s must be a finite number greater than zero"
 # Each status command and the function its timeout reaches.
 STATUS_COMMANDS = {
-    ("vehicles", "status"): "cli.automa_cli.vehicles.commands.get_vehicles_status",
-    ("hosts", "status"): "cli.automa_cli.hosts.runs.commands.get_hosts_status",
+    ("vehicles", "status"): "cli.automa_cli.vehicles.commands.vehicles_status",
+    ("hosts", "status"): "cli.automa_cli.hosts.runs.commands.hosts_status",
 }
 
 
@@ -79,19 +78,18 @@ class TimeoutInputTests(unittest.TestCase):
 
     def test_valid_positive_timeout_reaches_each_consumer_unchanged(self) -> None:
         with patch(
-            "cli.automa_cli.vehicles.commands.get_vehicles_status",
-            return_value={"vehicles": [{"provider": "chase-sim", "url": "http://localhost:5050/", "state": "running"}]},
+            "cli.automa_cli.vehicles.commands.vehicles_status", return_value=(0, {"vehicles": []}),
         ) as get_status:
             code, _, _ = _invoke("vehicles", "status", "--timeout-s", "1.25")
         self.assertEqual(code, 0)
         get_status.assert_called_once_with(timeout_s=1.25)
 
         with patch(
-            "cli.automa_cli.hosts.runs.commands.get_hosts_status", return_value=SimpleNamespace(exit_code=0, message="ok"),
+            "cli.automa_cli.hosts.runs.commands.hosts_status", return_value=(0, {"hosts": []}),
         ) as get_hosts:
             code, _, _ = _invoke("hosts", "status", "--timeout-s", "1.25")
         self.assertEqual(code, 0)
-        get_hosts.assert_called_once_with(host_name=None, timeout_s=1.25, long=False, json_output=False)
+        get_hosts.assert_called_once_with(host_name=None, timeout_s=1.25, include_runs=False)
 
         with patch(
             "cli.automa_cli.hosts.runs.commands.start_host_automation_background",
@@ -111,9 +109,7 @@ class TimeoutInputTests(unittest.TestCase):
         for command, target in STATUS_COMMANDS.items():
             with self.subTest(command=command), patch(
                 target,
-                return_value=SimpleNamespace(exit_code=0, message="ok")
-                if command[0] == "hosts"
-                else {"vehicles": [{"provider": "chase-sim", "url": "http://localhost:5050/", "state": "running"}]},
+                return_value=(0, {"hosts": []}) if command[0] == "hosts" else (0, {"vehicles": []}),
             ) as get_status:
                 code, _, _ = _invoke(*command)
             self.assertEqual(code, 0)

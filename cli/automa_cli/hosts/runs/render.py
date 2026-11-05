@@ -22,23 +22,12 @@ from .models import RestartResult, StartResult, StopResult, status_reason
 _CONTROL_SOURCE_LABELS = {"runtime_host": "runtime host"}
 
 
-def render_hosts_status(
-    hosts: list[dict[str, Any]],
-    *,
-    host_name: str | None,
-    json_output: bool,
-    long: bool,
-) -> str:
+def render_hosts_status(status: dict[str, Any], *, json_output: bool, long: bool) -> str:
     """Text for a terminal, or ``automa_hosts_status`` JSON."""
 
     if json_output:
-        payload = {
-            "schema": "automa_hosts_status",
-            "host_name": host_name,
-            "hosts": hosts,
-        }
-        return json.dumps(payload, indent=2, sort_keys=True)
-    return _format_hosts_status(hosts, long=long)
+        return json.dumps(status, indent=2, sort_keys=True)
+    return _format_hosts_status(status["hosts"], long=long)
 
 
 def _format_hosts_status(hosts: list[dict[str, Any]], *, long: bool) -> str:

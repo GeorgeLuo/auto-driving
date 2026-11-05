@@ -11,8 +11,8 @@ from .hosts.views.runtime_view import runtime_view_server, serve_viewer
 from .plugins.commands import register_plugins
 from .shared.text import format_browser_result
 from .simulators.commands import register_simulators
-from .simulators.status import simulators_status
 from .vehicles.commands import register_vehicles
+from .viewer_commands import VIEWER_READS, VIEWER_WRITES
 from .workbench.commands import register_workbench
 
 
@@ -81,7 +81,8 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
 
 def _handle_open_viewer(args: argparse.Namespace) -> int:
     return serve_viewer(
-        simulators=lambda: simulators_status()[1],
+        reads=VIEWER_READS,
+        writes=VIEWER_WRITES,
         emit=lambda result: print(format_browser_result(result), flush=True),
     )
 

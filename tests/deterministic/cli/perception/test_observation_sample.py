@@ -225,5 +225,6 @@ class ObservationSampleTests(unittest.TestCase):
         feed._observation = publication, jpeg
         feed.publish(publication)
         self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
-        self.assertEqual(json.loads(feed.server.perception.latest_json())["overlay"]["status"], "current")
+        payload = json.loads(feed.server.perception.latest_json())
+        self.assertEqual(payload["frame"]["frame_id"], publication["frame"]["frame_id"])
         self.assertIn("no decision", feed.decision_error)

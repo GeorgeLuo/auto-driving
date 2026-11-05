@@ -133,7 +133,7 @@ class HostStatusTests(unittest.TestCase):
         host = self.host()
         health = json.dumps({
             "schema": perception_view.VIEW_SCHEMA, "available": True, "url": "http://127.0.0.1/",
-            "has_perception": True, "latest_perception_frame_id": "frame-1", "perception_frame_buffered": True,
+            "latest_frame_id": "frame-1",
         }).encode()
         with answering(health) as view_url:
             runtime = self.runtime_root / "chase-sim-chaser/bundle/runtime"
@@ -156,7 +156,7 @@ class HostStatusTests(unittest.TestCase):
         [entry] = json.loads(result.stdout)["hosts"]
         self.assertEqual(entry["run"]["process"]["process_record"], f"{host.base_url}/host/status")
         view = entry["run"]["published_view"]
-        self.assertEqual((view["available"], view["latest_perception_frame_id"]), (True, "frame-1"))
+        self.assertEqual((view["available"], view["latest_frame_id"]), (True, "frame-1"))
         self.assertEqual(health_requests.call_count, 1)
         self.assertEqual(reads.count(self.runtime_root / "chase-sim-chaser/host-configuration.json"), 1)
         self.assertEqual(reads.count(runtime / "automation" / HOST_RECORD), 1)

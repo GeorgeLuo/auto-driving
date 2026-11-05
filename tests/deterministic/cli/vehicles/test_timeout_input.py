@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import unittest
 from cli.automa_cli.hosts.runs.models import StartResult
-from cli.automa_cli.simulators.models import SimulatorsStatus
 from unittest.mock import patch
 
 from tests.shared.cli.invoke import invoke_automa
@@ -112,7 +111,7 @@ class TimeoutInputTests(unittest.TestCase):
             status = {
                 "hosts": (0, {"hosts": []}),
                 "vehicles": (0, {"vehicles": []}),
-                "simulators": SimulatorsStatus(0, {"schema": "automa_simulators_status", "simulators": []}),
+                "simulators": (0, {"simulators": []}),
             }[command[0]]
             with self.subTest(command=command), patch(target, return_value=status) as get_status:
                 code, _, _ = _invoke(*command)

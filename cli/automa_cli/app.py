@@ -89,7 +89,7 @@ def _handle_open_viewer(args: argparse.Namespace) -> int:
 def _simulators_document() -> dict[str, Any]:
     """What ``simulators status --json`` prints, for the viewer's ``/api/simulators``."""
 
-    return simulators_status().payload
+    return simulators_status()[1]
 
 
 def _handle_status(args: argparse.Namespace) -> int:

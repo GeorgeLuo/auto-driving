@@ -155,10 +155,9 @@ class SimulatorsStatusTests(unittest.TestCase):
         with patch("cli.automa_cli.simulators.commands.simulators_status", keep):
             machine = json.loads(self.status("--json").stdout)
 
-        [status] = returned
-        self.assertEqual(status.exit_code, 0)
-        self.assertEqual(machine, status.payload)
-        self.assertEqual(status.created, ("http://127.0.0.1:5052/",))
+        [(exit_code, status)] = returned
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(machine, status)
 
     def test_an_unreachable_simulator_fails_only_when_named(self) -> None:
         closed = closed_url()
@@ -174,19 +173,18 @@ class SimulatorsStatusTests(unittest.TestCase):
         self.assertEqual(named.returncode, 1)
         self.assertIn("unreachable", named.stdout)
 
-    def test_a_missing_url_exits_1(self) -> None:
+    def test_a_missing_url_is_a_not_found_entry_and_exits_1(self) -> None:
         self.write_record(port=5051, url="ws://127.0.0.1:5051/ws/control", pid=_dead_pid())
 
-        missing = self.status("--url", "http://127.0.0.1:5099/")
+        missing = self.status("--url", "http://127.0.0.1:5099/", "--long")
         machine = self.status("--url", "http://127.0.0.1:5099/", "--json")
 
         self.assertEqual(missing.returncode, 1)
-        self.assertEqual(
-            missing.stdout,
-            "No created simulator at http://127.0.0.1:5099/. Created: http://127.0.0.1:5051/.\n",
-        )
+        self.assertEqual(missing.stdout, "Simulator (chase-sim)  not found at http://127.0.0.1:5099/\n")
         self.assertEqual(machine.returncode, 1)
-        self.assertEqual(json.loads(machine.stdout)["simulators"], [])
+        [simulator] = json.loads(machine.stdout)["simulators"]
+        self.assertEqual(set(simulator), _JSON_FIELDS)
+        self.assertEqual((simulator["state"], simulator["url"]), ("not found", "http://127.0.0.1:5099/"))
 
     def test_a_bad_url_or_timeout_exits_2(self) -> None:
         bad_url = self.status("--url", "ftp://example.com", "--json")

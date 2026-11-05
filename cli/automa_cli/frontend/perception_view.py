@@ -133,7 +133,7 @@ def get_perception_view_status(
             "reason": generation_error,
         }
     try:
-        with urlopen(urljoin(url, "api/health"), timeout=max(0.05, timeout_s)) as response:
+        with urlopen(urljoin(url, "api/health"), timeout=timeout_s) as response:
             health = json.loads(response.read().decode("utf-8"))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return {

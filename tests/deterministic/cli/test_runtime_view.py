@@ -18,6 +18,7 @@ from cli.automa_cli.frontend.server import (
 )
 from cli.automa_cli.frontend.workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY
 from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
+from cli.automa_cli.simulators import store as simulator_store
 from implementations.vehicle.chase_sim.defaults import CHASE_UI_WS_URL_ENV
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
 from implementations.vehicle.chase_sim.presence import MetricsUiPresence
@@ -150,6 +151,24 @@ class ConnectedSplashTests(unittest.TestCase):
 
         self.assertEqual(json.loads(_read_text(f"{server.url}api/hosts")), {"hosts": []})
 
+    def test_simulators_are_served_only_by_a_view_given_their_document(self) -> None:
+        document = {"schema": "automa_simulators_status", "simulators": [{"url": "http://127.0.0.1:5050/"}]}
+        served = RuntimeViewServer(
+            host_name="viewer", automation_dir=None, port=0, connected=False,
+            simulators=lambda: document, replay_runner_factory=ImageReplayRunner,
+        ).start()
+        self.addCleanup(served.stop)
+        unserved = RuntimeViewServer(
+            host_name="viewer", automation_dir=None, port=0, connected=False,
+            replay_runner_factory=ImageReplayRunner,
+        ).start()
+        self.addCleanup(unserved.stop)
+
+        self.assertEqual(json.loads(_read_text(f"{served.url}api/simulators")), document)
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(f"{unserved.url}api/simulators", timeout=1.0)
+        self.assertEqual(caught.exception.code, 404)
+
     def test_server_refuses_to_start_without_a_workbench_runner(self) -> None:
         with self.assertRaisesRegex(TypeError, "replay_runner or replay_runner_factory"):
             RuntimeViewServer(host_name="viewer", automation_dir=None, port=0, connected=False)
@@ -210,6 +229,14 @@ class OpenViewerCommandTests(unittest.TestCase):
             self.assertEqual(app.main([]), 130)
         serve_viewer.assert_called_once()
         self.assertTrue(callable(serve_viewer.call_args.kwargs["emit"]))
+
+    def test_the_viewer_serves_the_simulators_status_document(self) -> None:
+        with mock.patch.object(app, "serve_viewer", return_value=130) as serve_viewer:
+            app.main([])
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(simulator_store, "RUNTIME_ROOT", Path(tmp)):
+            document = serve_viewer.call_args.kwargs["simulators"]()
+
+        self.assertEqual(document, {"schema": "automa_simulators_status", "simulators": []})
 
 
 def _read_text(url: str) -> str:

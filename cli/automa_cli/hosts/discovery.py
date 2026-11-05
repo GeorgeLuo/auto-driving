@@ -8,7 +8,7 @@ from ..providers.registry import PROVIDERS
 from .errors import RuntimeHostError
 from . import staging
 from .local import host_record
-from .staging import staged_connection, staged_host
+from .staging import staged_host
 from .step_activations import host_names
 
 
@@ -18,15 +18,11 @@ def running_base_url(host_name: str) -> str | None:
     A PiCar's is its staged connection; a Chase car's is its running host.
     """
 
-    if PROVIDERS[staged_host(host_name)["provider"]].local_host:
-        record = host_record(host_name)
-        return None if record is None else record["base_url"]
-    base_url = staged_connection(host_name).get("base_url")
-    return base_url.rstrip("/") if isinstance(base_url, str) and base_url.strip() else None
+    return _address(staged_host(host_name))[0]
 
 
 def local_hosts() -> list[dict[str, Any]]:
-    """The host each local vehicle addresses now, by ``running_base_url``.
+    """The host each local vehicle addresses now, as ``running_base_url`` finds it.
 
     ``local`` names where the host was found: a Chase car's running host
     record, or a PiCar's staged connection. A host whose configuration cannot
@@ -41,19 +37,31 @@ def local_hosts() -> list[dict[str, Any]]:
             hosts.append({"host_name": host_name, "url": None, "pid": None, "local": None, "provider": None,
                           "vehicle_url": None, "error": str(exc)})
             continue
-        connection = configuration["connection"]
         vehicle = PROVIDERS[configuration["provider"]]
-        record = host_record(host_name) if vehicle.local_host else None
+        url, record = _address(configuration)
         hosts.append({
             "host_name": host_name,
-            "url": (record["base_url"] if record else None) if vehicle.local_host else connection["base_url"],
+            "url": url,
             "pid": record.get("pid") if record else None,
             "local": "host record" if vehicle.local_host else "staged connection",
             "provider": configuration["provider"],
-            "vehicle_url": connection.get(vehicle.url_key),
+            "vehicle_url": configuration["connection"].get(vehicle.url_key),
             "error": None,
         })
     return hosts
+
+
+def _address(configuration: dict[str, Any]) -> tuple[str | None, dict[str, Any] | None]:
+    """The URL a host answers at now, and the running Chase host's record.
+
+    A blank staged PiCar URL names no host.
+    """
+
+    if PROVIDERS[configuration["provider"]].local_host:
+        record = host_record(configuration["host_name"])
+        return (None if record is None else record["base_url"]), record
+    base_url = configuration["connection"].get("base_url")
+    return (base_url.rstrip("/") if isinstance(base_url, str) and base_url.strip() else None), None
 
 
 def runtime_base_url(host_name: str) -> str:

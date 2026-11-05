@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import os
 import tempfile
@@ -37,8 +38,8 @@ class PerceptionCommandTests(unittest.TestCase):
                 worker_pid=os.getpid(),
                 replay_runner_factory=ImageReplayRunner,
             ).start()
-            frame_path = Path(tmp) / "current-frame.png"
-            Image.new("RGB", (16, 12), (20, 40, 60)).save(frame_path)
+            frame_bytes = io.BytesIO()
+            Image.new("RGB", (16, 12), (20, 40, 60)).save(frame_bytes, format="PNG")
             frame_record = {
                 "frame": {
                     "frame_id": "frame_000002",
@@ -55,7 +56,9 @@ class PerceptionCommandTests(unittest.TestCase):
                 },
             }
             server.perception.publish_frame(
-                frame_path=frame_path, frame_record=frame_record
+                frame_bytes=frame_bytes.getvalue(),
+                content_type="image/png",
+                frame_record=frame_record,
             )
             server.perception.publish_perception(frame_record=frame_record)
             expected_url = server.url

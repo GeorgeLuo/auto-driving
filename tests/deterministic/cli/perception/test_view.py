@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
@@ -22,40 +23,41 @@ from cli.automa_cli.frontend.perception_view import (
 
 class PerceptionViewTests(unittest.TestCase):
     def test_retained_in_flight_frame_survives_bounded_cache_turnover(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            frame_path = root / "frame.png"
-            Image.new("RGB", (64, 48), (20, 40, 60)).save(frame_path)
-            view = PerceptionView(host_name="test-vehicle")
+        frame_bytes = _image_bytes("PNG", (64, 48), (20, 40, 60))
+        view = PerceptionView(host_name="test-vehicle")
 
-            for index in range(MAX_BUFFERED_FRAMES):
-                record = _frame_record()
-                record["frame"]["frame_id"] = f"frame_{index:06d}"
-                record["frame"]["frame_index"] = index
-                view.publish_frame(frame_path=frame_path, frame_record=record)
-                if index == 0:
-                    self.assertTrue(view.retain_frame(record["frame"]["frame_id"]))
+        for index in range(MAX_BUFFERED_FRAMES):
+            record = _frame_record()
+            record["frame"]["frame_id"] = f"frame_{index:06d}"
+            record["frame"]["frame_index"] = index
+            view.publish_frame(
+                frame_bytes=frame_bytes, content_type="image/png", frame_record=record,
+            )
+            if index == 0:
+                self.assertTrue(view.retain_frame(record["frame"]["frame_id"]))
 
-            overflow = _frame_record()
-            overflow["frame"]["frame_id"] = f"frame_{MAX_BUFFERED_FRAMES:06d}"
-            overflow["frame"]["frame_index"] = MAX_BUFFERED_FRAMES
-            view.publish_frame(frame_path=frame_path, frame_record=overflow)
-            self.assertIsNotNone(view.frame("frame_000000"))
-            self.assertIsNone(view.frame("frame_000001"))
+        overflow = _frame_record()
+        overflow["frame"]["frame_id"] = f"frame_{MAX_BUFFERED_FRAMES:06d}"
+        overflow["frame"]["frame_index"] = MAX_BUFFERED_FRAMES
+        view.publish_frame(
+            frame_bytes=frame_bytes, content_type="image/png", frame_record=overflow,
+        )
+        self.assertIsNotNone(view.frame("frame_000000"))
+        self.assertIsNone(view.frame("frame_000001"))
 
-            view.release_frame("frame_000000")
-            next_frame = _frame_record()
-            next_frame["frame"]["frame_id"] = f"frame_{MAX_BUFFERED_FRAMES + 1:06d}"
-            next_frame["frame"]["frame_index"] = MAX_BUFFERED_FRAMES + 1
-            view.publish_frame(frame_path=frame_path, frame_record=next_frame)
-            self.assertIsNone(view.frame("frame_000000"))
+        view.release_frame("frame_000000")
+        next_frame = _frame_record()
+        next_frame["frame"]["frame_id"] = f"frame_{MAX_BUFFERED_FRAMES + 1:06d}"
+        next_frame["frame"]["frame_index"] = MAX_BUFFERED_FRAMES + 1
+        view.publish_frame(
+            frame_bytes=frame_bytes, content_type="image/png", frame_record=next_frame,
+        )
+        self.assertIsNone(view.frame("frame_000000"))
 
     def test_view_serves_live_frame_with_independently_updated_perception(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            frame_path = root / "frame.png"
-            Image.new("RGB", (64, 48), (20, 40, 60)).save(frame_path)
-            expected_frame = frame_path.read_bytes()
+            expected_frame = _image_bytes("PNG", (64, 48), (20, 40, 60))
             server = RuntimeViewServer(
                 host_name="test-vehicle",
                 automation_dir=root / "automation",
@@ -68,7 +70,8 @@ class PerceptionViewTests(unittest.TestCase):
                     frame_record["perception"]["things"]
                 )
                 server.perception.publish_frame(
-                    frame_path=frame_path,
+                    frame_bytes=expected_frame,
+                    content_type="image/png",
                     frame_record=frame_record,
                 )
 
@@ -104,14 +107,15 @@ class PerceptionViewTests(unittest.TestCase):
                     [[0.2, 0.25], [0.6, 0.3], [0.55, 0.75], [0.25, 0.7]],
                 )
 
-                newer_frame_path = root / "newer.png"
-                Image.new("RGB", (64, 48), (90, 70, 50)).save(newer_frame_path)
+                newer_frame = _image_bytes("PNG", (64, 48), (90, 70, 50))
                 newer_record = _frame_record()
                 newer_record["frame"]["frame_id"] = "frame_000005"
                 newer_record["frame"]["frame_index"] = 5
                 newer_record["frame"]["captured_at_ms"] = 1534
                 server.perception.publish_frame(
-                    frame_path=newer_frame_path, frame_record=newer_record
+                    frame_bytes=newer_frame,
+                    content_type="image/png",
+                    frame_record=newer_record,
                 )
 
                 with urlopen(f"{server.url}api/latest", timeout=1.0) as response:
@@ -130,16 +134,13 @@ class PerceptionViewTests(unittest.TestCase):
 
                 with urlopen(f"{server.url}frame", timeout=1.0) as response:
                     self.assertEqual(response.headers.get_content_type(), "image/png")
-                    self.assertEqual(response.read(), newer_frame_path.read_bytes())
+                    self.assertEqual(response.read(), newer_frame)
 
                 head_request = Request(f"{server.url}frame", method="HEAD")
                 with urlopen(head_request, timeout=1.0) as response:
                     self.assertEqual(response.status, 200)
                     self.assertEqual(response.headers.get_content_type(), "image/png")
-                    self.assertEqual(
-                        int(response.headers["Content-Length"]),
-                        len(newer_frame_path.read_bytes()),
-                    )
+                    self.assertEqual(int(response.headers["Content-Length"]), len(newer_frame))
                     self.assertEqual(response.read(), b"")
 
                 with urlopen(f"{server.url}perception", timeout=1.0) as response:
@@ -156,6 +157,64 @@ class PerceptionViewTests(unittest.TestCase):
                     self.assertEqual(response.read(), b"")
             finally:
                 server.stop()
+
+    def test_received_bytes_publish_without_a_source_path(self) -> None:
+        jpeg = _image_bytes("JPEG", (18, 12), (10, 20, 30))
+        png = _image_bytes("PNG", (7, 9), (1, 2, 3))
+        view = PerceptionView(host_name="test-vehicle")
+        record = _frame_record()
+        view.publish_matched(
+            frame_bytes=jpeg, content_type="image/jpeg", frame_record=record,
+        )
+        payload = json.loads(view.latest_json())
+        self.assertEqual(payload["frame"]["width_px"], 18)
+        self.assertEqual(payload["frame"]["height_px"], 12)
+        self.assertEqual(payload["frame"]["content_type"], "image/jpeg")
+        self.assertEqual(payload["overlay"]["status"], "current")
+        self.assertEqual(payload["overlay"]["source_frame_id"], "frame_000004")
+        served, content_type = view.frame()
+        self.assertEqual(served, jpeg)
+        self.assertEqual(content_type, "image/jpeg")
+        self.assertEqual(view.frame(record["frame"]["frame_id"]), (jpeg, "image/jpeg"))
+
+        later = _frame_record()
+        later["frame"]["frame_id"] = "frame_000009"
+        later["frame"]["frame_index"] = 9
+        view.publish_matched(frame_bytes=png, content_type="image/png", frame_record=later)
+        self.assertEqual(view.frame(), (png, "image/png"))
+        self.assertEqual(view.frame("frame_000004"), (jpeg, "image/jpeg"))
+        later_payload = json.loads(view.latest_json())
+        self.assertEqual(later_payload["frame"]["width_px"], 7)
+        self.assertEqual(later_payload["frame"]["height_px"], 9)
+        self.assertEqual(later_payload["overlay"]["status"], "current")
+
+    def test_invalid_image_is_refused_and_a_later_image_recovers(self) -> None:
+        view = PerceptionView(host_name="test-vehicle")
+        good = _image_bytes("JPEG", (4, 4), (9, 9, 9))
+        record = _frame_record()
+        view.publish_matched(frame_bytes=good, content_type="image/jpeg", frame_record=record)
+        for bad in (b"", b"not-an-image"):
+            with self.subTest(bad=bad), self.assertRaises((ValueError, OSError)):
+                view.publish_frame(
+                    frame_bytes=bad, content_type="image/jpeg", frame_record=record,
+                )
+            self.assertEqual(view.frame()[0], good)
+        with self.assertRaises(ValueError):
+            view.publish_frame(
+                frame_bytes=good, content_type="image/gif", frame_record=record,
+            )
+        self.assertEqual(view.frame()[0], good)
+        replacement = _image_bytes("JPEG", (5, 6), (3, 3, 3))
+        next_record = _frame_record()
+        next_record["frame"]["frame_id"] = "frame_000008"
+        next_record["frame"]["frame_index"] = 8
+        view.publish_matched(
+            frame_bytes=replacement, content_type="image/jpeg", frame_record=next_record,
+        )
+        self.assertEqual(view.frame(), (replacement, "image/jpeg"))
+        self.assertEqual(json.loads(view.latest_json())["frame"]["width_px"], 5)
+        self.assertEqual(json.loads(view.latest_json())["frame"]["height_px"], 6)
+        self.assertEqual(json.loads(view.latest_json())["overlay"]["status"], "current")
 
     def test_view_rejects_data_requests_before_first_publication(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -222,6 +281,12 @@ class PerceptionViewTests(unittest.TestCase):
                 self.assertIn("pid", status["reason"])
             finally:
                 server.stop()
+
+
+def _image_bytes(fmt: str, size: tuple[int, int], color: tuple[int, int, int]) -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", size, color).save(buffer, format=fmt)
+    return buffer.getvalue()
 
 
 def _frame_record() -> dict:

@@ -28,7 +28,9 @@ from ..publications.decision_publication import (
     publication_capture,
     publication_part,
 )
-from ..publications.host_publications import fetch_observation_sample, TransactionCache
+from ..publications.host_publications import (
+    OBSERVATION_IMAGE_CONTENT_TYPE, TransactionCache, fetch_observation_sample,
+)
 from ...shared.timestamps import timestamp_ms
 from .models import RunEvent, RunResult, run_exit_code
 from collections.abc import Callable
@@ -110,6 +112,7 @@ def _copy_latest_perception(
     """Perception never waits for the monitor's recording export."""
     cache = TransactionCache()
     last_capture = None
+    frame_path = frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
     try:
         while not stop.is_set():
             started = time.monotonic()
@@ -125,9 +128,10 @@ def _copy_latest_perception(
                     copied["error"] = publication.get("error") or publication.get("health")
                 elif capture != last_capture and frame.get("frame_id"):
                     recorded = {**publication, **identity}
-                    frame_path = frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
                     frame_path.write_bytes(jpeg)
-                    server.perception.publish_matched(frame_path=frame_path, frame_record=recorded)
+                    server.perception.publish_matched(
+                        frame_bytes=jpeg, content_type=OBSERVATION_IMAGE_CONTENT_TYPE, frame_record=recorded,
+                    )
                     write_json_atomically(json_path, recorded)
                     text_path.write_text(perception_text_from_publication(publication) + "\n", encoding="utf-8")
                     last_capture = capture

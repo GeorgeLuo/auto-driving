@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import json
-import mimetypes
 import threading
 import time
 from collections import OrderedDict
+from io import BytesIO
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urljoin, urlparse
@@ -17,6 +17,7 @@ PUBLICATION_SCHEMA = "automa_perception_publication"
 VIEW_RECORD_NAME = "perception_view.json"
 MAX_BUFFERED_FRAMES = 8
 NO_FRAME_ERROR = "no camera frame has been published yet"
+_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png"}
 
 
 class PerceptionView:
@@ -38,21 +39,37 @@ class PerceptionView:
         self._frame_published_at_ms: int | None = None
         self._perception_published_at_ms: int | None = None
 
-    def publish_frame(self, *, frame_path: Path, frame_record: dict[str, Any]) -> None:
-        frame_bytes = frame_path.read_bytes()
-        if not frame_bytes:
-            raise ValueError(f"published frame is empty: {frame_path}")
-        content_type = _frame_content_type(frame_path, frame_record)
-        published_at_ms = _timestamp_ms()
+    def publish_frame(self, *, frame_bytes: bytes, content_type: str, frame_record: dict[str, Any]) -> None:
+        """Install image bytes already received for this publication."""
+        self._publish_image(frame_bytes, content_type, frame_record, matched=False)
+
+    def publish_perception(self, *, frame_record: dict[str, Any]) -> None:
+        frame_id = _frame_identity(frame_record)["frame_id"]
+        with self._lock:
+            self._latest_perception_record = frame_record
+            self._latest_perception_frame_id = frame_id
+            self._perception_published_at_ms = _timestamp_ms()
+
+    def publish_matched(self, *, frame_bytes: bytes, content_type: str, frame_record: dict[str, Any]) -> None:
+        """Replace the image and findings together for an accepted transaction."""
+        self._publish_image(frame_bytes, content_type, frame_record, matched=True)
+
+    def _publish_image(
+        self, frame_bytes: bytes, content_type: str, frame_record: dict[str, Any], *, matched: bool,
+    ) -> None:
+        # Dimensions are ready before the lock so publication stays a pair swap.
+        if not isinstance(frame_bytes, bytes) or not frame_bytes:
+            raise ValueError("published frame is empty")
+        if content_type not in _IMAGE_CONTENT_TYPES:
+            raise ValueError("published frame content type must be image/jpeg or image/png")
         identity = _frame_identity(frame_record)
         frame_id = identity["frame_id"]
-        width_px, height_px = _image_dimensions(frame_path)
+        with Image.open(BytesIO(frame_bytes)) as image:
+            width_px, height_px = int(image.size[0]), int(image.size[1])
+        published_at_ms = _timestamp_ms()
         frame = _frame_payload(
-            frame_record=identity,
-            content_type=content_type,
-            published_at_ms=published_at_ms,
-            width_px=width_px,
-            height_px=height_px,
+            frame_record=identity, content_type=content_type, published_at_ms=published_at_ms,
+            width_px=width_px, height_px=height_px,
         )
         with self._lock:
             if frame_id not in self._frames and len(self._frames) >= MAX_BUFFERED_FRAMES:
@@ -74,19 +91,10 @@ class PerceptionView:
             self._latest_frame = frame
             self._latest_frame_id = frame_id
             self._frame_published_at_ms = published_at_ms
-
-    def publish_perception(self, *, frame_record: dict[str, Any]) -> None:
-        frame_id = _frame_identity(frame_record)["frame_id"]
-        with self._lock:
-            self._latest_perception_record = frame_record
-            self._latest_perception_frame_id = frame_id
-            self._perception_published_at_ms = _timestamp_ms()
-
-    def publish_matched(self, *, frame_path: Path, frame_record: dict[str, Any]) -> None:
-        """Replace the image and findings together for an accepted transaction."""
-        with self._lock:
-            self.publish_frame(frame_path=frame_path, frame_record=frame_record)
-            self.publish_perception(frame_record=frame_record)
+            if matched:
+                self._latest_perception_record = frame_record
+                self._latest_perception_frame_id = frame_id
+                self._perception_published_at_ms = published_at_ms
 
     def invalidate_latest(self, reason: str | None = None) -> None:
         """An unavailable publication must not leave a usable latest pair; ``reason`` says why."""
@@ -407,25 +415,6 @@ def _nonnegative_difference(newer: Any, older: Any) -> int | None:
     if not isinstance(newer, (int, float)) or not isinstance(older, (int, float)):
         return None
     return max(0, int(newer - older))
-
-
-def _image_dimensions(frame_path: Path) -> tuple[int, int]:
-    with Image.open(frame_path) as image:
-        width, height = image.size
-    return int(width), int(height)
-
-
-def _frame_content_type(frame_path: Path, frame_record: dict[str, Any]) -> str:
-    sensor_frame = frame_record.get("sensor_frame")
-    if isinstance(sensor_frame, dict):
-        readings = sensor_frame.get("readings")
-        reading = readings.get("front_camera") if isinstance(readings, dict) else None
-        metadata = reading.get("metadata") if isinstance(reading, dict) else None
-        content_type = metadata.get("content_type") if isinstance(metadata, dict) else None
-        if isinstance(content_type, str) and content_type.startswith("image/"):
-            return content_type
-    guessed, _ = mimetypes.guess_type(frame_path.name)
-    return guessed if isinstance(guessed, str) and guessed.startswith("image/") else "application/octet-stream"
 
 
 def _is_loopback_url(url: str) -> bool:

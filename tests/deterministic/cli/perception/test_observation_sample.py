@@ -10,7 +10,10 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
+from PIL import Image
+
 from autonomy.runtime.frame_loop import OBSERVATION_TRANSACTION_SCHEMA
+from cli.automa_cli.frontend.perception_view import PerceptionView
 from cli.automa_cli.hosts.publications import host_publications as publications
 from cli.automa_cli.hosts.views import view_feed as viewer
 
@@ -25,6 +28,26 @@ class _Response(io.BytesIO):
 
 def _publication(frame_id="first"):
     return {"health": "healthy", "frame": {"frame_id": frame_id, "has_image": True}}
+
+
+def _jpeg(size, color) -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", size, color).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def _feed(root: Path):
+    feed = viewer.ViewFeed.__new__(viewer.ViewFeed)
+    feed._observation_cache = publications.TransactionCache()
+    feed._observation = feed._last_capture = None
+    feed.base_url, feed.timeout_s = "http://host.invalid", 1.0
+    feed.frame_path = root / "frame.jpg"
+    feed.error = None
+    feed.server = Mock()
+    feed.server.perception = PerceptionView(host_name="fixture")
+    feed.decision = Mock()
+    feed.decision.refresh.return_value = True
+    return feed
 
 
 def _transaction():
@@ -185,3 +208,48 @@ class ObservationSampleTests(unittest.TestCase):
                 feed.publish(publication)
             self.assertEqual(read.call_count, 1)
             self.assertEqual(feed.server.perception.publish_matched.call_count, 1)
+
+    def test_bad_image_clears_the_view_and_the_next_capture_restores_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            feed = _feed(Path(tmp))
+            first = _publication("first")
+            good = _jpeg((4, 4), (20, 40, 60))
+            feed._observation = (first, good)
+            feed.publish(first)
+            self.assertEqual(feed.server.perception.frame(), (good, "image/jpeg"))
+            self.assertEqual(feed.frame_path.read_bytes(), good)
+            self.assertIsNone(feed.error)
+
+            failed = _publication("second")
+            feed._observation = (failed, b"not-an-image")
+            feed.publish(failed)
+            self.assertIsNone(feed.server.perception.latest_json())
+            self.assertRegex(feed.error or "", "UnidentifiedImageError|OSError|ValueError")
+            self.assertEqual(feed.frame_path.read_bytes(), b"not-an-image")
+
+            restored = _publication("third")
+            again = _jpeg((5, 6), (8, 8, 8))
+            feed._observation = (restored, again)
+            feed.publish(restored)
+            served, content_type = feed.server.perception.frame()
+            self.assertEqual((served, content_type), (again, "image/jpeg"))
+            payload = json.loads(feed.server.perception.latest_json())
+            self.assertEqual(payload["frame"]["frame_id"], "third")
+            self.assertEqual(payload["frame"]["width_px"], 5)
+            self.assertEqual(payload["frame"]["height_px"], 6)
+            self.assertEqual(payload["overlay"]["status"], "current")
+            self.assertEqual(feed.frame_path.read_bytes(), again)
+            self.assertIsNone(feed.error)
+
+    def test_unchanged_capture_keeps_the_published_image(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            feed = _feed(Path(tmp))
+            publication = _publication("same")
+            first = _jpeg((4, 4), (1, 2, 3))
+            second = _jpeg((4, 4), (9, 9, 9))
+            feed._observation = (publication, first)
+            feed.publish(publication)
+            feed._observation = (publication, second)
+            feed.publish(publication)
+            self.assertEqual(feed.server.perception.frame()[0], first)
+            self.assertEqual(feed.frame_path.read_bytes(), first)

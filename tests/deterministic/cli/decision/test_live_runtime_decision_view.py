@@ -102,10 +102,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         for index, (expected_reason, mutate) in enumerate(cases):
             with self.subTest(reason=expected_reason):
                 stream_frame = self._accepted_frame_with_evidence(mutate)
-                self._publish_exact_transaction(
-                    stream_frame=stream_frame,
-                    image_name=f"evidence-{index}.png",
-                )
+                self._publish_exact_transaction(stream_frame=stream_frame)
                 payload = self._latest_payload()
                 evidence = payload["evidence"]
                 self.assertEqual(evidence["status"], "unavailable")

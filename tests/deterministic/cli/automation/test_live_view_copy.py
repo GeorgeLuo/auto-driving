@@ -132,6 +132,13 @@ class LiveViewCopyTests(unittest.TestCase):
 
                 published = wait_until(latest, message="perception waited for recording export")
                 self.assertEqual(published["frame"]["frame_id"], "donkey_frame_000001")
+                served, content_type = holder["server"].perception.frame()
+                self.assertEqual(content_type, "image/jpeg")
+                self.assertEqual(served, output.getvalue())
+                self.assertEqual(
+                    (root / "latest" / "frames" / "latest_front_camera.jpg").read_bytes(),
+                    output.getvalue(),
+                )
                 self.assertTrue(worker.is_alive())
                 self.assertFalse(export_release.is_set())
             finally:

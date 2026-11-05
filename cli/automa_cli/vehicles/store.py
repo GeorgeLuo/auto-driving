@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 
 from ..shared.io.json_files import write_json_atomically
-from ..shared.paths import RUNTIME_ROOT
+from ..shared.paths import runtime_root
 
 
 DISCOVERED = "discovered.json"
@@ -23,7 +23,7 @@ def discovered_vehicles() -> list[dict[str, str]]:
     """
 
     try:
-        document = json.loads((RUNTIME_ROOT / DISCOVERED).read_text(encoding="utf-8"))
+        document = json.loads((runtime_root() / DISCOVERED).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
     vehicles = document.get("vehicles") if isinstance(document, dict) else None
@@ -34,4 +34,4 @@ def discovered_vehicles() -> list[dict[str, str]]:
 
 
 def write_discovered_vehicles(vehicles: list[dict[str, str]]) -> None:
-    write_json_atomically(RUNTIME_ROOT / DISCOVERED, {"schema": DISCOVERED_SCHEMA, "vehicles": vehicles})
+    write_json_atomically(runtime_root() / DISCOVERED, {"schema": DISCOVERED_SCHEMA, "vehicles": vehicles})

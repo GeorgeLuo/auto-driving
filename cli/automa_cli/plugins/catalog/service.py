@@ -22,7 +22,7 @@ from ...hosts.step_activations import (
     staging_host,
 )
 from ...hosts.step_formatting import format_activation_problems
-from ...shared.paths import RUNTIME_ROOT, display_path
+from ...shared.paths import display_path
 from ...shared.plugin_catalog import packaged_plugin_definitions
 from .models import (
     Arming,
@@ -144,10 +144,10 @@ def save_plugins(*, host_name: str, step: str | None = None) -> SaveResult:
     steps = (step,) if step is not None else STEPS
     endpoint: str | None = None
     try:
-        configuration, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
+        configuration, error = staging_host(host_name)
         if error:
             raise ValueError(error)
-        bundle = bundle_paths(host_name, RUNTIME_ROOT)
+        bundle = bundle_paths(host_name)
         problems = bundle_activation_problems(bundle, host_name, steps=steps)
         if problems:
             raise ValueError(format_activation_problems(problems))

@@ -166,8 +166,7 @@ class RunConfigurationTests(unittest.TestCase):
     def test_host_url_runs_that_host_and_reads_its_host_name(self):
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", Path(tmp)),
-            patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)),
+            patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": tmp}),
             patch("cli.automa_cli.hosts.runs.service.ensure_chase_host", side_effect=AssertionError("started a host")) as started,
             patch("cli.automa_cli.hosts.runs.service.RuntimeClient", _HostClient),
             patch("cli.automa_cli.hosts.runs.service.monitor_runtime", return_value=RunResult(0, "ran")) as monitor,
@@ -220,8 +219,7 @@ class RunConfigurationTests(unittest.TestCase):
     def _background_command(self, **kwargs) -> list[str]:
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", Path(tmp)),
-            patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", Path(tmp)),
+            patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": tmp}),
             patch("cli.automa_cli.hosts.runs.service.RuntimeClient", _HostClient),
             patch("cli.automa_cli.hosts.runs.process.subprocess.Popen") as popen,
             patch(

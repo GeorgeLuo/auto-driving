@@ -105,8 +105,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")
             with (
-                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
+                patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": str(runtime_root)}),
                 patch(
                     "cli.automa_cli.hosts.runs.process.subprocess.Popen",
                     return_value=_ExitedProcess(),
@@ -177,8 +176,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 return _RunningProcess()
 
             with (
-                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
+                patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": str(runtime_root)}),
                 patch("cli.automa_cli.hosts.runs.process.subprocess.Popen", side_effect=launch),
                 patch(
                     "cli.automa_cli.hosts.runs.process.get_perception_view_status",
@@ -254,8 +252,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             }
 
             with (
-                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
+                patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": str(runtime_root)}),
                 patch("cli.automa_cli.hosts.runs.service.pid_alive", return_value=True),
                 patch(
                     "cli.automa_cli.hosts.runs.service.get_perception_view_status",
@@ -311,8 +308,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
 
             with (
-                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
+                patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": str(runtime_root)}),
                 patch("cli.automa_cli.hosts.runs.service.pid_alive", return_value=True),
                 patch(
                     "cli.automa_cli.hosts.runs.service.get_perception_view_status",
@@ -346,8 +342,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             )
 
             with (
-                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
+                patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": str(runtime_root)}),
             ):
                 result = stop_host_automation(host_name="chase-sim-chaser")
 
@@ -376,8 +371,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 encoding="utf-8",
             )
             with (
-                patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root),
-                patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root),
+                patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": str(runtime_root)}),
             ):
                 record_host_automation_terminal_result(
                     host_name="chase-sim-chaser",

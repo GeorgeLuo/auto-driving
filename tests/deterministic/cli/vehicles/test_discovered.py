@@ -154,8 +154,8 @@ class DiscoveredRecordTests(unittest.TestCase):
             with self.subTest(content=content), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 (root / store.DISCOVERED).write_text(content, encoding="utf-8")
-                with patch.object(store, "RUNTIME_ROOT", root):
+                with patch.dict(os.environ, {"AUTOMA_RUNTIME_ROOT": str(root)}):
                     expected = [good] if "car:8887" in content else []
                     self.assertEqual(store.discovered_vehicles(), expected)
-        with tempfile.TemporaryDirectory() as directory, patch.object(store, "RUNTIME_ROOT", Path(directory)):
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"AUTOMA_RUNTIME_ROOT": directory}):
             self.assertEqual(store.discovered_vehicles(), [])

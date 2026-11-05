@@ -20,7 +20,7 @@ from autonomy.runtime.layout import RuntimeLayout
 
 from ...releases.paths import controller_bundle_paths
 from ...shared.io import http_json
-from ...shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
+from ...shared.paths import ROOT, display_path, runtime_root, safe_path_part
 from ..progress import ProgressSink, report
 from ...shared.timestamps import timestamp_ms
 from ..bundles import (
@@ -241,7 +241,7 @@ def deploy_picar_release(
     report(emit, "scope", scope="autonomy")
     report(emit, "remote_home", path=target.pi_home)
 
-    host_dir = RUNTIME_ROOT / safe_path_part(host_name)
+    host_dir = runtime_root() / safe_path_part(host_name)
     bundle = controller_bundle_paths(host_dir)
     source_summary = controller_bundle_source_summary()
     try:

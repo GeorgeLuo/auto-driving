@@ -128,7 +128,7 @@ class ReplayByReleaseTests(unittest.TestCase):
             runs = runtime_root / HOST_NAME / "bundle/runtime/automation/runs"
             (recording,) = [path for path in runs.iterdir() if (path / "manifest.json").is_file()]
             self.assertEqual((recording / "plugins" / source).read_bytes(), plugin.read_bytes())
-            with mock.patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", runtime_root), mock.patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", runtime_root):
+            with mock.patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": str(runtime_root)}):
                 stop_chase_host(HOST_NAME)
             plugin.unlink()
             moved = Path(tmp) / "moved-recording"

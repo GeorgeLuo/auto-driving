@@ -8,12 +8,11 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from cli.automa_cli.hosts.runs.models import StopResult
-from cli.automa_cli.hosts.deployment import picar_deploy, service
+from cli.automa_cli.hosts.deployment import service
 from cli.automa_cli.hosts.deployment.models import CoreResult, CreateResult, UpdateResult
 from cli.automa_cli.hosts.deployment.registry import BACKENDS, DeploymentBackend, register_backend
 from cli.automa_cli.hosts.deployment.render import render_create, render_delete, render_update
 from cli.automa_cli.hosts.step_activations import write_host_configuration
-from cli.automa_cli.hosts import staging
 from cli.automa_cli.providers.registry import PICAR, PROVIDERS
 from cli.automa_cli.providers.models import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
@@ -24,10 +23,7 @@ from tests.support.runtime_fixtures import write_host_fixture
 class HostLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory())) / "vehicles"
-        self.enterContext(patch.object(service, "RUNTIME_ROOT", self.root))
-        self.enterContext(patch.object(picar_deploy, "RUNTIME_ROOT", self.root))
-        self.enterContext(patch.object(staging, "RUNTIME_ROOT", self.root))
-        self.enterContext(patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", self.root))
+        self.enterContext(patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": str(self.root)}))
 
     def test_create_picar_dry_run_has_core_release_then_restart_without_writes(self):
         result = invoke_automa("hosts", "create", "--name", "car", "--provider", "picar",

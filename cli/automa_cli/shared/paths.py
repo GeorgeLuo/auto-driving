@@ -6,9 +6,14 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[3]
-RUNTIME_ROOT = Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))
 # Created simulators keep their records here, beside the host directories.
 SIMULATORS_DIR = "simulators"
+
+
+def runtime_root() -> Path:
+    """Directory of host and simulator records. ``AUTOMA_RUNTIME_ROOT`` overrides it."""
+
+    return Path(os.environ.get("AUTOMA_RUNTIME_ROOT", ROOT / "runtime" / "hosts"))
 
 
 def safe_path_part(value: str) -> str:

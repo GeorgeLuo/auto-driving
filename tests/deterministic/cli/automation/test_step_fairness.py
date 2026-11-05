@@ -42,7 +42,7 @@ class StepFairnessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
-            with mock.patch("cli.automa_cli.hosts.staging.RUNTIME_ROOT", root), mock.patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", root), mock.patch(
+            with mock.patch.dict(os.environ, {"AUTOMA_RUNTIME_ROOT": str(root)}), mock.patch(
                 "cli.automa_cli.hosts.runs.status.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
             ), mock.patch.object(socket, "getaddrinfo", offline_getaddrinfo(socket.getaddrinfo)):
                 for step in staged:

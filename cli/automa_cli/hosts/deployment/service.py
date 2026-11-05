@@ -22,7 +22,7 @@ from ...releases.errors import ReleaseError
 from ...releases.paths import bundle_paths
 from ...releases.store import release_code_dir
 from ...shared.io.processes import pid_alive
-from ...shared.paths import RUNTIME_ROOT, safe_path_part
+from ...shared.paths import runtime_root, safe_path_part
 from ..progress import ProgressSink
 from ..bundles import controller_bundle_source_summary, sync_controller_bundle
 from ..discovery import running_base_url
@@ -64,7 +64,7 @@ def update_host(
     *, host_name: str, dry_run: bool = False, restart: bool = False,
     drive_args: str | None = None, verbose: bool = False, emit: ProgressSink | None = None,
 ) -> UpdateResult:
-    configuration, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
+    configuration, error = staging_host(host_name)
     if error:
         return UpdateResult(2, "error", error)
     if drive_args is not None and not restart:
@@ -111,7 +111,7 @@ def _update_local_autonomy(
 
     from autonomy.runtime.client import RuntimeClient
 
-    bundle = bundle_paths(host_name, RUNTIME_ROOT)
+    bundle = bundle_paths(host_name)
     source_summary = controller_bundle_source_summary()
     if dry_run:
         return UpdateResult(0, "local", receipt={
@@ -170,9 +170,10 @@ def create_host(
         return CreateResult(2, "error", error)
     if provider not in PROVIDERS:
         return CreateResult(2, "error", f"Provider must be one of {', '.join(PROVIDERS)} (got {provider!r}).")
-    directory = RUNTIME_ROOT / safe_path_part(host_name)
+    root = runtime_root()
+    directory = root / safe_path_part(host_name)
     if (directory / "host-configuration.json").exists():
-        existing, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
+        existing, error = staging_host(host_name, runtime_root=root)
         return CreateResult(2, "error", error or f"Host {host_name!r} already exists: {vehicle_label(existing)}.")
     backend = backend_for(provider)
     if backend is None or backend.create is None:
@@ -249,9 +250,10 @@ def _install_created_host(
     verbose: bool, emit: ProgressSink | None,
 ) -> CreateResult:
     host_name = configuration["host_name"]
-    directory = RUNTIME_ROOT / safe_path_part(host_name)
+    root = runtime_root()
+    directory = root / safe_path_part(host_name)
     made_directory = not directory.exists()
-    write_host_configuration(RUNTIME_ROOT, configuration)
+    write_host_configuration(root, configuration)
     try:
         if not local:
             core = install_picar_core(resolve_picar_target(configuration), verbose=verbose, emit=emit)
@@ -280,7 +282,7 @@ def _install_created_host(
 
 
 def delete_host(*, host_name: str, verbose: bool = False, emit: ProgressSink | None = None) -> DeleteResult:
-    configuration, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
+    configuration, error = staging_host(host_name)
     if error:
         return DeleteResult(2, "error", error)
     backend = backend_for(configuration["provider"])
@@ -293,7 +295,7 @@ def _delete_recorded_host(
     configuration: dict[str, Any], *, verbose: bool, emit: ProgressSink | None, local: bool,
 ) -> DeleteResult:
     host_name = configuration["host_name"]
-    directory = RUNTIME_ROOT / safe_path_part(host_name)
+    directory = runtime_root() / safe_path_part(host_name)
     stopped, failure = _stop_active_automation(host_name)
     if failure is not None:
         return failure

@@ -62,7 +62,9 @@ PLUGINS_PAGE_PATH = PAGES_DIR / "plugins" / "index.html"
 class RuntimeViewServer:
     """Serve peer runtime pages; retain the existing discovery and health contract.
 
-    ``hosts`` lists the hosts the home page shows. The workbench serves
+    ``hosts`` lists the hosts the home page shows. ``simulators`` returns the
+    ``automa_simulators_status`` document ``/api/simulators`` serves; a view
+    built without it does not serve that route. The workbench serves
     ``replay_runner``, or the one ``replay_runner_factory`` builds on the first
     visit; the server needs one of the two.
     """
@@ -80,6 +82,7 @@ class RuntimeViewServer:
         plugin_catalog: Callable | None = None,
         connected: bool = True,
         hosts: Callable[[], list[dict[str, Any]]] | None = None,
+        simulators: Callable[[], dict[str, Any]] | None = None,
         replay_runner: ReplayRunner | None = None,
         replay_runner_factory: Callable[[], ReplayRunner] | None = None,
     ) -> None:
@@ -89,6 +92,7 @@ class RuntimeViewServer:
         self.host_name = host_name
         self.connected = connected
         self.hosts = hosts
+        self.simulators = simulators
         self._replay_runner = replay_runner
         self._replay_runner_factory = replay_runner_factory
         self._replay_runner_lock = threading.Lock()
@@ -385,6 +389,9 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         if route == "/api/hosts":
             hosts = self.server.publisher.hosts
             self._send_json(200, {"hosts": [] if hosts is None else hosts()}, include_body=include_body)
+            return
+        if route == "/api/simulators" and self.server.publisher.simulators is not None:
+            self._send_json(200, self.server.publisher.simulators(), include_body=include_body)
             return
         if route == "/api/latest":
             body = self.server.publisher.perception.latest_json()

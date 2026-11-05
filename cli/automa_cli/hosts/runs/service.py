@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse
@@ -158,13 +157,8 @@ def run_host_automation(
     problems = bundle_activation_problems(bundle, host_name)
     if problems:
         return RunResult(2, problems=problems)
-    try:
-        selections = staged_selections(bundle)
-        identity = decision_identity(bundle)
-    except (FileNotFoundError, ValueError, TypeError, json.JSONDecodeError) as exc:
-        return RunResult(
-            2, f"Could not read staged step activations for {host_name}: {exc}"
-        )
+    selections = staged_selections(bundle)
+    identity = decision_identity(bundle)
     if host_url is None:
         try:
             base_url = (

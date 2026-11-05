@@ -11,7 +11,7 @@ from ..providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ..shared.cli.timeout_input import validate_timeout_input
 from .discovery import discover_vehicle, remove_vehicle
 from .render import format_vehicles_status, render_vehicle_result
-from .status import get_vehicles_status
+from .status import vehicles_status
 
 
 def register_vehicles(subcommands: argparse._SubParsersAction) -> None:
@@ -104,17 +104,15 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
     ):
         return 2
     try:
-        payload = get_vehicles_status(timeout_s=args.timeout_s)
+        exit_code, status = vehicles_status(timeout_s=args.timeout_s)
     except ValueError as exc:
         print(f"automa vehicles status: {exc}", file=sys.stderr)
         return 2
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        print(json.dumps(status, indent=2, sort_keys=True))
     else:
-        print(format_vehicles_status(payload))
-    if all(vehicle["state"] == "unreachable" for vehicle in payload["vehicles"]):
-        return 1
-    return 0
+        print(format_vehicles_status(status))
+    return exit_code
 
 
 def _handle_vehicles_discover(args: argparse.Namespace) -> int:

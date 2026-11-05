@@ -19,6 +19,7 @@ from dataclasses import dataclass
 from typing import Any
 from urllib.parse import parse_qs, urlencode
 
+from autonomy.decision_cycle.memory.interface import evidence_records
 from autonomy.runtime.report import HostReport, diagnostic_ceiling
 
 
@@ -41,7 +42,7 @@ class DecisionViewError(Exception):
 class _Transaction:
     transaction_id: str
     report: dict[str, Any]
-    frame_record: dict[str, Any]
+    host_telemetry: dict[str, Any] | None
     image_bytes: bytes
     content_type: str
 
@@ -89,9 +90,9 @@ def _evidence_projection(
 ) -> dict[str, Any]:
     """Project only evidence that is exactly attributable to the current image.
 
-    The accepted cycle remains available unchanged under ``provenance``. This
-    projection is the machine-visible rendering gate: an unavailable record
-    carries its raw origin but never carries renderable geometry.
+    The accepted cycle stays on the report. This projection is the
+    machine-visible rendering gate: an unavailable record carries its raw
+    origin but never carries renderable geometry.
     """
 
     raw_records = evidence_input if isinstance(evidence_input, list) else []
@@ -331,17 +332,17 @@ class DecisionView:
     def publish(
         self,
         *,
-        report: dict[str, Any],
-        frame_record: dict[str, Any],
+        report: HostReport | dict[str, Any],
         image: tuple[bytes, str] | None,
+        host_telemetry: dict[str, Any] | None = None,
     ) -> bool:
-        """Store one report when the vehicle, run, generation, source, and frame agree."""
+        """Store one report when the vehicle, run, generation, and source agree."""
 
         if self.identity is None or image is None:
             self.invalidate_latest()
             return False
         try:
-            parsed = HostReport.from_dict(report)
+            parsed = report if isinstance(report, HostReport) else HostReport.from_dict(report)
             diagnostic_ceiling(parsed.values)
             identity = self.identity
             if (
@@ -349,12 +350,6 @@ class DecisionView:
                 or parsed.run_id != identity["run_id"]
                 or parsed.generation_id != identity["producer_generation_id"]
                 or parsed.values.get("source_id") != identity["source_id"]
-            ):
-                self.invalidate_latest()
-                return False
-            if (
-                frame_record.get("frame_id") != parsed.frame_id
-                or frame_record.get("run_id") != parsed.run_id
             ):
                 self.invalidate_latest()
                 return False
@@ -367,14 +362,19 @@ class DecisionView:
                 self.invalidate_latest()
                 return False
             copied_report = parsed.to_dict()
-            copied_record = _json_copy(frame_record)
+            if host_telemetry is None:
+                copied_telemetry = None
+            elif not isinstance(host_telemetry, dict):
+                raise TypeError("host telemetry must be an object")
+            else:
+                copied_telemetry = _json_copy(host_telemetry)
         except Exception:  # noqa: BLE001 - publication must not affect the worker cycle
             self.invalidate_latest()
             return False
 
         return self._store_transaction(
             report=copied_report,
-            frame_record=copied_record,
+            host_telemetry=copied_telemetry,
             image_bytes=image_bytes,
             content_type=content_type,
         )
@@ -383,7 +383,7 @@ class DecisionView:
         self,
         *,
         report: dict[str, Any],
-        frame_record: dict[str, Any],
+        host_telemetry: dict[str, Any] | None,
         image_bytes: bytes,
         content_type: str,
     ) -> bool:
@@ -398,7 +398,7 @@ class DecisionView:
         transaction = _Transaction(
             transaction_id=transaction_id,
             report=report,
-            frame_record=frame_record,
+            host_telemetry=host_telemetry,
             image_bytes=bytes(image_bytes),
             content_type=content_type,
         )
@@ -424,10 +424,11 @@ class DecisionView:
         if transaction is None:
             raise DecisionViewError(503, "decision_warming", "no accepted decision cycle is available")
         served_at_ms = _now_ms() if now_ms is None else now_ms
-        published_at_ms = transaction.report["published_at_ms"]
-        captured_at_ms = transaction.frame_record.get("captured_at_ms")
+        report = transaction.report
+        published_at_ms = report["published_at_ms"]
+        captured_at_ms = report["timestamp_ms"]
         age_ms = served_at_ms - published_at_ms
-        max_age_ms = diagnostic_ceiling(transaction.report["values"])
+        max_age_ms = diagnostic_ceiling(report["values"])
         if not 0 <= age_ms <= max_age_ms:
             raise DecisionViewError(503, "decision_stale", "accepted decision cycle has expired")
         capture_age_ms = (
@@ -437,16 +438,13 @@ class DecisionView:
         image_url = "/api/decision/image?" + urlencode(
             {"generation": generation, "id": transaction.transaction_id}
         )
-        cycle = transaction.report["cycle"]
-        action = cycle.get("action") if isinstance(cycle, dict) else None
-        authority = action.get("authority") if isinstance(action, dict) else None
-        observation = transaction.frame_record.get("observation")
-        evidence_input = transaction.frame_record.get("memory_evidence")
+        cycle = report["cycle"] if isinstance(report.get("cycle"), dict) else {}
+        observation = cycle.get("observation")
         evidence = _evidence_projection(
             transaction_id=transaction.transaction_id,
-            frame_id=transaction.frame_record["frame_id"],
+            frame_id=report["frame_id"],
             observation=observation,
-            evidence_input=evidence_input,
+            evidence_input=evidence_records(cycle.get("memory")),
         )
         return {
             "schema": DECISION_VIEW_SCHEMA,
@@ -464,26 +462,20 @@ class DecisionView:
                 "max_age_ms": max_age_ms,
                 "expires_at_ms": published_at_ms + max_age_ms,
             },
-            "decision": _json_copy(transaction.report),
+            "decision": _json_copy(report),
             "current_image": {
                 "status": "available",
-                "frame_id": transaction.frame_record["frame_id"],
-                "frame_index": transaction.frame_record["frame_index"],
-                "captured_at_ms": transaction.frame_record.get("captured_at_ms"),
+                "frame_id": report["frame_id"],
+                "frame_index": report["frame_index"],
+                "captured_at_ms": captured_at_ms,
                 "content_type": transaction.content_type,
                 "byte_length": len(transaction.image_bytes),
                 "sha256": image_sha256,
                 "url": image_url,
             },
-            "provenance": {
-                "sensor_frame": _json_copy(transaction.frame_record.get("sensor_frame")),
-                "observation": _json_copy(observation),
-                "evidence": _json_copy(evidence_input),
-            },
             "evidence": evidence,
-            "authority": _json_copy(authority) if isinstance(authority, dict) else None,
-            "host_telemetry": _json_copy(transaction.frame_record.get("host_telemetry"))
-            if isinstance(transaction.frame_record.get("host_telemetry"), dict)
+            "host_telemetry": _json_copy(transaction.host_telemetry)
+            if isinstance(transaction.host_telemetry, dict)
             else None,
         }
 

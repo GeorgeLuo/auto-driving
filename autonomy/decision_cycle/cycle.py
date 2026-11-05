@@ -21,7 +21,9 @@ host-owned map every step's plugins share.
 from __future__ import annotations
 
 import time
-from dataclasses import asdict, dataclass, is_dataclass
+from copy import deepcopy
+from dataclasses import asdict, dataclass, field, is_dataclass
+from threading import Lock
 from typing import Any, Callable
 
 from autonomy.decision_cycle.action.result import ActionResult
@@ -35,6 +37,10 @@ from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.timing import clock, cycle_timing, elapsed_ms
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
+
+# One lock for every result. It stays out of the dataclass so copy, pickle,
+# and asdict do not have to carry a lock.
+_CYCLE_EXPORT_LOCK = Lock()
 
 
 DECISION_CYCLE_RESULT_SCHEMA = "decision_cycle_result"
@@ -92,6 +98,10 @@ class DecisionCycleResult:
     application: ControlApplication | None = None
     timing: dict[str, Any] | None = None
     schema: str = DECISION_CYCLE_RESULT_SCHEMA
+    # Retained on this object only. ``replace`` builds a new result, so a host
+    # can record context and application before the first export without
+    # serializing the five records again.
+    _cycle_export: dict[str, Any] | None = field(default=None, init=False, repr=False, compare=False)
 
     @property
     def duration_ms(self) -> float | int:
@@ -107,7 +117,23 @@ class DecisionCycleResult:
             "application": self.application.to_dict() if self.application is not None else None,
         }
 
+    def export_cycle(self) -> dict[str, Any]:
+        """Copy the cycle body, serializing its five records once for this result.
+
+        The retained body stays on this object. Each caller gets a copy, so a
+        publication cannot change a later recording or status read. Replacing
+        context or application builds a new result; that result serializes when
+        it is first exported, not when it is replaced.
+        """
+
+        with _CYCLE_EXPORT_LOCK:
+            if self._cycle_export is None:
+                object.__setattr__(self, "_cycle_export", deepcopy(export_cycle_body(self)))
+            retained = self._cycle_export
+        return deepcopy(retained)
+
     def to_dict(self) -> dict[str, Any]:
+        cycle = self.export_cycle()
         return {
             "schema": self.schema,
             "started_at_ms": self.started_at_ms,
@@ -115,11 +141,11 @@ class DecisionCycleResult:
             "duration_ms": self.duration_ms,
             "context": self.context.to_dict(),
             "perception": _record(self.perception),
-            "observation": _record(self.observation),
-            "memory": _to_plain_data(self.memory),
-            "proposal": _record(self.proposal),
-            "plan": _record(self.plan),
-            "action": _record(self.action),
+            "observation": cycle["observation"],
+            "memory": cycle["memory"],
+            "proposal": cycle["proposal"],
+            "plan": cycle["plan"],
+            "action": cycle["action"],
             "control": self.control.to_dict(),
             "application": self.application.to_dict() if self.application is not None else None,
             "timing": _to_plain_data(self.timing),
@@ -227,6 +253,22 @@ def _checked(step: str, record: Any, record_type: type) -> Any:
     if record is not None and not isinstance(record, record_type):
         raise TypeError(f"{step} step must return {record_type.__name__} or None")
     return record
+
+
+CYCLE_RECORD_KEYS = ("observation", "memory", "proposal", "plan", "action")
+
+
+def export_cycle_body(result: Any) -> dict[str, Any]:
+    """The five cycle records on any completed result, each detached.
+
+    Reports and recordings share this body. Each keeps its own identity,
+    timing, perception, and delivery fields beside it.
+    """
+
+    return {
+        key: _to_plain_data(getattr(result, key, None))
+        for key in CYCLE_RECORD_KEYS
+    }
 
 
 def _record(value: Any) -> Any:

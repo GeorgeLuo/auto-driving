@@ -119,6 +119,11 @@ class FrozenJsonObject(Mapping[str, Any]):
         memo[id(self)] = cloned
         return cloned
 
+    def __reduce__(self) -> tuple[Any, tuple[dict[str, Any]]]:
+        # MappingProxyType does not pickle. Restore through ``__init__``, which
+        # seals a new proxy. Nested frozen objects stay frozen objects.
+        return (FrozenJsonObject, (dict(self._data),))
+
     def to_plain(self) -> dict[str, Any]:
         return {key: frozen_mapping_to_dict(value) for key, value in self._data.items()}
 

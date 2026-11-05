@@ -395,9 +395,6 @@
 
     function decisionPlan() {
       const decision = latest?.decision || {};
-      if (decision.plan_summary && typeof decision.plan_summary === "object") {
-        return decision.plan_summary;
-      }
       const plan = decision.cycle?.plan;
       return plan && typeof plan === "object" ? plan : {};
     }
@@ -501,7 +498,7 @@
       const decision = latest.decision || {};
       const cycle = decision.cycle || {};
       const plan = decisionPlan();
-      const authority = latest.authority || {};
+      const authority = cycle.action?.authority || {};
       const application = decision.application || {};
       const hostTelemetry = latest.host_telemetry || null;
       const candidate = selectedCandidate();
@@ -608,7 +605,7 @@
       if (reason) {
         return { text: `Live | ${reason.replaceAll("_", " ")}`, mode: "live" };
       }
-      return { text: `Live | plan ${payload?.decision?.plan_summary?.status || cycle.action?.status || "idle"}`, mode: "stale" };
+      return { text: `Live | plan ${cycle.plan?.status || "idle"}`, mode: "stale" };
     }
 
     function nonExpiredPayload(payload, now = Date.now()) {

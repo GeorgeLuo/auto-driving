@@ -8,8 +8,7 @@ const elements = {};
 });
 const ctx = {
   elements,
-  state: { current_frame: null, steps: { perception: null } },
-  currentPayload() { return ctx.state.steps.perception; },
+  state: { current_frame: null, perception: null },
   currentFrame() { return ctx.state.current_frame; },
   text(value) { return value == null ? "—" : String(value); },
   setText(id, value) { elements[id].textContent = value; }
@@ -29,7 +28,7 @@ assert.equal(elements.perceptionLines.textContent, "camera missing");
 assert.equal(elements.perceptionPluginRuns.textContent, null);
 
 ctx.state.current_frame = { frame_id: "camera", absent: false };
-ctx.state.steps.perception = {
+ctx.state.perception = {
   status: "ok", plugin_runs: [{ plugin_id: "frame" }], things: [], signals: [], lines: ["frame output"]
 };
 ctx.renderPerception();

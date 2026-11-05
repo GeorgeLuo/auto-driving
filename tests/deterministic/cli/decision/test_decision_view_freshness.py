@@ -21,17 +21,10 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         stream_frame, _expected_image = self._publish_exact_transaction()
         generation = self.server.decision.generation_id
         self.assertIsNotNone(generation)
-        frame_record = {
-            "frame_id": stream_frame["frame_id"],
-            "frame_index": stream_frame["frame_index"],
-            "captured_at_ms": stream_frame["timestamp_ms"],
-            "run_id": "run-live",
-        }
         rejected_frame = {**stream_frame, "cycle": None}
         self.assertFalse(
             self.server.decision.publish(
                 report=rejected_frame,
-                frame_record=frame_record,
                 image=self.server.perception.frame(stream_frame["frame_id"]),
             )
         )
@@ -46,7 +39,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self.assertEqual(error["reason"], "decision_warming")
         self.assertNotIn("transaction_id", error)
 
-        recovered, _ = self._publish_exact_transaction(image_name="recovered-frame.png")
+        recovered, _ = self._publish_exact_transaction()
         with urlopen(
             f"{self.server.url}api/decision/latest?generation={generation}",
             timeout=1.0,
@@ -120,10 +113,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
 
         def publish_next() -> None:
             try:
-                self._publish_exact_transaction(
-                    image_name="decision-frame-next.png",
-                    image_color=(210, 40, 30),
-                )
+                self._publish_exact_transaction(image_color=(210, 40, 30))
             except BaseException as exc:  # noqa: BLE001 - surface thread failures
                 publish_errors.append(exc)
             finally:
@@ -229,7 +219,6 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         replacement_frame, replacement_image = self._publish_exact_transaction(
             server=replacement,
             run_id="run-replacement",
-            image_name="replacement-frame.png",
             image_color=(210, 40, 30),
         )
         new_generation = replacement.decision.generation_id
@@ -272,7 +261,6 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         published = []
         for index in range(MAX_RETAINED_TRANSACTIONS + 1):
             _, image = self._publish_exact_transaction(
-                image_name=f"frame-{index}.png",
                 image_color=(index, 80, 150),
                 stream_frame=stream_frame,
             )

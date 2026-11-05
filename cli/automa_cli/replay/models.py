@@ -85,6 +85,5 @@ class SourceValidationError(ValueError):
 @dataclass(frozen=True)
 class FrameOutcome:
     result: Any
-    decision: dict[str, Any] | None
     # Each step runner's plugin report after the frame, by step.
     plugin_reports: dict[str, dict[str, Any] | None]

@@ -22,23 +22,12 @@ from .models import RestartResult, StartResult, StopResult, status_reason
 _CONTROL_SOURCE_LABELS = {"runtime_host": "runtime host"}
 
 
-def render_hosts_status(
-    hosts: list[dict[str, Any]],
-    *,
-    host_name: str | None,
-    json_output: bool,
-    long: bool,
-) -> str:
+def render_hosts_status(status: dict[str, Any], *, json_output: bool, long: bool) -> str:
     """Text for a terminal, or ``automa_hosts_status`` JSON."""
 
     if json_output:
-        payload = {
-            "schema": "automa_hosts_status",
-            "host_name": host_name,
-            "hosts": hosts,
-        }
-        return json.dumps(payload, indent=2, sort_keys=True)
-    return _format_hosts_status(hosts, long=long)
+        return json.dumps(status, indent=2, sort_keys=True)
+    return _format_hosts_status(status["hosts"], long=long)
 
 
 def _format_hosts_status(hosts: list[dict[str, Any]], *, long: bool) -> str:
@@ -71,7 +60,7 @@ def _run_lines(item: dict[str, Any] | None) -> list[str]:
         f"  release: {_release_label(item.get('release'), item.get('host_name'))}",
         *_selection_lines(item),
         f"  decision: {_decision_label(decision)}",
-        f"  worker: {_worker_label(process, state)}",
+        f"  worker: {_worker_label(process)}",
         f"  run: {_run_label(state)}",
         f"  latest: {_latest_status_label(state, last_frame)}",
         f"  view: {_published_view_label(published_view)}",
@@ -178,15 +167,11 @@ def _applied_label(selection: dict[str, Any], applied: dict[str, Any]) -> str:
 
 
 def _decision_label(decision: dict[str, Any]) -> str:
-    if not decision.get("deployed"):
-        return f"not deployed; expected {decision.get('activation', 'unknown')}"
-    return str(decision.get("generation_id") or "no generation")
+    return str(decision.get("generation_id") or f"not deployed; expected {decision.get('activation', 'unknown')}")
 
 
-def _worker_label(process: dict[str, Any], state: dict[str, Any]) -> str:
+def _worker_label(process: dict[str, Any]) -> str:
     pid = process.get("pid")
-    if pid is None:
-        pid = state.get("pid")
     pid_text = str(pid) if isinstance(pid, int) else "none"
     return f"{process.get('status', 'unknown')}  pid={pid_text} ({process.get('pid_state', 'unknown')})"
 

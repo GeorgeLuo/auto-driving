@@ -1,12 +1,11 @@
 """A host's decision publication, as the CLI reads it.
 
 ``host_publications`` fetches the publication; ``normalize_decision_publication``
-checks it, and the rest turn it into the frame record and text the CLI shows.
+checks it, and the rest turn it into the text the CLI shows.
 """
 
 from __future__ import annotations
 
-from copy import deepcopy
 from functools import partial
 from typing import Any
 
@@ -14,6 +13,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
     require_safe_int,
 )
+from autonomy.decision_cycle.timing import step_timing
 from autonomy.runtime.frame_loop import DECISION_PUBLICATION_SCHEMA
 from autonomy.runtime.report import HostReport, diagnostic_ceiling
 from .publication_fields import PublicationError, require_id, require_mapping
@@ -181,9 +181,7 @@ def normalize_decision_publication(
         if type(max_age_ms) is not int or max_age_ms <= 0:
             raise ValueError("max_age_ms must be a positive non-bool int")
         ceiling = int(max_age_ms)
-    decision = report.to_dict()
     values = report.values
-
     decision_host_name = report.host_name
     if decision_host_name != host_name:
         raise _publication_error(
@@ -222,8 +220,6 @@ def normalize_decision_publication(
             field="decision.values.activation.steps",
         )
 
-    # Cycle reconstruction and frame/activation alignment belong to the
-    # shared report reader. This adapter owns only the HTTP envelope.
     if type(now_ms) is not int:
         raise ValueError("now_ms must be a non-bool int")
     age_ms = int(now_ms) - published_at_ms
@@ -241,8 +237,6 @@ def normalize_decision_publication(
         )
 
     return {
-        "publication": deepcopy(publication),
-        "decision": deepcopy(decision),
         "host_name": decision_host_name,
         "source_id": source_id,
         "run_id": run_id,
@@ -255,43 +249,7 @@ def normalize_decision_publication(
         "result_age_ms": age_ms,
         "max_age_ms": ceiling,
         "advertised_result_age_ms": result_age_ms,
-    }
-
-
-def publication_to_frame_record(publication: dict[str, Any]) -> dict[str, Any]:
-    """Adapt an onboard publication, including its memory report."""
-    frame = publication.get("frame") if isinstance(publication.get("frame"), dict) else {}
-    perception = publication.get("perception")
-    observation = publication.get("observation")
-    control = publication.get("control")
-    completed_at_ms = frame.get("completed_at_ms")
-    duration_ms = publication.get("duration_ms")
-    memory = publication.get("memory")
-    return {
-        "frame_id": frame.get("frame_id"),
-        "frame_index": frame.get("frame_index"),
-        "captured_at_ms": frame.get("captured_at_ms"),
-        "perception_completed_at_ms": completed_at_ms,
-        "perception_duration_ms": duration_ms,
-        "cycle_duration_ms": duration_ms,
-        "timing": deepcopy(publication.get("timing"))
-        if isinstance(publication.get("timing"), dict)
-        else None,
-        "perception": perception if isinstance(perception, dict) else None,
-        "observation": observation if isinstance(observation, dict) else None,
-        "memory": memory if isinstance(memory, dict) else None,
-        "control": control if isinstance(control, dict) else None,
-        "generation_id": publication.get("generation_id"),
-        "step_activations": deepcopy(publication.get("step_activations")),
-        "context": deepcopy(publication.get("context")),
-        "presets": deepcopy(publication.get("presets")),
-        "health": publication.get("health"),
-        "result_age_ms": publication.get("result_age_ms"),
-        "action_policy": publication.get("mode"),
-        "control_source": "runtime_host",
-        "control_application": (
-            "shared_execution" if publication.get("mode") == "autonomy" else "not_applied"
-        ),
+        "report": report,
     }
 
 
@@ -301,6 +259,32 @@ def presets_text(presets: object) -> str:
     if not isinstance(presets, dict) or not presets:
         return "none"
     return " ".join(f"{step}={preset}" for step, preset in presets.items())
+
+
+def publication_part(publication: object, key: str) -> dict[str, Any]:
+    """An object field of an observation publication, or ``{}`` when it has none."""
+
+    value = publication.get(key) if isinstance(publication, dict) else None
+    return value if isinstance(value, dict) else {}
+
+
+def publication_capture(publication: dict[str, Any]) -> tuple[Any, ...]:
+    """What identifies one observation: its frame, capture, completion, and generation."""
+
+    frame = publication_part(publication, "frame")
+    return (
+        frame.get("frame_id"),
+        frame.get("captured_at_ms"),
+        frame.get("completed_at_ms"),
+        publication.get("generation_id"),
+    )
+
+
+def perception_duration_ms(publication: dict[str, Any]) -> Any:
+    """The perception step's duration from the cycle timing, or None without it."""
+
+    step = step_timing(publication_part(publication, "timing") or None, "perception")
+    return None if step is None else step.get("duration_ms")
 
 
 def perception_text_from_publication(publication: dict[str, Any]) -> str:

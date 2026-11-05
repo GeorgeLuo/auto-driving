@@ -8,8 +8,9 @@ from autonomy.runtime.frame_loop import LATEST_JSON_PATH
 
 from ...hosts.publications.decision_publication import (
     health_error,
+    perception_duration_ms,
     perception_text_from_publication,
-    publication_to_frame_record,
+    publication_part,
 )
 from ...hosts.publications.host_publications import fetch_observation_publication
 from ...hosts.discovery import runtime_base_url
@@ -89,9 +90,9 @@ def perception_publication(publication: dict[str, Any] | None) -> PerceptionPubl
 
     if not isinstance(publication, dict):
         publication = {}
-    record = publication_to_frame_record(publication)
-    perception = record["perception"] or {}
-    control = record["control"] or {}
+    frame = publication_part(publication, "frame")
+    perception = publication_part(publication, "perception")
+    control = publication_part(publication, "control")
     signals, things = perception.get("signals"), perception.get("things")
     return PerceptionPublication(
         health=publication.get("health"),
@@ -104,8 +105,8 @@ def perception_publication(publication: dict[str, Any] | None) -> PerceptionPubl
         cycle_ms=publication.get("duration_ms"),
         # The host computes the result age on its own clock.
         age_ms=publication.get("result_age_ms"),
-        frame_id=record["frame_id"],
-        captured_at_ms=record["captured_at_ms"],
+        frame_id=frame.get("frame_id"),
+        captured_at_ms=frame.get("captured_at_ms"),
         signal_count=len(signals) if isinstance(signals, list) else None,
         thing_count=len(things) if isinstance(things, list) else None,
         text=perception_text_from_publication(publication) if publication else "",
@@ -143,34 +144,35 @@ def _probe_perception(
     # The host computes the result age on its own clock.
     return _probe_latest_perception(
         probe,
-        publication_to_frame_record(publication),
+        publication,
         age_ms=publication.get("result_age_ms"),
     )
 
 
 def _probe_latest_perception(
     probe: dict[str, Any],
-    record: dict[str, Any],
+    publication: dict[str, Any],
     *,
     age_ms: Any,
 ) -> dict[str, Any]:
     """The latest frame's perception, as every provider's live probe reports it."""
 
+    frame_record = publication_part(publication, "frame")
     frame = {
-        "frame_id": record.get("frame_id"),
-        "frame_index": record.get("frame_index"),
-        "captured_at_ms": record.get("captured_at_ms"),
-        "perception_completed_at_ms": record.get("perception_completed_at_ms"),
-        "perception_duration_ms": record.get("perception_duration_ms"),
+        "frame_id": frame_record.get("frame_id"),
+        "frame_index": frame_record.get("frame_index"),
+        "captured_at_ms": frame_record.get("captured_at_ms"),
+        "perception_completed_at_ms": frame_record.get("completed_at_ms"),
+        "perception_duration_ms": perception_duration_ms(publication),
         "age_ms": age_ms,
     }
-    perception = record.get("perception")
+    perception = publication.get("perception")
     if not isinstance(perception, dict):
         return {
             **probe,
             **frame,
             "status": "absent",
-            "error": f"Latest frame {record.get('frame_id')!r} has no perception result.",
+            "error": f"Latest frame {frame_record.get('frame_id')!r} has no perception result.",
         }
     signals = perception.get("signals")
     things = perception.get("things")

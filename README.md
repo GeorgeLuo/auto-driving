@@ -320,11 +320,11 @@ While a host's run is active, `hosts status --long` reports a
 loopback URL for a live frame-and-data view. The page polls the worker's
 in-memory publication. Camera capture runs independently from perception, so a
 slow plugin consumes the newest available frame instead of accumulating a
-backlog. The page displays the latest camera frame with the newest available
-overlay and reports its source frame, frame lag, and elapsed result age. It can
-independently hide regions, labels, or finding kinds. Only image-coordinate
-findings are drawn over the camera frame; findings in other coordinate systems
-remain available in the data panel.
+backlog. The page displays the latest camera frame with the findings perception
+completed for it, and reports the elapsed result age. It can independently hide
+regions, labels, or finding kinds. Only image-coordinate findings are drawn over
+the camera frame; findings in other coordinate systems remain available in the
+data panel.
 
 Stop or restart the worker:
 

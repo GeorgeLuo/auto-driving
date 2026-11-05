@@ -578,10 +578,6 @@
       return `${(milliseconds / 1000).toFixed(1)} s`;
     }
 
-    function liveStatus() {
-      return { text: "Live", mode: "live" };
-    }
-
     // Every memory plugin's key count by plugin_id; /memory shows each ledger.
     function memoryKeysText(memory) {
       if (!memory) return "open /memory";
@@ -682,8 +678,7 @@
         }
         latest = next;
         renderData();
-        const status = liveStatus();
-        setStatus(status.text, status.mode);
+        setStatus("Live", "live");
       } catch (error) {
         setStatus(`Waiting: ${error.message}`, "error");
       } finally {

@@ -29,9 +29,8 @@ class PerceptionView:
         self.unavailable_reason = NO_FRAME_ERROR
         self._lock = threading.RLock()
         self._frames: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
-        self._latest_frame: dict[str, Any] | None = None
-        self._latest_perception_record: dict[str, Any] | None = None
-        self._latest_frame_id: str | None = None
+        # The latest frame's metadata and the record it was published with.
+        self._latest: tuple[dict[str, Any], dict[str, Any]] | None = None
 
     def publish(self, *, frame_bytes: bytes, frame_record: dict[str, Any]) -> None:
         """Replace the latest JPEG and its findings together."""
@@ -58,40 +57,34 @@ class PerceptionView:
             self._frames.move_to_end(frame_id)
             if len(self._frames) > MAX_BUFFERED_FRAMES:
                 self._frames.popitem(last=False)
-            self._latest_frame = frame
-            self._latest_frame_id = frame_id
-            self._latest_perception_record = frame_record
+            self._latest = frame, frame_record
 
     def invalidate_latest(self, reason: str | None = None) -> None:
         """An unavailable publication must not leave a usable latest frame; ``reason`` says why."""
         with self._lock:
             self.unavailable_reason = reason or NO_FRAME_ERROR
-            self._latest_frame = None
-            self._latest_frame_id = None
-            self._latest_perception_record = None
+            self._latest = None
 
     def health_payload(self) -> dict[str, Any]:
         with self._lock:
-            return {
-                "has_frame": self._latest_frame_id is not None,
-                "latest_frame_id": self._latest_frame_id,
-            }
+            return {"latest_frame_id": self._latest_frame_id()}
 
     def latest_json(self) -> bytes | None:
         with self._lock:
-            if self._latest_frame is None:
+            if self._latest is None:
                 return None
-            payload = _publication_payload(
-                host_name=self.host_name,
-                frame=dict(self._latest_frame),
-                perception_record=self._latest_perception_record,
-                generated_at_ms=_timestamp_ms(),
-            )
+            frame, record = self._latest
+        payload = _publication_payload(
+            host_name=self.host_name, frame=frame, perception_record=record, generated_at_ms=_timestamp_ms(),
+        )
         return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
 
     def frame(self, frame_id: str | None = None) -> tuple[bytes, str] | None:
         with self._lock:
-            return self._frames.get(frame_id if frame_id is not None else self._latest_frame_id)
+            return self._frames.get(frame_id if frame_id is not None else self._latest_frame_id())
+
+    def _latest_frame_id(self) -> str | None:
+        return None if self._latest is None else self._latest[0]["frame_id"]
 
 
 def get_perception_view_status(
@@ -185,12 +178,7 @@ def get_perception_view_status(
 def perception_view_ready(payload: dict[str, Any]) -> bool:
     """True when the view has published one camera image and its findings."""
 
-    return bool(
-        payload.get("available")
-        and payload.get("url")
-        and payload.get("has_frame")
-        and payload.get("latest_frame_id")
-    )
+    return bool(payload.get("available") and payload.get("url") and payload.get("latest_frame_id"))
 
 
 def _view_generation_error(
@@ -216,7 +204,7 @@ def _view_generation_error(
 
 
 def _frame_identity(record: Any) -> dict[str, Any]:
-    """Nested publication frame. Capture-only records use the same identity."""
+    """The record's nested frame; publication requires its ``frame_id``."""
 
     frame = record.get("frame") if isinstance(record, dict) else None
     frame_id = frame.get("frame_id") if isinstance(frame, dict) else None
@@ -229,25 +217,23 @@ def _publication_payload(
     *,
     host_name: str,
     frame: dict[str, Any],
-    perception_record: dict[str, Any] | None,
+    perception_record: dict[str, Any],
     generated_at_ms: int,
 ) -> dict[str, Any]:
-    source = perception_record if isinstance(perception_record, dict) else {}
-    perception = source.get("perception")
-    perception = perception if isinstance(perception, dict) else None
-    timing = source.get("timing") if isinstance(source.get("timing"), dict) else None
-    identity = source.get("frame") if isinstance(source.get("frame"), dict) else {}
+    perception = perception_record.get("perception")
+    timing = perception_record.get("timing")
+    completed_at_ms = perception_record["frame"].get("completed_at_ms")
     return {
         "schema": PUBLICATION_SCHEMA,
         "host_name": host_name,
         "generated_at_ms": generated_at_ms,
-        "result_age_ms": _nonnegative_difference(generated_at_ms, identity.get("completed_at_ms")),
+        "result_age_ms": _nonnegative_difference(generated_at_ms, completed_at_ms),
         "frame": frame,
-        "timing": timing,
-        "duration_ms": source.get("duration_ms"),
-        "memory": source.get("memory"),
-        "perception": perception,
-        "control": source.get("control"),
+        "timing": timing if isinstance(timing, dict) else None,
+        "duration_ms": perception_record.get("duration_ms"),
+        "memory": perception_record.get("memory"),
+        "perception": perception if isinstance(perception, dict) else None,
+        "control": perception_record.get("control"),
     }
 
 

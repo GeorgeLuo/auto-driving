@@ -85,7 +85,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
         }
         view = {
             "available": True, "url": "http://127.0.0.1:8555/",
-            "has_frame": True, "latest_frame_id": "frame_000002",
+            "latest_frame_id": "frame_000002",
         }
         with (
             patch("cli.automa_cli.hosts.runs.process.read_run_state", return_value=state),
@@ -162,7 +162,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
                                 "status": "running",
                                 "available": True,
                                 "url": "http://127.0.0.1:8555/",
-                                "has_frame": True,
                                 "latest_frame_id": "frame_000000",
                             },
                         }
@@ -182,7 +181,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
                         "status": "running",
                         "available": True,
                         "url": "http://127.0.0.1:8555/",
-                        "has_frame": True,
                         "latest_frame_id": "frame_000000",
                     },
                 ),
@@ -239,7 +237,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 "status": "running",
                 "available": True,
                 "url": "http://127.0.0.1:8666/",
-                "has_frame": True,
                 "latest_frame_id": "frame_000001",
             }
 

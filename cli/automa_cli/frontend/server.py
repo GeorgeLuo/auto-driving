@@ -8,7 +8,7 @@ import threading
 import time
 import zlib
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 from urllib.parse import parse_qs, urlparse
 
 from .perception_view import (
@@ -28,6 +28,8 @@ from .loopback_http import (
     PAGES_DIR,
     LoopbackHTTPRequestHandler,
     LoopbackHTTPServer,
+    local_write_error,
+    read_json_object,
     start_server_thread,
     stop_server_thread,
     validate_loopback_host,
@@ -62,9 +64,10 @@ PLUGINS_PAGE_PATH = PAGES_DIR / "plugins" / "index.html"
 class RuntimeViewServer:
     """Serve peer runtime pages; retain the existing discovery and health contract.
 
-    ``hosts`` lists the hosts the home page shows. ``simulators`` returns the
-    ``automa_simulators_status`` document ``/api/simulators`` serves; a view
-    built without it does not serve that route. The workbench serves
+    ``hosts`` lists the hosts the home page shows. ``reads`` maps a GET route
+    to the document it serves; ``writes`` maps a POST route to the command it
+    runs with the request's JSON object, which returns a result with ``ok``.
+    A view serves only the routes it was built with. The workbench serves
     ``replay_runner``, or the one ``replay_runner_factory`` builds on the first
     visit; the server needs one of the two.
     """
@@ -82,7 +85,8 @@ class RuntimeViewServer:
         plugin_catalog: Callable | None = None,
         connected: bool = True,
         hosts: Callable[[], list[dict[str, Any]]] | None = None,
-        simulators: Callable[[], dict[str, Any]] | None = None,
+        reads: Mapping[str, Callable[[], dict[str, Any]]] | None = None,
+        writes: Mapping[str, Callable[[dict[str, Any]], dict[str, Any]]] | None = None,
         replay_runner: ReplayRunner | None = None,
         replay_runner_factory: Callable[[], ReplayRunner] | None = None,
     ) -> None:
@@ -92,7 +96,8 @@ class RuntimeViewServer:
         self.host_name = host_name
         self.connected = connected
         self.hosts = hosts
-        self.simulators = simulators
+        self.reads = dict(reads or {})
+        self.writes = dict(writes or {})
         self._replay_runner = replay_runner
         self._replay_runner_factory = replay_runner_factory
         self._replay_runner_lock = threading.Lock()
@@ -242,7 +247,23 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         if route == PLUGIN_CATALOG_PATH:
             serve_plugin_catalog(self, self.server.publisher.plugin_catalog)
             return
+        if route in self.server.publisher.writes:
+            self._serve_write(self.server.publisher.writes[route])
+            return
         self._reject_write_method()
+
+    def _serve_write(self, command: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
+        """Run a write route's command with the request's JSON object: 200 when it succeeds, else 400."""
+
+        error = local_write_error(self, subject="writes")
+        if error is not None:
+            self._send_json(*error)
+            return
+        try:
+            result = command(read_json_object(self, what="request body"))
+        except (ValueError, TypeError) as exc:
+            result = {"ok": False, "error": str(exc)}
+        self._send_json(200 if result.get("ok") else 400, result)
 
     def do_PUT(self) -> None:
         self._reject_write_method()
@@ -390,8 +411,8 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             hosts = self.server.publisher.hosts
             self._send_json(200, {"hosts": [] if hosts is None else hosts()}, include_body=include_body)
             return
-        if route == "/api/simulators" and self.server.publisher.simulators is not None:
-            self._send_json(200, self.server.publisher.simulators(), include_body=include_body)
+        if route in self.server.publisher.reads:
+            self._send_json(200, self.server.publisher.reads[route](), include_body=include_body)
             return
         if route == "/api/latest":
             body = self.server.publisher.perception.latest_json()

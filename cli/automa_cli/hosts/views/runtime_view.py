@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from typing import Any
+from typing import Any, Mapping
 
 from ...frontend.server import VIEWER_PORT, RuntimeViewServer
 from ...shared.browser_result import BrowserOpenResult
@@ -23,13 +23,15 @@ def runtime_view_server(**options: Any) -> RuntimeViewServer:
 
 def serve_viewer(
     *,
-    simulators: Callable[[], dict[str, Any]] | None = None,
+    reads: Mapping[str, Callable[[], dict[str, Any]]] | None = None,
+    writes: Mapping[str, Callable[[dict[str, Any]], dict[str, Any]]] | None = None,
     emit: Callable[[BrowserOpenResult], None] | None = None,
 ) -> int:
     """Serve the runtime pages with no runtime host until interrupted.
 
-    ``simulators`` returns the document ``/api/simulators`` serves. The caller
-    passes it because ``simulators`` imports ``hosts``.
+    ``reads`` and ``writes`` are the viewer's command routes, as
+    ``RuntimeViewServer`` takes them. The caller passes them because the
+    commands they run import ``hosts``.
     """
 
     server = runtime_view_server(
@@ -37,7 +39,8 @@ def serve_viewer(
         automation_dir=None,
         port=VIEWER_PORT,
         connected=False,
-        simulators=simulators,
+        reads=reads,
+        writes=writes,
     ).start()
     browser = launch_browser(server.url or "")
     if emit is not None:

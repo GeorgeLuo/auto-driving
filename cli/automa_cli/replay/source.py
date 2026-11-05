@@ -295,7 +295,7 @@ def _build_frame(
             metadata[key] = value
     if "steps" in entry:
         try:
-            selections = recorded_selections(entry, source_root=source_path)
+            selections = recorded_selections(entry)
         except (TypeError, ValueError) as exc:
             raise SourceValidationError(f"frame {position} has invalid recorded selections: {exc}") from exc
         metadata["steps"] = {

@@ -102,7 +102,6 @@ if release_root.exists():
     shutil.rmtree(release_root)
 pending_root.replace(release_root)
 
-backup_root = app_root / "runtime" / "controller-backups" / str(int(time.time() * 1000))
 for package_name in ("autonomy", "implementations"):
     package_target = release_root / package_name
     package_link = app_root / package_name
@@ -111,8 +110,9 @@ for package_name in ("autonomy", "implementations"):
         next_link.unlink()
     next_link.symlink_to(os.path.relpath(package_target, app_root), target_is_directory=True)
     if package_link.exists() and not package_link.is_symlink():
-        backup_root.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(package_link), str(backup_root / package_name))
+        raise RuntimeError(
+            f"{package_link} is not a release symlink; replace it with the release layout before deploying"
+        )
     os.replace(next_link, package_link)
 
 activation_targets = []
@@ -139,9 +139,6 @@ for step in STEPS:
     stale = app_root / "runtime" / step / "active.json"
     if step not in deployed_steps and stale.exists():
         stale.unlink()
-legacy = app_root / "runtime" / "decision" / "active.json"
-if legacy.exists():
-    legacy.unlink()
 
 status_path = app_root / "runtime" / "controller-release.json"
 status_pending = status_path.with_name(f".{status_path.name}.pending")

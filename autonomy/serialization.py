@@ -2,7 +2,7 @@
 
 ``canonical_json_utf8`` encodes a value with sorted keys and compact
 separators. ``canonical_json_size_bytes`` is the UTF-8 length of that
-encoding, also available as ``canonical_json_bytes``. ``ensure_strict_json_value``
+encoding. ``ensure_strict_json_value``
 round-trips a value through the same encoding. ``deep_freeze`` stores JSON
 objects as ``FrozenJsonObject`` and JSON arrays as tuples.
 """
@@ -55,9 +55,6 @@ def canonical_json_size_bytes(value: Any) -> int:
     """
 
     return len(canonical_json_utf8(value))
-
-
-canonical_json_bytes = canonical_json_size_bytes
 
 
 def ensure_strict_json_value(value: Any) -> Any:
@@ -207,7 +204,6 @@ def frozen_mapping_to_dict(value: object) -> object:
 
 __all__ = [
     "FrozenJsonObject",
-    "canonical_json_bytes",
     "canonical_json_size_bytes",
     "canonical_json_utf8",
     "deep_freeze",

@@ -177,15 +177,12 @@ def _retain_uploaded_sources(run_dir: Path, steps: dict[str, Any]) -> None:
     for activation in steps.values():
         if activation is None:
             continue
-        metadata = activation.get("metadata") or {}
-        sources = metadata.pop("plugin_sources", {})
         for plugin_id, spec in activation["plugin_specs"].items():
             module, separator, name = spec.partition(":")
             if not module.endswith(".py"):
                 continue
-            original = sources.get(module)
-            source = Path(original or module)
-            if original is None and not source.is_absolute():
+            source = Path(module)
+            if not source.is_absolute():
                 source = uploaded_source(module)
             data = source.read_bytes()
             filename = f"{hashlib.sha256(data).hexdigest()}.py"

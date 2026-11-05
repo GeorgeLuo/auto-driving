@@ -7,11 +7,7 @@ import json
 import shutil
 import unittest
 
-from autonomy.decision_cycle.activation import (
-    step_activation,
-    DECISION_STEPS,
-    activation_generation_id,
-)
+from autonomy.decision_cycle.activation import step_activation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.plugins import uploaded_source
 from autonomy.runtime.plugin_loader import load_runner
@@ -114,25 +110,6 @@ class RecordedPluginFlows(unittest.TestCase):
                 host.run(frame(root, 2))
                 self.assertEqual(host.session_status()["status"], "completed")
                 before = json.loads((recording.root / "manifest.json").read_text())
-                if vehicle == "picar":
-                    # A retained-source recording from before content-addressed
-                    # entrypoints: keep its identity, normalize only at replay.
-                    for entry in before["frames"]:
-                        references = {}
-                        for activation in entry["steps"].values():
-                            if activation is None:
-                                continue
-                            for plugin_id, spec in activation["plugin_specs"].items():
-                                module, _, name = spec.partition(":")
-                                if module.endswith(".py"):
-                                    original = f"/removed-host/uploads/{module}"
-                                    activation["plugin_specs"][plugin_id] = f"{original}:{name}"
-                                    references[original] = f"plugins/{module}"
-                        entry["plugin_sources"] = references
-                        entry["generation_id"] = activation_generation_id(
-                            {step: entry["steps"][step] for step in DECISION_STEPS}, prefix="decision",
-                        )
-                    (recording.root / "manifest.json").write_text(json.dumps(before))
                 view.stop()
                 host.close()
                 for directory in {path.parent for path in originals}:

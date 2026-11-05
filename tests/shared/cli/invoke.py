@@ -35,7 +35,6 @@ IMPORT_TIME_ENV = {
         (catalog, "RUNTIME_ROOT"),
         (view_discovery, "RUNTIME_ROOT"),
         (view_discovery.runtime_view_dir.__kwdefaults__, "runtime_root"),
-        (view_discovery.discover_runtime_view.__kwdefaults__, "runtime_root"),
     ),
 }
 LIVE_ENV = ("AUTOMA_TEST_LIVE_SIM", "AUTOMA_TEST_LIVE_PI")

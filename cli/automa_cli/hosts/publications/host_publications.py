@@ -144,10 +144,8 @@ def host_state(base_url: str, *, host_name: str | None = None, timeout_s: float)
     autonomy = reply.get("host") if isinstance(reply.get("host"), dict) else {}
     if not autonomy or not isinstance(session.get("status"), str):
         return {**result, "state": "error", "error": no_host}
-    components = autonomy.get("components") if isinstance(autonomy.get("components"), dict) else {}
-    observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
-    latest = observation.get("latest") if isinstance(observation.get("latest"), dict) else {}
-    completed_at_ms = latest.get("completed_at_ms")
+    latest = observation_component(autonomy).get("latest")
+    completed_at_ms = latest.get("completed_at_ms") if isinstance(latest, dict) else None
     return {
         **result,
         "state": session["status"],
@@ -158,6 +156,14 @@ def host_state(base_url: str, *, host_name: str | None = None, timeout_s: float)
         # The host keeps it after a stop, until the next start or good cycle.
         "error": autonomy.get("last_error"),
     }
+
+
+def observation_component(autonomy: dict[str, Any]) -> dict[str, Any]:
+    """The observation component a host's ``/host/status`` ``host`` reports, or ``{}``."""
+
+    components = autonomy.get("components") if isinstance(autonomy.get("components"), dict) else {}
+    observation = components.get("observation")
+    return observation if isinstance(observation, dict) else {}
 
 
 def _no_answer(exc: ConnectionError, timeout_s: float) -> str:

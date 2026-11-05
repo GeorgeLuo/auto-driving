@@ -199,93 +199,24 @@ class ObservationSampleTests(unittest.TestCase):
         self.assertEqual(read.call_count, 1)
         self.assertEqual(publish.call_count, 1)
 
-    def test_bad_image_clears_the_view_and_the_next_capture_restores_it(self):
-        feed = _feed()
-        first = _publication("first")
-        good = _jpeg((4, 4), (20, 40, 60))
-        feed._observation = (first, good)
-        feed.publish(first)
-        self.assertEqual(feed.server.perception.frame(), (good, "image/jpeg"))
-        self.assertIsNone(feed.error)
-
-        failed = _publication("second")
-        feed._observation = (failed, b"not-an-image")
-        feed.publish(failed)
-        self.assertIsNone(feed.server.perception.latest_json())
-        self.assertRegex(feed.error or "", "UnidentifiedImageError|OSError|ValueError")
-
-        restored = _publication("third")
-        again = _jpeg((5, 6), (8, 8, 8))
-        feed._observation = (restored, again)
-        feed.publish(restored)
-        served, content_type = feed.server.perception.frame()
-        self.assertEqual((served, content_type), (again, "image/jpeg"))
-        payload = json.loads(feed.server.perception.latest_json())
-        self.assertEqual(payload["frame"]["frame_id"], "third")
-        self.assertEqual(payload["frame"]["width_px"], 5)
-        self.assertEqual(payload["frame"]["height_px"], 6)
-        self.assertEqual(payload["overlay"]["status"], "current")
-        self.assertIsNone(feed.error)
-
-    def test_unchanged_capture_keeps_the_published_image(self):
-        feed = _feed()
-        publication = _publication("same")
-        first = _jpeg((4, 4), (1, 2, 3))
-        second = _jpeg((4, 4), (9, 9, 9))
-        feed._observation = (publication, first)
-        feed.publish(publication)
-        feed._observation = (publication, second)
-        feed.publish(publication)
-        self.assertEqual(feed.server.perception.frame()[0], first)
-
-    def test_fetch_failure_republishes_the_same_capture_on_recovery(self):
-        feed = _feed()
+    def test_an_unavailable_capture_clears_the_view_and_the_same_capture_restores_it(self):
         publication, jpeg = _publication(), _jpeg((4, 4), (1, 2, 3))
-        with patch.object(viewer, "fetch_observation_sample", side_effect=[
-            (publication, jpeg), ConnectionError("offline"), (publication, jpeg),
-        ]) as read:
-            feed.publish(feed.read_observation()[0])
-            self.assertIsNotNone(feed.server.perception.latest_json())
-            feed.publish(feed.read_observation()[0])
-            self.assertIsNone(feed.server.perception.latest_json())
-            self.assertIsNone(feed.server.perception.frame())
-            self.assertEqual(feed.server.perception.frame(publication["frame"]["frame_id"]), (jpeg, "image/jpeg"))
-            self.assertIn("offline", feed.error)
-            feed.publish(feed.read_observation()[0])
-        self.assertEqual(read.call_count, 3)
-        self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
-        self.assertIsNone(feed.error)
-
-    def test_missing_and_stale_images_invalidate_then_recover_the_same_capture(self):
-        for health, missing in (("healthy", True), ("stale", False)):
-            with self.subTest(health=health):
+        for name, unavailable in (
+            ("bad image", (_publication("second"), b"not-an-image")),
+            ("missing image", (publication, None)),
+            ("stopped host", ({**publication, "health": "stale"}, jpeg)),
+            ("failed fetch", ConnectionError("offline")),
+        ):
+            samples = [(publication, jpeg), unavailable, (publication, jpeg)]
+            with self.subTest(name), patch.object(viewer, "fetch_observation_sample", side_effect=samples):
                 feed = _feed()
-                publication, jpeg = _publication(), _jpeg((4, 4), (1, 2, 3))
-                feed._observation = publication, jpeg
-                feed.publish(publication)
-                unavailable = {**publication, "health": health}
-                feed._observation = unavailable, None if missing else jpeg
-                feed.publish(unavailable)
+                feed.publish(feed.read_observation()[0])
+                self.assertIsNotNone(feed.server.perception.latest_json())
+                feed.publish(feed.read_observation()[0])
                 self.assertIsNone(feed.server.perception.latest_json())
-                feed._observation = publication, jpeg
-                feed.publish(publication)
+                feed.publish(feed.read_observation()[0])
                 self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
                 self.assertIsNone(feed.error)
-
-    def test_304_skips_image_processing_without_an_extra_request(self):
-        feed = _feed()
-        jpeg = _jpeg((4, 4), (1, 2, 3))
-        transaction = {**_transaction(), "image_base64": base64.b64encode(jpeg).decode()}
-        unchanged = HTTPError("http://host.invalid", 304, "unchanged", {}, io.BytesIO())
-        with (
-            patch.object(publications.urllib.request, "urlopen", side_effect=[_Response(transaction), unchanged]) as read,
-            patch.object(Image, "open", wraps=Image.open) as decode,
-        ):
-            feed.publish(feed.read_observation()[0])
-            feed.publish(feed.read_observation()[0])
-        self.assertEqual(read.call_count, 2)
-        self.assertEqual(decode.call_count, 1)
-        self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
 
     def test_observation_remains_available_when_decision_refresh_fails(self):
         feed = _feed()

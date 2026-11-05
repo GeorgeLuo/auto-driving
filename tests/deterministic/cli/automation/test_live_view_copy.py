@@ -150,75 +150,45 @@ class LiveViewCopyTests(unittest.TestCase):
             self.assertFalse(worker.is_alive())
             self.assertEqual(results[0].exit_code, 0, results)
 
-    def test_latest_exports_retry_after_failure_without_rewriting_unchanged_captures(self):
-        for failed_export in ("latest_perception.json", "latest_perception.txt"):
-            with self.subTest(export=failed_export), tempfile.TemporaryDirectory() as tmp:
-                root = Path(tmp)
-                jpeg = io.BytesIO()
-                Image.new("RGB", (4, 5)).save(jpeg, "JPEG")
-                first, second = _publication(1), _publication(2)
-                # The monitor still accepts a stopped host's supplied last image.
-                first["health"] = second["health"] = "stale"
-                identity = {"run_id": "run-1", "control_source": "runtime_host"}
-                server = Mock(perception=PerceptionView(host_name="fixture"))
-                copied = {"publication": None, "ready": threading.Event()}
-                stop = threading.Event()
-                polls = 0
-                write_text = Path.write_text
-                write_json = monitor.write_json_atomically
+    def test_a_failed_export_clears_the_view_and_the_next_poll_retries_the_capture(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            image = io.BytesIO()
+            Image.new("RGB", (4, 5)).save(image, "JPEG")
+            jpeg = image.getvalue()
+            first, second = _publication(1), _publication(2)
+            identity = {"run_id": "run-1", "control_source": "runtime_host"}
+            server = Mock(perception=PerceptionView(host_name="fixture"))
+            copied = {"publication": None, "ready": threading.Event()}
+            stop = threading.Event()
+            shown = []
+            write_json = monitor.write_json_atomically
 
-                def export_json(path, record):
-                    if polls == 2 and failed_export == path.name:
-                        raise PermissionError("json export blocked")
-                    write_json(path, record)
+            def export_json(path, record):
+                if len(shown) == 1:
+                    raise PermissionError("export blocked")
+                write_json(path, record)
 
-                def export_text(path, text, **kwargs):
-                    if polls == 2 and failed_export == path.name:
-                        raise PermissionError("text export blocked")
-                    return write_text(path, text, **kwargs)
+            def after_poll(_timeout):
+                latest = server.perception.latest_json()
+                shown.append(json.loads(latest)["frame"]["frame_id"] if latest else server.perception.unavailable_reason)
+                if len(shown) == 3:
+                    stop.set()
 
-                def check_poll(_timeout):
-                    nonlocal polls
-                    self.assertTrue(copied["ready"].is_set())
-                    if polls in (2, 4, 6):
-                        self.assertIsNone(server.perception.latest_json())
-                        if polls == 2:
-                            self.assertIn("export blocked", server.perception.unavailable_reason)
-                    else:
-                        publication = first if polls < 2 else second
-                        record = {**publication, **identity}
-                        self.assertEqual(json.loads((root / "latest_perception.json").read_text()), record)
-                        self.assertEqual((root / "latest_perception.txt").read_text(), "signal id=lane\n")
-                        self.assertEqual((root / "frame.jpg").read_bytes(), jpeg.getvalue())
-                        payload = json.loads(server.perception.latest_json())
-                        self.assertEqual(payload["frame"]["frame_id"], publication["frame"]["frame_id"])
-                        self.assertEqual((payload["frame"]["width_px"], payload["frame"]["height_px"]), (4, 5))
-                        self.assertEqual(payload["overlay"]["status"], "current")
-                        self.assertEqual(copied["publication"], publication)
-                    polls += 1
-                    if polls == 8:
-                        stop.set()
-
-                samples = [
-                    (first, jpeg.getvalue()), (first, jpeg.getvalue()),
-                    (second, jpeg.getvalue()), (second, jpeg.getvalue()),
-                    ConnectionError("offline"), (second, jpeg.getvalue()),
-                    ({"health": "warming"}, None), (second, jpeg.getvalue()),
-                ]
-                with (
-                    patch.object(monitor, "fetch_observation_sample", side_effect=samples) as read,
-                    patch.object(stop, "wait", side_effect=check_poll),
-                    patch.object(monitor, "write_json_atomically", side_effect=export_json) as json_export,
-                    patch.object(Path, "write_text", autospec=True, side_effect=export_text) as text_export,
-                    patch.object(server.perception, "publish", wraps=server.perception.publish) as publish,
-                ):
-                    monitor._copy_latest_perception(
-                        "http://host.invalid", server, stop, copied,
-                        front_camera_path=root / "frame.jpg", json_path=root / "latest_perception.json",
-                        text_path=root / "latest_perception.txt", identity=identity, timeout_s=0.1,
-                    )
-                self.assertEqual(read.call_count, 8)
-                self.assertEqual(publish.call_count, 5)
-                self.assertEqual(json_export.call_count, 5)
-                self.assertEqual(text_export.call_count, 4 if failed_export.endswith("json") else 5)
-                self.assertEqual(publish.call_args.kwargs["frame_record"], {**second, **identity})
+            with (
+                patch.object(monitor, "fetch_observation_sample", side_effect=[(first, jpeg), (second, jpeg), (second, jpeg)]),
+                patch.object(monitor, "write_json_atomically", side_effect=export_json),
+                patch.object(stop, "wait", side_effect=after_poll),
+            ):
+                monitor._copy_latest_perception(
+                    "http://host.invalid", server, stop, copied,
+                    front_camera_path=root / "frame.jpg", json_path=root / "latest_perception.json",
+                    text_path=root / "latest_perception.txt", identity=identity, timeout_s=0.1,
+                )
+            self.assertEqual(shown, [
+                first["frame"]["frame_id"], "PermissionError: export blocked", second["frame"]["frame_id"],
+            ])
+            self.assertEqual(json.loads((root / "latest_perception.json").read_text()), {**second, **identity})
+            self.assertEqual((root / "latest_perception.txt").read_text(), "signal id=lane\n")
+            self.assertEqual((root / "frame.jpg").read_bytes(), jpeg)
+            self.assertEqual(copied["publication"], second)

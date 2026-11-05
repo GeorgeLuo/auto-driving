@@ -1,6 +1,6 @@
 """Contracts for moving modules without splitting loaded classes.
 
-Staged bundle checks still fail when an archive stores a source file somewhere
+Staged bundle checks fail when an archive stores a source file somewhere
 other than its current path, or when a staged import uses a different class
 than the host or its sibling bundle copy.
 """

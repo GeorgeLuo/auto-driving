@@ -1,7 +1,6 @@
 """Every module imports first in a fresh interpreter.
 
-This catches import cycles that only appear for one entry order, and modules
-loaded twice under different names.
+This catches import cycles that only appear for one entry order.
 """
 
 from __future__ import annotations

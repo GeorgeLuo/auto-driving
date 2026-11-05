@@ -79,6 +79,14 @@ if actual_sha256 != expected_sha256:
         f"archive SHA-256 mismatch: expected {expected_sha256}, got {actual_sha256}"
     )
 
+# Checked before anything is written, so a host without the release layout is left as it was.
+for package_name in ("autonomy", "implementations"):
+    package_link = app_root / package_name
+    if package_link.exists() and not package_link.is_symlink():
+        raise RuntimeError(
+            f"{package_link} is not a release symlink; replace it with the release layout before deploying"
+        )
+
 pending_root = release_root.with_name(f".{release_root.name}.pending")
 if pending_root.exists():
     shutil.rmtree(pending_root)
@@ -109,10 +117,6 @@ for package_name in ("autonomy", "implementations"):
     if next_link.exists() or next_link.is_symlink():
         next_link.unlink()
     next_link.symlink_to(os.path.relpath(package_target, app_root), target_is_directory=True)
-    if package_link.exists() and not package_link.is_symlink():
-        raise RuntimeError(
-            f"{package_link} is not a release symlink; replace it with the release layout before deploying"
-        )
     os.replace(next_link, package_link)
 
 activation_targets = []

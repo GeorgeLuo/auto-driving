@@ -97,8 +97,6 @@ def write_json_atomically(path: Path, payload: dict[str, Any]) -> None:
 
 def recorded_selections(record: dict[str, Any]) -> dict[str, StepActivation | None]:
     """Read a frame's executable selections, preserving disabled steps."""
-    if record.get("plugin_sources"):
-        raise ValueError("recording plugin paths are not content-addressed; re-record the run")
     if "steps" not in record:
         return {}
     payloads = record["steps"]

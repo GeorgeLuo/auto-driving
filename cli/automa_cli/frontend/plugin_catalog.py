@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any, Callable
 
 from .loopback_http import local_write_error, read_json_object

@@ -50,7 +50,7 @@ class ViewerCommandTests(unittest.TestCase):
     def test_a_discovered_vehicle_is_listed_until_it_is_removed(self) -> None:
         self.assertEqual(self.get("/api/vehicles")["vehicles"], [])
         with fake_metrics_ui() as simulator:
-            url = chase_operator_url(simulator.url)
+            control_url, url = simulator.url, chase_operator_url(simulator.url)
 
             code, discovered = self.post("/api/vehicles/discover", {"provider": "chase-sim", "url": url, "force": True})
             listed = self.get("/api/vehicles")["vehicles"]
@@ -58,6 +58,7 @@ class ViewerCommandTests(unittest.TestCase):
 
         self.assertEqual((code, discovered["ok"], discovered["exit_code"], discovered["kind"]), (200, True, 0, "discovered"))
         self.assertIn(url, discovered["text"])
+        self.assertEqual((discovered["provider"], discovered["url"]), ("chase-sim", control_url))
         self.assertEqual([vehicle["url"] for vehicle in listed], [url])
         self.assertEqual((removed[0], removed[1]["kind"]), (200, "removed"))
         self.assertTrue(removed[1]["text"].startswith("Removed "), removed[1]["text"])
@@ -75,8 +76,9 @@ class ViewerCommandTests(unittest.TestCase):
 
     def test_a_malformed_request_is_refused_before_the_command_runs(self) -> None:
         self.assertEqual(self.post("/api/vehicles/discover", {"provider": "boat", "url": "x"}),
-                         (400, {"ok": False, "error": "provider must be one of chase-sim, picar"}))
-        self.assertEqual(self.post("/api/vehicles/remove", {}), (400, {"ok": False, "error": "url must be a non-empty string"}))
+                         (400, {"ok": False, "status": "failed", "error": "provider must be one of chase-sim, picar"}))
+        self.assertEqual(self.post("/api/vehicles/remove", {}),
+                         (400, {"ok": False, "status": "failed", "error": "url must be a non-empty string"}))
         self.assertEqual(self.post("/api/vehicles/remove", ["url"])[1]["error"], "request body must be an object")
 
     def test_writes_come_only_from_the_viewer_itself(self) -> None:

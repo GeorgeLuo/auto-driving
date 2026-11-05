@@ -96,8 +96,10 @@ class RuntimeViewServer:
         self.host_name = host_name
         self.connected = connected
         self.hosts = hosts
-        self.reads = dict(reads or {})
-        self.writes = dict(writes or {})
+        self.reads = reads or {}
+        self.writes = writes or {}
+        # Write routes run one at a time: their commands read and rewrite the same records.
+        self.write_lock = threading.Lock()
         self._replay_runner = replay_runner
         self._replay_runner_factory = replay_runner_factory
         self._replay_runner_lock = threading.Lock()
@@ -253,16 +255,18 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         self._reject_write_method()
 
     def _serve_write(self, command: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
-        """Run a write route's command with the request's JSON object: 200 when it succeeds, else 400."""
+        """Run a write route's command with the request's JSON object, as the plugin catalog route does."""
 
         error = local_write_error(self, subject="writes")
         if error is not None:
             self._send_json(*error)
             return
         try:
-            result = command(read_json_object(self, what="request body"))
-        except (ValueError, TypeError) as exc:
-            result = {"ok": False, "error": str(exc)}
+            body = read_json_object(self, what="request body")
+            with self.server.publisher.write_lock:
+                result = command(body)
+        except (OSError, ValueError, TypeError, RuntimeError) as exc:
+            result = {"ok": False, "status": "failed", "error": str(exc)}
         self._send_json(200 if result.get("ok") else 400, result)
 
     def do_PUT(self) -> None:
@@ -284,7 +288,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         self._reject_write_method()
 
     def _reject_write_method(self) -> None:
-        self._send_json(405, {"error": "GET and HEAD only"})
+        self._send_json(405, {"error": "method not allowed"})
 
     def _refuse_when_not_connected(self, route: str, *, include_body: bool) -> bool:
         """Answer a runtime-host route while no host is connected; True if answered."""

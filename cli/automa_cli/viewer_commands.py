@@ -1,19 +1,22 @@
 """The vehicles and simulators commands the viewer answers, as its read and write routes.
 
 A read serves what the command's ``--json`` prints. A write runs the command
-with the request's JSON object and answers with its exit code, its result kind,
-and ``text``, what the command prints.
+with the request's JSON object and answers with its result's fields and
+``text``, what the command prints.
 """
 
 from __future__ import annotations
 
+from dataclasses import asdict
 from typing import Any
 
 from .providers.registry import PROVIDERS
+from .simulators.models import SimulatorResult
 from .simulators.render import render_simulator_result
 from .simulators.service import create_simulator, delete_simulator
 from .simulators.status import simulators_status
 from .vehicles.discovery import discover_vehicle, remove_vehicle
+from .vehicles.models import VehicleResult
 from .vehicles.render import render_vehicle_result
 from .vehicles.status import vehicles_status
 
@@ -25,8 +28,8 @@ def _url(body: dict[str, Any]) -> str:
     return url
 
 
-def _answer(result: Any, text: str) -> dict[str, Any]:
-    return {"ok": result.exit_code == 0, "exit_code": result.exit_code, "kind": result.kind, "text": text}
+def _answer(result: VehicleResult | SimulatorResult, text: str) -> dict[str, Any]:
+    return {"ok": result.exit_code == 0, **asdict(result), "text": text}
 
 
 def _discover(body: dict[str, Any]) -> dict[str, Any]:

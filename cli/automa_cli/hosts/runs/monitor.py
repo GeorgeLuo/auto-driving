@@ -28,7 +28,7 @@ from ..publications.decision_publication import (
     publication_capture,
     publication_part,
 )
-from ..publications.host_publications import fetch_observation_sample, TransactionCache
+from ..publications.host_publications import fetch_observation_sample, observation_component, TransactionCache
 from ...shared.timestamps import timestamp_ms
 from .models import RunEvent, RunResult, run_exit_code
 from collections.abc import Callable
@@ -51,23 +51,12 @@ MONITOR_POLL_INTERVAL_S = 0.1
 DECISION_COPY_INTERVAL_S = 1 / 30
 
 
-def _frames_received(host: dict[str, Any]) -> int:
-    """The host's cumulative camera capture counter."""
+def _frame_counter(host: dict[str, Any], name: str) -> int:
+    """The host's cumulative ``frames_received`` or ``frames_dropped`` camera counter."""
 
-    components = host.get("components") if isinstance(host.get("components"), dict) else {}
-    observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
-    count = observation.get("frames_received")
+    count = observation_component(host).get(name)
     if type(count) is not int or count < 0:
-        raise RuntimeError("The runtime host does not report a received-frame counter; update the host.")
-    return count
-
-
-def _frames_dropped(host: dict[str, Any]) -> int:
-    components = host.get("components") if isinstance(host.get("components"), dict) else {}
-    observation = components.get("observation") if isinstance(components.get("observation"), dict) else {}
-    count = observation.get("frames_dropped")
-    if type(count) is not int or count < 0:
-        raise RuntimeError("The runtime host does not report a dropped-frame counter; update the host.")
+        raise RuntimeError(f"The runtime host does not report its {name} counter; update the host.")
     return count
 
 
@@ -175,8 +164,8 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
     state.update(selections=selections, decision=decision)
     try:
         host = _host_status(client)
-        capture_base = _frames_received(host)
-        dropped_base = _frames_dropped(host)
+        capture_base = _frame_counter(host, "frames_received")
+        dropped_base = _frame_counter(host, "frames_dropped")
         record_host_status(state, host)
         response = client.start(configuration, record=True) if record else client.start(configuration)
         run_id = str(response["host_run_id"])
@@ -227,12 +216,11 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                 raise RuntimeError("the runtime host restarted during this run")
             session = runtime["session"]
             host = _host_status(client)
-            dropped = _frames_dropped(host)
             state.update(
-                frames_dropped=max(0, dropped - dropped_base),
+                frames_dropped=max(0, _frame_counter(host, "frames_dropped") - dropped_base),
                 session=session, execution=session["execution"],
                 processed_count=session["processed_decisions"],
-                frames_received=max(0, _frames_received(host) - capture_base),
+                frames_received=max(0, _frame_counter(host, "frames_received") - capture_base),
             )
             record_host_status(state, host)
             if session["status"] in {"starting", "stopping"}:

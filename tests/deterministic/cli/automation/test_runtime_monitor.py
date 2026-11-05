@@ -262,11 +262,6 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(state["last_frame"]["control"]["reason"], "steer-left")
         self.assertEqual(state["published_view"]["available"], False)
 
-    def test_a_missing_capture_counter_is_unavailable_rather_than_zero(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "does not report"):
-            monitor._frames_received({"components": {"observation": {}}})
-        self.assertEqual(monitor._frames_received(_host(0)["host"]), 0)
-
     def test_a_host_cycle_error_fails_the_run_with_the_host_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             automation_dir = Path(tmp) / "automation"
@@ -300,14 +295,16 @@ class ControlRecordTests(unittest.TestCase):
 
 class MonitorPacingTests(unittest.TestCase):
     def test_missing_or_invalid_counters_require_a_host_update(self):
-        for read, counter in ((monitor._frames_received, "frames_received"),
-                              (monitor._frames_dropped, "frames_dropped")):
+        """A missing counter is unavailable rather than zero."""
+
+        for counter in ("frames_received", "frames_dropped"):
             for host in ({}, {"components": []}, {"components": {"observation": []}},
                          *({"components": {"observation": {counter: value}}}
                            for value in (None, True, -1, 1.5, "2"))):
                 with self.subTest(counter=counter, host=host), self.assertRaisesRegex(RuntimeError, "update"):
-                    read(host)
-        self.assertEqual(monitor._frames_dropped(_host(2)["host"]), 0)
+                    monitor._frame_counter(host, counter)
+        self.assertEqual(monitor._frame_counter(_host(0)["host"], "frames_received"), 0)
+        self.assertEqual(monitor._frame_counter(_host(2)["host"], "frames_dropped"), 0)
 
     def test_adaptive_pause_keeps_a_gap_on_fast_and_slow_hosts(self):
         for elapsed_ms, expected_ms in [(5, 1000 / 30 - 5), (20, 20), (30, 30),

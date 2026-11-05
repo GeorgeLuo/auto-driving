@@ -25,6 +25,7 @@ from ...shared.timestamps import timestamp_ms
 from .. import staging
 from ..host_formatting import perception_stream_command
 from ..host_status import read_hosts
+from ..publications.host_publications import observation_component
 from ..step_activations import (
     bundle_activation_problems,
     decision_identity,
@@ -187,7 +188,7 @@ def _host_run(
 
     endpoint = f"{base_url}/host/status"
     autonomy = _dict((read["reply"] or {}).get("host"))
-    observation = _dict(_dict(autonomy.get("components")).get("observation"))
+    observation = observation_component(autonomy)
     latest = _dict(observation.get("latest"))
     error = read["error"] if read["state"] in {"not answering", "error"} else None
     status = "error" if error is not None else read["state"]

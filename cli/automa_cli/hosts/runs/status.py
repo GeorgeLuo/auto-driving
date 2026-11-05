@@ -34,7 +34,7 @@ from ..step_activations import (
     staged_selections,
 )
 from ..views.view_discovery import discover_runtime_view
-from .models import status_reason
+from .models import HostsStatus, status_reason
 
 
 def _host_runtime_status(
@@ -139,14 +139,13 @@ def hosts_status(
     host_name: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
     include_runs: bool = False,
-) -> tuple[int, list[dict[str, Any]]]:
-    """Each host's state and attachment.
+) -> HostsStatus:
+    """Each host's state and attachment, as ``automa_hosts_status``.
 
-    ``include_runs`` adds its deployment, release, steps, run and view. JSON
-    status includes that data, and plain text includes it with ``--long``.
-    With ``host_name``, the exit is 1 when that host is missing, stopped,
-    not answering, or reports an error. Without it, no host's state changes
-    the exit.
+    ``include_runs`` adds its deployment, release, steps, run and view. The
+    caller chooses that detail; it is not a rendering flag. With ``host_name``,
+    the exit is 1 when that host is missing, stopped, not answering, or reports
+    an error. Without it, no host's state changes the exit.
     """
 
     reads = read_hosts(host_name=host_name, timeout_s=timeout_s)
@@ -163,7 +162,10 @@ def hosts_status(
         }
         for host in hosts:
             host["run"] = runs.get(host["host_name"])
-    return exit_code, hosts
+    return HostsStatus(
+        exit_code,
+        {"schema": "automa_hosts_status", "host_name": host_name, "hosts": hosts},
+    )
 
 
 def collect_automation_status(

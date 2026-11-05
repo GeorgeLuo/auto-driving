@@ -44,6 +44,31 @@ class SimulatorStatusTests(unittest.TestCase):
             "  frontend connected, game chase\n"
         ))
 
+    def test_the_service_result_is_the_command_document_and_exit(self) -> None:
+        """vehicles status returns the document and exit the command prints."""
+
+        import os
+        from unittest import mock
+
+        from cli.automa_cli.simulators import store as simulator_store
+        from cli.automa_cli.vehicles import store as vehicle_store
+        from cli.automa_cli.vehicles.status import vehicles_status
+
+        def collected(chase_url: str):
+            with (
+                mock.patch.object(vehicle_store, "RUNTIME_ROOT", self.runtime_root),
+                mock.patch.object(simulator_store, "RUNTIME_ROOT", self.runtime_root),
+                mock.patch.dict(os.environ, {"CHASE_UI_WS_URL": chase_url}),
+            ):
+                return vehicles_status(timeout_s=1)
+
+        for chase_url in (self.server.url, closed_url()):
+            with self.subTest(chase_url=chase_url):
+                status = collected(chase_url)
+                command = self.status("--json", chase_url=chase_url)
+                self.assertEqual(status.exit_code, command.returncode, command.stderr)
+                self.assertEqual(status.payload, json.loads(command.stdout))
+
     def test_unreachable_or_frontend_disconnected_simulator(self) -> None:
         unavailable = self.status(chase_url=closed_url())
         self.assertEqual(unavailable.returncode, 1)

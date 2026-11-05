@@ -23,6 +23,7 @@ selection. `runtime/` persists across branch changes; incompatible activations
 are replaced by the `hosts update` that `hosts status --long` prints.
 
 ```sh
+./cli/automa vehicles discover --provider chase-sim --url http://localhost:5050
 ./cli/automa vehicles status
 ./cli/automa hosts create --name chase-sim-chaser --provider chase-sim --url http://localhost:5050
 
@@ -38,16 +39,20 @@ are replaced by the `hosts update` that `hosts status --long` prints.
 ./cli/automa hosts status --name chase-sim-chaser
 ```
 
-`vehicles status` is read-only. It lists the default simulator, created
-simulators and discovered vehicles, with each environment's provider, URL and
-reachability. Use the provider and URL with `hosts create`.
+`vehicles status` is read-only. It lists each simulator that `simulators create`
+started and `vehicles remove` has not stopped listing, then each vehicle that
+`vehicles discover` listed, with its provider, URL and reachability. With
+nothing listed it prints `None listed.` Use the provider and URL with
+`hosts create`.
 
 `hosts status` prints a block for each created host: its state, its vehicle
 and that vehicle's URL, whether its simulator lists it, and the host URL and
-pid. `--long` adds each host's deployment, run and view under its block. `--name`
-selects one host; `--json` emits `automa_hosts_status` with a `hosts` array
-whose entries carry the host's `run` detail. Host names are chosen at creation
-and do not identify the vehicle environment.
+pid. When the simulator's agent list cannot be read, the attachment line says
+the simulator is not answering. `--long` adds each host's deployment, run and
+view under its block. `--name` selects one host; `--json` emits
+`automa_hosts_status` with a `hosts` array whose entries carry the host's
+`run` detail. Host names are chosen at creation and do not identify the
+vehicle environment.
 
 To look through a host, pass its name to `hosts viewer`:
 
@@ -62,24 +67,26 @@ exists, it is not running, or it does not answer. While the host is not live,
 for example after its run stopped, it prints `Not live:` with the reason, and
 the Perception and Memory pages show that reason instead of a live frame.
 
-Status always looks at the default simulator: `CHASE_UI_WS_URL` when set,
-otherwise `http://localhost:5050`. To look at another simulator or a PiCar,
-list it once:
+Nothing is listed until you discover it or `simulators create` starts it.
+To list a simulator or a PiCar:
 
 ```sh
-./cli/automa vehicles discover --provider chase-sim --url http://localhost:5051
+./cli/automa vehicles discover --provider chase-sim --url http://localhost:5050
 ./cli/automa vehicles discover --provider picar --url http://piracer.local:8887
-./cli/automa vehicles remove --url http://localhost:5051
+./cli/automa vehicles remove --url http://localhost:5050
 ```
 
 `vehicles discover` adds the vehicle to `runtime/hosts/discovered.json` when
 it can take a host: a simulator whose frontend is connected with the Chase game
 loaded, or a PiCar whose machine answers. Otherwise it exits 2 and says why;
 `--force` lists it anyway. The provider is required because a PiCar without its
-harness answers nothing that names it. `vehicles remove` stops listing a
-discovered vehicle; the default simulator is always listed. An HTTP(S) Metrics
-UI origin is resolved to the same origin at `/ws/control`, and an explicit
-non-root WS(S) path is preserved, so either form names the same simulator.
+harness answers nothing that names it. A simulator that `simulators create`
+started is already listed, so discovering it writes nothing. `vehicles remove`
+stops listing a vehicle; a created simulator keeps running until
+`simulators delete`. After `vehicles remove`, discovering that simulator lists
+it again without writing a second record. An HTTP(S) Metrics UI origin is resolved
+to the same origin at `/ws/control`, and an explicit non-root WS(S) path is
+preserved, so either form names the same simulator.
 
 To run another simulator without opening a browser, create one from a Metrics
 UI checkout whose packages are installed:
@@ -96,9 +103,10 @@ free port from 5051, and prints `Created Simulator (chase-sim) at <URL>` once
 the launcher reports it ready. A launcher that exits or is not ready within
 45 s is ended, and the command exits 2 with the end of its log
 (`runtime/hosts/simulators/<port>/simulator.log`). The simulator outlives
-the command: status lists it, with `created by simulators create, pid <pid>`,
-until its process ends or `simulators delete` ends it. Delete refuses while a
-host was created at that simulator.
+the command: `vehicles status` lists it, with `created by simulators create, pid <pid>`,
+until `vehicles remove` stops listing it or `simulators delete` ends it.
+Remove leaves the process running. Delete refuses while a host was created at
+that simulator.
 
 `update memory` stages the memory preset and `update perception` the observer.
 Without them, an otherwise fresh cycle runs no memory or perception plugins,
@@ -248,6 +256,7 @@ environments in `vehicles` with provider, URL, state and error. Simulator
 entries also include frontend, game and created-process information.
 `hosts status --json` reports hosts separately, with their host names, the http
 URLs of their vehicles, their runtime URLs and their simulator attachment.
+When the simulator does not answer, `simulator` is `not answering`.
 
 An absent or malformed evaluator reference does not block camera perception.
 It is excluded from perception, observation, memory, and decision inputs.
@@ -292,7 +301,8 @@ external change.
 | Worker stopped | Run the printed observation-only `hosts run --open-view` command |
 | View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
 
-`vehicles status` exits 1 when no listed vehicle is reachable. `hosts status
+`vehicles status` exits 1 when a vehicle is listed and none is reachable, and 0
+when nothing is listed. `hosts status
 --name <host>` exits 1 when that host is not found, not running, not answering,
 or in error. Invalid arguments exit 2.
 

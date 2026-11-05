@@ -12,6 +12,7 @@ from .plugins.commands import register_plugins
 from .shared.text import format_browser_result
 from .simulators.commands import register_simulators
 from .vehicles.commands import register_vehicles
+from .viewer_commands import VIEWER_READS, VIEWER_WRITES
 from .workbench.commands import register_workbench
 
 
@@ -61,7 +62,7 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
                 "- hosts      Create, configure, and operate vehicle controller hosts.",
                 "- workbench  Replay a local image directory through the controller steps.",
                 "- plugins    List a plugin catalog or what a host has armed, upload, arm and disarm a host's plugins, stream what each step outputs on a host, and inspect what each step reports.",
-                "- simulators Create and delete headless simulators.",
+                "- simulators Create, show, and delete headless simulators.",
                 "",
                 "Open the runtime viewer. It does not require a host:",
                 "- ./cli/automa",
@@ -79,7 +80,11 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
 
 
 def _handle_open_viewer(args: argparse.Namespace) -> int:
-    return serve_viewer(emit=lambda result: print(format_browser_result(result), flush=True))
+    return serve_viewer(
+        reads=VIEWER_READS,
+        writes=VIEWER_WRITES,
+        emit=lambda result: print(format_browser_result(result), flush=True),
+    )
 
 
 def _handle_status(args: argparse.Namespace) -> int:

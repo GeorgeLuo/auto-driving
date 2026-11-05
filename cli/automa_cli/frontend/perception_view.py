@@ -25,22 +25,18 @@ class PerceptionView:
 
     def __init__(self, *, host_name: str) -> None:
         self.host_name = host_name
-        # Why there is no latest pair; the view's routes answer with it.
+        # Why there is no latest publication; the view's routes answer with it.
         self.unavailable_reason = NO_FRAME_ERROR
         self._lock = threading.RLock()
         self._frames: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
-        self._latest_frame: dict[str, Any] | None = None
-        self._latest_perception_record: dict[str, Any] | None = None
-        self._latest_frame_id: str | None = None
-        self._latest_perception_frame_id: str | None = None
-        self._frame_published_at_ms: int | None = None
-        self._perception_published_at_ms: int | None = None
+        # The latest frame's metadata and the record it was published with.
+        self._latest: tuple[dict[str, Any], dict[str, Any]] | None = None
 
     def publish(self, *, frame_bytes: bytes, frame_record: dict[str, Any]) -> None:
         """Replace the latest JPEG and its findings together."""
         identity = _frame_identity(frame_record)
         frame_id = identity["frame_id"]
-        # The image is checked before the lock so publication stays a pair swap.
+        # Checked before the lock so a rejected image does not replace the latest publication.
         with Image.open(BytesIO(frame_bytes)) as image:
             if image.format != "JPEG":
                 raise ValueError("published frame must be a JPEG image")
@@ -61,73 +57,34 @@ class PerceptionView:
             self._frames.move_to_end(frame_id)
             if len(self._frames) > MAX_BUFFERED_FRAMES:
                 self._frames.popitem(last=False)
-            self._latest_frame = frame
-            self._latest_frame_id = frame_id
-            self._frame_published_at_ms = published_at_ms
-            self._latest_perception_record = frame_record
-            self._latest_perception_frame_id = frame_id
-            self._perception_published_at_ms = published_at_ms
+            self._latest = frame, frame_record
 
     def invalidate_latest(self, reason: str | None = None) -> None:
-        """An unavailable publication must not leave a usable latest pair; ``reason`` says why."""
+        """An unavailable publication must not leave a usable latest frame; ``reason`` says why."""
         with self._lock:
             self.unavailable_reason = reason or NO_FRAME_ERROR
-            self._latest_frame = None
-            self._latest_frame_id = None
-            self._latest_perception_record = None
-            self._latest_perception_frame_id = None
+            self._latest = None
 
     def health_payload(self) -> dict[str, Any]:
         with self._lock:
-            perception_id = self._latest_perception_frame_id
-            source = (
-                _frame_identity(self._latest_perception_record)
-                if self._latest_perception_record is not None
-                else {}
-            )
-            latest = self._latest_frame or {}
-            has_perception = self._latest_perception_record is not None
-            return {
-                "has_frame": self._latest_frame_id is not None,
-                "has_perception": has_perception,
-                "latest_frame_id": self._latest_frame_id,
-                "latest_perception_frame_id": perception_id,
-                "perception_frame_buffered": (
-                    perception_id is not None and perception_id in self._frames
-                ),
-                "capture_lag": (
-                    _nonnegative_difference(
-                        latest.get("frame_index"), source.get("frame_index")
-                    )
-                    if has_perception
-                    else None
-                ),
-                "capture_lag_ms": (
-                    _nonnegative_difference(
-                        latest.get("captured_at_ms"), source.get("captured_at_ms")
-                    )
-                    if has_perception
-                    else None
-                ),
-                "frame_published_at_ms": self._frame_published_at_ms,
-                "perception_published_at_ms": self._perception_published_at_ms,
-            }
+            return {"latest_frame_id": self._latest_frame_id()}
 
     def latest_json(self) -> bytes | None:
         with self._lock:
-            if self._latest_frame is None:
+            if self._latest is None:
                 return None
-            payload = _publication_payload(
-                host_name=self.host_name,
-                frame=dict(self._latest_frame),
-                perception_record=self._latest_perception_record,
-                generated_at_ms=_timestamp_ms(),
-            )
+            frame, record = self._latest
+        payload = _publication_payload(
+            host_name=self.host_name, frame=frame, perception_record=record, generated_at_ms=_timestamp_ms(),
+        )
         return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
 
     def frame(self, frame_id: str | None = None) -> tuple[bytes, str] | None:
         with self._lock:
-            return self._frames.get(frame_id if frame_id is not None else self._latest_frame_id)
+            return self._frames.get(frame_id if frame_id is not None else self._latest_frame_id())
+
+    def _latest_frame_id(self) -> str | None:
+        return None if self._latest is None else self._latest[0]["frame_id"]
 
 
 def get_perception_view_status(
@@ -199,24 +156,14 @@ def get_perception_view_status(
             "reason": generation_error,
         }
     if not perception_view_ready(health):
-        image_missing = (
-            health.get("has_perception")
-            and health.get("latest_perception_frame_id")
-            and not health.get("perception_frame_buffered")
-        )
         return {
             **record,
             **health,
             "available": False,
             "status": "warming",
             "reason": (
-                "perception view completed a result whose camera image "
-                "is no longer buffered"
-                if image_missing
-                else (
-                    "perception view has not published one correlated camera and "
-                    "perception frame"
-                )
+                "perception view has not published one correlated camera and "
+                "perception frame"
             ),
         }
     return {
@@ -229,19 +176,9 @@ def get_perception_view_status(
 
 
 def perception_view_ready(payload: dict[str, Any]) -> bool:
-    """True when a completed result and its camera image are both available.
+    """True when the view has published one camera image and its findings."""
 
-    A newer capture does not withdraw readiness. Its distance from the
-    completed result is ``capture_lag`` on the view payload.
-    """
-
-    return bool(
-        payload.get("available")
-        and payload.get("url")
-        and payload.get("has_perception")
-        and payload.get("latest_perception_frame_id")
-        and payload.get("perception_frame_buffered")
-    )
+    return bool(payload.get("available") and payload.get("url") and payload.get("latest_frame_id"))
 
 
 def _view_generation_error(
@@ -267,7 +204,7 @@ def _view_generation_error(
 
 
 def _frame_identity(record: Any) -> dict[str, Any]:
-    """Nested publication frame. Capture-only records use the same identity."""
+    """The record's nested frame; publication requires its ``frame_id``."""
 
     frame = record.get("frame") if isinstance(record, dict) else None
     frame_id = frame.get("frame_id") if isinstance(frame, dict) else None
@@ -280,65 +217,23 @@ def _publication_payload(
     *,
     host_name: str,
     frame: dict[str, Any],
-    perception_record: dict[str, Any] | None,
+    perception_record: dict[str, Any],
     generated_at_ms: int,
 ) -> dict[str, Any]:
-    source = perception_record if isinstance(perception_record, dict) else {}
-    perception = source.get("perception")
-    perception = perception if isinstance(perception, dict) else None
-    timing = source.get("timing") if isinstance(source.get("timing"), dict) else None
-    overlay = _overlay_payload(frame=frame, perception_record=perception_record, now_ms=generated_at_ms)
+    perception = perception_record.get("perception")
+    timing = perception_record.get("timing")
+    completed_at_ms = perception_record["frame"].get("completed_at_ms")
     return {
         "schema": PUBLICATION_SCHEMA,
         "host_name": host_name,
         "generated_at_ms": generated_at_ms,
+        "result_age_ms": _nonnegative_difference(generated_at_ms, completed_at_ms),
         "frame": frame,
-        "overlay": overlay,
-        "timing": timing,
-        "duration_ms": source.get("duration_ms"),
-        "memory": source.get("memory"),
-        "perception": perception,
-        "control": source.get("control"),
-    }
-
-
-def _overlay_payload(
-    *,
-    frame: dict[str, Any],
-    perception_record: dict[str, Any] | None,
-    now_ms: int,
-) -> dict[str, Any]:
-    if perception_record is None:
-        return {
-            "status": "pending",
-            "source_frame_id": None,
-            "source_frame_index": None,
-            "source_captured_at_ms": None,
-            "perception_completed_at_ms": None,
-            "frame_lag": None,
-            "frame_lag_ms": None,
-            "result_age_ms": None,
-        }
-
-    source = _frame_identity(perception_record)
-    source_frame_id = source.get("frame_id")
-    source_frame_index = source.get("frame_index")
-    current_frame_index = frame.get("frame_index")
-    source_captured_at_ms = source.get("captured_at_ms")
-    current_captured_at_ms = frame.get("captured_at_ms")
-    completed_at_ms = source.get("completed_at_ms")
-    frame_lag = _nonnegative_difference(current_frame_index, source_frame_index)
-    frame_lag_ms = _nonnegative_difference(current_captured_at_ms, source_captured_at_ms)
-    result_age_ms = _nonnegative_difference(now_ms, completed_at_ms)
-    return {
-        "status": "current" if source_frame_id == frame.get("frame_id") else "stale",
-        "source_frame_id": source_frame_id,
-        "source_frame_index": source_frame_index,
-        "source_captured_at_ms": source_captured_at_ms,
-        "perception_completed_at_ms": completed_at_ms,
-        "frame_lag": frame_lag,
-        "frame_lag_ms": frame_lag_ms,
-        "result_age_ms": result_age_ms,
+        "timing": timing if isinstance(timing, dict) else None,
+        "duration_ms": perception_record.get("duration_ms"),
+        "memory": perception_record.get("memory"),
+        "perception": perception if isinstance(perception, dict) else None,
+        "control": perception_record.get("control"),
     }
 
 

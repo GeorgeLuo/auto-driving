@@ -5,6 +5,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -66,9 +67,6 @@ class PerceptionViewTests(unittest.TestCase):
                 self.assertEqual(payload["frame"]["width_px"], 64)
                 self.assertEqual(payload["frame"]["content_type"], "image/jpeg")
                 self.assertEqual(payload["frame"]["url"], "/frame?v=frame_000004")
-                self.assertEqual(payload["overlay"]["status"], "current")
-                self.assertEqual(payload["overlay"]["source_frame_id"], "frame_000004")
-                self.assertEqual(payload["overlay"]["frame_lag"], 0)
                 self.assertEqual(
                     payload["perception"]["things"][0]["thing_id"], "test-region"
                 )
@@ -130,7 +128,15 @@ class PerceptionViewTests(unittest.TestCase):
         self.assertEqual(view.frame(), (replacement, "image/jpeg"))
         payload = json.loads(view.latest_json())
         self.assertEqual((payload["frame"]["width_px"], payload["frame"]["height_px"]), (5, 6))
-        self.assertEqual(payload["overlay"]["status"], "current")
+
+    def test_result_age_is_measured_from_the_published_findings(self) -> None:
+        view = PerceptionView(host_name="test-vehicle")
+        view.publish(frame_bytes=_image_bytes("JPEG", (4, 4), (9, 9, 9)), frame_record=_frame_record())
+
+        with patch("cli.automa_cli.frontend.perception_view._timestamp_ms", return_value=1300):
+            payload = json.loads(view.latest_json())
+
+        self.assertEqual((payload["generated_at_ms"], payload["result_age_ms"]), (1300, 1300 - 1242))
 
     def test_view_rejects_data_requests_before_first_publication(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

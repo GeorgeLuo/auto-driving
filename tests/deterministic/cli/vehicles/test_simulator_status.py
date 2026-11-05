@@ -22,14 +22,20 @@ class SimulatorStatusTests(unittest.TestCase):
         self.runtime_root = Path(self.enterContext(tempfile.TemporaryDirectory()))
         self.server = self.enterContext(fake_metrics_ui())
 
-    def status(self, *args: str, chase_url: str | None = None) -> subprocess.CompletedProcess[str]:
-        return invoke_automa("vehicles", "status", *args, runtime_root=self.runtime_root,
-                             extra_env={"CHASE_UI_WS_URL": chase_url or self.server.url}, check=False)
+    def status(self, *args: str) -> subprocess.CompletedProcess[str]:
+        return invoke_automa("vehicles", "status", *args, runtime_root=self.runtime_root, check=False)
+
+    def discover(self, url: str, *args: str) -> subprocess.CompletedProcess[str]:
+        return invoke_automa(
+            "vehicles", "discover", "--provider", "chase-sim", "--url", url, *args,
+            runtime_root=self.runtime_root, check=False,
+        )
 
     def test_vehicle_status_does_not_report_or_probe_hosts(self) -> None:
         # A hung host must not delay or appear in the vehicle environment view.
         hung = self.enterContext(hung_url())
         _record(self.runtime_root, "controller-a", hung, self.server.url)
+        self.discover(self.server.url)
         started = time.monotonic()
         result = self.status("--json", "--timeout-s", "1")
         self.assertLess(time.monotonic() - started, 1.5)
@@ -45,9 +51,13 @@ class SimulatorStatusTests(unittest.TestCase):
         ))
 
     def test_unreachable_or_frontend_disconnected_simulator(self) -> None:
-        unavailable = self.status(chase_url=closed_url())
+        closed = closed_url()
+        self.discover(closed, "--force")
+        unavailable = self.status()
         self.assertEqual(unavailable.returncode, 1)
         self.assertIn("unreachable", unavailable.stdout)
+        invoke_automa("vehicles", "remove", "--url", closed, runtime_root=self.runtime_root)
+        self.discover(self.server.url)
         self.server.refuse("get_state", "Frontend not connected", code="frontend_not_connected")
         disconnected = self.status()
         self.assertEqual(disconnected.returncode, 0)
@@ -106,15 +116,13 @@ class EnvironmentStatusTests(unittest.TestCase):
             with self.subTest(expected=expected), tempfile.TemporaryDirectory() as tmp:
                 probe = ProbeResult(active=active, candidate=Candidate("picar", url, "discovered"),
                                     diagnostics=diagnostics, error=None if active else "probe detail")
-                env = {"CHASE_UI_WS_URL": closed_url()}
                 with probe_returning(probe):
                     invoke_automa("vehicles", "discover", "--provider", "picar", "--url", url, "--force",
-                                  runtime_root=Path(tmp), extra_env=env)
-                    result = invoke_automa("vehicles", "status", "--json", runtime_root=Path(tmp),
-                                           extra_env=env, check=False)
-                    text = invoke_automa("vehicles", "status", runtime_root=Path(tmp), extra_env=env, check=False)
+                                  runtime_root=Path(tmp))
+                    result = invoke_automa("vehicles", "status", "--json", runtime_root=Path(tmp), check=False)
+                    text = invoke_automa("vehicles", "status", runtime_root=Path(tmp), check=False)
                 self.assertEqual(result.returncode, code, result.stderr)
-                self.assertEqual(json.loads(result.stdout)["vehicles"][1],
+                self.assertEqual(json.loads(result.stdout)["vehicles"][0],
                                  {"provider": "picar", "url": url, "state": expected, "error": probe.error})
                 self.assertIn(f"PiCar (picar)  {expected} at {url}", text.stdout)
 

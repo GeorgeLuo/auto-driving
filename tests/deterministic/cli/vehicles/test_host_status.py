@@ -117,10 +117,11 @@ class HostStatusTests(unittest.TestCase):
         self.assertEqual((machine["schema"], machine["host_name"]), ("automa_hosts_status", None))
         [entry] = machine["hosts"]
         self.assertEqual(
-            {key: entry[key] for key in ("host_name", "provider", "vehicle_url", "attached", "local", "state", "mode",
-                                         "decision_count")},
+            {key: entry[key] for key in ("host_name", "provider", "vehicle_url", "attached", "simulator", "local", "state",
+                                         "mode", "decision_count")},
             {"host_name": "chase-sim-chaser", "provider": "chase-sim", "vehicle_url": chase_operator_url(self.server.url),
-             "attached": True, "local": "host record", "state": "pre_start", "mode": "manual", "decision_count": 0},
+             "attached": True, "simulator": None, "local": "host record", "state": "pre_start", "mode": "manual",
+             "decision_count": 0},
         )
         self.assertEqual(entry["run"]["host_name"], "chase-sim-chaser")
 
@@ -133,7 +134,7 @@ class HostStatusTests(unittest.TestCase):
         host = self.host()
         health = json.dumps({
             "schema": perception_view.VIEW_SCHEMA, "available": True, "url": "http://127.0.0.1/",
-            "has_perception": True, "latest_perception_frame_id": "frame-1", "perception_frame_buffered": True,
+            "latest_frame_id": "frame-1",
         }).encode()
         with answering(health) as view_url:
             runtime = self.runtime_root / "chase-sim-chaser/bundle/runtime"
@@ -156,7 +157,7 @@ class HostStatusTests(unittest.TestCase):
         [entry] = json.loads(result.stdout)["hosts"]
         self.assertEqual(entry["run"]["process"]["process_record"], f"{host.base_url}/host/status")
         view = entry["run"]["published_view"]
-        self.assertEqual((view["available"], view["latest_perception_frame_id"]), (True, "frame-1"))
+        self.assertEqual((view["available"], view["latest_frame_id"]), (True, "frame-1"))
         self.assertEqual(health_requests.call_count, 1)
         self.assertEqual(reads.count(self.runtime_root / "chase-sim-chaser/host-configuration.json"), 1)
         self.assertEqual(reads.count(runtime / "automation" / HOST_RECORD), 1)
@@ -361,7 +362,7 @@ class HostStatusTests(unittest.TestCase):
                 ])
                 self.assertEqual(machine["hosts"][0]["state"], state)
 
-    def test_a_simulator_that_cannot_list_agents_leaves_attachment_unknown(self) -> None:
+    def test_a_simulator_that_cannot_list_agents_says_it_is_not_answering(self) -> None:
         self.server.refuse("list_agents", "unsupported command")
         host = self.host()
 
@@ -370,8 +371,28 @@ class HostStatusTests(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stderr)
         [block] = _host_blocks(result.stdout)
-        self.assertEqual(block[-2:], ["  local host record", f"  {host.base_url}, pid {os.getpid()}"])
+        self.assertEqual(block[-2:], ["  simulator not answering", f"  {host.base_url}, pid {os.getpid()}"])
         self.assertIsNone(machine["hosts"][0]["attached"])
+        self.assertEqual(machine["hosts"][0]["simulator"], "not answering")
+
+    def test_untracking_the_simulator_does_not_change_the_host_block(self) -> None:
+        host = self.host()
+        self.enterContext(_attached(self.server, "chase-sim-chaser", host.base_url))
+        record = self.runtime_root / "simulators" / "5052" / "simulator.json"
+        record.parent.mkdir(parents=True)
+        record.write_text(json.dumps({
+            "schema": "automa_created_simulator", "pid": os.getpid(), "port": 5052, "url": self.server.url,
+            "metrics_ui_dir": "/tmp/metrics-ui", "config": "default", "started_at_ms": 1,
+        }), encoding="utf-8")
+
+        tracked = self.status()
+        removed = invoke_automa("vehicles", "remove", "--url", self.server.url,
+                                runtime_root=self.runtime_root, check=False)
+        untracked = self.status()
+
+        self.assertEqual(removed.returncode, 0, removed.stdout)
+        self.assertEqual(untracked.returncode, tracked.returncode)
+        self.assertEqual(untracked.stdout, tracked.stdout)
 
     def test_a_staged_picar_is_listed_from_its_connection(self) -> None:
         url = closed_url()

@@ -14,6 +14,7 @@ TIMEOUT_MESSAGE = "--timeout-s must be a finite number greater than zero"
 STATUS_COMMANDS = {
     ("vehicles", "status"): "cli.automa_cli.vehicles.commands.vehicles_status",
     ("hosts", "status"): "cli.automa_cli.hosts.runs.commands.hosts_status",
+    ("simulators", "status"): "cli.automa_cli.simulators.commands.simulators_status",
 }
 
 
@@ -107,10 +108,12 @@ class TimeoutInputTests(unittest.TestCase):
         self.assertEqual(run_automation.call_args.kwargs["timeout_s"], 1.25)
 
         for command, target in STATUS_COMMANDS.items():
-            with self.subTest(command=command), patch(
-                target,
-                return_value=(0, {"hosts": []}) if command[0] == "hosts" else (0, {"vehicles": []}),
-            ) as get_status:
+            status = {
+                "hosts": (0, {"hosts": []}),
+                "vehicles": (0, {"vehicles": []}),
+                "simulators": (0, {"simulators": []}),
+            }[command[0]]
+            with self.subTest(command=command), patch(target, return_value=status) as get_status:
                 code, _, _ = _invoke(*command)
             self.assertEqual(code, 0)
             self.assertEqual(get_status.call_args.kwargs["timeout_s"], 5.0)

@@ -58,8 +58,7 @@ class LiveCommandsTests(LiveHostTestCase):
         # use its transaction's findings and image even when decision is down.
         matched, jpeg = samples[0]
         self.assertEqual(latest["frame"]["frame_id"], matched["frame"]["frame_id"])
-        self.assertEqual(latest["overlay"]["source_frame_id"], latest["frame"]["frame_id"])
-        self.assertEqual(latest["overlay"]["status"], "current")
+        self.assertIsInstance(latest["result_age_ms"], int)
         with urlopen(f"{feed.url.rstrip('/')}{latest['frame']['url']}", timeout=5) as response:
             self.assertEqual(response.read(), jpeg)
 
@@ -119,7 +118,8 @@ class LiveCommandsTests(LiveHostTestCase):
 
         self.assertEqual(result.stdout,
                          f"Viewing host {HOST_NAME} at {self.host.base_url}\nBrowser opened: {view_url}\n")
-        self.assertEqual((status, latest["overlay"]["status"]), (200, "current"))
+        self.assertEqual(status, 200)
+        self.assertTrue(latest["frame"]["frame_id"])
         with self.assertRaises(OSError):
             urlopen(view_url, timeout=1)
 
@@ -129,7 +129,8 @@ class LiveCommandsTests(LiveHostTestCase):
 
         self.assertEqual(result.stdout,
                          f"Viewing host {HOST_NAME} at {self.host.base_url}\nBrowser opened: {view_url}\n")
-        self.assertEqual((status, latest["overlay"]["status"]), (200, "current"))
+        self.assertEqual(status, 200)
+        self.assertTrue(latest["frame"]["frame_id"])
 
     def test_the_viewer_says_why_a_host_whose_run_stopped_is_not_live(self) -> None:
         self.observe()

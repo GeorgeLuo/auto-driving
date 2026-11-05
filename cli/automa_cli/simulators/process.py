@@ -12,7 +12,7 @@ import signal
 import subprocess
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from ..hosts.local import log_tail
 from ..shared.io.processes import pid_alive
@@ -107,9 +107,16 @@ def start_simulator(command: list[str], *, cwd: Path, port: int, timeout_s: floa
         raise
 
 
-def stop_simulator(record: dict[str, Any]) -> bool:
-    """End a created simulator and remove its record; ``True`` when it had to be killed."""
+def stop_simulator(record: dict[str, Any]) -> Literal["exited", "stopped", "killed"]:
+    """End a created simulator and remove its record; how it ended.
 
-    killed = _end_process_group(record["pid"])
+    One whose process has exited is not signalled: its pid may belong to
+    another process by now.
+    """
+
+    if not pid_alive(record["pid"]):
+        ended = "exited"
+    else:
+        ended = "killed" if _end_process_group(record["pid"]) else "stopped"
     remove_simulator_record(record)
-    return killed
+    return ended

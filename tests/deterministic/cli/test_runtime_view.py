@@ -150,6 +150,24 @@ class ConnectedSplashTests(unittest.TestCase):
 
         self.assertEqual(json.loads(_read_text(f"{server.url}api/hosts")), {"hosts": []})
 
+    def test_a_read_route_is_served_only_by_a_view_built_with_it(self) -> None:
+        document = {"schema": "automa_simulators_status", "simulators": [{"url": "http://127.0.0.1:5050/"}]}
+        served = RuntimeViewServer(
+            host_name="viewer", automation_dir=None, port=0, connected=False,
+            reads={"/api/simulators": lambda: document}, replay_runner_factory=ImageReplayRunner,
+        ).start()
+        self.addCleanup(served.stop)
+        unserved = RuntimeViewServer(
+            host_name="viewer", automation_dir=None, port=0, connected=False,
+            replay_runner_factory=ImageReplayRunner,
+        ).start()
+        self.addCleanup(unserved.stop)
+
+        self.assertEqual(json.loads(_read_text(f"{served.url}api/simulators")), document)
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(f"{unserved.url}api/simulators", timeout=1.0)
+        self.assertEqual(caught.exception.code, 404)
+
     def test_server_refuses_to_start_without_a_workbench_runner(self) -> None:
         with self.assertRaisesRegex(TypeError, "replay_runner or replay_runner_factory"):
             RuntimeViewServer(host_name="viewer", automation_dir=None, port=0, connected=False)
@@ -210,6 +228,14 @@ class OpenViewerCommandTests(unittest.TestCase):
             self.assertEqual(app.main([]), 130)
         serve_viewer.assert_called_once()
         self.assertTrue(callable(serve_viewer.call_args.kwargs["emit"]))
+
+    def test_the_viewer_answers_the_vehicles_and_simulators_commands(self) -> None:
+        with mock.patch.object(app, "serve_viewer", return_value=130) as serve_viewer:
+            app.main([])
+        self.assertEqual(sorted(serve_viewer.call_args.kwargs["reads"]), ["/api/simulators", "/api/vehicles"])
+        self.assertEqual(sorted(serve_viewer.call_args.kwargs["writes"]), [
+            "/api/simulators/create", "/api/simulators/delete", "/api/vehicles/discover", "/api/vehicles/remove",
+        ])
 
 
 def _read_text(url: str) -> str:

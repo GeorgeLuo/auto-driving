@@ -125,8 +125,16 @@ class HelpCommandTests(unittest.TestCase):
         self.assertEqual(parser.parse_args(["simulators", "create"]).simulator_command, "create")
         deleted = parser.parse_args(["simulators", "delete", "--url", "http://127.0.0.1:5051/"])
         self.assertEqual((deleted.simulator_command, deleted.url), ("delete", "http://127.0.0.1:5051/"))
+        status = parser.parse_args([
+            "simulators", "status", "--url", "http://127.0.0.1:5051/",
+            "--long", "--timeout-s", "2", "--json",
+        ])
+        self.assertEqual(
+            (status.simulator_command, status.url, status.timeout_s),
+            ("status", "http://127.0.0.1:5051/", 2.0),
+        )
+        self.assertTrue(status.long and status.json)
         for args in (
-            ["simulators", "status"],
             ["simulators", "ensure", "--scenario", "chaser-depth-obstacles"],
         ):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):

@@ -9,6 +9,9 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
+
+from autonomy.runtime.plugin_catalog import catalog_write_error
 
 
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -25,6 +28,38 @@ STATIC_CONTENT_TYPES = {
 PAGES_DIR = Path(__file__).with_name("pages")
 SHARED_PAGE_DIR = PAGES_DIR / "shared"
 SHARED_STATIC_PATTERN = re.compile(r"^/static/shared/([a-z]+\.(?:css|js))$")
+
+
+def local_write_error(handler: BaseHTTPRequestHandler, *, subject: str) -> tuple[int, dict[str, Any]] | None:
+    """Refuse a POST unless it names this server by a loopback host and comes from its own origin.
+
+    ``subject`` names the writes in the refusal.
+    """
+
+    authority = handler.headers.get("Host", "")
+    try:
+        address = urlsplit(f"http://{authority}")
+        local = (address.hostname in LOOPBACK_HOSTS
+                 and address.port == handler.server.server_port
+                 and address.username is None and address.password is None
+                 and not address.path and not address.query and not address.fragment)
+    except ValueError:
+        local = False
+    if not local:
+        return 403, {"ok": False, "status": "failed", "error": f"{subject} require a loopback host"}
+    return catalog_write_error(handler.headers, origin=f"http://{authority}", subject=subject)
+
+
+def read_json_object(handler: BaseHTTPRequestHandler, *, what: str) -> dict[str, Any]:
+    """The request's JSON body, which must be an object. Raises ``ValueError`` otherwise."""
+
+    size = int(handler.headers.get("Content-Length", "0"))
+    if size < 0:
+        raise ValueError("negative content length")
+    payload = json.loads(handler.rfile.read(size))
+    if not isinstance(payload, dict):
+        raise ValueError(f"{what} must be an object")
+    return payload
 
 
 def validate_loopback_host(host: str, *, owner: str) -> str:

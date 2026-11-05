@@ -5,39 +5,31 @@ from __future__ import annotations
 from typing import Any
 
 from ..providers.metadata import PROVIDERS
-from ..providers.urls import chase_operator_url
-from ..shared.text import indented
+from ..simulators.render import simulator_lines
 from .models import VehicleResult
 
 
 def format_vehicles_status(status: dict[str, Any]) -> str:
-    return "\n\n".join(_vehicle_block(vehicle) for vehicle in status.get("vehicles") or [])
+    vehicles = status.get("vehicles") or []
+    if not vehicles:
+        return "None listed."
+    return "\n\n".join(_vehicle_block(vehicle) for vehicle in vehicles)
 
 
 def _vehicle_block(vehicle: dict[str, Any]) -> str:
-    heading = f"{PROVIDERS[vehicle['provider']].heading}  {vehicle['state']} at {vehicle['url']}"
     # A PiCar reports only its state; a simulator also reports its frontend.
     if "frontend" not in vehicle:
+        heading = f"{PROVIDERS[vehicle['provider']].heading}  {vehicle['state']} at {vehicle['url']}"
         return heading + (f": {vehicle['error']}" if vehicle.get("error") else "")
-    lines = [heading]
-    if vehicle.get("frontend") == "connected" and vehicle.get("game"):
-        lines.append(f"  frontend connected, game {vehicle['game']}")
-    elif vehicle.get("frontend"):
-        lines.append(f"  frontend {vehicle['frontend']}")
-    lines += indented(vehicle.get("error"))
-    if vehicle.get("pid"):
-        lines.append(f"  created by simulators create, pid {vehicle['pid']}")
-    return "\n".join(lines)
+    return "\n".join(simulator_lines(vehicle))
 
 
 def render_vehicle_result(result: VehicleResult) -> str:
     if result.kind == "error":
         return result.error or ""
-    if result.kind == "default":
-        return f"{chase_operator_url(result.url)} is the default simulator and is always listed."
     if result.kind == "missing":
         names = ", ".join(PROVIDERS[v["provider"]].heading_at(v["url"]) for v in result.vehicles)
-        return f"No discovered vehicle at {result.url}. " + (f"Discovered: {names}." if names else "None discovered.")
+        return f"No listed vehicle at {result.url}. " + (f"Listed: {names}." if names else "None listed.")
     if result.kind == "removed":
         return "\n".join(f"Removed {PROVIDERS[v['provider']].heading_at(v['url'])}" for v in result.vehicles)
     vehicle = PROVIDERS[result.provider]

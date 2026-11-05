@@ -13,15 +13,15 @@ from pathlib import Path
 
 from ..hosts.discovery import local_hosts
 from ..providers.registry import CHASE_SIM
-from ..providers.urls import normalize_chase_url
+from ..providers.urls import chase_operator_url, normalize_chase_url
 from .models import SimulatorResult
 from .process import SimulatorStartError, start_simulator, stop_simulator
-from .store import created_simulators
+from .store import simulator_records
 
 # simulators create runs Metrics UI's headless launcher from this checkout.
 METRICS_UI_DIR_ENV = "AUTOMA_METRICS_UI_DIR"
 HEADLESS_SIM_SCRIPT = "scripts/play-chase-headless.mjs"
-# 5050 stays the default simulator's.
+# 5050 is Metrics UI's own port, which ChaseSimCar() reaches without a URL.
 SIMULATOR_PORTS = range(5051, 5100)
 SIMULATOR_START_TIMEOUT_S = 45.0
 
@@ -30,8 +30,8 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Simulat
     """Start a headless Chase simulator on the first free port in ``SIMULATOR_PORTS``.
 
     Metrics UI's launcher runs it with its default configuration and checks
-    it is ready. It outlives this command, and ``vehicles status`` lists it
-    until ``delete_simulator`` ends it.
+    it is ready. It outlives this command. ``vehicles status`` lists it until
+    ``vehicles remove`` stops listing it or ``delete_simulator`` ends it.
     """
 
     ui_dir, error = _metrics_ui_dir()
@@ -49,23 +49,35 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Simulat
     return SimulatorResult(0, "created", url=record["url"])
 
 
+def hosts_by_simulator() -> dict[str, list[str]]:
+    """Host names created at each simulator, by its control URL. Delete refuses while one has any."""
+
+    hosts: dict[str, list[str]] = {}
+    for host in local_hosts():
+        if host["provider"] == CHASE_SIM.name:
+            hosts.setdefault(host["vehicle_url"], []).append(host["host_name"])
+    return hosts
+
+
 def delete_simulator(*, url: str) -> SimulatorResult:
-    """End a simulator ``simulators create`` started, unless a host was created at it."""
+    """End a simulator ``simulators create`` started, unless a host was created at it.
+
+    A simulator whose process has exited, which ``simulators status`` still
+    lists, has only its record removed: its pid is not signalled.
+    """
 
     try:
         ws_url = normalize_chase_url(url)
     except ValueError as exc:
         return SimulatorResult(2, "error", error=str(exc))
-    created = created_simulators()
-    record = next((simulator for simulator in created if simulator["url"] == ws_url), None)
+    records = simulator_records()
+    record = next((simulator for simulator in records if simulator["url"] == ws_url), None)
     if record is None:
-        return SimulatorResult(2, "missing", url=url, urls=tuple(item["url"] for item in created))
-    hosts = [host["host_name"] for host in local_hosts()
-             if host["provider"] == CHASE_SIM.name and host["vehicle_url"] == ws_url]
+        return SimulatorResult(2, "missing", url=url, urls=tuple(chase_operator_url(item["url"]) for item in records))
+    hosts = hosts_by_simulator().get(ws_url)
     if hosts:
         return SimulatorResult(2, "blocked", url=ws_url, hosts=tuple(hosts))
-    killed = stop_simulator(record)
-    return SimulatorResult(0, "deleted", url=ws_url, killed=killed)
+    return SimulatorResult(0, "deleted", url=ws_url, ended=stop_simulator(record))
 
 
 def _metrics_ui_dir() -> tuple[Path | None, str | None]:

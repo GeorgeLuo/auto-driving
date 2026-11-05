@@ -87,6 +87,7 @@ _NAMED_ROLES = {name: name for name in ("commands", "service", "models", "render
 _OPERATION_ROLES = {"service", "store", "monitor", "registry", "operation"}
 _MODULE_ROLES = {
     "app": "entrypoint",
+    "viewer_commands": "commands",  # the viewer's adapter: runs services, renders their results
     "frontend.decision_view": "operation",
     "frontend.loopback_http": "operation",
     "frontend.perception_view": "operation",
@@ -146,6 +147,7 @@ _MODULE_ROLES = {
     "shared.command_result": "models",
     "shared.io.http_json": "operation",
     "shared.io.json_files": "store",
+    "shared.io.log_files": "operation",
     "shared.io.processes": "operation",
     "shared.memory_report": "pure",
     "shared.open_view": "operation",
@@ -155,6 +157,7 @@ _MODULE_ROLES = {
     "shared.text": "pure",
     "shared.timestamps": "pure",
     "simulators.process": "operation",
+    "simulators.status": "operation",
     "vehicles.discovery": "operation",
     "vehicles.status": "operation",
     "workbench.page_payloads": "pure",

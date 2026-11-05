@@ -198,10 +198,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
                 return True
 
         class FakePerceptionView:
-            def publish_frame(self, **_kwargs) -> None:
-                return None
-
-            def publish_perception(self, **_kwargs) -> None:
+            def publish(self, **_kwargs) -> None:
                 return None
 
         class FakeRuntimeView:

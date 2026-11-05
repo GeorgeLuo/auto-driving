@@ -129,41 +129,10 @@ class LiveRuntimeDecisionViewFixture:
         target = self.server if server is None else server
         stream_frame = stream_frame or self._accepted_frame(run_id=run_id)
         frame_bytes = _png_bytes(image_color)
-        frame_record = {
-            "frame": {
-                "frame_id": stream_frame["frame_id"],
-                "frame_index": stream_frame["frame_index"],
-                "captured_at_ms": stream_frame["timestamp_ms"],
-            },
-            "run_id": run_id,
-            "sensor_frame": {
-                "readings": {"front_camera": {"read_id": stream_frame["frame_id"]}}
-            },
-        }
-        target.perception.publish_frame(
-            frame_bytes=frame_bytes, content_type="image/png", frame_record=frame_record,
-        )
-
-        # A newer camera capture becomes perception's default frame first. The
-        # decision must still select the exact buffered frame above by ID.
-        target.perception.publish_frame(
-            frame_bytes=_png_bytes((210, 40, 30)),
-            content_type="image/png",
-            frame_record={
-                **frame_record,
-                "frame": {
-                    **frame_record["frame"],
-                    "frame_id": f"{run_id}-later",
-                    "frame_index": frame_record["frame"]["frame_index"] + 1,
-                },
-            },
-        )
-        exact_image = target.perception.frame(stream_frame["frame_id"])
-        self.assertIsNotNone(exact_image)
         self.assertTrue(
             target.decision.publish(
                 report=stream_frame,
-                image=exact_image,
+                image=(frame_bytes, "image/png"),
             )
         )
         return stream_frame, frame_bytes

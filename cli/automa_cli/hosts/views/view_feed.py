@@ -41,7 +41,7 @@ class ViewFeed:
                 automation_dir=runtime_dir,
                 plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
             ).start()
-            self.observation = ObservationPublisher(self.server.perception, runtime_dir / "latest_frame.jpg")
+            self.observation = ObservationPublisher(self.server.perception)
             self.decision = DecisionViewAdapter(
                 host_name=host_name, base_url=base_url, view_server=self.server, timeout_s=timeout_s,
             )
@@ -77,7 +77,7 @@ class ViewFeed:
             return None, self.error
 
     def publish(self, publication: dict[str, Any] | None) -> None:
-        if self.observation is None or self.decision is None:
+        if self.server is None or self.decision is None or self.observation is None:
             return
         try:
             published = self.decision.refresh()

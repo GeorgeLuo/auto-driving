@@ -15,7 +15,6 @@ from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.report import HostReport, ReportApplication
 from cli.automa_cli.frontend.perception_view import PerceptionView
 from cli.automa_cli.hosts.runs import monitor
-from cli.automa_cli.hosts.views import observation
 from cli.automa_cli.hosts.views import view_feed as viewer
 from cli.automa_cli.plugins.stream import decision, session
 from cli.automa_cli.plugins.stream.commands import stream_host_step
@@ -137,9 +136,11 @@ class LiveViewCopyTests(unittest.TestCase):
                 served, content_type = holder["server"].perception.frame()
                 self.assertEqual(content_type, "image/jpeg")
                 self.assertEqual(served, output.getvalue())
-                self.assertEqual(
-                    (root / "latest" / "frames" / "latest_front_camera.jpg").read_bytes(),
-                    output.getvalue(),
+                # The run's latest files follow the view's publication.
+                front_camera = root / "latest" / "frames" / "latest_front_camera.jpg"
+                wait_until(
+                    lambda: front_camera.exists() and front_camera.read_bytes() == output.getvalue(),
+                    message="the monitor did not export the published frame",
                 )
                 self.assertTrue(worker.is_alive())
                 self.assertFalse(export_release.is_set())
@@ -160,11 +161,11 @@ class LiveViewCopyTests(unittest.TestCase):
                 first["health"] = second["health"] = "stale"
                 identity = {"run_id": "run-1", "control_source": "runtime_host"}
                 server = Mock(perception=PerceptionView(host_name="fixture"))
-                copied = {"publication": None, "error": None, "ready": threading.Event()}
+                copied = {"publication": None, "ready": threading.Event()}
                 stop = threading.Event()
                 polls = 0
                 write_text = Path.write_text
-                write_json = observation.write_json_atomically
+                write_json = monitor.write_json_atomically
 
                 def export_json(path, record):
                     if polls == 2 and failed_export == path.name:
@@ -181,7 +182,8 @@ class LiveViewCopyTests(unittest.TestCase):
                     self.assertTrue(copied["ready"].is_set())
                     if polls in (2, 4, 6):
                         self.assertIsNone(server.perception.latest_json())
-                        self.assertIsNotNone(copied["error"])
+                        if polls == 2:
+                            self.assertIn("export blocked", server.perception.unavailable_reason)
                     else:
                         publication = first if polls < 2 else second
                         record = {**publication, **identity}
@@ -193,7 +195,6 @@ class LiveViewCopyTests(unittest.TestCase):
                         self.assertEqual((payload["frame"]["width_px"], payload["frame"]["height_px"]), (4, 5))
                         self.assertEqual(payload["overlay"]["status"], "current")
                         self.assertEqual(copied["publication"], publication)
-                        self.assertIsNone(copied["error"])
                     polls += 1
                     if polls == 8:
                         stop.set()
@@ -207,13 +208,14 @@ class LiveViewCopyTests(unittest.TestCase):
                 with (
                     patch.object(monitor, "fetch_observation_sample", side_effect=samples) as read,
                     patch.object(stop, "wait", side_effect=check_poll),
-                    patch.object(observation, "write_json_atomically", side_effect=export_json) as json_export,
+                    patch.object(monitor, "write_json_atomically", side_effect=export_json) as json_export,
                     patch.object(Path, "write_text", autospec=True, side_effect=export_text) as text_export,
-                    patch.object(server.perception, "publish_matched", wraps=server.perception.publish_matched) as publish,
+                    patch.object(server.perception, "publish", wraps=server.perception.publish) as publish,
                 ):
                     monitor._copy_latest_perception(
                         "http://host.invalid", server, stop, copied,
-                        frame_path=root / "frame.jpg", record_dir=root, identity=identity, timeout_s=0.1,
+                        front_camera_path=root / "frame.jpg", json_path=root / "latest_perception.json",
+                        text_path=root / "latest_perception.txt", identity=identity, timeout_s=0.1,
                     )
                 self.assertEqual(read.call_count, 8)
                 self.assertEqual(publish.call_count, 5)

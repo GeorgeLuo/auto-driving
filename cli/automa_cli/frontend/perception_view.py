@@ -17,7 +17,7 @@ PUBLICATION_SCHEMA = "automa_perception_publication"
 VIEW_RECORD_NAME = "perception_view.json"
 MAX_BUFFERED_FRAMES = 8
 NO_FRAME_ERROR = "no camera frame has been published yet"
-_IMAGE_CONTENT_TYPES = {"image/jpeg", "image/png"}
+_CONTENT_TYPE = "image/jpeg"
 
 
 class PerceptionView:
@@ -29,7 +29,6 @@ class PerceptionView:
         self.unavailable_reason = NO_FRAME_ERROR
         self._lock = threading.RLock()
         self._frames: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
-        self._retained_frame_ids: set[str] = set()
         self._latest_frame: dict[str, Any] | None = None
         self._latest_perception_record: dict[str, Any] | None = None
         self._latest_frame_id: str | None = None
@@ -37,66 +36,37 @@ class PerceptionView:
         self._frame_published_at_ms: int | None = None
         self._perception_published_at_ms: int | None = None
 
-    def publish_frame(self, *, frame_bytes: bytes, content_type: str, frame_record: dict[str, Any]) -> None:
-        """Install image bytes already received for this publication."""
-        self._publish_image(frame_bytes, content_type, frame_record, matched=False)
-
-    def publish_perception(self, *, frame_record: dict[str, Any]) -> None:
-        frame_id = _frame_identity(frame_record)["frame_id"]
-        with self._lock:
-            self._latest_perception_record = frame_record
-            self._latest_perception_frame_id = frame_id
-            self._perception_published_at_ms = _timestamp_ms()
-
-    def publish_matched(self, *, frame_bytes: bytes, content_type: str, frame_record: dict[str, Any]) -> None:
-        """Replace the image and findings together for an accepted transaction."""
-        self._publish_image(frame_bytes, content_type, frame_record, matched=True)
-
-    def _publish_image(
-        self, frame_bytes: bytes, content_type: str, frame_record: dict[str, Any], *, matched: bool,
-    ) -> None:
-        # Dimensions are ready before the lock so publication stays a pair swap.
-        if not isinstance(frame_bytes, bytes) or not frame_bytes:
-            raise ValueError("published frame is empty")
-        if content_type not in _IMAGE_CONTENT_TYPES:
-            raise ValueError("published frame content type must be image/jpeg or image/png")
+    def publish(self, *, frame_bytes: bytes, frame_record: dict[str, Any]) -> None:
+        """Replace the latest JPEG and its findings together."""
         identity = _frame_identity(frame_record)
         frame_id = identity["frame_id"]
+        # The image is checked before the lock so publication stays a pair swap.
         with Image.open(BytesIO(frame_bytes)) as image:
-            width_px, height_px = int(image.size[0]), int(image.size[1])
+            if image.format != "JPEG":
+                raise ValueError("published frame must be a JPEG image")
+            width_px, height_px = image.size
         published_at_ms = _timestamp_ms()
         frame = {
             "frame_id": frame_id,
             "frame_index": identity.get("frame_index"),
             "captured_at_ms": identity.get("captured_at_ms"),
             "published_at_ms": published_at_ms,
-            "content_type": content_type,
+            "content_type": _CONTENT_TYPE,
             "width_px": width_px,
             "height_px": height_px,
             "url": f"/frame?v={quote(frame_id, safe='')}",
         }
         with self._lock:
-            if frame_id not in self._frames and len(self._frames) >= MAX_BUFFERED_FRAMES:
-                evictable = next(
-                    (
-                        retained_id
-                        for retained_id in self._frames
-                        if retained_id not in self._retained_frame_ids
-                    ),
-                    None,
-                )
-                if evictable is None:
-                    raise RuntimeError("perception frame capacity is retained in flight")
-                del self._frames[evictable]
-            self._frames[frame_id] = (frame_bytes, content_type)
+            self._frames[frame_id] = (frame_bytes, _CONTENT_TYPE)
             self._frames.move_to_end(frame_id)
+            if len(self._frames) > MAX_BUFFERED_FRAMES:
+                self._frames.popitem(last=False)
             self._latest_frame = frame
             self._latest_frame_id = frame_id
             self._frame_published_at_ms = published_at_ms
-            if matched:
-                self._latest_perception_record = frame_record
-                self._latest_perception_frame_id = frame_id
-                self._perception_published_at_ms = published_at_ms
+            self._latest_perception_record = frame_record
+            self._latest_perception_frame_id = frame_id
+            self._perception_published_at_ms = published_at_ms
 
     def invalidate_latest(self, reason: str | None = None) -> None:
         """An unavailable publication must not leave a usable latest pair; ``reason`` says why."""
@@ -158,21 +128,6 @@ class PerceptionView:
     def frame(self, frame_id: str | None = None) -> tuple[bytes, str] | None:
         with self._lock:
             return self._frames.get(frame_id if frame_id is not None else self._latest_frame_id)
-
-    def retain_frame(self, frame_id: str) -> bool:
-        """Keep one buffered capture available while its queued cycle runs."""
-
-        with self._lock:
-            if frame_id not in self._frames:
-                return False
-            self._retained_frame_ids.add(frame_id)
-            return True
-
-    def release_frame(self, frame_id: str) -> None:
-        """Release a queued capture without changing the bounded cache size."""
-
-        with self._lock:
-            self._retained_frame_ids.discard(frame_id)
 
 
 def get_perception_view_status(

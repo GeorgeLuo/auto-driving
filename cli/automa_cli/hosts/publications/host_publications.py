@@ -31,9 +31,6 @@ from ...shared.io import http_json
 from .host_telemetry import HostTelemetryError
 
 
-OBSERVATION_IMAGE_CONTENT_TYPE = "image/jpeg"
-
-
 @dataclass
 class TransactionCache:
     etag: str | None = None
@@ -194,7 +191,7 @@ def fetch_observation_sample(
         return publication, None
     if (
         not isinstance(encoded, str)
-        or payload.get("image_content_type") != OBSERVATION_IMAGE_CONTENT_TYPE
+        or payload.get("image_content_type") != "image/jpeg"
         or not frame.get("frame_id")
         or payload.get("image_frame_id") != frame["frame_id"]
     ):
@@ -208,7 +205,7 @@ def fetch_observation_sample(
     if not jpeg:
         raise ValueError("Empty observation transaction image")
     if cache is not None:
-        cache.image = jpeg, OBSERVATION_IMAGE_CONTENT_TYPE
+        cache.image = jpeg, "image/jpeg"
     return publication, jpeg
 
 

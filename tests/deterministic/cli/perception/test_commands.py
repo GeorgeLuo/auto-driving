@@ -39,7 +39,7 @@ class PerceptionCommandTests(unittest.TestCase):
                 replay_runner_factory=ImageReplayRunner,
             ).start()
             frame_bytes = io.BytesIO()
-            Image.new("RGB", (16, 12), (20, 40, 60)).save(frame_bytes, format="PNG")
+            Image.new("RGB", (16, 12), (20, 40, 60)).save(frame_bytes, format="JPEG")
             frame_record = {
                 "frame": {
                     "frame_id": "frame_000002",
@@ -47,20 +47,8 @@ class PerceptionCommandTests(unittest.TestCase):
                     "captured_at_ms": 1000,
                 },
                 "perception": {"things": [], "signals": []},
-                "sensor_frame": {
-                    "readings": {
-                        "front_camera": {
-                            "metadata": {"content_type": "image/png"},
-                        }
-                    }
-                },
             }
-            server.perception.publish_frame(
-                frame_bytes=frame_bytes.getvalue(),
-                content_type="image/png",
-                frame_record=frame_record,
-            )
-            server.perception.publish_perception(frame_record=frame_record)
+            server.perception.publish(frame_bytes=frame_bytes.getvalue(), frame_record=frame_record)
             expected_url = server.url
             try:
                 text_result = invoke_automa(

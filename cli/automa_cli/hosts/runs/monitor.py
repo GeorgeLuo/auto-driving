@@ -24,9 +24,11 @@ from ...shared.paths import display_path
 from ...frontend.perception_view import perception_view_ready
 from ..publications.decision_publication import (
     perception_duration_ms,
+    perception_text_from_publication,
+    publication_capture,
     publication_part,
 )
-from ..publications.host_publications import TransactionCache, fetch_observation_sample
+from ..publications.host_publications import fetch_observation_sample, TransactionCache
 from ...shared.timestamps import timestamp_ms
 from .models import RunEvent, RunResult, run_exit_code
 from collections.abc import Callable
@@ -103,12 +105,12 @@ def _copy_latest_decision(
 
 def _copy_latest_perception(
     base_url: str, server: RuntimeViewServer, stop: threading.Event,
-    copied: dict[str, Any], *, frame_path: Path, record_dir: Path,
+    copied: dict[str, Any], *, front_camera_path: Path, json_path: Path, text_path: Path,
     identity: dict[str, Any], timeout_s: float,
 ) -> None:
     """Perception never waits for the monitor's recording export."""
     cache = TransactionCache()
-    publisher = ObservationPublisher(server.perception, frame_path, record_dir=record_dir, identity=identity)
+    publisher = ObservationPublisher(server.perception)
     try:
         while not stop.is_set():
             started = time.monotonic()
@@ -116,14 +118,17 @@ def _copy_latest_perception(
                 publication, jpeg = fetch_observation_sample(base_url, timeout_s=timeout_s, cache=cache)
                 if stop.is_set():
                     break
-                if publisher.publish(publication, jpeg):
+                record = {**publication, **identity}
+                if jpeg is None:
+                    publisher.invalidate()
+                elif publisher.publish(record, jpeg):
+                    # The run's latest files follow the view, which never reads them.
+                    front_camera_path.write_bytes(jpeg)
+                    write_json_atomically(json_path, record)
+                    text_path.write_text(perception_text_from_publication(publication) + "\n", encoding="utf-8")
                     copied["publication"] = publication
-                    copied["error"] = None
-                elif jpeg is None:
-                    copied["error"] = publication.get("error") or publication.get("health")
-            except Exception as exc:
-                publisher.invalidate()
-                copied["error"] = f"{type(exc).__name__}: {exc}"
+            except Exception as exc:  # noqa: BLE001 - the next poll retries this capture
+                publisher.invalidate(f"{type(exc).__name__}: {exc}")
             finally:
                 copied["ready"].set()
             stop.wait(pause_s(started, PERCEPTION_COPY_INTERVAL_S))
@@ -150,12 +155,13 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
     state_path = automation_dir / "state.json"
     latest_json_path = automation_dir / "latest_perception.json"
     latest_text_path = automation_dir / "latest_perception.txt"
+    front_camera_path = automation_dir / "latest" / "frames" / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
     server = None
     run_dir = None
     recording_id = None
     copier = None
     perception_copier = None
-    perception_copy: dict[str, Any] = {"publication": None, "error": None, "ready": threading.Event()}
+    perception_copy: dict[str, Any] = {"publication": None, "ready": threading.Event()}
     stop_copy = threading.Event()
     copied: dict[str, tuple[bool, str] | None] = {"result": None}
     state = new_run_state(
@@ -163,7 +169,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
         configuration=configuration, record=record,
         control_source=CONTROL_SOURCE,
         automation_dir=automation_dir,
-        front_camera_path=automation_dir / "latest" / "frames" / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg",
+        front_camera_path=front_camera_path,
         run_dir=None, published_view={"status": "starting", "available": False, "url": None},
     )
     state.update(selections=selections, decision=decision)
@@ -179,8 +185,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
             raise RuntimeError("the runtime host does not support complete recordings; update the host")
         recording_id = recording["run_id"] if record else None
         run_dir = automation_dir / "runs" / recording_id if record else None
-        frames_dir = automation_dir / "latest" / "frames"
-        frames_dir.mkdir(parents=True, exist_ok=True)
+        front_camera_path.parent.mkdir(parents=True, exist_ok=True)
         server = runtime_view_server(
             host_name=host_name, automation_dir=automation_dir,
             run_id=run_id, worker_pid=os.getpid(),
@@ -206,8 +211,8 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
         copier = worker
         perception_copier = threading.Thread(
             target=_copy_latest_perception, args=(base_url, server, stop_copy, perception_copy),
-            kwargs={"frame_path": frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg", "record_dir": automation_dir,
-                    "timeout_s": timeout_s,
+            kwargs={"front_camera_path": front_camera_path, "json_path": latest_json_path,
+                    "text_path": latest_text_path, "timeout_s": timeout_s,
                     "identity": {key: state[key] for key in ("run_id", "steps", "action_policy", "control_source", "control_application")}},
             name="automa-perception-copy", daemon=True,
         )
@@ -244,10 +249,10 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                 break
             # Both view copiers run independently of this status/export pass.
             publication = perception_copy["publication"]
-            frame = publication_part(publication, "frame")
-            frame_id = frame.get("frame_id")
-            capture = (frame_id, frame.get("captured_at_ms"))
-            if frame_id and capture != last_capture:
+            capture = None if publication is None else publication_capture(publication)
+            if capture != last_capture:
+                frame = publication_part(publication, "frame")
+                frame_id = frame.get("frame_id")
                 result = copied["result"]
                 if result is not None and not result[0] and state["decision"]["published"]:
                     state["decision"]["latest_frame_publish_skips"] += 1
@@ -261,7 +266,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                     "frame_id": frame_id,
                     "frame_index": frame.get("frame_index"),
                     "captured_at_ms": captured_at_ms,
-                    "front_camera": display_path(frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"),
+                    "front_camera": display_path(front_camera_path),
                 }
                 state["last_frame"] = {
                     "frame_id": frame_id,

@@ -10,4 +10,4 @@ class SimulatorResult:
     error: str | None = None
     urls: tuple[str, ...] = ()
     hosts: tuple[str, ...] = ()
-    killed: bool = False
+    ended: Literal['exited', 'stopped', 'killed'] | None = None

@@ -1,9 +1,11 @@
 """``automa simulators``: the commands.
 
 - ``commands``: the ``simulators`` parser and its handlers.
+- ``status``: ``simulators status``, including a record whose process has exited, as the
+  ``automa_simulators_status`` document that ``--json`` prints and other readers serve.
 - ``service``: ``simulators create`` and ``delete``, returning lifecycle facts.
 - ``models``: simulator lifecycle outcomes.
-- ``render``: command text from those outcomes.
+- ``render``: command text. ``simulator_lines`` is the simulator block ``vehicles status`` prints.
 - ``process``: the headless simulator process and its process group.
-- ``store``: the record of each simulator create started. ``vehicles`` reads it.
+- ``store``: every record create wrote, and the ones still alive. ``vehicles`` reads the live ones.
 """

@@ -6,7 +6,7 @@ from typing import Any
 
 from ..providers.metadata import PROVIDERS
 from ..providers.urls import chase_operator_url
-from ..shared.text import indented
+from ..simulators.render import simulator_lines
 from .models import VehicleResult
 
 
@@ -15,19 +15,11 @@ def format_vehicles_status(status: dict[str, Any]) -> str:
 
 
 def _vehicle_block(vehicle: dict[str, Any]) -> str:
-    heading = f"{PROVIDERS[vehicle['provider']].heading}  {vehicle['state']} at {vehicle['url']}"
     # A PiCar reports only its state; a simulator also reports its frontend.
     if "frontend" not in vehicle:
+        heading = f"{PROVIDERS[vehicle['provider']].heading}  {vehicle['state']} at {vehicle['url']}"
         return heading + (f": {vehicle['error']}" if vehicle.get("error") else "")
-    lines = [heading]
-    if vehicle.get("frontend") == "connected" and vehicle.get("game"):
-        lines.append(f"  frontend connected, game {vehicle['game']}")
-    elif vehicle.get("frontend"):
-        lines.append(f"  frontend {vehicle['frontend']}")
-    lines += indented(vehicle.get("error"))
-    if vehicle.get("pid"):
-        lines.append(f"  created by simulators create, pid {vehicle['pid']}")
-    return "\n".join(lines)
+    return "\n".join(simulator_lines(vehicle))
 
 
 def render_vehicle_result(result: VehicleResult) -> str:

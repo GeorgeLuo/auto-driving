@@ -17,13 +17,13 @@ from cli.automa_cli.providers.registry import PICAR, PROVIDERS
 from cli.automa_cli.providers.models import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.vehicle_fixtures import probe_returning
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import write_host_fixture, runtime_root_env
 
 
 class HostLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory())) / "vehicles"
-        self.enterContext(patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": str(self.root)}))
+        self.enterContext(runtime_root_env(self.root))
 
     def test_create_picar_dry_run_has_core_release_then_restart_without_writes(self):
         result = invoke_automa("hosts", "create", "--name", "car", "--provider", "picar",

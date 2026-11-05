@@ -11,7 +11,7 @@ import tempfile
 import unittest
 from collections.abc import Iterator
 from pathlib import Path
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import write_host_fixture, runtime_root_env
 from unittest import mock
 
 from autonomy.decision_cycle.activation import STEPS
@@ -42,7 +42,7 @@ class StepFairnessTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
-            with mock.patch.dict(os.environ, {"AUTOMA_RUNTIME_ROOT": str(root)}), mock.patch(
+            with runtime_root_env(root), mock.patch(
                 "cli.automa_cli.hosts.runs.status.get_perception_view_status", return_value=dict(UNAVAILABLE_VIEW)
             ), mock.patch.object(socket, "getaddrinfo", offline_getaddrinfo(socket.getaddrinfo)):
                 for step in staged:

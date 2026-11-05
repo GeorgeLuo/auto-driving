@@ -22,7 +22,7 @@ from implementations.vehicle.chase_sim import ChaseCameraCapture
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.releases.paths import controller_bundle_paths
 
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import write_host_fixture, runtime_root_env
 
 HOST_NAME = "chase-sim-chaser"
 
@@ -255,7 +255,7 @@ def chase_runtime(runtime_root: Path, *, car=None, host_name: str = HOST_NAME):
     write_host_fixture(runtime_root, host_name)
     bundle = controller_bundle_paths(runtime_root / host_name)
     with ExitStack() as stack:
-        stack.enter_context(patch.dict(os.environ, {"AUTOMA_RUNTIME_ROOT": str(runtime_root)}))
+        stack.enter_context(runtime_root_env(runtime_root))
         host = stack.enter_context(ChaseRuntimeHost(
             car=_FakeCar() if car is None else car,
             runtime_dir=Path(bundle["runtime_dir"]), host_name=host_name,

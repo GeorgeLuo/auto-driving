@@ -19,10 +19,10 @@ from ...providers.registry import PROVIDERS
 from ...providers.models import Candidate
 from ..errors import RuntimeHostError
 from ...releases.errors import ReleaseError
-from ...releases.paths import bundle_paths
+from ...releases.paths import bundle_paths, host_dir
 from ...releases.store import release_code_dir
 from ...shared.io.processes import pid_alive
-from ...shared.paths import runtime_root, safe_path_part
+from ...shared.paths import runtime_root
 from ..progress import ProgressSink
 from ..bundles import controller_bundle_source_summary, sync_controller_bundle
 from ..discovery import running_base_url
@@ -170,10 +170,8 @@ def create_host(
         return CreateResult(2, "error", error)
     if provider not in PROVIDERS:
         return CreateResult(2, "error", f"Provider must be one of {', '.join(PROVIDERS)} (got {provider!r}).")
-    root = runtime_root()
-    directory = root / safe_path_part(host_name)
-    if (directory / "host-configuration.json").exists():
-        existing, error = staging_host(host_name, runtime_root=root)
+    if (host_dir(host_name) / "host-configuration.json").exists():
+        existing, error = staging_host(host_name)
         return CreateResult(2, "error", error or f"Host {host_name!r} already exists: {vehicle_label(existing)}.")
     backend = backend_for(provider)
     if backend is None or backend.create is None:
@@ -250,10 +248,9 @@ def _install_created_host(
     verbose: bool, emit: ProgressSink | None,
 ) -> CreateResult:
     host_name = configuration["host_name"]
-    root = runtime_root()
-    directory = root / safe_path_part(host_name)
+    directory = host_dir(host_name)
     made_directory = not directory.exists()
-    write_host_configuration(root, configuration)
+    write_host_configuration(runtime_root(), configuration)
     try:
         if not local:
             core = install_picar_core(resolve_picar_target(configuration), verbose=verbose, emit=emit)
@@ -295,7 +292,7 @@ def _delete_recorded_host(
     configuration: dict[str, Any], *, verbose: bool, emit: ProgressSink | None, local: bool,
 ) -> DeleteResult:
     host_name = configuration["host_name"]
-    directory = runtime_root() / safe_path_part(host_name)
+    directory = host_dir(host_name)
     stopped, failure = _stop_active_automation(host_name)
     if failure is not None:
         return failure

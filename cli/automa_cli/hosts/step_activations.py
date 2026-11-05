@@ -109,10 +109,10 @@ def staging_host(
     Omit ``runtime_root`` to use the CLI runtime root.
     """
 
-    root = cli_runtime_root() if runtime_root is None else runtime_root
     if (error := host_name_error(host_name)) is not None:
         return None, error
-    path = Path(root) / host_name / "host-configuration.json"
+    root = cli_runtime_root() if runtime_root is None else runtime_root
+    path = root / host_name / "host-configuration.json"
     if not path.is_file():
         names = host_names(root)
         known = f"Hosts: {', '.join(names)}." if names else "No hosts exist."

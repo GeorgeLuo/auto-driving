@@ -1,9 +1,7 @@
 from __future__ import annotations
 import json
-import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
 from autonomy.decision_cycle.cycle import DecisionCycleResult
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.action.publication import MODE_KEY
@@ -29,6 +27,7 @@ from cli.automa_cli.hosts.step_activations import (
     decision_identity,
 )
 from cli.automa_cli.releases.paths import bundle_paths
+from tests.support.runtime_fixtures import runtime_root_env
 
 
 LEFT_OBSTRUCTION_FRAME = Path(__file__).with_name("left_obstruction_frame.json")
@@ -183,10 +182,7 @@ class DecisionSurfaceFixture:
         self._tmp = tempfile.TemporaryDirectory()
         self.runtime_root = Path(self._tmp.name) / "vehicles"
         self.runtime_root.mkdir(parents=True)
-        self._env_patch = patch.dict(
-            os.environ,
-            {"AUTOMA_RUNTIME_ROOT": str(self.runtime_root)},
-        )
+        self._env_patch = runtime_root_env(self.runtime_root)
         self._env_patch.start()
 
     def tearDown(self) -> None:

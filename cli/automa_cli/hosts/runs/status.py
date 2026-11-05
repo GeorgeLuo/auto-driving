@@ -16,11 +16,11 @@ from typing import Any
 from ...frontend.perception_view import get_perception_view_status
 from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ...releases.errors import ReleaseError
-from ...releases.paths import controller_bundle_paths
+from ...releases.paths import bundle_paths
 from ...releases.store import release_manifest
 from ...shared.io.json_files import read_json
 from ...shared.io.processes import pid_alive
-from ...shared.paths import display_path, runtime_root
+from ...shared.paths import display_path
 from ...shared.timestamps import timestamp_ms
 from ..host_formatting import perception_stream_command
 from ..host_status import read_hosts
@@ -82,7 +82,7 @@ def _run_status(host: dict[str, Any], read: dict[str, Any] | None) -> dict[str, 
     if host["provider"] is None:
         return None  # Missing or unreadable host configuration.
     name = host["host_name"]
-    bundle = controller_bundle_paths(runtime_root() / name)
+    bundle = bundle_paths(name)
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
     process = _dict(read_json(automation_dir / "process.json"))
     state = _dict(read_json(automation_dir / "state.json"))

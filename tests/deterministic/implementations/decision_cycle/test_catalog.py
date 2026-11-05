@@ -14,6 +14,7 @@ from autonomy.decision_cycle.steps import STEP_RUNNERS
 from autonomy.plugins import DuplicatePluginIdError
 from cli.automa_cli import app
 from implementations.decision_cycle import catalog
+from tests.support.runtime_fixtures import runtime_root_env
 
 
 class DeclaredIdTests(unittest.TestCase):
@@ -44,7 +45,7 @@ class DeclaredIdTests(unittest.TestCase):
         with (
             self._clashing_actions(),
             tempfile.TemporaryDirectory() as tmp,
-            mock.patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": tmp}),
+            runtime_root_env(tmp),
             contextlib.redirect_stdout(io.StringIO()),
             contextlib.redirect_stderr(stderr),
         ):

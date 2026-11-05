@@ -5,7 +5,6 @@ import io
 import shlex
 import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 
 from autonomy.runtime.session import RunConfiguration
@@ -21,6 +20,7 @@ from cli.automa_cli.hosts.runs.service import (
     start_host_automation_background,
 )
 from cli.automa_cli.hosts.runs.worker import _run_worker
+from tests.support.runtime_fixtures import runtime_root_env
 
 
 class _Host:
@@ -166,7 +166,7 @@ class RunConfigurationTests(unittest.TestCase):
     def test_host_url_runs_that_host_and_reads_its_host_name(self):
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": tmp}),
+            runtime_root_env(tmp),
             patch("cli.automa_cli.hosts.runs.service.ensure_chase_host", side_effect=AssertionError("started a host")) as started,
             patch("cli.automa_cli.hosts.runs.service.RuntimeClient", _HostClient),
             patch("cli.automa_cli.hosts.runs.service.monitor_runtime", return_value=RunResult(0, "ran")) as monitor,
@@ -219,7 +219,7 @@ class RunConfigurationTests(unittest.TestCase):
     def _background_command(self, **kwargs) -> list[str]:
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.dict("os.environ", {"AUTOMA_RUNTIME_ROOT": tmp}),
+            runtime_root_env(tmp),
             patch("cli.automa_cli.hosts.runs.service.RuntimeClient", _HostClient),
             patch("cli.automa_cli.hosts.runs.process.subprocess.Popen") as popen,
             patch(

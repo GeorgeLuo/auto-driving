@@ -284,7 +284,7 @@
             "path": "cli/automa_cli/vehicles/",
             "category": "tooling",
             "commit_policy": "source",
-            "responsibility": "The automa vehicles commands, vehicle listing, discovered-vehicle records, and marks for simulators vehicles remove stopped listing. Simulator records belong to simulators; vehicles reads them and does not write them."
+            "responsibility": "The automa vehicles commands, vehicle listing, and discovered-vehicle records. Simulator records belong to simulators; vehicles reads them and sets their listed flag."
           },
           {
             "path": "cli/automa_cli/hosts/",

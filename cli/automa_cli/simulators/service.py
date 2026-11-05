@@ -21,8 +21,8 @@ from .store import simulator_records
 # simulators create runs Metrics UI's headless launcher from this checkout.
 METRICS_UI_DIR_ENV = "AUTOMA_METRICS_UI_DIR"
 HEADLESS_SIM_SCRIPT = "scripts/play-chase-headless.mjs"
-# The first free port in this range. One already in use is skipped.
-SIMULATOR_PORTS = range(5050, 5100)
+# 5050 is Metrics UI's own port, which ChaseSimCar() reaches without a URL.
+SIMULATOR_PORTS = range(5051, 5100)
 SIMULATOR_START_TIMEOUT_S = 45.0
 
 

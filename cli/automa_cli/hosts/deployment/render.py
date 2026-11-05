@@ -32,23 +32,15 @@ def render_update(result: UpdateResult, *, json_output: bool) -> str:
 def render_create(result: CreateResult, *, json_output: bool) -> str:
     """The created host or its plan, or the sentence an error shows.
 
-    A local host plans only its release, so its plan is the release plan. A
-    PiCar's plan and every created host combine the parts into one receipt.
+    A plan prints the create envelope. ``--json`` prints that same envelope
+    for a host that was created, and the text block otherwise.
     """
 
     if result.kind == "error":
         return result.message
-    if result.kind == "plan" and result.core is None:
-        return render_update(result.release, json_output=json_output)
-    if result.kind == "plan":
-        if json_output:
-            return _combined_json({"configuration": result.configuration, "dry_run": True,
-                                   "core": result.core.receipt, "host": result.release.receipt})
-        return _format_core_dry_run(result.core.receipt) + "\n" + _format_autonomy_dry_run(result.release.receipt)
+    if json_output or result.kind == "plan":
+        return _create_envelope(result)
     if result.kind == "created":
-        if json_output:
-            return _combined_json({"configuration": result.configuration, "result": result.release.receipt,
-                                   "host": result.host_state})
         return _format_created_host(result)
     raise ValueError(f"Unknown create outcome: {result.kind}")
 
@@ -67,34 +59,31 @@ def render_delete(result: DeleteResult) -> str:
     raise ValueError(f"Unknown delete outcome: {result.kind}")
 
 
-def _combined_json(receipt: dict[str, Any]) -> str:
-    """A receipt of child receipts: each child receipt with sorted keys, the rest in its own order."""
+def _create_envelope(result: CreateResult) -> str:
+    """One receipt for a plan and for ``hosts create --json``."""
 
-    body = {key: json.loads(json.dumps(value, sort_keys=True))
-            if key in {"core", "host", "result"} and isinstance(value, dict) else value
-            for key, value in receipt.items()}
-    return json.dumps(body, indent=2)
+    return json.dumps({
+        "schema": "automa_host_create",
+        "configuration": result.configuration,
+        "dry_run": result.kind == "plan",
+        "core": None if result.core is None else result.core.receipt,
+        "release": None if result.release is None else result.release.receipt,
+        "host_state": result.host_state,
+    }, indent=2, sort_keys=True)
 
 
 def _update_text(result: UpdateResult) -> str:
     body = result.receipt or {}
+    if body.get("dry_run") or result.kind == "receipt":
+        return json.dumps(body, indent=2, sort_keys=True)
     if result.kind == "local":
         return _format_local_autonomy(body, host_present=result.host_present)
     if result.kind == "remote":
-        return _format_autonomy_dry_run(body) if body.get("dry_run") else _format_autonomy_update(body)
-    if result.kind == "receipt":
-        return json.dumps(body, indent=2, sort_keys=True)
+        return _format_autonomy_update(body)
     raise ValueError(f"Unknown update outcome: {result.kind}")
 
 
 def _format_local_autonomy(body: dict[str, Any], *, host_present: bool | None) -> str:
-    if body.get("dry_run"):
-        source = body["source"]
-        return "\n".join([
-            f"Dry run: would package {body['host_name']}'s controller release "
-            f"(tree {source['tree_sha256'][:12]}, {source['file_count']} files)",
-            f"Restart the host onto it: {'yes' if body['restart'] else 'no'}",
-        ])
     summary = body["release"]
     if body["restarted"]:
         host_line = "Runtime restarted: yes"
@@ -131,55 +120,6 @@ def _format_created_host(result: CreateResult) -> str:
             "vehicle_url": vehicle.operator_url(url),
         }))
     return "\n".join(lines)
-
-
-def _format_core_dry_run(payload: dict[str, Any]) -> str:
-    source = payload["source"]
-    vendor = source["vendor"]
-    return "\n".join(
-        [
-            f"Core update dry run for {payload['host_name']}",
-            (
-                f"target: {payload['target']['provider']} at "
-                f"{payload['target']['ssh_target']}; home={payload['target']['pi_home']}"
-            ),
-            f"scope: {payload['scope']['description']}",
-            "outcome: plan only; no files written and no remote connection attempted",
-            f"vendor: {vendor['repo_url']} @ {vendor['revision']}",
-            f"vendor checkout: {vendor['checkout']}",
-            f"harness: {source['harness']}",
-            (
-                f"service: {source['service']['name']} "
-                f"from {source['service']['source']} (enabled at boot)"
-            ),
-            "planned commands:",
-            *[f"- {entry['step']}: {entry['command']}" for entry in payload["commands"]],
-            f"restart requested: {'yes' if payload['restart_requested'] else 'no'}",
-        ]
-    )
-
-
-def _format_autonomy_dry_run(payload: dict[str, Any]) -> str:
-    return "\n".join(
-        [
-            f"Autonomy update dry run for {payload['host_name']}",
-            (
-                f"target: {payload['target']['provider']} at "
-                f"{payload['target']['ssh_target']}; home={payload['target']['pi_home']}"
-            ),
-            f"scope: {payload['scope']['description']}",
-            "outcome: plan only; no files written and no remote connection attempted",
-            f"source tree SHA-256: {payload['source']['tree_sha256']}",
-            f"source files: {payload['source']['file_count']}",
-            "activation: " + " ".join(
-                f"{step}={payload['activation']['presets'].get(step) or ','.join(plugins) or '-'}"
-                for step, plugins in payload["activation"]["steps"].items()
-            ),
-            "planned commands:",
-            *[f"- {entry['step']}: {entry['command']}" for entry in payload["commands"]],
-            f"restart requested: {'yes' if payload['restart_requested'] else 'no'}",
-        ]
-    )
 
 
 def _format_autonomy_update(payload: dict[str, Any]) -> str:

@@ -35,9 +35,14 @@ class HostLifecycleTests(unittest.TestCase):
                                runtime_root=self.root, check=False)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         payload = json.loads(result.stdout)
+        self.assertEqual(payload["schema"], "automa_host_create")
+        self.assertTrue(payload["dry_run"])
+        self.assertIsNone(payload["host_state"])
+        self.assertEqual(payload["core"]["schema"], "host_core_update")
+        self.assertEqual(payload["release"]["schema"], "host_autonomy_update")
         self.assertEqual(payload["configuration"]["provider"], "picar")
         self.assertEqual(payload["configuration"]["connection"]["ssh_target"], "piracer@example.local")
-        commands = payload["core"]["commands"] + payload["host"]["commands"]
+        commands = payload["core"]["commands"] + payload["release"]["commands"]
         self.assertEqual(commands[0]["step"], "Prepare remote directories")
         self.assertEqual(commands[-1]["step"], "Restart Donkey runtime service")
         self.assertIn("b64:LS1qcw==", commands[-1]["command"])
@@ -96,8 +101,10 @@ class HostLifecycleTests(unittest.TestCase):
         result = service.update_host(host_name="car", dry_run=True)
         self.assertEqual(result.exit_code, 0)
         self.assertFalse(result.receipt["restart_requested"])
-        self.assertFalse(json.loads(render_update(result, json_output=True))["restart_requested"])
-        self.assertTrue(render_update(result, json_output=False).startswith("Autonomy update dry run"))
+        rendered = render_update(result, json_output=False)
+        self.assertEqual(json.loads(rendered)["restart_requested"], False)
+        self.assertTrue(json.loads(rendered)["dry_run"])
+        self.assertEqual(rendered, render_update(result, json_output=True))
 
     def test_delete_chase_stops_host_and_removes_directory(self):
         write_host_fixture(self.root, "test")
@@ -145,15 +152,37 @@ class HostLifecycleTests(unittest.TestCase):
             "source": {"tree_sha256": "abcdef1234567890", "file_count": 3},
         }
         rendered = render_update(UpdateResult(0, "local", receipt=receipt), json_output=False)
-        self.assertEqual(
-            rendered,
-            "Dry run: would package car's controller release (tree abcdef123456, 3 files)\n"
-            "Restart the host onto it: no",
-        )
-        self.assertEqual(json.loads(render_update(UpdateResult(0, "local", receipt=receipt), json_output=True))["source"]["file_count"], 3)
+        self.assertEqual(json.loads(rendered), receipt)
+        self.assertEqual(rendered, render_update(UpdateResult(0, "local", receipt=receipt), json_output=True))
+        self.assertEqual(json.loads(rendered)["source"]["file_count"], 3)
         self.assertEqual(render_update(UpdateResult(2, "error", "missing"), json_output=True), "missing")
 
-    def test_created_receipt_keeps_its_order_and_sorts_each_child(self):
+    def test_create_chase_dry_run_uses_the_create_envelope(self):
+        result = invoke_automa(
+            "hosts", "create", "--name", "car", "--provider", "chase-sim",
+            "--url", "http://localhost:5050", "--dry-run", "--json",
+            runtime_root=self.root, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["schema"], "automa_host_create")
+        self.assertTrue(payload["dry_run"])
+        self.assertIsNone(payload["core"])
+        self.assertIsNone(payload["host_state"])
+        self.assertEqual(payload["configuration"]["host_name"], "car")
+        self.assertTrue(payload["release"]["dry_run"])
+        self.assertEqual(payload["release"]["host_name"], "car")
+        self.assertIn("tree_sha256", payload["release"]["source"])
+        plain = invoke_automa(
+            "hosts", "create", "--name", "car", "--provider", "chase-sim",
+            "--url", "http://localhost:5050", "--dry-run",
+            runtime_root=self.root, check=False,
+        )
+        self.assertEqual(plain.returncode, 0, plain.stdout + plain.stderr)
+        self.assertEqual(plain.stdout, result.stdout)
+        self.assertFalse(self.root.exists())
+
+    def test_created_receipt_uses_the_create_envelope(self):
         configuration = {"host_name": "car", "provider": "chase-sim", "vehicle_kind": "chase-sim-ws",
                          "connection": {"ws_url": "ws://localhost:5050/ws/control"}}
         release = UpdateResult(0, "local", host_present=False, receipt={
@@ -164,10 +193,17 @@ class HostLifecycleTests(unittest.TestCase):
         created = CreateResult(0, "created", configuration=configuration, release=release,
                                host_state={"state": "idle", "url": "http://127.0.0.1:9"})
         body = json.loads(render_create(created, json_output=True))
-        self.assertEqual(list(body), ["configuration", "result", "host"])
-        self.assertEqual(list(body["configuration"]), list(configuration))
-        self.assertEqual(list(body["result"]), sorted(release.receipt))
-        self.assertEqual(list(body["host"]), ["state", "url"])
+        self.assertEqual(
+            list(body),
+            ["configuration", "core", "dry_run", "host_state", "release", "schema"],
+        )
+        self.assertEqual(body["schema"], "automa_host_create")
+        self.assertFalse(body["dry_run"])
+        self.assertIsNone(body["core"])
+        self.assertEqual(list(body["configuration"]), sorted(configuration))
+        self.assertEqual(list(body["release"]), sorted(release.receipt))
+        self.assertEqual(body["release"], release.receipt)
+        self.assertEqual(list(body["host_state"]), ["state", "url"])
         # The release lines appear once, without the update's own heading and restart line.
         self.assertEqual(render_create(created, json_output=False).splitlines(), [
             "Host car created for the chaser at http://localhost:5050/",

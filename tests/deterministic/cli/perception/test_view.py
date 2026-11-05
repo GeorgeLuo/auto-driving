@@ -3,8 +3,11 @@ from __future__ import annotations
 import io
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
@@ -187,6 +190,43 @@ class PerceptionViewTests(unittest.TestCase):
         self.assertEqual(later_payload["frame"]["width_px"], 7)
         self.assertEqual(later_payload["frame"]["height_px"], 9)
         self.assertEqual(later_payload["overlay"]["status"], "current")
+
+    def test_preparing_a_new_image_keeps_the_previous_matched_pair_readable(self) -> None:
+        view = PerceptionView(host_name="test-vehicle")
+        first = _frame_record()
+        first_bytes = _image_bytes("JPEG", (4, 4), (1, 2, 3))
+        second = _frame_record()
+        second["frame"]["frame_id"] = "second"
+        second_bytes = _image_bytes("JPEG", (5, 6), (4, 5, 6))
+        view.publish_matched(frame_bytes=first_bytes, content_type="image/jpeg", frame_record=first)
+        entered, release = threading.Event(), threading.Event()
+        open_image = Image.open
+
+        def prepare_image(source):
+            entered.set()
+            if not release.wait(2):
+                raise TimeoutError("image preparation was not released")
+            return open_image(source)
+
+        with ThreadPoolExecutor(max_workers=2) as pool, patch.object(Image, "open", side_effect=prepare_image):
+            writer = pool.submit(
+                view.publish_matched, frame_bytes=second_bytes, content_type="image/jpeg", frame_record=second,
+            )
+            try:
+                self.assertTrue(entered.wait(1))
+                previous = json.loads(pool.submit(view.latest_json).result(timeout=1))
+                self.assertEqual(previous["frame"]["frame_id"], first["frame"]["frame_id"])
+                self.assertEqual(previous["overlay"]["status"], "current")
+                self.assertEqual(pool.submit(view.frame).result(timeout=1), (first_bytes, "image/jpeg"))
+            finally:
+                release.set()
+            writer.result(timeout=1)
+        latest = json.loads(view.latest_json())
+        self.assertEqual(latest["frame"]["frame_id"], "second")
+        self.assertEqual(latest["overlay"]["source_frame_id"], "second")
+        self.assertEqual(latest["overlay"]["status"], "current")
+        self.assertEqual(view.frame(), (second_bytes, "image/jpeg"))
+        self.assertEqual(view.frame(first["frame"]["frame_id"]), (first_bytes, "image/jpeg"))
 
     def test_invalid_image_is_refused_and_a_later_image_recovers(self) -> None:
         view = PerceptionView(host_name="test-vehicle")

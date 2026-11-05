@@ -28,8 +28,6 @@ class PerceptionView:
         # Why there is no latest pair; the view's routes answer with it.
         self.unavailable_reason = NO_FRAME_ERROR
         self._lock = threading.RLock()
-        self._frame_bytes: bytes | None = None
-        self._frame_content_type = "application/octet-stream"
         self._frames: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
         self._retained_frame_ids: set[str] = set()
         self._latest_frame: dict[str, Any] | None = None
@@ -67,10 +65,16 @@ class PerceptionView:
         with Image.open(BytesIO(frame_bytes)) as image:
             width_px, height_px = int(image.size[0]), int(image.size[1])
         published_at_ms = _timestamp_ms()
-        frame = _frame_payload(
-            frame_record=identity, content_type=content_type, published_at_ms=published_at_ms,
-            width_px=width_px, height_px=height_px,
-        )
+        frame = {
+            "frame_id": frame_id,
+            "frame_index": identity.get("frame_index"),
+            "captured_at_ms": identity.get("captured_at_ms"),
+            "published_at_ms": published_at_ms,
+            "content_type": content_type,
+            "width_px": width_px,
+            "height_px": height_px,
+            "url": f"/frame?v={quote(frame_id, safe='')}",
+        }
         with self._lock:
             if frame_id not in self._frames and len(self._frames) >= MAX_BUFFERED_FRAMES:
                 evictable = next(
@@ -84,8 +88,6 @@ class PerceptionView:
                 if evictable is None:
                     raise RuntimeError("perception frame capacity is retained in flight")
                 del self._frames[evictable]
-            self._frame_bytes = frame_bytes
-            self._frame_content_type = content_type
             self._frames[frame_id] = (frame_bytes, content_type)
             self._frames.move_to_end(frame_id)
             self._latest_frame = frame
@@ -102,7 +104,6 @@ class PerceptionView:
             self.unavailable_reason = reason or NO_FRAME_ERROR
             self._latest_frame = None
             self._latest_frame_id = None
-            self._frame_bytes = None
             self._latest_perception_record = None
             self._latest_perception_frame_id = None
 
@@ -117,7 +118,7 @@ class PerceptionView:
             latest = self._latest_frame or {}
             has_perception = self._latest_perception_record is not None
             return {
-                "has_frame": self._frame_bytes is not None,
+                "has_frame": self._latest_frame_id is not None,
                 "has_perception": has_perception,
                 "latest_frame_id": self._latest_frame_id,
                 "latest_perception_frame_id": perception_id,
@@ -156,11 +157,7 @@ class PerceptionView:
 
     def frame(self, frame_id: str | None = None) -> tuple[bytes, str] | None:
         with self._lock:
-            if frame_id is not None:
-                return self._frames.get(frame_id)
-            if self._frame_bytes is None:
-                return None
-            return self._frame_bytes, self._frame_content_type
+            return self._frames.get(frame_id if frame_id is not None else self._latest_frame_id)
 
     def retain_frame(self, frame_id: str) -> bool:
         """Keep one buffered capture available while its queued cycle runs."""
@@ -347,27 +344,6 @@ def _publication_payload(
         "memory": source.get("memory"),
         "perception": perception,
         "control": source.get("control"),
-    }
-
-
-def _frame_payload(
-    *,
-    frame_record: dict[str, Any],
-    content_type: str,
-    published_at_ms: int,
-    width_px: int,
-    height_px: int,
-) -> dict[str, Any]:
-    frame_id = frame_record.get("frame_id")
-    return {
-        "frame_id": frame_id,
-        "frame_index": frame_record.get("frame_index"),
-        "captured_at_ms": frame_record.get("captured_at_ms"),
-        "published_at_ms": published_at_ms,
-        "content_type": content_type,
-        "width_px": width_px,
-        "height_px": height_px,
-        "url": f"/frame?v={quote(str(frame_id or 'unknown'), safe='')}",
     }
 
 

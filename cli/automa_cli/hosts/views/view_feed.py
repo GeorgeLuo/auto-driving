@@ -6,10 +6,9 @@ from typing import Any
 
 from ...frontend.server import RuntimeViewServer
 from .decision_live import DecisionViewAdapter
-from ..publications.decision_publication import health_error, publication_capture
-from ..publications.host_publications import (
-    OBSERVATION_IMAGE_CONTENT_TYPE, TransactionCache, fetch_observation_sample,
-)
+from .observation import ObservationPublisher
+from ..publications.decision_publication import health_error
+from ..publications.host_publications import TransactionCache, fetch_observation_sample
 from ..publications.plugin_catalog import PluginCatalogClient
 from .runtime_view import runtime_view_server
 from .view_discovery import runtime_view_dir
@@ -29,20 +28,20 @@ class ViewFeed:
         runtime_dir.mkdir(parents=True, exist_ok=True)
         self.base_url = base_url
         self.timeout_s = timeout_s
-        self.frame_path = runtime_dir / "latest_frame.jpg"
         self.server: RuntimeViewServer | None = None
         self.decision: DecisionViewAdapter | None = None
         self.error: str | None = None
         self.decision_error: str | None = None
         self._observation_cache = TransactionCache()
         self._observation: tuple[dict[str, Any], bytes | None] | None = None
-        self._last_capture: tuple[Any, ...] | None = None
+        self.observation: ObservationPublisher | None = None
         try:
             self.server = runtime_view_server(
                 host_name=host_name,
                 automation_dir=runtime_dir,
                 plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
             ).start()
+            self.observation = ObservationPublisher(self.server.perception, runtime_dir / "latest_frame.jpg")
             self.decision = DecisionViewAdapter(
                 host_name=host_name, base_url=base_url, view_server=self.server, timeout_s=timeout_s,
             )
@@ -73,12 +72,12 @@ class ViewFeed:
         except (ConnectionError, OSError, TypeError, ValueError) as exc:
             self._observation = None
             self.error = f"{type(exc).__name__}: {exc}"
-            if self.server is not None:
-                self.server.perception.invalidate_latest(self.error)
+            if self.observation is not None:
+                self.observation.invalidate(self.error)
             return None, self.error
 
     def publish(self, publication: dict[str, Any] | None) -> None:
-        if self.server is None or self.decision is None:
+        if self.observation is None or self.decision is None:
             return
         try:
             published = self.decision.refresh()
@@ -100,21 +99,13 @@ class ViewFeed:
             # A host whose run stopped still serves its last frame, as stale.
             not_live = health_error(publication)
             if jpeg is None or not_live is not None:
-                self.server.perception.invalidate_latest(not_live)
-                self._last_capture = None
+                self.observation.invalidate(not_live)
                 return
-            capture = publication_capture(publication)
-            if capture != self._last_capture:
-                self.frame_path.write_bytes(jpeg)
-                self.server.perception.publish_matched(
-                    frame_bytes=jpeg, content_type=OBSERVATION_IMAGE_CONTENT_TYPE, frame_record=publication,
-                )
-                self._last_capture = capture
+            self.observation.publish(publication, jpeg)
             self.error = None
         except (ConnectionError, OSError, TypeError, ValueError) as exc:
             self.error = f"{type(exc).__name__}: {exc}"
-            self.server.perception.invalidate_latest(self.error)
-            self._last_capture = None
+            self.observation.invalidate(self.error)
 
     def stop(self) -> None:
         if self.server is not None:

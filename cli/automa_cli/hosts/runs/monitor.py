@@ -24,13 +24,9 @@ from ...shared.paths import display_path
 from ...frontend.perception_view import perception_view_ready
 from ..publications.decision_publication import (
     perception_duration_ms,
-    perception_text_from_publication,
-    publication_capture,
     publication_part,
 )
-from ..publications.host_publications import (
-    OBSERVATION_IMAGE_CONTENT_TYPE, TransactionCache, fetch_observation_sample,
-)
+from ..publications.host_publications import TransactionCache, fetch_observation_sample
 from ...shared.timestamps import timestamp_ms
 from .models import RunEvent, RunResult, run_exit_code
 from collections.abc import Callable
@@ -43,6 +39,7 @@ from ...frontend.server import RuntimeViewServer
 from ..views.runtime_view import runtime_view_server
 from ..views.polling import PERCEPTION_COPY_INTERVAL_S, pause_s
 from ..views.decision_live import DecisionViewAdapter
+from ..views.observation import ObservationPublisher
 from ...shared.io.json_files import write_json_atomically
 from ..publications.plugin_catalog import PluginCatalogClient
 
@@ -106,13 +103,12 @@ def _copy_latest_decision(
 
 def _copy_latest_perception(
     base_url: str, server: RuntimeViewServer, stop: threading.Event,
-    copied: dict[str, Any], *, frames_dir: Path, json_path: Path, text_path: Path,
+    copied: dict[str, Any], *, frame_path: Path, record_dir: Path,
     identity: dict[str, Any], timeout_s: float,
 ) -> None:
     """Perception never waits for the monitor's recording export."""
     cache = TransactionCache()
-    last_capture = None
-    frame_path = frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
+    publisher = ObservationPublisher(server.perception, frame_path, record_dir=record_dir, identity=identity)
     try:
         while not stop.is_set():
             started = time.monotonic()
@@ -120,26 +116,13 @@ def _copy_latest_perception(
                 publication, jpeg = fetch_observation_sample(base_url, timeout_s=timeout_s, cache=cache)
                 if stop.is_set():
                     break
-                frame = publication_part(publication, "frame")
-                capture = publication_capture(publication)
-                if jpeg is None:
-                    server.perception.invalidate_latest()
-                    last_capture = None
-                    copied["error"] = publication.get("error") or publication.get("health")
-                elif capture != last_capture and frame.get("frame_id"):
-                    recorded = {**publication, **identity}
-                    frame_path.write_bytes(jpeg)
-                    server.perception.publish_matched(
-                        frame_bytes=jpeg, content_type=OBSERVATION_IMAGE_CONTENT_TYPE, frame_record=recorded,
-                    )
-                    write_json_atomically(json_path, recorded)
-                    text_path.write_text(perception_text_from_publication(publication) + "\n", encoding="utf-8")
-                    last_capture = capture
+                if publisher.publish(publication, jpeg):
                     copied["publication"] = publication
                     copied["error"] = None
+                elif jpeg is None:
+                    copied["error"] = publication.get("error") or publication.get("health")
             except Exception as exc:
-                server.perception.invalidate_latest()
-                last_capture = None
+                publisher.invalidate()
                 copied["error"] = f"{type(exc).__name__}: {exc}"
             finally:
                 copied["ready"].set()
@@ -223,7 +206,7 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
         copier = worker
         perception_copier = threading.Thread(
             target=_copy_latest_perception, args=(base_url, server, stop_copy, perception_copy),
-            kwargs={"frames_dir": frames_dir, "json_path": latest_json_path, "text_path": latest_text_path,
+            kwargs={"frame_path": frames_dir / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg", "record_dir": automation_dir,
                     "timeout_s": timeout_s,
                     "identity": {key: state[key] for key in ("run_id", "steps", "action_policy", "control_source", "control_application")}},
             name="automa-perception-copy", daemon=True,

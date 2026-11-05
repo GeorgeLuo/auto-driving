@@ -216,14 +216,7 @@ def _latest_status_label(state: dict[str, Any], last_frame: dict[str, Any]) -> s
 
 def _published_view_label(published_view: dict[str, Any]) -> str:
     if published_view.get("available") and published_view.get("url"):
-        label = str(published_view["url"])
-        lag = published_view.get("capture_lag")
-        if isinstance(lag, int) and lag > 0:
-            lag_ms = published_view.get("capture_lag_ms")
-            if isinstance(lag_ms, int):
-                return f"{label}  capture_lag={lag} ({lag_ms}ms)"
-            return f"{label}  capture_lag={lag}"
-        return label
+        return str(published_view["url"])
     return f"unavailable ({published_view.get('reason', 'automation view is not running')})"
 
 
@@ -436,11 +429,8 @@ def render_start_result(result: StartResult) -> str:
                 "view=current-generation correlated"
             ),
             f"Runtime view: {startup.get('view_url')}",
+            f"Stop: {automa_command('hosts', 'stop', '--name', host_name)}",
         ]
-        capture_lag = startup.get("capture_lag")
-        if isinstance(capture_lag, int) and capture_lag > 0:
-            lines.append(f"Capture lag: {capture_lag} frames")
-        lines.append(f"Stop: {automa_command('hosts', 'stop', '--name', host_name)}")
         if browser_line:
             lines.append(browser_line)
     elif startup_status == "completed":

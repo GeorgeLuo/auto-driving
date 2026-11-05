@@ -262,9 +262,8 @@ def collect_automation_status(
                 pid=pid,
                 state=state,
             )
-            # The first capture is published before its perception result.
-            # Status waits out that gap, within the command budget. A later
-            # capture does not withdraw a completed result whose image remains.
+            # The view is available once the first matched frame is published.
+            # Status waits for that publication, within the command budget.
             if (
                 worker_status == "running"
                 and alive

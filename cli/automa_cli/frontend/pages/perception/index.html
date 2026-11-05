@@ -69,7 +69,6 @@
     }
 
     .status-dot.live { background: var(--green); }
-    .status-dot.stale { background: var(--amber); }
     .status-dot.error { background: var(--red); }
 
     button, a.nav, span.nav {
@@ -579,25 +578,8 @@
       return `${(milliseconds / 1000).toFixed(1)} s`;
     }
 
-    function overlayLagText(overlay) {
-      if (!overlay || overlay.status === "pending") return "pending";
-      const frames = Number(overlay.frame_lag);
-      const frameText = Number.isFinite(frames) ? `${frames} frame${frames === 1 ? "" : "s"}` : "unknown frames";
-      return `${frameText} / ${formatAge(overlay.frame_lag_ms)}`;
-    }
-
-    function liveStatus(payload) {
-      const overlay = payload?.overlay;
-      if (!overlay || overlay.status === "pending") {
-        return { text: "Live | perception pending", mode: "stale" };
-      }
-      if (overlay.status === "current") {
-        return { text: "Live | overlay current", mode: "live" };
-      }
-      return {
-        text: `Live | overlay ${overlayLagText(overlay)} behind`,
-        mode: "stale",
-      };
+    function liveStatus() {
+      return { text: "Live", mode: "live" };
     }
 
     // Every memory plugin's key count by plugin_id; /memory shows each ledger.
@@ -621,9 +603,7 @@
       appendMetric(metrics, "Frame", latest.frame?.frame_id);
       appendMetric(metrics, "Captured", latest.frame?.captured_at_ms);
       appendMetric(metrics, "Resolution", `${latest.frame?.width_px || "?"} x ${latest.frame?.height_px || "?"}`);
-      appendMetric(metrics, "Overlay source", latest.overlay?.source_frame_id || "pending");
-      appendMetric(metrics, "Overlay lag", overlayLagText(latest.overlay));
-      appendMetric(metrics, "Result age", formatAge(latest.overlay?.result_age_ms));
+      appendMetric(metrics, "Result age", formatAge(latest.result_age_ms));
       const steps = latest.timing?.steps;
       const perceptionTiming = Array.isArray(steps) ? steps.find((step) => step?.step === "perception") : null;
       appendMetric(metrics, "Cycle", formatMs(latest.timing?.duration_ms ?? latest.duration_ms));
@@ -702,7 +682,7 @@
         }
         latest = next;
         renderData();
-        const status = liveStatus(next);
+        const status = liveStatus();
         setStatus(status.text, status.mode);
       } catch (error) {
         setStatus(`Waiting: ${error.message}`, "error");

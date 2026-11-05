@@ -20,9 +20,10 @@ from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA
 
 from .errors import RuntimeHostError
 from ..releases.store import release_code_dir, release_manifest, release_summary
+from ..shared.io.log_files import read_log_tail
 from ..shared.io.processes import pid_alive
 from ..shared.paths import ROOT, display_path
-from ..shared.text import automa_command, format_log_tail, read_log_tail
+from ..shared.text import automa_command, format_log_tail
 from .staging import automation_dir
 
 HOST_RECORD = "host.json"

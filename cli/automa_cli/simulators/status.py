@@ -12,9 +12,9 @@ from ..providers.metadata import CHASE_SIM
 from ..providers.models import DEFAULT_READINESS_TIMEOUT_S, Candidate
 from ..providers.registry import probe_candidates
 from ..providers.urls import chase_operator_url
+from ..shared.io.log_files import read_log_tail
 from ..shared.io.processes import pid_alive
 from ..shared.paths import display_path
-from ..shared.text import read_log_tail
 from .process import SIMULATOR_LOG
 from .service import hosts_by_simulator
 from .store import simulator_dir, simulator_records

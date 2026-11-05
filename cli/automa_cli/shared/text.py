@@ -1,7 +1,6 @@
 """Text formatting shared by command output."""
 
 import shlex
-from pathlib import Path
 from typing import Any
 
 from .browser_result import BrowserOpenResult
@@ -15,19 +14,6 @@ def automa_command(*args: str) -> str:
 
 def indented(text: Any) -> list[str]:
     return [f"  {line}" for line in str(text).splitlines()] if text else []
-
-
-LOG_TAIL_LINES = 20
-
-
-def read_log_tail(path: Path) -> list[str] | None:
-    """The log's last ``LOG_TAIL_LINES`` lines, or ``None`` when it cannot be read."""
-
-    try:
-        lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
-    except OSError:
-        return None
-    return lines[-LOG_TAIL_LINES:]
 
 
 def format_log_tail(name: str, shown_path: str, lines: list[str] | None) -> str:

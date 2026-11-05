@@ -81,15 +81,9 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
 
 def _handle_open_viewer(args: argparse.Namespace) -> int:
     return serve_viewer(
-        simulators=_simulators_document,
+        simulators=lambda: simulators_status()[1],
         emit=lambda result: print(format_browser_result(result), flush=True),
     )
-
-
-def _simulators_document() -> dict[str, Any]:
-    """What ``simulators status --json`` prints, for the viewer's ``/api/simulators``."""
-
-    return simulators_status()[1]
 
 
 def _handle_status(args: argparse.Namespace) -> int:

@@ -146,6 +146,7 @@ _MODULE_ROLES = {
     "shared.command_result": "models",
     "shared.io.http_json": "operation",
     "shared.io.json_files": "store",
+    "shared.io.log_files": "operation",
     "shared.io.processes": "operation",
     "shared.memory_report": "pure",
     "shared.open_view": "operation",

@@ -21,14 +21,23 @@ def runtime_view_server(**options: Any) -> RuntimeViewServer:
     return RuntimeViewServer(hosts=_host_list, **options)
 
 
-def serve_viewer(*, emit: Callable[[BrowserOpenResult], None] | None = None) -> int:
-    """Serve the runtime pages with no runtime host until interrupted."""
+def serve_viewer(
+    *,
+    simulators: Callable[[], dict[str, Any]] | None = None,
+    emit: Callable[[BrowserOpenResult], None] | None = None,
+) -> int:
+    """Serve the runtime pages with no runtime host until interrupted.
+
+    ``simulators`` returns the document ``/api/simulators`` serves. The caller
+    passes it because ``simulators`` imports ``hosts``.
+    """
 
     server = runtime_view_server(
         host_name="viewer",
         automation_dir=None,
         port=VIEWER_PORT,
         connected=False,
+        simulators=simulators,
     ).start()
     browser = launch_browser(server.url or "")
     if emit is not None:

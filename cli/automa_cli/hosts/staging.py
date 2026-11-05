@@ -26,11 +26,3 @@ def staged_host(host_name: str) -> dict[str, Any]:
     if vehicle is None:
         raise RuntimeHostError(error or f"Host {host_name!r} is not staged.")
     return vehicle
-
-
-def staged_connection(host_name: str) -> dict[str, Any]:
-    """The connection ``hosts create`` recorded for the vehicle, without discovery."""
-
-    vehicle = staged_host(host_name)
-    connection = vehicle.get("connection")
-    return connection if isinstance(connection, dict) else {}

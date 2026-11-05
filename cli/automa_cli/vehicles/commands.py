@@ -11,7 +11,7 @@ from ..providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ..shared.cli.timeout_input import validate_timeout_input
 from .discovery import discover_vehicle, remove_vehicle
 from .render import format_vehicles_status, render_vehicle_result
-from .status import get_vehicles_status
+from .status import vehicles_status
 
 
 def register_vehicles(subcommands: argparse._SubParsersAction) -> None:
@@ -30,11 +30,11 @@ def register_vehicles(subcommands: argparse._SubParsersAction) -> None:
 
     status = vehicle_commands.add_parser(
         "status",
-        help="Show listed vehicle environments.",
+        help="Show discovered vehicle environments.",
         description=(
-            "Show each simulator that simulators create started and vehicles remove has not "
-            "stopped listing, then each vehicle that vehicles discover listed. "
-            "Exits 1 when a vehicle is listed and none is reachable."
+            "Show the default simulator (CHASE_UI_WS_URL, else http://localhost:5050), "
+            "and each vehicle that vehicles discover listed. "
+            "Exits 1 when no vehicle is reachable."
         ),
     )
     status.add_argument(
@@ -58,9 +58,7 @@ def register_vehicles(subcommands: argparse._SubParsersAction) -> None:
         description=(
             "List a vehicle in vehicles status once it can take a host: a simulator "
             "with its frontend connected and the Chase game loaded, or a PiCar whose "
-            "machine answers. Exits 2 otherwise, unless --force. A simulator that "
-            "simulators create started is already listed; after vehicles remove, "
-            "discovering it lists it again without writing a second record."
+            "machine answers. Exits 2 otherwise, unless --force."
         ),
     )
     discover.add_argument("--provider", required=True, choices=PROVIDERS,
@@ -71,13 +69,10 @@ def register_vehicles(subcommands: argparse._SubParsersAction) -> None:
     discover.set_defaults(handler=_handle_vehicles_discover)
     remove = vehicle_commands.add_parser(
         "remove",
-        help="Stop listing a vehicle in vehicles status.",
-        description=(
-            "Stop listing a vehicle. A simulator that simulators create started keeps "
-            "running until simulators delete, and vehicles discover lists it again."
-        ),
+        help="Stop listing a discovered vehicle in vehicles status.",
+        description="Stop listing a discovered vehicle. The default simulator is always listed.",
     )
-    remove.add_argument("--url", required=True, help="The URL the vehicle is listed at, in either form.")
+    remove.add_argument("--url", required=True, help="The URL the vehicle was discovered at, in either form.")
     remove.set_defaults(handler=_handle_vehicles_remove)
 
 
@@ -88,8 +83,8 @@ def _handle_vehicles_help(args: argparse.Namespace) -> int:
                 "automa vehicles commands",
                 "",
                 "- discover     list a vehicle in status",
-                "- remove       stop listing a vehicle",
-                "- status       show listed vehicle environments",
+                "- remove       stop listing a discovered vehicle",
+                "- status       show discovered vehicle environments",
                 "- help         show this summary",
                 "",
                 "Detailed help:",
@@ -109,17 +104,15 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
     ):
         return 2
     try:
-        payload = get_vehicles_status(timeout_s=args.timeout_s)
+        exit_code, status = vehicles_status(timeout_s=args.timeout_s)
     except ValueError as exc:
         print(f"automa vehicles status: {exc}", file=sys.stderr)
         return 2
     if args.json:
-        print(json.dumps(payload, indent=2, sort_keys=True))
+        print(json.dumps(status, indent=2, sort_keys=True))
     else:
-        print(format_vehicles_status(payload))
-    if payload["vehicles"] and all(vehicle["state"] == "unreachable" for vehicle in payload["vehicles"]):
-        return 1
-    return 0
+        print(format_vehicles_status(status))
+    return exit_code
 
 
 def _handle_vehicles_discover(args: argparse.Namespace) -> int:

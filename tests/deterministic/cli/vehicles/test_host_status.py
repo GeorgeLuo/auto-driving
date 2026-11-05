@@ -14,8 +14,11 @@ from typing import Iterator
 from unittest import mock
 
 from autonomy.decision_cycle.activation import step_activation
+from cli.automa_cli.frontend import perception_view
 from cli.automa_cli.releases.paths import controller_bundle_paths
+from cli.automa_cli.hosts.host_formatting import perception_stream_command
 from cli.automa_cli.hosts.local import HOST_RECORD
+from cli.automa_cli.hosts.publications.host_publications import host_state
 from cli.automa_cli.providers.urls import chase_operator_url
 from implementations.decision_cycle.catalog import preset_activation
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, write_host_record
@@ -26,7 +29,7 @@ from tests.shared.cli.invoke import invoke_automa
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_hosts import answering, closed_url, hung_url
 from tests.support.fake_metrics_ui import fake_metrics_ui
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import write_host_fixture, write_json
 
 
 def _host_blocks(stdout: str) -> list[list[str]]:
@@ -95,10 +98,11 @@ class HostStatusTests(unittest.TestCase):
         self.enterContext(_attached(self.server, "chase-sim-chaser", host.base_url))
 
         # The run lines use the host's one /host/status read.
-        with mock.patch("cli.automa_cli.hosts.runs.status.host_state", side_effect=AssertionError("read twice")):
+        with mock.patch("cli.automa_cli.hosts.host_status.host_state", wraps=host_state) as read:
             human = self.status()
             long = self.status("--long")
             machine = json.loads(self.status("--json").stdout)
+        self.assertEqual(read.call_count, 3)
 
         self.assertEqual((human.returncode, long.returncode), (0, 0), human.stderr + long.stderr)
         [block] = _host_blocks(human.stdout)
@@ -108,6 +112,8 @@ class HostStatusTests(unittest.TestCase):
         # --long adds the run lines under the same block.
         self.assertTrue(long.stdout.startswith("\n".join(block[:3]) + "\n"), long.stdout)
         self.assertIn(f"\n  {host.base_url}, pid {os.getpid()}\n  deployment: ", long.stdout)
+        stream = perception_stream_command("chase-sim-chaser")
+        self.assertIn(f"\n  view: unavailable (start `{stream}` to host it)\n", long.stdout)
         self.assertEqual((machine["schema"], machine["host_name"]), ("automa_hosts_status", None))
         [entry] = machine["hosts"]
         self.assertEqual(
@@ -118,6 +124,97 @@ class HostStatusTests(unittest.TestCase):
              "decision_count": 0},
         )
         self.assertEqual(entry["run"]["host_name"], "chase-sim-chaser")
+
+    def test_a_host_without_a_monitor_reports_its_standalone_view(self) -> None:
+        """Only a monitor serves a run's view, so a host without one is checked for its stream's view.
+
+        The run detail reuses discovery's reads of the host's configuration and record.
+        """
+
+        host = self.host()
+        health = json.dumps({
+            "schema": perception_view.VIEW_SCHEMA, "available": True, "url": "http://127.0.0.1/",
+            "has_perception": True, "latest_perception_frame_id": "frame-1", "perception_frame_buffered": True,
+        }).encode()
+        with answering(health) as view_url:
+            runtime = self.runtime_root / "chase-sim-chaser/bundle/runtime"
+            # An ended monitor's record is left behind; it is not checked.
+            for directory in ("automation", "view"):
+                write_json(runtime / directory / perception_view.VIEW_RECORD_NAME, {"url": view_url})
+            reads = []
+            read_text = Path.read_text
+
+            def read(path, *args, **kwargs):
+                reads.append(path)
+                return read_text(path, *args, **kwargs)
+
+            with mock.patch.object(Path, "read_text", read), mock.patch.object(
+                perception_view, "urlopen", wraps=perception_view.urlopen,
+            ) as health_requests:
+                result = self.status("--json")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        [entry] = json.loads(result.stdout)["hosts"]
+        self.assertEqual(entry["run"]["process"]["process_record"], f"{host.base_url}/host/status")
+        view = entry["run"]["published_view"]
+        self.assertEqual((view["available"], view["latest_perception_frame_id"]), (True, "frame-1"))
+        self.assertEqual(health_requests.call_count, 1)
+        self.assertEqual(reads.count(self.runtime_root / "chase-sim-chaser/host-configuration.json"), 1)
+        self.assertEqual(reads.count(runtime / "automation" / HOST_RECORD), 1)
+
+    def test_a_hung_view_does_not_hold_up_the_other_hosts(self) -> None:
+        """Each host's view is checked once, side by side with the others'."""
+
+        reply = json.dumps({"ok": True, "session": {"status": "pre_start"}, "host": {"error_count": 0}}).encode()
+        with answering(reply) as host_url, hung_url() as view_url:
+            for name in ("one", "two", "three"):
+                _record(self.runtime_root, name, host_url, self.server.url)
+                write_json(self.runtime_root / name / "bundle/runtime/view" / perception_view.VIEW_RECORD_NAME,
+                           {"url": view_url})
+            with mock.patch.object(perception_view, "urlopen", wraps=perception_view.urlopen) as health_requests:
+                started = time.monotonic()
+                result = self.status("--json", "--timeout-s", "0.2")
+                elapsed = time.monotonic() - started
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        hosts = json.loads(result.stdout)["hosts"]
+        self.assertEqual(len(hosts), 3)
+        self.assertTrue(all(not host["run"]["published_view"]["available"] for host in hosts))
+        self.assertEqual(health_requests.call_count, 3)
+        # One after another, three hung checks would take 0.75s.
+        self.assertLess(elapsed, 0.6, f"view checks ran one after another: {elapsed:.3f}s")
+
+    def picar(self, name: str, url: str) -> dict:
+        """``name``'s status entry, a PiCar whose staged connection is ``url``."""
+
+        write_host_fixture(self.runtime_root, name, provider="picar", url=url)
+        return json.loads(self.status("--json", "--name", name).stdout)["hosts"][0]
+
+    def test_a_picar_reply_that_is_not_a_host_status_is_a_run_error(self) -> None:
+        for name, body, reason in (
+            ("picar-list", b"[]", "{url} answers but reports no runtime host"),
+            ("picar-closed", None, "Remote end closed connection without response"),
+        ):
+            with self.subTest(body=body), answering(body) as url:
+                process = self.picar(name, url)["run"]["process"]
+
+                self.assertEqual((process["status"], process["reason"]), ("error", reason.format(url=url)))
+
+    def test_a_picar_session_error_carries_its_hosts_last_error(self) -> None:
+        body = json.dumps({
+            "ok": True, "host_name": "picar", "mode": "autonomy",
+            "session": {"status": "error"}, "host": {"last_error": "camera capture failed"},
+        }).encode()
+        with answering(body) as url:
+            process = self.picar("picar", url)["run"]["process"]
+
+        self.assertEqual((process["status"], process["reason"]), ("error", "camera capture failed"))
+
+    def test_a_picar_with_a_blank_connection_is_not_running(self) -> None:
+        entry = self.picar("picar", " ")
+
+        self.assertEqual((entry["url"], entry["state"]), (None, "not running"))
+        self.assertEqual(entry["run"]["process"]["pid_state"], "none")
 
     def test_a_host_with_only_a_local_record_is_not_attached(self) -> None:
         host = self.host()

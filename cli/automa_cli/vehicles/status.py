@@ -10,14 +10,15 @@ from ..simulators.store import created_simulators
 from .discovery import listed_vehicles
 
 
-def get_vehicles_status(*, timeout_s: float = DEFAULT_READINESS_TIMEOUT_S) -> dict[str, Any]:
-    """Each listed vehicle's state.
+def vehicles_status(*, timeout_s: float = DEFAULT_READINESS_TIMEOUT_S) -> tuple[int, dict[str, Any]]:
+    """The exit and the ``automa_vehicles_status`` payload: each listed vehicle's state.
 
     Status looks at each simulator ``simulators create`` started that is
     still listed, then each vehicle ``vehicles discover`` listed. Nothing is
     listed implicitly. A simulator runs when its server answers; its frontend
     is connected when a browser has the page open. Every vehicle is probed in
-    parallel within the one deadline.
+    parallel within the one deadline. The exit is 1 when vehicles are listed
+    and every one is unreachable.
     """
 
     candidates = listed_vehicles()
@@ -26,4 +27,5 @@ def get_vehicles_status(*, timeout_s: float = DEFAULT_READINESS_TIMEOUT_S) -> di
     for candidate, vehicle in zip(candidates, vehicles):
         if candidate.provider == CHASE_SIM.name:
             vehicle["pid"] = created.get(candidate.url)
-    return {"schema": "automa_vehicles_status", "vehicles": vehicles}
+    exit_code = 1 if vehicles and all(vehicle["state"] == "unreachable" for vehicle in vehicles) else 0
+    return exit_code, {"schema": "automa_vehicles_status", "vehicles": vehicles}

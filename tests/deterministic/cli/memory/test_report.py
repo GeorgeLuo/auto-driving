@@ -3,7 +3,8 @@ from __future__ import annotations
 import unittest
 
 from autonomy.decision_cycle.memory.interface import LEDGER_SUMMARY_KEYS, RECORD_COUNT
-from cli.automa_cli.shared.memory_report import evidence_records, ledger_summary, memory_summary
+from autonomy.decision_cycle.memory.interface import evidence_records
+from cli.automa_cli.shared.memory_report import ledger_summary, memory_summary
 
 
 class MemorySummaryTests(unittest.TestCase):

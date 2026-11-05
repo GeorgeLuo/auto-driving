@@ -28,7 +28,7 @@ class OperationResultTests(unittest.TestCase):
                 text = render_simulator_result(result)
                 self.assertTrue(text.startswith(beginning), text)
                 self.assertTrue(text.endswith(ending), text)
-            removed = SimulatorResult(0, "deleted", url=url, killed=True)
+            removed = SimulatorResult(0, "deleted", url=url, ended="killed")
             self.assertTrue(render_simulator_result(removed).endswith(", killed"))
 
     def test_not_found_preserves_available_records(self):

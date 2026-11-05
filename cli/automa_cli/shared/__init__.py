@@ -9,6 +9,7 @@ Generic helpers:
 - ``timestamps``: wall-clock milliseconds on run records and replay state.
 - ``io.json_files``: JSON files written beside a runtime and read back.
 - ``io.processes``: whether a process the CLI started is still alive.
+- ``io.log_files``: the last lines of a log a CLI process wrote.
 - ``io.http_json``: one JSON request, for status, publication, probe, and catalog reads.
 
 CLI adapters, in ``cli``:

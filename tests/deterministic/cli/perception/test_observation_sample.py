@@ -4,13 +4,14 @@ from __future__ import annotations
 import base64
 import io
 import json
-import tempfile
 import unittest
-from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
+from PIL import Image
+
 from autonomy.runtime.frame_loop import OBSERVATION_TRANSACTION_SCHEMA
+from cli.automa_cli.frontend.perception_view import PerceptionView
 from cli.automa_cli.hosts.publications import host_publications as publications
 from cli.automa_cli.hosts.views import view_feed as viewer
 
@@ -25,6 +26,26 @@ class _Response(io.BytesIO):
 
 def _publication(frame_id="first"):
     return {"health": "healthy", "frame": {"frame_id": frame_id, "has_image": True}}
+
+
+def _jpeg(size, color) -> bytes:
+    buffer = io.BytesIO()
+    Image.new("RGB", size, color).save(buffer, format="JPEG")
+    return buffer.getvalue()
+
+
+def _feed():
+    feed = viewer.ViewFeed.__new__(viewer.ViewFeed)
+    feed._observation_cache = publications.TransactionCache()
+    feed._observation = None
+    feed.base_url, feed.timeout_s = "http://host.invalid", 1.0
+    feed.error = None
+    feed.server = Mock()
+    feed.server.perception = PerceptionView(host_name="fixture")
+    feed.observation = viewer.ObservationPublisher(feed.server.perception)
+    feed.decision = Mock()
+    feed.decision.refresh.return_value = True
+    return feed
 
 
 def _transaction():
@@ -156,32 +177,53 @@ class ObservationSampleTests(unittest.TestCase):
                 self.assertEqual(read.call_count, 1)
 
     def test_stream_view_uses_the_transaction_metadata_when_the_host_advances(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            feed = viewer.ViewFeed.__new__(viewer.ViewFeed)
-            feed._observation_cache = publications.TransactionCache()
-            feed._observation = feed._last_capture = None
-            feed.base_url, feed.timeout_s = "http://host.invalid", 1.0
-            feed.frame_path = Path(tmp) / "frame.jpg"
-            feed.server, feed.decision = Mock(), Mock()
-            with patch.object(viewer, "fetch_observation_sample", return_value=(_publication("second"), b"jpeg")):
-                feed.publish(_publication("first"))
-            frame = feed.server.perception.publish_matched.call_args.kwargs["frame_record"]
-            self.assertEqual(frame["frame_id"], "second")
-            self.assertEqual(feed.frame_path.read_bytes(), b"jpeg")
-            self.assertIsNone(feed.error)
+        feed = _feed()
+        jpeg = _jpeg((4, 4), (1, 2, 3))
+        with patch.object(viewer, "fetch_observation_sample", return_value=(_publication("second"), jpeg)):
+            feed.publish(_publication("first"))
+        frame = json.loads(feed.server.perception.latest_json())["frame"]
+        self.assertEqual(frame["frame_id"], "second")
+        self.assertIsNone(feed.error)
 
     def test_stream_terminal_and_view_share_one_read_and_skip_unchanged_publication(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            feed = viewer.ViewFeed.__new__(viewer.ViewFeed)
-            feed._observation_cache = publications.TransactionCache()
-            feed._observation = feed._last_capture = None
-            feed.base_url, feed.timeout_s = "http://host.invalid", 1.0
-            feed.frame_path = Path(tmp) / "frame.jpg"
-            feed.server, feed.decision = Mock(), Mock()
-            with patch.object(viewer, "fetch_observation_sample", return_value=(_publication(), b"jpeg")) as read:
-                publication, error = feed.read_observation()
-                self.assertIsNone(error)
-                feed.publish(publication)
-                feed.publish(publication)
-            self.assertEqual(read.call_count, 1)
-            self.assertEqual(feed.server.perception.publish_matched.call_count, 1)
+        feed = _feed()
+        jpeg = _jpeg((4, 4), (1, 2, 3))
+        with (
+            patch.object(viewer, "fetch_observation_sample", return_value=(_publication(), jpeg)) as read,
+            patch.object(feed.server.perception, "publish", wraps=feed.server.perception.publish) as publish,
+        ):
+            publication, error = feed.read_observation()
+            self.assertIsNone(error)
+            feed.publish(publication)
+            feed.publish(publication)
+        self.assertEqual(read.call_count, 1)
+        self.assertEqual(publish.call_count, 1)
+
+    def test_an_unavailable_capture_clears_the_view_and_the_same_capture_restores_it(self):
+        publication, jpeg = _publication(), _jpeg((4, 4), (1, 2, 3))
+        for name, unavailable in (
+            ("bad image", (_publication("second"), b"not-an-image")),
+            ("missing image", (publication, None)),
+            ("stopped host", ({**publication, "health": "stale"}, jpeg)),
+            ("failed fetch", ConnectionError("offline")),
+        ):
+            samples = [(publication, jpeg), unavailable, (publication, jpeg)]
+            with self.subTest(name), patch.object(viewer, "fetch_observation_sample", side_effect=samples):
+                feed = _feed()
+                feed.publish(feed.read_observation()[0])
+                self.assertIsNotNone(feed.server.perception.latest_json())
+                feed.publish(feed.read_observation()[0])
+                self.assertIsNone(feed.server.perception.latest_json())
+                feed.publish(feed.read_observation()[0])
+                self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
+                self.assertIsNone(feed.error)
+
+    def test_observation_remains_available_when_decision_refresh_fails(self):
+        feed = _feed()
+        publication, jpeg = _publication(), _jpeg((4, 4), (1, 2, 3))
+        feed.decision.refresh.side_effect = ConnectionError("no decision")
+        feed._observation = publication, jpeg
+        feed.publish(publication)
+        self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
+        self.assertEqual(json.loads(feed.server.perception.latest_json())["overlay"]["status"], "current")
+        self.assertIn("no decision", feed.decision_error)

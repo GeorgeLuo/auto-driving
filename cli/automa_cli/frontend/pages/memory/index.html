@@ -273,15 +273,19 @@
     // The memory report lists every applied plugin by plugin_id and names the
     // evidence publisher. The page shows one plugin's ledger at a time: the
     // plugin the viewer picked, else the evidence publisher, else none.
+    function memoryReport() {
+      return latest?.memory ?? null;
+    }
+
     function memoryPlugins() {
-      const list = latest?.memory?.plugins;
+      const list = memoryReport()?.plugins;
       return Array.isArray(list)
         ? list.filter((entry) => entry && typeof entry.plugin_id === "string")
         : [];
     }
 
     function evidencePublisher() {
-      const publisher = latest?.memory?.evidence_publisher;
+      const publisher = memoryReport()?.evidence_publisher;
       return typeof publisher === "string" && publisher ? publisher : null;
     }
 
@@ -386,7 +390,7 @@
         if (!plugins.length) {
           const empty = document.createElement("div");
           empty.className = "empty";
-          empty.textContent = latest?.memory ? "No memory plugins ran." : "No memory report in publication yet.";
+          empty.textContent = memoryReport() ? "No memory plugins ran." : "No memory report in publication yet.";
           pluginList.append(empty);
           return;
         }
@@ -482,11 +486,11 @@
       const plugin = shownPlugin();
       const state = shownState();
       const publisher = evidencePublisher();
-      const steps = latest?.cycle?.timing?.steps;
+      const steps = latest?.timing?.steps;
       const memoryTiming = Array.isArray(steps) ? steps.find((step) => step?.step === "memory") : null;
       const fingerprint = [
         latest?.host_name || "",
-        latest?.memory ? "report" : "absent",
+        memoryReport() ? "report" : "absent",
         plugin?.plugin_id || "",
         publisher || "",
         state?.health || "",
@@ -501,7 +505,7 @@
 
       vehicleEl.textContent = latest?.host_name || "unknown host";
       ledgerMetrics.replaceChildren();
-      appendMetric(ledgerMetrics, "Plugin", plugin?.plugin_id || (latest?.memory ? "pick a plugin" : "—"));
+      appendMetric(ledgerMetrics, "Plugin", plugin?.plugin_id || (memoryReport() ? "pick a plugin" : "—"));
       appendMetric(ledgerMetrics, "Health", state?.health || (plugin ? "no health" : "absent"));
       appendMetric(ledgerMetrics, "Epoch", state?.epoch_id || "—");
       appendMetric(
@@ -511,7 +515,7 @@
       );
       appendMetric(ledgerMetrics, "Max age", state?.bounds?.max_age_ms != null ? `${state.bounds.max_age_ms} ms` : "—");
       appendMetric(ledgerMetrics, "Update", formatMs(memoryTiming?.duration_ms));
-      appendMetric(ledgerMetrics, "Evidence publisher", publisher || (latest?.memory ? "none" : "—"));
+      appendMetric(ledgerMetrics, "Evidence publisher", publisher || (memoryReport() ? "none" : "—"));
     }
 
     function renderLedger() {
@@ -548,7 +552,7 @@
       if (!rows.length) {
         const empty = document.createElement("div");
         empty.className = "empty";
-        empty.textContent = !latest?.memory
+        empty.textContent = !memoryReport()
           ? "No memory report in publication yet."
           : shownPlugin()
             ? "No keys in this filter."
@@ -585,7 +589,7 @@
           lastValueFingerprint = "empty";
           valueEmpty.hidden = false;
           valueBody.hidden = true;
-          valueEmpty.textContent = latest?.memory ? "" : "Waiting";
+          valueEmpty.textContent = memoryReport() ? "" : "Waiting";
         }
         return;
       }
@@ -620,7 +624,7 @@
     }
 
     function renderStatus() {
-      if (!latest?.memory) {
+      if (!memoryReport()) {
         setStatus("Live | memory absent", "stale");
         return;
       }

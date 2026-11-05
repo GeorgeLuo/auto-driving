@@ -3,6 +3,7 @@ import json
 import unittest
 from copy import deepcopy
 from urllib.request import urlopen
+from autonomy.decision_cycle.memory.interface import evidence_records
 from tests.deterministic.cli.decision.live_runtime_decision_view_fixtures import LiveRuntimeDecisionViewFixture
 
 
@@ -19,9 +20,11 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         self.assertEqual(payload["status"], "current")
         self.assertEqual(payload["decision"]["frame_id"], stream_frame["frame_id"])
         self.assertEqual(payload["current_image"]["frame_id"], stream_frame["frame_id"])
-        self.assertFalse(payload["authority"]["proposed_applied"])
-        self.assertIn("authorized_output", payload["authority"])
-        self.assertNotIn("host_application", payload["authority"])
+        authority = payload["decision"]["cycle"]["action"]["authority"]
+        self.assertNotIn("authority", payload)
+        self.assertFalse(authority["proposed_applied"])
+        self.assertIn("authorized_output", authority)
+        self.assertNotIn("host_application", authority)
 
         with urlopen(
             f"{self.server.url.rstrip('/')}{payload['current_image']['url']}",
@@ -59,10 +62,8 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         projected = evidence["records"][0]
         self.assertEqual(projected["status"], "available")
         self.assertEqual(projected["reason"], "")
-        self.assertEqual(
-            projected["record"],
-            payload["provenance"]["evidence"][0],
-        )
+        retained = evidence_records(payload["decision"]["cycle"]["memory"])
+        self.assertEqual(projected["record"], retained[0])
 
     def test_unmatched_retained_evidence_preserves_origin_without_overlay(
         self,
@@ -101,10 +102,7 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         for index, (expected_reason, mutate) in enumerate(cases):
             with self.subTest(reason=expected_reason):
                 stream_frame = self._accepted_frame_with_evidence(mutate)
-                self._publish_exact_transaction(
-                    stream_frame=stream_frame,
-                    image_name=f"evidence-{index}.png",
-                )
+                self._publish_exact_transaction(stream_frame=stream_frame)
                 payload = self._latest_payload()
                 evidence = payload["evidence"]
                 self.assertEqual(evidence["status"], "unavailable")
@@ -113,7 +111,5 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
                 self.assertEqual(projected["status"], "unavailable")
                 self.assertEqual(projected["reason"], expected_reason)
                 self.assertIsNone(projected["record"])
-                self.assertEqual(
-                    projected["origin"],
-                    payload["provenance"]["evidence"][0]["origin"],
-                )
+                retained = evidence_records(payload["decision"]["cycle"]["memory"])
+                self.assertEqual(projected["origin"], retained[0]["origin"])

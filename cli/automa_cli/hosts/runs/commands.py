@@ -7,7 +7,6 @@ import sys
 
 from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ...shared.cli.timeout_input import validate_timeout_input
-from ...shared.command_result import CommandResult
 from .render import render_hosts_status, render_lifecycle_result
 from .service import (
     restart_host_automation,
@@ -172,30 +171,6 @@ def register_host_runs(host_commands: argparse._SubParsersAction) -> None:
         )
 
 
-def get_hosts_status(
-    *,
-    host_name: str | None = None,
-    timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-    long: bool = False,
-    json_output: bool = False,
-) -> CommandResult:
-    """Collect host status and render it.
-
-    JSON and ``--long`` both include each host's run. The exit code follows
-    the named host's state; listing every host does not.
-    """
-
-    exit_code, hosts = hosts_status(
-        host_name=host_name,
-        timeout_s=timeout_s,
-        include_runs=long or json_output,
-    )
-    return CommandResult(
-        exit_code,
-        render_hosts_status(hosts, host_name=host_name, json_output=json_output, long=long),
-    )
-
-
 def _handle_hosts_run(args: argparse.Namespace) -> int:
     if not validate_timeout_input(
         args.timeout_s,
@@ -241,16 +216,13 @@ def _handle_hosts_status(args: argparse.Namespace) -> int:
         human_stream=sys.stderr,
     ):
         return 2
-    result = get_hosts_status(
+    exit_code, status = hosts_status(
         host_name=args.host_name,
         timeout_s=args.timeout_s,
-        long=args.long,
-        json_output=args.json,
+        include_runs=args.long or args.json,
     )
-    message = result.message
-    if message:
-        print(message)
-    return result.exit_code
+    print(render_hosts_status(status, json_output=args.json, long=args.long))
+    return exit_code
 
 
 def _handle_hosts_restart(args: argparse.Namespace) -> int:

@@ -55,22 +55,6 @@ def sensor_frame_for_replay_frame(frame: ReplayFrame) -> SensorFrame | None:
     )
 
 
-def decision_view(result: Any) -> dict[str, Any] | None:
-    """The decision steps' records for the displayed workbench frame."""
-
-    action = result.action
-    if action is None:
-        return None
-    return {
-        "frame_id": action.frame_id,
-        "status": action.status,
-        "reason": action.reason,
-        "proposal": result.proposal.to_dict() if result.proposal is not None else None,
-        "plan": result.plan.to_dict() if result.plan is not None else None,
-        "authority": action.authority.to_dict(),
-    }
-
-
 def run_frame(
     frame: ReplayFrame,
     *,
@@ -134,6 +118,5 @@ def run_frame(
     ).run(context)
     return FrameOutcome(
         result=result,
-        decision=decision_view(result),
         plugin_reports={step: plugin_report(runner) for step, runner in steps.items()},
     )

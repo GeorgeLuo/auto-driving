@@ -7,15 +7,12 @@ from typing import Any
 from autonomy.plugins import DuplicatePluginIdError
 
 from .hosts.commands import register_hosts
-from .hosts.runs.commands import get_hosts_status
 from .hosts.views.runtime_view import runtime_view_server, serve_viewer
 from .plugins.commands import register_plugins
 from .shared.text import format_browser_result
 from .simulators.commands import register_simulators
 from .simulators.status import simulators_status
 from .vehicles.commands import register_vehicles
-from .vehicles.render import format_vehicles_status
-from .vehicles.status import get_vehicles_status
 from .workbench.commands import register_workbench
 
 
@@ -84,32 +81,15 @@ def _handle_top_level_help(args: argparse.Namespace) -> int:
 
 def _handle_open_viewer(args: argparse.Namespace) -> int:
     return serve_viewer(
-        simulators=_simulators_document,
+        simulators=lambda: simulators_status()[1],
         emit=lambda result: print(format_browser_result(result), flush=True),
     )
 
 
-def _simulators_document() -> dict[str, Any]:
-    """What ``simulators status --json`` prints, for the viewer's ``/api/simulators``."""
-
-    return simulators_status().payload
-
-
 def _handle_status(args: argparse.Namespace) -> int:
-    result = get_hosts_status(long=False, json_output=False)
-    if result.message:
-        print(result.message)
-    try:
-        payload = get_vehicles_status()
-    except ValueError as exc:
-        print(f"automa vehicles status: {exc}", file=sys.stderr)
-        return 2
-    if result.message:
-        print()
-    print(format_vehicles_status(payload))
-    if payload["vehicles"] and all(vehicle["state"] == "unreachable" for vehicle in payload["vehicles"]):
-        return 1
-    return 0
+    main(["hosts", "status"])
+    print()
+    return main(["vehicles", "status"])
 
 
 def main(argv: list[str] | None = None) -> int:

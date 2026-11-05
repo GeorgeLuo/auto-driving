@@ -1,6 +1,6 @@
 """Simulator lifecycle facts returned to command presentation."""
 from dataclasses import dataclass
-from typing import Any, Literal
+from typing import Literal
 
 @dataclass(frozen=True)
 class SimulatorResult:
@@ -10,18 +10,4 @@ class SimulatorResult:
     error: str | None = None
     urls: tuple[str, ...] = ()
     hosts: tuple[str, ...] = ()
-    killed: bool = False
-    exited: bool = False
-
-
-@dataclass(frozen=True)
-class SimulatorsStatus:
-    """``simulators status``: its exit code and the ``automa_simulators_status`` document.
-
-    ``payload`` is what ``--json`` prints, and what any other reader serves.
-    ``created`` is every record's operator URL, which a missing ``--url`` names.
-    """
-
-    exit_code: int
-    payload: dict[str, Any]
-    created: tuple[str, ...] = ()
+    ended: Literal['exited', 'stopped', 'killed'] | None = None

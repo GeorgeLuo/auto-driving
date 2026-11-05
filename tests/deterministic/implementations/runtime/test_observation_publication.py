@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import threading
 import tempfile
 import unittest
+from copy import deepcopy
 from unittest import mock
 from pathlib import Path
 
@@ -133,6 +134,8 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["presets"], {"perception": "lightweight_observer"})
         self.assertEqual(payload["latest_json_path"], LATEST_JSON_PATH)
         self.assertEqual(payload["latest_frame_path"], LATEST_FRAME_PATH)
+        self.assertIsNone(payload["memory"])
+        self.assertNotIn("cycle", payload)
 
     def test_healthy_publication_includes_detached_perception_and_matching_frame(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
@@ -149,8 +152,11 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["control"]["throttle"], 0.0)
         self.assertEqual(payload["frame"]["frame_id"], "donkey_frame_000000")
         self.assertTrue(payload["frame"]["has_image"])
-        # Idle host has no perception step; publication still carries cycle control.
+        # Idle host has no perception step, so the diagnostic stays absent.
         self.assertIsNone(payload["perception"])
+        self.assertNotIn("observation", payload)
+        for unused in ("cycle", "proposal", "plan", "action"):
+            self.assertNotIn(unused, payload)
         self.assertIsNone(payload["memory"])
         self.assertEqual(payload["control"]["reason"], "action_plan_invariant_violated")
         self.assertEqual(payload["frame"]["frame_path"], LATEST_FRAME_PATH)
@@ -222,12 +228,14 @@ class ObservationPublicationTests(unittest.TestCase):
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms)
-        self.assertIsNotNone(payload["memory"])
-        state = payload["memory"]["plugins"][0]["state"]
+        self.assertNotIn("cycle", payload)
+        report = payload["memory"]
+        self.assertIsNotNone(report)
+        state = report["plugins"][0]["state"]
         self.assertEqual(state["health"], "healthy")
         self.assertEqual(state["record_count"], 1)
         self.assertEqual(state["records"][0]["kind"], "floor_boundary")
-        self.assertEqual(payload["memory"]["evidence_publisher"], "bounded_evidence")
+        self.assertEqual(report["evidence_publisher"], "bounded_evidence")
 
         jpeg, frame_meta = part.publish_latest_frame_jpeg()
         self.assertIsNotNone(jpeg)
@@ -313,6 +321,8 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(errored["health"], "error")
         self.assertFalse(errored["ok"])
         self.assertIn("RuntimeError", errored["error"] or "")
+        self.assertIsNone(errored["timing"])
+        self.assertGreaterEqual(errored["duration_ms"], 0)
 
     def test_unavailable_when_image_missing(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
@@ -404,6 +414,32 @@ class ObservationPublicationTests(unittest.TestCase):
         decision = part.publish_decision_latest(now_ms=now_ms)["decision"]
         self.assertEqual(decision["values"]["timing"], timing)
         self.assertNotIn("timing", decision)
+
+    def test_copying_a_publication_does_not_block_camera_reads(self) -> None:
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
+        for method in ("publish_latest", "publish_decision_latest", "publish_latest_frame_jpeg"):
+            with self.subTest(method=method):
+                copying, release = threading.Event(), threading.Event()
+
+                def slow_copy(payload):
+                    copying.set()
+                    release.wait(5)
+                    return deepcopy(payload)
+
+                publisher = threading.Thread(target=getattr(part, method))
+                camera = threading.Thread(target=part.publish_latest_camera)
+                with mock.patch("autonomy.runtime.frame_loop.deepcopy", side_effect=slow_copy):
+                    publisher.start()
+                    try:
+                        self.assertTrue(copying.wait(2))
+                        camera.start()
+                        camera.join(2)
+                        self.assertFalse(camera.is_alive(), "camera read blocked behind publication copy")
+                    finally:
+                        release.set()
+                        publisher.join(2)
+                        if camera.ident is not None:
+                            camera.join(2)
 
     def test_concurrent_reads_keep_frame_identity_paired(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()))

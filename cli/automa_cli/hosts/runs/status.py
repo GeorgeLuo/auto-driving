@@ -16,13 +16,12 @@ from typing import Any
 from ...frontend.perception_view import get_perception_view_status
 from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ...releases.errors import ReleaseError
-from ...releases.paths import controller_bundle_paths
+from ...releases.paths import bundle_paths
 from ...releases.store import release_manifest
 from ...shared.io.json_files import read_json
 from ...shared.io.processes import pid_alive
 from ...shared.paths import display_path
 from ...shared.timestamps import timestamp_ms
-from .. import staging
 from ..host_formatting import perception_stream_command
 from ..host_status import read_hosts
 from ..publications.host_publications import observation_component
@@ -83,7 +82,7 @@ def _run_status(host: dict[str, Any], read: dict[str, Any] | None) -> dict[str, 
     if host["provider"] is None:
         return None  # Missing or unreadable host configuration.
     name = host["host_name"]
-    bundle = controller_bundle_paths(staging.RUNTIME_ROOT / name)
+    bundle = bundle_paths(name)
     automation_dir = Path(bundle["runtime_dir"]) / "automation"
     process = _dict(read_json(automation_dir / "process.json"))
     state = _dict(read_json(automation_dir / "state.json"))
@@ -192,7 +191,7 @@ def _host_run(
     latest = _dict(observation.get("latest"))
     error = read["error"] if read["state"] in {"not answering", "error"} else None
     status = "error" if error is not None else read["state"]
-    view = get_perception_view_status(runtime_view_dir(host_name, runtime_root=staging.RUNTIME_ROOT))
+    view = get_perception_view_status(runtime_view_dir(host_name))
     if view.get("url") is None:  # No view is recorded here.
         view["reason"] = f"start `{perception_stream_command(host_name)}` to host it"
     run = {

@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
-from cli.automa_cli.simulators import store as simulator_store
 from cli.automa_cli.simulators.service import create_simulator
 from cli.automa_cli.simulators.render import render_simulator_result
 from tests.shared.cli.invoke import invoke_automa
@@ -116,7 +115,7 @@ class CreatedSimulatorTests(unittest.TestCase):
 
     def test_a_launcher_that_is_not_ready_in_time_is_ended(self) -> None:
         launcher = _launcher("import os, time; print('pid', os.getpid(), flush=True); time.sleep(60)")
-        with patch.dict(os.environ, self.env(launcher)), patch.object(simulator_store, "RUNTIME_ROOT", self.runtime_root):
+        with patch.dict(os.environ, {**self.env(launcher), "AUTOMA_RUNTIME_ROOT": str(self.runtime_root)}):
             result = create_simulator(timeout_s=0.5)
 
         self.assertEqual(result.exit_code, 2)

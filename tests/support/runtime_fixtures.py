@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 from autonomy.decision_cycle.activation import step_activation
 from implementations.decision_cycle.catalog import preset_activation, selection_activation
@@ -11,6 +13,12 @@ from implementations.decision_cycle.catalog import preset_activation, selection_
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 AUTOMA_PATH = WORKSPACE_ROOT / "cli" / "automa"
+
+
+def runtime_root_env(root: Path | str) -> Any:
+    """Point the CLI's runtime root at ``root`` while the returned patch is active."""
+
+    return mock.patch.dict(os.environ, {"AUTOMA_RUNTIME_ROOT": str(root)})
 
 
 @dataclass(frozen=True)

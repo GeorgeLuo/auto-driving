@@ -17,7 +17,7 @@ from tests.shared.cli.vehicle_fixtures import probe_returning
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_hosts import closed_url
 from tests.support.fake_metrics_ui import fake_metrics_ui
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import write_host_fixture, runtime_root_env
 
 
 class DiscoveredVehicleTests(unittest.TestCase):
@@ -138,8 +138,6 @@ class DiscoveredVehicleTests(unittest.TestCase):
 
 class DiscoveredRecordTests(unittest.TestCase):
     def test_an_unreadable_record_lists_no_vehicles(self):
-        from unittest.mock import patch
-
         from cli.automa_cli.vehicles import store
 
         good = {"provider": "picar", "url": "http://car:8887"}
@@ -148,10 +146,10 @@ class DiscoveredRecordTests(unittest.TestCase):
             with self.subTest(content=content), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 (root / store.DISCOVERED).write_text(content, encoding="utf-8")
-                with patch.object(store, "RUNTIME_ROOT", root):
+                with runtime_root_env(root):
                     expected = [good] if "car:8887" in content else []
                     self.assertEqual(store.discovered_vehicles(), expected)
-        with tempfile.TemporaryDirectory() as directory, patch.object(store, "RUNTIME_ROOT", Path(directory)):
+        with tempfile.TemporaryDirectory() as directory, runtime_root_env(directory):
             self.assertEqual(store.discovered_vehicles(), [])
 
 

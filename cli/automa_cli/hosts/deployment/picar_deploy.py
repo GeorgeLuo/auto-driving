@@ -18,9 +18,9 @@ from urllib.parse import urlparse
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
 
-from ...releases.paths import controller_bundle_paths
+from ...releases.paths import controller_bundle_paths, host_dir
 from ...shared.io import http_json
-from ...shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
+from ...shared.paths import ROOT, display_path
 from ..progress import ProgressSink, report
 from ...shared.timestamps import timestamp_ms
 from ..bundles import (
@@ -241,8 +241,8 @@ def deploy_picar_release(
     report(emit, "scope", scope="autonomy")
     report(emit, "remote_home", path=target.pi_home)
 
-    host_dir = RUNTIME_ROOT / safe_path_part(host_name)
-    bundle = controller_bundle_paths(host_dir)
+    directory = host_dir(host_name)
+    bundle = controller_bundle_paths(directory)
     source_summary = controller_bundle_source_summary()
     try:
         startup = startup_activations(bundle, host_name)
@@ -251,7 +251,7 @@ def deploy_picar_release(
 
     if dry_run:
         release_id = f"autonomy-{source_summary['tree_sha256'][:12]}-preview"
-        preview_dir = host_dir / "deploy" / "donkeycar" / release_id
+        preview_dir = directory / "deploy" / "donkeycar" / release_id
         preview_archive = Path(bundle["root_dir"]) / "releases" / f"{release_id}.tar.gz"
         commands = _autonomy_sync_commands(
             target=target,
@@ -292,7 +292,7 @@ def deploy_picar_release(
     release_id = Path(release["archive"]["path"]).name.removesuffix(".tar.gz")
     deploy_files = _write_remote_activation_files(
         target=target,
-        host_dir=host_dir,
+        host_dir=directory,
         release=release,
         release_id=release_id,
         activation_paths={step: bundle_activation_path(bundle, step) for step in activations},

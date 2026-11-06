@@ -183,12 +183,18 @@ class _ExitedProcess:
     def poll(self):
         return 7
 
+    def wait(self, timeout=None):
+        return 7
+
 
 class _RunningProcess:
     pid = 43434
 
     def poll(self):
         return None
+
+    def wait(self, timeout=None):
+        return None  # the launcher's reaping thread ends at once
 
 
 def _write_activations(

@@ -16,13 +16,6 @@ from .perception_view import (
     VIEW_SCHEMA,
     VIEW_RECORD_NAME,
 )
-from .decision_view import (
-    DecisionView,
-    DecisionViewError,
-    decision_error_payload,
-    parse_generation_query,
-    parse_image_query,
-)
 
 from .loopback_http import (
     PAGES_DIR,
@@ -49,8 +42,6 @@ RUNTIME_HOST_ROUTES = frozenset({
     PLUGIN_CATALOG_PATH,
     "/api/latest",
     "/frame",
-    "/api/decision/latest",
-    "/api/decision/image",
 })
 # The workbench page and API, answered from a replay runner whether or not a host is connected.
 WORKBENCH_PREFIX = "/workbench"
@@ -81,7 +72,6 @@ class RuntimeViewServer:
         port: int | None = None,
         run_id: str | None = None,
         worker_pid: int | None = None,
-        decision_identity: dict[str, Any] | None = None,
         plugin_catalog: Callable | None = None,
         connected: bool = True,
         hosts: Callable[[], list[dict[str, Any]]] | None = None,
@@ -112,7 +102,6 @@ class RuntimeViewServer:
         # Without an automation dir the server publishes no discovery record.
         self.record_path = None if automation_dir is None else automation_dir / VIEW_RECORD_NAME
         self.perception = PerceptionView(host_name=host_name)
-        self.decision = DecisionView(host_name=host_name, identity=decision_identity)
         self._httpd: _RuntimeHttpServer | None = None
         self._thread: threading.Thread | None = None
         self._started_at_ms: int | None = None
@@ -174,7 +163,6 @@ class RuntimeViewServer:
         return {
             **self.describe(),
             **self.perception.health_payload(),
-            "decision": self.decision.health_payload(),
         }
 
     def connection_dot_html(self) -> str:
@@ -202,10 +190,7 @@ class RuntimeViewServer:
     def decision_navigation_html(self) -> str:
         """Return a usable decision link or an explicit unavailable status."""
 
-        page_url = self.decision.page_url()
-        if page_url is None:
-            return _unavailable_nav("Action", "Action view unavailable")
-        return _nav_link("Action", page_url)
+        return _nav_link("Action", "/decision")
 
     def stop(self) -> None:
         httpd = self._httpd
@@ -215,7 +200,6 @@ class RuntimeViewServer:
         stop_server_thread(httpd, thread)
         if self._replay_runner is not None:
             self._replay_runner.close()
-        self.decision.stop()
         self._write_record("stopped")
         self._httpd = None
         self._thread = None
@@ -329,21 +313,9 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         if route == "/favicon.ico":
             self._send(204, b"", "image/x-icon", include_body=False)
             return
-        if route in {"/decision", "/decision.html"}:
-            try:
-                self.server.publisher.decision.require_generation(
-                    parse_generation_query(request.query)
-                )
-                body = DECISION_PAGE_PATH.read_bytes()
-            except DecisionViewError as exc:
-                self._send_decision_error(exc, include_body=include_body)
-                return
-            except OSError as exc:
-                self._send_json(500, {"error": str(exc)}, include_body=include_body)
-                return
-            self._send(200, body, "text/html; charset=utf-8", include_body=include_body)
-            return
         pages = {
+            "/decision": DECISION_PAGE_PATH,
+            "/decision.html": DECISION_PAGE_PATH,
             "/perception": PERCEPTION_PAGE_PATH,
             "/perception.html": PERCEPTION_PAGE_PATH,
             "/memory": MEMORY_PAGE_PATH,
@@ -381,28 +353,6 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
                 "text/html; charset=utf-8",
                 include_body=include_body,
             )
-            return
-        if route == "/api/decision/latest":
-            try:
-                payload = self.server.publisher.decision.latest_payload(
-                    generation=parse_generation_query(request.query)
-                )
-            except DecisionViewError as exc:
-                self._send_decision_error(exc, include_body=include_body)
-                return
-            self._send_json(200, payload, include_body=include_body)
-            return
-        if route == "/api/decision/image":
-            try:
-                generation, transaction_id = parse_image_query(request.query)
-                body, content_type = self.server.publisher.decision.image_response(
-                    generation=generation,
-                    transaction_id=transaction_id,
-                )
-            except DecisionViewError as exc:
-                self._send_decision_error(exc, include_body=include_body)
-                return
-            self._send(200, body, content_type, include_body=include_body)
             return
         if route == "/api/health":
             self._send_json(
@@ -455,18 +405,6 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             self._send(200, body, content_type, include_body=include_body)
             return
         self._send_json(404, {"error": "not found"}, include_body=include_body)
-
-    def _send_decision_error(
-        self,
-        error: DecisionViewError,
-        *,
-        include_body: bool,
-    ) -> None:
-        self._send_json(
-            error.status_code,
-            decision_error_payload(self.server.publisher.decision, reason=error.reason),
-            include_body=include_body,
-        )
 
 
 def _nav_link(label: str, href: str) -> str:

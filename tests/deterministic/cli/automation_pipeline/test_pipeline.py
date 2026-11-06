@@ -67,13 +67,13 @@ class AutomationLivePipelineTests(unittest.TestCase):
             self.assertEqual(frame_events[-1]["action"], state["last_frame"]["control"]["reason"])
             latest = json.loads((automation_dir / "latest_perception.json").read_text(encoding="utf-8"))
             # The latest copy can be any decided frame, so it is checked against its own frame.
+            report = latest["report"]
             self.assertEqual(
-                latest["step_activations"]["perception"]["plugins"],
-                frame_selections[latest["frame"]["frame_id"]],
+                report["values"]["activation"]["steps"]["perception"]["plugins"],
+                frame_selections[report["frame_id"]],
             )
-            self.assertNotIn("cycle", latest)
-            self.assertNotIn("observation", latest)
-            self.assertIn("memory", latest)
+            self.assertIn("memory", report["cycle"])
+            self.assertIn("perception", report["cycle"])
 
     def test_a_decision_view_failure_is_recorded_and_does_not_stop_automation(self) -> None:
         """A view failure cannot change the completed cycle's authority result."""
@@ -87,10 +87,9 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 staged_runners(perception=_SlowMapper()),
                 chase_runtime(runtime_root),
                 patch(
-                    "cli.automa_cli.hosts.runs.monitor.DecisionViewAdapter.refresh",
+                    "cli.automa_cli.hosts.runs.monitor.DecisionViewAdapter.publish_publication",
                     side_effect=RuntimeError("decision view unavailable"),
                 ),
-                patch("cli.automa_cli.frontend.decision_view.DecisionView.invalidate_latest", autospec=True) as invalidate,
             ):
                 result = run_host_automation(
                     host_name=HOST_NAME, num_decisions=1, take_control=False,
@@ -98,7 +97,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 )
 
             self.assertEqual(result.exit_code, 0, result.message)
-            invalidate.assert_called()
             automation_dir = Path(bundle["runtime_dir"]) / "automation"
             state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
             self.assertEqual((state["status"], state["processed_count"]), ("completed", 1))
@@ -108,8 +106,8 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 "RuntimeError: decision view unavailable",
             )
             latest = json.loads((automation_dir / "latest_perception.json").read_text(encoding="utf-8"))
-            self.assertEqual((latest["control"]["steering"], latest["control"]["throttle"]), (0.0, 0.0))
-            self.assertFalse(latest["control"]["applied"])
+            self.assertEqual((latest["report"]["application"]["steering"], latest["report"]["application"]["throttle"]), (0.0, 0.0))
+            self.assertFalse(latest["report"]["application"]["applied"])
 
 
 if __name__ == "__main__":

@@ -246,12 +246,11 @@ class DecisionSurfaceFixture:
             },
         )
         return {
-            "schema": "automa_physical_decision_publication",
+            "schema": "host_frame_publication",
+            "health": "healthy",
             "ok": True,
-            "status": "ready",
-            "reason": "",
             "read_at_ms": published_at_ms,
             "result_age_ms": 0,
             "stale_after_ms": 1_000,
-            "decision": report,
+            "report": report,
         }

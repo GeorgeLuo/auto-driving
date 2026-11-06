@@ -12,7 +12,7 @@ from unittest.mock import patch
 import numpy as np
 
 from autonomy.decision_cycle.steps import decision_steps
-from autonomy.runtime.frame_loop import DECISION_TRANSACTION_PATH
+from autonomy.runtime.frame_loop import OBSERVATION_TRANSACTION_PATH
 from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs import monitor
@@ -51,7 +51,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
             self.assertEqual(int(perception.contexts[1].sensor_frame.readings["front_camera"].value[0, 0, 0]), 2)
             status = part.observation_status()
             self.assertEqual((status["frames_received"], status["frames_dropped"], status["processed_count"]), (3, 1, 2))
-            self.assertEqual(part.publish_latest()["frames_dropped"], 1)
+            self.assertEqual(part.publish_latest_camera()["frames_dropped"], 1)
             self.assertNotIn("frames_dropped", part.host.last_context.metadata)
         finally:
             perception.release_all()
@@ -143,14 +143,14 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 return {"ok": True, "host_run_id": part.run_id, "session": part.host.session_status()}
 
         def transaction(*_args, **_kwargs):
-            _status, _headers, body = routes.handle("GET", DECISION_TRANSACTION_PATH)
+            _status, _headers, body = routes.handle("GET", OBSERVATION_TRANSACTION_PATH)
             return json.loads(body)
 
         seen = []
 
         def sample(*_args, **_kwargs):
             jpeg, payload = part.publish_latest_frame_jpeg()
-            seen.append(payload["frame"]["frame_index"])
+            seen.append(payload["report"]["frame_index"])
             return payload, jpeg
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -161,8 +161,8 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 # publications, monitor polling, loopback view and records are real.
                 with (
                     patch.object(monitor, "RuntimeClient", return_value=RuntimeClient()),
-                    patch.object(monitor, "fetch_observation_sample", side_effect=sample),
-                    patch("cli.automa_cli.hosts.views.decision_live.fetch_decision_transaction", side_effect=transaction),
+                    patch.object(monitor, "fetch_frame_sample", side_effect=sample),
+                    patch("cli.automa_cli.hosts.views.decision_live.fetch_frame_sample", side_effect=sample),
                 ):
                     started = time.monotonic()
                     outcome = monitor.monitor_runtime(

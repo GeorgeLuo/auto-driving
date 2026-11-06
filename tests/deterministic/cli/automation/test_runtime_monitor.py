@@ -62,9 +62,12 @@ class _FakeClient:
 
 class _FakeDecisionView:
     def __init__(self, **kwargs) -> None:
-        pass
+        self.server = kwargs.get("view_server")
 
-    def refresh(self) -> bool:
+    def publish_publication(self, publication, jpeg) -> bool:
+        self.publication = publication
+        if self.server is not None:
+            self.server.perception.publish(frame_bytes=jpeg, frame_record=publication)
         return True
 
 
@@ -96,18 +99,54 @@ def _host(camera: int, *, last_error: str | None = None) -> dict:
 
 
 def _publication(index: int) -> dict:
+    frame_id = f"donkey_frame_{index:06d}"
+    captured_at_ms = 1_000 + index
+    completed_at_ms = 1_040 + index
     return {
-        "frame": {
-            "frame_id": f"donkey_frame_{index:06d}",
+        "schema": "host_frame_publication",
+        "health": "healthy",
+        "ok": True,
+        "host_name": "picar-test",
+        "stale_after_ms": 1_000,
+        "report": {
+            "host_name": "picar-test",
+            "frame_id": frame_id,
             "frame_index": index,
-            "captured_at_ms": 1_000 + index,
-            "completed_at_ms": 1_040 + index,
+            "timestamp_ms": captured_at_ms,
+            "published_at_ms": completed_at_ms,
+            "status": "ok",
+            "error": None,
+            "generation_id": "gen-1",
+            "application": {
+                "applied": False,
+                "mode": "autonomy",
+                "reason": "steer-left",
+                "steering": -0.2,
+                "throttle": 0.1,
+            },
+            "cycle": {
+                "perception": {
+                    "schema": "perception_text",
+                    "plugin_id": "lanes",
+                    "status": "ok",
+                    "signals": [{"signal_id": "lane", "value": True}],
+                    "things": [],
+                },
+                "memory": None,
+            },
+            "values": {
+                "source_id": "picar-test:local",
+                "activation": {"generation_id": "gen-1", "steps": {}},
+                "source_frame": {
+                    "frame_id": frame_id,
+                    "frame_index": index,
+                    "captured_at_ms": captured_at_ms,
+                    "completed_at_ms": completed_at_ms,
+                },
+                "stale_after_ms": 1_000,
+                "timing": {"duration_ms": 40, "steps": []},
+            },
         },
-        "duration_ms": 40,
-        "perception": {"signals": [{"id": "lane"}], "things": [], "text": "signal id=lane"},
-        "control": {"reason": "steer-left", "steering": -0.2, "throttle": 0.1},
-        "generation_id": "gen-1",
-        "mode": "autonomy",
     }
 
 
@@ -172,7 +211,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         output = io.StringIO()
         with (
             mock.patch.object(monitor, "RuntimeClient", return_value=client),
-            mock.patch.object(monitor, "fetch_observation_sample", side_effect=sample),
+            mock.patch.object(monitor, "fetch_frame_sample", side_effect=sample),
             mock.patch.object(monitor, "DecisionViewAdapter", _FakeDecisionView),
         ):
             outcome = monitor.monitor_runtime(

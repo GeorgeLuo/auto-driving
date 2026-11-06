@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from copy import deepcopy
 import threading
 import time
 from collections import OrderedDict
@@ -12,8 +13,10 @@ from urllib.request import urlopen
 
 from PIL import Image
 
+from .decision_view import report_evidence
+
 VIEW_SCHEMA = "automa_perception_view"
-PUBLICATION_SCHEMA = "automa_perception_publication"
+PUBLICATION_SCHEMA = "host_frame_publication"
 VIEW_RECORD_NAME = "perception_view.json"
 MAX_BUFFERED_FRAMES = 8
 NO_FRAME_ERROR = "no camera frame has been published yet"
@@ -30,34 +33,43 @@ class PerceptionView:
         self._lock = threading.RLock()
         self._frames: OrderedDict[str, tuple[bytes, str]] = OrderedDict()
         # The latest frame's metadata and the record it was published with.
-        self._latest: tuple[dict[str, Any], dict[str, Any]] | None = None
+        self._latest: tuple[dict[str, Any], dict[str, Any], str] | None = None
 
-    def publish(self, *, frame_bytes: bytes, frame_record: dict[str, Any]) -> None:
-        """Replace the latest JPEG and its findings together."""
+    def publish(self, *, frame_bytes: bytes | None, frame_record: dict[str, Any]) -> None:
+        """Replace the latest report. The JPEG is the display image when encoding produced one."""
         identity = _frame_identity(frame_record)
         frame_id = identity["frame_id"]
-        # Checked before the lock so a rejected image does not replace the latest publication.
-        with Image.open(BytesIO(frame_bytes)) as image:
-            if image.format != "JPEG":
-                raise ValueError("published frame must be a JPEG image")
-            width_px, height_px = image.size
-        published_at_ms = _timestamp_ms()
+        report = frame_record["report"]
+        image_id = (
+            json.dumps([report["run_id"], report.get("generation_id"), frame_id], separators=(",", ":"))
+            if "run_id" in report else frame_id
+        )
+        width_px = height_px = None
+        if frame_bytes:
+            try:
+                with Image.open(BytesIO(frame_bytes)) as image:
+                    if image.format != "JPEG":
+                        raise ValueError("published frame must be a JPEG image")
+                    width_px, height_px = image.size
+            except (OSError, ValueError):
+                frame_bytes = None
         frame = {
             "frame_id": frame_id,
             "frame_index": identity.get("frame_index"),
             "captured_at_ms": identity.get("captured_at_ms"),
-            "published_at_ms": published_at_ms,
-            "content_type": _CONTENT_TYPE,
+            "published_at_ms": identity.get("published_at_ms") or _timestamp_ms(),
+            "content_type": _CONTENT_TYPE if frame_bytes else None,
             "width_px": width_px,
             "height_px": height_px,
-            "url": f"/frame?v={quote(frame_id, safe='')}",
+            "url": f"/frame?v={quote(image_id, safe='')}" if frame_bytes else None,
         }
         with self._lock:
-            self._frames[frame_id] = (frame_bytes, _CONTENT_TYPE)
-            self._frames.move_to_end(frame_id)
-            if len(self._frames) > MAX_BUFFERED_FRAMES:
-                self._frames.popitem(last=False)
-            self._latest = frame, frame_record
+            if frame_bytes:
+                self._frames[image_id] = (frame_bytes, _CONTENT_TYPE)
+                self._frames.move_to_end(image_id)
+                if len(self._frames) > MAX_BUFFERED_FRAMES:
+                    self._frames.popitem(last=False)
+            self._latest = frame, deepcopy(frame_record), image_id
 
     def invalidate_latest(self, reason: str | None = None) -> None:
         """An unavailable publication must not leave a usable latest frame; ``reason`` says why."""
@@ -73,15 +85,16 @@ class PerceptionView:
         with self._lock:
             if self._latest is None:
                 return None
-            frame, record = self._latest
+            frame, record, _image_id = self._latest
         payload = _publication_payload(
-            host_name=self.host_name, frame=frame, perception_record=record, generated_at_ms=_timestamp_ms(),
+            host_name=self.host_name, image=frame, frame_record=record, generated_at_ms=_timestamp_ms(),
         )
         return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8")
 
     def frame(self, frame_id: str | None = None) -> tuple[bytes, str] | None:
         with self._lock:
-            return self._frames.get(frame_id if frame_id is not None else self._latest_frame_id())
+            image_id = frame_id if frame_id is not None else (None if self._latest is None else self._latest[2])
+            return self._frames.get(image_id)
 
     def _latest_frame_id(self) -> str | None:
         return None if self._latest is None else self._latest[0]["frame_id"]
@@ -204,36 +217,48 @@ def _view_generation_error(
 
 
 def _frame_identity(record: Any) -> dict[str, Any]:
-    """The record's nested frame; publication requires its ``frame_id``."""
+    """Identity of the completed report. Publication requires ``report.frame_id``."""
 
-    frame = record.get("frame") if isinstance(record, dict) else None
-    frame_id = frame.get("frame_id") if isinstance(frame, dict) else None
+    report = record.get("report") if isinstance(record, dict) else None
+    frame_id = report.get("frame_id") if isinstance(report, dict) else None
     if not isinstance(frame_id, str) or not frame_id:
-        raise ValueError("perception publication requires a nested frame with a frame_id")
-    return frame
+        raise ValueError("frame publication requires report.frame_id")
+    values = report.get("values") if isinstance(report.get("values"), dict) else {}
+    source = values.get("source_frame") if isinstance(values.get("source_frame"), dict) else {}
+    return {
+        "frame_id": frame_id,
+        "frame_index": report.get("frame_index"),
+        "captured_at_ms": source.get("captured_at_ms", report.get("timestamp_ms")),
+        "published_at_ms": report.get("published_at_ms"),
+    }
 
 
 def _publication_payload(
     *,
     host_name: str,
-    frame: dict[str, Any],
-    perception_record: dict[str, Any],
+    image: dict[str, Any],
+    frame_record: dict[str, Any],
     generated_at_ms: int,
 ) -> dict[str, Any]:
-    perception = perception_record.get("perception")
-    timing = perception_record.get("timing")
-    completed_at_ms = perception_record["frame"].get("completed_at_ms")
+    report = frame_record.get("report") if isinstance(frame_record.get("report"), dict) else None
+    published_at_ms = None if report is None else report.get("published_at_ms")
+    age = _nonnegative_difference(generated_at_ms, published_at_ms)
+    ceiling = frame_record.get("stale_after_ms")
+    health = frame_record.get("health")
+    if type(ceiling) is int and age is not None and age > ceiling:
+        health = "stale"
     return {
         "schema": PUBLICATION_SCHEMA,
         "host_name": host_name,
-        "generated_at_ms": generated_at_ms,
-        "result_age_ms": _nonnegative_difference(generated_at_ms, completed_at_ms),
-        "frame": frame,
-        "timing": timing if isinstance(timing, dict) else None,
-        "duration_ms": perception_record.get("duration_ms"),
-        "memory": perception_record.get("memory"),
-        "perception": perception if isinstance(perception, dict) else None,
-        "control": perception_record.get("control"),
+        "health": health,
+        "ok": frame_record.get("ok"),
+        "read_at_ms": generated_at_ms,
+        "result_age_ms": age,
+        "stale_after_ms": frame_record.get("stale_after_ms"),
+        "report": report,
+        "image": image,
+        "host_telemetry": frame_record.get("host_telemetry"),
+        "evidence": report_evidence(report) if report is not None else None,
     }
 
 

@@ -117,17 +117,17 @@ class PluginArmingFlows(unittest.TestCase):
                     # The run's monitor publishes the host's decision to the view on its next poll.
                     deadline = time.monotonic() + 5
                     while True:
-                        with urlopen(view_url + "/api/health", timeout=3) as response:
-                            health = json.load(response)["decision"]
-                        if (health["identity"] or {}).get("producer_generation_id") == streamed["generation_id"]:
+                        with urlopen(view_url + "/api/latest", timeout=3) as response:
+                            health = json.load(response)["report"]
+                        if health.get("generation_id") == streamed["generation_id"]:
                             break
                         self.assertLess(time.monotonic(), deadline, health)
                         time.sleep(0.05)
-                    self.assertEqual(health["status"], "running")
-                    with urlopen(view_url + "/api/decision/latest?generation=" + health["generation_id"], timeout=3) as response:
+                    self.assertEqual(health["status"], "ok")
+                    with urlopen(view_url + "/api/latest", timeout=3) as response:
                         viewed = json.load(response)
-                    self.assertEqual(viewed["decision"]["generation_id"], streamed["generation_id"])
-                    self.assertEqual(viewed["decision"]["cycle"]["proposal"]["candidates"][0]["metadata"]["revision"], revision)
+                    self.assertEqual(viewed["report"]["generation_id"], streamed["generation_id"])
+                    self.assertEqual(viewed["report"]["cycle"]["proposal"]["candidates"][0]["metadata"]["revision"], revision)
                     current = json.loads(cli("status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                     self.assertEqual(current["state"]["run_id"], original["state"]["run_id"])
                     self.assertEqual(current["state"]["pid"], original["state"]["pid"])
@@ -153,15 +153,15 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(streamed["generation_id"], shown["applied_decision"]["generation_id"])
                 deadline = time.monotonic() + 5
                 while True:
-                    with urlopen(view_url + "/api/health", timeout=3) as response:
-                        health = json.load(response)["decision"]
-                    if (health["identity"] or {}).get("producer_generation_id") == streamed["generation_id"]:
+                    with urlopen(view_url + "/api/latest", timeout=3) as response:
+                        health = json.load(response)["report"]
+                    if health.get("generation_id") == streamed["generation_id"]:
                         break
                     self.assertLess(time.monotonic(), deadline, health)
                     time.sleep(0.05)
-                with urlopen(view_url + "/api/decision/latest?generation=" + health["generation_id"], timeout=3) as response:
+                with urlopen(view_url + "/api/latest", timeout=3) as response:
                     viewed = json.load(response)
-                self.assertEqual(viewed["decision"]["cycle"]["proposal"]["candidates"], [])
+                self.assertEqual(viewed["report"]["cycle"]["proposal"]["candidates"], [])
                 current = json.loads(cli("status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                 self.assertEqual(current["state"]["run_id"], original["state"]["run_id"])
                 self.assertEqual(current["state"]["pid"], original["state"]["pid"])

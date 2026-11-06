@@ -13,7 +13,7 @@ from ...hosts.publications.decision import (
     decision_error_payload,
     require_valid_activations,
 )
-from ...hosts.publications.host_publications import fetch_decision_publication
+from ...hosts.publications.host_publications import fetch_frame_publication
 from ...hosts.discovery import runtime_base_url
 from ...hosts.errors import RuntimeHostError
 from ...shared.timestamps import timestamp_ms
@@ -56,9 +56,10 @@ def stream_decision(
 
     view = StreamView(host_name, base_url=base_url, timeout_s=timeout_s) if serve_view else None
 
-    def read_frame() -> dict[str, Any]:
+    def read_frame(publication: dict[str, Any] | None = None) -> dict[str, Any]:
         try:
-            publication = fetch_decision_publication(base_url, timeout_s=timeout_s)
+            if publication is None:
+                publication = fetch_frame_publication(base_url, timeout_s=timeout_s)
         except (ConnectionError, OSError) as exc:
             raise DecisionSurfaceError(
                 "runtime_decision_unavailable",
@@ -83,7 +84,7 @@ def stream_decision(
             # The host computes the result age on its own clock.
             "freshness": {"age_ms": normalized["result_age_ms"], "max_age_ms": normalized["max_age_ms"]},
             "plugins": list((activation["steps"].get(step) or {}).get("plugins") or []),
-            "record": deepcopy(cycle[step]),
+            "record": deepcopy(cycle.get(step)),
             # The cycle's timing; a host that does not publish it leaves None.
             "timing": deepcopy(report.values.get("timing")),
         }
@@ -95,10 +96,14 @@ def stream_decision(
         return frame
 
     def probe() -> tuple[dict[str, Any], None]:
+        publication = None
         if view is not None:
-            view.publish(view.read_observation()[0])
+            publication, error = view.read_observation()
+            view.publish(publication)
+            if error is not None:
+                return {"status": "error", "error": error}, None
         try:
-            return {**read_frame(), "status": "live"}, None
+            return {**read_frame(publication), "status": "live"}, None
         except DecisionSurfaceError as exc:
             return _error_probe(exc), None
 

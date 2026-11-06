@@ -8,7 +8,7 @@ from typing import Any
 from autonomy.decision_cycle.memory.interface import BOUNDS, EPOCH_ID, HEALTH, RECORD_COUNT
 from autonomy.runtime.frame_loop import LATEST_FRAME_PATH, LATEST_JSON_PATH
 
-from ...hosts.publications.decision_publication import presets_text
+from ...hosts.publications.frame_publication import presets_text
 from ...shared.memory_report import evidence_publisher, plugin_ledgers
 from ..step_formatting import format_step_record, format_step_timing
 from .models import MemoryPublication, PerceptionPublication, StreamEvent, ViewState
@@ -134,16 +134,7 @@ def _live_memory_screen(*, host_name: str, live: dict[str, Any]) -> str:
     if status == "live":
         lines.append(f"Applied plugins: {', '.join(live.get('plugin_ids', [])) or 'none'}")
         lines.extend(_format_plugin_ledgers(_live_plugins(live)))
-        lines.extend(
-            [
-                f"Evidence publisher: {live.get('evidence_publisher') or 'none'}",
-                (
-                    f"Counters: updates={live.get('update_count')} "
-                    f"resets={live.get('reset_count')} "
-                    f"failures={live.get('failure_count')}"
-                ),
-            ]
-        )
+        lines.append(f"Evidence publisher: {live.get('evidence_publisher') or 'none'}")
         if live.get("last_duration_ms") is not None:
             lines.append(f"Last duration: {live.get('last_duration_ms')} ms")
         if live.get("last_error"):

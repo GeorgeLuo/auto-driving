@@ -345,7 +345,6 @@
   <script src="/static/shared/metrics.js"></script>
   <script>
     const params = new URLSearchParams(location.search);
-    let generation = params.get("generation");
     const frameImage = document.getElementById("frame");
     const canvas = document.getElementById("overlay");
     const context = canvas.getContext("2d");
@@ -507,7 +506,7 @@
 
       const cycleMetrics = document.getElementById("cycleMetrics");
       cycleMetrics.replaceChildren();
-      appendMetric(cycleMetrics, "Frame", latest.current_image?.frame_id);
+      appendMetric(cycleMetrics, "Frame", decision.frame_id);
       // The host publishes its steps in the order they run.
       const timing = decision.values?.timing;
       appendMetric(cycleMetrics, "Cycle", formatMs(timing?.duration_ms));
@@ -608,26 +607,6 @@
       return { text: `Live | plan ${cycle.plan?.status || "idle"}`, mode: "stale" };
     }
 
-    function nonExpiredPayload(payload, now = Date.now()) {
-      const freshness = payload?.freshness || {};
-      return Number.isInteger(freshness.published_at_ms) &&
-        Number.isInteger(freshness.expires_at_ms) &&
-        freshness.expires_at_ms >= freshness.published_at_ms &&
-        now >= freshness.published_at_ms && now <= freshness.expires_at_ms;
-    }
-
-    // A worker that runs restaged proposals publishes a new generation; follow
-    // it while the run and worker are the ones this page has been showing.
-    function restagedGeneration(response, payload) {
-      const shown = latest?.identity;
-      const next = payload?.identity;
-      return response.status === 409 && payload?.reason === "generation_mismatch" &&
-        /^[0-9a-f]{64}$/.test(payload?.generation_id || "") &&
-        shown && next && shown.run_id === next.run_id && shown.worker_pid === next.worker_pid
-        ? payload.generation_id
-        : null;
-    }
-
     function supersededPayload(payload) {
       const incoming = payload?.freshness?.published_at_ms;
       const displayed = latest?.freshness?.published_at_ms;
@@ -649,44 +628,69 @@
       });
     }
 
+    function shownDecision(payload) {
+      const report = payload.report || {};
+
+      const image = payload.image && payload.image.url ? payload.image : null;
+      return {
+        status: report.status || "ok",
+        generation_id: report.generation_id,
+        identity: {
+          host_name: report.host_name,
+          run_id: report.run_id,
+          source_id: report.values?.source_id,
+        },
+        decision: report,
+        current_image: image ? {
+          status: "available",
+          frame_id: image.frame_id || report.frame_id,
+          url: image.url,
+          width_px: image.width_px,
+          height_px: image.height_px,
+        } : null,
+        freshness: {
+          published_at_ms: report.published_at_ms,
+          captured_at_ms: report.timestamp_ms,
+          age_ms: payload.result_age_ms,
+          max_age_ms: payload.stale_after_ms,
+          capture_age_ms: payload.result_age_ms,
+        },
+        evidence: payload.evidence || null,
+        host_telemetry: payload.host_telemetry || null,
+      };
+    }
+
     async function refresh() {
       if (paused || refreshing) return;
       refreshing = true;
       const requestToken = ++refreshToken;
       try {
-        if (!/^[0-9a-f]{64}$/.test(generation || "")) {
-          throw new Error("this page needs a producer generation");
-        }
-        const response = await fetch("/api/decision/latest?generation=" + encodeURIComponent(generation), { cache: "no-store" });
+        const response = await fetch("/api/latest", { cache: "no-store" });
         const payload = await response.json();
-        const restaged = restagedGeneration(response, payload);
-        if (restaged) {
-          generation = restaged;
-          history.replaceState(null, "", "?" + new URLSearchParams({ generation }));
-          throw new Error("action configuration changed; following its generation");
+        if (!response.ok || !payload.report) {
+          throw new Error(payload.health || payload.reason || `HTTP ${response.status}`);
         }
-        if (!response.ok || payload.status !== "current" || payload.generation_id !== generation) {
-          throw new Error(payload.reason || `HTTP ${response.status}`);
-        }
-        if (supersededPayload(payload)) return;
-        if (!nonExpiredPayload(payload)) throw new Error("decision expired");
-        const imageUrl = payload.current_image?.url;
-        if (!imageUrl) throw new Error("exact action image is unavailable");
-        if (imageUrl !== loadedImageUrl) {
-          await loadDecisionImage(imageUrl);
+        const shown = shownDecision(payload);
+        if (supersededPayload(shown)) return;
+        let imageUrl = shown.current_image?.url;
+        if (imageUrl && imageUrl !== loadedImageUrl) {
+          try {
+            await loadDecisionImage(imageUrl);
+          } catch { imageUrl = null; }
         }
         if (requestToken !== refreshToken || paused) return;
-        if (!nonExpiredPayload(payload, Date.now()) || supersededPayload(payload)) {
-          throw new Error("decision expired or superseded");
-        }
+        if (supersededPayload(shown)) return;
         if (imageUrl !== loadedImageUrl) {
-          frameImage.src = imageUrl;
+          if (imageUrl) frameImage.src = imageUrl;
+          else frameImage.removeAttribute("src");
           loadedImageUrl = imageUrl;
         }
-        latest = payload;
+        latest = shown;
         renderData();
-        const status = liveStatus(payload);
-        setStatus(status.text, status.mode);
+        const status = liveStatus(shown);
+        if (payload.health === "stale") setStatus(`Stale | ${status.text}`, "stale");
+        else if (shown.status === "error") setStatus(`Error | ${shown.decision.error || "cycle raised"}`, "error");
+        else setStatus(status.text, status.mode);
       } catch (error) {
         if (requestToken !== refreshToken) return;
         if (latest !== null && loadedImageUrl !== null) {

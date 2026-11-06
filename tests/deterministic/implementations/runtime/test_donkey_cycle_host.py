@@ -91,9 +91,9 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
         self.assertEqual(control["reason"], "action_plan_invariant_violated")
-        self.assertIsNone(generation)
-        self.assertEqual(cycle["schema"], "decision_cycle_result")
-        self.assertEqual(cycle["context"]["frame_id"], "donkey_frame_000000")
+        self.assertEqual(generation, part.publish_latest()["report"]["generation_id"])
+        self.assertEqual(cycle["schema"], "host_report")
+        self.assertEqual(cycle["frame_id"], "donkey_frame_000000")
 
     def test_manual_mode_runs_cycle_and_forces_zero_pilot_outputs(self) -> None:
         part = AutonomyPilotPart(host=_pushy_host())
@@ -153,7 +153,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
         self.assertEqual(control["reason"], "observation-cycle-error")
-        self.assertIsNone(cycle)
+        self.assertTrue(all(cycle["cycle"][step] is None for step in ("perception", "observation", "memory", "proposal", "plan", "action")))
         self.assertIsNone(generation)
         self.assertEqual(part.latest_state.status, "error")
         self.assertIn("RuntimeError", part.latest_state.error or "")

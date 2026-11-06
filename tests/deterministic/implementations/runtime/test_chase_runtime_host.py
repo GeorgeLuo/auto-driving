@@ -97,7 +97,7 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 session = _wait(lambda: (s := client.status()["session"])["status"] == "completed" and s,
                                 message="stream session did not complete")
                 _wait(lambda: stream.closed, message="terminal run did not unsubscribe")
-                context_metadata = host.loop.latest_state.context["metadata"]
+                context_metadata = host.loop.host.last_context.metadata
                 self.assertNotIn("frames_received", context_metadata)
                 self.assertNotIn("capture_duration_ms", context_metadata)
                 self.assertNotIn("source_timestamp_us", context_metadata)
@@ -126,13 +126,13 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 captured = car.capture_count
                 time.sleep(0.3)
                 observation = client.host_status()["host"]["components"]["observation"]
-                decision = client.request("GET", "/host/decision/latest")
+                decision = client.request("GET", "/host/observation/latest")
 
         self.assertEqual((session["status"], session["processed_decisions"]), ("completed", 2))
         self.assertLessEqual(car.capture_count, captured + 1, "the host captured after its session ended")
         self.assertEqual(observation["latest"]["mode"], "observe_only")
         self.assertFalse(observation["latest"]["control"]["applied"])
-        self.assertEqual(decision["status"], "ready", decision)
+        self.assertEqual(decision["report"]["status"], "ok", decision)
 
     def test_restart_during_recording_does_not_invert_host_and_frame_locks(self):
         from autonomy.decision_cycle.steps import decision_steps

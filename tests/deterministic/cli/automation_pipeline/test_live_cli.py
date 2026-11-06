@@ -16,7 +16,7 @@ from unittest.mock import Mock, patch
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
-from cli.automa_cli.hosts.publications.host_publications import fetch_observation_sample
+from cli.automa_cli.hosts.publications.host_publications import fetch_frame_sample
 from cli.automa_cli.hosts.views.view_feed import ViewFeed
 from cli.automa_cli.plugins.stream.perception import read_publication as _read_publication
 from cli.automa_cli.plugins.stream.models import StreamEvent, ViewState
@@ -35,31 +35,32 @@ class LiveCommandsTests(LiveHostTestCase):
         with patch("cli.automa_cli.hosts.views.view_feed.runtime_view_dir", return_value=self.runtime_root / "view"):
             feed = ViewFeed(HOST_NAME, base_url=self.host.base_url, timeout_s=3.0)
         self.addCleanup(feed.stop)
-        feed.decision.refresh = Mock(side_effect=ConnectionError("decision route down"))
+        feed.decision.publish_publication = Mock(side_effect=ConnectionError("decision route down"))
         publication = _read_publication(self.host.base_url, timeout_s=3.0)[0]
         samples = []
 
         def sample(*args, **kwargs):
-            pair = fetch_observation_sample(*args, **kwargs)
+            pair = fetch_frame_sample(*args, **kwargs)
             samples.append(pair)
             return pair
 
-        with patch("cli.automa_cli.hosts.views.view_feed.fetch_observation_sample", side_effect=sample):
+        with patch("cli.automa_cli.hosts.views.view_feed.fetch_frame_sample", side_effect=sample):
             feed.publish(publication)
         url, error, page, decision_error = feed.state()
         self.assertIn("ConnectionError: decision route down", decision_error)
         screen = render_stream(StreamEvent("plan", {"status": "unavailable"}, view=ViewState(
             url=url, error=error, decision_page=page, decision_error=decision_error,
         )), json_output=False)
-        self.assertIn("action view: unavailable (ConnectionError: decision route down)", screen)
+        self.assertIn("latest unavailable: ConnectionError: decision route down", screen)
         with urlopen(f"{feed.url.rstrip('/')}/api/latest", timeout=5) as response:
             latest = json.load(response)
         # The host may advance after the terminal's publication. The view must
         # use its transaction's findings and image even when decision is down.
         matched, jpeg = samples[0]
-        self.assertEqual(latest["frame"]["frame_id"], matched["frame"]["frame_id"])
+        self.assertEqual(latest["report"]["frame_id"], matched["report"]["frame_id"])
+        self.assertEqual(latest["image"]["frame_id"], matched["report"]["frame_id"])
         self.assertIsInstance(latest["result_age_ms"], int)
-        with urlopen(f"{feed.url.rstrip('/')}{latest['frame']['url']}", timeout=5) as response:
+        with urlopen(f"{feed.url.rstrip('/')}{latest['image']['url']}", timeout=5) as response:
             self.assertEqual(response.read(), jpeg)
 
     def automa(self, *args: str):
@@ -119,7 +120,8 @@ class LiveCommandsTests(LiveHostTestCase):
         self.assertEqual(result.stdout,
                          f"Viewing host {HOST_NAME} at {self.host.base_url}\nBrowser opened: {view_url}\n")
         self.assertEqual(status, 200)
-        self.assertTrue(latest["frame"]["frame_id"])
+        self.assertTrue(latest["report"]["frame_id"])
+        self.assertTrue(latest["image"]["url"])
         with self.assertRaises(OSError):
             urlopen(view_url, timeout=1)
 
@@ -130,7 +132,8 @@ class LiveCommandsTests(LiveHostTestCase):
         self.assertEqual(result.stdout,
                          f"Viewing host {HOST_NAME} at {self.host.base_url}\nBrowser opened: {view_url}\n")
         self.assertEqual(status, 200)
-        self.assertTrue(latest["frame"]["frame_id"])
+        self.assertTrue(latest["report"]["frame_id"])
+        self.assertTrue(latest["image"]["url"])
 
     def test_the_viewer_says_why_a_host_whose_run_stopped_is_not_live(self) -> None:
         self.observe()
@@ -139,10 +142,13 @@ class LiveCommandsTests(LiveHostTestCase):
                    message="the stopped host's last frame never went stale")
         result, view_url, served = self.view_once("--host-url", self.host.base_url)
 
-        reason = "The observation publication health is 'stale'."
         self.assertEqual(result.stdout, f"Viewing host {HOST_NAME} at {self.host.base_url}\n"
-                                        f"Not live: {reason}\nBrowser opened: {view_url}\n")
-        self.assertEqual(served, (503, {"error": reason}))
+                                        f"Browser opened: {view_url}\n")
+        status, latest = served
+        self.assertEqual(status, 200)
+        self.assertEqual(latest["health"], "stale")
+        self.assertEqual(latest["report"]["status"], "ok")
+        self.assertTrue(latest["report"]["frame_id"])
 
     def test_the_viewer_refuses_a_missing_or_silent_host(self) -> None:
         unknown = self.viewer("--host-url", "http://localhost:5050")

@@ -106,7 +106,7 @@ _MODULE_ROLES = {
     "hosts.local_worker": "entrypoint",
     "hosts.progress": "pure",
     "hosts.publications.decision": "operation",
-    "hosts.publications.decision_publication": "pure",
+    "hosts.publications.frame_publication": "pure",
     "hosts.publications.decision_records": "operation",
     "hosts.publications.host_publications": "operation",
     "hosts.publications.host_telemetry": "pure",

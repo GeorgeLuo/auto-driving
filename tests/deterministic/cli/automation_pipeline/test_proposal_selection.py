@@ -75,7 +75,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             state = json.loads((Path(bundle["runtime_dir"]) / "automation" / "state.json").read_text())
-            view = servers[0].decision.health_payload()
+            view = json.loads(servers[0].perception.latest_json())["report"]
             return startup, decision_identity(bundle), applied, state, view
 
     def test_the_run_reports_the_decision_the_host_applied(self):
@@ -94,7 +94,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
                 self.assertEqual(applied, [plugins] * 4)
                 self.assertEqual(state["decision"]["generation_id"], expected)
                 self.assertEqual(state["last_frame"]["generation_id"], expected)
-                self.assertEqual(view["identity"]["producer_generation_id"], expected)
+                self.assertEqual(view["generation_id"], expected)
 
     def test_a_restaged_plugin_list_runs_and_publishes_from_the_next_frame(self):
         startup, staged, applied, state, view = self.run_with_restage(
@@ -106,7 +106,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
         self.assertEqual(state["selections"]["proposal"]["status"]["plugin_ids"], [])
         self.assertEqual(state["decision"]["generation_id"], staged["generation_id"])
         self.assertEqual(state["last_frame"]["generation_id"], staged["generation_id"])
-        self.assertEqual(view["identity"]["producer_generation_id"], staged["generation_id"])
+        self.assertEqual(view["generation_id"], staged["generation_id"])
 
     def test_a_config_restage_keeps_the_startup_generation_until_a_restart(self):
         # A failed reset now stops the cycle for every step; see
@@ -119,7 +119,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
         report = state["selections"]["proposal"]["status"]["plugin_report"]
         self.assertEqual(report["applied_plugin_ids"], ["avoid_recent_obstruction"])
         self.assertEqual(state["decision"]["generation_id"], startup)
-        self.assertEqual(view["identity"]["producer_generation_id"], startup)
+        self.assertEqual(view["generation_id"], startup)
         self.assertEqual(state["last_frame"]["generation_id"], startup)
 
 if __name__ == "__main__":

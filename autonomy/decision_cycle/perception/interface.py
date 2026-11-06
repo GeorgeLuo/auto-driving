@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Literal, Protocol, runtime_checkable
 
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
+from autonomy.decision_cycle.perception.evidence.rendering import render_perception_text
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal
 from autonomy.decision_cycle.runner import FailurePolicy
 from autonomy.shared_memory import SharedMemory
@@ -68,7 +69,6 @@ class PerceptionText:
     schema: str
     plugin_id: str
     status: str
-    lines: tuple[str, ...]
     signals: tuple[PerceptionSignal, ...]
     things: tuple[PerceivedThing, ...]
     plugin_runs: tuple[PerceptionPluginRun, ...] = ()
@@ -77,12 +77,18 @@ class PerceptionText:
 
     @property
     def text(self) -> str:
-        return "\n".join(self.lines)
+        """Text rendered from the evidence. Recordings and reports do not store it."""
+
+        return render_perception_text(
+            schema=self.schema,
+            plugin_id=self.plugin_id,
+            plugin_runs=self.plugin_runs,
+            signals=self.signals,
+            things=self.things,
+        )
 
     def to_dict(self) -> dict[str, Any]:
-        data = asdict(self)
-        data["text"] = self.text
-        return data
+        return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "PerceptionText":
@@ -90,7 +96,6 @@ class PerceptionText:
             schema=str(data.get("schema") or PERCEPTION_TEXT_SCHEMA),
             plugin_id=str(data.get("plugin_id") or "unknown"),
             status=str(data.get("status") or "error"),
-            lines=tuple(str(line) for line in data.get("lines") or ()),
             signals=tuple(
                 PerceptionSignal.from_dict(item)
                 for item in data.get("signals") or ()

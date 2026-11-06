@@ -108,7 +108,6 @@ class FixtureMapper:
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id=self.plugin_id,
             status="ok",
-            lines=("fixture evidence",),
             signals=(
                 PerceptionSignal(
                     signal_id="fixture_visible",
@@ -143,7 +142,6 @@ class DecisionFixtureMapper(FixtureMapper):
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id=self.plugin_id,
             status="ok",
-            lines=("decision evidence",),
             signals=(),
             things=(
                 PerceivedThing(
@@ -169,7 +167,6 @@ class ErrorStatusMapper(FixtureMapper):
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id=self.plugin_id,
             status="error",
-            lines=("mapper failed",),
             signals=(),
             things=(),
         )

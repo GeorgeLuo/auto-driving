@@ -29,13 +29,13 @@ class PerceptionViewTests(unittest.TestCase):
 
         for index in range(MAX_BUFFERED_FRAMES + 1):
             record = _frame_record()
-            record["frame"]["frame_id"] = f"frame_{index:06d}"
-            record["frame"]["frame_index"] = index
+            record["report"]["frame_id"] = f"frame_{index:06d}"
+            record["report"]["frame_index"] = index
             view.publish(frame_bytes=frame_bytes, frame_record=record)
 
         self.assertIsNone(view.frame("frame_000000"))
         self.assertIsNotNone(view.frame("frame_000001"))
-        self.assertEqual(json.loads(view.latest_json())["frame"]["frame_id"], f"frame_{MAX_BUFFERED_FRAMES:06d}")
+        self.assertEqual(json.loads(view.latest_json())["image"]["frame_id"], f"frame_{MAX_BUFFERED_FRAMES:06d}")
 
     def test_view_serves_the_published_frame_and_its_findings(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -49,8 +49,8 @@ class PerceptionViewTests(unittest.TestCase):
             ).start()
             try:
                 frame_record = _frame_record()
-                frame_record["perception"]["things"] = tuple(
-                    frame_record["perception"]["things"]
+                frame_record["report"]["cycle"]["perception"]["things"] = tuple(
+                    frame_record["report"]["cycle"]["perception"]["things"]
                 )
                 server.perception.publish(frame_bytes=expected_frame, frame_record=frame_record)
 
@@ -63,25 +63,25 @@ class PerceptionViewTests(unittest.TestCase):
                 with urlopen(f"{server.url}api/latest", timeout=1.0) as response:
                     payload = json.loads(response.read().decode("utf-8"))
                 self.assertEqual(payload["schema"], PUBLICATION_SCHEMA)
-                self.assertEqual(payload["frame"]["frame_id"], "frame_000004")
-                self.assertEqual(payload["frame"]["width_px"], 64)
-                self.assertEqual(payload["frame"]["content_type"], "image/jpeg")
-                self.assertEqual(payload["frame"]["url"], "/frame?v=frame_000004")
+                self.assertEqual(payload["image"]["frame_id"], "frame_000004")
+                self.assertEqual(payload["image"]["width_px"], 64)
+                self.assertEqual(payload["image"]["content_type"], "image/jpeg")
+                self.assertEqual(payload["image"]["url"], "/frame?v=frame_000004")
                 self.assertEqual(
-                    payload["perception"]["things"][0]["thing_id"], "test-region"
+                    payload["report"]["cycle"]["perception"]["things"][0]["thing_id"], "test-region"
                 )
                 self.assertEqual(
-                    payload["perception"]["things"][0]["location"]["polygon_xy_norm"],
+                    payload["report"]["cycle"]["perception"]["things"][0]["location"]["polygon_xy_norm"],
                     [[0.2, 0.25], [0.6, 0.3], [0.55, 0.75], [0.25, 0.7]],
                 )
 
                 newer_frame = _image_bytes("JPEG", (64, 48), (90, 70, 50))
                 newer_record = _frame_record()
-                newer_record["frame"]["frame_id"] = "frame_000005"
-                newer_record["frame"]["frame_index"] = 5
+                newer_record["report"]["frame_id"] = "frame_000005"
+                newer_record["report"]["frame_index"] = 5
                 server.perception.publish(frame_bytes=newer_frame, frame_record=newer_record)
 
-                versioned_url = f"{server.url.rstrip('/')}{payload['frame']['url']}"
+                versioned_url = f"{server.url.rstrip('/')}{payload['image']['url']}"
                 with urlopen(versioned_url, timeout=1.0) as response:
                     self.assertEqual(response.read(), expected_frame)
 
@@ -101,9 +101,9 @@ class PerceptionViewTests(unittest.TestCase):
                     self.assertEqual(response.headers.get_content_type(), "text/html")
 
                 with urlopen(f"{server.url}", timeout=1.0) as response:
-                    runtime_html = response.read().decode("utf-8")
-                self.assertIn("Action view unavailable", runtime_html)
-                self.assertNotIn('href="/decision"', runtime_html)
+                    self.assertEqual(response.status, 200)
+                with urlopen(f"{server.url}decision", timeout=1.0) as response:
+                    self.assertEqual(response.status, 200)
 
                 with urlopen(f"{server.url}favicon.ico", timeout=1.0) as response:
                     self.assertEqual(response.status, 204)
@@ -117,17 +117,19 @@ class PerceptionViewTests(unittest.TestCase):
         record = _frame_record()
         view.publish(frame_bytes=good, frame_record=record)
         for bad in (b"", b"not-an-image", _image_bytes("PNG", (4, 4), (9, 9, 9))):
-            with self.subTest(bad=bad[:8]), self.assertRaises((ValueError, OSError)):
+            with self.subTest(bad=bad[:8]):
                 view.publish(frame_bytes=bad, frame_record=record)
+                self.assertEqual(json.loads(view.latest_json())["report"], record["report"])
+                self.assertIsNone(json.loads(view.latest_json())["image"]["url"])
             self.assertEqual(view.frame()[0], good)
         replacement = _image_bytes("JPEG", (5, 6), (3, 3, 3))
         next_record = _frame_record()
-        next_record["frame"]["frame_id"] = "frame_000008"
-        next_record["frame"]["frame_index"] = 8
+        next_record["report"]["frame_id"] = "frame_000008"
+        next_record["report"]["frame_index"] = 8
         view.publish(frame_bytes=replacement, frame_record=next_record)
         self.assertEqual(view.frame(), (replacement, "image/jpeg"))
         payload = json.loads(view.latest_json())
-        self.assertEqual((payload["frame"]["width_px"], payload["frame"]["height_px"]), (5, 6))
+        self.assertEqual((payload["image"]["width_px"], payload["image"]["height_px"]), (5, 6))
 
     def test_result_age_is_measured_from_the_published_findings(self) -> None:
         view = PerceptionView(host_name="test-vehicle")
@@ -136,7 +138,7 @@ class PerceptionViewTests(unittest.TestCase):
         with patch("cli.automa_cli.frontend.perception_view._timestamp_ms", return_value=1300):
             payload = json.loads(view.latest_json())
 
-        self.assertEqual((payload["generated_at_ms"], payload["result_age_ms"]), (1300, 1300 - 1242))
+        self.assertEqual((payload["read_at_ms"], payload["result_age_ms"]), (1300, 1300 - 1242))
 
     def test_view_rejects_data_requests_before_first_publication(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -212,66 +214,78 @@ def _image_bytes(fmt: str, size: tuple[int, int], color: tuple[int, int, int]) -
 
 
 def _frame_record() -> dict:
+    perception = {
+        "schema": "perception_text",
+        "status": "ok",
+        "confidence": 0.8,
+        "plugin_runs": [
+            {
+                "plugin_id": "test-plugin",
+                "status": "ok",
+                "duration_ms": 8,
+                "thing_count": 2,
+            }
+        ],
+        "things": [
+            {
+                "thing_id": "test-region",
+                "kind": "region",
+                "label": "test region",
+                "confidence": 0.8,
+                "location": {
+                    "frame": "image",
+                    "zone": "near_center",
+                    "bbox_xyxy_norm": [0.2, 0.25, 0.6, 0.75],
+                    "polygon_xy_norm": [
+                        [0.2, 0.25],
+                        [0.6, 0.3],
+                        [0.55, 0.75],
+                        [0.25, 0.7],
+                    ],
+                },
+                "properties": {},
+            },
+            {
+                "thing_id": "front_camera_frame",
+                "kind": "sensor_frame",
+                "label": "front camera frame",
+                "confidence": 1.0,
+                "location": {
+                    "frame": "image",
+                    "zone": "full_frame",
+                    "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0],
+                },
+                "properties": {"width_px": 64, "height_px": 48},
+            },
+        ],
+    }
     return {
-        "frame": {
+        "schema": "host_frame_publication",
+        "health": "healthy",
+        "ok": True,
+        "host_name": "test-vehicle",
+        "stale_after_ms": 1_000,
+        "report": {
+            "host_name": "test-vehicle",
             "frame_id": "frame_000004",
             "frame_index": 4,
-            "captured_at_ms": 1234,
-            "completed_at_ms": 1242,
-        },
-        "duration_ms": 17,
-        "timing": {
-            "duration_ms": 17,
-            "steps": [{"step": "perception", "duration_ms": 8, "plugins": []}],
-        },
-        "perception": {
-            "schema": "perception_text",
+            "timestamp_ms": 1234,
+            "published_at_ms": 1242,
             "status": "ok",
-            "confidence": 0.8,
-            "plugin_runs": [
-                {
-                    "plugin_id": "test-plugin",
-                    "status": "ok",
-                    "duration_ms": 8,
-                    "thing_count": 2,
-                }
-            ],
-            "things": [
-                {
-                    "thing_id": "test-region",
-                    "kind": "region",
-                    "label": "test region",
-                    "confidence": 0.8,
-                    "location": {
-                        "frame": "image",
-                        "zone": "near_center",
-                        "bbox_xyxy_norm": [0.2, 0.25, 0.6, 0.75],
-                        "polygon_xy_norm": [
-                            [0.2, 0.25],
-                            [0.6, 0.3],
-                            [0.55, 0.75],
-                            [0.25, 0.7],
-                        ],
-                    },
-                    "properties": {},
+            "error": None,
+            "cycle": {"perception": perception, "memory": None},
+            "values": {
+                "timing": {
+                    "duration_ms": 17,
+                    "steps": [{"step": "perception", "duration_ms": 8, "plugins": []}],
                 },
-                {
-                    "thing_id": "front_camera_frame",
-                    "kind": "sensor_frame",
-                    "label": "front camera frame",
-                    "confidence": 1.0,
-                    "location": {
-                        "frame": "image",
-                        "zone": "full_frame",
-                        "bbox_xyxy_norm": [0.0, 0.0, 1.0, 1.0],
-                    },
-                    "properties": {"width_px": 64, "height_px": 48},
+                "source_frame": {
+                    "frame_id": "frame_000004",
+                    "captured_at_ms": 1234,
+                    "completed_at_ms": 1242,
                 },
-            ],
+            },
         },
-        "memory": None,
-        "control": {"steering": 0.0, "throttle": 0.0},
-        "engine": {"engine": "idle"},
     }
 
 

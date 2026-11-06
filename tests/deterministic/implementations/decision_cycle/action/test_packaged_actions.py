@@ -200,8 +200,8 @@ class ModeActionTests(unittest.TestCase):
         self.assertGreater(steering, 0.0)
         self.assertAlmostEqual(throttle, 0.60)
         self.assertEqual(control["reason"], "steer_away_left_obstruction")
-        self.assertTrue(cycle["action"]["authority"]["proposed_applied"])
-        self.assertEqual(cycle["action"]["authority"]["gate_id"], "mode")
+        self.assertTrue(cycle["cycle"]["action"]["authority"]["proposed_applied"])
+        self.assertEqual(cycle["cycle"]["action"]["authority"]["gate_id"], "mode")
 
 
 if __name__ == "__main__":

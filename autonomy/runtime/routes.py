@@ -12,21 +12,17 @@ import json
 import logging
 import threading
 from collections.abc import Mapping
-from functools import partial
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
 
 from autonomy.runtime.frame_loop import (
     CAMERA_LATEST_FRAME_PATH,
     CAMERA_LATEST_JSON_PATH,
-    DECISION_LATEST_PATH,
-    DECISION_TRANSACTION_PATH,
-    DECISION_TRANSACTION_SCHEMA,
+    FRAME_TRANSACTION_SCHEMA,
     FrameLoop,
     LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     OBSERVATION_TRANSACTION_PATH,
-    OBSERVATION_TRANSACTION_SCHEMA,
 )
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.plugin_catalog import catalog_write_error
@@ -78,9 +74,7 @@ class RuntimeRoutes:
             ("GET", LATEST_FRAME_PATH): self._observation_frame,
             ("GET", CAMERA_LATEST_JSON_PATH): self._camera,
             ("GET", CAMERA_LATEST_FRAME_PATH): self._camera_frame,
-            ("GET", DECISION_LATEST_PATH): self._decision,
-            ("GET", OBSERVATION_TRANSACTION_PATH): partial(self._transaction, "observation"),
-            ("GET", DECISION_TRANSACTION_PATH): partial(self._transaction, "decision"),
+            ("GET", OBSERVATION_TRANSACTION_PATH): self._transaction,
             ("GET", TELEMETRY_LATEST_PATH): self._telemetry_latest,
             ("GET", TELEMETRY_RECORDS_PATH): self._telemetry_records,
         }
@@ -187,7 +181,7 @@ class RuntimeRoutes:
 
     def _observation(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:
         payload = self.loop.publish_latest()
-        return json_response(payload, 503 if payload.get("health") == "absent" else 200)
+        return json_response(payload, 503 if payload.get("report") is None else 200)
 
     def _camera(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:
         payload = self.loop.publish_latest_camera()
@@ -202,7 +196,16 @@ class RuntimeRoutes:
 
     @staticmethod
     def _frame(jpeg: bytes | None, meta: dict[str, Any]) -> Response:
-        frame = meta.get("frame") if isinstance(meta.get("frame"), dict) else {}
+        report = meta.get("report") if isinstance(meta.get("report"), dict) else {}
+        identity = {
+            "frame_id": report.get("frame_id"),
+            "frame_index": report.get("frame_index"),
+            "captured_at_ms": report.get("timestamp_ms"),
+            "completed_at_ms": report.get("published_at_ms"),
+        }
+        if not report:
+            frame = meta.get("frame") if isinstance(meta.get("frame"), dict) else {}
+            identity = {key: frame.get(key) for key in identity}
         headers = {"Cache-Control": "no-store"}
         for header, key in (
             ("X-Frame-Id", "frame_id"),
@@ -210,8 +213,8 @@ class RuntimeRoutes:
             ("X-Captured-At-Ms", "captured_at_ms"),
             ("X-Completed-At-Ms", "completed_at_ms"),
         ):
-            if frame.get(key) is not None:
-                headers[header] = str(frame[key])
+            if identity.get(key) is not None:
+                headers[header] = str(identity[key])
         if meta.get("health") is not None:
             headers["X-Observation-Health"] = str(meta["health"])
         if jpeg is None:
@@ -219,41 +222,40 @@ class RuntimeRoutes:
             return status, {**json_headers, **headers}, body
         return 200, {**headers, "Content-Type": "image/jpeg", "Content-Length": str(len(jpeg))}, jpeg
 
-    def _decision(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:
-        payload = self.loop.publish_decision_latest()
-        return json_response(payload, 200 if payload.get("status") == "ready" else 503)
-
-    def _transaction(self, kind: str, query: dict[str, list[str]], body: bytes,
+    def _transaction(self, query: dict[str, list[str]], body: bytes,
                      request_headers: Mapping[str, str]) -> Response:
-        publication, capture, revision = self.loop.read_transaction(kind)
-        usable = (publication.get("status") == "ready" if kind == "decision"
-                  else publication.get("health") in {"healthy", "stale"})
-        state = publication.get("status") if kind == "decision" else publication.get("health")
+        publication, capture, revision = self.loop.read_transaction()
+        report = publication.get("report") if isinstance(publication.get("report"), dict) else None
+        state = publication.get("health")
         etag = f'W/"{revision}:{state}"'
         headers = {"Cache-Control": "no-cache", "ETag": etag,
                    "X-Read-At-Ms": str(publication["read_at_ms"])}
         matched = next((value for key, value in request_headers.items()
                         if key.lower() == "if-none-match"), None)
-        if usable and capture is not None and matched == etag and capture.jpeg_cache.data is not None:
+        image_ready = capture is not None and capture.jpeg_cache.data is not None
+        if report is not None and matched == etag and image_ready:
             return 304, headers, b""
         jpeg = None
-        reason = publication.get("reason") or state
-        if usable and capture is not None:
+        image_error = None
+        if report is None:
+            image_error = state or "absent"
+        elif capture is None or (capture.image is None and capture.jpeg_cache.data is None):
+            image_error = "image_unavailable"
+        else:
+            # The capture is the state the report was read from, so they name one frame.
             try:
                 jpeg = self.loop.frame_jpeg(capture)
             except Exception as exc:
-                reason = "image_encoding_failed"
-                publication = {**publication, "ok": False, "health": "error", "status": "error",
-                               "reason": reason, "error": f"{type(exc).__name__}: {exc}"}
+                image_error = f"image_encoding_failed: {type(exc).__name__}: {exc}"
         payload = {
-            "schema": DECISION_TRANSACTION_SCHEMA if kind == "decision" else OBSERVATION_TRANSACTION_SCHEMA,
+            "schema": FRAME_TRANSACTION_SCHEMA,
             "publication": publication,
-            "image_frame_id": capture.frame_id if jpeg is not None else None,
+            "image_frame_id": report.get("frame_id") if jpeg is not None and report is not None else None,
             "image_content_type": "image/jpeg" if jpeg is not None else None,
             "image_base64": base64.b64encode(jpeg).decode("ascii") if jpeg is not None else None,
-            "reason": None if jpeg is not None else reason,
+            "image_error": image_error,
         }
-        status, json_headers, encoded = json_response(payload, 200 if jpeg is not None else 503)
+        status, json_headers, encoded = json_response(payload, 200 if report is not None else 503)
         return status, {**json_headers, **headers}, encoded
 
     def _telemetry_unavailable(self, field: str, reason: str, status: int) -> Response:

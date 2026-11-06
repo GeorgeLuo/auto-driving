@@ -8,9 +8,9 @@ from collections.abc import Callable
 from ..errors import RuntimeHostError
 from ...shared.open_view import launch_browser
 from ..discovery import local_hosts, runtime_base_url
-from ..publications.decision_publication import health_error
+from ..publications.frame_publication import health_error
 from .models import ViewerEvent, ViewerResult
-from .polling import PERCEPTION_COPY_INTERVAL_S, pause_s
+from .polling import VIEWER_POLL_INTERVAL_S, pause_s
 from .view_feed import ViewFeed
 
 
@@ -22,7 +22,7 @@ def serve_host_viewer(
 
     The host is ``host_name``, or the one at ``host_url``, the host URL
     ``hosts status`` shows. The view opens only once the host answers, and
-    refreshes at the cadence of a run's view. While the host is not live its
+    refreshes every ``VIEWER_POLL_INTERVAL_S``. While the host is not live its
     pages say why.
     """
 
@@ -49,7 +49,7 @@ def serve_host_viewer(
         while True:
             started = time.monotonic()
             view.publish(view.read_observation()[0])
-            time.sleep(pause_s(started, PERCEPTION_COPY_INTERVAL_S))
+            time.sleep(pause_s(started, VIEWER_POLL_INTERVAL_S))
     except KeyboardInterrupt:
         return ViewerResult(130, "interrupted")
     finally:

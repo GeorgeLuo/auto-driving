@@ -17,8 +17,8 @@ CLI adapters, in ``cli``:
 - ``cli.selection_args``: a step's ``--preset``/``--plugin`` selection.
 - ``cli.timeout_input``: the ``--timeout-s`` check of the status and run commands.
 - ``open_view``: open a runtime view in a browser. Services call this while a
-  run or replay is still going, so it stays beside the helpers rather than in
-  ``cli``.
+  viewer or replay is still serving, so it stays beside the helpers rather than
+  in ``cli``.
 
 Shared readers that more than one capability uses:
 

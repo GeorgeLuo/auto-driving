@@ -3,37 +3,19 @@
 ``WORKER_MODULE`` is the background entry point. Stop recognizes a worker by
 that exact module token, not a prefix.
 
-``RunEvent`` carries live facts; ``RunResult`` describes the outcome. ``status_reason`` is the truncated reason status collection and
-status text both use.
+``RunResult`` describes a run's outcome. ``status_reason`` is the truncated
+reason status collection and status text both use.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, get_args
-
-from ...shared.browser_result import BrowserOpenResult
+from typing import Any, Literal
 
 WORKER_MODULE = "cli.automa_cli.hosts.runs.worker"
 
 MAX_STATUS_REASON_CHARS = 240
-
-
-RunEventKind = Literal["startup", "frame"]
-RUN_EVENT_KINDS: tuple[str, ...] = get_args(RunEventKind)
-
-
-@dataclass(frozen=True)
-class RunEvent:
-    """A live fact from the run monitor: the run's ``startup`` state, or a captured ``frame``."""
-
-    kind: RunEventKind
-    data: dict[str, Any]
-
-    def __post_init__(self) -> None:
-        if self.kind not in RUN_EVENT_KINDS:
-            raise ValueError(f"Unknown run event: {self.kind!r}")
 
 
 @dataclass(frozen=True)
@@ -72,9 +54,9 @@ class StartResult:
         "error",
         "activation_invalid",
         "starting",
+        "session_not_running",
         "records_disagree",
         "authority_mismatch",
-        "view_unready",
         "existing",
         "launch_failed",
         "started",
@@ -87,10 +69,8 @@ class StartResult:
     log_path: Path | None = None
     expected_authority: dict[str, Any] | None = None
     actual_authority: dict[str, Any] | None = None
-    view: dict[str, Any] | None = None
     process_record: dict[str, Any] | None = None
     startup: dict[str, Any] | None = None
-    browser: BrowserOpenResult | None = None
     problems: list[dict[str, str]] | None = None
 
 

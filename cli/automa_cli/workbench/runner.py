@@ -13,8 +13,9 @@ from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
-from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
+from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, cycle_result_of
 from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.plugins import LocalPluginCatalog
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.recording import recorded_selections
@@ -1036,10 +1037,14 @@ class ImageReplayRunner:
             except Exception as exc:  # noqa: BLE001 - per-frame isolation boundary
                 with self._condition:
                     self._state["current_frame"] = frame.to_dict()
-                    self._set_displayed_locked(
-                        {key: None for key in CYCLE_RECORD_KEYS}, None,
+                    partial = cycle_result_of(exc)
+                    cycle = (
+                        partial.export_cycle()
+                        if partial is not None
+                        else {key: None for key in CYCLE_RECORD_KEYS}
                     )
-                    self._state["timing"] = None
+                    self._set_displayed_locked(cycle, cycle.get("perception"))
+                    self._state["timing"] = None if partial is None else copy.deepcopy(partial.timing)
                     self._set_failure_locked(
                         boundary=getattr(exc, "boundary", "pipeline"),
                         message=f"{type(exc).__name__}: {exc}",
@@ -1052,8 +1057,8 @@ class ImageReplayRunner:
         """Publish a processed frame and cache its presentation under the condition lock."""
 
         result = outcome.result
-        perception = result.perception.to_dict() if result.perception is not None else None
         cycle = result.export_cycle()
+        perception = cycle.get("perception")
         self._state["current_frame"] = frame.to_dict()
         self._set_displayed_locked(cycle, perception)
         self._state["progress"]["completed"] = frame.position + 1
@@ -1262,10 +1267,16 @@ class ImageReplayRunner:
         }
 
     def _set_displayed_locked(self, cycle: dict[str, Any], perception: Any) -> None:
-        """Replace the displayed cycle and perception; the revision tells the page they changed."""
+        """Replace the displayed cycle and perception; the revision tells the page they changed.
+
+        The page shows the perception ``text`` rendered from the stored evidence.
+        """
 
         self._state["cycle"] = cycle
-        self._state["perception"] = perception
+        self._state["perception"] = (
+            {**perception, "text": PerceptionText.from_dict(perception).text}
+            if isinstance(perception, dict) else perception
+        )
         self._state["steps_revision"] = int(self._state.get("steps_revision", 0)) + 1
 
     def _record_action_locked(self, action: str, **fields: Any) -> None:

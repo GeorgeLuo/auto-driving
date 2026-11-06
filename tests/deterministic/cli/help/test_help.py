@@ -67,7 +67,6 @@ class HelpCommandTests(unittest.TestCase):
                 "--name",
                 "chase-sim-chaser",
                 "--observe-only",
-                "--open-view",
             ],
             [
                 "hosts", "restart", "--name", "piracer",
@@ -113,11 +112,24 @@ class HelpCommandTests(unittest.TestCase):
             ["hosts", "serve", "--name", "demo"],
             ["hosts", "operation", "startup-check", "--name", "demo"],
             ["vehicles", "delete", "host", "--name", "demo"],
+            # A run serves no pages; hosts viewer does.
+            ["hosts", "run", "--name", "demo", "--open-view"],
+            ["hosts", "restart", "--name", "demo", "--open-view"],
+            ["hosts", "run", "--name", "demo", "--verbose"],
         ):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as caught:
                     parser.parse_args(args)
                 self.assertEqual(caught.exception.code, 2)
+
+    def test_run_help_names_the_viewer_command(self) -> None:
+        from tests.shared.cli.invoke import invoke_automa
+
+        for verb in ("run", "restart"):
+            with self.subTest(verb=verb):
+                text = invoke_automa("hosts", verb, "--help").stdout
+                self.assertIn("hosts viewer --name HOST", text)
+                self.assertNotIn("--open-view", text)
 
     def test_simulator_lifecycle_parses(self) -> None:
         parser = build_parser()
@@ -190,6 +202,8 @@ class HelpCommandTests(unittest.TestCase):
                                    "--name", "perception/classical_regions", "--name", "memory/x"])
         self.assertEqual((armed.command, armed.plugin_command, armed.host_name), ("plugins", "arm", "one"))
         self.assertEqual(armed.plugins, [("perception", "classical_regions"), ("memory", "x")])
+        preset = parser.parse_args(["plugins", "arm", "--host-name", "one", "--preset", "perception/visual_observer"])
+        self.assertEqual((preset.preset, preset.plugins), ("perception/visual_observer", None))
         for args in (
             ["hosts", "plugins", "arm", "--name", "one", "--step", "perception", "--plugin", "x"],
             ["plugins", "arm", "--host-name", "one"],
@@ -197,6 +211,12 @@ class HelpCommandTests(unittest.TestCase):
             ["plugins", "arm", "--host-name", "one", "--name", "classical_regions"],
             ["plugins", "arm", "--host-name", "one", "--name", "sensing/x"],
             ["plugins", "arm", "--host-name", "one", "--name", "perception/"],
+            # A preset is one its step's catalog file lists; observation has none.
+            ["plugins", "arm", "--host-name", "one", "--preset", "perception/missing"],
+            ["plugins", "arm", "--host-name", "one", "--preset", "visual_observer"],
+            ["plugins", "arm", "--host-name", "one", "--preset", "observation/visual_observer"],
+            ["plugins", "arm", "--host-name", "one", "--preset", "perception/visual_observer",
+             "--name", "perception/frame"],
         ):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as caught:

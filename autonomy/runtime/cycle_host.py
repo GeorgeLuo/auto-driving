@@ -6,13 +6,15 @@ the last result. A target-less host only computes decisions. ``status`` reports
 each fixed runner's status plus the applied pipeline identity. ``watch_selection``
 records the activation files a running host follows. ``run`` adopts a
 successfully built replacement pipeline before binding the frame's map. Arm
-and disarm submit a desired selection. A runner's plugins do not change in
-place. Staged files follow plugin-ID changes when their specs and configs
-still match the loaded activation.
+and disarm submit a desired selection, by plugin ID or as a step's whole
+activation, such as a preset. A runner's plugins do not change in place.
+Staged files follow plugin-ID changes when their specs and configs still
+match the loaded activation.
 """
 
 from __future__ import annotations
 
+import logging
 import threading
 import traceback
 from collections.abc import Mapping
@@ -38,6 +40,7 @@ from autonomy.decision_cycle.cycle import (
     DecisionCycleResult,
     DecisionFrameContext,
     DecisionSteps,
+    cycle_result_of,
     timestamp_ms,
 )
 from autonomy.decision_cycle.steps import (
@@ -45,12 +48,15 @@ from autonomy.decision_cycle.steps import (
 )
 from autonomy.decision_cycle.action.publication import write_host_inputs
 from autonomy.runtime.control import AutonomyControl
-from autonomy.runtime.execution import ControlExecution, ControlTarget
+from autonomy.runtime.execution import ControlApplication, ControlExecution, ControlTarget
+from autonomy.runtime.report import error_application
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.recording import INSTALLED_RELEASE, RunRecording
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition, PluginManagementError
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI, describe_plugin
 from autonomy.shared_memory import SharedMemory
+
+logger = logging.getLogger(__name__)
 
 IDLE_REASON = "cycle-idle"
 
@@ -200,22 +206,45 @@ class AutonomyCycleHost:
     def arm(self, selections: Mapping[str, Any]) -> dict[str, Any]:
         """Stage the selection named plugins resolve to. Untouched plugins keep their definitions.
 
-        A step that runs exactly one plugin swaps it for the named definitions.
-        Construction answers the request now. The running pipeline changes at
-        the next frame, and only when construction succeeded.
+        Each step names ordered plugin IDs or a whole activation document. A
+        step that runs exactly one plugin swaps it for the named definitions.
+        An activation replaces the step's selection with its plugins, in its
+        order; the catalog must hold each of them with the activation's
+        entrypoint and config, and the step then reports the activation's
+        metadata, such as its preset. Construction answers the request now.
+        The running pipeline changes at the next frame, and only when
+        construction succeeded; an activation whose plugins already run only
+        renames the step.
         """
 
         if not isinstance(selections, Mapping) or not selections:
-            raise ValueError("arming requires a selection map of steps to ordered plugin IDs")
+            raise ValueError("arming requires a selection map of steps to ordered plugin IDs or activations")
         with self._lock:
             _, available = self.catalog.read()
             known = {(item.step, item.plugin_id): item for item in available}
             updates: dict[str, StepActivation] = {}
             for step, ids in selections.items():
                 require_step(step)
-                if not isinstance(ids, (list, tuple)) or not all(isinstance(item, str) for item in ids):
-                    raise ValueError(f"{step} selection must be an ordered list of plugin IDs")
                 base = self._base_activations().get(step)
+                if isinstance(ids, Mapping):
+                    activation = step_activation_from_payload(ids, step=step)
+                    expected = _definitions_by_id(activation)
+                    chosen = []
+                    for plugin_id in activation.plugins:
+                        definition = _require_catalog(known, step, plugin_id)
+                        if definition != expected[plugin_id]:
+                            raise ValueError(
+                                f"the catalog holds {step}/{plugin_id} with another entrypoint, config "
+                                "or revision than the activation selects"
+                            )
+                        chosen.append(definition)
+                    updates[step] = activation_for_definitions(
+                        step, tuple(chosen), metadata=dict(activation.metadata),
+                        source_path=base.source_path if base is not None else None,
+                    )
+                    continue
+                if not isinstance(ids, (list, tuple)) or not all(isinstance(item, str) for item in ids):
+                    raise ValueError(f"{step} selection must be an ordered list of plugin IDs or an activation")
                 current = _definitions_by_id(base)
                 if STEP_RUNNERS[step].single_plugin:
                     chosen = [_require_catalog(known, step, plugin_id) for plugin_id in ids]
@@ -290,8 +319,13 @@ class AutonomyCycleHost:
             self._pending_steps = None
             self._pending_activations = None
             self._selection_error = None
+            self._adopt_metadata(desired)
             return
-        if self._pending_activations is not None and _same_pipeline(desired, self._pending_activations):
+        if (
+            self._pending_activations is not None
+            and _same_pipeline(desired, self._pending_activations)
+            and _same_metadata(desired, self._pending_activations, self._stamp)
+        ):
             self._selection_error = None
             return
         if self._fixed_steps:
@@ -329,6 +363,29 @@ class AutonomyCycleHost:
         self._pending_activations = None
         self._record_applied_decision()
         self._refresh_step_reports()
+
+    def _adopt_metadata(self, desired: Mapping[str, StepActivation | None]) -> None:
+        """Rename running steps whose code is unchanged, such as to a preset that selects it.
+
+        The runners, map, and generation stay; display metadata is not executable identity.
+        """
+
+        changed = False
+        for step, item in desired.items():
+            applied = self._applied_activations.get(step)
+            if item is None or applied is None:
+                continue
+            stamped = self._stamp(replace(applied, metadata=dict(item.metadata)))
+            if stamped.metadata == applied.metadata:
+                continue
+            self._applied_activations[step] = stamped
+            runner = self.step(step)
+            if runner is not None and hasattr(runner, "activation"):
+                runner.activation = stamped
+            changed = True
+        if changed:
+            self._record_applied_decision()
+            self._refresh_step_reports()
 
     def _selection_result(self) -> dict[str, Any]:
         state = self.selection_status()
@@ -408,6 +465,8 @@ class AutonomyCycleHost:
             if ticket is not None:
                 mode = ticket.mode
             self._cycle_in_progress = {"frame_id": context.frame_id, "started_at_ms": timestamp_ms()}
+            completed: DecisionCycleResult | None = None
+            recorded = False
             try:
                 self.sync_selection()
                 self._adopt_pending()
@@ -418,14 +477,18 @@ class AutonomyCycleHost:
                     control_applications=ticket.control_applications if ticket is not None else None,
                 )
                 result = self.cycle.run(context)
+                completed = result
                 result = replace(result, context=self._record_frame_context(result.context))
+                completed = result
                 if self.execution is not None:
                     result = replace(result, application=self.execution.apply(result, ticket))
+                    completed = result
                 with self._session_lock:
                     if run_generation == self._run_generation:
                         self.last_error = None
                     if self.run_state == "running" and run_generation == self._run_generation:
                         if self.recording is not None:
+                            recorded = True
                             self.recording.append(
                                 result, ticket.control_applications if ticket is not None else None,
                             )
@@ -439,17 +502,69 @@ class AutonomyCycleHost:
                 self.cycle_count += 1
                 self.last_result = result
             except Exception as exc:
+                partial = cycle_result_of(exc) or completed
+                if partial is None:
+                    partial = DecisionCycleResult(
+                        context=context, perception=None, observation=None, memory=None,
+                        proposal=None, plan=None, action=None,
+                        control=AutonomyControl(reason="observation-cycle-error"),
+                        started_at_ms=self._cycle_in_progress["started_at_ms"],
+                        completed_at_ms=timestamp_ms(),
+                    )
                 self._cycle_in_progress = None
-                self._record_frame_context(context)
+                recorded_context = self._record_frame_context(
+                    partial.context if isinstance(partial, DecisionCycleResult) else context
+                )
                 self.error_count += 1
                 self.last_error = "".join(
                     traceback.format_exception_only(type(exc), exc)
                 ).strip()
+                if isinstance(partial, DecisionCycleResult):
+                    partial = replace(partial, context=recorded_context)
+                idle_write = None
                 try:
                     if self.execution is not None:
+                        before = self.execution.last_application
                         self.execution.cycle_failed(ticket)
+                        if self.execution.last_application is not before:
+                            idle_write = self.execution.last_application
                 finally:
+                    if isinstance(partial, DecisionCycleResult):
+                        if partial.application is None:
+                            # The idle write this failure made, or none when execution
+                            # no longer owned the target.
+                            if idle_write is not None:
+                                application = replace(idle_write, frame_id=partial.context.frame_id)
+                            else:
+                                idle = error_application(ticket.mode if ticket is not None else (mode or "manual"))
+                                application = ControlApplication(
+                                    partial.context.frame_id, idle.mode, False, idle.reason,
+                                    AutonomyControl(reason=idle.reason),
+                                )
+                            partial = replace(partial, application=application)
+                        # The loop publishes this object. It does not read last_result,
+                        # which still names the previous completed frame.
+                        try:
+                            exc.cycle_result = partial
+                        except Exception:
+                            pass
                     with self._session_lock:
+                        if (
+                            not recorded
+                            and isinstance(partial, DecisionCycleResult)
+                            and self.recording is not None
+                            and self.run_state == "running"
+                            and run_generation == self._run_generation
+                        ):
+                            try:
+                                self.recording.append(
+                                    partial,
+                                    ticket.control_applications if ticket is not None else None,
+                                    status="error",
+                                    error=self.last_error,
+                                )
+                            except Exception:
+                                logger.exception("failed to record raised cycle %s", context.frame_id)
                         if run_generation == self._run_generation:
                             self.stop(reason="error", error=self.last_error)
                 raise
@@ -622,7 +737,6 @@ class AutonomyCycleHost:
             "steps": steps, "applied_decision": deepcopy(self._applied_decision),
             "arming": self._selection_status(),
             "last_control": None if last_result is None else last_result.control.to_dict(),
-            "last_cycle": None if last_result is None else last_result.to_dict(),
         }
         self._step_reports_wanted = False
         return self._pipeline_report
@@ -666,6 +780,18 @@ def _describe(activation: StepActivation | None) -> list[dict[str, Any]]:
     if activation is None:
         return []
     return [describe_plugin(definition) for definition in selected_definitions(activation)]
+
+
+def _same_metadata(
+    left: Mapping[str, StepActivation | None],
+    right: Mapping[str, StepActivation | None],
+    stamp: Any,
+) -> bool:
+    return all(
+        (left.get(step) is None) == (right.get(step) is None)
+        and (left.get(step) is None or stamp(left[step]).metadata == right[step].metadata)
+        for step in STEPS
+    )
 
 
 def _same_pipeline(

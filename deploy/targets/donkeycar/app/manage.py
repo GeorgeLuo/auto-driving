@@ -548,7 +548,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 inputs=['cam/image_array', 'user/mode', 'user/angle', 'user/throttle'],
                 outputs=[
                     'pilot/angle', 'pilot/throttle', 'autonomy/control',
-                    'autonomy/generation', 'autonomy/cycle'
+                    'autonomy/generation'
                 ])
         except Exception:
             logger.exception("Unable to start the decision cycle from %s", runtime_root)

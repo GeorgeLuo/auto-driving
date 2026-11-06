@@ -396,7 +396,7 @@
     let latest = null;
     let paused = false;
     let refreshing = false;
-    let loadedFrameId = null;
+    let loadedFrameUrl = null;
 
     const palette = ["#00d084", "#ffb000", "#ff5a5f", "#4ea5ff", "#d678ff", "#f46f36", "#12b8b0"];
 
@@ -664,21 +664,46 @@
       });
     }
 
+    function shownFrame(payload) {
+      const report = payload.report || {};
+      const cycle = report.cycle || {};
+      const timing = report.values?.timing;
+      return {
+        report,
+        host_name: report.host_name || payload.host_name,
+        result_age_ms: payload.result_age_ms,
+        frame: payload.image,
+        perception: cycle.perception,
+        memory: cycle.memory,
+        timing,
+        duration_ms: timing?.duration_ms,
+      };
+    }
+
     async function refresh() {
       if (paused || refreshing) return;
       refreshing = true;
       try {
         const response = await fetch("/api/latest", { cache: "no-store" });
         const next = await response.json();
-        if (!response.ok) throw new Error(next.error || `HTTP ${response.status}`);
-        const frameId = next.frame?.frame_id || String(next.published_at_ms);
-        if (frameId !== loadedFrameId) {
-          await loadPublishedFrame(next.frame?.url || `/frame?v=${encodeURIComponent(frameId)}`);
-          loadedFrameId = frameId;
+        if (!response.ok || !next.report) throw new Error(next.health || next.error || `HTTP ${response.status}`);
+        const shown = shownFrame(next);
+        const frameUrl = shown.frame?.url;
+        if (frameUrl && frameUrl !== loadedFrameUrl) {
+          try {
+            await loadPublishedFrame(frameUrl);
+            loadedFrameUrl = frameUrl;
+          } catch { /* the report stays readable without its JPEG */ }
         }
-        latest = next;
+        if (!frameUrl || loadedFrameUrl !== frameUrl) {
+          frameImage.removeAttribute("src");
+          emptyState.hidden = false;
+          stage.hidden = true;
+        }
+        latest = shown;
         renderData();
-        setStatus("Live", "live");
+        if (next.report.status === "error") setStatus(`Error: ${next.report.error}`, "error");
+        else setStatus(next.health === "stale" ? "Stale" : "Live", next.health === "stale" ? "stale" : "live");
       } catch (error) {
         setStatus(`Waiting: ${error.message}`, "error");
       } finally {

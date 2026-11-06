@@ -25,9 +25,9 @@ from tests.shared.cli.decision.decision_surfaces_fixtures import (
 SOURCE_ID = "runtime-host"
 
 
-def _png_bytes(color: tuple[int, int, int]) -> bytes:
+def _jpeg_bytes(color: tuple[int, int, int]) -> bytes:
     buffer = io.BytesIO()
-    Image.new("RGB", (40, 30), color).save(buffer, format="PNG")
+    Image.new("RGB", (40, 30), color).save(buffer, format="JPEG")
     return buffer.getvalue()
 
 
@@ -54,21 +54,9 @@ class LiveRuntimeDecisionViewFixture:
             host_name="chase-sim-chaser",
             automation_dir=self.automation_dir,
             port=0,
-            run_id="run-live",
-            decision_identity=self._producer(),
             replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(self.server.stop)
-
-    def _producer(self, run_id: str = "run-live") -> dict:
-        """The decision producer a runtime host session announces."""
-
-        return {
-            "host_name": "chase-sim-chaser",
-            "source_id": SOURCE_ID,
-            "run_id": run_id,
-            "producer_generation_id": self.activation["generation_id"],
-        }
 
     def _accepted_frame(
         self,
@@ -129,20 +117,14 @@ class LiveRuntimeDecisionViewFixture:
     ) -> tuple[dict, bytes]:
         target = self.server if server is None else server
         stream_frame = stream_frame or self._accepted_frame(run_id=run_id)
-        frame_bytes = _png_bytes(image_color)
-        self.assertTrue(
-            target.decision.publish(
-                report=stream_frame,
-                image=(frame_bytes, "image/png"),
-            )
+        frame_bytes = _jpeg_bytes(image_color)
+        target.perception.publish(
+            frame_record={"schema": "host_frame_publication", "health": "healthy", "ok": True,
+                          "stale_after_ms": stream_frame["values"]["stale_after_ms"], "report": stream_frame},
+            frame_bytes=frame_bytes,
         )
         return stream_frame, frame_bytes
 
     def _latest_payload(self) -> dict:
-        generation = self.server.decision.generation_id
-        self.assertIsNotNone(generation)
-        with urlopen(
-            f"{self.server.url}api/decision/latest?generation={generation}",
-            timeout=1.0,
-        ) as response:
-            return json.loads(response.read().decode("utf-8"))
+        with urlopen(f"{self.server.url}api/latest", timeout=1.0) as response:
+            return json.loads(response.read())

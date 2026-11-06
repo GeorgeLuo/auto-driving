@@ -1,64 +1,15 @@
-"""Read-only live projection of accepted vehicle reports.
-
-The runtime server owns this short-lived view. It receives one
-``host_report`` and the already-published capture bytes for that frame,
-retaining a small number of immutable transactions. Chase and PiCar use this
-same intake. It never runs a decision step, reads an image path, or follows a
-URL supplied by a client.
-"""
-
+"""Project retained evidence onto the completed report's exact source image."""
 from __future__ import annotations
 
-import hashlib
 import json
 import math
-import threading
-import time
-from collections import OrderedDict
-from dataclasses import dataclass
 from typing import Any
-from urllib.parse import parse_qs, urlencode
 
 from autonomy.decision_cycle.memory.interface import evidence_records
-from autonomy.runtime.report import HostReport, diagnostic_ceiling
-
-
-DECISION_VIEW_SCHEMA = "automa_live_decision_view"
-DECISION_VIEW_ID = "decision-combined-v0"
-MAX_RETAINED_TRANSACTIONS = 8
-
-
-class DecisionViewError(Exception):
-    """A bounded, operator-readable refusal for one decision-view request."""
-
-    def __init__(self, status_code: int, reason: str, message: str) -> None:
-        super().__init__(message)
-        self.status_code = status_code
-        self.reason = reason
-        self.message = message
-
-
-@dataclass(frozen=True)
-class _Transaction:
-    transaction_id: str
-    report: dict[str, Any]
-    host_telemetry: dict[str, Any] | None
-    image_bytes: bytes
-    content_type: str
-
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
 
 
 def _json_copy(value: Any) -> Any:
-    return json.loads(json.dumps(value, allow_nan=False, separators=(",", ":"), sort_keys=True))
-
-
-def _sha256_json(value: Any) -> str:
-    return hashlib.sha256(
-        json.dumps(value, allow_nan=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
-    ).hexdigest()
+    return json.loads(json.dumps(value, allow_nan=False))
 
 
 def _supported_image_bbox(location: Any) -> bool:
@@ -83,7 +34,6 @@ def _supported_image_bbox(location: Any) -> bool:
 
 def _evidence_projection(
     *,
-    transaction_id: str,
     frame_id: str,
     observation: Any,
     evidence_input: Any,
@@ -188,7 +138,6 @@ def _evidence_projection(
     return {
         "status": status,
         "reason": reason,
-        "transaction_id": transaction_id,
         "frame_id": frame_id,
         "available_count": available_count,
         "record_count": len(projected),
@@ -196,311 +145,11 @@ def _evidence_projection(
     }
 
 
-def decision_view_identity(
-    *,
-    host_name: str,
-    source_id: str,
-    run_id: str,
-    producer_generation_id: str,
-) -> dict[str, Any]:
-    """Identify one runtime host session's decision producer."""
-
-    for field, value in (
-        ("host_name", host_name),
-        ("source_id", source_id),
-        ("run_id", run_id),
-        ("producer_generation_id", producer_generation_id),
-    ):
-        if type(value) is not str or not value:
-            raise ValueError(f"decision view {field} is invalid")
-    return {
-        "host_name": host_name,
-        "source_id": source_id,
-        "run_id": run_id,
-        "producer_generation_id": producer_generation_id,
-    }
-
-
-def generation_id(identity: dict[str, Any]) -> str:
-    if set(identity) != {"host_name", "source_id", "run_id", "producer_generation_id"}:
-        raise ValueError("decision view identity has an unexpected key set")
-    return _sha256_json(identity)
-
-
-def _parse_single_query(query: str, *, required: set[str]) -> dict[str, str]:
-    try:
-        parsed = parse_qs(query, keep_blank_values=True, strict_parsing=True)
-    except ValueError as exc:
-        raise DecisionViewError(400, "invalid_query", "decision view query is invalid") from exc
-    if set(parsed) != required or any(len(parsed[key]) != 1 for key in required):
-        raise DecisionViewError(400, "invalid_query", "decision view query is invalid")
-    values = {key: parsed[key][0] for key in required}
-    for value in values.values():
-        if not isinstance(value, str) or not value:
-            raise DecisionViewError(400, "invalid_query", "decision view query is invalid")
-    return values
-
-
-def parse_generation_query(query: str) -> str:
-    generation = _parse_single_query(query, required={"generation"})["generation"]
-    if len(generation) != 64 or any(char not in "0123456789abcdef" for char in generation):
-        raise DecisionViewError(400, "invalid_generation", "decision view generation is invalid")
-    return generation
-
-
-def parse_image_query(query: str) -> tuple[str, str]:
-    values = _parse_single_query(query, required={"generation", "id"})
-    generation = values["generation"]
-    transaction_id = values["id"]
-    if (
-        len(generation) != 64
-        or len(transaction_id) != 64
-        or any(char not in "0123456789abcdef" for char in generation)
-        or any(char not in "0123456789abcdef" for char in transaction_id)
-    ):
-        raise DecisionViewError(400, "invalid_image_id", "decision image identity is invalid")
-    return generation, transaction_id
-
-
-class DecisionView:
-    """One runtime generation's bounded decision/image transactions."""
-
-    def __init__(self, *, host_name: str, identity: dict[str, Any] | None = None) -> None:
-        self._host_name = host_name
-        self.identity: dict[str, Any] | None = None
-        self.generation_id: str | None = None
-        self._lock = threading.Lock()
-        self._transactions: OrderedDict[str, _Transaction] = OrderedDict()
-        self._latest_transaction_id: str | None = None
-        self._stopped = False
-        if identity is not None:
-            self.adopt(identity)
-
-    def health_payload(self) -> dict[str, Any]:
-        with self._lock:
-            return {
-                "available": self.identity is not None and not self._stopped,
-                "status": (
-                    "stopped"
-                    if self._stopped
-                    else "warming"
-                    if self.identity is not None and self._latest_transaction_id is None
-                    else "running"
-                    if self.identity is not None
-                    else "unavailable"
-                ),
-                "generation_id": self.generation_id,
-                "identity": _json_copy(self.identity) if self.identity is not None else None,
-                "latest_transaction_id": self._latest_transaction_id,
-            }
-
-    def page_url(self) -> str | None:
-        if self.generation_id is None:
-            return None
-        return f"/decision?{urlencode({'generation': self.generation_id})}"
-
-    def adopt(self, producer: dict[str, Any]) -> None:
-        """Publish under ``producer``, the host session generation now deciding.
-
-        A new generation drops the previous one's transactions; a page pinned
-        to the old generation gets a 409 naming the new one.
-        """
-
-        identity = decision_view_identity(**producer)
-        with self._lock:
-            if self.identity == identity:
-                return
-            self.identity = identity
-            self.generation_id = generation_id(identity)
-            self._transactions.clear()
-            self._latest_transaction_id = None
-
-    def require_generation(self, generation: str) -> None:
-        if self.generation_id is None or self.identity is None:
-            raise DecisionViewError(503, "decision_unavailable", "decision view is not configured")
-        if self._stopped:
-            raise DecisionViewError(503, "producer_stopped", "decision view producer is stopped")
-        if generation != self.generation_id:
-            raise DecisionViewError(409, "generation_mismatch", "decision view belongs to another generation")
-
-    def invalidate_latest(self) -> None:
-        """Hide a cached success when no complete transaction is available."""
-
-        with self._lock:
-            self._latest_transaction_id = None
-
-    def publish(
-        self,
-        *,
-        report: HostReport | dict[str, Any],
-        image: tuple[bytes, str] | None,
-        host_telemetry: dict[str, Any] | None = None,
-    ) -> bool:
-        """Store one report when the vehicle, run, generation, and source agree."""
-
-        if self.identity is None or image is None:
-            self.invalidate_latest()
-            return False
-        try:
-            parsed = report if isinstance(report, HostReport) else HostReport.from_dict(report)
-            diagnostic_ceiling(parsed.values)
-            identity = self.identity
-            if (
-                parsed.host_name != identity["host_name"]
-                or parsed.run_id != identity["run_id"]
-                or parsed.generation_id != identity["producer_generation_id"]
-                or parsed.values.get("source_id") != identity["source_id"]
-            ):
-                self.invalidate_latest()
-                return False
-            image_bytes, content_type = image
-            if (
-                type(image_bytes) is not bytes
-                or not image_bytes
-                or content_type not in {"image/png", "image/jpeg"}
-            ):
-                self.invalidate_latest()
-                return False
-            copied_report = parsed.to_dict()
-            if host_telemetry is None:
-                copied_telemetry = None
-            elif not isinstance(host_telemetry, dict):
-                raise TypeError("host telemetry must be an object")
-            else:
-                copied_telemetry = _json_copy(host_telemetry)
-        except Exception:  # noqa: BLE001 - publication must not affect the worker cycle
-            self.invalidate_latest()
-            return False
-
-        return self._store_transaction(
-            report=copied_report,
-            host_telemetry=copied_telemetry,
-            image_bytes=image_bytes,
-            content_type=content_type,
-        )
-
-    def _store_transaction(
-        self,
-        *,
-        report: dict[str, Any],
-        host_telemetry: dict[str, Any] | None,
-        image_bytes: bytes,
-        content_type: str,
-    ) -> bool:
-        transaction_id = _sha256_json(
-            {
-                "generation": self.generation_id,
-                "frame_id": report["frame_id"],
-                "published_at_ms": report["published_at_ms"],
-                "image_sha256": hashlib.sha256(image_bytes).hexdigest(),
-            }
-        )
-        transaction = _Transaction(
-            transaction_id=transaction_id,
-            report=report,
-            host_telemetry=host_telemetry,
-            image_bytes=bytes(image_bytes),
-            content_type=content_type,
-        )
-        with self._lock:
-            if self._stopped:
-                return False
-            self._transactions[transaction_id] = transaction
-            self._transactions.move_to_end(transaction_id)
-            while len(self._transactions) > MAX_RETAINED_TRANSACTIONS:
-                self._transactions.popitem(last=False)
-            self._latest_transaction_id = transaction_id
-        return True
-
-    def latest_payload(self, *, generation: str, now_ms: int | None = None) -> dict[str, Any]:
-        self.require_generation(generation)
-        with self._lock:
-            transaction_id = self._latest_transaction_id
-            transaction = (
-                self._transactions.get(transaction_id)
-                if transaction_id is not None
-                else None
-            )
-        if transaction is None:
-            raise DecisionViewError(503, "decision_warming", "no accepted decision cycle is available")
-        served_at_ms = _now_ms() if now_ms is None else now_ms
-        report = transaction.report
-        published_at_ms = report["published_at_ms"]
-        captured_at_ms = report["timestamp_ms"]
-        age_ms = served_at_ms - published_at_ms
-        max_age_ms = diagnostic_ceiling(report["values"])
-        if not 0 <= age_ms <= max_age_ms:
-            raise DecisionViewError(503, "decision_stale", "accepted decision cycle has expired")
-        capture_age_ms = (
-            served_at_ms - captured_at_ms if type(captured_at_ms) is int else None
-        )
-        image_sha256 = hashlib.sha256(transaction.image_bytes).hexdigest()
-        image_url = "/api/decision/image?" + urlencode(
-            {"generation": generation, "id": transaction.transaction_id}
-        )
-        cycle = report["cycle"] if isinstance(report.get("cycle"), dict) else {}
-        observation = cycle.get("observation")
-        evidence = _evidence_projection(
-            transaction_id=transaction.transaction_id,
-            frame_id=report["frame_id"],
-            observation=observation,
-            evidence_input=evidence_records(cycle.get("memory")),
-        )
-        return {
-            "schema": DECISION_VIEW_SCHEMA,
-            "view_id": DECISION_VIEW_ID,
-            "status": "current",
-            "generation_id": generation,
-            "identity": _json_copy(self.identity),
-            "transaction_id": transaction.transaction_id,
-            "served_at_ms": served_at_ms,
-            "freshness": {
-                "captured_at_ms": captured_at_ms,
-                "capture_age_ms": capture_age_ms,
-                "published_at_ms": published_at_ms,
-                "age_ms": age_ms,
-                "max_age_ms": max_age_ms,
-                "expires_at_ms": published_at_ms + max_age_ms,
-            },
-            "decision": _json_copy(report),
-            "current_image": {
-                "status": "available",
-                "frame_id": report["frame_id"],
-                "frame_index": report["frame_index"],
-                "captured_at_ms": captured_at_ms,
-                "content_type": transaction.content_type,
-                "byte_length": len(transaction.image_bytes),
-                "sha256": image_sha256,
-                "url": image_url,
-            },
-            "evidence": evidence,
-            "host_telemetry": _json_copy(transaction.host_telemetry)
-            if isinstance(transaction.host_telemetry, dict)
-            else None,
-        }
-
-    def image_response(self, *, generation: str, transaction_id: str) -> tuple[bytes, str]:
-        self.require_generation(generation)
-        with self._lock:
-            transaction = self._transactions.get(transaction_id)
-        if transaction is None:
-            raise DecisionViewError(404, "image_unavailable", "exact decision image is no longer retained")
-        return transaction.image_bytes, transaction.content_type
-
-    def stop(self) -> None:
-        with self._lock:
-            self._stopped = True
-            self._latest_transaction_id = None
-            self._transactions.clear()
-
-
-def decision_error_payload(view: DecisionView, *, reason: str) -> dict[str, Any]:
-    return {
-        "schema": DECISION_VIEW_SCHEMA,
-        "view_id": DECISION_VIEW_ID,
-        "status": "unavailable",
-        "reason": reason,
-        "generation_id": view.generation_id,
-        "identity": _json_copy(view.identity) if view.identity is not None else None,
-    }
-
+def report_evidence(report: dict[str, Any]) -> dict[str, Any]:
+    """Retained evidence attributable to this completed frame's observation."""
+    cycle = report.get("cycle") or {}
+    return _evidence_projection(
+        frame_id=report["frame_id"],
+        observation=cycle.get("observation"),
+        evidence_input=evidence_records(cycle.get("memory")),
+    )

@@ -38,7 +38,6 @@ class GatedPerception:
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id="test.gated-perception",
             status="empty",
-            lines=(f"schema={PERCEPTION_TEXT_SCHEMA}", "plugin=test.gated-perception"),
             signals=(),
             things=(),
         )

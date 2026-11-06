@@ -26,7 +26,6 @@ from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.decision_cycle.perception.feeds.interface import FeedProvider
-from autonomy.decision_cycle.perception.evidence.rendering import signal_line, thing_line
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -169,11 +168,6 @@ class PerceptionRunner(StepRunner[Any]):
             return output
 
     def _perceive_selected(self, request: PerceptionRequest) -> PerceptionText:
-        lines = [
-            f"schema={PERCEPTION_TEXT_SCHEMA}",
-            f"plugin={self.plugin_id}",
-            f"plugins={','.join(self.plugin_ids)}",
-        ]
         signals: list[PerceptionSignal] = []
         things: list[PerceivedThing] = []
         measurements: dict[str, dict[str, Any]] = {}
@@ -208,18 +202,6 @@ class PerceptionRunner(StepRunner[Any]):
                     error=execution.error,
                 )
             )
-            lines.append(
-                f"plugin_run id={catalog_id} status={execution.status} "
-                f"duration_ms={execution.duration_ms:.3f} "
-                f"signals={len(attributed_signals)} things={len(attributed_things)}"
-            )
-            if execution.error:
-                lines.append(
-                    f"plugin_status id={catalog_id} status={execution.status} "
-                    f"detail={_line_value(execution.error)}"
-                )
-            lines.extend(signal_line(signal) for signal in attributed_signals)
-            lines.extend(thing_line(thing) for thing in attributed_things)
             signals.extend(attributed_signals)
             things.extend(attributed_things)
             if execution.batch.measurements:
@@ -230,7 +212,6 @@ class PerceptionRunner(StepRunner[Any]):
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id=self.plugin_id,
             status=_overall_status(plugin_runs),
-            lines=tuple(lines),
             signals=tuple(signals),
             things=tuple(things),
             plugin_runs=tuple(plugin_runs),
@@ -409,7 +390,3 @@ def _load_symbol(spec: str) -> Any:
         raise ValueError(f"import spec must be 'module.path:name', got {spec!r}")
     module = importlib.import_module(module_name)
     return getattr(module, name)
-
-
-def _line_value(value: str) -> str:
-    return value.replace("\n", " ").replace(" ", "_")

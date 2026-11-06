@@ -112,8 +112,8 @@ class RuntimeRoutesTests(unittest.TestCase):
         loop.wait_for_cycle()
         status, payload = _json(routes.handle("GET", "/host/observation/latest"))
         self.assertEqual(status, 200)
-        self.assertEqual(payload["frame"]["frame_id"], "sim_frame_000042")
-        self.assertEqual(payload["mode"], "manual")
+        self.assertEqual(payload["report"]["frame_id"], "sim_frame_000042")
+        self.assertEqual(payload["report"]["application"]["mode"], "manual")
         status, headers, body = routes.handle("GET", "/host/observation/latest/frame.jpg")
         self.assertEqual((status, headers["Content-Type"], headers["X-Frame-Id"]), (200, "image/jpeg", "sim_frame_000042"))
         self.assertTrue(body.startswith(b"\xff\xd8"))
@@ -123,7 +123,9 @@ class RuntimeRoutesTests(unittest.TestCase):
 
     def test_transaction_paths_are_handled_and_reject_write_methods(self):
         _, routes = _routes()
-        for path in ["/host/observation/transaction", "/host/decision/transaction"]:
+        self.assertFalse(routes.handles("/host/decision/transaction"))
+        self.assertEqual(routes.handle("GET", "/host/decision/latest")[0], 404)
+        for path in ["/host/observation/transaction"]:
             self.assertTrue(routes.handles(path))
             self.assertEqual(routes.handle("POST", path)[0], 405)
 
@@ -148,13 +150,13 @@ class RuntimeRoutesTests(unittest.TestCase):
         with patch.object(FrameLoop, "frame_jpeg", side_effect=advance_before_encoding):
             status, transaction = _json(routes.handle("GET", "/host/observation/transaction"))
         self.assertEqual(status, 200, transaction)
-        self.assertEqual(transaction["schema"], "automa_observation_transaction")
-        self.assertEqual(transaction["publication"]["frame"]["frame_id"], "first")
+        self.assertEqual(transaction["schema"], "host_frame_transaction")
+        self.assertEqual(transaction["publication"]["report"]["frame_id"], "first")
         self.assertEqual(transaction["image_frame_id"], "first")
         self.assertEqual(transaction["image_content_type"], "image/jpeg")
         with Image.open(io.BytesIO(base64.b64decode(transaction["image_base64"]))) as image:
             self.assertEqual(image.getpixel((0, 0)), (0, 0, 0))
-        self.assertEqual(loop.publish_latest()["frame"]["frame_id"], "second")
+        self.assertEqual(loop.publish_latest()["report"]["frame_id"], "second")
 
     def test_observation_transaction_reports_encoding_failure(self) -> None:
         loop, routes = _routes()
@@ -162,9 +164,23 @@ class RuntimeRoutesTests(unittest.TestCase):
         loop.wait_for_cycle()
         with patch.object(FrameLoop, "frame_jpeg", side_effect=ValueError("bad image")):
             status, transaction = _json(routes.handle("GET", "/host/observation/transaction"))
-        self.assertEqual(status, 503)
-        self.assertEqual(transaction["publication"]["health"], "error")
+        self.assertEqual(status, 200)
+        self.assertEqual(transaction["publication"]["health"], "healthy")
+        self.assertTrue(transaction["publication"]["ok"])
+        self.assertEqual(transaction["publication"]["report"]["frame_id"], "first")
         self.assertIsNone(transaction["image_base64"])
+        self.assertIn("image_encoding_failed", transaction["image_error"])
+
+    def test_image_routes_name_an_encoding_failure(self) -> None:
+        loop, routes = _routes()
+        loop.submit(np.zeros((4, 6, 3), dtype=np.uint8), frame_id="first", frame_index=1)
+        loop.wait_for_cycle()
+        for path in ("/host/observation/latest/frame.jpg", "/host/camera/latest/frame.jpg"):
+            with self.subTest(path=path), patch.object(FrameLoop, "frame_jpeg", side_effect=ValueError("bad image")):
+                status, body = _json(routes.handle("GET", path))
+                self.assertEqual(status, 503)
+                self.assertEqual((body["health"], body["ok"]), ("error", False))
+                self.assertEqual(body["error"], "image_encoding_failed: ValueError: bad image")
 
     def test_decision_transaction_image_stays_with_its_completed_cycle(self) -> None:
         from autonomy.decision_cycle.activation import DECISION_STEPS
@@ -184,10 +200,10 @@ class RuntimeRoutesTests(unittest.TestCase):
             frame_index=42,
         )
         loop.wait_for_cycle()
-        status, transaction = _json(routes.handle("GET", "/host/decision/transaction"))
+        status, transaction = _json(routes.handle("GET", "/host/observation/transaction"))
         self.assertEqual(status, 200, transaction)
-        self.assertEqual(transaction["schema"], "automa_decision_transaction")
-        self.assertEqual(transaction["publication"]["decision"]["frame_id"], "sim_frame_000042")
+        self.assertEqual(transaction["schema"], "host_frame_transaction")
+        self.assertEqual(transaction["publication"]["report"]["frame_id"], "sim_frame_000042")
         self.assertEqual(transaction["image_content_type"], "image/jpeg")
         self.assertTrue(base64.b64decode(transaction["image_base64"]).startswith(b"\xff\xd8"))
         try:
@@ -197,9 +213,9 @@ class RuntimeRoutesTests(unittest.TestCase):
                 frame_index=43,
             )
             perception.wait_started(1)
-            status, transaction = _json(routes.handle("GET", "/host/decision/transaction"))
+            status, transaction = _json(routes.handle("GET", "/host/observation/transaction"))
             self.assertEqual(status, 200, transaction)
-            self.assertEqual(transaction["publication"]["decision"]["frame_id"], "sim_frame_000042")
+            self.assertEqual(transaction["publication"]["report"]["frame_id"], "sim_frame_000042")
             self.assertEqual(
                 _json(routes.handle("GET", "/host/camera/latest"))[1]["frame"]["frame_id"],
                 "sim_frame_000043",
@@ -208,10 +224,13 @@ class RuntimeRoutesTests(unittest.TestCase):
             perception.release_all()
             loop.wait_for_cycle()
 
-    def test_decision_route_fails_closed_with_a_reason(self) -> None:
+    def test_a_missing_report_is_the_only_observation_refusal(self) -> None:
         _, routes = _routes()
-        status, payload = _json(routes.handle("GET", "/host/decision/latest"))
-        self.assertEqual((status, payload["reason"]), (503, "missing"))
+        status, payload = _json(routes.handle("GET", "/host/observation/latest"))
+        self.assertEqual(status, 503)
+        self.assertIsNone(payload["report"])
+        self.assertEqual(payload["health"], "warming")
+        self.assertEqual(routes.handle("GET", "/host/decision/latest")[0], 404)
 
     def test_catalog_reads_and_rejects_malformed_writes(self) -> None:
         _, routes = _routes()

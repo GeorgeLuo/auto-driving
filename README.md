@@ -111,11 +111,12 @@ canonical directory contract is
 
 The command groups intentionally distinguish different kinds of state:
 
-The live worker's local browser entrypoint is **Automa**, with links to
-**Perception** at `/perception` and **Memory** at `/memory`. The automation
-command's `--open-view` option opens this shared entrypoint. Both pages use the
-same worker lifetime and publication APIs; perception owns its image buffer,
-while `RuntimeViewServer` owns the listener, routes, and shutdown.
+A host's local browser entrypoint is **Automa**, with links to
+**Perception** at `/perception` and **Memory** at `/memory`. `hosts viewer
+--name <host>` serves and opens it until interrupted; `plugins stream` serves
+the same pages beside its terminal output. A run serves no pages, so ending a
+viewer or stream leaves the run going. Perception owns its image buffer, while
+`RuntimeViewServer` owns the listener, routes, and shutdown.
 
 | Command | Reads or changes |
 |---|---|
@@ -125,9 +126,9 @@ while `RuntimeViewServer` owns the listener, routes, and shutdown.
 | `vehicles remove` | Stops listing the vehicle at `--url`. A simulator that `simulators create` started keeps running until `simulators delete`, and `vehicles discover` lists it again. |
 | `hosts viewer` | Serves the runtime viewer (Perception, Memory, Action and Plugins) fed from the host named by `--name`, or at `--host-url` (the URL `hosts status` shows for it), and opens it in the browser until interrupted. Exits 2 when no such host exists, it is not running, or it does not answer. |
 | `hosts status` | Shows each host's state and whether its simulator lists it. When that simulator does not answer, the attachment line says it is not answering. `--long` adds its deployment and the release `hosts update` last packaged, then each step's staged selection, `saved` when `plugins save` saved it and otherwise the step's `default`, beside the selection the running host applied with its runs, failures and last error, then the run and its view. A step reads `as staged` only when the host runs the staged plugins with their staged configs; restaged configs wait for a restart, so until then status names the plugins whose configs differ. An invalid staged step and an unavailable host are each reported without hiding the other. `--json` carries the same under each host's `run`. With `--name`, exits 1 when that host is missing, stopped, not answering, or reports an error. |
-| `plugins list` | Offline: lists the packaged catalog, each step's `implementations/decision_cycle/<step>/catalog.json`, by step, defaults first and marked; `--step` filters and `--json` adds each definition's entrypoint, default config and description. With `--host-name` (or a runtime `--url`), lists what that host has armed instead; `--long` lists the host's whole catalog, packaged and uploaded, with its version and the armed plugins marked. A workbench `--url` arms nothing and lists only with `--long`. Exits 2 while the host's last arming failed. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
+| `plugins list` | Offline: lists the packaged catalog, each step's `implementations/decision_cycle/<step>/catalog.json`, by step, defaults first and marked, then each step's presets and their plugins, its default marked; `--step` filters and `--json` adds each definition's entrypoint, default config and description, and `step_presets`, each preset as its catalog file lists it with `default` marking the step's. With `--host-name` (or a runtime `--url`), lists what that host has armed instead; `--long` lists the host's whole catalog, packaged and uploaded, with its version and the armed plugins marked. A workbench `--url` arms nothing and lists only with `--long`. Exits 2 while the host's last arming failed. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
 | `plugins upload` | With `--host-name` (or a runtime or workbench `--url`), stores `--file` in that existing catalog as `--name <step>/<plugin>` with its `--entrypoint` and optional `--config`, refusing source that does not compile. `--arm` also arms it through the same operation as `plugins arm`. |
-| `plugins arm` | With `--host-name` (or a runtime `--url`), loads the plugins named by `--name <step>/<plugin>`, as `plugins list --long` names them, and applies them at the host's next cycle without restarting automation. Repeat `--name` to arm several plugins, across steps, together and in order. On observation, plan and action, which run one plugin, the armed plugin replaces the current one. An import or construction error fails the command (exit 2) and keeps the previous selection. |
+| `plugins arm` | With `--host-name` (or a runtime `--url`), loads the plugins named by `--name <step>/<plugin>`, as `plugins list --long` names them, and applies them at the host's next cycle without restarting automation. Repeat `--name` to arm several plugins, across steps, together and in order. On observation, plan and action, which run one plugin, the armed plugin replaces the current one. `--preset <step>/<preset>`, as `plugins list` names it, instead replaces what the step has armed with the preset's plugins, in its order, and the step then reports the preset. The host refuses a preset unless its catalog holds each of those plugins as the preset configures it, so a preset that configures a plugin unlike the catalog, or names a plugin an upload replaced, exits 2. An import or construction error fails the command (exit 2) and keeps the previous selection. |
 | `plugins disarm` | With `--host-name` (or a runtime `--url`), deselects the plugins named by `--name <step>/<plugin>`; repeat `--name` to disarm several, across steps, together. `--step <step>` clears perception, memory or proposal, and `--all` clears all three. Observation, plan and action keep their one plugin (arm a replacement instead). A changed selection replaces every step's runner and starts an empty shared-memory map at the next cycle; catalog entries remain available. |
 | `plugins save` | With `--host-name`, stages what the running host has armed, in every step or the `--step` given, as the plugins it starts with; it does not change what the host runs now. `hosts update` keeps a saved step, with the catalog's current specs and configs, instead of staging its default, and saving a step's default makes it follow the default again. A Chase host loads the saved plugins each time it starts; a PiCar once `hosts update` ships them. Refuses (exit 2), saving nothing, while the host's last arming has failed, for uploaded plugins, which last until the host restarts, and for plugins its staged release does not package. |
 | `plugins stream` | With `--host-name`, polls the `--step` (perception, memory, proposal, plan or action) on a running host, redrawing the terminal as it updates. Perception shows the latest perception from the host's `/host/observation/latest`; memory shows each applied plugin's health and counts; proposal, plan and action print that step's record from the latest cycle the host published, with its age, generation, plugins, and the step's and each plugin's time, and action also shows how the host applied control. A running terminal stream serves the local runtime view: a frame-matched `/perception` page, a `/memory` map whose keys are `record_id`s (click a key to see the retained value), and the action view below. |
@@ -168,6 +169,7 @@ activations unchanged; a host restart restores staged selections. Both take
 
 ```sh
 ./cli/automa plugins arm --host-name chase-sim-chaser --name perception/classical_regions
+./cli/automa plugins arm --host-name chase-sim-chaser --preset perception/visual_observer
 ./cli/automa plugins disarm --host-name chase-sim-chaser --name proposal/avoid_recent_obstruction
 ./cli/automa plugins disarm --host-name chase-sim-chaser --step memory
 ./cli/automa plugins disarm --host-name chase-sim-chaser --all
@@ -196,9 +198,10 @@ memory, and `host_<step>_stream` for proposal, plan and action, or the
 `host_decision_error` that kept the step from a matched cycle. Every probe has
 a `status`. `--once` prints one render or probe without a local view and exits
 2 unless its `status` is `live`. Any other status
-(`stopped`, `stale`, `absent`, `error`, `unavailable`) comes with an `error`,
+(`stale`, `absent`, `error`, `unavailable`) comes with an `error`,
 the text of what went wrong; a `host_decision_error` also names its code in
-`error_code`.
+`error_code`. A `stale` frame, or a cycle that raised before the step recorded,
+keeps the frame's fields beside that `error`.
 When no runtime host can be addressed, every step emits one `unavailable` JSON
 probe and exits 2, even without `--once`; the error names the command that
 starts one. Terminal streams show the same probe verdict and reason, and
@@ -259,10 +262,8 @@ preserves the operator's simulator session:
 ```sh
 ./cli/automa vehicles status
 ./cli/automa hosts create --name chase-sim-chaser --provider chase-sim --url http://localhost:5050
-./cli/automa hosts run \
-  --name chase-sim-chaser \
-  --observe-only \
-  --open-view
+./cli/automa hosts run --name chase-sim-chaser --observe-only
+./cli/automa hosts viewer --name chase-sim-chaser   # Ctrl-C ends the view, not the run
 ./cli/automa hosts status --name chase-sim-chaser
 ./cli/automa hosts stop --name chase-sim-chaser
 ./cli/automa hosts status --name chase-sim-chaser
@@ -311,14 +312,16 @@ Run the same staged plugins with movement enabled:
 ./cli/automa plugins stream --step perception --host-name piracer
 ```
 
-`hosts run` waits for a camera frame, the completed perception result for
-that frame, and a healthy view belonging to the same worker generation. It
-returns a nonzero result and preserves the exact capture code/path when those
-gates fail; a spawned PID alone is not reported as success.
+`hosts run` waits until the runtime session is running, or until its worker
+finishes the run. It returns a nonzero result when the run stops, errors, never
+starts, or records fewer decisions than it completed; a spawned PID alone is not
+reported as success. The run serves no pages and
+prints the viewing command, `hosts viewer --name <host>`.
 
-While a host's run is active, `hosts status --long` reports a
-loopback URL for a live frame-and-data view. The page polls the worker's
-in-memory publication. Camera capture runs independently from perception, so a
+While `hosts viewer` or `plugins stream` serves a host's view, `hosts status
+--long` reports its loopback URL, with or without a run; with both, it reports
+the one that started first. The page polls the
+host's latest publication. Camera capture runs independently from perception, so a
 slow plugin consumes the newest available frame instead of accumulating a
 backlog. The page displays the latest camera frame with the findings perception
 completed for it, and reports the elapsed result age. It can independently hide
@@ -330,7 +333,7 @@ Stop or restart the worker:
 
 ```sh
 ./cli/automa hosts stop --name chase-sim-chaser
-./cli/automa hosts restart --name chase-sim-chaser --observe-only --open-view
+./cli/automa hosts restart --name chase-sim-chaser --observe-only
 ```
 
 Useful run options:
@@ -341,7 +344,7 @@ Useful run options:
   a count runs until stopped.
 - `--unbounded` runs until stopped, overriding `--num-decisions` on either
   vehicle and in either mode. For example:
-  `./cli/automa hosts run --name chase-sim-chaser --unbounded --open-view`.
+  `./cli/automa hosts run --name chase-sim-chaser --unbounded`.
   The launch command returns after readiness and prints
   `hosts stop`. Ctrl-C in a terminal stream stops that stream,
   not the worker.
@@ -352,7 +355,6 @@ Useful run options:
   is dropped. Drive ticks during an in-flight cycle are not captures, and
   `/host/camera/latest` updates once per capture.
 - `--observe-only` applies no decision output on either vehicle. Starting passive observation in Chase preserves its current simulator session.
-- `--open-view` opens the browser only after the correlated view is healthy.
 - `--record` keeps every completed decision and its exact camera image, capture
   time, and applied step configurations. Both vehicles commit these artifacts
   before counting the decision. The host owns its history under
@@ -369,7 +371,7 @@ before restarting the worker:
 
 ```sh
 ./cli/automa hosts update --name chase-sim-chaser
-./cli/automa hosts restart --name chase-sim-chaser --observe-only --open-view
+./cli/automa hosts restart --name chase-sim-chaser --observe-only
 ```
 
 ### Perception Plugins
@@ -713,9 +715,10 @@ Once the host is created (and its release deployed, for PiCar), the same command
 control both vehicles. Change only the host name:
 
 ```sh
-./cli/automa hosts run --name chase-sim-chaser --num-decisions 10 --open-view
+./cli/automa hosts run --name chase-sim-chaser --num-decisions 10
+./cli/automa hosts viewer --name chase-sim-chaser
 ./cli/automa hosts stop --name chase-sim-chaser
-./cli/automa hosts run --name piracer --num-decisions 10 --open-view
+./cli/automa hosts run --name piracer --num-decisions 10
 ./cli/automa hosts stop --name piracer
 ```
 

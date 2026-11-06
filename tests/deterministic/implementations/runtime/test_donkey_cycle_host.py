@@ -35,7 +35,7 @@ class _ExplodingHost:
     last_context = None
 
     def status(self) -> dict:
-        return {"steps": {}, "last_cycle": None}
+        return {"steps": {}}
 
     def register_status_provider(self, name, provider) -> None:
         pass
@@ -86,14 +86,16 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
         part.run(image_array=object(), mode="local")
         part.wait_for_cycle()
-        steering, throttle, control, generation, cycle = part.completed_outputs("local")
+        steering, throttle, control, generation = part.completed_outputs("local")
+        cycle = part.latest_state.report
 
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
         self.assertEqual(control["reason"], "action_plan_invariant_violated")
         self.assertEqual(generation, part.host.applied_decision()["generation_id"])
-        self.assertEqual(cycle["schema"], "decision_cycle_result")
-        self.assertEqual(cycle["context"]["frame_id"], "donkey_frame_000000")
+        self.assertEqual(generation, part.publish_latest()["report"]["generation_id"])
+        self.assertEqual(cycle["schema"], "host_report")
+        self.assertEqual(cycle["frame_id"], "donkey_frame_000000")
 
     def test_manual_mode_runs_cycle_and_forces_zero_pilot_outputs(self) -> None:
         part = AutonomyPilotPart(host=_pushy_host())
@@ -105,7 +107,8 @@ class RuntimeCycleHostTests(unittest.TestCase):
             user_throttle=0.1,
         )
         part.wait_for_cycle()
-        steering, throttle, control, _generation, cycle = part.completed_outputs("user")
+        steering, throttle, control, _generation = part.completed_outputs("user")
+        cycle = part.latest_state.report
 
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
@@ -126,7 +129,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
 
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="local")
         part.wait_for_cycle()
-        steering, throttle, control, _generation, _cycle = part.completed_outputs("local")
+        steering, throttle, control, _generation = part.completed_outputs("local")
 
         self.assertEqual(steering, 0.7)
         self.assertEqual(throttle, 0.4)
@@ -143,17 +146,46 @@ class RuntimeCycleHostTests(unittest.TestCase):
         part.wait_for_cycle()
         self.assertEqual(int(part.latest_state.image[0, 0, 0]), 0)
 
+    def test_a_cycle_that_is_not_json_still_publishes_its_frame_as_an_error(self) -> None:
+        part = AutonomyPilotPart(host=_pushy_host(memory=lambda context: {"count": np.int64(1)}))
+
+        part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
+
+        report = part.publish_latest()["report"]
+        self.assertEqual(report["frame_id"], part.latest_camera_frame.frame_id)
+        self.assertEqual(report["status"], "error")
+        self.assertRegex(report["error"], r"^frame report failed: ValueError: .*int64")
+        self.assertTrue(all(record is None for record in report["cycle"].values()))
+        self.assertEqual(part.observation_status()["processed_count"], 1)
+
+    def test_a_raised_cycle_publishes_the_idle_write_it_made(self) -> None:
+        def explode(context, perception):
+            raise RuntimeError("observation failed")
+
+        part = AutonomyPilotPart(host=_pushy_host(observation=explode))
+        part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="local")
+        part.wait_for_cycle()
+
+        # Execution zeroed the target for this frame; the report says so.
+        application = part.publish_latest()["report"]["application"]
+        self.assertEqual(
+            (application["applied"], application["reason"], application["steering"], application["throttle"]),
+            (True, "cycle-error", 0.0, 0.0),
+        )
+
     def test_cycle_failure_keeps_zero_controls_and_records_error_state(self) -> None:
         part = AutonomyPilotPart(host=_ExplodingHost())  # type: ignore[arg-type]
 
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
-        steering, throttle, control, generation, cycle = part.completed_outputs("user")
+        steering, throttle, control, generation = part.completed_outputs("user")
+        cycle = part.latest_state.report
 
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
         self.assertEqual(control["reason"], "observation-cycle-error")
-        self.assertIsNone(cycle)
+        self.assertTrue(all(cycle["cycle"][step] is None for step in ("perception", "observation", "memory", "proposal", "plan", "action")))
         self.assertIsNone(generation)
         self.assertEqual(part.latest_state.status, "error")
         self.assertIn("RuntimeError", part.latest_state.error or "")

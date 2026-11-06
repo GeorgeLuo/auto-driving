@@ -31,7 +31,6 @@ class DecisionCycleTests(unittest.TestCase):
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id="test-perception",
             status="ok",
-            lines=("signal id=path_clear value=true",),
             signals=(),
             things=(),
             limits=("test evidence only",),
@@ -230,6 +229,85 @@ class DecisionCycleTests(unittest.TestCase):
             str(caught.exception), "TypeError: memory step must return a report dict or None"
         )
         self.assertIsInstance(caught.exception.__cause__, TypeError)
+
+
+    def test_a_later_raise_keeps_finished_outputs_on_the_report(self) -> None:
+        first = self.perception()
+        second = PerceptionText(
+            schema=PERCEPTION_TEXT_SCHEMA,
+            plugin_id="second-perception",
+            status="ok",
+            signals=(),
+            things=(),
+            limits=("second frame",),
+        )
+        calls = {"count": 0}
+
+        def perceive(_context):
+            calls["count"] += 1
+            return first if calls["count"] == 1 else second
+
+        def observe(context, _perception):
+            return Observation(
+                observation_id=context.frame_id,
+                created_at_ms=context.timestamp_ms,
+                sensor_frame={},
+            )
+
+        def propose(_context):
+            if calls["count"] > 1:
+                raise RuntimeError("proposal failed")
+            return None
+
+        cycle = DecisionCycle(DecisionSteps(
+            perception=perceive, observation=observe, proposal=propose,
+        ))
+        done = cycle.run(self.context())
+        self.assertIs(done.perception, first)
+        with self.assertRaises(RuntimeError) as raised:
+            cycle.run(replace(self.context(), frame_id="frame_001", frame_index=1))
+        partial = raised.exception.cycle_result
+        self.assertIs(partial.perception, second)
+        self.assertIs(done.perception, first)
+        self.assertEqual(partial.observation.observation_id, "frame_001")
+        self.assertIsNone(partial.memory)
+        self.assertIsNone(partial.proposal)
+        self.assertIsNone(partial.plan)
+        self.assertIsNone(partial.action)
+        durations = {entry["step"]: entry["duration_ms"] for entry in partial.timing["steps"]}
+        self.assertIsInstance(durations["perception"], float)
+        self.assertIsInstance(durations["observation"], float)
+        self.assertIsNone(durations["memory"])
+        self.assertIsNone(durations["proposal"])
+        self.assertIsNone(durations["plan"])
+        self.assertIsNone(durations["action"])
+
+    def test_a_raised_cycle_lists_plugins_only_for_steps_that_started(self) -> None:
+        class Timed:
+            """A step whose runner still holds an earlier call's plugin timing."""
+
+            def __call__(self, *args):
+                return None
+
+            def plugin_timing(self):
+                return [{"plugin_id": "earlier", "duration_ms": 1.0, "error": None}]
+
+        class Raising(Timed):
+            def __call__(self, *args):
+                raise RuntimeError("proposal failed")
+
+        cycle = DecisionCycle(DecisionSteps(
+            perception=Timed(), proposal=Raising(), plan=Timed(), action=Timed(),
+        ))
+        with self.assertRaises(RuntimeError) as raised:
+            cycle.run(self.context())
+        plugins = {
+            entry["step"]: [plugin["plugin_id"] for plugin in entry["plugins"]]
+            for entry in raised.exception.cycle_result.timing["steps"]
+        }
+        self.assertEqual(plugins["perception"], ["earlier"])
+        self.assertEqual(plugins["proposal"], ["earlier"])
+        self.assertEqual((plugins["plan"], plugins["action"]), ([], []))
 
 
 class AppliedActivationTests(unittest.TestCase):

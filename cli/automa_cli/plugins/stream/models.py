@@ -34,7 +34,6 @@ class PerceptionPublication:
     steering: Any = None
     throttle: Any = None
     reason: Any = None
-    processed: Any = None
     cycle_ms: Any = None
     age_ms: Any = None
     frame_id: Any = None

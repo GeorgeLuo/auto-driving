@@ -75,7 +75,7 @@ def new_run_state(
             "perception_text": display_path(automation_dir / "latest_perception.txt"),
         },
         "published_view": published_view,
-        "readiness": starting_readiness(),
+        "readiness": session_readiness(None),
     }
 
 
@@ -92,46 +92,23 @@ def _readiness(
     }
 
 
-def starting_readiness() -> dict[str, Any]:
+def session_readiness(session: Any) -> dict[str, Any]:
+    """Project the copied runtime session. The view is not a gate."""
+
+    status = session.get("status") if isinstance(session, dict) else None
+    if status in {"running", "completed"}:
+        return _readiness(
+            "ready",
+            "inspect the run",
+            {"runtime_session": {"status": "ready"}},
+            None,
+        )
     return _readiness(
         "blocked",
-        "inspect perception",
-        {
-            "sensor_capture": {"status": "incomplete"},
-            "perception": {"status": "incomplete"},
-            "perception_view": {"status": "incomplete"},
-        },
-        "sensor_capture",
+        "wait for the runtime session",
+        {"runtime_session": {"status": "blocked"}},
+        "runtime_session",
     )
-
-
-def frame_readiness(view_ready: bool) -> dict[str, Any]:
-    return _readiness(
-        "ready" if view_ready else "blocked",
-        "inspect perception",
-        {
-            "sensor_capture": {"status": "ready"},
-            "perception": {"status": "ready"},
-            "perception_view": {"status": "ready" if view_ready else "blocked"},
-        },
-        None if view_ready else "perception_view",
-    )
-
-
-def stopped_readiness() -> dict[str, Any]:
-    return _readiness(
-        "ready",
-        "inspect stopped deployment",
-        {
-            "automation_worker": {"status": "stopped"},
-            "perception_view": {"status": "not_current"},
-        },
-        None,
-    )
-
-
-def failed_readiness(blocking_layer: str) -> dict[str, Any]:
-    return _readiness("blocked", "inspect perception", {}, blocking_layer)
 
 
 def decision_record(identity: dict[str, Any]) -> dict[str, Any]:
@@ -225,9 +202,12 @@ def finish_run(
     error: str | None = None,
     error_code: str | None = None,
     error_details: dict[str, Any] | None = None,
-    blocking_layer: str = "automation_worker",
 ) -> None:
-    """Record how the run ended after its viewer has closed."""
+    """Record how the run ended.
+
+    Readiness stays a projection of the copied session. An incomplete recording
+    export still fails the run record when the session itself completed.
+    """
 
     if status == "completed" and state["recording"] and state["recorded_count"] != state["processed_count"]:
         status, error = "error", "Recording count does not match completed decisions"
@@ -239,9 +219,7 @@ def finish_run(
         if error_code is not None:
             state["error_code"] = error_code
             state["error_details"] = error_details
-        state["readiness"] = failed_readiness(blocking_layer)
-    else:
-        state["readiness"] = stopped_readiness()
+    state["readiness"] = session_readiness(state.get("session"))
     state["completed_at_ms"] = state["updated_at_ms"] = timestamp_ms()
     state["published_view"] = view_state
 
@@ -269,7 +247,7 @@ def mark_state_stopped(path: Path, *, stopped_by: str) -> None:
         "stop_reason": stopped_by,
         "completed_at_ms": timestamp_ms(),
         "updated_at_ms": timestamp_ms(),
-        "readiness": stopped_readiness(),
+        "readiness": session_readiness(state.get("session")),
     }
     write_json_atomically(path, updated)
 
@@ -306,7 +284,7 @@ def record_host_automation_terminal_result(
                 "url": None,
                 "reason": "automation worker failed before the perception view started",
             },
-            "readiness": failed_readiness("automation_worker"),
+            "readiness": session_readiness(state.get("session")),
         },
     )
 
@@ -395,7 +373,7 @@ def mark_automation_startup_error(
                 "url": None,
                 "reason": error,
             },
-            "readiness": failed_readiness("automation_worker"),
+            "readiness": session_readiness(state.get("session")),
         },
     )
 

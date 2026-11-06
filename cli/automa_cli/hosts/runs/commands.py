@@ -21,11 +21,12 @@ _HOST_NAME_HELP = "Name of a host created with hosts create."
 def register_host_runs(host_commands: argparse._SubParsersAction) -> None:
     host_run = host_commands.add_parser(
         "run",
-        help="Start a run on a host and verify one correlated camera/perception publication.",
+        help="Start a run on a host and wait until its runtime session is running.",
         description=(
-            "Start autonomous movement using the staged plugins. Success requires one camera frame, its "
-            "completed perception result, and a healthy current-generation loopback view. "
-            "--host-url runs an existing host instead of starting one; that host reports its host name."
+            "Start autonomous movement using the staged plugins. Success is the runtime session "
+            "reaching running or completed. The perception view is reported separately and can be "
+            "unavailable. --host-url runs an existing host instead of starting one; that host "
+            "reports its host name."
         ),
     )
     run_target = host_run.add_mutually_exclusive_group(required=True)

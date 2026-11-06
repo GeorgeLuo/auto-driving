@@ -7,10 +7,6 @@ from urllib.parse import urlparse
 from autonomy.runtime.client import RuntimeClient
 from autonomy.runtime.session import RunConfiguration
 
-from ...frontend.perception_view import (
-    get_perception_view_status,
-    perception_view_ready,
-)
 from ...providers.registry import PROVIDERS
 from ...providers.models import DEFAULT_READINESS_TIMEOUT_S
 from ..errors import RuntimeHostError
@@ -18,6 +14,7 @@ from ...releases.errors import ReleaseError
 from ...releases.paths import bundle_paths
 from ...shared.io.processes import pid_alive
 from ...shared.open_view import launch_browser
+from ...shared.text import page_url
 from ...shared.timestamps import timestamp_ms
 from ..discovery import running_base_url
 from ..local import ensure_chase_host, stop_chase_host
@@ -238,12 +235,6 @@ def start_host_automation_background(
                 pid=existing_pid,
                 state_path=automation_dir / "state.json",
             )
-        existing_run_id = (
-            existing_state.get("run_id")
-            if isinstance(existing_state, dict)
-            and isinstance(existing_state.get("run_id"), str)
-            else None
-        )
         existing_state_pid = (
             existing_state.get("pid")
             if isinstance(existing_state, dict)
@@ -275,21 +266,33 @@ def start_host_automation_background(
                 expected_authority=expected_authority,
                 actual_authority=actual_authority,
             )
-        view = get_perception_view_status(
-            automation_dir,
-            expected_run_id=existing_run_id,
-            expected_worker_pid=existing_pid,
+        session = (
+            existing_state.get("session")
+            if isinstance(existing_state, dict)
+            else None
         )
-        if not perception_view_ready(view):
+        session_status = session.get("status") if isinstance(session, dict) else None
+        if session_status != "running":
+            observed = session_status or "missing"
             return StartResult(
                 2,
-                "view_unready",
+                "error",
                 host_name=host_name,
                 pid=existing_pid,
-                view=view,
+                error=(
+                    f"Host {host_name} has a live worker, "
+                    f"but its runtime session is {observed}."
+                ),
                 state_path=automation_dir / "state.json",
             )
-        browser = launch_browser(str(view["url"])) if open_view else None
+        view = (
+            existing_state.get("published_view")
+            if isinstance(existing_state, dict)
+            and isinstance(existing_state.get("published_view"), dict)
+            else {}
+        )
+        view_url = page_url(view.get("url"))
+        browser = launch_browser(view_url) if open_view and view_url else None
         return StartResult(
             0,
             "existing",
@@ -346,9 +349,10 @@ def start_host_automation_background(
     )
     process_record = record_worker_startup(automation_dir, process_record, startup)
 
+    view_url = page_url(startup.get("view_url"))
     browser = (
-        launch_browser(str(startup.get("view_url")))
-        if open_view and startup["status"] == "ready"
+        launch_browser(view_url)
+        if open_view and startup["status"] in {"ready", "completed"} and view_url
         else None
     )
     return StartResult(

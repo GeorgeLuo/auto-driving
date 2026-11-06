@@ -6,6 +6,14 @@ from typing import Any
 from .browser_result import BrowserOpenResult
 
 
+def page_url(url: object) -> str | None:
+    """A view page to open. A missing URL, including the string ``None``, is not one."""
+
+    if isinstance(url, str) and url and url != "None":
+        return url
+    return None
+
+
 def automa_command(*args: str) -> str:
     """The ``./cli/automa`` command line for ``args``, each quoted for a shell when it needs it."""
 

@@ -49,7 +49,7 @@ class _FakeClient:
 
     def start(self, configuration: RunConfiguration) -> dict:
         self.started_with = configuration
-        return {"ok": True, "host_run_id": "host-1"}
+        return {"ok": True, "host_run_id": "host-1", "session": _session("running", 0)}
 
     def status(self) -> dict:
         return {"ok": True, "host_run_id": "host-1", "session": self.sessions.pop(0)}
@@ -243,7 +243,9 @@ class RuntimeMonitorTests(unittest.TestCase):
             (state["status"], state["stop_reason"], state["run_id"]),
             ("completed", "completed", "host-1"),
         )
-        self.assertEqual(state["readiness"]["ready_for"], "inspect stopped deployment")
+        self.assertEqual(state["readiness"]["status"], "ready")
+        self.assertEqual(state["readiness"]["ready_for"], "inspect the run")
+        self.assertIsNone(state["readiness"]["blocking_layer"])
         self.assertEqual(state["control_application"], "shared_execution")
         self.assertEqual(state["execution"]["mode"], "manual")
         self.assertEqual(
@@ -278,7 +280,76 @@ class RuntimeMonitorTests(unittest.TestCase):
             [f"The run on host {HOST_NAME} failed.", "Reason: RuntimeError: plan failed"],
         )
         self.assertEqual((state["status"], state["stop_reason"]), ("error", "error"))
-        self.assertEqual(state["readiness"]["blocking_layer"], "automation_worker")
+        self.assertEqual(state["readiness"]["blocking_layer"], "runtime_session")
+        self.assertEqual(state["readiness"]["status"], "blocked")
+
+    def test_a_viewer_that_fails_to_start_leaves_the_accepted_session_running(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            automation_dir = Path(tmp) / "automation"
+            seen: dict[str, object] = {}
+
+            class BrokenView:
+                def start(self) -> None:
+                    seen["accepted"] = json.loads((automation_dir / "state.json").read_text())
+                    raise RuntimeError("view bind failed")
+
+                def stop(self) -> None:
+                    seen["cleaned"] = True
+
+            client = _FakeClient(
+                [_session("running", 0), _session("completed", 0)],
+                [_host(0), _host(0), _host(0)],
+            )
+            with (
+                mock.patch.object(monitor, "RuntimeClient", return_value=client),
+                mock.patch.object(monitor, "runtime_view_server", return_value=BrokenView()),
+                mock.patch.object(monitor, "fetch_observation_sample", side_effect=AssertionError("no view")),
+            ):
+                outcome = monitor.monitor_runtime(
+                    host_name=HOST_NAME,
+                    base_url=client.base_url,
+                    automation_dir=automation_dir,
+                    selections=copy.deepcopy(SELECTIONS),
+                    decision=dict(DECISION),
+                    configuration=RunConfiguration(mode="autonomy", num_decisions=1),
+                    timeout_s=0.2,
+                    record=False,
+                    verbose=False,
+                )
+
+        accepted = seen["accepted"]
+        self.assertIsInstance(accepted, dict)
+        self.assertEqual(accepted["session"]["status"], "running")
+        self.assertEqual(accepted["run_id"], "host-1")
+        self.assertEqual(accepted["processed_count"], 0)
+        self.assertTrue(seen["cleaned"])
+        self.assertEqual(outcome.exit_code, 0)
+        self.assertEqual(outcome.state["status"], "completed")
+        self.assertIn("view bind failed", outcome.state["published_view"]["reason"])
+        self.assertNotIn("view bind failed", outcome.state.get("error", ""))
+        self.assertTrue(client.stopped)
+
+    def test_viewer_health_failure_does_not_stop_the_session(self) -> None:
+        calls = {"health": 0}
+
+        def health(self):
+            calls["health"] += 1
+            raise RuntimeError("health failed")
+
+        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+            monitor.RuntimeViewServer, "health_payload", health,
+        ):
+            client, code, _message, _lines, state = self._monitor(
+                Path(tmp) / "automation",
+                sessions=[_session("running", 0), _session("completed", 0)],
+                hosts=[_host(0), _host(0), _host(0)],
+            )
+
+        self.assertGreaterEqual(calls["health"], 1)
+        self.assertEqual(code, 0)
+        self.assertEqual(state["status"], "completed")
+        self.assertNotIn("health failed", state.get("error", ""))
+        self.assertTrue(client.stopped)
 
 
 class ControlRecordTests(unittest.TestCase):

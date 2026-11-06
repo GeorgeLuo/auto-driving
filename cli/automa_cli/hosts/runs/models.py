@@ -74,7 +74,6 @@ class StartResult:
         "starting",
         "records_disagree",
         "authority_mismatch",
-        "view_unready",
         "existing",
         "launch_failed",
         "started",

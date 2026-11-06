@@ -39,10 +39,11 @@ class LifecycleResultTests(unittest.TestCase):
             ({**base_state, "status": "starting"}, "starting", "still starting"),
             ({**base_state, "pid": 43}, "records_disagree", "records for host car disagree"),
             ({**base_state, "action_policy": "autonomy"}, "authority_mismatch", "authority does not match"),
-            (base_state, "view_unready", "perception view is not ready"),
+            ({**base_state, "session": {"status": "stopped"}}, "error", "runtime session is stopped"),
+            ({**base_state, "session": {"status": "error"}}, "error", "runtime session is error"),
+            (base_state, "error", "runtime session is missing"),
         ]
         with patch.object(service, "pid_alive", return_value=True), \
-             patch.object(service, "get_perception_view_status", return_value={"reason": "waiting"}), \
              patch.object(service, "launch_worker") as launch:
             for state, kind, text in cases:
                 self.write("state.json", state)
@@ -126,17 +127,166 @@ class WorkerProcessTests(unittest.TestCase):
             self.assertEqual([call.args[1] for call in terminate.call_args_list], signals)
             self.assertEqual(terminate.call_args_list[0].kwargs, {"process_group": False})
 
-    def test_startup_timeout_reports_incomplete_phases_without_killing_worker(self):
+    def test_startup_timeout_names_the_session_without_killing_worker(self):
         with tempfile.TemporaryDirectory() as directory, \
              patch.object(process.time, "monotonic", side_effect=[0.0, 2.0]), \
              patch.object(process, "terminate_pid") as terminate:
             result = process.wait_for_automation_startup(
-                process=SimpleNamespace(poll=lambda: None), automation_dir=Path(directory), timeout_s=1.0,
+                process=SimpleNamespace(pid=43434, poll=lambda: None),
+                automation_dir=Path(directory),
+                timeout_s=1.0,
             )
         self.assertEqual(result["status"], "failed")
-        self.assertEqual({phase["status"] for phase in result["phases"].values()}, {"incomplete"})
-        self.assertIn("still running", result["reason"])
+        self.assertNotIn("phases", result)
+        self.assertIn("runtime session is missing", result["reason"])
+        self.assertIn("worker is alive", result["reason"])
         terminate.assert_not_called()
+
+    def test_running_session_with_no_decisions_and_no_view_is_ready(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "state.json").write_text(json.dumps({
+                "pid": 43434,
+                "run_id": "run-1",
+                "session": {"status": "running", "processed_decisions": 0},
+                "published_view": {"available": False, "url": None, "reason": "view down"},
+            }))
+            result = process.wait_for_automation_startup(
+                process=SimpleNamespace(pid=43434, poll=lambda: None),
+                automation_dir=root,
+                timeout_s=0.2,
+            )
+        self.assertEqual(result["status"], "ready")
+        self.assertEqual(result["processed_count"], 0)
+        self.assertIsNone(result["view_url"])
+
+    def test_exited_worker_with_a_completed_session_succeeds(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "state.json").write_text(json.dumps({
+                "pid": 42424,
+                "run_id": "run-1",
+                "session": {"status": "completed", "processed_decisions": 2},
+            }))
+            result = process.wait_for_automation_startup(
+                process=SimpleNamespace(pid=42424, poll=lambda: 7),
+                automation_dir=root,
+                timeout_s=0.2,
+            )
+        self.assertEqual(result["status"], "completed")
+        self.assertEqual(result["processed_count"], 2)
+
+    def test_exited_worker_whose_session_still_says_running_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "state.json").write_text(json.dumps({
+                "pid": 42424,
+                "run_id": "run-1",
+                "session": {"status": "running", "processed_decisions": 1},
+            }))
+            result = process.wait_for_automation_startup(
+                process=SimpleNamespace(pid=42424, poll=lambda: 7),
+                automation_dir=root,
+                timeout_s=0.2,
+            )
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("exited with code 7", result["reason"])
+        self.assertIn("before the runtime session completed", result["reason"])
+
+    def test_exited_worker_with_a_changed_run_id_is_not_completed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "state.json").write_text(json.dumps({
+                "pid": 42424,
+                "run_id": "run-1",
+                "session": {"status": "starting"},
+            }))
+            calls = {"n": 0}
+
+            def poll():
+                calls["n"] += 1
+                if calls["n"] == 1:
+                    return None
+                (root / "state.json").write_text(json.dumps({
+                    "pid": 42424,
+                    "run_id": "run-2",
+                    "session": {"status": "completed", "processed_decisions": 1},
+                }))
+                return 7
+
+            result = process.wait_for_automation_startup(
+                process=SimpleNamespace(pid=42424, poll=poll),
+                automation_dir=root,
+                timeout_s=0.2,
+            )
+        self.assertEqual(result["status"], "failed")
+        self.assertIn("run id changed from run-1 to run-2", result["reason"])
+
+
+class OpenViewTests(unittest.TestCase):
+    def setUp(self):
+        self.stack = ExitStack()
+        self.addCleanup(self.stack.close)
+        self.root = Path(self.stack.enter_context(tempfile.TemporaryDirectory()))
+        self.stack.enter_context(patch.object(service, "run_directory", return_value=self.root))
+        self.stack.enter_context(patch.object(service, "staged_host", return_value={"provider": "chase-sim"}))
+        self.stack.enter_context(patch.object(service, "bundle_paths", return_value={}))
+        self.stack.enter_context(patch.object(service, "bundle_activation_problems", return_value=[]))
+        self.stack.enter_context(patch.object(service, "running_base_url", return_value=None))
+
+    def write(self, name, data):
+        (self.root / name).write_text(json.dumps(data))
+
+    def test_a_missing_view_url_never_launches_a_browser(self):
+        self.write("process.json", {"pid": 42})
+        for url in (None, "None"):
+            with self.subTest(url=url):
+                self.write("state.json", {
+                    "status": "running",
+                    "pid": 42,
+                    "run_id": "current",
+                    "action_policy": "observe_only",
+                    "control_application": "not_applied",
+                    "session": {"status": "running", "processed_decisions": 0},
+                    "published_view": {"available": False, "url": url, "reason": "view down"},
+                })
+                with patch.object(service, "pid_alive", return_value=True), \
+                     patch.object(service, "launch_worker") as launch, \
+                     patch.object(service, "launch_browser") as browser:
+                    result = service.start_host_automation_background(
+                        host_name="car", take_control=False, open_view=True,
+                    )
+                launch.assert_not_called()
+                browser.assert_not_called()
+                self.assertEqual((result.exit_code, result.kind), (0, "existing"))
+                rendered = render_lifecycle_result(result)
+                self.assertIn("View: unavailable (view down)", rendered)
+                self.assertNotIn("View: None", rendered)
+
+        (self.root / "process.json").unlink()
+        for url in (None, "None"):
+            with self.subTest(startup_url=url):
+                startup = {
+                    "status": "ready",
+                    "session_status": "running",
+                    "processed_count": 0,
+                    "view_url": url,
+                    "state": {"published_view": {"available": False, "url": url, "reason": "view down"}},
+                }
+                with patch.object(service, "launch_worker", return_value=SimpleNamespace(pid=43434)), \
+                     patch.object(service, "wait_for_automation_startup", return_value=startup), \
+                     patch.object(service, "launch_browser") as browser:
+                    result = service.start_host_automation_background(
+                        host_name="car", take_control=False, open_view=True,
+                    )
+                browser.assert_not_called()
+                self.assertEqual(result.exit_code, 0)
+                rendered = render_lifecycle_result(result)
+                self.assertIn("Session: running", rendered)
+                self.assertIn("Decisions: 0", rendered)
+                self.assertIn("View: unavailable (view down)", rendered)
+                self.assertNotIn("View: None", rendered)
+                self.assertNotIn("Browser opened", rendered)
 
 
 class RunEventTests(unittest.TestCase):

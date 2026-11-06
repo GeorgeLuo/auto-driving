@@ -8,7 +8,7 @@ from collections.abc import Callable
 from ..errors import RuntimeHostError
 from ...shared.open_view import launch_browser
 from ..discovery import local_hosts, runtime_base_url
-from ..publications.decision_publication import health_error
+from ..publications.frame_publication import health_error
 from .models import ViewerEvent, ViewerResult
 from .polling import VIEWER_POLL_INTERVAL_S, pause_s
 from .view_feed import ViewFeed

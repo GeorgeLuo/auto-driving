@@ -8,9 +8,9 @@ from dataclasses import replace
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
-from autonomy.runtime.frame_loop import DECISION_PUBLICATION_SCHEMA
+from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA
 from autonomy.runtime.report import HostReport
 from autonomy.runtime.routes import TELEMETRY_SCHEMA
 import cli.automa_cli.hosts.publications.host_publications as host_publications
@@ -18,12 +18,11 @@ import cli.automa_cli.hosts.publications.host_telemetry as telemetry_api
 import cli.automa_cli.hosts.views.decision_live as decision_live
 from cli.automa_cli.hosts.views.decision_live import (
     DecisionViewAdapter,
-    _accepted_pair,
     read_host_telemetry_panel,
 )
-from cli.automa_cli.hosts.publications.decision import DecisionSurfaceError
+from cli.automa_cli.hosts.views.observation import ObservationPublisher
 from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
-from cli.automa_cli.hosts.publications.decision_publication import normalize_decision_publication
+from cli.automa_cli.hosts.publications.frame_publication import read_frame_publication
 from cli.automa_cli.hosts.publications.host_telemetry import (
     decision_publication_identity,
     join_host_telemetry_to_decision,
@@ -118,7 +117,7 @@ def _decision(*, source_frame: dict | None = None) -> dict:
         frame_id=frame["frame_id"],
         frame_index=frame["frame_index"],
         timestamp_ms=frame["captured_at_ms"],
-        published_at_ms=9_500,
+        published_at_ms=frame["completed_at_ms"],
         observation=observation,
         memory=memory,
         values={
@@ -126,12 +125,6 @@ def _decision(*, source_frame: dict | None = None) -> dict:
             "activation": {
                 "generation_id": GENERATION_ID,
                 "steps": _PACKAGED_IDENTITY["steps"],
-            },
-            "source_frame": {
-                "frame_id": frame["frame_id"],
-                "frame_index": frame["frame_index"],
-                "captured_at_ms": frame["captured_at_ms"],
-                "completed_at_ms": frame["completed_at_ms"],
             },
             "stale_after_ms": 1_500,
         },
@@ -142,21 +135,20 @@ def _decision(*, source_frame: dict | None = None) -> dict:
 def _physical_publication() -> dict:
     decision = _decision()["report"].to_dict()
     return {
-        "schema": DECISION_PUBLICATION_SCHEMA,
-        "status": "ready",
+        "schema": FRAME_PUBLICATION_SCHEMA,
+        "health": "healthy",
         "ok": True,
-        "reason": "",
         "read_at_ms": 9_500,
         "result_age_ms": 500,
         "stale_after_ms": decision["values"]["stale_after_ms"],
-        "decision": decision,
+        "report": decision,
     }
 
 
 def _normalized_decision() -> dict:
     """The publication join and identity actually read: one HostReport."""
 
-    return normalize_decision_publication(
+    return read_frame_publication(
         _physical_publication(),
         host_name="piracer",
         now_ms=NOW_MS,
@@ -165,7 +157,7 @@ def _normalized_decision() -> dict:
 
 class HostTelemetryConsumerTests(unittest.TestCase):
     def test_physical_decision_adapter_preserves_provider_identity(self) -> None:
-        normalized = normalize_decision_publication(
+        normalized = read_frame_publication(
             _physical_publication(),
             host_name="piracer",
             now_ms=NOW_MS,
@@ -178,24 +170,27 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             "frame-1",
         )
 
+    def test_the_completed_frame_is_visible_before_telemetry_answers(self):
+        from cli.automa_cli.frontend.perception_view import PerceptionView
+        normalized = _normalized_decision()
+        view = Mock(perception=PerceptionView(host_name="piracer"))
+        adapter = DecisionViewAdapter(
+            host_name="piracer", base_url="http://host.invalid",
+            publisher=ObservationPublisher(view.perception), timeout_s=1,
+        )
+        def telemetry(*args, **kwargs):
+            import json
+            self.assertEqual(json.loads(view.perception.latest_json())["report"], normalized["report"].to_dict())
+            return {"status": "unavailable"}
+        with patch("cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel", side_effect=telemetry):
+            adapter.publish_frame(normalized, None)
+
     def test_live_view_adapter_joins_against_physical_publication(self) -> None:
-        normalized = normalize_decision_publication(
+        normalized = read_frame_publication(
             _physical_publication(),
             host_name="piracer",
             now_ms=NOW_MS,
         )
-
-        class FakeDecisionView:
-            def __init__(self) -> None:
-                self.kwargs = None
-                self.provider = None
-
-            def adopt(self, identity) -> None:
-                self.provider = identity
-
-            def publish(self, **kwargs):
-                self.kwargs = kwargs
-                return True
 
         class FakePerceptionView:
             def publish(self, **_kwargs) -> None:
@@ -204,7 +199,6 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         class FakeRuntimeView:
             def __init__(self, automation_dir: Path) -> None:
                 self.automation_dir = automation_dir
-                self.decision = FakeDecisionView()
                 self.perception = FakePerceptionView()
 
         joined = join_host_telemetry_to_decision(
@@ -220,16 +214,14 @@ class HostTelemetryConsumerTests(unittest.TestCase):
                 adapter = DecisionViewAdapter(
                     host_name="piracer",
                     base_url="http://piracer.local:8887",
-                    view_server=view,
+                    publisher=ObservationPublisher(view.perception),
                     timeout_s=1.0,
                 )
-                self.assertTrue(
-                    adapter.publish_frame(normalized, (b"jpeg", "image/jpeg"))
-                )
+                adapter.publish_frame(normalized, b"jpeg")
 
         read_panel.assert_called_once()
         self.assertIs(read_panel.call_args.kwargs["normalized_decision"], normalized)
-        self.assertEqual(view.decision.kwargs["host_telemetry"], joined)
+        self.assertEqual(adapter.publication["host_telemetry"], joined)
 
     def _read_panel(self, payload, *, normalized):
         with patch(
@@ -249,7 +241,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         return panel, fetched
 
     def test_matching_latest_point_is_useful_after_one_read(self) -> None:
-        normalized = normalize_decision_publication(
+        normalized = read_frame_publication(
             _physical_publication(),
             host_name="piracer",
             now_ms=NOW_MS,
@@ -277,7 +269,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertFalse(hasattr(telemetry_api, "normalize_host_telemetry_records"))
 
     def test_latest_point_mismatch_stays_explicit_without_history(self) -> None:
-        normalized = normalize_decision_publication(
+        normalized = read_frame_publication(
             _physical_publication(),
             host_name="piracer",
             now_ms=NOW_MS,
@@ -320,7 +312,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
                 self.assertNotIn("interval_covered", str(panel))
 
     def test_bad_latest_samples_stay_on_that_read(self) -> None:
-        normalized = normalize_decision_publication(
+        normalized = read_frame_publication(
             _physical_publication(),
             host_name="piracer",
             now_ms=NOW_MS,
@@ -402,7 +394,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertNotIn("interval_covered", str(panel))
 
     def test_a_later_failure_does_not_reuse_the_previous_success(self) -> None:
-        normalized = normalize_decision_publication(
+        normalized = read_frame_publication(
             _physical_publication(),
             host_name="piracer",
             now_ms=NOW_MS,
@@ -438,30 +430,15 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertIsNone(second["record"])
 
     def test_telemetry_failure_still_publishes_the_decision_image(self) -> None:
-        normalized = normalize_decision_publication(
+        normalized = read_frame_publication(
             _physical_publication(),
             host_name="piracer",
             now_ms=NOW_MS,
         )
 
-        class FakeDecisionView:
-            def __init__(self) -> None:
-                self.kwargs = None
-                self.invalidated = False
-
-            def adopt(self, identity) -> None:
-                self.provider = identity
-
-            def publish(self, **kwargs):
-                self.kwargs = kwargs
-                return True
-
-            def invalidate_latest(self) -> None:
-                self.invalidated = True
-
         class FakeRuntimeView:
             def __init__(self) -> None:
-                self.decision = FakeDecisionView()
+                self.perception = Mock()
 
         view = FakeRuntimeView()
         with patch(
@@ -471,51 +448,18 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             adapter = DecisionViewAdapter(
                 host_name="piracer",
                 base_url="http://piracer.local:8887",
-                view_server=view,
+                publisher=ObservationPublisher(view.perception),
                 timeout_s=1.0,
             )
-            published = adapter.publish_frame(normalized, (b"jpeg-bytes", "image/jpeg"))
+            adapter.publish_frame(normalized, b"jpeg-bytes")
 
-        self.assertTrue(published)
-        self.assertFalse(view.decision.invalidated)
-        self.assertEqual(view.decision.kwargs["image"], (b"jpeg-bytes", "image/jpeg"))
-        self.assertEqual(view.decision.kwargs["report"].frame_id, "frame-1")
-        panel = view.decision.kwargs["host_telemetry"]
+        self.assertEqual(view.perception.publish.call_args.kwargs["frame_bytes"], b"jpeg-bytes")
+        self.assertEqual(adapter.publication["report"]["frame_id"], "frame-1")
+        panel = adapter.publication["host_telemetry"]
         self.assertEqual(panel["status"], "unavailable")
         self.assertEqual(panel["reason"], "publisher_missing")
         self.assertFalse(panel["joined"])
         self.assertNotIn("authority", panel)
-
-    def test_live_view_retries_a_small_provider_clock_skew(self) -> None:
-        future_error = DecisionSurfaceError(
-            "decision_publication_unavailable",
-            "future",
-            details={"reason": "future_dated"},
-        )
-        normalized = {"frame_id": "frame-1"}
-        with patch(
-            "cli.automa_cli.hosts.views.decision_live.fetch_decision_transaction",
-            side_effect=[
-                {"publication": {}, "image_base64": "anBlZw==", "image_content_type": "image/jpeg"},
-                {"publication": {}, "image_base64": "anBlZw==", "image_content_type": "image/jpeg"},
-            ],
-        ), patch(
-            "cli.automa_cli.hosts.views.decision_live.accept_decision_publication",
-            side_effect=[future_error, normalized],
-        ), patch(
-            "cli.automa_cli.hosts.views.decision_live.time.time",
-            return_value=10.0,
-        ), patch(
-            "cli.automa_cli.hosts.views.decision_live.time.sleep",
-        ) as sleep:
-            normalized, _ = _accepted_pair(
-                "http://piracer.local:8887",
-                host_name="piracer",
-                timeout_s=1.0,
-            )
-
-        self.assertEqual(normalized["frame_id"], "frame-1")
-        sleep.assert_called_once_with(0.04)
 
     def test_normalizes_point_with_exact_identity_and_freshness(self) -> None:
         normalized = normalize_host_telemetry_record(
@@ -639,7 +583,6 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         with self.assertRaises(ValueError) as raised:
             join_host_telemetry_to_decision(point, decision)
         self.assertEqual(raised.exception.reason, "identity_mismatch")
-        self.assertIn("timestamp", raised.exception.message_text)
 
     def test_invalid_schema_numbers_and_mode_fail_closed(self) -> None:
         invalid_schema = _record()

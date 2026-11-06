@@ -196,18 +196,17 @@ class CaptureCloseoutTests(unittest.TestCase):
         loop, routes = _active_routes()
         loop.submit(np.zeros((4, 4, 3), dtype=np.uint8), frame_id="first")
         loop.wait_for_cycle()
-        for kind in ("observation", "decision"):
-            path = f"/host/{kind}/transaction"
-            status, headers, body = routes.handle("GET", path)
-            self.assertEqual(status, 200, body)
-            with (
-                patch.object(FrameLoop, "frame_jpeg", side_effect=AssertionError("unchanged image encoded")),
-                patch("autonomy.runtime.frame_loop.deepcopy", side_effect=AssertionError("unchanged report copied")),
-            ):
-                status, again, body = routes.handle("GET", path, headers={"If-None-Match": headers["ETag"]})
-            self.assertEqual((status, body), (304, b""))
-            self.assertEqual(again["ETag"], headers["ETag"])
-            self.assertIn("X-Read-At-Ms", again)
+        path = "/host/observation/transaction"
+        status, headers, body = routes.handle("GET", path)
+        self.assertEqual(status, 200, body)
+        with (
+            patch.object(FrameLoop, "frame_jpeg", side_effect=AssertionError("unchanged image encoded")),
+            patch("autonomy.runtime.frame_loop.deepcopy", side_effect=AssertionError("unchanged report copied")),
+        ):
+            status, again, body = routes.handle("GET", path, headers={"If-None-Match": headers["ETag"]})
+        self.assertEqual((status, body), (304, b""))
+        self.assertEqual(again["ETag"], headers["ETag"])
+        self.assertIn("X-Read-At-Ms", again)
 
     def test_publication_exports_stay_detached_from_transaction_data(self):
         loop, _ = _active_routes()
@@ -215,39 +214,45 @@ class CaptureCloseoutTests(unittest.TestCase):
             loop.submit(np.zeros((4, 4, 3), dtype=np.uint8), frame_id="first")
             loop.wait_for_cycle()
             publication = loop.publish_latest()
-            publication["step_activations"]["action"]["plugins"].clear()
-            publication["control"]["metadata"]["changed"] = True
-            self.assertTrue(loop.publish_latest()["step_activations"]["action"]["plugins"])
-            self.assertNotIn("changed", loop.publish_latest()["control"]["metadata"])
-            decision = loop.publish_decision_latest()
-            decision["decision"]["values"]["activation"]["steps"]["action"]["plugins"].clear()
-            self.assertTrue(loop.publish_decision_latest()["decision"]["values"]["activation"]["steps"]["action"]["plugins"])
+            publication["report"]["values"]["activation"]["steps"]["action"]["plugins"].clear()
+            publication["report"]["application"]["changed"] = True
+            fresh = loop.publish_latest()
+            self.assertTrue(fresh["report"]["values"]["activation"]["steps"]["action"]["plugins"])
+            self.assertNotIn("changed", fresh["report"]["application"])
         finally:
             loop.shutdown()
 
-    def test_conditional_decision_expires_even_when_its_image_is_cached(self):
-        loop, routes = _active_routes()
-        loop.submit(np.zeros((4, 4, 3), dtype=np.uint8))
-        loop.wait_for_cycle()
-        status, headers, _ = routes.handle("GET", "/host/decision/transaction")
-        self.assertEqual(status, 200)
-        with patch("autonomy.runtime.frame_loop.timestamp_ms", return_value=loop.latest_state.completed_at_ms + 100_000):
-            status, payload = _json(routes.handle("GET", "/host/decision/transaction",
-                                                  headers={"If-None-Match": headers["ETag"]}))
-        self.assertEqual(status, 503)
-        self.assertEqual(payload["publication"]["reason"], "expired")
-        self.assertIsNone(payload["image_base64"])
-
-    def test_both_transactions_report_encode_failure_and_recover_without_a_new_cycle(self):
+    def test_a_stale_frame_stays_readable_with_its_cached_image(self):
         loop, routes = _active_routes()
         loop.submit(np.zeros((4, 4, 3), dtype=np.uint8), frame_id="first")
         loop.wait_for_cycle()
-        for kind in ("observation", "decision"):
-            with patch.object(FrameLoop, "frame_jpeg", side_effect=ValueError("bad image")):
-                status, payload = _json(routes.handle("GET", f"/host/{kind}/transaction"))
-            self.assertEqual(status, 503)
-            self.assertEqual(payload["reason"], "image_encoding_failed")
-            self.assertIsNone(payload["image_base64"])
-            status, payload = _json(routes.handle("GET", f"/host/{kind}/transaction"))
-            self.assertEqual(status, 200)
-            self.assertEqual(payload["image_frame_id"], "first")
+        status, headers, _ = routes.handle("GET", "/host/observation/transaction")
+        self.assertEqual(status, 200)
+        with patch("autonomy.runtime.frame_loop.timestamp_ms", return_value=loop.latest_state.completed_at_ms + 100_000):
+            status, payload = _json(routes.handle("GET", "/host/observation/transaction",
+                                                  headers={"If-None-Match": headers["ETag"]}))
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["publication"]["health"], "stale")
+        self.assertTrue(payload["publication"]["ok"])
+        self.assertEqual(payload["publication"]["report"]["frame_id"], "first")
+        self.assertEqual(payload["publication"]["report"]["status"], "ok")
+        self.assertEqual(payload["image_frame_id"], "first")
+        self.assertIsNotNone(payload["image_base64"])
+
+    def test_image_encoding_failure_keeps_the_completed_report(self):
+        loop, routes = _active_routes()
+        loop.submit(np.zeros((4, 4, 3), dtype=np.uint8), frame_id="first")
+        loop.wait_for_cycle()
+        with patch.object(FrameLoop, "frame_jpeg", side_effect=ValueError("bad image")):
+            status, payload = _json(routes.handle("GET", "/host/observation/transaction"))
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["publication"]["health"], "healthy")
+        self.assertTrue(payload["publication"]["ok"])
+        self.assertEqual(payload["publication"]["report"]["frame_id"], "first")
+        self.assertEqual(payload["publication"]["report"]["status"], "ok")
+        self.assertIsNone(payload["image_base64"])
+        self.assertIn("image_encoding_failed", payload["image_error"])
+        status, payload = _json(routes.handle("GET", "/host/observation/transaction"))
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["image_frame_id"], "first")
+        self.assertIsNone(payload["image_error"])

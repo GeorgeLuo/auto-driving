@@ -9,65 +9,62 @@ from cli.automa_cli.frontend.perception_view import (
 from tests.support.memory_fixtures import TWO_PLUGIN_IDS, memory_report, two_plugin_runner
 
 
+def _frame_record(*, frame_id: str, memory: dict, perception: dict | None = None, duration_ms: int = 12) -> dict:
+    return {
+        "schema": "host_frame_publication",
+        "health": "healthy",
+        "ok": True,
+        "host_name": "piracer",
+        "stale_after_ms": 1_000,
+        "report": {
+            "host_name": "piracer",
+            "frame_id": frame_id,
+            "frame_index": 1,
+            "timestamp_ms": 100,
+            "published_at_ms": 110,
+            "status": "ok",
+            "error": None,
+            "cycle": {
+                "perception": perception if perception is not None else {"things": []},
+                "memory": memory,
+            },
+            "values": {"timing": {"duration_ms": duration_ms, "steps": []}},
+        },
+    }
+
+
 class MemoryViewPublicationTests(unittest.TestCase):
     def test_physical_frame_record_and_view_payload_carry_memory(self) -> None:
-        publication = {
+        memory = memory_report({
+            "schema": "bounded_evidence_ledger",
             "health": "healthy",
-            "duration_ms": 12,
-            "presets": {"perception": "lightweight_observer"},
-            "frame": {
-                "frame_id": "donkey_frame_1",
-                "frame_index": 1,
-                "captured_at_ms": 100,
-                "completed_at_ms": 110,
-                "has_image": True,
-            },
-            "perception": {
-                "things": [
-                    {
-                        "thing_id": "floor_boundary_000",
-                        "kind": "floor_boundary",
-                        "location": {
-                            "frame": "image",
-                            "zone": "left",
-                            "bbox_xyxy_norm": [0.1, 0.2, 0.3, 0.4],
-                        },
-                        "confidence": 0.8,
-                    }
-                ]
-            },
-            "memory": memory_report({
-                "schema": "bounded_evidence_ledger",
-                "health": "healthy",
-                "epoch_id": "epoch-2",
-                "record_count": 1,
-                "records": [
-                    {
-                        "record_id": "thing:floor_boundary_000",
-                        "kind": "floor_boundary",
-                        "label": "boundary",
-                        "confidence": 0.8,
-                        "location": {
-                            "frame": "image",
-                            "zone": "left",
-                            "bbox_xyxy_norm": [0.1, 0.2, 0.3, 0.4],
-                        },
-                        "origin": {
-                            "frame_id": "donkey_frame_0",
-                            "observation_id": "obs-0",
-                        },
-                    }
-                ],
-            }),
-            "control": {"steering": 0.0, "throttle": 0.0},
-        }
-        recorded = dict(plugin_states(publication["memory"]))
+            "epoch_id": "epoch-2",
+            "record_count": 1,
+            "records": [
+                {
+                    "record_id": "thing:floor_boundary_000",
+                    "kind": "floor_boundary",
+                    "label": "boundary",
+                    "confidence": 0.8,
+                    "location": {
+                        "frame": "image",
+                        "zone": "left",
+                        "bbox_xyxy_norm": [0.1, 0.2, 0.3, 0.4],
+                    },
+                    "origin": {
+                        "frame_id": "donkey_frame_0",
+                        "observation_id": "obs-0",
+                    },
+                }
+            ],
+        })
+        recorded = dict(plugin_states(memory))
         self.assertEqual(recorded["bounded_evidence"]["health"], "healthy")
         self.assertEqual(recorded["bounded_evidence"]["records"][0]["kind"], "floor_boundary")
 
         view_payload = _publication_payload(
             host_name="piracer",
-            frame={
+            image={
                 "frame_id": "donkey_frame_1",
                 "frame_index": 1,
                 "captured_at_ms": 100,
@@ -75,19 +72,33 @@ class MemoryViewPublicationTests(unittest.TestCase):
                 "height_px": 480,
                 "url": "/frame?v=donkey_frame_1",
             },
-            perception_record=publication,
+            frame_record=_frame_record(
+                frame_id="donkey_frame_1",
+                memory=memory,
+                perception={
+                    "things": [
+                        {
+                            "thing_id": "floor_boundary_000",
+                            "kind": "floor_boundary",
+                            "location": {
+                                "frame": "image",
+                                "zone": "left",
+                                "bbox_xyxy_norm": [0.1, 0.2, 0.3, 0.4],
+                            },
+                            "confidence": 0.8,
+                        }
+                    ]
+                },
+            ),
             generated_at_ms=200,
         )
         self.assertEqual(view_payload["schema"], PUBLICATION_SCHEMA)
-        self.assertEqual(view_payload["duration_ms"], 12)
-        self.assertNotIn("cycle", view_payload)
-        self.assertNotIn("observation", view_payload)
-        self.assertNotIn("control_source", view_payload)
-        self.assertNotIn("sensor_frame", view_payload)
-        self.assertNotIn("engine", view_payload)
-        self.assertEqual(PUBLICATION_SCHEMA, "automa_perception_publication")
-        self.assertEqual(evidence_publisher(view_payload["memory"]), "bounded_evidence")
-        shown = dict(plugin_states(view_payload["memory"]))
+        self.assertEqual(PUBLICATION_SCHEMA, "host_frame_publication")
+        self.assertEqual(view_payload["report"]["values"]["timing"]["duration_ms"], 12)
+        self.assertNotIn("memory", view_payload)
+        shown_memory = view_payload["report"]["cycle"]["memory"]
+        self.assertEqual(evidence_publisher(shown_memory), "bounded_evidence")
+        shown = dict(plugin_states(shown_memory))
         self.assertEqual(shown["bounded_evidence"]["epoch_id"], "epoch-2")
         self.assertEqual(
             shown["bounded_evidence"]["records"][0]["origin"]["frame_id"],
@@ -99,25 +110,19 @@ class MemoryViewPublicationTests(unittest.TestCase):
         # the publisher.
         runner, _shared = two_plugin_runner()
         report = runner.report()
-        publication = {
-            "health": "healthy",
-            "frame": {"frame_id": "donkey_frame_1", "frame_index": 1, "has_image": True},
-            "perception": {"things": []},
-            "memory": report,
-        }
         view_payload = _publication_payload(
             host_name="piracer",
-            frame={"frame_id": "donkey_frame_1", "frame_index": 1},
-            perception_record=publication,
+            image={"frame_id": "donkey_frame_1", "frame_index": 1},
+            frame_record=_frame_record(frame_id="donkey_frame_1", memory=report, perception={"things": []}),
             generated_at_ms=200,
         )
-        self.assertNotIn("cycle", view_payload)
-        self.assertEqual(view_payload["memory"], report)
-        states = dict(plugin_states(view_payload["memory"]))
+        shown_memory = view_payload["report"]["cycle"]["memory"]
+        self.assertEqual(shown_memory, report)
+        states = dict(plugin_states(shown_memory))
         self.assertEqual(tuple(states), TWO_PLUGIN_IDS)
         self.assertEqual(states["bounded_evidence"]["record_count"], 1)
         self.assertEqual(len(states["recording_test"]["records"]), 1)
-        self.assertEqual(evidence_publisher(view_payload["memory"]), "bounded_evidence")
+        self.assertEqual(evidence_publisher(shown_memory), "bounded_evidence")
 
 
 if __name__ == "__main__":

@@ -274,7 +274,8 @@
     // evidence publisher. The page shows one plugin's ledger at a time: the
     // plugin the viewer picked, else the evidence publisher, else none.
     function memoryReport() {
-      return latest?.memory ?? null;
+      const cycle = latest?.report?.cycle;
+      return cycle && typeof cycle === "object" ? cycle.memory ?? null : null;
     }
 
     function memoryPlugins() {
@@ -486,7 +487,7 @@
       const plugin = shownPlugin();
       const state = shownState();
       const publisher = evidencePublisher();
-      const steps = latest?.timing?.steps;
+      const steps = latest?.report?.values?.timing?.steps;
       const memoryTiming = Array.isArray(steps) ? steps.find((step) => step?.step === "memory") : null;
       const fingerprint = [
         latest?.host_name || "",
@@ -681,7 +682,7 @@
       try {
         const response = await fetch("/api/latest", { cache: "no-store" });
         const next = await response.json();
-        if (!response.ok) throw new Error(next.error || `HTTP ${response.status}`);
+        if (!response.ok || !next.report) throw new Error(next.health || next.error || `HTTP ${response.status}`);
         latest = next;
         renderLedger();
         renderStatus();

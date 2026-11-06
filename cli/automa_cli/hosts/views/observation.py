@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from ...frontend.perception_view import PerceptionView
-from ..publications.decision_publication import publication_capture
+from ..publications.frame_publication import publication_capture
 
 
 @dataclass
@@ -19,11 +19,17 @@ class ObservationPublisher:
         self._last_capture = None
         self.view.invalidate_latest(reason)
 
-    def publish(self, record: dict[str, Any], jpeg: bytes) -> bool:
-        """False when the view already shows this capture."""
-        capture = publication_capture(record)
-        if capture == self._last_capture:
+    def publish(self, record: dict[str, Any], jpeg: bytes | None) -> bool:
+        """False when the view already shows this capture at this health and status."""
+        report = record.get("report") if isinstance(record.get("report"), dict) else None
+        shown = (
+            publication_capture(record),
+            record.get("health"),
+            None if report is None else report.get("status"),
+            record.get("host_telemetry"),
+        )
+        if shown == self._last_capture:
             return False
         self.view.publish(frame_bytes=jpeg, frame_record=record)
-        self._last_capture = capture
+        self._last_capture = shown
         return True

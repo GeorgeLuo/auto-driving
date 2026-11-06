@@ -167,7 +167,8 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                             with urlopen(f"{view_url.rstrip('/')}/perception", timeout=5) as page:
                                 self.assertEqual(page.status, 200)
                             latest = wait_until(lambda: _latest(view_url), message="the viewer published no frame")
-                            self.assertTrue(latest["frame"]["frame_id"])
+                            self.assertTrue(latest["report"]["frame_id"])
+                            self.assertTrue(latest["image"]["url"])
                             shown = json.loads(invoke_automa(
                                 "hosts", "status", "--name", "chase-sim-chaser", "--json",
                                 runtime_root=runtime_root, extra_env=env,

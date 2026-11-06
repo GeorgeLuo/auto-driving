@@ -13,6 +13,7 @@ behavior.
 
 from __future__ import annotations
 
+import logging
 import threading
 import traceback
 from collections.abc import Mapping
@@ -35,6 +36,7 @@ from autonomy.decision_cycle.cycle import (
     DecisionCycleResult,
     DecisionFrameContext,
     DecisionSteps,
+    cycle_result_of,
     timestamp_ms,
 )
 from autonomy.decision_cycle.steps import (
@@ -43,12 +45,15 @@ from autonomy.decision_cycle.steps import (
 from autonomy.decision_cycle.action.publication import write_host_inputs
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.runtime.control import AutonomyControl
-from autonomy.runtime.execution import ControlExecution, ControlTarget
+from autonomy.runtime.execution import ControlApplication, ControlExecution, ControlTarget
+from autonomy.runtime.report import error_application
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.recording import RunRecording
 from autonomy.plugins import LocalPluginCatalog, PluginManager
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI, describe_plugin
 from autonomy.shared_memory import SharedMemory
+
+logger = logging.getLogger(__name__)
 
 IDLE_REASON = "cycle-idle"
 
@@ -405,18 +410,24 @@ class AutonomyCycleHost:
                 user_throttle=user_throttle,
                 control_applications=ticket.control_applications if ticket is not None else None,
             )
+            completed: DecisionCycleResult | None = None
+            recorded = False
             try:
                 self.sync_selection()
                 self._adopt_selection()
                 result = self.cycle.run(context)
+                completed = result
                 result = replace(result, context=self._record_frame_context(result.context))
+                completed = result
                 if self.execution is not None:
                     result = replace(result, application=self.execution.apply(result, ticket))
+                    completed = result
                 with self._session_lock:
                     if run_generation == self._run_generation:
                         self.last_error = None
                     if self.run_state == "running" and run_generation == self._run_generation:
                         if self.recording is not None:
+                            recorded = True
                             self.recording.append(
                                 result, ticket.control_applications if ticket is not None else None,
                             )
@@ -430,17 +441,69 @@ class AutonomyCycleHost:
                 self.cycle_count += 1
                 self.last_result = result
             except Exception as exc:
+                partial = cycle_result_of(exc) or completed
+                if partial is None:
+                    partial = DecisionCycleResult(
+                        context=context, perception=None, observation=None, memory=None,
+                        proposal=None, plan=None, action=None,
+                        control=AutonomyControl(reason="observation-cycle-error"),
+                        started_at_ms=self._cycle_in_progress["started_at_ms"],
+                        completed_at_ms=timestamp_ms(),
+                    )
                 self._cycle_in_progress = None
-                self._record_frame_context(context)
+                recorded_context = self._record_frame_context(
+                    partial.context if isinstance(partial, DecisionCycleResult) else context
+                )
                 self.error_count += 1
                 self.last_error = "".join(
                     traceback.format_exception_only(type(exc), exc)
                 ).strip()
+                if isinstance(partial, DecisionCycleResult):
+                    partial = replace(partial, context=recorded_context)
+                idle_write = None
                 try:
                     if self.execution is not None:
+                        before = self.execution.last_application
                         self.execution.cycle_failed(ticket)
+                        if self.execution.last_application is not before:
+                            idle_write = self.execution.last_application
                 finally:
+                    if isinstance(partial, DecisionCycleResult):
+                        if partial.application is None:
+                            # The idle write this failure made, or none when execution
+                            # no longer owned the target.
+                            if idle_write is not None:
+                                application = replace(idle_write, frame_id=partial.context.frame_id)
+                            else:
+                                idle = error_application(ticket.mode if ticket is not None else (mode or "manual"))
+                                application = ControlApplication(
+                                    partial.context.frame_id, idle.mode, False, idle.reason,
+                                    AutonomyControl(reason=idle.reason),
+                                )
+                            partial = replace(partial, application=application)
+                        # The loop publishes this object. It does not read last_result,
+                        # which still names the previous completed frame.
+                        try:
+                            exc.cycle_result = partial
+                        except Exception:
+                            pass
                     with self._session_lock:
+                        if (
+                            not recorded
+                            and isinstance(partial, DecisionCycleResult)
+                            and self.recording is not None
+                            and self.run_state == "running"
+                            and run_generation == self._run_generation
+                        ):
+                            try:
+                                self.recording.append(
+                                    partial,
+                                    ticket.control_applications if ticket is not None else None,
+                                    status="error",
+                                    error=self.last_error,
+                                )
+                            except Exception:
+                                logger.exception("failed to record raised cycle %s", context.frame_id)
                         if run_generation == self._run_generation:
                             self.stop(reason="error", error=self.last_error)
                 raise
@@ -576,7 +639,6 @@ class AutonomyCycleHost:
             "last_control": (
                 last_result.control.to_dict() if last_result is not None else None
             ),
-            "last_cycle": last_result.to_dict() if last_result is not None else None,
         }
 
     def _report_steps(self) -> dict[str, Any]:

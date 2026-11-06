@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from autonomy.decision_cycle.perception.interface import PerceptionText
 from cli.automa_cli.replay.source import normalize_image_directory
 from cli.automa_cli.replay.models import SourceValidationError
 from tests.shared.cli.workbench_fixtures import (
@@ -188,6 +189,11 @@ class WorkbenchTests(unittest.TestCase):
         self.assertNotIn("timeline", state)
         self.assertNotIn("memory_effects", state)
         self.assertEqual(state["perception"]["status"], "ok")
+        # The page's text panel shows what the stored evidence renders to.
+        self.assertEqual(
+            state["perception"]["text"], PerceptionText.from_dict(state["cycle"]["perception"]).text,
+        )
+        self.assertTrue(state["perception"]["text"].startswith("schema="))
         self.assertIsNotNone(state["cycle"]["observation"]["observation_id"])
         self.assertTrue(state["cleanup"]["source_read_only"])
         self.assertFalse(state["cleanup"]["movement_control"])

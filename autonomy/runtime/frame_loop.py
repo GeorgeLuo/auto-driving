@@ -18,36 +18,32 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.activation import (
     DECISION_STEPS,
     activation_generation_id,
     activation_presets,
 )
-from autonomy.decision_cycle.context import DecisionFrameContext, recorded_context
+from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.cycle import DecisionCycleResult, cycle_result_of
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.recording import RunRecording
-from autonomy.runtime.report import delivery_values, diagnostic_ceiling, report_from_host_result
+from autonomy.runtime.report import delivery_values, error_application, report_from_host_result
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 logger = logging.getLogger(__name__)
 
 ONBOARD_OBSERVATION_STATE_SCHEMA = "automa_onboard_observation_state"
-OBSERVATION_PUBLICATION_SCHEMA = "automa_physical_observation_publication"
-DECISION_PUBLICATION_SCHEMA = "automa_physical_decision_publication"
+FRAME_PUBLICATION_SCHEMA = "host_frame_publication"
 LATEST_FRAME_PATH = "/host/observation/latest/frame.jpg"
 OBSERVATION_TRANSACTION_PATH = "/host/observation/transaction"
-OBSERVATION_TRANSACTION_SCHEMA = "automa_observation_transaction"
+FRAME_TRANSACTION_SCHEMA = "host_frame_transaction"
 LATEST_JSON_PATH = "/host/observation/latest"
 CAMERA_LATEST_FRAME_PATH = "/host/camera/latest/frame.jpg"
 CAMERA_LATEST_JSON_PATH = "/host/camera/latest"
 CAMERA_PUBLICATION_SCHEMA = "automa_physical_camera_publication"
-DECISION_LATEST_PATH = "/host/decision/latest"
-DECISION_TRANSACTION_PATH = "/host/decision/transaction"
-DECISION_TRANSACTION_SCHEMA = "automa_decision_transaction"
 
 PUBLICATION_HEALTH_ABSENT = "absent"
 PUBLICATION_HEALTH_WARMING = "warming"
@@ -131,28 +127,53 @@ class _FrameJpegCache:
 
 @dataclass
 class LatestObservationState:
-    """One detached observation retained in memory for inspection."""
+    """One completed frame: its report and the image that frame was computed from."""
 
-    frame_id: str
-    frame_index: int
-    captured_at_ms: int
-    completed_at_ms: int
-    mode: str
-    status: str
+    report: dict[str, Any]
     image: Any
-    control: dict[str, Any]
-    cycle: dict[str, Any] | None
-    error: str | None = None
-    duration_ms: float = 0
-    presets: dict[str, str] = field(default_factory=dict)
-    decision_publication: dict[str, Any] | None = None
-    decision_error: str | None = None
-    context: dict[str, Any] | None = None
     jpeg_cache: _FrameJpegCache = field(default_factory=_FrameJpegCache, repr=False, compare=False)
 
+    @property
+    def frame_id(self) -> str:
+        return self.report["frame_id"]
+
+    @property
+    def frame_index(self) -> int:
+        return self.report["frame_index"]
+
+    @property
+    def captured_at_ms(self) -> int:
+        return self.report["timestamp_ms"]
+
+    @property
+    def completed_at_ms(self) -> int:
+        return self.report["published_at_ms"]
+
+    @property
+    def status(self) -> str:
+        return self.report["status"]
+
+    @property
+    def error(self) -> str | None:
+        return self.report["error"]
+
+    @property
+    def mode(self) -> str | None:
+        application = self.report.get("application")
+        if isinstance(application, dict):
+            mode = application.get("mode")
+            return mode if isinstance(mode, str) else None
+        return None
+
     def to_status_dict(self) -> dict[str, Any]:
-        """Bounded status view without the raw image or full perception payload."""
-        perception = None if self.cycle is None else self.cycle.get("perception")
+        """Bounded status view without the raw image or the cycle body."""
+        cycle = self.report.get("cycle") if isinstance(self.report.get("cycle"), dict) else {}
+        perception = cycle.get("perception")
+        application = self.report.get("application") if isinstance(self.report.get("application"), dict) else {}
+        values = self.report.get("values") if isinstance(self.report.get("values"), dict) else {}
+        timing = values.get("timing") if isinstance(values.get("timing"), dict) else {}
+        activation = values.get("activation") if isinstance(values.get("activation"), dict) else {}
+        steps = activation.get("steps") if isinstance(activation.get("steps"), dict) else {}
         return {
             "schema": ONBOARD_OBSERVATION_STATE_SCHEMA,
             "frame_id": self.frame_id,
@@ -162,11 +183,10 @@ class LatestObservationState:
             "mode": self.mode,
             "status": self.status,
             "error": self.error,
-            "control": deepcopy(self.control),
-            "has_image": self.image is not None,
-            "duration_ms": self.duration_ms,
-            "presets": dict(self.presets),
-            "cycle_schema": None if self.cycle is None else self.cycle.get("schema"),
+            "control": deepcopy(application),
+            "has_image": self.image is not None or self.jpeg_cache.data is not None,
+            "duration_ms": timing.get("duration_ms", 0),
+            "presets": activation_presets(steps),
             "perception_status": None if not isinstance(perception, dict) else perception.get("status"),
         }
 
@@ -204,10 +224,9 @@ class _PendingFrame:
 class FrameLoop:
     """Feed camera samples to the shared cycle host and publish the results.
 
-    The decision publication is identified by the proposal, plan, and action
-    activations the host runs (``decision_activations``) and the generation ID
-    derived from them. ``host.run`` applies restaged selections and records
-    the applied identity; this loop copies it into the publication.
+    One completed cycle publishes one ``host_report``. ``host.run`` applies
+    restaged selections and records the applied identity; this loop copies
+    that identity into the report. The live camera sample stays separate.
     """
 
     def __init__(
@@ -252,16 +271,9 @@ class FrameLoop:
         self._decision_thread: threading.Thread | None = None
         self.latest_state: LatestObservationState | None = None
         self._publication_revision = 0
-        # The last cycle's result, the decision-step runners that produced it,
-        # and whether that cycle failed. Replacing a decision step's runner
-        # retires the result.
-        self._current_cycle: Any | None = None
-        self._current_decision_runners: tuple[Any, ...] | None = None
-        self._last_cycle_failed = False
         self.latest_camera_frame: LatestCameraFrame | None = None
         self._session_frame_id: str | None = None
         self._last_control = AutonomyControl(reason="observation-warming").to_dict()
-        self._last_cycle: dict[str, Any] | None = None
         self.host_name = host_name
         self.source_id = source_id or (
             f"{runtime}:{host_name}" if isinstance(host_name, str) and host_name else None
@@ -280,7 +292,6 @@ class FrameLoop:
                 generation_id = None
         self.generation_id = generation_id
         self.run_id = run_id or f"{runtime}-run-{secrets.token_hex(12)}"
-        self._decision_identity_error = self._validate_decision_identity()
         self.last_status: dict[str, Any] = self.status()
         host.register_status_provider("observation", self.observation_status)
 
@@ -326,11 +337,6 @@ class FrameLoop:
         return {
             "generation_id": self.generation_id,
             "observation": self.observation_status(),
-            "latest_cycle_schema": (
-                None
-                if self._last_cycle is None
-                else self._last_cycle.get("schema")
-            ),
         }
 
     def publish_latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
@@ -340,32 +346,17 @@ class FrameLoop:
             publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
         return deepcopy(publication)
 
-    def publish_decision_latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
-        """Return the current action result at read time.
-
-        The decision record is retained inside the same locked state as the
-        camera frame. Read-time freshness is calculated from the producer's
-        completion timestamp, so polling a stopped runtime cannot refresh an
-        old result merely by reading it.
-        """
-
-        read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
-        with self._lock:
-            publication = self._decision_publication_from_locked_state(read_at_ms=read_at_ms)
-        return deepcopy(publication)
-
-    def read_transaction(self, kind: str) -> tuple[dict[str, Any], LatestObservationState | None, str]:
-        """Borrow publication data and its retained frame for HTTP serialization.
+    def read_transaction(self) -> tuple[dict[str, Any], LatestObservationState | None, str]:
+        """Borrow the frame publication and the state it was built from.
 
         Completed frame data is replaced, rather than updated in place. The
         route may retain these references across JPEG work without copying
-        report contents, including when an ETag avoids serialization entirely.
+        the report, including when an ETag avoids serialization entirely.
         Callers must only read the borrowed nested values.
         """
         with self._lock:
-            publication = (self._decision_publication_from_locked_state(read_at_ms=timestamp_ms())
-                           if kind == "decision" else self._publication_from_locked_state(read_at_ms=timestamp_ms()))
-            revision = f"{self.run_id}:{kind}:{self._publication_revision}:{self._queue_generation}"
+            publication = self._publication_from_locked_state(read_at_ms=timestamp_ms())
+            revision = f"{self.run_id}:frame:{self._publication_revision}:{self._queue_generation}"
             return publication, self.latest_state, revision
 
     def publish_latest_frame_jpeg(self) -> tuple[bytes | None, dict[str, Any]]:
@@ -403,11 +394,12 @@ class FrameLoop:
         try:
             return cls.frame_jpeg(frame), publication
         except Exception as exc:
+            # The image route answers 503 with this body; it names the failure.
             return None, {
                 **publication,
                 "health": PUBLICATION_HEALTH_ERROR,
                 "ok": False,
-                "error": f"{type(exc).__name__}: {exc}",
+                "error": f"image_encoding_failed: {type(exc).__name__}: {exc}",
             }
 
     def wait_for_cycle(self, timeout_s: float = 5.0) -> None:
@@ -422,7 +414,7 @@ class FrameLoop:
 
     def completed_outputs(
         self, mode: str = "manual"
-    ) -> tuple[float, float, dict[str, Any], Any, dict[str, Any] | None]:
+    ) -> tuple[float, float, dict[str, Any], Any]:
         """Return the pilot tuple from the last finished cycle."""
         return self._held_outputs(mode)
 
@@ -613,120 +605,41 @@ class FrameLoop:
         self._queue_generation += 1
 
     def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
-        """Build a read-only publication view borrowing completed frame data."""
+        """The frame envelope, borrowing the completed report."""
         latest = self.latest_state
-        processed_count = self.processed_count
-        presets = dict(self.presets)
-        generation_id = self.generation_id
         threshold_ms = stale_after_ms(self._cycle_duration_ms)
-
         if latest is None:
             health = (
                 PUBLICATION_HEALTH_WARMING
-                if processed_count == 0
+                if self.processed_count == 0
                 else PUBLICATION_HEALTH_ABSENT
             )
             return {
-                "schema": OBSERVATION_PUBLICATION_SCHEMA,
+                "schema": FRAME_PUBLICATION_SCHEMA,
                 "ok": False,
                 "health": health,
                 "read_at_ms": read_at_ms,
                 "result_age_ms": None,
                 "stale_after_ms": threshold_ms,
-                "frames_received": self.frames_received,
-                "frames_dropped": self.frames_dropped,
-                "processed_count": processed_count,
-                "presets": presets,
-                "generation_id": generation_id,
-                "frame": None,
-                "control": None,
-                "mode": None,
-                "status": health,
-                "error": None,
-                "duration_ms": None,
-                "timing": None,
-                "perception": None,
-                "memory": None,
-                "latest_json_path": LATEST_JSON_PATH,
-                "latest_frame_path": LATEST_FRAME_PATH,
+                "report": None,
             }
-
-        age_ms = max(0, read_at_ms - int(latest.completed_at_ms))
-        if latest.status == "error":
-            health = PUBLICATION_HEALTH_ERROR
-        elif latest.image is None:
-            health = PUBLICATION_HEALTH_UNAVAILABLE
-        elif age_ms > threshold_ms:
-            health = PUBLICATION_HEALTH_STALE
-        else:
-            health = PUBLICATION_HEALTH_HEALTHY
-
-        cycle = latest.cycle or {}
-        perception = cycle.get("perception")
-        timing = cycle.get("timing")
-        context = latest.context or cycle.get("context") or {}
-        selections = (context.get("metadata") or {}).get("step_activations")
-        if isinstance(selections, dict) and all(step in selections for step in DECISION_STEPS):
-            generation_id = activation_generation_id(
-                {step: selections[step] for step in DECISION_STEPS}, prefix="decision",
-            )
-        else:
-            generation_id = None
+        report = latest.report
+        published_at_ms = report.get("published_at_ms")
+        age_ms = 0 if type(published_at_ms) is not int else max(0, read_at_ms - published_at_ms)
+        values = report.get("values") if isinstance(report.get("values"), dict) else {}
+        ceiling = values.get("stale_after_ms")
+        if type(ceiling) is not int or ceiling <= 0:
+            ceiling = threshold_ms
+        health = PUBLICATION_HEALTH_STALE if age_ms > ceiling else PUBLICATION_HEALTH_HEALTHY
         return {
-            "schema": OBSERVATION_PUBLICATION_SCHEMA,
-            "ok": health in {PUBLICATION_HEALTH_HEALTHY, PUBLICATION_HEALTH_STALE},
+            "schema": FRAME_PUBLICATION_SCHEMA,
+            "ok": True,
             "health": health,
             "read_at_ms": read_at_ms,
             "result_age_ms": age_ms,
-            "stale_after_ms": threshold_ms,
-            "frames_received": self.frames_received,
-            "frames_dropped": self.frames_dropped,
-            "processed_count": processed_count,
-            "presets": dict(latest.presets),
-            "generation_id": generation_id,
-            "step_activations": selections,
-            "context": recorded_context(context),
-            "frame": {
-                "frame_id": latest.frame_id,
-                "frame_index": latest.frame_index,
-                "captured_at_ms": latest.captured_at_ms,
-                "completed_at_ms": latest.completed_at_ms,
-                "has_image": latest.image is not None,
-                "frame_path": LATEST_FRAME_PATH,
-            },
-            "control": latest.control,
-            "mode": latest.mode,
-            "status": latest.status,
-            "error": latest.error,
-            "duration_ms": latest.duration_ms,
-            "timing": timing,
-            "perception": perception,
-            "memory": cycle.get("memory"),
-            "latest_json_path": LATEST_JSON_PATH,
-            "latest_frame_path": LATEST_FRAME_PATH,
+            "stale_after_ms": ceiling,
+            "report": report,
         }
-
-    def _validate_decision_identity(self) -> str | None:
-        """Validate runtime-owned identity supplied to the publication owner."""
-
-        try:
-            if self.host_name is None:
-                return "host_name_missing"
-            require_ascii_id(self.host_name, field_name="host_name")
-            if self.source_id is None:
-                return "source_id_missing"
-            require_ascii_id(self.source_id, field_name="source_id")
-            if self.decision_activations is None:
-                return "decision_activations_missing"
-            if set(self.decision_activations) != set(DECISION_STEPS):
-                return "decision_activations_invalid"
-            if self.generation_id is None:
-                return "generation_id_missing"
-            require_ascii_id(self.generation_id, field_name="generation_id")
-            require_ascii_id(self.run_id, field_name="run_id")
-        except (TypeError, ValueError):
-            return "decision_identity_invalid"
-        return None
 
     def _write_applied_decision(self, applied: dict[str, Any]) -> None:
         """Copy the host's applied identity into this loop's publication."""
@@ -738,170 +651,45 @@ class FrameLoop:
         with self._lock:
             self.decision_activations = deepcopy(steps)
             self.generation_id = generation_id
-            self._decision_identity_error = self._validate_decision_identity()
         self._identity_applied(generation_id)
         logger.info("Decision generation: %s (restaged)", generation_id)
 
-    def _decision_runners(self) -> tuple[Any, ...]:
-        steps = getattr(getattr(self.host, "cycle", None), "steps", None)
-        return tuple(getattr(steps, step, None) for step in DECISION_STEPS)
-
-    def _runners_current(self) -> bool:
-        current = self._current_decision_runners
-        return current is not None and all(
-            a is b for a, b in zip(current, self._decision_runners())
-        )
-
-    def _current_decision_result(self) -> Any | None:
-        """Return the last cycle's action while the steps that produced it are active."""
-
-        if self._current_cycle is None or not self._runners_current():
-            return None
-        return self._current_cycle.action
-
-    def _current_decision_failed(self) -> bool:
-        return self._last_cycle_failed and self._runners_current()
-
-    def _record_current_cycle(self, cycle: Any | None, *, failed: bool) -> None:
-        self._current_cycle = cycle
-        self._current_decision_runners = self._decision_runners()
-        action = None if cycle is None else cycle.action
-        self._last_cycle_failed = failed or (
-            action is not None and getattr(action, "status", "ok") != "ok"
-        )
-
-    def _capture_decision_publication(
+    def _capture_frame_report(
         self,
+        result: DecisionCycleResult,
         *,
-        frame_id: str,
-        frame_index: int,
-        timestamp_ms_value: int,
-        published_at_ms: int,
+        completed_at_ms: int,
         status: str,
-    ) -> tuple[dict[str, Any] | None, str | None]:
-        """Capture the shared ``host_report`` for this completed cycle.
-
-        Runtime identity (source, activation, and the capture frame) goes in
-        ``values``, with the display freshness limit. A failed cycle that
-        still has its application is published; the failure stays in the
-        cycle. A cycle that never produced an application stays unpublished.
-        """
-
-        if status != "ok":
-            return None, "failed_step"
-        if self._decision_identity_error is not None:
-            return None, self._decision_identity_error
-        result = self._current_decision_result()
-        records = self._current_cycle
-        if result is None or records is None:
-            if self._current_decision_failed():
-                return None, "failed_step"
-            return None, "missing_result"
-        result_frame_id = getattr(result, "frame_id", None)
-        if result_frame_id != frame_id:
-            return None, "mismatched_frame"
-        proposal = records.proposal
-        if proposal is None or records.application is None:
-            return None, "incomplete_result"
-        try:
-            report = report_from_host_result(
-                records,
-                host_name=self.host_name,
-                run_id=self.run_id,
-                generation_id=self.generation_id,
-                published_at_ms=published_at_ms,
-                values={
-                    "source_id": self.source_id,
-                    "activation": {
-                        "generation_id": self.generation_id,
-                        "steps": deepcopy(self.decision_activations),
-                    },
-                    "source_frame": {
-                        "frame_id": frame_id,
-                        "frame_index": frame_index,
-                        "captured_at_ms": timestamp_ms_value,
-                        "completed_at_ms": published_at_ms,
-                    },
-                    **delivery_values(records.application),
-                    "stale_after_ms": stale_after_ms(self._cycle_duration_ms),
-                },
-            )
-        except (TypeError, ValueError):
-            return None, "incomplete_result"
-        return report.to_dict(), None
-
-    def _decision_unavailable(
-        self,
-        *,
-        reason: str,
-        read_at_ms: int,
-        result_age_ms: int | None = None,
+        error: str | None,
+        mode_name: str,
     ) -> dict[str, Any]:
-        threshold_ms = stale_after_ms(self._cycle_duration_ms)
-        return {
-            "schema": DECISION_PUBLICATION_SCHEMA,
-            "ok": False,
-            "status": "unavailable",
-            "reason": reason,
-            "read_at_ms": read_at_ms,
-            "result_age_ms": result_age_ms,
-            "stale_after_ms": threshold_ms,
-            "decision": None,
-        }
+        """The report for this camera frame. Another frame's outputs are not reused."""
 
-    def _decision_publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
-        """Borrow the decision record, failing closed at read time."""
-
-        latest = self.latest_state
-        if latest is None:
-            return self._decision_unavailable(reason="missing", read_at_ms=read_at_ms)
-        decision = latest.decision_publication
-        if decision is None:
-            return self._decision_unavailable(
-                reason=latest.decision_error or "unavailable",
-                read_at_ms=read_at_ms,
-            )
-        threshold_ms = diagnostic_ceiling(decision["values"])
-        # Replacing a decision step retires its result. Never
-        # replay the detached result retained by a prior sensor frame.
-        current = self._current_decision_result()
-        if current is None:
-            reason = "failed_step" if self._current_decision_failed() else "reset"
-            return self._decision_unavailable(reason=reason, read_at_ms=read_at_ms)
-        if getattr(current, "frame_id", None) != decision.get("frame_id"):
-            return self._decision_unavailable(
-                reason="mismatched_frame",
-                read_at_ms=read_at_ms,
-            )
-        published_at_ms = decision.get("published_at_ms")
-        if type(published_at_ms) is not int:
-            return self._decision_unavailable(
-                reason="incomplete",
-                read_at_ms=read_at_ms,
-            )
-        age_ms = read_at_ms - published_at_ms
-        if age_ms < 0:
-            reason = "future_dated"
-        elif age_ms > threshold_ms:
-            reason = "expired"
-        else:
-            reason = None
-        if reason is not None:
-            return self._decision_unavailable(
-                reason=reason,
-                read_at_ms=read_at_ms,
-                result_age_ms=age_ms,
-            )
-        return {
-            "schema": DECISION_PUBLICATION_SCHEMA,
-            "ok": True,
-            "status": "ready",
-            "reason": "",
-            "read_at_ms": read_at_ms,
-            "result_age_ms": age_ms,
-            "stale_after_ms": threshold_ms,
-            "decision": decision,
+        report_application = None
+        if result.application is None:
+            report_application = error_application(mode_name)
+        generation_id = self.generation_id or "unassigned"
+        activations = result.context.metadata.get("step_activations")
+        steps = deepcopy(activations if isinstance(activations, dict) else self.decision_activations)
+        steps = steps if isinstance(steps, dict) else {}
+        values: dict[str, Any] = {
+            "source_id": self.source_id or f"{self.runtime}:local",
+            "activation": {"generation_id": generation_id, "steps": steps},
+            "stale_after_ms": stale_after_ms(self._cycle_duration_ms),
         }
+        if result.application is not None:
+            values.update(delivery_values(result.application))
+        return report_from_host_result(
+            result,
+            host_name=self.host_name or self.runtime,
+            run_id=self.run_id,
+            generation_id=generation_id,
+            published_at_ms=completed_at_ms,
+            values=values,
+            status=status,
+            error=error,
+            report_application=report_application,
+        ).to_dict()
 
     def _decision_worker(self) -> None:
         try:
@@ -981,6 +769,7 @@ class FrameLoop:
             metadata={**camera.metadata, "runtime": self.runtime},
         )
 
+        status = "error"
         try:
             try:
                 cycle_result = self.host.run(
@@ -1000,82 +789,115 @@ class FrameLoop:
                     user_steering=user_steering,
                     user_throttle=user_throttle,
                 )
-                control = cycle_result.control
-                cycle_dict = cycle_result.to_dict()
-                applied = self.host.applied_decision()
-                completed_at_ms = cycle_result.completed_at_ms
+                completed_at_ms = int(cycle_result.completed_at_ms)
                 duration_ms = cycle_result.duration_ms
                 status = "ok"
                 error = None
             except Exception as exc:
                 logger.exception("Autonomy decision cycle failed for frame %s", frame_id)
-                applied = None
-                control = AutonomyControl(reason="observation-cycle-error")
+                cycle_result = cycle_result_of(exc)
                 if isinstance(exc, MemoryUpdateError):
                     with self._lock:
                         self._memory_update_halted = True
-                        self._last_control = control.to_dict()
-                        self._last_cycle = None
-                cycle_dict = None
-                completed_at_ms = timestamp_ms()
-                duration_ms = max(0, completed_at_ms - captured_at_ms)
+                completed_at_ms = int(cycle_result.completed_at_ms) if cycle_result is not None else timestamp_ms()
+                duration_ms = cycle_result.duration_ms if cycle_result is not None else max(0, completed_at_ms - captured_at_ms)
                 status = "error"
                 error = f"{type(exc).__name__}: {exc}"
+            def empty_result() -> DecisionCycleResult:
+                return DecisionCycleResult(
+                    context=DecisionFrameContext(
+                        frame_id=frame_id,
+                        frame_index=frame_index,
+                        timestamp_ms=captured_at_ms,
+                        sensor_frame=sensor_frame,
+                    ),
+                    perception=None,
+                    observation=None,
+                    memory=None,
+                    proposal=None,
+                    plan=None,
+                    action=None,
+                    control=AutonomyControl(reason="observation-cycle-error"),
+                    started_at_ms=captured_at_ms,
+                    completed_at_ms=completed_at_ms,
+                )
 
-            control_dict = (
-                cycle_result.control_record() if cycle_dict is not None else {
-                    **control.to_dict(), "applied": False,
-                    "application": self.host.execution.status()["application"],
+            if cycle_result is None or getattr(cycle_result.context, "frame_id", None) != frame_id:
+                cycle_result = empty_result()
+            applied_decision = getattr(self.host, "applied_decision", None)
+            applied = applied_decision() if callable(applied_decision) else None
+            if status == "ok":
+                control_dict = cycle_result.control_record()
+            else:
+                execution = getattr(self.host, "execution", None)
+                application_status = None
+                if execution is not None:
+                    application_status = execution.status()["application"]
+                control_dict = {
+                    **AutonomyControl(reason="observation-cycle-error").to_dict(),
+                    "applied": False,
+                    "application": application_status,
                 }
-            )
-            # Readers must see one completed cycle and its matching report.
-            # Plugin execution above stays outside the publication lock.
+            # The cycle ran outside this lock. Publishing borrows nothing from
+            # the previous frame: cycle_result is this attempt or an empty one.
             with self._lock:
-                if cycle_dict is not None:
-                    self._cycle_duration_ms = float(duration_ms)
-                self._record_current_cycle(cycle_result if cycle_dict is not None else None, failed=status != "ok")
+                self._cycle_duration_ms = float(duration_ms)
                 if isinstance(applied, dict) and applied.get("generation_id") != self.generation_id:
                     self._write_applied_decision(applied)
-                decision_publication, decision_error = self._capture_decision_publication(
-                    frame_id=frame_id,
-                    frame_index=frame_index,
-                    timestamp_ms_value=captured_at_ms,
-                    published_at_ms=completed_at_ms,
-                    status=status,
-                )
-
-                context = (
-                    self.host.last_context.to_dict()
-                    if self.host.last_context is not None
-                    and self.host.last_context.frame_id == frame_id else None
-                )
-                applied_steps = ((context or {}).get("metadata") or {}).get("step_activations")
+                metadata = cycle_result.context.metadata or {}
+                applied_steps = metadata.get("step_activations")
                 if isinstance(applied_steps, dict):
                     self.presets = activation_presets(applied_steps)
-                latest = LatestObservationState(
-                    frame_id=frame_id,
-                    frame_index=frame_index,
-                    captured_at_ms=captured_at_ms,
-                    completed_at_ms=completed_at_ms,
-                    mode=mode_name,
-                    status=status,
-                    image=camera.image,
-                    control=deepcopy(control_dict),
-                    cycle=cycle_dict,
-                    error=error,
-                    duration_ms=duration_ms,
-                    presets=dict(self.presets),
-                    decision_publication=decision_publication,
-                    decision_error=decision_error,
-                    context=context,
-                    jpeg_cache=camera.jpeg_cache,
-                )
-                self._last_control = control_dict
-                self._last_cycle = cycle_dict
-                self.latest_state = latest
-                self._publication_revision += 1
-                self.frame_index = frame_index + 1
-                self.processed_count += 1
+                    # A loop started without an identity still publishes the
+                    # decision steps this frame applied.
+                    if not self.decision_activations:
+                        decision_identity = {
+                            step: applied_steps.get(step) for step in DECISION_STEPS
+                        }
+                        try:
+                            self.generation_id = activation_generation_id(
+                                decision_identity, prefix="decision",
+                            )
+                        except (TypeError, ValueError):
+                            pass
+                        else:
+                            self.decision_activations = deepcopy(decision_identity)
+                try:
+                    report = self._capture_frame_report(
+                        cycle_result,
+                        completed_at_ms=completed_at_ms,
+                        status=status,
+                        error=error,
+                        mode_name=mode_name,
+                    )
+                except Exception as exc:
+                    # A cycle that is not JSON data still publishes this frame,
+                    # as an error with null steps, so the pages do not freeze.
+                    logger.exception("Frame report failed for %s", frame_id)
+                    status = "error"
+                    try:
+                        report = self._capture_frame_report(
+                            empty_result(),
+                            completed_at_ms=completed_at_ms,
+                            status=status,
+                            error=f"frame report failed: {type(exc).__name__}: {exc}",
+                            mode_name=mode_name,
+                        )
+                    except Exception:
+                        logger.exception("Error report failed for %s", frame_id)
+                        report = None
+                if report is not None:
+                    self._last_control = control_dict
+                    self.latest_state = LatestObservationState(
+                        report=report,
+                        image=camera.image,
+                        jpeg_cache=camera.jpeg_cache,
+                    )
+                    self._publication_revision += 1
+                    self.frame_index = frame_index + 1
+                    self.processed_count += 1
+                else:
+                    status = "error"
         finally:
             self._frame_completed()
         self.last_status = self.status()
@@ -1086,5 +908,4 @@ class FrameLoop:
         with self._lock:
             control = deepcopy(self._last_control)
             generation_id = self.generation_id
-            cycle = None if self._last_cycle is None else deepcopy(self._last_cycle)
-        return (output.steering, output.throttle, control, generation_id, cycle)
+        return (output.steering, output.throttle, control, generation_id)

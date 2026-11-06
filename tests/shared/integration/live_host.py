@@ -64,7 +64,7 @@ class LiveHostTestCase(unittest.TestCase):
         wait_until(
             lambda: any(
                 plugin["record_count"]
-                for plugin in probe_live_memory(host_name=HOST_NAME)["plugins"]
+                for plugin in probe_live_memory(host_name=HOST_NAME).get("plugins", [])
             ),
             message="the session never filled memory",
         )

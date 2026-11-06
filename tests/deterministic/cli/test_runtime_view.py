@@ -149,7 +149,6 @@ class ConnectedSplashTests(unittest.TestCase):
         self.assertIn('class="status-dot live"', html)
         for href in ("/perception", "/memory", "/plugins", "/workbench/"):
             self.assertIn(f'<a class="nav" href="{href}">', html)
-        self.assertIn('<span class="nav unavailable" title="Action view unavailable">Action</span>', html)
 
     def test_workbench_is_created_on_first_visit_and_closed_with_the_viewer(self) -> None:
         runner = ImageReplayRunner(cadence_ms=0, step_factories={"perception": FixtureMapper})

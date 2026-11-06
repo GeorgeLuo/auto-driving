@@ -21,6 +21,5 @@ function renderPerception() {
   elements.perceptionSummary.title = pluginRunIds.length ? pluginRunIds.join(", ") : "";
   setText("perceptionPluginRuns", Array.isArray(perception.plugin_runs) ? perception.plugin_runs.length : 0);
   setText("perceptionCounts", (perception.things || []).length + " / " + (perception.signals || []).length);
-  elements.perceptionLines.textContent = Array.isArray(perception.lines)
-    ? perception.lines.join("\n") : "";
+  elements.perceptionLines.textContent = typeof perception.text === "string" ? perception.text : "";
 }

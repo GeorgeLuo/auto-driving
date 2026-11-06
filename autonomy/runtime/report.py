@@ -5,9 +5,11 @@ Every named field is required. Detail that only one vehicle has goes in
 builds that document from a completed host cycle and the control application
 recorded after the cycle. Each vehicle transports the document itself.
 
-``cycle`` contains the observation, memory, proposal, plan, and action records.
-Observation, memory, and plan may be null when their steps produce no record.
-All five keys stay required. Proposal and action stay objects.
+``cycle`` contains the perception, observation, memory, proposal, plan, and
+action records. Any step may be null. ``status`` is ``ok`` when the cycle
+returned and ``error`` when it raised. ``error`` is null on success and a
+nonempty string when execution raised. A non-ok action record is not a frame
+error.
 
 ``values["timing"]`` is the cycle's ``timing`` record from
 ``autonomy.decision_cycle.timing``: its total and each step's and plugin's
@@ -39,8 +41,11 @@ REPORT_EXACT_KEYS = frozenset(
         "cycle",
         "application",
         "values",
+        "status",
+        "error",
     }
 )
+FRAME_STATUSES = frozenset({"ok", "error"})
 CYCLE_EXACT_KEYS = frozenset(CYCLE_RECORD_KEYS)
 APPLICATION_EXACT_KEYS = frozenset({"applied", "mode", "reason", "steering", "throttle"})
 
@@ -90,13 +95,12 @@ def _unit(value: object, *, field: str) -> float:
 
 
 def _cycle_record(record: object, *, key: str) -> Any:
-    """One cycle record. Observation, memory, and plan may be null."""
+    """One cycle record. Every step may be null."""
 
-    if key in {"observation", "memory", "plan"} and record is None:
+    if record is None:
         return None
     if type(record) is not dict:
-        expected = "an object or null" if key in {"observation", "memory", "plan"} else "an object"
-        raise ValueError(f"cycle.{key} must be {expected}")
+        raise ValueError(f"cycle.{key} must be an object or null")
     return record
 
 
@@ -156,6 +160,8 @@ class HostReport:
     cycle: dict[str, Any]
     application: ReportApplication
     values: dict[str, Any]
+    status: str = "ok"
+    error: str | None = None
     schema: str = REPORT_SCHEMA
 
     def __post_init__(self) -> None:
@@ -199,6 +205,13 @@ class HostReport:
         if type(values) is not dict:
             raise ValueError("values must be an object")
         object.__setattr__(self, "values", values)
+        if self.status not in FRAME_STATUSES:
+            raise ValueError("status must be 'ok' or 'error'")
+        if self.status == "ok":
+            if self.error is not None:
+                raise ValueError("error must be null when status is ok")
+        elif type(self.error) is not str or not self.error:
+            raise ValueError("error must be a nonempty string when status is error")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -213,6 +226,8 @@ class HostReport:
             "cycle": _json_copy(self.cycle, field="cycle"),
             "application": self.application.to_dict(),
             "values": _json_copy(self.values, field="values"),
+            "status": self.status,
+            "error": self.error,
         }
 
     @classmethod
@@ -234,6 +249,8 @@ class HostReport:
             cycle=payload["cycle"],
             application=ReportApplication.from_dict(payload["application"]),
             values=payload["values"],
+            status=payload["status"],
+            error=payload["error"],
         )
 
 
@@ -275,6 +292,20 @@ def diagnostic_ceiling(values: Mapping[str, Any] | None) -> int:
     return raw
 
 
+def error_application(mode: str) -> ReportApplication:
+    """The idle application published when a cycle raises."""
+
+    from autonomy.runtime.execution import MODES
+
+    return ReportApplication(
+        applied=False,
+        mode=mode if mode in MODES else "manual",
+        reason="observation-cycle-error",
+        steering=0.0,
+        throttle=0.0,
+    )
+
+
 def report_from_host_result(
     result: DecisionCycleResult,
     *,
@@ -283,25 +314,32 @@ def report_from_host_result(
     generation_id: str,
     published_at_ms: int | None = None,
     values: Mapping[str, Any] | None = None,
+    status: str = "ok",
+    error: str | None = None,
+    report_application: ReportApplication | None = None,
 ) -> HostReport:
     """The viewer document for one completed host cycle.
 
-    ``result`` is the host's cycle result: its frame context, proposal, plan,
-    and action, plus the ``ControlApplication`` recorded after the cycle.
-    The application is the host's write, not the action step's earlier
-    authority envelope. The result's ``timing``, when it has one, goes in
-    ``values["timing"]``.
+    ``result`` is the host's cycle result. Any step may be null. The
+    application is the host's write, not the action step's earlier authority
+    envelope. Pass ``report_application`` when the cycle raised before that
+    write. The result's ``timing``, when it has one, goes in
+    ``values["timing"]``. ``status`` is ``ok`` unless execution raised.
     """
 
     context = result.context
-    proposal = result.proposal
-    action = result.action
     application = result.application
-    if proposal is None or action is None:
-        raise TypeError("host result must include a frame, proposal, and action")
-    if application is None or application.control is None:
-        raise TypeError("host result must include its control application")
-    control = application.control
+    if report_application is None:
+        if application is None or application.control is None:
+            raise TypeError("host result must include its control application")
+        control = application.control
+        report_application = ReportApplication(
+            applied=application.applied,
+            mode=application.mode,
+            reason=application.reason,
+            steering=control.steering,
+            throttle=control.throttle,
+        )
     values = {} if values is None else dict(values)
     if result.timing is not None:
         values["timing"] = result.timing
@@ -317,12 +355,8 @@ def report_from_host_result(
             int(time.time() * 1000) if published_at_ms is None else int(published_at_ms)
         ),
         cycle=cycle,
-        application=ReportApplication(
-            applied=application.applied,
-            mode=application.mode,
-            reason=application.reason,
-            steering=control.steering,
-            throttle=control.throttle,
-        ),
+        application=report_application,
         values=values,
+        status=status,
+        error=error,
     )

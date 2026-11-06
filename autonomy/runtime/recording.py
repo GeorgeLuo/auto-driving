@@ -283,9 +283,6 @@ def write_recorded_frame(
     write_json_atomically(
         perception_path, {key: value for key, value in frame.items() if key != CONTROL_APPLICATION_CHANGE_FIELD},
     )
-    perception_path.with_suffix(".txt").write_text(
-        (frame.get("perception") or {}).get("text", "") + "\n", encoding="utf-8",
-    )
     append_recording_frame(
         run_dir, host_name=frame["host_name"], run_id=frame["run_id"],
         generation_id=frame["generation_id"], frame_id=frame_id,
@@ -315,16 +312,32 @@ def ran_on_release(
     return stamped
 
 
-def cycle_frame(result: DecisionCycleResult, *, host_name: str, run_id: str) -> dict[str, Any]:
+def cycle_frame(
+    result: DecisionCycleResult, *, host_name: str, run_id: str,
+    status: str = "ok", error: str | None = None,
+) -> dict[str, Any]:
     """The same completed frame, selections and application on either host."""
     context = result.context
+    raw_steps = context.metadata.get("step_activations")
+    raw_steps = raw_steps if isinstance(raw_steps, dict) else {}
     steps = ran_on_release(
-        context.metadata["step_activations"], host_name=host_name, release=INSTALLED_RELEASE,
+        {step: raw_steps.get(step) for step in STEPS},
+        host_name=host_name, release=INSTALLED_RELEASE,
     )
     generation = activation_generation_id(
         {step: steps[step] for step in DECISION_STEPS}, prefix="decision",
     )
     cycle = result.export_cycle()
+    application = None
+    if result.application is not None and result.application.control is not None:
+        control = result.application.control
+        application = {
+            "applied": result.application.applied,
+            "mode": result.application.mode,
+            "reason": result.application.reason,
+            "steering": control.steering,
+            "throttle": control.throttle,
+        }
     return {
         "host_name": host_name, "run_id": run_id,
         "frame_id": context.frame_id, "frame_index": context.frame_index,
@@ -333,7 +346,9 @@ def cycle_frame(result: DecisionCycleResult, *, host_name: str, run_id: str) -> 
         "timing": copy.deepcopy(result.timing),
         "generation_id": generation, "step_activations": steps,
         "context": context.to_dict(),
-        "perception": result.perception.to_dict() if result.perception else None,
+        "status": status,
+        "error": error,
+        "application": copy.deepcopy(application),
         **cycle,
         "control": result.control_record(),
         "action_policy": read_mode(context.shared_memory),
@@ -362,6 +377,9 @@ class RunRecording:
     def append(
         self, result: DecisionCycleResult,
         control_applications: tuple[ControlApplication, ...] | None = None,
+        *,
+        status: str = "ok",
+        error: str | None = None,
     ) -> None:
         """Record a cycle and the applications the host published before it.
 
@@ -376,7 +394,10 @@ class RunRecording:
             image, extension = self.encode_image(reading.value), ".jpg"
         else:
             raise ValueError("recording requires a camera image or an image encoder")
-        frame = cycle_frame(result, host_name=self.host_name, run_id=self.run_id)
+        frame = cycle_frame(
+            result, host_name=self.host_name, run_id=self.run_id,
+            status=status, error=error,
+        )
         with self._lock:
             applications = control_applications or ()
             previous = self._previous_applications

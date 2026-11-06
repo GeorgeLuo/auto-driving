@@ -19,7 +19,7 @@ class LiveViewCopyTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as tmp,
             patch.object(viewer, "runtime_view_dir", return_value=Path(tmp)),
             patch.object(viewer.RuntimeViewServer, "start", side_effect=OSError("port taken")),
-            patch.object(viewer, "fetch_observation_sample", side_effect=ConnectionError("offline")),
+            patch.object(viewer, "fetch_frame_sample", side_effect=ConnectionError("offline")),
         ):
             feed = viewer.ViewFeed("fixture", base_url="http://host.invalid", timeout_s=0.1)
             self.assertIsNone(feed.server)
@@ -41,7 +41,10 @@ class LiveViewCopyTests(unittest.TestCase):
                 host_name="fixture", run_id="run", generation_id="generation",
                 frame_id="one", frame_index=0, timestamp_ms=1, published_at_ms=1,
                 values={"activation": {"steps": {"plan": {"plugins": []}}}},
-                cycle={"observation": None, "memory": None, "proposal": {}, "plan": {}, "action": {}},
+                cycle={
+                    "perception": None, "observation": None, "memory": None,
+                    "proposal": {}, "plan": {}, "action": {},
+                },
                 application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
             ),
         }
@@ -50,7 +53,7 @@ class LiveViewCopyTests(unittest.TestCase):
             patch.object(decision, "runtime_base_url", return_value="http://host.invalid"),
             patch.object(session, "ViewFeed", return_value=feed),
             patch.object(decision, "poll_events", side_effect=one_pass),
-            patch.object(decision, "fetch_decision_publication", return_value={}),
+            patch.object(decision, "fetch_frame_publication", side_effect=AssertionError("second frame fetch")),
             patch.object(decision, "accept_decision_publication", return_value=normalized),
         ):
             result = stream_host_step("plan", host_name="fixture")

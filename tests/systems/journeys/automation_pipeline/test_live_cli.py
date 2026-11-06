@@ -15,7 +15,7 @@ from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import urlopen
 
-from cli.automa_cli.hosts.publications.host_publications import fetch_decision_publication
+from cli.automa_cli.hosts.publications.host_publications import fetch_frame_publication
 from cli.automa_cli.shared.paths import ROOT
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import HOST_NAME
 from tests.shared.cli.invoke import invoke_automa
@@ -41,7 +41,7 @@ class LiveCommandsTests(LiveHostTestCase):
 
         def published() -> bool:
             try:
-                return name in json.dumps(fetch_decision_publication(self.host.base_url))
+                return name in json.dumps(fetch_frame_publication(self.host.base_url))
             except (OSError, ValueError):
                 return False
 
@@ -77,18 +77,18 @@ class LiveCommandsTests(LiveHostTestCase):
         )
         with urlopen(page, timeout=5) as response:
             self.assertEqual(response.headers.get_content_type(), "text/html")
-        view_url, _, generation = page.partition("/decision?")
+        view_url = page.split("/decision")[0]
 
         def latest():
             try:
-                with urlopen(f"{view_url}/api/decision/latest?{generation}", timeout=5) as response:
+                with urlopen(f"{view_url}/api/latest", timeout=5) as response:
                     return json.load(response)
             except HTTPError:  # warming, or the newest cycle expired between refreshes
                 return None
 
         decision = _wait(latest, message="the decision view never served a current decision")
-        self.assertEqual(decision["decision"]["frame_id"], decision["current_image"]["frame_id"])
-        self.assertIsNotNone(decision["decision"]["cycle"]["proposal"])
+        self.assertEqual(decision["report"]["frame_id"], decision["image"]["frame_id"])
+        self.assertIsNotNone(decision["report"]["cycle"]["proposal"])
         self.assertIn("evidence", decision)
 
     def test_a_stream_poll_during_cycle_publication_receives_a_coherent_decision(self) -> None:
@@ -98,28 +98,28 @@ class LiveCommandsTests(LiveHostTestCase):
         release = threading.Event()
         reading = threading.Event()
         returned = threading.Event()
-        capture = loop._capture_decision_publication
-        publish = loop.publish_decision_latest
+        capture = loop._capture_frame_report
+        publish = loop.publish_latest
 
-        def pause_publication(**kwargs):
+        def pause_publication(result, **kwargs):
             if not publishing.is_set():
                 publishing.set()
                 if not release.wait(10):
                     raise TimeoutError("the test never released the completed cycle")
-            return capture(**kwargs)
+            return capture(result, **kwargs)
 
-        def read_publication(**kwargs):
+        def read_publication(*args, **kwargs):
             reading.set()
-            result = publish(**kwargs)
+            result = publish(*args, **kwargs)
             returned.set()
             return result
 
         # This check deliberately holds a completed cycle while a fresh CLI
         # interpreter starts. Keep that artificial pause inside its display
-        # window; expiry is covered separately by the publication tests.
+        # window; a stale frame stays readable and is covered by the publication tests.
         with patch("autonomy.runtime.frame_loop.stale_after_ms", return_value=10_000), \
-                patch.object(loop, "_capture_decision_publication", side_effect=pause_publication), \
-                patch.object(loop, "publish_decision_latest", side_effect=read_publication):
+                patch.object(loop, "_capture_frame_report", side_effect=pause_publication), \
+                patch.object(loop, "publish_latest", side_effect=read_publication):
             try:
                 self.assertTrue(publishing.wait(10), "the host never completed another cycle")
                 stream = start_automa(

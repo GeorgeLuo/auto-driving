@@ -1,8 +1,7 @@
 """What a runtime host publishes, read over HTTP.
 
-Its autonomy status, observation and decision publications, frames and host
-telemetry. A PiCar's host and a local Chase host serve the same routes;
-``decision_publication`` and ``host_telemetry`` check what these reads return.
+Its autonomy status, completed frames and host telemetry. A PiCar's host and a local Chase host serve the same routes;
+``frame_publication`` and ``host_telemetry`` check what these reads return.
 """
 
 from __future__ import annotations
@@ -17,12 +16,11 @@ from copy import deepcopy
 from typing import Any
 
 from autonomy.runtime.frame_loop import (
-    DECISION_LATEST_PATH,
-    DECISION_TRANSACTION_PATH,
+    FRAME_TRANSACTION_SCHEMA,
     LATEST_JSON_PATH,
     OBSERVATION_TRANSACTION_PATH,
-    OBSERVATION_TRANSACTION_SCHEMA,
 )
+from autonomy.runtime.report import HostReport
 from autonomy.runtime.routes import (
     STATUS_PATH,
     TELEMETRY_LATEST_PATH,
@@ -48,11 +46,10 @@ def _cached_transaction(cache: TransactionCache, read_at_ms: int | None = None) 
     if payload is None:
         raise ConnectionError("Host returned 304 without a cached transaction")
     publication = payload.get("publication") or {}
-    if read_at_ms is not None:
+    if read_at_ms is not None and isinstance(publication, dict):
         publication["read_at_ms"] = read_at_ms
-        frame = publication.get("frame") or {}
-        decision = publication.get("decision") or {}
-        completed = decision.get("published_at_ms", frame.get("completed_at_ms"))
+        report = publication.get("report") if isinstance(publication.get("report"), dict) else {}
+        completed = report.get("published_at_ms")
         if type(completed) is int:
             publication["result_age_ms"] = max(0, read_at_ms - completed)
     return payload
@@ -173,59 +170,62 @@ def _no_answer(exc: ConnectionError, timeout_s: float) -> str:
     return getattr(cause, "strerror", None) or str(cause or exc)
 
 
-def fetch_observation_publication(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:
-    """GET the latest observation publication from a runtime host."""
+def _validate_frame_report(publication: dict[str, Any]) -> None:
+    if publication.get("report") is not None:
+        try:
+            HostReport.from_dict(publication["report"])
+        except (TypeError, ValueError) as exc:
+            raise ConnectionError(f"Invalid host report: {exc}") from exc
 
-    return _get_json(base_url, LATEST_JSON_PATH, timeout_s=timeout_s)
+
+def fetch_frame_publication(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:
+    """Read the host's completed frame envelope and validate its HostReport."""
+
+    publication = _get_json(base_url, LATEST_JSON_PATH, timeout_s=timeout_s)
+    _validate_frame_report(publication)
+    return publication
 
 
-def fetch_observation_sample(
+def fetch_frame_sample(
     base_url: str, *, timeout_s: float = 3.0, cache: TransactionCache | None = None,
 ) -> tuple[dict[str, Any], bytes | None]:
-    """Read observation metadata and its image from one host transaction."""
+    """Read one completed frame and, when the JPEG names that frame, its image."""
     payload = _get_transaction(base_url, OBSERVATION_TRANSACTION_PATH, timeout_s=timeout_s, cache=cache)
     publication = payload.get("publication")
-    if payload.get("http_status") == 503:
-        if isinstance(publication, dict):
+    if not isinstance(publication, dict) or payload.get("schema") != FRAME_TRANSACTION_SCHEMA:
+        if payload.get("http_status") == 503 and isinstance(publication, dict):
             return publication, None
-        raise ConnectionError("Observation transaction returned HTTP 503")
-    if payload.get("schema") != OBSERVATION_TRANSACTION_SCHEMA or not isinstance(publication, dict):
-        raise ValueError("Invalid observation transaction")
-    frame = publication.get("frame") or {}
-    encoded = payload.get("image_base64")
-    if encoded is None and not frame.get("has_image"):
+        raise ConnectionError("Invalid frame transaction")
+    try:
+        _validate_frame_report(publication)
+    except ConnectionError:
+        if cache is not None:
+            cache.clear()
+        raise
+    report = publication.get("report") if isinstance(publication.get("report"), dict) else None
+    if payload.get("http_status") == 503 or report is None:
         return publication, None
-    if (
-        not isinstance(encoded, str)
-        or payload.get("image_content_type") != "image/jpeg"
-        or not frame.get("frame_id")
-        or payload.get("image_frame_id") != frame["frame_id"]
-    ):
-        raise ValueError("Observation transaction image does not match its frame")
+    encoded = payload.get("image_base64")
+    image_matches = (
+        isinstance(encoded, str)
+        and encoded
+        and payload.get("image_error") in (None, "")
+        and payload.get("image_content_type") == "image/jpeg"
+        and payload.get("image_frame_id") == report.get("frame_id")
+    )
+    if not image_matches:
+        return publication, None
     if cache is not None and cache.image is not None:
         return publication, cache.image[0]
     try:
         jpeg = base64.b64decode(encoded, validate=True)
-    except (ValueError, binascii.Error) as exc:
-        raise ValueError("Invalid observation transaction image encoding") from exc
+    except (ValueError, binascii.Error):
+        return publication, None
     if not jpeg:
-        raise ValueError("Empty observation transaction image")
+        return publication, None
     if cache is not None:
         cache.image = jpeg, "image/jpeg"
     return publication, jpeg
-
-
-def fetch_decision_publication(base_url: str, *, timeout_s: float = 3.0) -> dict[str, Any]:
-    """GET the read-only current decision publication from a runtime host."""
-
-    return _get_json(base_url, DECISION_LATEST_PATH, timeout_s=timeout_s)
-
-
-def fetch_decision_transaction(base_url: str, *, timeout_s: float = 3.0,
-                               cache: TransactionCache | None = None) -> dict[str, Any]:
-    """GET the current decision and its image from one host transaction."""
-
-    return _get_transaction(base_url, DECISION_TRANSACTION_PATH, timeout_s=timeout_s, cache=cache)
 
 
 class _RejectTelemetryRedirect(urllib.request.HTTPRedirectHandler):

@@ -100,7 +100,7 @@ class DecisionCycleResult:
     schema: str = DECISION_CYCLE_RESULT_SCHEMA
     # Retained on this object only. ``replace`` builds a new result, so a host
     # can record context and application before the first export without
-    # serializing the five records again.
+    # serializing the six records again.
     _cycle_export: dict[str, Any] | None = field(default=None, init=False, repr=False, compare=False)
 
     @property
@@ -118,7 +118,7 @@ class DecisionCycleResult:
         }
 
     def export_cycle(self) -> dict[str, Any]:
-        """Copy the cycle body, serializing its five records once for this result.
+        """Copy the cycle body, serializing its six records once for this result.
 
         The retained body stays on this object. Each caller gets a copy, so a
         publication cannot change a later recording or status read. Replacing
@@ -140,12 +140,7 @@ class DecisionCycleResult:
             "completed_at_ms": self.completed_at_ms,
             "duration_ms": self.duration_ms,
             "context": self.context.to_dict(),
-            "perception": _record(self.perception),
-            "observation": cycle["observation"],
-            "memory": cycle["memory"],
-            "proposal": cycle["proposal"],
-            "plan": cycle["plan"],
-            "action": cycle["action"],
+            **cycle,
             "control": self.control.to_dict(),
             "application": self.application.to_dict() if self.application is not None else None,
             "timing": _to_plain_data(self.timing),
@@ -168,42 +163,59 @@ class DecisionCycle:
         steps = self.steps
         started_at_ms = timestamp_ms()
         started = clock()
-        durations: dict[str, float] = {}
-        perception = _checked(
-            "perception",
-            _timed(durations, "perception", steps.perception, context),
-            PerceptionText,
-        )
-        observation = _checked(
-            "observation",
-            _timed(durations, "observation", steps.observation, context, perception),
-            Observation,
-        )
-        if context.shared_memory is not None:
-            write_observation(context.shared_memory, observation)
-        memory = _run_memory_step(durations, steps.memory, context)
-        proposal = _checked(
-            "proposal",
-            _timed(durations, "proposal", steps.proposal, context),
-            ProposalResult,
-        )
-        plan = _checked(
-            "plan",
-            _timed(durations, "plan", steps.plan, context, proposal),
-            ActionPlan,
-        )
-        action = _checked(
-            "action",
-            _timed(durations, "action", steps.action, context, proposal, plan),
-            ActionResult,
-        )
+        durations: dict[str, float | None] = {}
+        perception = observation = memory = proposal = plan = action = None
+        try:
+            perception = _completed(
+                durations, "perception", steps.perception, context, expected=PerceptionText,
+            )
+            observation = _completed(
+                durations, "observation", steps.observation, context, perception,
+                expected=Observation,
+            )
+            if context.shared_memory is not None:
+                write_observation(context.shared_memory, observation)
+            memory = _run_memory_step(durations, steps.memory, context)
+            proposal = _completed(
+                durations, "proposal", steps.proposal, context, expected=ProposalResult,
+            )
+            plan = _completed(
+                durations, "plan", steps.plan, context, proposal, expected=ActionPlan,
+            )
+            action = _completed(
+                durations, "action", steps.action, context, proposal, plan,
+                expected=ActionResult,
+            )
+        except Exception as exc:
+            # The raising step stays null: its duration is None and its output
+            # was not assigned. Later steps never started, so they stay None and
+            # report no plugins rather than an earlier cycle's.
+            partial = _cycle_result(
+                context,
+                perception=perception,
+                observation=observation,
+                memory=memory,
+                proposal=proposal,
+                plan=plan,
+                action=action,
+                control=AutonomyControl(confidence=1.0, reason=self.idle_reason),
+                started_at_ms=started_at_ms,
+                durations=durations,
+                started=started,
+                steps=steps,
+            )
+            try:
+                exc.cycle_result = partial
+            except Exception:
+                pass
+            raise
         control = (
             action.control
             if action is not None
             else AutonomyControl(confidence=1.0, reason=self.idle_reason)
         )
-        return DecisionCycleResult(
-            context=context,
+        return _cycle_result(
+            context,
             perception=perception,
             observation=observation,
             memory=memory,
@@ -212,19 +224,61 @@ class DecisionCycle:
             action=action,
             control=control,
             started_at_ms=started_at_ms,
-            completed_at_ms=timestamp_ms(),
-            timing=cycle_timing(elapsed_ms(started), durations, steps),
+            durations=durations,
+            started=started,
+            steps=steps,
         )
 
 
+def _cycle_result(
+    context: DecisionFrameContext,
+    *,
+    perception: PerceptionText | None,
+    observation: Observation | None,
+    memory: dict[str, Any] | None,
+    proposal: ProposalResult | None,
+    plan: ActionPlan | None,
+    action: ActionResult | None,
+    control: AutonomyControl,
+    started_at_ms: int,
+    durations: dict[str, float | None],
+    started: float,
+    steps: DecisionSteps,
+) -> DecisionCycleResult:
+    return DecisionCycleResult(
+        context=context,
+        perception=perception,
+        observation=observation,
+        memory=memory,
+        proposal=proposal,
+        plan=plan,
+        action=action,
+        control=control,
+        started_at_ms=started_at_ms,
+        completed_at_ms=timestamp_ms(),
+        timing=cycle_timing(elapsed_ms(started), durations, steps),
+    )
+
+
+def cycle_result_of(exc: BaseException) -> DecisionCycleResult | None:
+    """The partial result a raised cycle attached, or None when it attached none."""
+
+    result = getattr(exc, "cycle_result", None)
+    return result if isinstance(result, DecisionCycleResult) else None
+
+
 def _run_memory_step(
-    durations: dict[str, float], run: MemoryStep | None, context: DecisionFrameContext,
+    durations: dict[str, float | None], run: MemoryStep | None, context: DecisionFrameContext,
 ) -> dict[str, Any] | None:
     """Run memory, translating failures at the cycle boundary for any callable."""
 
+    if not run:
+        return None
+    durations["memory"] = None
+    started = clock()
     try:
         # Memory plugins write the host map; the step returns a report.
-        memory = _timed(durations, "memory", run, context)
+        memory = run(context)
         if memory is not None and not isinstance(memory, dict):
             raise TypeError("memory step must return a report dict or None")
     except MemoryUpdateError:
@@ -235,44 +289,40 @@ def _run_memory_step(
         except Exception:
             detail = "unprintable error"
         raise MemoryUpdateError(f"{type(exc).__name__}: {detail}") from exc
+    durations["memory"] = elapsed_ms(started)
     return memory
 
 
-def _timed(durations: dict[str, float], step: str, run: Any, *args: Any) -> Any:
-    """``run(*args)``, its duration kept in ``durations[step]``; ``None`` for an empty slot."""
+def _completed(durations: dict[str, float | None], step: str, run: Any, *args: Any, expected: type) -> Any:
+    """``run(*args)`` once it returns a usable record. A raise leaves the duration None."""
 
     if not run:
         return None
+    durations[step] = None
     started = clock()
     record = run(*args)
+    if record is not None and not isinstance(record, expected):
+        raise TypeError(f"{step} step must return {expected.__name__} or None")
     durations[step] = elapsed_ms(started)
     return record
 
 
-def _checked(step: str, record: Any, record_type: type) -> Any:
-    if record is not None and not isinstance(record, record_type):
-        raise TypeError(f"{step} step must return {record_type.__name__} or None")
-    return record
-
-
-CYCLE_RECORD_KEYS = ("observation", "memory", "proposal", "plan", "action")
+CYCLE_RECORD_KEYS = (
+    "perception", "observation", "memory", "proposal", "plan", "action",
+)
 
 
 def export_cycle_body(result: Any) -> dict[str, Any]:
-    """The five cycle records on any completed result, each detached.
+    """The six cycle records on any completed result, each detached.
 
     Reports and recordings share this body. Each keeps its own identity,
-    timing, perception, and delivery fields beside it.
+    timing, and delivery fields beside it.
     """
 
     return {
         key: _to_plain_data(getattr(result, key, None))
         for key in CYCLE_RECORD_KEYS
     }
-
-
-def _record(value: Any) -> Any:
-    return value.to_dict() if value is not None else None
 
 
 def _to_plain_data(value: Any) -> Any:

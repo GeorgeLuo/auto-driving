@@ -166,7 +166,9 @@ class ChaseRuntimeHost:
 
     def __init__(self, *, car: Any, runtime_dir: Path, host_name: str, port: int = 0,
                  on_restart: Callable[[], None] | None = None) -> None:
-        host, options = staged_runtime(runtime_dir, lambda steps: create_host(car, steps=steps))
+        host, options = staged_runtime(
+            runtime_dir, lambda steps: create_host(car, steps=steps), host_name=host_name,
+        )
         self.loop = ChaseFrameLoop(
             host=host, car=car, host_name=host_name, **options,
         )

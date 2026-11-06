@@ -41,8 +41,9 @@ from ..replay.models import (
 from ..replay.selections import (
     default_selection,
     recorded_runner,
+    recorded_release,
+    replace_replay_pipeline,
     resolve_replay_activations,
-    restage_replay_steps,
 )
 from ..replay.source import (
     WORKBENCH_DEFAULT_MAX_FRAMES,
@@ -576,25 +577,29 @@ class ImageReplayRunner:
                 )
             refresh = False
             if normalized != self._activations[step].plugins:
-                activation = catalog.activation(normalized)
-                previous = self._activations[step]
-                # Keep the definitions/configs of retained plugins, including
-                # recorded selections and uploaded source revisions.
-                retained = set(previous.plugins) & set(normalized)
-                activation = replace(
-                    activation,
-                    plugin_specs={**activation.plugin_specs, **{
-                        key: previous.plugin_specs[key] for key in retained
-                        if key in previous.plugin_specs
-                    }},
-                    plugin_configs={**activation.plugin_configs, **{
-                        key: previous.plugin_configs.get(key, {}) for key in retained
-                    }},
-                )
+                activation = self._merged_selection(catalog, normalized)
                 try:
                     if active_phase:
-                        self._apply_selection_locked(step, activation)
-                        refresh = self._state["phase"] == "paused" and self._frame_checkpoint is not None
+                        runners, activations, changed = replace_replay_pipeline(
+                            self._steps, self._replay_activations, {step: activation},
+                            overrides=set(self._replay_activations) - {step},
+                            build=self._runner_for,
+                        )
+                        if changed:
+                            self._steps = runners
+                            self._replay_activations = activations
+                            self._shared_memory = {}
+                            memory = runners.get("memory")
+                            self._frame_checkpoint = {
+                                "memory": {},
+                                "publisher": (
+                                    memory.evidence_publisher if isinstance(memory, MemoryRunner) else None
+                                ),
+                            }
+                            refresh = (
+                                self._state["phase"] == "paused"
+                                and self._state["latest_processed_position"] is not None
+                            )
                     self._activations[step] = activation
                 except Exception as exc:
                     message = str(exc)
@@ -613,8 +618,7 @@ class ImageReplayRunner:
             generation = self._generation
             if refresh:
                 frame = self._image_source.frames[self._state["latest_processed_position"]]
-                self._restore_frame_checkpoint()
-                self._history.pop(frame.frame_id)
+                self._history.pop(frame.frame_id, None)
                 self._state["position"] = frame.position
         if refresh:
             self._process_one(run_id, generation, frame, allow_paused=True, refresh=True)
@@ -624,42 +628,43 @@ class ImageReplayRunner:
         frame = self._state.get("current_frame")
         return frame is None or frame["position"] == self._state["latest_processed_position"]
 
-    def _apply_selection_locked(self, step: str, activation: StepActivation) -> None:
-        """Commit a live selection without resetting retained plugin state."""
-        runner = self._steps.get(step)
-        checkpoint = copy.deepcopy(self._frame_checkpoint)
-        # Staged runners forward this protocol inside their bundle context.
-        if getattr(runner, "plugin_manager", None) is not None:
-            manager = runner.plugin_manager
-            previous = manager.selected
-            retained = {definition.plugin_id: definition for definition, _ in runner.applied}
-            definitions = activation.plugin_manager().selected
-            definitions = tuple(retained.get(item.plugin_id, item) for item in definitions)
-            try:
-                manager.select(definitions)
-                runner.prepare_selection()
-                # Also clear removed state from the pre-frame checkpoint so a
-                # later paused refresh cannot resurrect a deselected plugin.
-                if checkpoint is not None:
-                    for definition, plugin in runner.applied:
-                        if definition not in definitions:
-                            runner._reset_plugin(plugin, checkpoint["memory"])
-                runner.commit_selection(self._shared_memory)
-                runner.adopt_activation(activation)
-            except Exception:
-                runner.discard_selection()
-                manager.select(previous)
-                raise
-        else:
-            # A recording can have no runner for a selectable step.
-            replacement = self._catalogs[step].build(activation)
-            if runner is not None:
-                if checkpoint is not None:
-                    runner.reset(checkpoint["memory"])
-                runner.reset(self._shared_memory)
-            self._steps[step] = replacement
-        self._frame_checkpoint = checkpoint
-        self._replay_activations[step] = activation
+    def _merged_selection(self, catalog: Any, normalized: tuple[str, ...]) -> StepActivation:
+        """Catalog definitions for new ids; retained ids keep their specs and configs."""
+
+        activation = catalog.activation(normalized)
+        previous = self._activations[catalog.step]
+        retained = set(previous.plugins) & set(normalized)
+        metadata = {**previous.metadata, "preset": activation.metadata.get("preset")}
+        revisions = metadata.get("plugin_revisions")
+        if isinstance(revisions, dict):
+            kept = {
+                key: value for key, value in revisions.items()
+                if key in retained and isinstance(value, str) and value
+            }
+            if kept:
+                metadata["plugin_revisions"] = kept
+            else:
+                metadata.pop("plugin_revisions", None)
+        return replace(
+            activation,
+            plugin_specs={**activation.plugin_specs, **{
+                key: previous.plugin_specs[key] for key in retained if key in previous.plugin_specs
+            }},
+            plugin_configs={**activation.plugin_configs, **{
+                key: dict(previous.plugin_configs.get(key, {})) for key in retained
+            }},
+            metadata=metadata,
+        )
+
+    def _runner_for(self, step: str, activation: StepActivation) -> Any:
+        """A fresh runner for ``step``. Test factories stay in their bundle-free hook."""
+
+        factory = self.step_factories.get(step)
+        if factory is not None:
+            return factory()
+        if step in self._catalogs and recorded_release(activation) is None:
+            return self._catalogs[step].build(activation)
+        return recorded_runner(activation)
 
     def _restore_frame_checkpoint(self) -> None:
         checkpoint = self._frame_checkpoint
@@ -721,18 +726,10 @@ class ImageReplayRunner:
             recorded, defaults=defaults,
             overrides={step: self._activations[step] for step in self._selection_overrides},
         )
-        steps = {}
-        for step, activation in activations.items():
-            factory = self.step_factories.get(step)
-            if factory is not None:
-                steps[step] = factory()
-            elif step in WORKBENCH_SELECTABLE_STEPS and (
-                step not in recorded or step in self._selection_overrides
-            ):
-                # A local selection may carry staging metadata without its bundle.
-                steps[step] = self._catalogs[step].build(activation)
-            else:
-                steps[step] = recorded_runner(activation) if activation is not None else None
+        steps = {
+            step: self._runner_for(step, activation) if activation is not None else None
+            for step, activation in activations.items()
+        }
         self._replay_activations = activations
         for step, activation in activations.items():
             self._store_recorded_activation(step, activation)
@@ -990,12 +987,26 @@ class ImageReplayRunner:
                 steps = self._steps
             try:
                 with self._condition:
-                    changed = restage_replay_steps(
-                        steps, self._replay_activations, recorded_selections(frame.metadata),
-                        overrides=self._selection_overrides, shared_memory=self._shared_memory,
-                    )
-                    for step in changed:
-                        self._store_recorded_activation(step, self._replay_activations[step])
+                    try:
+                        runners, activations, changed = replace_replay_pipeline(
+                            steps, self._replay_activations, recorded_selections(frame.metadata),
+                            overrides=self._selection_overrides, build=self._runner_for,
+                        )
+                    except Exception as exc:
+                        self._set_failure_locked(
+                            boundary="pipeline", message=f"Frame {frame.frame_id}: {type(exc).__name__}: {exc}",
+                            recovery_action="start", cleanup=False,
+                        )
+                        self._condition.notify_all()
+                        return False
+                    if changed:
+                        self._steps = runners
+                        steps = runners
+                        self._replay_activations = activations
+                        self._shared_memory = {}
+                        for name, activation in activations.items():
+                            if name not in self._selection_overrides:
+                                self._store_recorded_activation(name, activation)
                     self._apply_plugin_configuration_locked()
                     if not refresh:
                         memory = steps.get("memory")
@@ -1091,6 +1102,7 @@ class ImageReplayRunner:
         boundary: str,
         message: str,
         recovery_action: str,
+        cleanup: bool = True,
     ) -> None:
         self._state["phase"] = "failed"
         self._state["failure"] = {
@@ -1099,7 +1111,8 @@ class ImageReplayRunner:
         }
         self._state["failure_boundary"] = str(boundary)
         self._state["recovery_action"] = recovery_action
-        self._state["cleanup"] = self._cleanup_locked()
+        if cleanup:
+            self._state["cleanup"] = self._cleanup_locked()
         self._state["controls"] = self._controls()
 
     def _cleanup_locked(self) -> dict[str, Any]:

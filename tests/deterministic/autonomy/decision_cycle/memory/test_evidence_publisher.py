@@ -9,9 +9,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.plugins import PluginManager
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import (
-    RECORDING_SPEC,
     _RecordingMemory,
 )
 
@@ -173,24 +171,6 @@ class EvidencePublisherTests(unittest.TestCase):
         shared.pop(EVIDENCE_KEY)
         self.assertIsNone(runner.report()["evidence_publisher"])
 
-    def test_the_publisher_leaving_the_selection_clears_it(self) -> None:
-        manager = PluginManager.from_specs(
-            "memory",
-            {"recording_test": RECORDING_SPEC, "evidence": EVIDENCE_SPEC},
-            {"evidence": {"plugin_id": "evidence"}},
-        )
-        manager.select(("recording_test", "evidence"))
-        runner = MemoryRunner(manager)
-        shared: dict = {}
-        self.assertEqual(_update(runner, shared)["evidence_publisher"], "evidence")
-
-        manager.select(("recording_test",))
-        runner.apply_selection(shared)
-        report = _update(runner, shared, "f2")
-
-        self.assertEqual([entry["plugin_id"] for entry in report["plugins"]], ["recording_test"])
-        self.assertIn(EVIDENCE_KEY, shared)
-        self.assertIsNone(report["evidence_publisher"])
 
 
 if __name__ == "__main__":

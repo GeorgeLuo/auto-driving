@@ -7,6 +7,8 @@ from pathlib import Path
 
 from cli.automa_cli.hosts.runs.service import run_host_automation
 from cli.automa_cli.releases.paths import controller_bundle_paths
+from dataclasses import replace
+
 from cli.automa_cli.hosts.step_activations import replace_metadata
 from autonomy.decision_cycle.activation import read_step_activation, write_step_activation
 from implementations.decision_cycle.catalog import packaged_activation
@@ -28,20 +30,12 @@ def edit_staged_selection(path, plugin_id, enabled):
     """Add or remove one plugin in the staged activation, as an operator edit would."""
 
     activation = read_step_activation(path, "memory")
-    manager = activation.plugin_manager()
-    available = sorted(manager.available_ids)
+    plugins = [item for item in activation.plugins if item != plugin_id]
     if enabled:
-        manager.add(plugin_id)
-    else:
-        manager.remove(plugin_id)
-    candidate = type(activation)(
-        step="memory",
-        plugins=tuple(manager.selected_ids),
-        plugin_specs=activation.plugin_specs,
-        plugin_configs=activation.plugin_configs,
-    )
+        plugins.append(plugin_id)
+    candidate = replace(activation, plugins=tuple(plugins))
     write_step_activation(path, replace_metadata(candidate, dict(activation.metadata)))
-    return available
+    return sorted(activation.plugin_specs)
 
 
 class AutomationMemorySelectionTests(unittest.TestCase):
@@ -93,14 +87,15 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 edits, [["bounded_evidence", "second"]] * 4
             )
             self.assertEqual(
-                steps[0].status()["available_plugins"],
+                list(steps[0].activation.plugin_specs),
                 ["bounded_evidence", "second"],
             )
             self.assertEqual(applied, [
                 ("bounded_evidence",), ("bounded_evidence", "second"), ("second",), (), ("bounded_evidence",),
             ])
             self.assertEqual(outputs, ["bounded_evidence", "second", "second", None, "bounded_evidence"])
-            self.assertEqual(len(steps), 1)
+            self.assertEqual(len(steps), 5)
+            self.assertEqual(len({id(step) for step in steps}), 5)
             state = json.loads((Path(bundle["runtime_dir"]) / "automation/state.json").read_text())
             self.assertEqual(state["processed_count"], 5)
             self.assertEqual(state["selections"]["memory"]["status"]["plugin_ids"], ["bounded_evidence"])

@@ -96,7 +96,7 @@ def _run_status(host: dict[str, Any], read: dict[str, Any] | None) -> dict[str, 
         run, applied = _worker_run(automation_dir, process, state, selections, pid=pid, state_pid=state_pid,
                                    alive=alive)
     try:
-        decision = applied or decision_identity(bundle)
+        decision = applied or decision_identity(bundle, host_name=name)
     except (OSError, TypeError, ValueError):
         decision = None  # Its activation problem says why.
     try:

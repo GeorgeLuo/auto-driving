@@ -1,21 +1,14 @@
 """The shared shape of a step runner.
 
-A runner is the callable a ``DecisionSteps`` slot holds. It owns one step's
-``PluginManager``, loads the manager's selection through ``instantiate_plugin``,
-checks each instance against the step's plugin protocol, and runs the applied
-plugins when the cycle calls it. Every runner can be built from a
-``StepActivation`` and exposes the same selection and report surface:
-``plugins``, the applied plugins by selected plugin ID in selection order, and
-their ``plugin_ids``;
-``prepare_selection``/``commit_selection``/``discard_selection`` and
-``apply_selection`` to change the selection between cycles. These are the only
-way a changed manager selection takes effect: a step call runs the applied
-plugins and never applies a selection itself, so a running host's
-``_adopt_selection`` is the one place that decides what a failed change does;
-``plugin_report``, ``status`` and ``plugin_timing`` for diagnostics; and
-``reset(shared_memory)`` to start a new epoch. ``reset`` resets every applied
-plugin with the host map, and a plugin whose reset raises follows the step's
-``FAILURE_POLICY.reset``, or propagates in a step that declares none.
+A runner is the callable a ``DecisionSteps`` slot holds. It is constructed
+from one ordered sequence of plugin definitions, loads those definitions
+through ``instantiate_plugin``, checks each instance against the step's plugin
+protocol, and keeps that applied tuple. A step call runs those plugins. It
+does not take a new selection. A different selection is a new runner.
+``plugin_report``, ``status`` and ``plugin_timing`` are the diagnostics, and
+``reset(shared_memory)`` clears the applied plugins' history. A plugin whose
+reset raises follows the step's ``FAILURE_POLICY.reset``, or propagates in a
+step that declares none.
 Memory's ``reset`` also returns the keys its plugins wrote, for a host that
 clears its map at a reset to restore.
 
@@ -30,19 +23,19 @@ through the hooks ``StepRunner`` names, not by reimplementing the surface.
 from __future__ import annotations
 
 import inspect
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from threading import RLock
 from typing import Any, ClassVar, Generic, TypeVar
 
-from autonomy.decision_cycle.activation import StepActivation, activation_presets, require_step
+from autonomy.decision_cycle.activation import (
+    StepActivation, activation_presets, require_step, selected_definitions,
+)
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import (
     PluginDefinition,
-    PluginManager,
-    PluginSelectionRuntime,
     instantiate_plugin,
     plugin_report as build_plugin_report,
     require_plugin_id,
@@ -87,14 +80,6 @@ class FailurePolicy:
                 raise ValueError(f"failure policy {name} must be one of {allowed}; got {value!r}")
 
 
-def require_step_manager(plugin_manager: object, step: str) -> PluginManager:
-    if not isinstance(plugin_manager, PluginManager):
-        raise TypeError("plugin_manager must be a PluginManager")
-    if plugin_manager.step != step:
-        raise ValueError(f"plugin_manager is scoped to {plugin_manager.step!r}, not {step!r}")
-    return plugin_manager
-
-
 def require_step_activation(activation: object, step: str) -> StepActivation:
     if not isinstance(activation, StepActivation):
         raise TypeError("activation must be a StepActivation")
@@ -113,9 +98,7 @@ class StepRunner(Generic[PluginT]):
 
     - ``load_plugin`` and ``validate_plugin``: what one selected plugin loads as.
     - ``validate_selection``: whether the loaded selection can run together.
-    - ``_prepare_selection``, ``_commit_selection`` and ``_discard_selection``:
-      state the step publishes with its plugins. They run under the lock the
-      public selection methods take.
+      It runs once, during construction, before the runner is published.
     - ``_reset_plugin``: how one plugin resets.
     - ``_record_plugin``: one plugin's duration and error, measured with
       ``timing.clock`` where the step invokes it. ``_timed_single`` times a
@@ -126,7 +109,7 @@ class StepRunner(Generic[PluginT]):
     - ``status``: extend ``super().status()`` with the step's own fields.
 
     A subclass sets the state its hooks read before calling
-    ``super().__init__``, which applies the manager's selection.
+    ``super().__init__``, which loads the definitions.
     """
 
     step: ClassVar[str]
@@ -134,51 +117,64 @@ class StepRunner(Generic[PluginT]):
 
     def __init__(
         self,
-        plugin_manager: PluginManager,
+        definitions: Sequence[PluginDefinition],
         *,
+        activation: StepActivation | None = None,
         provided: Mapping[str, PluginT] | None = None,
     ) -> None:
         require_step(self.step)
-        self.plugin_manager = require_step_manager(plugin_manager, self.step)
-        self.activation: StepActivation | None = None
+        if isinstance(definitions, (str, bytes)) or not isinstance(definitions, Sequence):
+            raise TypeError("definitions must be an ordered sequence of PluginDefinition")
+        self.activation = activation
         self._provided = dict(provided or {})
-        self._selection_runtime: PluginSelectionRuntime[PluginT] = PluginSelectionRuntime(
-            plugin_manager
-        )
         self._runtime_lock = RLock()
         self.last_error: str | None = None
         self.run_count = 0
         self.failure_count = 0
         self._plugin_runs: dict[str, dict[str, Any]] = {}
-        self.apply_selection()
+        loaded: list[tuple[PluginDefinition, PluginT]] = []
+        seen: set[str] = set()
+        for definition in definitions:
+            if not isinstance(definition, PluginDefinition):
+                raise TypeError("definitions must be PluginDefinition values")
+            if definition.step != self.step:
+                raise ValueError(
+                    f"plugin {definition.plugin_id!r} belongs to {definition.step!r}, not {self.step!r}"
+                )
+            if definition.plugin_id in seen:
+                raise ValueError(f"{self.step} plugins must be unique")
+            seen.add(definition.plugin_id)
+            loaded.append((definition, self.load_plugin(definition)))
+        self.validate_selection(tuple(plugin for _definition, plugin in loaded))
+        self._applied = tuple(loaded)
 
     @classmethod
     def from_activation(cls, activation: StepActivation):
-        runner = cls(require_step_activation(activation, cls.step).plugin_manager())
-        runner.activation = activation
-        return runner
+        activation = require_step_activation(activation, cls.step)
+        return cls(selected_definitions(activation), activation=activation)
 
     @classmethod
     def from_plugins(cls, plugins: Mapping[str, PluginT]):
         """Run already constructed plugins, selected in the mapping's order.
 
-        For hosts and tools that build plugin instances themselves; the
-        instances are validated like loaded ones.
+        For hosts and tools that build plugin instances themselves. This runner
+        cannot be rebuilt from an activation. A pipeline replacement does not
+        keep it.
         """
 
         if not isinstance(plugins, Mapping):
             raise TypeError("plugins must map plugin IDs to plugin instances")
-        manager = PluginManager.from_specs(
-            cls.step, {plugin_id: f"{PROVIDED_ENTRYPOINT}:{plugin_id}" for plugin_id in plugins}
+        definitions = tuple(
+            PluginDefinition(cls.step, plugin_id, f"{PROVIDED_ENTRYPOINT}:{plugin_id}")
+            for plugin_id in plugins
         )
-        manager.select(tuple(plugins))
-        return cls(manager, provided=plugins)
+        return cls(definitions, provided=plugins)
 
     # Selection -------------------------------------------------------------
 
     @property
     def applied(self) -> tuple[tuple[PluginDefinition, PluginT], ...]:
-        return self._selection_runtime.applied
+        return self._applied
 
     @property
     def plugin_ids(self) -> tuple[str, ...]:
@@ -203,60 +199,12 @@ class StepRunner(Generic[PluginT]):
         """Raise ``TypeError`` when ``plugin`` does not satisfy the step protocol."""
 
     def validate_selection(self, plugins: tuple[PluginT, ...]) -> None:
-        """Raise when a changed selection's loaded plugins cannot run together."""
+        """Raise when the loaded plugins cannot run together."""
 
         if self.single_plugin and len(plugins) != 1:
             raise ValueError(
                 f"the {self.step} step runs exactly one plugin; {len(plugins)} selected"
             )
-
-    def prepare_selection(self) -> None:
-        """Load and validate the manager's selection without publishing it."""
-
-        with self._runtime_lock:
-            self._prepare_selection()
-
-    @property
-    def selection_prepared(self) -> bool:
-        """Whether the manager's selection is loaded and waiting to be committed."""
-
-        with self._runtime_lock:
-            return self._selection_runtime.prepared
-
-    def commit_selection(self, shared_memory: SharedMemory | None = None) -> None:
-        """Reset removed plugins and publish the prepared selection."""
-
-        with self._runtime_lock:
-            self._commit_selection(shared_memory)
-
-    def discard_selection(self) -> None:
-        """Drop a prepared selection without resetting published plugins."""
-
-        with self._runtime_lock:
-            self._discard_selection()
-
-    def apply_selection(self, shared_memory: SharedMemory | None = None) -> None:
-        """Prepare and commit the manager's selection; a failure raises."""
-
-        with self._runtime_lock:
-            self._prepare_selection()
-            self._commit_selection(shared_memory)
-
-    def adopt_activation(self, activation: StepActivation) -> None:
-        """Record a staged document only after its definitions have applied."""
-
-        self.activation = require_step_activation(activation, self.step)
-
-    def _prepare_selection(self) -> None:
-        self._selection_runtime.prepare(load=self.load_plugin, validate=self.validate_selection)
-
-    def _commit_selection(self, shared_memory: SharedMemory | None = None) -> None:
-        self._selection_runtime.commit(
-            reset=lambda plugin: self._reset_plugin(plugin, shared_memory)
-        )
-
-    def _discard_selection(self) -> None:
-        self._selection_runtime.discard()
 
     def reset(self, shared_memory: SharedMemory | None = None) -> None:
         with self._runtime_lock:
@@ -271,10 +219,10 @@ class StepRunner(Generic[PluginT]):
     # Reports ---------------------------------------------------------------
 
     def plugin_report(self) -> dict[str, Any]:
-        """Report catalog, requested selection, and each applied plugin's record."""
+        """Report each fixed applied plugin and its execution record."""
 
         with self._runtime_lock:
-            return build_plugin_report(self.plugin_manager, self.applied, self._plugin_records())
+            return build_plugin_report(self.applied, self._plugin_records())
 
     def plugin_timing(self) -> list[dict[str, Any]]:
         """Each applied plugin's duration and error from the last step call.
@@ -332,8 +280,7 @@ class StepRunner(Generic[PluginT]):
                     else None
                 ),
                 "preset": activation_presets({self.step: self.activation}).get(self.step),
-                "available_plugins": sorted(self.plugin_manager.available_ids),
-                "selected_plugin_ids": list(self.plugin_manager.selected_ids),
+                "selected_plugin_ids": list(self.plugin_ids),
                 "plugin_ids": list(self.plugin_ids),
                 # What each applied plugin runs with; a restaged config waits for a restart.
                 "plugin_configs": {

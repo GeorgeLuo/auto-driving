@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
+from autonomy.decision_cycle.activation import STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
 
 from ...releases.paths import controller_bundle_paths, host_dir
@@ -31,7 +31,7 @@ from ..bundles import (
 from ..step_activations import (
     CONTROLLER_BUNDLE_KEYS,
     bundle_activation_path,
-    decision_generation_id,
+    decision_identity,
     ensure_step_activations,
     read_bundle_activation,
     startup_activations,
@@ -323,9 +323,7 @@ def deploy_picar_release(
             return UpdateResult(code, "error", f"Restart failed with exit code {code}.")
 
     deployed_steps = {step: list(activation.plugins) for step, activation in activations.items()}
-    generation_id = decision_generation_id(
-        {step: activations.get(step) for step in DECISION_STEPS}
-    )
+    generation_id = decision_identity(bundle, host_name=host_name)["generation_id"]
     if restart:
         try:
             runtime_verification = _verify_picar_autonomy_runtime(

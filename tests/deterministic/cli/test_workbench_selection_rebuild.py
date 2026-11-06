@@ -27,7 +27,7 @@ class LiveSelectionTests(unittest.TestCase):
     def select(self, runner, run_id, plugins, step="perception"):
         return runner.dispatch("select_plugins", run_id=run_id, step=step, active_plugin_ids=plugins)
 
-    def test_bundled_selection_keeps_retained_instances_and_loads_additions_in_bundle(self):
+    def test_bundled_selection_reconstructs_every_step_and_loads_additions_in_bundle(self):
         with tempfile.TemporaryDirectory() as directory, image_source(3) as root:
             bundle = controller_bundle_paths(Path(directory) / "vehicle")
             sync_controller_bundle(bundle, emit=None)
@@ -59,20 +59,21 @@ class LiveSelectionTests(unittest.TestCase):
             self.assertIsInstance(step, StagedStep)
             plugin = step.plugins["frame"]
             self.select(runner, run_id, ["frame", "floor_plane"])
-            self.assertIs(runner._steps["perception"], step)
-            self.assertIs(step.plugins["frame"], plugin)
+            self.assertIsNot(runner._steps["perception"], step)
+            self.assertIsNot(runner._steps["perception"].plugins["frame"], plugin)
+            step = runner._steps["perception"]
             self.assertEqual(plugin.reset_count, 0)
             self.assertEqual(step.plugin_ids, ("frame", "floor_plane"))
             self.assertTrue(Path(step.plugins["floor_plane"].perceive.__code__.co_filename).is_relative_to(code))
-            # Removed plugins reset both maps inside the same bundle context.
+            # The discarded map and its checkpoint cannot restore old plugin state.
             runner._shared_memory["recorded.frame"] = True
             runner._frame_checkpoint["memory"]["recorded.frame"] = True
             self.select(runner, run_id, ["floor_plane"])
             self.assertNotIn("recorded.frame", runner._shared_memory)
             self.assertNotIn("recorded.frame", runner._frame_checkpoint["memory"])
-            self.assertEqual(plugin.reset_count, 2)
+            self.assertEqual(plugin.reset_count, 0)
 
-    def test_running_addition_keeps_history_instances_and_tuned_configs(self):
+    def test_running_addition_reconstructs_plugins_with_tuned_configs_and_empty_history(self):
         activation = selection_activation("perception", plugins=["motion_tracks"])
         activation = replace(activation, plugin_configs={"motion_tracks": {"max_features": 12}})
         with image_source(6) as root:
@@ -80,7 +81,7 @@ class LiveSelectionTests(unittest.TestCase):
             runner.dispatch("seek", run_id=run_id, position=3)
             step = runner._steps["perception"]
             plugin = step.plugins["motion_tracks"]
-            history = runner._shared_memory["perception.motion_tracks.history"]
+            self.assertIn("perception.motion_tracks.history", runner._shared_memory)
             memory = runner._steps["memory"]
             # Keep the worker asleep while exercising the running action boundary.
             with runner._action_lock:
@@ -89,10 +90,11 @@ class LiveSelectionTests(unittest.TestCase):
                     selected = self.select(runner, run_id, ["motion_tracks", "frame"])
                     frames.assert_not_called()
                 self.assertEqual(selected["position"], 4)
-                self.assertIs(step.plugins["motion_tracks"], plugin)
-                self.assertEqual(plugin.max_features, 12)
-                self.assertIs(runner._shared_memory["perception.motion_tracks.history"], history)
-                self.assertIs(runner._steps["memory"], memory)
+                self.assertIsNot(runner._steps["perception"], step)
+                self.assertIsNot(runner._steps["perception"].plugins["motion_tracks"], plugin)
+                self.assertEqual(runner._steps["perception"].plugins["motion_tracks"].max_features, 12)
+                self.assertEqual(runner._shared_memory, {})
+                self.assertIsNot(runner._steps["memory"], memory)
                 runner.dispatch("pause", run_id=run_id)
             next_frame = runner.dispatch("step", run_id=run_id)
             self.assertEqual([p["plugin_id"] for p in next_frame["perception"]["plugin_runs"]],
@@ -101,7 +103,7 @@ class LiveSelectionTests(unittest.TestCase):
     def test_paused_refresh_executes_only_latest_frame_without_advancing_memory_twice(self):
         with image_source(6) as root:
             runner, run_id = self.paused(root)
-            before = runner.dispatch("seek", run_id=run_id, position=3)
+            runner.dispatch("seek", run_id=run_id, position=3)
             prefix = [runner.dispatch("seek", run_id=run_id, position=index) for index in range(3)]
             runner.dispatch("seek", run_id=run_id, position=3)
             memory = runner._steps["memory"]
@@ -111,7 +113,7 @@ class LiveSelectionTests(unittest.TestCase):
                 self.assertEqual([c.args[0].position for c in frames.call_args_list], [3, 3])
                 self.select(runner, run_id, ["frame", "floor_plane"])
                 self.assertEqual(frames.call_count, 2)
-            self.assertIs(runner._steps["memory"], memory)
+            self.assertIsNot(runner._steps["memory"], memory)
             self.assertEqual(refreshed["phase"], "paused")
             self.assertEqual(refreshed["position"], 4)
             for index, earlier in enumerate(prefix):
@@ -121,7 +123,7 @@ class LiveSelectionTests(unittest.TestCase):
                 self.assertEqual(cached["machine_detail"]["pipeline"], earlier["machine_detail"]["pipeline"])
             self.assertEqual(refreshed["progress"]["completed"], 4)
             # Domain memory matches one execution of the frame with this selection.
-            self.assertEqual(refreshed["cycle"]["memory"], before["cycle"]["memory"])
+            self.assertEqual(runner._steps["memory"].update_count, 1)
             self.assertEqual(refreshed["cycle"]["memory"]["evidence_publisher"], "bounded_evidence")
 
     def test_new_motion_plugin_warms_up_and_reenabled_plugin_does_not_restore_old_history(self):

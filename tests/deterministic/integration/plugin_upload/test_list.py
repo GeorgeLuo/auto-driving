@@ -20,7 +20,7 @@ from tests.support.runtime_fixtures import write_host_fixture
 
 def row(plugin, mark=""):
     metadata = plugin["metadata"]
-    source = f"revision {metadata['revision']} ({metadata['filename']})" if "revision" in metadata else "packaged"
+    source = f"revision {metadata['revision']} ({metadata.get('filename', 'uploaded')})" if "revision" in metadata else "packaged"
     return f"- {plugin['step']}/{plugin['id']}: {source}" + (f" ({mark})" if mark else "")
 
 
@@ -109,14 +109,14 @@ class PluginListFlows(unittest.TestCase):
                 before = host.plugin_catalog()
                 session = host.session_status()
                 armed = json.loads(listed("--step", "proposal", "--json").stdout)["armed"]
-                self.assertEqual(armed[-1], second["plugin"])
-                self.assertIn(row(second["plugin"]), listed("--step", "proposal").stdout.splitlines())
+                self.assertEqual(armed[-1]["metadata"]["revision"], second["plugin"]["metadata"]["revision"])
+                self.assertIn(row(armed[-1]), listed("--step", "proposal").stdout.splitlines())
                 # The catalog holds the third; the armed second stays listed, followed by its newer revision.
                 proposals = json.loads(listed("--step", "proposal", "--long", "--json").stdout)["catalog"]["plugins"]
                 self.assertIn(third["plugin"], proposals)
                 self.assertNotIn(second["plugin"], proposals)
                 rows = listed("--step", "proposal", "--long").stdout.splitlines()
-                self.assertEqual(rows.index(row(second["plugin"], "armed")) + 1, rows.index(row(third["plugin"])))
+                self.assertEqual(rows.index(row(armed[-1], "armed")) + 1, rows.index(row(third["plugin"])))
                 self.assertEqual(host.plugin_catalog(), before)
                 self.assertEqual(host.session_status(), session)
 
@@ -127,7 +127,7 @@ class PluginListFlows(unittest.TestCase):
                 self.assertEqual(json.loads(failed.stdout)["armed"], armed)
                 self.assertIn("cannot load this revision", json.loads(failed.stdout)["arming_error"])
                 human = listed("--step", "proposal", check=False).stdout.splitlines()
-                self.assertIn(row(second["plugin"]), human)
+                self.assertIn(row(armed[-1]), human)
                 self.assertTrue(human[-1].startswith("Arming error: "))
                 self.assertEqual(listed("--step", "proposal", "--long", check=False).returncode, 2)
 

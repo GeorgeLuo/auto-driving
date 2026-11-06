@@ -42,6 +42,7 @@ class Arming:
     error: str | None
     requested: dict[str, list[Definition]]
     applied: dict[str, list[Definition]]
+    generation_id: str | None = None
 
 
 @dataclass(frozen=True)

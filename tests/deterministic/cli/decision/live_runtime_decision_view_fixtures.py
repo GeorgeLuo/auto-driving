@@ -49,7 +49,7 @@ class LiveRuntimeDecisionViewFixture:
         self.vehicle_runtime = self.runtime_root / "chase-sim-chaser"
         self.runtime_dir = self.vehicle_runtime / "bundle" / "runtime"
         self.automation_dir = self.runtime_dir / "automation"
-        self.activation = decision_identity(bundle_paths("chase-sim-chaser"))
+        self.activation = decision_identity(bundle_paths("chase-sim-chaser"), host_name="chase-sim-chaser")
         self.server = RuntimeViewServer(
             host_name="chase-sim-chaser",
             automation_dir=self.automation_dir,

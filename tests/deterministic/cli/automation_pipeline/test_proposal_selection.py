@@ -36,7 +36,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
             bundle = controller_bundle_paths(runtime_root / HOST_NAME)
             sync_controller_bundle(bundle, emit=None)
             _write_activations(bundle)
-            startup = decision_identity(bundle)["generation_id"]
+            startup = decision_identity(bundle, host_name=HOST_NAME)["generation_id"]
             applied = []
             servers = []
             calls = ExitStack()
@@ -45,26 +45,24 @@ class AutomationProposalSelectionTests(unittest.TestCase):
                 servers.append(runtime_view_server(**kwargs))
                 return servers[-1]
 
-            def wrap_proposal(step_name, step):
-                if step_name != "proposal":
-                    return
-                run = step.__call__
+            from autonomy.decision_cycle.proposal.runner import ProposalRunner
+            run = ProposalRunner.__call__
 
-                def run_with_cli_restage(runner, context):
-                    result = run(context)
-                    applied.append(runner.plugin_ids)
-                    if len(applied) == 1 and restaged is not None:
-                        stage_activation(bundle, restaged, host_name=HOST_NAME)
-                    return result
+            def run_with_cli_restage(runner, context):
+                result = run(runner, context)
+                applied.append(runner.plugin_ids)
+                if len(applied) == 1 and restaged is not None:
+                    stage_activation(bundle, restaged, host_name=HOST_NAME)
+                return result
 
-                calls.enter_context(patch.object(type(step), "__call__", run_with_cli_restage))
+            calls.enter_context(patch.object(ProposalRunner, "__call__", run_with_cli_restage))
 
             with (
                 calls,
                 patch("cli.automa_cli.hosts.runs.monitor.runtime_view_server", side_effect=record_server),
                 # Exercise the view projection without opening a socket.
                 patch.object(RuntimeViewServer, "start", lambda server: server),
-                staged_runners(perception=_SlowMapper(), wrap=wrap_proposal),
+                staged_runners(perception=_SlowMapper()),
                 chase_runtime(runtime_root),
             ):
                 if before_run is not None:
@@ -76,7 +74,7 @@ class AutomationProposalSelectionTests(unittest.TestCase):
             self.assertEqual(result.exit_code, 0, result.message)
             state = json.loads((Path(bundle["runtime_dir"]) / "automation" / "state.json").read_text())
             view = servers[0].decision.health_payload()
-            return startup, decision_identity(bundle), applied, state, view
+            return startup, decision_identity(bundle, host_name=HOST_NAME), applied, state, view
 
     def test_the_run_reports_the_decision_the_host_applied(self):
         cases = {
@@ -109,8 +107,6 @@ class AutomationProposalSelectionTests(unittest.TestCase):
         self.assertEqual(view["identity"]["producer_generation_id"], staged["generation_id"])
 
     def test_a_config_restage_keeps_the_startup_generation_until_a_restart(self):
-        # A failed reset now stops the cycle for every step; see
-        # test_shared_selection's one-rule test.
         startup, staged, applied, state, view = self.run_with_restage(packaged_activation(
             "proposal", config_overrides={"avoid_recent_obstruction": {"steer_magnitude": 0.5}}
         ))

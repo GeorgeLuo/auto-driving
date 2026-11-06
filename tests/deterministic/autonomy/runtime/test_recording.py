@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id, step_activation
+from autonomy.decision_cycle.activation import STEPS, activation_generation_id, step_activation
 from autonomy.runtime.recording import (
     RECORDING_MANIFEST_NAME,
     UPLOADED_SOURCES_DIR,
@@ -26,7 +26,7 @@ def _steps(spec: str) -> dict:
 
 
 def _generation(steps: dict) -> str:
-    return activation_generation_id({step: steps[step] for step in DECISION_STEPS}, prefix="decision")
+    return activation_generation_id({step: steps[step] for step in STEPS}, prefix="decision")
 
 
 class RecordedSourceTests(unittest.TestCase):

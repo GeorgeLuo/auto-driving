@@ -237,7 +237,11 @@ def _arming(value: Any) -> Arming:
             return {}
         return {step: plugins for step, plugins in steps.items() if isinstance(plugins, list)}
 
-    return Arming(value.get("request_id"), value.get("error"), by_step("requested"), by_step("applied"))
+    generation = value.get("generation_id")
+    return Arming(
+        value.get("request_id"), value.get("error"), by_step("requested"), by_step("applied"),
+        generation if isinstance(generation, str) and generation else None,
+    )
 
 
 def _failure(exc: Exception) -> Receipt:

@@ -7,8 +7,8 @@ process loads it at startup; ``plugins save`` stages what a running host has
 armed and marks it ``saved``. The CLI records who staged it (host, bundle,
 release, time) in the activation's ``metadata``. CLI hosts use its bundle
 path to load staged plugin code; the core step runners do not read it.
-The decision steps (proposal, plan, action) together identify a decision
-generation by the content of their activations.
+Every cycle step identifies the decision generation by its executable
+selection. Proposal, plan, and action remain the decision steps.
 """
 
 from __future__ import annotations
@@ -25,6 +25,7 @@ from autonomy.decision_cycle.activation import (
     StepActivation,
     activation_generation_id,
     activation_presets,
+    stamp_source,
     read_step_activation_if_present,
     step_activation_path,
     write_step_activation,
@@ -404,10 +405,23 @@ def decision_generation_id(activations: dict[str, StepActivation | None]) -> str
     return activation_generation_id(activations, prefix="decision")
 
 
-def decision_identity(bundle: dict[str, str]) -> dict[str, Any]:
-    """The staged decision steps and the generation they identify."""
+def decision_identity(bundle: dict[str, str], *, host_name: str) -> dict[str, Any]:
+    """The staged pipeline and the generation its cycle steps identify."""
 
-    activations = decision_activations(bundle)
+    activations = {
+        step: read_bundle_activation(bundle, step) or builtin_activation(step)
+        for step in STEPS
+    }
+    release = next((
+        item.metadata.get("controller_bundle", {}).get("release")
+        for item in activations.values() if item is not None
+        and isinstance(item.metadata.get("controller_bundle"), dict)
+        and isinstance(item.metadata["controller_bundle"].get("release"), dict)
+    ), None)
+    activations = {
+        step: stamp_source(item, host_name=host_name, release=release) if item is not None else None
+        for step, item in activations.items()
+    }
     return {
         "generation_id": decision_generation_id(activations),
         "steps": {

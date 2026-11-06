@@ -282,14 +282,15 @@ class CycleHostMemoryTests(unittest.TestCase):
             step = _memory_step(Path(tmp), extra_specs={"missing": "no_such_module:Nope"})
             host, proposal = _host(memory=step)
             applied = step.plugin_ids
-            step.plugin_manager.select(["missing"])
+            failed = host.arm({"memory": ["missing"]})
+            self.assertFalse(failed["ok"])
             host.run(DecisionFrameContext("frame_x", 0, 1))
-            self.assertEqual(step.plugin_ids, applied)
+            self.assertEqual(host.step("memory").plugin_ids, applied)
             self.assertIsNotNone(proposal.last_shared_memory)
             self.assertEqual(host.status()["error_count"], 0)
             selection = host.selection_status()
             self.assertEqual(selection["status"], "failed")
-            self.assertIn("no_such_module", selection["error"])
+            self.assertIn("cannot be reconstructed", selection["error"])
 
     def test_default_steps_idle_while_memory_updates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -380,7 +381,7 @@ class CycleHostStepTests(unittest.TestCase):
     def test_action_failure_holds_with_an_error_record_and_recovers(self) -> None:
         action = _FailOnceAction()
         host, _ = _host()
-        host.set_step("action", action_runner(action))
+        host = AutonomyCycleHost(steps=replace(host.steps, action=action_runner(action)))
 
         failed = host.run(DecisionFrameContext("frame_1", 1, 1))
         self.assertEqual(failed.action.status, "error")
@@ -488,7 +489,7 @@ class CycleHostArmingTests(unittest.TestCase):
         failed = host.arm({"proposal": ["broken"]})
 
         self.assertEqual((failed["ok"], failed["status"]), (False, "failed"))
-        self.assertRegex(failed["error"], r"^proposal: .*cannot construct")
+        self.assertRegex(failed["error"], r"proposal: .*cannot construct")
         result = host.run(DecisionFrameContext("frame_1", 0, 1_000))
         self.assertEqual([item.plugin_id for item in result.proposal.candidates], ["working"])
 
@@ -496,9 +497,9 @@ class CycleHostArmingTests(unittest.TestCase):
         loaded = packaged_activation("proposal")
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "active.json"
-            self.assertIsNone(sync_live_selection(None, path, loaded))
+            self.assertIsNone(sync_live_selection(path, loaded))
             path.write_text('{"schema": ', encoding="utf-8")
-            self.assertIsNone(sync_live_selection(None, path, loaded))
+            self.assertIsNone(sync_live_selection(path, loaded))
 
 
 if __name__ == "__main__":

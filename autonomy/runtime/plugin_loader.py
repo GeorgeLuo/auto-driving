@@ -9,11 +9,12 @@ do not edit ``sys.modules``.
 
 from __future__ import annotations
 
+import json
 import sys
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -98,10 +99,6 @@ class StagedStep:
     def activation(self) -> StepActivation:
         return self.runner.activation
 
-    @activation.setter
-    def activation(self, activation: StepActivation) -> None:
-        self.runner.activation = activation
-
     def __getattr__(self, name: str) -> Any:
         value = getattr(self.runner, name)
         if not callable(value):
@@ -134,14 +131,33 @@ def load_runner(activation: StepActivation, *, source: CodeSource | None = None)
     source = code_source_from_activation(activation) if source is None else source
     from autonomy.decision_cycle.steps import step_runner
 
+    metadata = dict(activation.metadata)
+    bundle = dict(metadata.get("controller_bundle") or {})
+    if source.bundle_root is None:
+        # An installed host must not reconstruct from a staging machine's path or release.
+        from autonomy.runtime.recording import INSTALLED_RELEASE
+        bundle.pop("root_dir", None)
+        bundle.pop("release", None)
+        release = INSTALLED_RELEASE
+    else:
+        bundle["root_dir"] = str(source.bundle_root)
+        try:
+            release = json.loads((source.bundle_root / "bundle-manifest.json").read_text())
+        except (OSError, ValueError):
+            release = bundle.get("release")
+    if isinstance(release, dict) and isinstance(release.get("tree_sha256"), str):
+        bundle["release"] = {key: release[key] for key in ("tree_sha256", "created_at_ms") if key in release}
+    if bundle:
+        metadata["controller_bundle"] = bundle
+    else:
+        metadata.pop("controller_bundle", None)
+    activation = replace(activation, metadata=metadata)
     if source.bundle_root is None:
         runner = step_runner(activation)
-        runner.activation = activation
         return runner
     if not source.bundle_root.is_dir():
         raise FileNotFoundError(f"Controller bundle is missing: {source.bundle_root}")
     import_context = StagedBundleImport(source.bundle_root, source.prefixes)
     with import_context.activate():
         runner = step_runner(activation)
-        runner.activation = activation
     return StagedStep(runner, import_context)

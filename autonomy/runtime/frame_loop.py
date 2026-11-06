@@ -21,6 +21,7 @@ from typing import Any, Callable
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.activation import (
     DECISION_STEPS,
+    STEPS,
     activation_generation_id,
     activation_presets,
 )
@@ -665,10 +666,14 @@ class FrameLoop:
         perception = cycle.get("perception")
         timing = cycle.get("timing")
         context = latest.context or cycle.get("context") or {}
-        selections = (context.get("metadata") or {}).get("step_activations")
-        if isinstance(selections, dict) and all(step in selections for step in DECISION_STEPS):
+        metadata = context.get("metadata") or {}
+        selections = metadata.get("step_activations")
+        stored = metadata.get("generation_id")
+        if isinstance(stored, str) and stored:
+            generation_id = stored
+        elif isinstance(selections, dict) and set(STEPS) <= set(selections):
             generation_id = activation_generation_id(
-                {step: selections[step] for step in DECISION_STEPS}, prefix="decision",
+                {step: selections[step] for step in STEPS}, prefix="decision",
             )
         else:
             generation_id = None
@@ -718,7 +723,7 @@ class FrameLoop:
             require_ascii_id(self.source_id, field_name="source_id")
             if self.decision_activations is None:
                 return "decision_activations_missing"
-            if set(self.decision_activations) != set(DECISION_STEPS):
+            if set(self.decision_activations) != set(STEPS):
                 return "decision_activations_invalid"
             if self.generation_id is None:
                 return "generation_id_missing"

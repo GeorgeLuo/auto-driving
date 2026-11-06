@@ -13,7 +13,7 @@ import os
 import shutil
 from typing import Any
 
-from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
+from autonomy.decision_cycle.activation import STEPS, activation_presets
 
 from ...providers.registry import PROVIDERS
 from ...providers.models import Candidate
@@ -31,7 +31,7 @@ from ..publications.host_publications import host_state
 from ..runs.service import stop_host_automation
 from ..staging import automation_dir, staged_host
 from ..step_activations import (
-    decision_generation_id,
+    decision_identity,
     ensure_step_activations,
     host_name_error,
     read_bundle_activation,
@@ -152,9 +152,7 @@ def _update_local_autonomy(
         "release": summary,
         "presets": activation_presets(activations),
         "steps": steps,
-        "generation_id": decision_generation_id(
-            {step: activations.get(step) for step in DECISION_STEPS}
-        ),
+        "generation_id": decision_identity(bundle, host_name=host_name)["generation_id"],
         "restarted": restarted,
     }, host_present=record is not None)
 

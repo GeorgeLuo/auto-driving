@@ -7,29 +7,26 @@ drivetrain. One substituted ``load_runner`` covers both.
 
 from __future__ import annotations
 
-import contextlib
 import inspect
 import sys
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import (
-    DECISION_STEPS,
-    activation_generation_id,
     step_activation,
     write_step_activation,
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
-from autonomy.decision_cycle.steps import builtin_activation, decision_steps
+from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.plugin_loader import INSTALLED_PACKAGE, CodeSource, load_runner
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
 from cli.automa_cli.releases.paths import controller_bundle_paths
-from implementations.decision_cycle.catalog import PRESET_STEPS, packaged_activation
+from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
-from tests.shared.integration.plugin_flow_fixtures import prototype_definition
 
 LAZY_MODULE = "implementations.decision_cycle.proposal.lazy_only"
 VEHICLES = ("chase", "picar")
@@ -43,17 +40,6 @@ def _frame(host, index: int):
     return host.run(DecisionFrameContext(f"frame-{index}", index, 1_000 + index))
 
 
-def _identity(proposal) -> dict:
-    steps = {}
-    for step in DECISION_STEPS:
-        activation = proposal if step == "proposal" else builtin_activation(step)
-        steps[step] = activation.to_payload() if activation is not None else None
-    return {
-        "generation_id": activation_generation_id(steps, prefix="decision"),
-        "steps": steps,
-    }
-
-
 def _open(vehicle: str, activations: dict, *, source, watches=()):
     steps = decision_steps(activations, source=source)
     host = (
@@ -63,8 +49,6 @@ def _open(vehicle: str, activations: dict, *, source, watches=()):
     )
     for step, path, loaded in watches:
         host.watch_selection(step, path, loaded)
-    if "proposal" in activations:
-        host.use_applied_decision(_identity(activations["proposal"]))
     return host
 
 
@@ -78,6 +62,22 @@ def _publish(host, sink: dict) -> dict:
 
 
 class SharedSelectionTests(unittest.TestCase):
+    def test_installed_source_rebuild_uses_its_release_and_no_staging_path(self) -> None:
+        activation = replace(packaged_activation("proposal"), metadata={
+            "controller_bundle": {"root_dir": "/missing/staging-machine/bundle", "release": {"tree_sha256": "old"}},
+        })
+        release = {"tree_sha256": "installed", "created_at_ms": 123}
+        with patch("autonomy.runtime.recording.INSTALLED_RELEASE", release):
+            host = _open("picar", {"proposal": activation}, source=INSTALLED_PACKAGE)
+            before = host.step("proposal")
+            self.assertEqual(before.activation.metadata["controller_bundle"], {"release": release})
+            self.assertTrue(host.disarm({"proposal": list(activation.plugins)})["ok"])
+            _frame(host, 0)
+            after = host.step("proposal")
+            self.assertIsNot(after, before)
+            self.assertEqual(after.plugin_ids, ())
+            self.assertEqual(after.activation.metadata["controller_bundle"], {"release": release})
+
     def test_substituted_loader_is_shared(self) -> None:
         seen: list[tuple[str, CodeSource | None]] = []
         real = load_runner
@@ -201,7 +201,8 @@ class SharedSelectionTests(unittest.TestCase):
                 _frame(host, 1)
                 applied = _publish(host, sink)
                 self.assertNotEqual(applied["generation_id"], startup)
-                self.assertEqual(list(runner.plugin_ids), [])
+                self.assertEqual(list(host.step("proposal").plugin_ids), [])
+                self.assertIsNot(host.step("proposal"), runner)
                 self.assertEqual(sink["generation_id"], applied["generation_id"])
                 self.assertEqual(sink["steps"]["proposal"]["plugins"], [])
 
@@ -224,107 +225,6 @@ class SharedSelectionTests(unittest.TestCase):
                     list(host.step("proposal").plugin_ids),
                     ["avoid_recent_obstruction"],
                 )
-
-    def test_failed_reset_stops_the_cycle_and_keeps_the_applied_identity(self) -> None:
-        for vehicle in VEHICLES:
-            with self.subTest(vehicle=vehicle):
-                host, path = self._watched_proposal(vehicle)
-                startup = host.applied_decision()["generation_id"]
-                plugin = host.step("proposal").plugins["avoid_recent_obstruction"]
-
-                def failing_reset(shared_memory=None):
-                    del shared_memory
-                    raise RuntimeError("proposal reset unavailable")
-
-                plugin.reset = failing_reset
-                write_step_activation(path, packaged_activation("proposal", []))
-                with self.assertRaisesRegex(RuntimeError, "proposal reset unavailable"):
-                    _frame(host, 0)
-                sink: dict = {}
-                applied = _publish(host, sink)
-                # The requested selection is recorded on the manager, and the
-                # failed reset leaves the plugins that were already applied.
-                self.assertEqual(list(host.step("proposal").plugin_manager.selected_ids), [])
-                self.assertEqual(list(host.step("proposal").plugin_ids), ["avoid_recent_obstruction"])
-                self.assertEqual(applied["generation_id"], startup)
-                self.assertEqual(sink["generation_id"], startup)
-
-    def test_every_step_follows_one_rule_when_a_restage_fails(self) -> None:
-        """Regression: a staged perception or memory restage stopped on any
-        failure, and a staged proposal restage never stopped."""
-
-        activations = {step: packaged_activation(step) for step in PRESET_STEPS}
-        directory = tempfile.TemporaryDirectory()
-        self.addCleanup(directory.cleanup)
-        root = Path(directory.name)
-        for vehicle in VEHICLES:
-            for step in activations:
-                for phase, method in (("prepare", "validate_selection"), ("commit", "_reset_plugin")):
-                    with self.subTest(vehicle=vehicle, step=step, phase=phase):
-                        host = _open(vehicle, activations, source=INSTALLED_PACKAGE)
-                        runner = host.step(step)
-                        applied = runner.plugin_ids
-                        self.assertTrue(applied)
-                        # A one-plugin step cannot restage to nothing; it takes a prototype.
-                        selection = [prototype_definition(root, step)] if runner.single_plugin else []
-                        runner.plugin_manager.select(selection)
-                        failure = RuntimeError(f"{step} {phase} refused")
-                        with patch.object(runner, method, side_effect=failure):
-                            if phase == "prepare":
-                                # Nothing changed, so the applied plugins run.
-                                _frame(host, 0)
-                                self.assertEqual(host.status()["error_count"], 0)
-                            else:
-                                # A partial reset may have run, so no cycle does.
-                                with self.assertRaisesRegex(RuntimeError, f"{step} {phase} refused"):
-                                    _frame(host, 0)
-                                self.assertEqual(host.status()["error_count"], 1)
-                        self.assertEqual(runner.plugin_ids, applied)
-                        selection = host.selection_status()
-                        self.assertEqual(selection["status"], "failed")
-                        self.assertIn(f"{step} {phase} refused", selection["error"])
-
-    def test_recovered_selection_adopts_its_pending_identity(self) -> None:
-        for vehicle in VEHICLES:
-            for failure in ("load", "reset"):
-                with self.subTest(vehicle=vehicle, failure=failure):
-                    host, path = self._watched_proposal(vehicle)
-                    runner = host.step("proposal")
-                    if failure == "load":
-                        write_step_activation(path, packaged_activation("proposal", []))
-                        _frame(host, 0)
-                        replacement = packaged_activation("proposal")
-                        owner, method = runner, "load_plugin"
-                    else:
-                        replacement = packaged_activation("proposal", [])
-                        owner = runner.plugins["avoid_recent_obstruction"]
-                        method = "reset"
-                    original = getattr(owner, method, lambda *args, **kwargs: None)
-                    attempts = 0
-
-                    def fail_once(*args, **kwargs):
-                        nonlocal attempts
-                        attempts += 1
-                        if attempts == 1:
-                            raise RuntimeError(f"transient proposal {failure} failure")
-                        return original(*args, **kwargs)
-
-                    previous = host.applied_decision()
-                    write_step_activation(path, replacement)
-                    # An explicit sync must retain the request for run(), too.
-                    host.sync_selection()
-                    with patch.object(owner, method, side_effect=fail_once, create=True):
-                        # A failed load keeps running; a failed reset skips the cycle.
-                        with self.assertRaises(RuntimeError) if failure == "reset" else contextlib.nullcontext():
-                            _frame(host, 1)
-                        self.assertEqual(host.applied_decision(), previous)
-                        self.assertEqual(runner.plugin_manager.selected_ids, replacement.plugins)
-                        self.assertNotEqual(runner.plugin_ids, replacement.plugins)
-                        _frame(host, 2)
-                    self.assertEqual(attempts, 2)
-                    self.assertEqual(runner.plugin_ids, replacement.plugins)
-                    self.assertEqual(host.applied_decision(), _identity(replacement))
-                    self.assertEqual(host.status()["applied_decision"], _identity(replacement))
 
     def test_status_and_publication_use_the_host(self) -> None:
         for vehicle in VEHICLES:

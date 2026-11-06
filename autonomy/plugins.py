@@ -6,14 +6,11 @@ conflicts: registering a second definition under an ID the step already has
 raises ``DuplicatePluginIdError``, and a loaded plugin must declare the ID it
 was selected under (``require_plugin_id``).
 
-The core tracks which plugin definitions are selected. A step owns construction,
-execution, reset, and validation of the behavior declared by those definitions.
-``replace_selection`` sequences that handoff when a resolved selection changes.
-``PluginSelectionRuntime`` can prepare the same handoff and commit it later, so
-the next selection is loaded and validated before published instances are reset.
-``plugin_report`` describes the catalog, the manager's requested selection, and
-the instances a step has published. Definitions may come from packaged entries
-or a live catalog implementing ``PluginResolver``. Upload stores a source
+A runner is constructed from one ordered sequence of definitions. It loads and
+validates that sequence once and keeps the instances. A later selection is a new
+runner, not a change to this one. ``plugin_report`` describes the applied
+instances. Definitions come from packaged entries or ``LocalPluginCatalog``.
+Upload stores a source
 revision without selecting or importing it; existing selections retain their
 definitions until explicitly changed. An uploaded source is named by its
 sha256, ``<sha256>.py:Name``, so the catalog that received it and every
@@ -33,11 +30,11 @@ import sys
 import tempfile
 import threading
 import weakref
-from collections.abc import Callable, Iterable, Mapping
+from collections.abc import Iterable, Mapping
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Generic, Protocol, TypeVar
+from typing import Any, TypeVar
 
 
 class PluginManagementError(ValueError):
@@ -121,16 +118,6 @@ def uploaded_source(name: str) -> Path:
         f"uploaded plugin source {name} is not available here; the catalog that "
         "received it and each recording that ran it keep it under that name"
     )
-
-
-class PluginResolver(Protocol):
-    """An ID resolver; a remote catalog can provide this later."""
-
-    def list(self, step: str) -> tuple[PluginDefinition, ...]:
-        """List selectable catalog definitions without constructing plugins."""
-        ...
-
-    def resolve(self, step: str, plugin_id: str) -> PluginDefinition: ...
 
 
 class LocalPluginCatalog:
@@ -224,209 +211,7 @@ class LocalPluginCatalog:
         return definition
 
 
-class PluginManager:
-    """Manage a step's ordered active definitions without imposing a count cap."""
-
-    def __init__(self, step: str, resolver: PluginResolver) -> None:
-        if not isinstance(step, str) or not step.strip():
-            raise PluginManagementError("step must be a non-empty string")
-        self.step = step
-        self.resolver = resolver
-        self._selected: tuple[PluginDefinition, ...] = ()
-
-    @classmethod
-    def from_specs(
-        cls,
-        step: str,
-        specs: Mapping[str, str],
-        configs: Mapping[str, Mapping[str, Any]] | None = None,
-    ) -> PluginManager:
-        """Build a local manager from step-scoped entrypoint and config maps."""
-
-        if not isinstance(specs, Mapping):
-            raise PluginManagementError("plugin specs must be a mapping")
-        if configs is not None and not isinstance(configs, Mapping):
-            raise PluginManagementError("plugin configs must be a mapping")
-        plugin_configs = configs or {}
-        catalog = LocalPluginCatalog(
-            PluginDefinition(
-                step=step,
-                plugin_id=plugin_id,
-                entrypoint=entrypoint,
-                config=plugin_configs.get(plugin_id, {}),
-            )
-            for plugin_id, entrypoint in specs.items()
-        )
-        return cls(step, catalog)
-
-    @property
-    def available(self) -> tuple[PluginDefinition, ...]:
-        """The resolver's catalog, independent of selected or applied plugins."""
-
-        return tuple(self.resolver.list(self.step))
-
-    @property
-    def available_ids(self) -> tuple[str, ...]:
-        return tuple(definition.plugin_id for definition in self.available)
-
-    @property
-    def selected(self) -> tuple[PluginDefinition, ...]:
-        return self._selected
-
-    @property
-    def selected_ids(self) -> tuple[str, ...]:
-        return tuple(definition.plugin_id for definition in self._selected)
-
-    def select(
-        self, references: Iterable[str | PluginDefinition]
-    ) -> tuple[PluginDefinition, ...]:
-        """Resolve the full selection before changing the active definitions."""
-
-        if isinstance(references, (str, bytes, Mapping)):
-            raise PluginManagementError("plugin selection must be a collection of IDs")
-        try:
-            values = list(references)
-        except TypeError as exc:
-            raise PluginManagementError("plugin selection must be iterable") from exc
-        if isinstance(references, (set, frozenset)):
-            values.sort(key=str)
-        selected: dict[str, PluginDefinition] = {}
-        for reference in values:
-            definition = (
-                reference if isinstance(reference, PluginDefinition)
-                else self.resolver.resolve(self.step, reference)
-            )
-            if definition.step != self.step:
-                raise PluginManagementError(
-                    f"plugin {definition.plugin_id!r} belongs to {definition.step!r}, "
-                    f"not {self.step!r}"
-                )
-            existing = selected.get(definition.plugin_id)
-            if existing is not None and existing != definition:
-                raise PluginManagementError(
-                    f"selection contains conflicting definitions for {definition.plugin_id!r}"
-                )
-            selected[definition.plugin_id] = definition
-        self._selected = tuple(selected.values())
-        return self._selected
-
-    def add(self, plugin_id: str) -> tuple[PluginDefinition, ...]:
-        definition = self.resolver.resolve(self.step, plugin_id)
-        if definition.plugin_id in self.selected_ids:
-            return self._selected
-        return self.select((*self._selected, definition))
-
-    def remove(self, plugin_id: str) -> tuple[PluginDefinition, ...]:
-        if not isinstance(plugin_id, str) or not plugin_id.strip():
-            raise PluginManagementError("plugin id must be a non-empty string")
-        self._selected = tuple(
-            definition for definition in self._selected if definition.plugin_id != plugin_id
-        )
-        return self._selected
-
-
 _T = TypeVar("_T")
-
-
-class PluginSelectionRuntime(Generic[_T]):
-    """Apply a manager's selected definitions to step-owned plugin instances.
-
-    The manager is the source of truth for the desired selection. ``prepare``
-    loads and validates that selection without resetting or publishing.
-    ``commit`` then resets instances the preparation does not keep and
-    publishes those same instances. ``apply`` does both. Equal definitions
-    keep their instances. This runtime does not impose a plugin-count limit
-    or define how a step loads, validates, executes, or resets its plugin type.
-    """
-
-    def __init__(self, manager: PluginManager) -> None:
-        if not isinstance(manager, PluginManager):
-            raise PluginManagementError("manager must be a PluginManager")
-        self.manager = manager
-        self._applied: tuple[tuple[PluginDefinition, _T], ...] = ()
-        self._prepared: tuple[tuple[PluginDefinition, _T], ...] | None = None
-
-    @property
-    def applied(self) -> tuple[tuple[PluginDefinition, _T], ...]:
-        """The definitions and instances currently published by the step."""
-
-        return self._applied
-
-    @property
-    def prepared(self) -> bool:
-        """Whether an outstanding preparation stages the manager's current selection."""
-
-        return self._prepared is not None and tuple(
-            definition for definition, _ in self._prepared
-        ) == self.manager.selected
-
-    def prepare(
-        self,
-        *,
-        load: Callable[[PluginDefinition], _T],
-        validate: Callable[[tuple[_T, ...]], None] | None = None,
-    ) -> tuple[tuple[PluginDefinition, _T], ...]:
-        """Load and validate the manager's current selection.
-
-        Nothing is reset or published. Load and validation failures leave the
-        applied instances, and any earlier preparation, unchanged. A successful
-        call replaces an outstanding preparation.
-        """
-
-        staged = _stage_selection(
-            self._applied,
-            self.manager.selected,
-            load=load,
-            validate=validate,
-        )
-        self._prepared = staged
-        return staged
-
-    def commit(
-        self,
-        *,
-        reset: Callable[[_T], None] | None = None,
-    ) -> tuple[tuple[PluginDefinition, _T], ...]:
-        """Reset removed instances and publish the prepared selection.
-
-        The prepared selection is published as staged; the manager is not read
-        again. A reset failure leaves the previous publication in place and
-        drops the preparation.
-        """
-
-        if self._prepared is None:
-            raise PluginManagementError(
-                "selection must be prepared before it is committed"
-            )
-        if reset is not None and not callable(reset):
-            raise PluginManagementError("reset must be callable")
-        prepared = self._prepared
-        self._prepared = None
-        _release_removed(self._applied, prepared, reset=reset)
-        self._applied = prepared
-        return self._applied
-
-    def discard(self) -> None:
-        """Drop a prepared selection without resetting applied or prepared instances."""
-
-        self._prepared = None
-
-    def apply(
-        self,
-        *,
-        load: Callable[[PluginDefinition], _T],
-        validate: Callable[[tuple[_T, ...]], None] | None = None,
-        reset: Callable[[_T], None] | None = None,
-    ) -> tuple[tuple[PluginDefinition, _T], ...]:
-        """Apply the manager's current selection and return its instances.
-
-        The selected definitions are read once. If the manager changes during
-        application, the new selection is picked up by the next call. This
-        restages from the manager and does not commit an earlier preparation.
-        """
-
-        self.prepare(load=load, validate=validate)
-        return self.commit(reset=reset)
 
 
 def _import_entrypoint(entrypoint: str, *, reload_module: bool = False) -> Any:
@@ -485,48 +270,17 @@ def require_plugin_id(plugin: Any, definition: PluginDefinition) -> str:
     return plugin_id
 
 
-def replace_selection(
-    applied: Iterable[tuple[PluginDefinition, _T]],
-    selected: Iterable[PluginDefinition],
-    *,
-    load: Callable[[PluginDefinition], _T],
-    validate: Callable[[tuple[_T, ...]], None] | None = None,
-    reset: Callable[[_T], None] | None = None,
-) -> tuple[_T, ...]:
-    """Return the instances a step can publish for an already resolved selection.
-
-    Equal definitions keep their instances. Other definitions are passed to
-    ``load``. ``validate`` then sees the full sequence. Only after it returns
-    are instances that are not in that sequence passed to ``reset``. A failure
-    from ``load`` or ``validate`` does not call ``reset``. This does not import
-    plugins or change a ``PluginManager``.
-    """
-
-    if not callable(load):
-        raise PluginManagementError("load must be callable")
-    if validate is not None and not callable(validate):
-        raise PluginManagementError("validate must be callable")
-    if reset is not None and not callable(reset):
-        raise PluginManagementError("reset must be callable")
-    staged = _stage_selection(applied, selected, load=load, validate=validate)
-    _release_removed(applied, staged, reset=reset)
-    return tuple(instance for _definition, instance in staged)
-
-
 def plugin_report(
-    manager: PluginManager,
     applied: Iterable[tuple[PluginDefinition, Any]],
     records: Iterable[Mapping[str, Any]] | None = None,
 ) -> dict[str, Any]:
-    """Describe availability, the requested selection, and published plugins.
+    """Describe the applied plugins.
 
-    ``records`` describe applied instances, matched by catalog ``plugin_id``.
-    Only identity, timing, and error are copied. A record for a plugin that is
-    not applied is ignored, and duration and error stay null when omitted.
+    ``records`` describe applied instances, matched by ``plugin_id``. Only
+    identity, timing, and error are copied. A record for a plugin that is not
+    applied is ignored, and duration and error stay null when omitted.
     """
 
-    if not isinstance(manager, PluginManager):
-        raise PluginManagementError("manager must be a PluginManager")
     applied_pairs = _applied_pairs(applied)
     supplied = _report_records(records)
     plugins = [
@@ -534,75 +288,9 @@ def plugin_report(
         for definition, _instance in applied_pairs
     ]
     return {
-        "available_plugin_ids": sorted(manager.available_ids),
-        "selected_plugin_ids": list(manager.selected_ids),
         "applied_plugin_ids": [definition.plugin_id for definition, _instance in applied_pairs],
         "plugins": plugins,
     }
-
-
-def _stage_selection(
-    applied: Iterable[tuple[PluginDefinition, _T]],
-    selected: Iterable[PluginDefinition],
-    *,
-    load: Callable[[PluginDefinition], _T],
-    validate: Callable[[tuple[_T, ...]], None] | None = None,
-) -> tuple[tuple[PluginDefinition, _T], ...]:
-    """Return the next instances paired with their definitions, without reset.
-
-    Equal definitions keep their instances and do not call ``load`` or
-    ``validate``. Otherwise ``load`` fills the gaps and ``validate`` sees the
-    full sequence. A failure from either leaves the caller in control of the
-    previous instances.
-    """
-
-    if not callable(load):
-        raise PluginManagementError("load must be callable")
-    if validate is not None and not callable(validate):
-        raise PluginManagementError("validate must be callable")
-
-    applied_pairs = _applied_pairs(applied)
-    selected_definitions = _selected_definitions(selected)
-    if tuple(definition for definition, _instance in applied_pairs) == selected_definitions:
-        return applied_pairs
-
-    applied_by_id = {
-        definition.plugin_id: (definition, instance)
-        for definition, instance in applied_pairs
-    }
-    staged: list[tuple[PluginDefinition, _T]] = []
-    for definition in selected_definitions:
-        existing = applied_by_id.get(definition.plugin_id)
-        if existing is not None and existing[0] == definition:
-            staged.append(existing)
-        else:
-            staged.append((definition, load(definition)))
-
-    if validate is not None:
-        validate(tuple(instance for _definition, instance in staged))
-    return tuple(staged)
-
-
-def _release_removed(
-    applied: Iterable[tuple[PluginDefinition, _T]],
-    staged: Iterable[tuple[PluginDefinition, _T]],
-    *,
-    reset: Callable[[_T], None] | None,
-) -> None:
-    """Reset applied instances that the staged selection does not keep."""
-
-    if reset is None:
-        return
-    if not callable(reset):
-        raise PluginManagementError("reset must be callable")
-    kept = {id(instance) for _definition, instance in _applied_pairs(staged)}
-    released: set[int] = set()
-    for _definition, instance in _applied_pairs(applied):
-        identity = id(instance)
-        if identity in kept or identity in released:
-            continue
-        released.add(identity)
-        reset(instance)
 
 
 def _ordered_collection(value: Iterable[Any], *, what: str) -> list[Any]:
@@ -612,26 +300,6 @@ def _ordered_collection(value: Iterable[Any], *, what: str) -> list[Any]:
         return list(value)
     except TypeError as exc:
         raise PluginManagementError(f"{what} must be iterable") from exc
-
-
-def _selected_definitions(
-    selected: Iterable[PluginDefinition],
-) -> tuple[PluginDefinition, ...]:
-    chosen: dict[str, PluginDefinition] = {}
-    ordered: list[PluginDefinition] = []
-    for definition in _ordered_collection(selected, what="selected plugins"):
-        if not isinstance(definition, PluginDefinition):
-            raise PluginManagementError("selected plugins must be PluginDefinition values")
-        existing = chosen.get(definition.plugin_id)
-        if existing is None:
-            chosen[definition.plugin_id] = definition
-            ordered.append(definition)
-            continue
-        if existing != definition:
-            raise PluginManagementError(
-                f"selection contains conflicting definitions for {definition.plugin_id!r}"
-            )
-    return tuple(ordered)
 
 
 def _applied_pairs(

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import shutil
 import unittest
+from dataclasses import replace
 
 from autonomy.decision_cycle.activation import step_activation
 from autonomy.decision_cycle.steps import decision_steps
@@ -52,10 +54,7 @@ class RecordedPluginFlows(unittest.TestCase):
 
     def test_bundle_initialization_and_same_spec_source_transition_use_recorded_code(self):
         with image_source(1) as root:
-            host = create_picar_host(steps=decision_steps())
-            self.addCleanup(host.close)
             recording = RunRecording(root / "runs", host_name="picar")
-            host.start(RunConfiguration(mode="observe_only", num_decisions=3), recording=recording)
             for index, module in enumerate(("implementations.bundle_only", "implementations.bundle_only", "implementations.decision_cycle.proposal.plugins.avoid_recent_obstruction.plugin")):
                 bundle = root / f"bundle-{index}"
                 source = bundle / (module.replace(".", "/") + ".py")
@@ -72,12 +71,15 @@ class RecordedPluginFlows(unittest.TestCase):
                     f"            lifecycle='inactive', freshness='none', confidence=0.0, reason='bundle {index}',\n"
                     f"            command=None, metadata={{'bundle': {index}}})\n"
                 )
+                (bundle / "bundle-manifest.json").write_text(json.dumps({"tree_sha256": hashlib.sha256(source.read_bytes()).hexdigest()}))
                 activation = step_activation("proposal", ["recorded"], {"recorded": f"{module}:AvoidRecentObstruction"},
                                              metadata={"controller_bundle": {"root_dir": str(bundle)}})
-                host.set_step("proposal", load_runner(activation))
+                host = create_picar_host(steps=replace(decision_steps(), proposal=load_runner(activation)))
+                self.addCleanup(host.close)
+                host.start(RunConfiguration(mode="observe_only", num_decisions=1), recording=recording)
                 result = host.run(frame(root, index))
                 self.assertEqual(result.proposal.candidates[0].metadata["bundle"], index)
-            host.close()
+                host.close()
             base, run_id = replay(self, recording.root)
             for index in range(3):
                 state = post_action(base, {"action": "seek", "run_id": run_id, "position": index})["state"]
@@ -125,7 +127,7 @@ class RecordedPluginFlows(unittest.TestCase):
                     shown = post_action(base, {"action": "seek", "run_id": run_id, "position": position})["state"]
                     restored = candidate(shown, "prototype-proposal")
                     self.assertEqual(restored["metadata"]["revision"], revision)
-                    self.assertEqual(restored["metadata"]["memory"]["count"], position)
+                    self.assertEqual(restored["metadata"]["memory"]["count"], 1)
                 # Seeking back must survive state polling and a live availability change.
                 earlier = post_action(base, {"action": "seek", "run_id": run_id, "position": 0})["state"]
                 self.assertEqual(earlier["active_perception_plugin_ids"], ["prototype-perception"])

@@ -47,8 +47,9 @@ class CreateResult:
     """Creating a host, or its plan.
 
     A ``plan`` has the release plan and, for a PiCar, the core plan. ``created``
-    has the release that was deployed and the running host's state, if it has
-    one. The renderer assembles the combined receipt from these parts.
+    has the release that was deployed, the core that was synced for a PiCar,
+    and the running host's state, if it has one. The renderer assembles the
+    ``automa_host_create`` receipt from these parts.
     """
 
     exit_code: int

@@ -32,23 +32,27 @@ def render_update(result: UpdateResult, *, json_output: bool) -> str:
 def render_create(result: CreateResult, *, json_output: bool) -> str:
     """The created host or its plan, or the sentence an error shows.
 
-    A local host plans only its release, so its plan is the release plan. A
-    PiCar's plan and every created host combine the parts into one receipt.
+    ``--json`` prints one ``automa_host_create`` receipt for a plan and for a
+    created host. Text prints the release plan, after the core plan for a
+    PiCar, or the created host.
     """
 
     if result.kind == "error":
         return result.message
+    if json_output:
+        return json.dumps({
+            "schema": "automa_host_create",
+            "configuration": result.configuration,
+            "dry_run": result.kind == "plan",
+            "core": None if result.core is None else result.core.receipt,
+            "release": result.release.receipt,
+            "host_state": result.host_state,
+        }, indent=2, sort_keys=True)
     if result.kind == "plan" and result.core is None:
-        return render_update(result.release, json_output=json_output)
+        return _update_text(result.release)
     if result.kind == "plan":
-        if json_output:
-            return _combined_json({"configuration": result.configuration, "dry_run": True,
-                                   "core": result.core.receipt, "host": result.release.receipt})
         return _format_core_dry_run(result.core.receipt) + "\n" + _format_autonomy_dry_run(result.release.receipt)
     if result.kind == "created":
-        if json_output:
-            return _combined_json({"configuration": result.configuration, "result": result.release.receipt,
-                                   "host": result.host_state})
         return _format_created_host(result)
     raise ValueError(f"Unknown create outcome: {result.kind}")
 
@@ -65,15 +69,6 @@ def render_delete(result: DeleteResult) -> str:
         suffix = f" Harness files stay in {result.harness_dir} on the PiCar." if result.harness_dir else ""
         return f"{stopped}Stopped host {result.host_name}. Removed {display_path(result.deleted_path)}.{suffix}"
     raise ValueError(f"Unknown delete outcome: {result.kind}")
-
-
-def _combined_json(receipt: dict[str, Any]) -> str:
-    """A receipt of child receipts: each child receipt with sorted keys, the rest in its own order."""
-
-    body = {key: json.loads(json.dumps(value, sort_keys=True))
-            if key in {"core", "host", "result"} and isinstance(value, dict) else value
-            for key, value in receipt.items()}
-    return json.dumps(body, indent=2)
 
 
 def _update_text(result: UpdateResult) -> str:

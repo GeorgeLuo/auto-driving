@@ -89,7 +89,7 @@ class UploadResult:
 
 @dataclass(frozen=True)
 class SelectionResult:
-    """An arm or disarm request; ``step`` is set when disarm cleared one step."""
+    """An arm or disarm request; ``step`` is set when it armed a step's preset or disarm cleared one step."""
 
     operation: Literal["arm", "disarm"]
     host_name: str | None
@@ -115,9 +115,10 @@ class CatalogListing:
 
 @dataclass(frozen=True)
 class ListingResult:
-    """The packaged catalog with each step's defaults, or what a host has armed.
+    """The packaged catalog with each step's defaults and presets, or what a host has armed.
 
-    ``defaults`` is set only for the packaged catalog. A host listing sets
+    ``defaults`` and ``presets``, each step's named presets as its catalog file
+    lists them, are set only for the packaged catalog. A host listing sets
     ``armed`` and, with ``--long``, ``catalog``. A successful read still exits
     unsuccessfully while the host reports ``arming_error``.
     """
@@ -128,6 +129,7 @@ class ListingResult:
     ok: bool
     error: str | None = None
     defaults: dict[str, list[str]] | None = None
+    presets: dict[str, dict[str, dict[str, Any]]] | None = None
     catalog: CatalogListing | None = None
     armed: list[Definition] | None = None
     arming_error: str | None = None

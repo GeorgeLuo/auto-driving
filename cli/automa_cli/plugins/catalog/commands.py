@@ -9,16 +9,16 @@ from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS, ONE_PLUGIN_STEPS
 
 from .render import render_listing, render_save, render_selection, render_upload
-from .service import arm_plugins, disarm_plugins, list_plugins, save_plugins, upload_plugin
+from .service import arm_plugins, arm_preset, disarm_plugins, list_plugins, preset_plugins, save_plugins, upload_plugin
 
 
 def register_catalog(commands: argparse._SubParsersAction) -> None:
     listing = commands.add_parser(
         "list", help="Show the packaged catalog, or what a host has armed, in cycle order.",
         description=(
-            "Without a host, list the packaged catalog in implementations/decision_cycle/<step>/catalog.json "
-            "and mark each step's defaults. With --host-name or --url, list the plugins the host has "
-            "armed; --long lists the host's whole catalog, packaged and uploaded, and marks the armed "
+            "Without a host, list the packaged catalog in implementations/decision_cycle/<step>/catalog.json, "
+            "marking each step's defaults, then each step's presets. With --host-name or --url, list the "
+            "plugins the host has armed; --long lists the host's whole catalog, packaged and uploaded, and marks the armed "
             "plugins. Exits 2 while the host's last arming failed. "
             "This command does not start a host or change what it has armed."
         ),
@@ -28,7 +28,7 @@ def register_catalog(commands: argparse._SubParsersAction) -> None:
     listing_target.add_argument("--url", help="Runtime or workbench URL; bypass host lookup. A workbench catalog arms nothing, so list it with --long.")
     listing.add_argument("--long", action="store_true", help="List the host's whole catalog and its version, marking armed plugins.")
     listing.add_argument("--step", choices=STEPS, help="Show only this cycle step.")
-    listing.add_argument("--json", action="store_true", help="Print the catalog and each step's defaults, or the host's armed plugins, as JSON.")
+    listing.add_argument("--json", action="store_true", help="Print the catalog with each step's defaults and presets, or the host's armed plugins, as JSON.")
     listing.set_defaults(handler=_handle_list)
 
     upload = commands.add_parser(
@@ -61,7 +61,8 @@ def register_catalog(commands: argparse._SubParsersAction) -> None:
         "arm", help="Add/update a host's catalog plugins without restarting automation.",
         description=(
             "Request the latest catalog definitions together. New IDs append; existing IDs update in place; "
-            f"on a one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) the ID replaces the plugin. The host loads "
+            f"on a one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) the ID replaces the plugin. A --preset "
+            "replaces what its step has armed with the preset's plugins, in its order. The host loads "
             "them before answering: an import or construction error exits 2 and keeps the previous selection. "
             "A loaded selection applies at the host's next cycle."
         ),
@@ -70,9 +71,11 @@ def register_catalog(commands: argparse._SubParsersAction) -> None:
     arm_target = arm.add_mutually_exclusive_group(required=True)
     arm_target.add_argument("--host-name", help="Host name from hosts status.")
     arm_target.add_argument("--url", help="Runtime host URL; workbench catalogs support upload only.")
-    arm.add_argument("--name", dest="plugins", action="append", required=True, type=_step_plugin,
-                     metavar="STEP/PLUGIN",
-                     help="Plugin to arm, named as plugins list --host-name <host> --long lists it; repeat to arm several together, in order.")
+    arm_input = arm.add_mutually_exclusive_group(required=True)
+    arm_input.add_argument("--name", dest="plugins", action="append", type=_step_plugin, metavar="STEP/PLUGIN",
+                           help="Plugin to arm, named as plugins list --host-name <host> --long lists it; repeat to arm several together, in order.")
+    arm_input.add_argument("--preset", type=_step_preset, metavar="STEP/PRESET",
+                           help="Packaged preset to arm, named as plugins list lists it. A preset that configures a plugin is refused: arming takes each plugin's config from the host's catalog.")
     arm.add_argument("--json", action="store_true", help="Print the request receipt and selection state as JSON.")
     arm.set_defaults(handler=_handle_arm)
 
@@ -139,8 +142,23 @@ def _handle_upload(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
+def _step_preset(value: str) -> tuple[str, str]:
+    """``step/preset``, as ``plugins list`` names a packaged preset, as ``(step, preset)``."""
+
+    step, _, preset = value.partition("/")
+    try:
+        preset_plugins(step, preset)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from None
+    return step, preset
+
+
 def _handle_arm(args: argparse.Namespace) -> int:
-    result = arm_plugins(url=args.url, host_name=args.host_name, plugins=args.plugins)
+    if args.preset is not None:
+        step, preset = args.preset
+        result = arm_preset(url=args.url, host_name=args.host_name, step=step, preset=preset)
+    else:
+        result = arm_plugins(url=args.url, host_name=args.host_name, plugins=args.plugins)
     print(render_selection(result, json_output=args.json))
     return result.exit_code
 

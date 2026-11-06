@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 from autonomy.decision_cycle.activation import STEPS
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, step_plugins
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, STEP_PRESETS, step_plugins
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import (
@@ -38,6 +38,7 @@ class PluginListFlows(unittest.TestCase):
             self.assertNotIn("armed", payload)
             self.assertEqual(payload["catalog"]["source"], "implementations/decision_cycle/*/catalog.json")
             self.assertEqual(payload["defaults"], {step: list(ids) for step, ids in DEFAULT_STEP_PLUGINS.items()})
+            self.assertEqual(payload["presets"], {step: STEP_PRESETS.get(step, {}) for step in STEPS})
             plugins = payload["catalog"]["plugins"]
             packaged = {(step, plugin_id): entry for step in STEPS for plugin_id, entry in step_plugins(step).items()}
             self.assertEqual({(item["step"], item["id"]) for item in plugins}, set(packaged))
@@ -53,12 +54,23 @@ class PluginListFlows(unittest.TestCase):
                 self.assertEqual([item["id"] for item in plugins if item["step"] == step], ordered)
                 rows += [f"- {step}/{plugin_id}: packaged" + (" (default)" if plugin_id in defaults else "")
                          for plugin_id in ordered]
-            self.assertEqual(listed().stdout.splitlines(), ["Catalog: implementations/decision_cycle/*/catalog.json", *rows])
+            # Then one row per preset, each step's default marked.
+            presets = []
+            for step, named in STEP_PRESETS.items():
+                for name, preset in named.items():
+                    notes = [*(["default"] if DEFAULT_STEP_PRESETS[step] == name else []),
+                             *(f"configures {plugin_id}" for plugin_id in preset.get("plugin_configs", {}))]
+                    presets.append(f"- {step}/{name}: {', '.join(preset['plugins'])}"
+                                   + (f" ({'; '.join(notes)})" if notes else ""))
+            self.assertEqual(listed().stdout.splitlines(),
+                             ["Catalog: implementations/decision_cycle/*/catalog.json", *rows, "Presets:", *presets])
             # Without a host the listing is already the whole catalog.
             self.assertEqual(listed("--long").stdout, listed().stdout)
             action = json.loads(listed("--step", "action", "--json").stdout)
             self.assertEqual({item["step"] for item in action["catalog"]["plugins"]}, {"action"})
             self.assertEqual(list(action["defaults"]), ["action"])
+            self.assertEqual(action["presets"], {"action": {}})
+            self.assertNotIn("Presets:", listed("--step", "action").stdout)
             self.assertEqual(action["catalog"]["source"], "implementations/decision_cycle/action/catalog.json")
             self.assertEqual(list(root.iterdir()), [])
 

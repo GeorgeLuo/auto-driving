@@ -10,7 +10,7 @@ from typing import Any
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.plugin_catalog import describe_plugin
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, catalog_path
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, STEP_PRESETS, catalog_path, step_presets
 
 from ...hosts.discovery import runtime_base_url
 from ...hosts.publications.plugin_catalog import PluginCatalogClient
@@ -84,6 +84,31 @@ def arm_plugins(*, url: str | None, host_name: str | None,
     return _change_selection("arm", url, host_name, None, _arm_request(_selections(plugins)))
 
 
+def preset_plugins(step: str, preset: str) -> list[str]:
+    """The plugins a packaged preset of ``step`` arms, in its order.
+
+    Arming takes each plugin's config from the host's catalog, so a preset
+    that configures a plugin is refused.
+    """
+
+    presets = step_presets(step)
+    if preset not in presets:
+        raise ValueError(f"unknown {step} preset {preset!r}; known: {', '.join(sorted(presets))}")
+    configured = list(presets[preset].get("plugin_configs", {}))
+    if configured:
+        raise ValueError(f"{step}/{preset} configures {', '.join(configured)}, and arming takes each plugin's "
+                         "config from the host's catalog; arm its plugins by --name to run them with the host's "
+                         "configs.")
+    return list(presets[preset]["plugins"])
+
+
+def arm_preset(*, url: str | None, host_name: str | None, step: str, preset: str) -> SelectionResult:
+    """Arm a packaged preset's plugins as all that ``step`` runs, replacing what it has armed."""
+
+    request = {**_arm_request({step: preset_plugins(step, preset)}), "replace": True}
+    return _change_selection("arm", url, host_name, step, request)
+
+
 def disarm_plugins(*, url: str | None, host_name: str | None,
                    plugins: list[tuple[str, str]] | None = None,
                    step: str | None = None) -> SelectionResult:
@@ -108,6 +133,7 @@ def list_plugins(*, host_name: str | None = None, url: str | None = None, step: 
         return ListingResult(
             host_name, url, step, ok=True,
             defaults={name: list(DEFAULT_STEP_PLUGINS[name]) for name in steps},
+            presets={name: STEP_PRESETS.get(name, {}) for name in steps},
             catalog=CatalogListing(display_path(source), [describe_plugin(plugin) for name in steps
                                                           for plugin in packaged_plugin_definitions(name)]),
         )

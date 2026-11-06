@@ -41,13 +41,16 @@ class PluginCatalogAPITests(unittest.TestCase):
 
     def test_a_host_catalog_forwards_arm_requests_and_requires_selections(self) -> None:
         requests = []
-        api = PluginCatalogAPI(LocalPluginCatalog(), arm=lambda selections: requests.append(selections) or {"ok": True})
+        api = PluginCatalogAPI(LocalPluginCatalog(),
+                               arm=lambda selections, replace: requests.append((selections, replace)) or {"ok": True})
         receipt = api(_upload())
         self.assertEqual((receipt["status"], receipt["catalog_version"]), ("uploaded", 1))
         self.assertEqual(api({"operation": "arm", "selections": {"proposal": ["prototype"]}}), {"ok": True})
+        self.assertEqual(api({"operation": "arm", "selections": {"proposal": ["prototype"]}, "replace": True}),
+                         {"ok": True})
         missing = api({"operation": "arm"})
         self.assertEqual((missing["status"], missing["error"]), ("failed", "missing field: selections"))
-        self.assertEqual(requests, [{"proposal": ["prototype"]}])
+        self.assertEqual(requests, [({"proposal": ["prototype"]}, False), ({"proposal": ["prototype"]}, True)])
 
 
 if __name__ == "__main__":

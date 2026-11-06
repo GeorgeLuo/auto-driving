@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from autonomy.decision_cycle.activation import STEPS
+from implementations.decision_cycle.catalog import DEFAULT_STEP_PRESETS
 
 from ...hosts.step_formatting import step_lines
 from ...providers.metadata import PROVIDERS
@@ -122,7 +123,7 @@ def _listing_document(result: ListingResult) -> dict[str, Any]:
     document: dict[str, Any] = {"schema": "automa_plugin_list", "host_name": result.host_name,
                                 "url": result.url, "step": result.step, "ok": result.ok}
     if result.packaged:
-        document["defaults"] = result.defaults
+        document.update(defaults=result.defaults, presets=result.presets)
     else:
         document.update(armed=result.armed, arming_error=result.arming_error)
     if result.catalog is not None:
@@ -139,7 +140,8 @@ def _listing_lines(result: ListingResult) -> list[str]:
     host_name = result.host_name
     if result.packaged:
         marked = {(name, plugin_id, None) for name, plugin_ids in result.defaults.items() for plugin_id in plugin_ids}
-        return [f"Catalog: {result.catalog.source}", *_plugin_rows(result.catalog.plugins, marked, "default")]
+        return [f"Catalog: {result.catalog.source}", *_plugin_rows(result.catalog.plugins, marked, "default"),
+                *_preset_rows(result.presets)]
     lines = [f"Host: {host_name}"] if host_name else []
     if not result.ok:
         lines.extend(["Catalog: unavailable", f"Reason: {result.error}"])
@@ -154,6 +156,19 @@ def _listing_lines(result: ListingResult) -> list[str]:
     if result.arming_error:
         lines.append(f"Arming error: {result.arming_error}")
     return lines
+
+
+def _preset_rows(presets: dict[str, dict[str, dict[str, Any]]]) -> list[str]:
+    """One ``- step/preset: plugins`` row per packaged preset, the step's default marked."""
+
+    rows = []
+    for step, named in presets.items():
+        for name, preset in named.items():
+            notes = [*(["default"] if DEFAULT_STEP_PRESETS.get(step) == name else []),
+                     *(f"configures {plugin_id}" for plugin_id in preset.get("plugin_configs", {}))]
+            rows.append(f"- {step}/{name}: {', '.join(preset['plugins'])}"
+                        + (f" ({'; '.join(notes)})" if notes else ""))
+    return ["Presets:", *rows] if rows else []
 
 
 def _target_lines(host_name: str | None, url: str | None, step: str | None) -> list[str]:

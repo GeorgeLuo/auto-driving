@@ -168,15 +168,18 @@ class AutonomyCycleHost:
                     self._armed_steps.discard(step)
             return requested
 
-    def arm(self, selections: Mapping[str, Any]) -> dict[str, Any]:
+    def arm(self, selections: Mapping[str, Any], *, replace: bool = False) -> dict[str, Any]:
         """Add/update named definitions from one catalog read and load them now.
 
-        A step that runs exactly one plugin swaps it for the named definition.
+        A step that runs exactly one plugin swaps it for the named definition;
+        with ``replace``, every named step runs exactly its named definitions.
         Loading between cycles answers the request with any import or
         construction error and keeps the previous selection. A loaded group
         publishes together at the next cycle.
         """
 
+        if not isinstance(replace, bool):
+            raise ValueError("arming to replace must be a boolean")
         if not isinstance(selections, Mapping) or not selections:
             raise ValueError("arming requires a selection map of steps to ordered plugin IDs")
         with self._lock:
@@ -191,7 +194,8 @@ class AutonomyCycleHost:
                 if runner is not None and manager is None:
                     raise ValueError(f"{step} runner does not support catalog arming")
                 swap = getattr(runner if runner is not None else STEP_RUNNERS[step], "single_plugin", False)
-                current = {item.plugin_id: item for item in manager.selected} if manager and not swap else {}
+                keep = manager is not None and not (swap or replace)
+                current = {item.plugin_id: item for item in manager.selected} if keep else {}
                 for plugin_id in ids:
                     definition = definitions.get((step, plugin_id))
                     if definition is None:

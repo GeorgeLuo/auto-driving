@@ -53,7 +53,7 @@ class PluginCatalogAPI:
                 if payload.get("operation") == "arm":
                     if self.arm is None:
                         raise ValueError("arming requires a vehicle runtime host; this catalog supports upload only")
-                    return self.arm(_field(payload, "selections"), replace=payload.get("replace", False))
+                    return self.arm(_field(payload, "selections"))
                 if payload.get("operation") == "disarm":
                     if self.disarm is None:
                         raise ValueError("disarming requires a vehicle runtime host; this catalog supports upload only")

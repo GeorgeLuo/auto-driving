@@ -7,9 +7,10 @@ from pathlib import Path
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS, ONE_PLUGIN_STEPS
+from implementations.decision_cycle.catalog import STEP_PRESETS
 
 from .render import render_listing, render_save, render_selection, render_upload
-from .service import arm_plugins, arm_preset, disarm_plugins, list_plugins, preset_plugins, save_plugins, upload_plugin
+from .service import arm_plugins, arm_preset, disarm_plugins, list_plugins, save_plugins, upload_plugin
 
 
 def register_catalog(commands: argparse._SubParsersAction) -> None:
@@ -62,9 +63,10 @@ def register_catalog(commands: argparse._SubParsersAction) -> None:
         description=(
             "Request the latest catalog definitions together. New IDs append; existing IDs update in place; "
             f"on a one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) the ID replaces the plugin. A --preset "
-            "replaces what its step has armed with the preset's plugins, in its order. The host loads "
-            "them before answering: an import or construction error exits 2 and keeps the previous selection. "
-            "A loaded selection applies at the host's next cycle."
+            "replaces what its step has armed with the preset's plugins, in its order, and the step then "
+            "reports the preset; the host refuses it unless its catalog holds each plugin as the preset "
+            "configures it. The host loads them before answering: an import or construction error exits 2 "
+            "and keeps the previous selection. A loaded selection applies at the host's next cycle."
         ),
         epilog="Arming never starts automation or changes its control mode.",
     )
@@ -74,8 +76,9 @@ def register_catalog(commands: argparse._SubParsersAction) -> None:
     arm_input = arm.add_mutually_exclusive_group(required=True)
     arm_input.add_argument("--name", dest="plugins", action="append", type=_step_plugin, metavar="STEP/PLUGIN",
                            help="Plugin to arm, named as plugins list --host-name <host> --long lists it; repeat to arm several together, in order.")
-    arm_input.add_argument("--preset", type=_step_preset, metavar="STEP/PRESET",
-                           help="Packaged preset to arm, named as plugins list lists it. A preset that configures a plugin is refused: arming takes each plugin's config from the host's catalog.")
+    arm_input.add_argument("--preset", metavar="STEP/PRESET",
+                           choices=[f"{step}/{name}" for step, presets in STEP_PRESETS.items() for name in presets],
+                           help="Packaged preset to arm, as plugins list lists it: %(choices)s.")
     arm.add_argument("--json", action="store_true", help="Print the request receipt and selection state as JSON.")
     arm.set_defaults(handler=_handle_arm)
 
@@ -142,20 +145,9 @@ def _handle_upload(args: argparse.Namespace) -> int:
     return result.exit_code
 
 
-def _step_preset(value: str) -> tuple[str, str]:
-    """``step/preset``, as ``plugins list`` names a packaged preset, as ``(step, preset)``."""
-
-    step, _, preset = value.partition("/")
-    try:
-        preset_plugins(step, preset)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(str(exc)) from None
-    return step, preset
-
-
 def _handle_arm(args: argparse.Namespace) -> int:
     if args.preset is not None:
-        step, preset = args.preset
+        step, _, preset = args.preset.partition("/")
         result = arm_preset(url=args.url, host_name=args.host_name, step=step, preset=preset)
     else:
         result = arm_plugins(url=args.url, host_name=args.host_name, plugins=args.plugins)

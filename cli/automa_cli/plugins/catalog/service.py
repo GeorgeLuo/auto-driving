@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import base64
 import json
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.runtime.plugin_catalog import describe_plugin
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, STEP_PRESETS, catalog_path, step_presets
+from implementations.decision_cycle.catalog import (
+    DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, STEP_PRESETS, catalog_path, preset_activation,
+)
 
 from ...hosts.discovery import runtime_base_url
 from ...hosts.publications.plugin_catalog import PluginCatalogClient
@@ -84,29 +87,15 @@ def arm_plugins(*, url: str | None, host_name: str | None,
     return _change_selection("arm", url, host_name, None, _arm_request(_selections(plugins)))
 
 
-def preset_plugins(step: str, preset: str) -> list[str]:
-    """The plugins a packaged preset of ``step`` arms, in its order.
+def arm_preset(*, url: str | None, host_name: str | None, step: str, preset: str) -> SelectionResult:
+    """Arm a packaged preset as all that ``step`` runs, in place of what it has armed.
 
-    Arming takes each plugin's config from the host's catalog, so a preset
-    that configures a plugin is refused.
+    The host refuses it unless its catalog holds each of the preset's plugins
+    as the preset configures it; once they apply, the step reports the preset.
     """
 
-    presets = step_presets(step)
-    if preset not in presets:
-        raise ValueError(f"unknown {step} preset {preset!r}; known: {', '.join(sorted(presets))}")
-    configured = list(presets[preset].get("plugin_configs", {}))
-    if configured:
-        raise ValueError(f"{step}/{preset} configures {', '.join(configured)}, and arming takes each plugin's "
-                         "config from the host's catalog; arm its plugins by --name to run them with the host's "
-                         "configs.")
-    return list(presets[preset]["plugins"])
-
-
-def arm_preset(*, url: str | None, host_name: str | None, step: str, preset: str) -> SelectionResult:
-    """Arm a packaged preset's plugins as all that ``step`` runs, replacing what it has armed."""
-
-    request = {**_arm_request({step: preset_plugins(step, preset)}), "replace": True}
-    return _change_selection("arm", url, host_name, step, request)
+    request = _arm_request({step: preset_activation(step, preset).to_payload()})
+    return _change_selection("arm", url, host_name, step, request, preset=preset)
 
 
 def disarm_plugins(*, url: str | None, host_name: str | None,
@@ -133,7 +122,7 @@ def list_plugins(*, host_name: str | None = None, url: str | None = None, step: 
         return ListingResult(
             host_name, url, step, ok=True,
             defaults={name: list(DEFAULT_STEP_PLUGINS[name]) for name in steps},
-            presets={name: STEP_PRESETS.get(name, {}) for name in steps},
+            step_presets={name: _listed_presets(name) for name in steps},
             catalog=CatalogListing(display_path(source), [describe_plugin(plugin) for name in steps
                                                           for plugin in packaged_plugin_definitions(name)]),
         )
@@ -209,12 +198,19 @@ def save_plugins(*, host_name: str, step: str | None = None) -> SaveResult:
     )
 
 
+def _listed_presets(step: str) -> dict[str, dict[str, Any]]:
+    """``step``'s presets as its catalog file lists them, each marked whether it is the step's default."""
+
+    default = DEFAULT_STEP_PRESETS.get(step)
+    return {name: {**deepcopy(entry), "default": name == default} for name, entry in STEP_PRESETS.get(step, {}).items()}
+
+
 def _change_selection(operation: str, url: str | None, host_name: str | None, step: str | None,
-                      payload: dict[str, Any]) -> SelectionResult:
+                      payload: dict[str, Any], *, preset: str | None = None) -> SelectionResult:
     endpoint, receipt = _send(url, host_name, payload, timeout_s=ARM_TIMEOUT_S)
     recovery = (Recovery(kind="list", url=url, host_name=host_name) if receipt.answered
                 else Recovery(kind="endpoint", url=url, host_name=host_name))
-    return SelectionResult(operation, host_name, endpoint, step, receipt, recovery)
+    return SelectionResult(operation, host_name, endpoint, step, receipt, recovery, preset)
 
 
 def _send(url: str | None, host_name: str | None, payload: dict[str, Any] | None = None, *,
@@ -296,7 +292,9 @@ def _config_settings(config: str) -> dict[str, Any]:
     return settings
 
 
-def _arm_request(selections: dict[str, list[str]]) -> dict[str, Any]:
+def _arm_request(selections: dict[str, Any]) -> dict[str, Any]:
+    """Each step's ordered plugin IDs, or the whole activation it runs instead."""
+
     return {"operation": "arm", "selections": selections}
 
 

@@ -172,38 +172,6 @@ class PerceptionViewTests(unittest.TestCase):
             self.assertFalse(status["available"])
             self.assertEqual(status["status"], "unavailable")
 
-    def test_view_health_rejects_a_different_worker_generation(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            server = RuntimeViewServer(
-                host_name="test-vehicle",
-                automation_dir=root,
-                port=0,
-                run_id="run-current",
-                worker_pid=4242,
-                replay_runner_factory=ImageReplayRunner,
-            ).start()
-            try:
-                status = get_perception_view_status(
-                    root,
-                    expected_run_id="run-other",
-                    expected_worker_pid=4242,
-                )
-                self.assertFalse(status["available"])
-                self.assertEqual(status["status"], "stale")
-                self.assertIn("run_id", status["reason"])
-
-                status = get_perception_view_status(
-                    root,
-                    expected_run_id="run-current",
-                    expected_worker_pid=9999,
-                )
-                self.assertFalse(status["available"])
-                self.assertEqual(status["status"], "stale")
-                self.assertIn("pid", status["reason"])
-            finally:
-                server.stop()
-
 
 def _image_bytes(fmt: str, size: tuple[int, int], color: tuple[int, int, int]) -> bytes:
     buffer = io.BytesIO()

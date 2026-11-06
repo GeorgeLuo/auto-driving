@@ -54,7 +54,6 @@ class LiveRuntimeDecisionViewFixture:
             host_name="chase-sim-chaser",
             automation_dir=self.automation_dir,
             port=0,
-            run_id="run-live",
             decision_identity=self._producer(),
             replay_runner_factory=ImageReplayRunner,
         ).start()

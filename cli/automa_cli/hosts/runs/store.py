@@ -11,14 +11,13 @@ import os
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.perception.interface import PERCEPTION_TEXT_SCHEMA
 from autonomy.runtime.session import RunConfiguration
-from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID
 
 from ...shared.io.json_files import read_json, write_json_atomically
 from ...shared.paths import display_path
 from ...shared.timestamps import timestamp_ms
 from ..host_formatting import perception_stream_command
+from ..publications.host_publications import observation_component
 from ..staging import automation_dir as host_automation_dir
 from .models import RunResult
 
@@ -43,10 +42,7 @@ def new_run_state(
     configuration: RunConfiguration,
     record: bool,
     control_source: str,
-    automation_dir: Path,
-    front_camera_path: Path,
     run_dir: Path | None,
-    published_view: dict[str, Any],
     started_at_ms: int | None = None,
 ) -> dict[str, Any]:
     started_at_ms = timestamp_ms() if started_at_ms is None else started_at_ms
@@ -69,12 +65,6 @@ def new_run_state(
         "recording": record,
         "recorded_count": 0,
         "run_dir": display_path(run_dir) if run_dir is not None else None,
-        "latest": {
-            "front_camera": None if record else display_path(front_camera_path),
-            "perception_json": display_path(automation_dir / "latest_perception.json"),
-            "perception_text": display_path(automation_dir / "latest_perception.txt"),
-        },
-        "published_view": published_view,
         "readiness": session_readiness(None),
     }
 
@@ -93,7 +83,7 @@ def _readiness(
 
 
 def session_readiness(session: Any) -> dict[str, Any]:
-    """Project the copied runtime session. The view is not a gate."""
+    """Project the copied runtime session."""
 
     status = session.get("status") if isinstance(session, dict) else None
     if status in {"running", "completed"}:
@@ -117,8 +107,6 @@ def decision_record(identity: dict[str, Any]) -> dict[str, Any]:
         "steps": identity["steps"],
         # A decision frame is published only when proposals are staged.
         "published": identity["steps"]["proposal"] is not None,
-        "latest_frame_publish_skips": 0,
-        "latest_frame_publish_skip_reason": None,
     }
 
 
@@ -170,8 +158,30 @@ def applied_selections(
     return applied
 
 
+def latest_frame(host_status: dict[str, Any]) -> dict[str, Any] | None:
+    """The host's latest observed frame from its ``/host/status`` metadata, or ``None`` before one."""
+
+    latest = observation_component(host_status).get("latest")
+    if not isinstance(latest, dict):
+        return None
+    captured_at_ms, completed_at_ms = latest.get("captured_at_ms"), latest.get("completed_at_ms")
+    return {
+        "frame_id": latest.get("frame_id"),
+        "frame_index": latest.get("frame_index"),
+        "captured_at_ms": captured_at_ms,
+        "perception_completed_at_ms": completed_at_ms,
+        "capture_to_perception_ms": (
+            completed_at_ms - captured_at_ms
+            if isinstance(completed_at_ms, int) and isinstance(captured_at_ms, int)
+            else None
+        ),
+        "cycle_duration_ms": latest.get("duration_ms"),
+        "control": latest.get("control"),
+    }
+
+
 def record_host_status(state: dict[str, Any], host_status: dict[str, Any]) -> None:
-    """Record the steps and selections the host applied, each selection's report, and its decision.
+    """Record the steps and selections the host applied, each selection's report, its decision, and latest frame.
 
     A run starts with the staged selections; once the host reports its
     steps, the selections are what it runs, plugins armed since it started
@@ -191,11 +201,13 @@ def record_host_status(state: dict[str, Any], host_status: dict[str, Any]) -> No
     for step, selection in state["selections"].items():
         selection["status"] = steps.get(step) or "absent"
     state["selections"] = applied_selections(state["selections"], steps) or state["selections"]
+    frame = latest_frame(host_status)
+    if frame is not None:
+        state["last_frame"] = frame
 
 
 def finish_run(
     state: dict[str, Any],
-    view_state: dict[str, Any],
     *,
     status: str,
     stop_reason: str | None = None,
@@ -221,7 +233,6 @@ def finish_run(
             state["error_details"] = error_details
     state["readiness"] = session_readiness(state.get("session"))
     state["completed_at_ms"] = state["updated_at_ms"] = timestamp_ms()
-    state["published_view"] = view_state
 
 
 def mark_process_stopped(path: Path, process: Any, *, stopped_by: str) -> None:
@@ -278,12 +289,6 @@ def record_host_automation_terminal_result(
             "exit_code": result.exit_code,
             "completed_at_ms": completed_at_ms,
             "updated_at_ms": completed_at_ms,
-            "published_view": {
-                "status": "error",
-                "available": False,
-                "url": None,
-                "reason": "automation worker failed before the perception view started",
-            },
             "readiness": session_readiness(state.get("session")),
         },
     )
@@ -297,31 +302,6 @@ def initialize_automation_startup(
     configuration: RunConfiguration,
     record: bool,
 ) -> None:
-    view_record_path = automation_dir / "perception_view.json"
-    view_record_path.unlink(missing_ok=True)
-    starting_text = "\n".join(
-        [
-            f"schema={PERCEPTION_TEXT_SCHEMA}",
-            "plugin=automation-worker",
-            f"status=starting host_name={host_name}",
-            "signal id=perception_ready value=false confidence=1.000 reason=worker_starting",
-        ]
-    )
-    (automation_dir / "latest_perception.txt").write_text(
-        starting_text + "\n",
-        encoding="utf-8",
-    )
-    write_json_atomically(
-        automation_dir / "latest_perception.json",
-        {
-            "schema": "automa_latest_perception_placeholder",
-            "host_name": host_name,
-            "status": "starting",
-            "started_at_ms": started_at_ms,
-            "text": starting_text,
-            "perception": {"confidence": 0.0, "things": []},
-        },
-    )
     write_json_atomically(
         automation_dir / "state.json",
         new_run_state(
@@ -332,17 +312,7 @@ def initialize_automation_startup(
             configuration=configuration,
             record=record,
             control_source=CONTROL_SOURCE,
-            automation_dir=automation_dir,
-            front_camera_path=(
-                automation_dir / "latest" / "frames" / f"latest_{FRONT_CAMERA_SENSOR_ID}.jpg"
-            ),
             run_dir=None,
-            published_view={
-                "status": "starting",
-                "available": False,
-                "url": None,
-                "reason": "the run is starting",
-            },
             started_at_ms=started_at_ms,
         ),
     )
@@ -367,12 +337,6 @@ def mark_automation_startup_error(
             "exit_code": exit_code,
             "completed_at_ms": completed_at_ms,
             "updated_at_ms": completed_at_ms,
-            "published_view": {
-                "status": "error",
-                "available": False,
-                "url": None,
-                "reason": error,
-            },
             "readiness": session_readiness(state.get("session")),
         },
     )
@@ -409,9 +373,6 @@ def record_background_worker(
         "log_to_disk": bool(log_to_disk),
         "log_path": display_path(log_path) if log_to_disk else None,
         "state_path": display_path(automation_dir / "state.json"),
-        "latest_perception_text": display_path(
-            automation_dir / "latest_perception.txt"
-        ),
         "stream_command": perception_stream_command(host_name),
     }
     write_json_atomically(automation_dir / "process.json", record)

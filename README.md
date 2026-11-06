@@ -111,11 +111,12 @@ canonical directory contract is
 
 The command groups intentionally distinguish different kinds of state:
 
-The live worker's local browser entrypoint is **Automa**, with links to
-**Perception** at `/perception` and **Memory** at `/memory`. The automation
-command's `--open-view` option opens this shared entrypoint. Both pages use the
-same worker lifetime and publication APIs; perception owns its image buffer,
-while `RuntimeViewServer` owns the listener, routes, and shutdown.
+A host's local browser entrypoint is **Automa**, with links to
+**Perception** at `/perception` and **Memory** at `/memory`. `hosts viewer
+--name <host>` serves and opens it until interrupted; `plugins stream` serves
+the same pages beside its terminal output. A run serves no pages, so ending a
+viewer or stream leaves the run going. Perception owns its image buffer, while
+`RuntimeViewServer` owns the listener, routes, and shutdown.
 
 | Command | Reads or changes |
 |---|---|
@@ -259,10 +260,8 @@ preserves the operator's simulator session:
 ```sh
 ./cli/automa vehicles status
 ./cli/automa hosts create --name chase-sim-chaser --provider chase-sim --url http://localhost:5050
-./cli/automa hosts run \
-  --name chase-sim-chaser \
-  --observe-only \
-  --open-view
+./cli/automa hosts run --name chase-sim-chaser --observe-only
+./cli/automa hosts viewer --name chase-sim-chaser   # Ctrl-C ends the view, not the run
 ./cli/automa hosts status --name chase-sim-chaser
 ./cli/automa hosts stop --name chase-sim-chaser
 ./cli/automa hosts status --name chase-sim-chaser
@@ -311,14 +310,14 @@ Run the same staged plugins with movement enabled:
 ./cli/automa plugins stream --step perception --host-name piracer
 ```
 
-`hosts run` waits for a camera frame, the completed perception result for
-that frame, and a healthy view belonging to the same worker generation. It
-returns a nonzero result and preserves the exact capture code/path when those
-gates fail; a spawned PID alone is not reported as success.
+`hosts run` waits until the runtime session is running or completed. It
+returns a nonzero result when the session stops, errors, or never starts; a
+spawned PID alone is not reported as success. The run serves no pages and
+prints the viewing command, `hosts viewer --name <host>`.
 
-While a host's run is active, `hosts status --long` reports a
-loopback URL for a live frame-and-data view. The page polls the worker's
-in-memory publication. Camera capture runs independently from perception, so a
+While `hosts viewer` or `plugins stream` serves a host's view, `hosts status
+--long` reports its loopback URL, with or without a run. The page polls the
+host's latest publication. Camera capture runs independently from perception, so a
 slow plugin consumes the newest available frame instead of accumulating a
 backlog. The page displays the latest camera frame with the findings perception
 completed for it, and reports the elapsed result age. It can independently hide
@@ -330,7 +329,7 @@ Stop or restart the worker:
 
 ```sh
 ./cli/automa hosts stop --name chase-sim-chaser
-./cli/automa hosts restart --name chase-sim-chaser --observe-only --open-view
+./cli/automa hosts restart --name chase-sim-chaser --observe-only
 ```
 
 Useful run options:
@@ -341,7 +340,7 @@ Useful run options:
   a count runs until stopped.
 - `--unbounded` runs until stopped, overriding `--num-decisions` on either
   vehicle and in either mode. For example:
-  `./cli/automa hosts run --name chase-sim-chaser --unbounded --open-view`.
+  `./cli/automa hosts run --name chase-sim-chaser --unbounded`.
   The launch command returns after readiness and prints
   `hosts stop`. Ctrl-C in a terminal stream stops that stream,
   not the worker.
@@ -352,7 +351,6 @@ Useful run options:
   is dropped. Drive ticks during an in-flight cycle are not captures, and
   `/host/camera/latest` updates once per capture.
 - `--observe-only` applies no decision output on either vehicle. Starting passive observation in Chase preserves its current simulator session.
-- `--open-view` opens the browser only after the correlated view is healthy.
 - `--record` keeps every completed decision and its exact camera image, capture
   time, and applied step configurations. Both vehicles commit these artifacts
   before counting the decision. The host owns its history under
@@ -369,7 +367,7 @@ before restarting the worker:
 
 ```sh
 ./cli/automa hosts update --name chase-sim-chaser
-./cli/automa hosts restart --name chase-sim-chaser --observe-only --open-view
+./cli/automa hosts restart --name chase-sim-chaser --observe-only
 ```
 
 ### Perception Plugins
@@ -714,9 +712,10 @@ Once the host is created (and its release deployed, for PiCar), the same command
 control both vehicles. Change only the host name:
 
 ```sh
-./cli/automa hosts run --name chase-sim-chaser --num-decisions 10 --open-view
+./cli/automa hosts run --name chase-sim-chaser --num-decisions 10
+./cli/automa hosts viewer --name chase-sim-chaser
 ./cli/automa hosts stop --name chase-sim-chaser
-./cli/automa hosts run --name piracer --num-decisions 10 --open-view
+./cli/automa hosts run --name piracer --num-decisions 10
 ./cli/automa hosts stop --name piracer
 ```
 

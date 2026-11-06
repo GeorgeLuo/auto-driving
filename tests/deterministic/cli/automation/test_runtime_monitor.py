@@ -4,11 +4,10 @@ import copy
 import io
 import json
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 from unittest import mock
-
-from PIL import Image
 
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs import monitor
@@ -16,6 +15,7 @@ from cli.automa_cli.hosts.runs.worker import RunOutput
 from cli.automa_cli.hosts.runs.render import render_run_result
 from cli.automa_cli.hosts.runs.models import run_exit_code
 from cli.automa_cli.hosts.runs.store import CONTROL_SOURCE, control_application
+from cli.automa_cli.frontend.server import RuntimeViewServer
 
 
 HOST_NAME = "picar-test"
@@ -28,8 +28,6 @@ DECISION = {
     "generation_id": "gen-1",
     "steps": {"proposal": {"plugins": ["follow"]}},
     "published": True,
-    "latest_frame_publish_skips": 0,
-    "latest_frame_publish_skip_reason": None,
 }
 
 
@@ -43,6 +41,7 @@ class _FakeClient:
         self.hosts = hosts
         self.started_with: RunConfiguration | None = None
         self.stopped = False
+        self.stop_error: Exception | None = None
 
     def host_status(self) -> dict:
         return self.hosts.pop(0)
@@ -56,16 +55,10 @@ class _FakeClient:
 
     def stop(self) -> dict:
         self.stopped = True
+        if self.stop_error is not None:
+            raise self.stop_error
         released = {**_session("stopped", 0), "execution": {"mode": "manual", "closed": False}}
         return {"ok": True, "host_run_id": "host-1", "session": released}
-
-
-class _FakeDecisionView:
-    def __init__(self, **kwargs) -> None:
-        pass
-
-    def refresh(self) -> bool:
-        return True
 
 
 def _session(status: str, processed: int) -> dict:
@@ -76,10 +69,11 @@ def _session(status: str, processed: int) -> dict:
     }
 
 
-def _host(camera: int, *, last_error: str | None = None) -> dict:
+def _host(camera: int, *, last_error: str | None = None, latest: dict | None = None) -> dict:
+    observation = {"frames_received": camera, "frames_dropped": 0, "latest": latest}
     return {
         "host": {
-            "components": {"observation": {"frames_received": camera, "frames_dropped": 0}},
+            "components": {"observation": observation},
             "steps": {
                 "memory": {
                     "plugin_ids": ["recent"], "plugin_configs": {"recent": {}}, "run_count": 2, "failure_count": 0,
@@ -95,19 +89,16 @@ def _host(camera: int, *, last_error: str | None = None) -> dict:
     }
 
 
-def _publication(index: int) -> dict:
+def _latest(index: int) -> dict:
+    """The bounded latest-frame metadata a host's observation status reports."""
+
     return {
-        "frame": {
-            "frame_id": f"donkey_frame_{index:06d}",
-            "frame_index": index,
-            "captured_at_ms": 1_000 + index,
-            "completed_at_ms": 1_040 + index,
-        },
+        "frame_id": f"donkey_frame_{index:06d}",
+        "frame_index": index,
+        "captured_at_ms": 1_000 + index,
+        "completed_at_ms": 1_040 + index,
         "duration_ms": 40,
-        "perception": {"signals": [{"id": "lane"}], "things": [], "text": "signal id=lane"},
         "control": {"reason": "steer-left", "steering": -0.2, "throttle": 0.1},
-        "generation_id": "gen-1",
-        "mode": "autonomy",
     }
 
 
@@ -122,12 +113,10 @@ class RuntimeMonitorTests(unittest.TestCase):
             "control_source": "runtime_host",
             "action_policy": "autonomy",
             "recording": False,
-            "latest": {"perception_text": "latest_perception.txt"},
             "selections": {
                 "perception": {"plugins": ["lanes"], "preset": "lane-preset"},
                 "memory": {"plugins": [], "preset": None},
             },
-            "published_view": {"available": True, "url": "http://127.0.0.1:9/"},
             "decision": {"generation_id": "gen-1"},
             "num_decisions": 2,
             "run_dir": None,
@@ -135,8 +124,6 @@ class RuntimeMonitorTests(unittest.TestCase):
         output = io.StringIO()
         transcript = RunOutput(output)
         transcript.startup(state)
-        transcript.frame("frame-1", signals=1, things=0, action="steer-left", count=1, verbose=False)
-        transcript.frame("frame-2", signals=1, things=0, action="hold", count=2, verbose=False)
         code, message = run_exit_code(state), render_run_result(state, state_path="automation/state.json")
 
         self.assertEqual(
@@ -145,35 +132,29 @@ class RuntimeMonitorTests(unittest.TestCase):
                 "Run started on host car.",
                 "Perception: lane-preset (lanes)",
                 "Memory: (no plugins)",
-                "Recording: off; latest frame and perception are overwritten each iteration",
+                "Recording: off",
                 "Control source: runtime host",
                 "Action policy: autonomy",
                 "Decision generation: gen-1",
-                "Runtime view: http://127.0.0.1:9/",
+                "View: ./cli/automa hosts viewer --name car",
                 "Decisions: 2",
-                "frame-1: signals=1 things=0 action=steer-left",
             ],
         )
         self.assertEqual(code, 0)
         self.assertIn("Run completed on host car.", message)
         self.assertIn("State: automation/state.json", message)
         self.assertIn("Frames received: 3", message)
+        self.assertNotIn("Latest perception", message)
 
-    def _monitor(self, automation_dir: Path, *, sessions: list[dict], hosts: list[dict]):
-        jpeg = io.BytesIO()
-        Image.new("RGB", (4, 4)).save(jpeg, format="JPEG")
-        publications = [_publication(0), _publication(1)]
-        def sample(*_args, **_kwargs):
-            # The latest publication repeats once the host has no newer frame.
-            publication = publications.pop(0) if len(publications) > 1 else publications[0]
-            return publication, jpeg.getvalue()
-
-        client = _FakeClient(sessions, hosts)
+    def _monitor(self, automation_dir: Path, *, sessions: list[dict], hosts: list[dict],
+                 client: _FakeClient | None = None):
+        client = client or _FakeClient(sessions, hosts)
         output = io.StringIO()
+        # A run serves no page and starts no thread; either would fail here.
         with (
             mock.patch.object(monitor, "RuntimeClient", return_value=client),
-            mock.patch.object(monitor, "fetch_observation_sample", side_effect=sample),
-            mock.patch.object(monitor, "DecisionViewAdapter", _FakeDecisionView),
+            mock.patch.object(RuntimeViewServer, "__init__", side_effect=AssertionError("the run built a view")),
+            mock.patch.object(threading.Thread, "start", side_effect=AssertionError("the run started a thread")),
         ):
             outcome = monitor.monitor_runtime(
                 host_name=HOST_NAME,
@@ -184,7 +165,6 @@ class RuntimeMonitorTests(unittest.TestCase):
                 configuration=RunConfiguration(mode="autonomy", num_decisions=2),
                 timeout_s=1.0,
                 record=False,
-                verbose=False,
                 emit=RunOutput(output),
             )
             code, message = outcome.exit_code, render_run_result(outcome.state, state_path=str(outcome.state_path))
@@ -192,7 +172,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         return client, code, message, output.getvalue().splitlines(), state
 
     def test_a_run_prints_and_records_the_host_session(self) -> None:
-        hosts = [_host(10), _host(11), _host(13)]
+        hosts = [_host(10), _host(11, latest=_latest(0)), _host(13, latest=_latest(1))]
         for host, count in zip(hosts, (4, 5, 6)):
             host["host"]["components"]["observation"]["frames_dropped"] = count
         with tempfile.TemporaryDirectory() as tmp:
@@ -202,6 +182,7 @@ class RuntimeMonitorTests(unittest.TestCase):
                 sessions=[_session("running", 1), _session("completed", 2)],
                 hosts=hosts,
             )
+            files = sorted(path.name for path in automation_dir.iterdir())
 
         self.assertTrue(client.stopped)
         self.assertEqual(client.started_with.mode, "autonomy")
@@ -209,7 +190,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(state["num_decisions"], 2)
         self.assertEqual(state["frames_dropped"], 2)
         self.assertEqual(
-            [line for line in lines if not line.startswith("Runtime view: ")],
+            lines,
             [
                 f"Run started on host {HOST_NAME}.",
                 # The lines name what the host runs, not what was staged:
@@ -217,15 +198,14 @@ class RuntimeMonitorTests(unittest.TestCase):
                 "Perception: (no plugins)",
                 "Memory: recent",
                 "Proposal: (no plugins)",
-                "Recording: off; latest frame and perception are overwritten each iteration",
+                "Recording: off",
                 "Control source: runtime host",
                 "Action policy: autonomy",
                 "Decision generation: gen-1",
+                f"View: ./cli/automa hosts viewer --name {HOST_NAME}",
                 "Decisions: 2",
-                "donkey_frame_000000: signals=1 things=0 action=steer-left",
             ],
         )
-        self.assertRegex(lines[8], r"^Runtime view: http://")
         self.assertEqual(code, 0)
         self.assertEqual(
             message.splitlines()[:6],
@@ -263,7 +243,21 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(state["last_frame"]["frame_id"], "donkey_frame_000001")
         self.assertEqual(state["last_frame"]["capture_to_perception_ms"], 40)
         self.assertEqual(state["last_frame"]["control"]["reason"], "steer-left")
-        self.assertEqual(state["published_view"]["available"], False)
+        self.assertEqual(state["last_frame"]["cycle_duration_ms"], 40)
+        for removed in ("published_view", "latest", "last_capture"):
+            self.assertNotIn(removed, state)
+        self.assertEqual(files, ["state.json"])
+
+    def test_a_host_without_a_latest_frame_leaves_it_absent(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            _client, code, _message, _lines, state = self._monitor(
+                Path(tmp) / "automation",
+                sessions=[_session("completed", 0)],
+                hosts=[_host(0), _host(0)],
+            )
+
+        self.assertEqual(code, 0)
+        self.assertNotIn("last_frame", state)
 
     def test_a_host_cycle_error_fails_the_run_with_the_host_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -284,73 +278,20 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(state["readiness"]["blocking_layer"], "runtime_session")
         self.assertEqual(state["readiness"]["status"], "blocked")
 
-    def test_a_viewer_that_fails_to_start_leaves_the_accepted_session_running(self) -> None:
+    def test_a_failed_drain_fails_a_completed_run_once(self) -> None:
+        client = _FakeClient([_session("completed", 0)], [_host(0), _host(0)])
+        client.stop_error = RuntimeError("host gone")
         with tempfile.TemporaryDirectory() as tmp:
-            automation_dir = Path(tmp) / "automation"
-            seen: dict[str, object] = {}
-
-            class BrokenView:
-                def start(self) -> None:
-                    seen["accepted"] = json.loads((automation_dir / "state.json").read_text())
-                    raise RuntimeError("view bind failed")
-
-                def stop(self) -> None:
-                    seen["cleaned"] = True
-
-            client = _FakeClient(
-                [_session("running", 0), _session("completed", 0)],
-                [_host(0), _host(0), _host(0)],
-            )
-            with (
-                mock.patch.object(monitor, "RuntimeClient", return_value=client),
-                mock.patch.object(monitor, "runtime_view_server", return_value=BrokenView()),
-                mock.patch.object(monitor, "fetch_observation_sample", side_effect=AssertionError("no view")),
-            ):
-                outcome = monitor.monitor_runtime(
-                    host_name=HOST_NAME,
-                    base_url=client.base_url,
-                    automation_dir=automation_dir,
-                    selections=copy.deepcopy(SELECTIONS),
-                    decision=dict(DECISION),
-                    configuration=RunConfiguration(mode="autonomy", num_decisions=1),
-                    timeout_s=0.2,
-                    record=False,
-                    verbose=False,
-                )
-
-        accepted = seen["accepted"]
-        self.assertIsInstance(accepted, dict)
-        self.assertEqual(accepted["session"]["status"], "running")
-        self.assertEqual(accepted["run_id"], "host-1")
-        self.assertEqual(accepted["processed_count"], 0)
-        self.assertTrue(seen["cleaned"])
-        self.assertEqual(outcome.exit_code, 0)
-        self.assertEqual(outcome.state["status"], "completed")
-        self.assertIn("view bind failed", outcome.state["published_view"]["reason"])
-        self.assertNotIn("view bind failed", outcome.state.get("error", ""))
-        self.assertTrue(client.stopped)
-
-    def test_viewer_health_failure_does_not_stop_the_session(self) -> None:
-        calls = {"health": 0}
-
-        def health(self):
-            calls["health"] += 1
-            raise RuntimeError("health failed")
-
-        with tempfile.TemporaryDirectory() as tmp, mock.patch.object(
-            monitor.RuntimeViewServer, "health_payload", health,
-        ):
-            client, code, _message, _lines, state = self._monitor(
-                Path(tmp) / "automation",
-                sessions=[_session("running", 0), _session("completed", 0)],
-                hosts=[_host(0), _host(0), _host(0)],
+            _client, code, _message, _lines, state = self._monitor(
+                Path(tmp) / "automation", sessions=[], hosts=[], client=client,
             )
 
-        self.assertGreaterEqual(calls["health"], 1)
-        self.assertEqual(code, 0)
-        self.assertEqual(state["status"], "completed")
-        self.assertNotIn("health failed", state.get("error", ""))
-        self.assertTrue(client.stopped)
+        self.assertEqual(code, 2)
+        self.assertEqual((state["status"], state["stop_reason"]), ("error", "completed"))
+        self.assertIn("host gone", state["error"])
+        # The observed terminal session outlives the failed cleanup.
+        self.assertEqual(state["session"]["status"], "completed")
+        self.assertEqual(state["readiness"]["status"], "ready")
 
     def test_interruption_and_monitor_failure_copy_the_stopped_runtime_session(self) -> None:
         for failure, status, code in ((KeyboardInterrupt(), "stopped", 130),

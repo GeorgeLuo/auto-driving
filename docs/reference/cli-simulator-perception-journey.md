@@ -27,10 +27,9 @@ are replaced by the `hosts update` that `hosts status --long` prints.
 ./cli/automa vehicles status
 ./cli/automa hosts create --name chase-sim-chaser --provider chase-sim --url http://localhost:5050
 
-./cli/automa hosts run \
-  --name chase-sim-chaser \
-  --observe-only \
-  --open-view
+./cli/automa hosts run --name chase-sim-chaser --observe-only
+
+./cli/automa hosts viewer --name chase-sim-chaser   # Ctrl-C ends the view, not the run
 
 ./cli/automa hosts status --name chase-sim-chaser
 
@@ -116,13 +115,13 @@ movement, or requires a live simulator. `hosts status --long` reports
 invalid staged steps, and `hosts run` checks them before it starts.
 
 `hosts run --observe-only` preserves the current scenario, playback
-state, control source, and input. It succeeds only after one camera frame, the
-perception result for that frame, and the loopback view health all agree on the
-same live worker generation. `--open-view` is explicit. A browser-launch
-failure leaves the healthy worker running and prints the URL for manual use.
+state, control source, and input. It succeeds once the runtime session is
+running or completed, serves no pages, and prints `hosts viewer --name <host>`.
+That viewer opens the browser and serves the pages until interrupted; its
+failures end only that view, never the run.
 
 `--unbounded` starts an unbounded background worker in either mode and overrides
-`--num-decisions`. The launch command returns once the correlated view is ready
+`--num-decisions`. The launch command returns once the runtime session is running
 and prints `hosts stop`, which stops the worker. Without `--unbounded`,
 a movement-enabled run requires a positive `--num-decisions N`.
 An observation-only run without a count is unbounded.
@@ -130,11 +129,11 @@ Ctrl-C in a terminal stream stops that stream, not the worker. For a passive
 restart, keep `--observe-only` explicit:
 
 ```sh
-./cli/automa hosts restart --name chase-sim-chaser --observe-only --open-view
+./cli/automa hosts restart --name chase-sim-chaser --observe-only
 ```
 
-Stopping the worker keeps its local deployment staged and makes its previous
-view unavailable or stale, never current.
+Stopping the worker keeps its local deployment staged. A running `hosts viewer`
+keeps serving the host's pages, which report that the host is not live.
 
 ## Upload to an Existing Catalog
 
@@ -298,8 +297,8 @@ external change.
 | Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it |
 | Deployment absent | Run the printed `hosts update` command, which stages every step's default |
 | Staged step invalid (including a retired schema) | `hosts status --long` and startup identify its step, activation path, and the `hosts update` command that replaces it with the step's default. Run it, then rerun `hosts status --long`. Checking never rewrites configs, and known invalid documents prevent worker startup and restart |
-| Worker stopped | Run the printed observation-only `hosts run --open-view` command |
-| View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
+| Worker stopped | Run the printed observation-only `hosts run` command |
+| View unavailable | Run `hosts viewer --name <host>`; a recorded URL is not treated as healthy |
 
 `vehicles status` exits 1 when a vehicle is listed and none is reachable, and 0
 when nothing is listed. `hosts status

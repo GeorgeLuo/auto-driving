@@ -27,7 +27,7 @@ class ChaseCaptureCadenceTests(unittest.TestCase):
         with staged_runners(perception=perception), chase_runtime(runtime_root, car=car):
             result = run_host_automation(
                 host_name=HOST_NAME, num_decisions=num_decisions,
-                take_control=False, record=True, verbose=True, emit=RunOutput(output, verbose=True),
+                take_control=False, record=True, emit=RunOutput(output),
             )
         state = json.loads((Path(bundle["runtime_dir"]) / "automation" / "state.json").read_text())
         return result, state, output.getvalue()

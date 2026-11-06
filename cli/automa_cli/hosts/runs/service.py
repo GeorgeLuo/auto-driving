@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse
@@ -14,8 +13,6 @@ from ..errors import RuntimeHostError
 from ...releases.errors import ReleaseError
 from ...releases.paths import bundle_paths
 from ...shared.io.processes import pid_alive
-from ...shared.open_view import launch_browser
-from ...shared.text import page_url
 from ...shared.timestamps import timestamp_ms
 from ..discovery import running_base_url
 from ..local import ensure_chase_host, stop_chase_host
@@ -132,7 +129,6 @@ def run_host_automation(
     unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
-    verbose: bool = False,
     emit: Callable[[RunEvent], None] | None = None,
 ) -> RunResult:
     try:
@@ -179,34 +175,8 @@ def run_host_automation(
         configuration=configuration,
         timeout_s=timeout_s,
         record=record,
-        verbose=verbose,
         emit=emit,
     )
-
-
-def _wait_for_view_initialization(
-    automation_dir: Path, state: dict, *, timeout_s: float,
-) -> dict:
-    """For an explicit browser request, wait for the view's one startup attempt.
-
-    Session acceptance is already complete. An unavailable view or an expired
-    wait only prevents opening its page; neither changes the startup verdict.
-    """
-
-    published = state.get("published_view")
-    view = published if isinstance(published, dict) else {}
-    deadline = time.monotonic() + max(0.0, timeout_s)
-    while view.get("status") == "starting" and time.monotonic() < deadline:
-        time.sleep(0.05)
-        latest = read_run_state(automation_dir)
-        if not isinstance(latest, dict):
-            continue
-        if (latest.get("pid"), latest.get("run_id")) != (state.get("pid"), state.get("run_id")):
-            break
-        published = latest.get("published_view")
-        if isinstance(published, dict):
-            view = published
-    return view
 
 
 def start_host_automation_background(
@@ -218,9 +188,7 @@ def start_host_automation_background(
     unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
-    verbose: bool = False,
     log_to_disk: bool = False,
-    open_view: bool = False,
     startup_wait_s: float = 20.0,
 ) -> StartResult:
     try:
@@ -311,18 +279,11 @@ def start_host_automation_background(
                 ),
                 state_path=automation_dir / "state.json",
             )
-        view = _wait_for_view_initialization(
-            automation_dir, existing_state, timeout_s=startup_wait_s if open_view else 0,
-        )
-        view_url = page_url(view.get("url"))
-        browser = launch_browser(view_url) if open_view and view_url else None
         return StartResult(
             0,
             "existing",
             host_name=host_name,
             pid=existing_pid,
-            view=view,
-            browser=browser,
             state_path=automation_dir / "state.json",
             process_record=existing,
             log_path=log_path,
@@ -335,7 +296,6 @@ def start_host_automation_background(
         configuration=configuration,
         take_control=take_control,
         record=record,
-        verbose=verbose,
     )
 
     started_at_ms = timestamp_ms()
@@ -370,26 +330,13 @@ def start_host_automation_background(
         automation_dir=automation_dir,
         timeout_s=startup_wait_s,
     )
-    if open_view and startup["status"] in {"ready", "completed"}:
-        state = startup.get("state") or {}
-        view = _wait_for_view_initialization(automation_dir, state, timeout_s=startup_wait_s)
-        startup = {**startup, "view_url": page_url(view.get("url")),
-                   "state": {**state, "published_view": view}}
     process_record = record_worker_startup(automation_dir, process_record, startup)
-
-    view_url = page_url(startup.get("view_url"))
-    browser = (
-        launch_browser(view_url)
-        if open_view and startup["status"] in {"ready", "completed"} and view_url
-        else None
-    )
     return StartResult(
         0 if startup["status"] in {"ready", "completed"} else 2,
         "started",
         host_name=host_name,
         pid=process.pid,
         startup=startup,
-        browser=browser,
         state_path=automation_dir / "state.json",
         process_record=process_record,
         log_path=log_path,
@@ -404,9 +351,7 @@ def restart_host_automation(
     unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
-    verbose: bool = False,
     log_to_disk: bool = False,
-    open_view: bool = False,
     wait_s: float = 3.0,
 ) -> RestartResult:
     try:
@@ -443,9 +388,7 @@ def restart_host_automation(
         unbounded=unbounded,
         take_control=take_control,
         record=record,
-        verbose=verbose,
         log_to_disk=log_to_disk,
-        open_view=open_view,
     )
     kind = "start_failed" if start_result.exit_code else "started"
     return RestartResult(start_result.exit_code, kind, host_name, stop=stop_result, start=start_result)

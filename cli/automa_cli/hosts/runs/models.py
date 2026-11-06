@@ -13,20 +13,18 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, get_args
 
-from ...shared.browser_result import BrowserOpenResult
-
 WORKER_MODULE = "cli.automa_cli.hosts.runs.worker"
 
 MAX_STATUS_REASON_CHARS = 240
 
 
-RunEventKind = Literal["startup", "frame"]
+RunEventKind = Literal["startup"]
 RUN_EVENT_KINDS: tuple[str, ...] = get_args(RunEventKind)
 
 
 @dataclass(frozen=True)
 class RunEvent:
-    """A live fact from the run monitor: the run's ``startup`` state, or a captured ``frame``."""
+    """A live fact from the run monitor: the run's accepted ``startup`` state."""
 
     kind: RunEventKind
     data: dict[str, Any]
@@ -86,10 +84,8 @@ class StartResult:
     log_path: Path | None = None
     expected_authority: dict[str, Any] | None = None
     actual_authority: dict[str, Any] | None = None
-    view: dict[str, Any] | None = None
     process_record: dict[str, Any] | None = None
     startup: dict[str, Any] | None = None
-    browser: BrowserOpenResult | None = None
     problems: list[dict[str, str]] | None = None
 
 

@@ -67,7 +67,6 @@ class HelpCommandTests(unittest.TestCase):
                 "--name",
                 "chase-sim-chaser",
                 "--observe-only",
-                "--open-view",
             ],
             [
                 "hosts", "restart", "--name", "piracer",
@@ -113,11 +112,24 @@ class HelpCommandTests(unittest.TestCase):
             ["hosts", "serve", "--name", "demo"],
             ["hosts", "operation", "startup-check", "--name", "demo"],
             ["vehicles", "delete", "host", "--name", "demo"],
+            # A run serves no pages; hosts viewer does.
+            ["hosts", "run", "--name", "demo", "--open-view"],
+            ["hosts", "restart", "--name", "demo", "--open-view"],
+            ["hosts", "run", "--name", "demo", "--verbose"],
         ):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as caught:
                     parser.parse_args(args)
                 self.assertEqual(caught.exception.code, 2)
+
+    def test_run_help_names_the_viewer_command(self) -> None:
+        from tests.shared.cli.invoke import invoke_automa
+
+        for verb in ("run", "restart"):
+            with self.subTest(verb=verb):
+                text = invoke_automa("hosts", verb, "--help").stdout
+                self.assertIn("hosts viewer --name HOST", text)
+                self.assertNotIn("--open-view", text)
 
     def test_simulator_lifecycle_parses(self) -> None:
         parser = build_parser()

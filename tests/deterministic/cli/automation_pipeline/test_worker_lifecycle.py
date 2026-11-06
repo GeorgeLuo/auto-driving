@@ -82,7 +82,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
             "pid": _RunningProcess.pid,
             "run_id": "current-run",
             "session": {"status": "running", "processed_decisions": 0},
-            "published_view": {"available": False, "url": None},
         }
         with patch("cli.automa_cli.hosts.runs.process.read_run_state", return_value=state):
             result = wait_for_automation_startup(
@@ -91,7 +90,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
         self.assertEqual(result["status"], "ready")
         self.assertEqual(result["session_status"], "running")
         self.assertEqual(result["processed_count"], 0)
-        self.assertIsNone(result["view_url"])
 
     def test_background_start_fails_when_child_exits_before_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -124,7 +122,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             self.assertEqual(state["status"], "error")
             self.assertIn("exited with code 7", state["error"])
 
-    def test_background_start_returns_only_after_first_frame_and_view(self) -> None:
+    def test_background_start_returns_once_the_session_runs_and_names_the_viewer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")
@@ -142,12 +140,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
                             "pid": _RunningProcess.pid,
                             "run_id": "run-current",
                             "session": {"status": "running", "processed_decisions": 0},
-                            "published_view": {
-                                "status": "unavailable",
-                                "available": False,
-                                "url": "http://127.0.0.1:8555/",
-                                "reason": "view has not published a frame",
-                            },
                         }
                     )
                     state_path.write_text(json.dumps(state), encoding="utf-8")
@@ -160,15 +152,16 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 patch("cli.automa_cli.hosts.runs.process.subprocess.Popen", side_effect=launch),
                 patch(
                     "cli.automa_cli.shared.open_view.webbrowser.open",
-                    return_value=True,
-                ) as browser_open,
+                    side_effect=AssertionError("a run start opened a browser"),
+                ),
             ):
                 result = start_host_automation_background(
                     host_name="chase-sim-chaser",
                     take_control=False,
-                    open_view=True,
                     startup_wait_s=1.0,
                 )
+            files = sorted(path.name for path in automation_dir.iterdir())
+            process_record = json.loads((automation_dir / "process.json").read_text(encoding="utf-8"))
 
             self.assertEqual(result.exit_code, 0, render_lifecycle_result(result))
             rendered = render_lifecycle_result(result)
@@ -176,127 +169,9 @@ class AutomationLivePipelineTests(unittest.TestCase):
             self.assertIn("Session: running", rendered)
             self.assertIn("Decisions: 0", rendered)
             self.assertNotIn("ready for:", rendered.lower())
-            self.assertIn("http://127.0.0.1:8555/", rendered)
-            self.assertIn("Browser opened", rendered)
-            browser_open.assert_called_once_with(
-                "http://127.0.0.1:8555/",
-                new=2,
-            )
-
-    def test_a_missing_view_url_does_not_launch_a_browser(self) -> None:
-        for url in (None, "None"):
-            with self.subTest(url=url):
-                with tempfile.TemporaryDirectory() as tmp:
-                    runtime_root = Path(tmp) / "vehicles"
-                    write_host_fixture(runtime_root, "chase-sim-chaser")
-                    automation_dir = (
-                        runtime_root / "chase-sim-chaser" / "bundle" / "runtime" / "automation"
-                    )
-
-                    def launch(*_args, **_kwargs):
-                        def mark_ready() -> None:
-                            time.sleep(0.02)
-                            state_path = automation_dir / "state.json"
-                            state = json.loads(state_path.read_text(encoding="utf-8"))
-                            state.update(
-                                {
-                                    "pid": _RunningProcess.pid,
-                                    "run_id": "run-current",
-                                    "session": {"status": "running", "processed_decisions": 0},
-                                    "published_view": {
-                                        "status": "unavailable",
-                                        "available": False,
-                                        "url": url,
-                                        "reason": "view down",
-                                    },
-                                }
-                            )
-                            state_path.write_text(json.dumps(state), encoding="utf-8")
-
-                        threading.Thread(target=mark_ready, daemon=True).start()
-                        return _RunningProcess()
-
-                    with (
-                        runtime_root_env(runtime_root),
-                        patch("cli.automa_cli.hosts.runs.process.subprocess.Popen", side_effect=launch),
-                        patch(
-                            "cli.automa_cli.shared.open_view.webbrowser.open",
-                            return_value=True,
-                        ) as browser_open,
-                    ):
-                        result = start_host_automation_background(
-                            host_name="chase-sim-chaser",
-                            take_control=False,
-                            open_view=True,
-                            startup_wait_s=1.0,
-                        )
-
-                self.assertEqual(result.exit_code, 0, render_lifecycle_result(result))
-                rendered = render_lifecycle_result(result)
-                self.assertIn("Session: running", rendered)
-                self.assertIn("Decisions: 0", rendered)
-                self.assertIn("View: unavailable (view down)", rendered)
-                self.assertNotIn("View: None", rendered)
-                self.assertNotIn("Browser opened", rendered)
-                browser_open.assert_not_called()
-                self.assertNotIn("None", [call.args[0] for call in browser_open.call_args_list if call.args])
-
-    def test_open_view_reuses_existing_worker_and_browser_failure_is_nonfatal(
-        self,
-    ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            write_host_fixture(runtime_root, "chase-sim-chaser")
-            automation_dir = (
-                runtime_root / "chase-sim-chaser" / "bundle" / "runtime" / "automation"
-            )
-            automation_dir.mkdir(parents=True)
-            (automation_dir / "process.json").write_text(
-                json.dumps({"pid": 45454, "log_to_disk": False}),
-                encoding="utf-8",
-            )
-            (automation_dir / "state.json").write_text(
-                json.dumps(
-                    {
-                        "status": "running",
-                        "pid": 45454,
-                        "run_id": "run-current",
-                        "session": {"status": "running", "processed_decisions": 0},
-                        "action_policy": "observe_only",
-                        "control_application": "not_applied",
-                        "published_view": {
-                            "available": True,
-                            "url": "http://127.0.0.1:8666/",
-                        },
-                    }
-                ),
-                encoding="utf-8",
-            )
-
-            with (
-                runtime_root_env(runtime_root),
-                patch("cli.automa_cli.hosts.runs.service.pid_alive", return_value=True),
-                patch(
-                    "cli.automa_cli.hosts.runs.process.subprocess.Popen",
-                    side_effect=AssertionError("must not spawn a duplicate worker"),
-                ),
-                patch(
-                    "cli.automa_cli.shared.open_view.webbrowser.open",
-                    return_value=False,
-                ) as browser_open,
-            ):
-                result = start_host_automation_background(
-                    host_name="chase-sim-chaser",
-                    take_control=False,
-                    open_view=True,
-                )
-
-        self.assertEqual(result.exit_code, 0, render_lifecycle_result(result))
-        self.assertIn("already has a run", render_lifecycle_result(result))
-        self.assertNotIn("ready for:", render_lifecycle_result(result).lower())
-        self.assertIn("Warning: could not open the browser", render_lifecycle_result(result))
-        self.assertIn("Open manually: http://127.0.0.1:8666/", render_lifecycle_result(result))
-        browser_open.assert_called_once_with("http://127.0.0.1:8666/", new=2)
+            self.assertIn("View: ./cli/automa hosts viewer --name chase-sim-chaser", rendered)
+            self.assertEqual(files, ["process.json", "state.json"])
+            self.assertNotIn("latest_perception_text", process_record)
 
     def test_existing_worker_must_match_requested_observation_only_authority(
         self,
@@ -332,7 +207,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 result = start_host_automation_background(
                     host_name="chase-sim-chaser",
                     take_control=False,
-                    open_view=True,
                 )
 
         self.assertEqual(result.exit_code, 2)

@@ -41,7 +41,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         )
         server = RuntimeViewServer(
             host_name="piracer", automation_dir=self.runtime_root / "view",
-            run_id=normalized["run_id"], decision_identity=_provider_identity(normalized),
+            decision_identity=_provider_identity(normalized),
             replay_runner_factory=ImageReplayRunner,
         )
         adapter = DecisionViewAdapter(
@@ -129,7 +129,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             host_name="piracer",
             automation_dir=self.runtime_root / "piracer" / "runtime_view",
             port=0,
-            run_id=normalized["run_id"],
             decision_identity=_provider_identity(normalized),
             replay_runner_factory=ImageReplayRunner,
         ).start()
@@ -179,7 +178,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             host_name="piracer",
             automation_dir=self.runtime_root / "piracer" / "runtime_view",
             port=0,
-            run_id=normalized["run_id"],
             decision_identity=_provider_identity(normalized),
             replay_runner_factory=ImageReplayRunner,
         ).start()

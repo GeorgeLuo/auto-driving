@@ -48,7 +48,7 @@ class StagedActivationRecoveryTests(unittest.TestCase):
                     for verb in ("run", "restart"):
                         result = invoke_automa(
                             "hosts", verb, "--name", HOST_NAME,
-                            "--observe-only", "--open-view",
+                            "--observe-only",
                             runtime_root=runtime_root, extra_env=env, check=False,
                         )
                         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)

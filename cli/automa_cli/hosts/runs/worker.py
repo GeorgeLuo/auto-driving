@@ -14,7 +14,7 @@ from typing import Any, TextIO
 from ...shared.paths import display_path
 from ..step_formatting import format_activation_problems
 from .models import WORKER_MODULE, RunEvent
-from .render import frame_line, render_run_result, reports_frame, startup_lines
+from .render import render_run_result, startup_lines
 from .service import run_host_automation
 from .store import record_host_automation_terminal_result
 
@@ -22,18 +22,11 @@ from .store import record_host_automation_terminal_result
 class RunOutput:
     """The transcript a run monitor updates. Live lines go to ``output``; the closing result does not."""
 
-    def __init__(self, output: TextIO | None = None, *, verbose: bool = False) -> None:
-        self.verbose = verbose
+    def __init__(self, output: TextIO | None = None) -> None:
         self._output = output
 
     def startup(self, state: dict[str, Any]) -> None:
         self._write(startup_lines(state))
-
-    def frame(
-        self, frame_id: str, *, signals: int, things: int, action: Any, count: int, verbose: bool,
-    ) -> None:
-        if reports_frame(count, verbose=verbose):
-            self._write([frame_line(frame_id, signals=signals, things=things, action=action)])
 
     def _write(self, lines: list[str]) -> None:
         if self._output is None:
@@ -44,8 +37,6 @@ class RunOutput:
     def __call__(self, event: RunEvent) -> None:
         if event.kind == "startup":
             self.startup(event.data)
-        elif event.kind == "frame":
-            self.frame(**event.data, verbose=self.verbose)
         else:
             raise ValueError(f"Unknown run event: {event.kind!r}")
 
@@ -62,7 +53,6 @@ def _run_worker(argv: list[str]) -> int:
     parser.add_argument("--unbounded", action="store_true")
     parser.add_argument("--observe-only", action="store_true")
     parser.add_argument("--record", action="store_true")
-    parser.add_argument("--verbose", action="store_true")
     args = parser.parse_args(argv)
     result = run_host_automation(
         host_name=None if args.host_url else args.host_name,
@@ -72,8 +62,7 @@ def _run_worker(argv: list[str]) -> int:
         unbounded=args.unbounded,
         take_control=not args.observe_only,
         record=args.record,
-        verbose=args.verbose,
-        emit=RunOutput(sys.stdout, verbose=args.verbose),
+        emit=RunOutput(sys.stdout),
     )
     message = render_run_result(result.state, state_path=display_path(result.state_path)) if result.state is not None else result.message
     if result.problems:

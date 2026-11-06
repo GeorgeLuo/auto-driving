@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from ...shared.paths import display_path
-from ...shared.text import automa_command, format_browser_result, page_url
-from ..host_formatting import host_block, perception_stream_command
+from ...shared.text import automa_command
+from ..host_formatting import host_block, perception_stream_command, viewer_command
 from ..step_formatting import format_activation_problems, selection_label, step_lines
 from .models import RestartResult, StartResult, StopResult, status_reason
 
@@ -224,7 +224,6 @@ def _status_log_label(process: dict[str, Any]) -> str:
 
 def startup_lines(state: dict[str, Any]) -> list[str]:
     selections = state["selections"]
-    view = state["published_view"]
     source = state["control_source"]
     return [
         f"Run started on host {state['host_name']}.",
@@ -239,28 +238,16 @@ def startup_lines(state: dict[str, Any]) -> list[str]:
         (
             f"Recording: {state['run_dir']}"
             if state["run_dir"] is not None
-            else "Recording: off; latest frame and perception are overwritten each iteration"
+            else "Recording: off"
         ),
         f"Control source: {_CONTROL_SOURCE_LABELS.get(source, source)}",
         f"Action policy: {state['action_policy']}",
         f"Decision generation: {state['decision']['generation_id']}",
-        (
-            f"Runtime view: {view.get('url')}"
-            if view.get("available")
-            else f"Runtime view: unavailable ({view.get('reason', 'startup failed')})"
-        ),
+        f"View: {viewer_command(state['host_name'])}",
         "Decisions: unbounded"
         if state["num_decisions"] is None
         else f"Decisions: {state['num_decisions']}",
     ]
-
-
-def reports_frame(count: int, *, verbose: bool) -> bool:
-    return verbose or count == 1 or count % 10 == 0
-
-
-def frame_line(frame_id: str, *, signals: int, things: int, action: Any) -> str:
-    return f"{frame_id}: signals={signals} things={things} action={action}"
 
 
 def render_run_result(state: dict[str, Any], *, state_path: str) -> str:
@@ -297,7 +284,6 @@ def render_run_result(state: dict[str, Any], *, state_path: str) -> str:
                     else []
                 ),
                 f"State: {state_path}",
-                f"Latest perception: {state['latest']['perception_text']}",
             ]
         )
     return "\n".join(
@@ -306,14 +292,6 @@ def render_run_result(state: dict[str, Any], *, state_path: str) -> str:
             f"State: {state_path}",
         ]
     )
-
-
-def _view_label(view: dict[str, Any]) -> str:
-    url = page_url(view.get("url"))
-    if url:
-        return url
-    reason = view.get("reason") or "automation view is not running"
-    return f"unavailable ({reason})"
 
 
 def _log_status_line(process: Any, log_path: Path) -> str:
@@ -339,8 +317,7 @@ def render_start_result(result: StartResult) -> str:
         result.expected_authority,
         result.actual_authority,
     )
-    view, existing = result.view, result.process_record
-    browser_line = format_browser_result(result.browser) if result.browser else None
+    existing = result.process_record
     error = result.error
     if result.kind == "starting":
         return "\n".join(
@@ -382,8 +359,7 @@ def render_start_result(result: StartResult) -> str:
             [
                 f"Host {host_name} already has a run.",
                 f"PID: {existing_pid}",
-                f"View: {_view_label(view if isinstance(view, dict) else {})}",
-                *([browser_line] if browser_line else []),
+                f"View: {viewer_command(host_name)}",
                 f"State: {display_path(state_path)}",
                 _log_status_line(existing, log_path),
                 f"Stream: {perception_stream_command(host_name)}",
@@ -400,25 +376,14 @@ def render_start_result(result: StartResult) -> str:
     startup, process_record = result.startup, result.process_record
     startup_status = startup["status"]
     if startup_status == "ready":
-        state = startup.get("state") if isinstance(startup.get("state"), dict) else {}
-        published = (
-            state.get("published_view")
-            if isinstance(state.get("published_view"), dict)
-            else {}
-        )
-        url = page_url(startup.get("view_url"))
-        if url:
-            published = {**published, "url": url}
         lines = [
             f"Run started on host {host_name}.",
             f"PID: {pid}",
             f"Session: {startup.get('session_status', 'running')}",
             f"Decisions: {startup.get('processed_count', 0)}",
-            f"View: {_view_label(published)}",
+            f"View: {viewer_command(host_name)}",
             f"Stop: {automa_command('hosts', 'stop', '--name', host_name)}",
         ]
-        if browser_line:
-            lines.append(browser_line)
     elif startup_status == "completed":
         lines = [
             f"The run on host {host_name} completed during startup verification.",

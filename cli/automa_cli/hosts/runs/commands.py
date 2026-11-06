@@ -24,9 +24,9 @@ def register_host_runs(host_commands: argparse._SubParsersAction) -> None:
         help="Start a run on a host and wait until its runtime session is running.",
         description=(
             "Start autonomous movement using the staged plugins. Success is the runtime session "
-            "reaching running or completed. The perception view is reported separately and can be "
-            "unavailable. --host-url runs an existing host instead of starting one; that host "
-            "reports its host name."
+            "reaching running or completed. The run serves no pages; view it with "
+            "hosts viewer --name HOST. --host-url runs an existing host instead of starting one; "
+            "that host reports its host name."
         ),
     )
     run_target = host_run.add_mutually_exclusive_group(required=True)
@@ -49,9 +49,8 @@ def register_host_runs(host_commands: argparse._SubParsersAction) -> None:
         "stop",
         help="Stop the host's run; the host stays attached until hosts delete.",
         description=(
-            "Stop autonomous movement and its publication monitor. The host stays attached, with its "
-            "deployment staged, until hosts delete; its former view is no longer current-generation "
-            "available."
+            "Stop autonomous movement and its monitor. The host stays attached, with its "
+            "deployment staged, until hosts delete. A hosts viewer keeps serving its pages."
         ),
     )
     host_stop.add_argument(
@@ -100,8 +99,11 @@ def register_host_runs(host_commands: argparse._SubParsersAction) -> None:
 
     host_restart = host_commands.add_parser(
         "restart",
-        help="Restart the host's run and verify its correlated runtime view.",
-        description="Restart the host's run and verify its correlated runtime view.",
+        help="Restart the host's run and wait until its runtime session is running.",
+        description=(
+            "Stop the host's run, restart its host, and start the run again. View it with "
+            "hosts viewer --name HOST."
+        ),
     )
     host_restart.add_argument(
         "--name",
@@ -140,22 +142,9 @@ def register_host_runs(host_commands: argparse._SubParsersAction) -> None:
             help="Run plugins without applying their output. The same mode works on every vehicle.",
         )
         command.add_argument(
-            "--open-view",
-            action="store_true",
-            help=(
-                "Open the local Automa runtime views after the first correlated "
-                "camera/perception publication is healthy."
-            ),
-        )
-        command.add_argument(
             "--record",
             action="store_true",
             help="Save per-frame images and cycle records under a timestamped run directory.",
-        )
-        command.add_argument(
-            "--verbose",
-            action="store_true",
-            help="Print every frame's detail when output is connected.",
         )
         command.add_argument(
             "--log",
@@ -188,9 +177,7 @@ def _handle_hosts_run(args: argparse.Namespace) -> int:
         unbounded=args.unbounded,
         take_control=not args.observe_only,
         record=args.record,
-        verbose=args.verbose,
         log_to_disk=args.log_to_disk,
-        open_view=args.open_view,
     )
     message = render_lifecycle_result(result)
     if message:
@@ -242,9 +229,7 @@ def _handle_hosts_restart(args: argparse.Namespace) -> int:
         unbounded=args.unbounded,
         take_control=not args.observe_only,
         record=args.record,
-        verbose=args.verbose,
         log_to_disk=args.log_to_disk,
-        open_view=args.open_view,
         wait_s=args.wait_s,
     )
     message = render_lifecycle_result(result)

@@ -79,8 +79,6 @@ class RuntimeViewServer:
         automation_dir: Path | None,
         host: str = VIEW_HOST,
         port: int | None = None,
-        run_id: str | None = None,
-        worker_pid: int | None = None,
         decision_identity: dict[str, Any] | None = None,
         plugin_catalog: Callable | None = None,
         connected: bool = True,
@@ -107,8 +105,6 @@ class RuntimeViewServer:
         self.automation_dir = automation_dir
         self.host = host
         self.preferred_port = _host_view_port(host_name) if port is None else int(port)
-        self.run_id = run_id
-        self.worker_pid = int(worker_pid) if isinstance(worker_pid, int) else os.getpid()
         # Without an automation dir the server publishes no discovery record.
         self.record_path = None if automation_dir is None else automation_dir / VIEW_RECORD_NAME
         self.perception = PerceptionView(host_name=host_name)
@@ -158,8 +154,6 @@ class RuntimeViewServer:
         return {
             "schema": VIEW_SCHEMA,
             "host_name": self.host_name,
-            "run_id": self.run_id,
-            "worker_pid": self.worker_pid,
             "status": status,
             "available": status == "running" and self._httpd is not None,
             "url": self.url,

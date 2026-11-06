@@ -16,7 +16,6 @@ from autonomy.runtime.session import RunConfiguration
 
 from ...shared.io.processes import pid_alive
 from ...shared.paths import ROOT
-from ...shared.text import page_url
 from .models import WORKER_MODULE
 from .store import mark_automation_startup_error, read_run_state
 
@@ -106,7 +105,6 @@ def worker_command(
     configuration: RunConfiguration,
     take_control: bool,
     record: bool,
-    verbose: bool,
 ) -> list[str]:
     command = [
         sys.executable,
@@ -127,8 +125,6 @@ def worker_command(
         command.append("--observe-only")
     if record:
         command.append("--record")
-    if verbose:
-        command.append("--verbose")
 
     return command
 
@@ -180,13 +176,6 @@ def _state_dict(automation_dir: Path) -> dict[str, Any]:
     return state if isinstance(state, dict) else {}
 
 
-def _view_url(state: dict[str, Any]) -> str | None:
-    view = state.get("published_view")
-    if not isinstance(view, dict):
-        return None
-    return page_url(view.get("url"))
-
-
 def _acknowledged_run(
     state: dict[str, Any], *, pid: int, acknowledged_run_id: str | None,
 ) -> tuple[str | None, dict[str, Any] | None, str | None]:
@@ -224,7 +213,6 @@ def _session_outcome(status: str, session: dict[str, Any], state: dict[str, Any]
         "status": "ready" if status == "running" else "completed",
         "session_status": status,
         "processed_count": session.get("processed_decisions", 0),
-        "view_url": _view_url(state),
         "state": state,
     }
 

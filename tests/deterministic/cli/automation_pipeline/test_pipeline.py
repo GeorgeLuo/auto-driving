@@ -3,13 +3,11 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import patch
 from cli.automa_cli.hosts.runs.service import run_host_automation
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
 from cli.automa_cli.releases.paths import controller_bundle_paths
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     HOST_NAME,
-    _SlowMapper,
     _write_activations,
     chase_runtime,
     staged_runners,
@@ -25,8 +23,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
             sync_controller_bundle(bundle, emit=None)
             _write_activations(bundle, plugins=["frame"])
             applied_selections: list[tuple[str, ...]] = []
-            frame_selections: dict[str, list[str]] = {}
-            events = []
 
             def wrap_perception(step, mapper):
                 if step != "perception":
@@ -36,7 +32,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 def perceive_then_restage(request):
                     result = perceive(request)
                     applied_selections.append(tuple(mapper.plugin_ids))
-                    frame_selections[request.sensor_frame.read_id] = list(mapper.plugin_ids)
                     if len(applied_selections) == 1:
                         stage_step(runtime_root, HOST_NAME, "perception", plugins=["frame", "floor_plane"])
                     elif len(applied_selections) == 2:
@@ -49,10 +44,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 staged_runners(wrap=wrap_perception),
                 chase_runtime(runtime_root),
             ):
-                result = run_host_automation(
-                    host_name=HOST_NAME, num_decisions=3, take_control=False,
-                    emit=events.append,
-                )
+                result = run_host_automation(host_name=HOST_NAME, num_decisions=3, take_control=False)
 
             self.assertEqual(result.exit_code, 0, result.message)
             self.assertEqual(
@@ -62,52 +54,9 @@ class AutomationLivePipelineTests(unittest.TestCase):
             automation_dir = Path(bundle["runtime_dir"]) / "automation"
             state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
             self.assertEqual(state["steps"]["perception"]["plugin_ids"], ["floor_plane"])
-            frame_events = [event.data for event in events if event.kind == "frame"]
-            self.assertTrue(frame_events)
-            self.assertEqual(frame_events[-1]["action"], state["last_frame"]["control"]["reason"])
-            latest = json.loads((automation_dir / "latest_perception.json").read_text(encoding="utf-8"))
-            # The latest copy can be any decided frame, so it is checked against its own frame.
-            report = latest["report"]
-            self.assertEqual(
-                report["values"]["activation"]["steps"]["perception"]["plugins"],
-                frame_selections[report["frame_id"]],
-            )
-            self.assertIn("memory", report["cycle"])
-            self.assertIn("perception", report["cycle"])
-
-    def test_a_decision_view_failure_is_recorded_and_does_not_stop_automation(self) -> None:
-        """A view failure cannot change the completed cycle's authority result."""
-
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            bundle = controller_bundle_paths(runtime_root / HOST_NAME)
-            _write_activations(bundle)
-
-            with (
-                staged_runners(perception=_SlowMapper()),
-                chase_runtime(runtime_root),
-                patch(
-                    "cli.automa_cli.hosts.runs.monitor.DecisionViewAdapter.publish_publication",
-                    side_effect=RuntimeError("decision view unavailable"),
-                ),
-            ):
-                result = run_host_automation(
-                    host_name=HOST_NAME, num_decisions=1, take_control=False,
-
-                )
-
-            self.assertEqual(result.exit_code, 0, result.message)
-            automation_dir = Path(bundle["runtime_dir"]) / "automation"
-            state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
-            self.assertEqual((state["status"], state["processed_count"]), ("completed", 1))
-            self.assertEqual(state["decision"]["latest_frame_publish_skips"], 1)
-            self.assertEqual(
-                state["decision"]["latest_frame_publish_skip_reason"],
-                "RuntimeError: decision view unavailable",
-            )
-            latest = json.loads((automation_dir / "latest_perception.json").read_text(encoding="utf-8"))
-            self.assertEqual((latest["report"]["application"]["steering"], latest["report"]["application"]["throttle"]), (0.0, 0.0))
-            self.assertFalse(latest["report"]["application"]["applied"])
+            # The latest frame is the host's own metadata; the run writes no mirror of it.
+            self.assertTrue(state["last_frame"]["frame_id"])
+            self.assertFalse((automation_dir / "latest_perception.json").exists())
 
 
 if __name__ == "__main__":

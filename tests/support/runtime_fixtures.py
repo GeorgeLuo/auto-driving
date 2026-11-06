@@ -114,9 +114,10 @@ def write_host_fixture(runtime_root: Path, host_name: str, *, provider: str = "c
     connection = ({"ws_url": url or "ws://localhost:5050/ws/control"} if provider == "chase-sim" else
                   {"base_url": url or "http://piracer.local:8887", "ssh_target": "piracer@piracer.local",
                    "pi_home": "/home/piracer"})
-    write_host_configuration(runtime_root, {"host_name": host_name, "provider": provider,
-        "vehicle_kind": "chase-sim-ws" if provider == "chase-sim" else "picar-donkey-http",
-        "connection": connection})
+    with runtime_root_env(runtime_root):
+        write_host_configuration({"host_name": host_name, "provider": provider,
+            "vehicle_kind": "chase-sim-ws" if provider == "chase-sim" else "picar-donkey-http",
+            "connection": connection})
 
 
 def stage_step(runtime_root: Path, host_name: str, step: str, *, preset: str | None = None,
@@ -130,13 +131,14 @@ def stage_step(runtime_root: Path, host_name: str, step: str, *, preset: str | N
     from cli.automa_cli.releases.paths import bundle_paths
 
     write_host_fixture(runtime_root, host_name)
-    vehicle, unknown = staging_host(host_name, runtime_root=runtime_root)
-    assert unknown is None, unknown
-    bundle = bundle_paths(host_name, runtime_root)
-    return stage_activation(
-        bundle, selection_activation(step, preset=preset, plugins=plugins),
-        host_name=host_name, release=sync_controller_bundle(bundle, emit=None), vehicle=vehicle,
-    )
+    with runtime_root_env(runtime_root):
+        vehicle, unknown = staging_host(host_name)
+        assert unknown is None, unknown
+        bundle = bundle_paths(host_name)
+        return stage_activation(
+            bundle, selection_activation(step, preset=preset, plugins=plugins),
+            host_name=host_name, release=sync_controller_bundle(bundle, emit=None), vehicle=vehicle,
+        )
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:

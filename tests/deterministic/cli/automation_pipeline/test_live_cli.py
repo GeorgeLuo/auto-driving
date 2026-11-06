@@ -89,6 +89,8 @@ class LiveCommandsTests(LiveHostTestCase):
         terminal = self.stream("perception", "--once", "--no-clear")
         self.assertEqual(terminal.returncode, 0, terminal.stdout + terminal.stderr)
         self.assertIn(f"host: {HOST_NAME}\nurl: {self.host.base_url}\n", terminal.stdout)
+        # A stream that ends leaves the run it watched running.
+        self.assertEqual(self.client.status()["session"]["status"], "running")
 
     def viewer(self, *target: str):
         return invoke_automa("hosts", "viewer", *target, runtime_root=self.runtime_root, check=False)
@@ -134,6 +136,8 @@ class LiveCommandsTests(LiveHostTestCase):
         self.assertEqual(status, 200)
         self.assertTrue(latest["report"]["frame_id"])
         self.assertTrue(latest["image"]["url"])
+        # Ending the view leaves the run it watched running.
+        self.assertEqual(self.client.status()["session"]["status"], "running")
 
     def test_the_viewer_says_why_a_host_whose_run_stopped_is_not_live(self) -> None:
         self.observe()

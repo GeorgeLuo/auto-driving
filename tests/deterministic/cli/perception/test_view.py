@@ -17,6 +17,7 @@ from cli.automa_cli.frontend.perception_view import (
     MAX_BUFFERED_FRAMES,
     PUBLICATION_SCHEMA,
     PerceptionView,
+    VIEW_RECORD_NAME,
     VIEW_SCHEMA,
     get_perception_view_status,
 )
@@ -174,37 +175,37 @@ class PerceptionViewTests(unittest.TestCase):
             self.assertFalse(status["available"])
             self.assertEqual(status["status"], "unavailable")
 
-    def test_view_health_rejects_a_different_worker_generation(self) -> None:
+    def test_a_second_view_of_the_host_leaves_the_first_one_recorded(self) -> None:
+        """A stream that starts and stops beside ``hosts viewer`` does not hide the viewer."""
+
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            server = RuntimeViewServer(
-                host_name="test-vehicle",
-                automation_dir=root,
-                port=0,
-                run_id="run-current",
-                worker_pid=4242,
-                replay_runner_factory=ImageReplayRunner,
-            ).start()
+            first, second = (
+                RuntimeViewServer(host_name="test-vehicle", automation_dir=root, port=0,
+                                  replay_runner_factory=ImageReplayRunner)
+                for _ in range(2)
+            )
+            first_url = first.start().url
             try:
-                status = get_perception_view_status(
-                    root,
-                    expected_run_id="run-other",
-                    expected_worker_pid=4242,
-                )
-                self.assertFalse(status["available"])
-                self.assertEqual(status["status"], "stale")
-                self.assertIn("run_id", status["reason"])
-
-                status = get_perception_view_status(
-                    root,
-                    expected_run_id="run-current",
-                    expected_worker_pid=9999,
-                )
-                self.assertFalse(status["available"])
-                self.assertEqual(status["status"], "stale")
-                self.assertIn("pid", status["reason"])
+                second.start()
+                second.stop()
+                status = get_perception_view_status(root)
             finally:
-                server.stop()
+                first.stop()
+        self.assertEqual((status["url"], status["status"]), (first_url, "warming"))
+
+    def test_a_recorded_port_that_serves_another_host_is_unavailable(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            other = RuntimeViewServer(host_name="other-vehicle", automation_dir=None, port=0,
+                                      replay_runner_factory=ImageReplayRunner).start()
+            try:
+                (root / VIEW_RECORD_NAME).write_text(json.dumps({"host_name": "test-vehicle", "url": other.url}))
+                status = get_perception_view_status(root)
+            finally:
+                other.stop()
+        self.assertEqual((status["available"], status["status"]), (False, "unavailable"))
+        self.assertIn("other-vehicle", status["reason"])
 
 
 def _image_bytes(fmt: str, size: tuple[int, int], color: tuple[int, int, int]) -> bytes:

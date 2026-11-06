@@ -7,7 +7,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import runtime_root_env, write_host_fixture
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
@@ -46,10 +46,10 @@ class StepSelectionTests(unittest.TestCase):
         """A step staged before ``hosts stage`` was removed, or left unreadable,
         would otherwise keep its selection, or block the update, with no command to change it."""
 
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, runtime_root_env(tmp):
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
-            bundle = bundle_paths(VEHICLE, root)
+            bundle = bundle_paths(VEHICLE)
             stage_activation(bundle, selection_activation("perception", plugins=["frame"]), host_name=VEHICLE)
             stage_activation(bundle, selection_activation("proposal", preset="obstruction_avoidance"), host_name=VEHICLE)
             unreadable = bundle_activation_path(bundle, "memory")
@@ -67,11 +67,11 @@ class StepSelectionTests(unittest.TestCase):
             self.assertEqual(payload["presets"], DEFAULT_STEP_PRESETS)
 
     def test_an_update_records_the_same_provenance_on_every_step(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
+        with tempfile.TemporaryDirectory() as tmp, runtime_root_env(tmp):
             root = Path(tmp)
             write_host_fixture(root, VEHICLE)
             self._update(root)
-            bundle = bundle_paths(VEHICLE, root)
+            bundle = bundle_paths(VEHICLE)
             documents = {
                 step: json.loads(bundle_activation_path(bundle, step).read_text(encoding="utf-8"))
                 for step in STEPS

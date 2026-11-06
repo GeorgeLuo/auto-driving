@@ -5,7 +5,6 @@ from __future__ import annotations
 from typing import Any
 
 from ..providers.registry import PROVIDERS
-from ..shared.paths import runtime_root
 from .errors import RuntimeHostError
 from .local import host_record
 from .staging import staged_host
@@ -30,7 +29,7 @@ def local_hosts() -> list[dict[str, Any]]:
     """
 
     hosts = []
-    for host_name in host_names(runtime_root()):
+    for host_name in host_names():
         try:
             configuration = staged_host(host_name)
         except RuntimeHostError as exc:

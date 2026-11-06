@@ -42,18 +42,18 @@ class LiveRuntimeDecisionViewFixture:
         self.addCleanup(self._temporary.cleanup)
         self.runtime_root = Path(self._temporary.name) / "vehicles"
         self.runtime_root.mkdir()
-        from tests.support.runtime_fixtures import stage_step
+        from tests.support.runtime_fixtures import runtime_root_env, stage_step
+        self.enterContext(runtime_root_env(self.runtime_root))
         for step in ("proposal", "action"):
             stage_step(self.runtime_root, "chase-sim-chaser", step)
         self.vehicle_runtime = self.runtime_root / "chase-sim-chaser"
         self.runtime_dir = self.vehicle_runtime / "bundle" / "runtime"
         self.automation_dir = self.runtime_dir / "automation"
-        self.activation = decision_identity(bundle_paths("chase-sim-chaser", self.runtime_root))
+        self.activation = decision_identity(bundle_paths("chase-sim-chaser"))
         self.server = RuntimeViewServer(
             host_name="chase-sim-chaser",
             automation_dir=self.automation_dir,
             port=0,
-            run_id="run-live",
             replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(self.server.stop)

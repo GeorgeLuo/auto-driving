@@ -104,8 +104,6 @@ def get_perception_view_status(
     automation_dir: Path,
     *,
     timeout_s: float = 0.25,
-    expected_run_id: str | None = None,
-    expected_worker_pid: int | None = None,
 ) -> dict[str, Any]:
     record_path = automation_dir / VIEW_RECORD_NAME
     record = _read_json(record_path)
@@ -126,18 +124,6 @@ def get_perception_view_status(
             "status": "unavailable",
             "reason": "perception view record has no valid loopback URL",
         }
-    generation_error = _view_generation_error(
-        record,
-        expected_run_id=expected_run_id,
-        expected_worker_pid=expected_worker_pid,
-    )
-    if generation_error is not None:
-        return {
-            **record,
-            "available": False,
-            "status": "stale",
-            "reason": generation_error,
-        }
     try:
         with urlopen(urljoin(url, "api/health"), timeout=timeout_s) as response:
             health = json.loads(response.read().decode("utf-8"))
@@ -155,18 +141,13 @@ def get_perception_view_status(
             "status": "unavailable",
             "reason": "perception view returned an invalid health response",
         }
-    generation_error = _view_generation_error(
-        health,
-        expected_run_id=expected_run_id,
-        expected_worker_pid=expected_worker_pid,
-    )
-    if generation_error is not None:
+    # A view that ended without a trace can leave its port to another host's view.
+    if health.get("host_name") != record.get("host_name"):
         return {
             **record,
-            **health,
             "available": False,
-            "status": "stale",
-            "reason": generation_error,
+            "status": "unavailable",
+            "reason": f"the recorded view's port now serves host {health.get('host_name')!r}",
         }
     if not perception_view_ready(health):
         return {
@@ -192,28 +173,6 @@ def perception_view_ready(payload: dict[str, Any]) -> bool:
     """True when the view has published one camera image and its findings."""
 
     return bool(payload.get("available") and payload.get("url") and payload.get("latest_frame_id"))
-
-
-def _view_generation_error(
-    payload: dict[str, Any],
-    *,
-    expected_run_id: str | None,
-    expected_worker_pid: int | None,
-) -> str | None:
-    if expected_run_id is not None and payload.get("run_id") != expected_run_id:
-        return (
-            "perception view belongs to a stale worker generation: "
-            f"expected run_id={expected_run_id!r}, got {payload.get('run_id')!r}"
-        )
-    if (
-        expected_worker_pid is not None
-        and payload.get("worker_pid") != expected_worker_pid
-    ):
-        return (
-            "perception view belongs to a stale worker process: "
-            f"expected pid={expected_worker_pid}, got {payload.get('worker_pid')!r}"
-        )
-    return None
 
 
 def _frame_identity(record: Any) -> dict[str, Any]:

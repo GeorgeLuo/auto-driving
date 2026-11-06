@@ -24,7 +24,7 @@ from tests.shared.integration.plugin_flow_fixtures import (
     upload,
     write_plugin,
 )
-from tests.support.cli_runner import run_automa
+from tests.support.cli_runner import run_automa, start_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
 
@@ -88,6 +88,13 @@ class PluginArmingFlows(unittest.TestCase):
             stage_step(runtime, "chase-sim-chaser", "perception")
             try:
                 cli("run", "--name", "chase-sim-chaser", "--observe-only", "--record")
+                # The run serves no page; the explicit viewer does, from the host's publications.
+                viewer = start_automa("hosts", "viewer", "--name", "chase-sim-chaser", runtime_root=runtime, extra_env=env)
+                self.addCleanup(viewer.stdout.close)
+                self.addCleanup(viewer.wait, 5)
+                self.addCleanup(viewer.terminate)
+                viewer.stdout.readline()
+                view_url = viewer.stdout.readline().removeprefix("Browser opened: ").strip().rstrip("/")
                 original = json.loads(cli("status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                 before = host_catalog()
                 file = root / "proposal.py"
@@ -113,8 +120,7 @@ class PluginArmingFlows(unittest.TestCase):
                     self.assertEqual(streamed["plugins"], ["prototype"])
                     self.assertEqual(streamed["generation_id"], shown["applied_decision"]["generation_id"])
                     self.assertEqual(streamed["record"]["candidates"][0]["metadata"]["revision"], revision)
-                    view_url = original["published_view"]["url"].rstrip("/")
-                    # The run's monitor publishes the host's decision to the view on its next poll.
+                    # The viewer publishes the host's decision on its next poll.
                     deadline = time.monotonic() + 5
                     while True:
                         with urlopen(view_url + "/api/latest", timeout=3) as response:

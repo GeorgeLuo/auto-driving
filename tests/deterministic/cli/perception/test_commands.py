@@ -27,15 +27,10 @@ class PerceptionCommandTests(unittest.TestCase):
                 pid=os.getpid(),
                 manifest_bundle_root=ROOT,
             )
-            automation_dir = (
-                runtime_root / host_name / "bundle" / "runtime" / "automation"
-            )
             server = RuntimeViewServer(
                 host_name=host_name,
-                automation_dir=automation_dir,
+                automation_dir=runtime_root / host_name / "bundle" / "runtime" / "view",
                 port=0,
-                run_id="test-run",
-                worker_pid=os.getpid(),
                 replay_runner_factory=ImageReplayRunner,
             ).start()
             frame_bytes = io.BytesIO()

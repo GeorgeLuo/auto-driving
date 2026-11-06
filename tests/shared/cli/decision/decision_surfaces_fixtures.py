@@ -205,7 +205,7 @@ class DecisionSurfaceFixture:
         return self._identity(host_name)
 
     def _identity(self, host_name: str = "chase-sim-chaser") -> dict:
-        return decision_identity(bundle_paths(host_name, self.runtime_root))
+        return decision_identity(bundle_paths(host_name))
 
     def _sample_cycle(self, action: str = "hold") -> DecisionRecords:
         cycle = sample_records(action)

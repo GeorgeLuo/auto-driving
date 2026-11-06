@@ -8,26 +8,22 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from cli.automa_cli.hosts.runs.models import StopResult
-from cli.automa_cli.hosts.deployment import picar_deploy, service
+from cli.automa_cli.hosts.deployment import service
 from cli.automa_cli.hosts.deployment.models import CoreResult, CreateResult, UpdateResult
 from cli.automa_cli.hosts.deployment.registry import BACKENDS, DeploymentBackend, register_backend
 from cli.automa_cli.hosts.deployment.render import render_create, render_delete, render_update
 from cli.automa_cli.hosts.step_activations import write_host_configuration
-from cli.automa_cli.hosts import staging
 from cli.automa_cli.providers.registry import PICAR, PROVIDERS
 from cli.automa_cli.providers.models import Candidate, ProbeResult
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.vehicle_fixtures import probe_returning
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import write_host_fixture, runtime_root_env
 
 
 class HostLifecycleTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(self.enterContext(tempfile.TemporaryDirectory())) / "vehicles"
-        self.enterContext(patch.object(service, "RUNTIME_ROOT", self.root))
-        self.enterContext(patch.object(picar_deploy, "RUNTIME_ROOT", self.root))
-        self.enterContext(patch.object(staging, "RUNTIME_ROOT", self.root))
-        self.enterContext(patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", self.root))
+        self.enterContext(runtime_root_env(self.root))
 
     def test_create_picar_dry_run_has_core_release_then_restart_without_writes(self):
         result = invoke_automa("hosts", "create", "--name", "car", "--provider", "picar",
@@ -35,9 +31,14 @@ class HostLifecycleTests(unittest.TestCase):
                                runtime_root=self.root, check=False)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         payload = json.loads(result.stdout)
+        self.assertEqual(payload["schema"], "automa_host_create")
+        self.assertTrue(payload["dry_run"])
+        self.assertIsNone(payload["host_state"])
+        self.assertEqual(payload["core"]["schema"], "host_core_update")
+        self.assertEqual(payload["release"]["schema"], "host_autonomy_update")
         self.assertEqual(payload["configuration"]["provider"], "picar")
         self.assertEqual(payload["configuration"]["connection"]["ssh_target"], "piracer@example.local")
-        commands = payload["core"]["commands"] + payload["host"]["commands"]
+        commands = payload["core"]["commands"] + payload["release"]["commands"]
         self.assertEqual(commands[0]["step"], "Prepare remote directories")
         self.assertEqual(commands[-1]["step"], "Restart Donkey runtime service")
         self.assertIn("b64:LS1qcw==", commands[-1]["command"])
@@ -120,6 +121,15 @@ class HostLifecycleTests(unittest.TestCase):
         self.assertIn("Harness files stay in /home/piracer/mycar on the PiCar.", render_delete(result))
         self.assertFalse((self.root / "car").exists())
 
+    def test_created_picar_receipt_carries_the_synced_core(self):
+        core = CoreResult(0, "synced", receipt={"schema": "host_core_update", "dry_run": False})
+        release = UpdateResult(0, "remote", receipt={"schema": "host_autonomy_update"})
+        with patch.object(service, "install_picar_core", return_value=core), \
+             patch.object(service, "update_host", return_value=release):
+            result = service.create_host(host_name="car", provider="picar", url="http://example:8887")
+        body = json.loads(render_create(result, json_output=True))
+        self.assertEqual((body["dry_run"], body["core"], body["release"]), (False, core.receipt, release.receipt))
+
     def test_failed_new_creation_removes_the_directory(self):
         with patch.object(service, "install_picar_core", return_value=CoreResult(2, "error", "sync failed")):
             result = service.create_host(host_name="car", provider="picar", url="http://example:8887")
@@ -153,7 +163,32 @@ class HostLifecycleTests(unittest.TestCase):
         self.assertEqual(json.loads(render_update(UpdateResult(0, "local", receipt=receipt), json_output=True))["source"]["file_count"], 3)
         self.assertEqual(render_update(UpdateResult(2, "error", "missing"), json_output=True), "missing")
 
-    def test_created_receipt_keeps_its_order_and_sorts_each_child(self):
+    def test_create_chase_dry_run_prints_the_create_receipt_with_json(self):
+        result = invoke_automa(
+            "hosts", "create", "--name", "car", "--provider", "chase-sim",
+            "--url", "http://localhost:5050", "--dry-run", "--json",
+            runtime_root=self.root, check=False,
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual(payload["schema"], "automa_host_create")
+        self.assertTrue(payload["dry_run"])
+        self.assertIsNone(payload["core"])
+        self.assertIsNone(payload["host_state"])
+        self.assertEqual(payload["configuration"]["host_name"], "car")
+        self.assertTrue(payload["release"]["dry_run"])
+        self.assertEqual(payload["release"]["host_name"], "car")
+        self.assertIn("tree_sha256", payload["release"]["source"])
+        plain = invoke_automa(
+            "hosts", "create", "--name", "car", "--provider", "chase-sim",
+            "--url", "http://localhost:5050", "--dry-run",
+            runtime_root=self.root, check=False,
+        )
+        self.assertEqual(plain.returncode, 0, plain.stdout + plain.stderr)
+        self.assertTrue(plain.stdout.startswith("Dry run: would package car's controller release"), plain.stdout)
+        self.assertFalse(self.root.exists())
+
+    def test_created_receipt_has_the_create_schema(self):
         configuration = {"host_name": "car", "provider": "chase-sim", "vehicle_kind": "chase-sim-ws",
                          "connection": {"ws_url": "ws://localhost:5050/ws/control"}}
         release = UpdateResult(0, "local", host_present=False, receipt={
@@ -164,10 +199,17 @@ class HostLifecycleTests(unittest.TestCase):
         created = CreateResult(0, "created", configuration=configuration, release=release,
                                host_state={"state": "idle", "url": "http://127.0.0.1:9"})
         body = json.loads(render_create(created, json_output=True))
-        self.assertEqual(list(body), ["configuration", "result", "host"])
-        self.assertEqual(list(body["configuration"]), list(configuration))
-        self.assertEqual(list(body["result"]), sorted(release.receipt))
-        self.assertEqual(list(body["host"]), ["state", "url"])
+        self.assertEqual(
+            list(body),
+            ["configuration", "core", "dry_run", "host_state", "release", "schema"],
+        )
+        self.assertEqual(body["schema"], "automa_host_create")
+        self.assertFalse(body["dry_run"])
+        self.assertIsNone(body["core"])
+        self.assertEqual(list(body["configuration"]), sorted(configuration))
+        self.assertEqual(list(body["release"]), sorted(release.receipt))
+        self.assertEqual(body["release"], release.receipt)
+        self.assertEqual(list(body["host_state"]), ["state", "url"])
         # The release lines appear once, without the update's own heading and restart line.
         self.assertEqual(render_create(created, json_output=False).splitlines(), [
             "Host car created for the chaser at http://localhost:5050/",
@@ -196,7 +238,7 @@ class HostLifecycleTests(unittest.TestCase):
 
         register_backend("bench", DeploymentBackend(create=None, update=update_bench, delete=None))
         self.addCleanup(BACKENDS.pop, "bench", None)
-        write_host_configuration(self.root, {
+        write_host_configuration({
             "host_name": "car", "provider": "bench", "vehicle_kind": "bench",
             "connection": {"endpoint": "bench://local"},
         })

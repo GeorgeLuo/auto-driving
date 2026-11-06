@@ -11,7 +11,6 @@ from typing import Any
 
 from .errors import RuntimeHostError
 from ..releases.paths import bundle_root
-from ..shared.paths import RUNTIME_ROOT
 from .step_activations import staging_host
 
 
@@ -22,7 +21,7 @@ def automation_dir(host_name: str) -> Path:
 
 
 def staged_host(host_name: str) -> dict[str, Any]:
-    vehicle, error = staging_host(host_name, runtime_root=RUNTIME_ROOT)
+    vehicle, error = staging_host(host_name)
     if vehicle is None:
         raise RuntimeHostError(error or f"Host {host_name!r} is not staged.")
     return vehicle

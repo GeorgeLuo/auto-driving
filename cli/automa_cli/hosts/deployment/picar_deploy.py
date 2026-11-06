@@ -18,9 +18,9 @@ from urllib.parse import urlparse
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_presets
 from autonomy.runtime.layout import RuntimeLayout
 
-from ...releases.paths import controller_bundle_paths
+from ...releases.paths import controller_bundle_paths, host_dir
 from ...shared.io import http_json
-from ...shared.paths import ROOT, RUNTIME_ROOT, display_path, safe_path_part
+from ...shared.paths import ROOT, display_path
 from ..progress import ProgressSink, report
 from ...shared.timestamps import timestamp_ms
 from ..bundles import (
@@ -79,6 +79,14 @@ if actual_sha256 != expected_sha256:
         f"archive SHA-256 mismatch: expected {expected_sha256}, got {actual_sha256}"
     )
 
+# Checked before anything is written, so a host without the release layout is left as it was.
+for package_name in ("autonomy", "implementations"):
+    package_link = app_root / package_name
+    if package_link.exists() and not package_link.is_symlink():
+        raise RuntimeError(
+            f"{package_link} is not a release symlink; replace it with the release layout before deploying"
+        )
+
 pending_root = release_root.with_name(f".{release_root.name}.pending")
 if pending_root.exists():
     shutil.rmtree(pending_root)
@@ -102,7 +110,6 @@ if release_root.exists():
     shutil.rmtree(release_root)
 pending_root.replace(release_root)
 
-backup_root = app_root / "runtime" / "controller-backups" / str(int(time.time() * 1000))
 for package_name in ("autonomy", "implementations"):
     package_target = release_root / package_name
     package_link = app_root / package_name
@@ -110,9 +117,6 @@ for package_name in ("autonomy", "implementations"):
     if next_link.exists() or next_link.is_symlink():
         next_link.unlink()
     next_link.symlink_to(os.path.relpath(package_target, app_root), target_is_directory=True)
-    if package_link.exists() and not package_link.is_symlink():
-        backup_root.mkdir(parents=True, exist_ok=True)
-        shutil.move(str(package_link), str(backup_root / package_name))
     os.replace(next_link, package_link)
 
 activation_targets = []
@@ -139,9 +143,6 @@ for step in STEPS:
     stale = app_root / "runtime" / step / "active.json"
     if step not in deployed_steps and stale.exists():
         stale.unlink()
-legacy = app_root / "runtime" / "decision" / "active.json"
-if legacy.exists():
-    legacy.unlink()
 
 status_path = app_root / "runtime" / "controller-release.json"
 status_pending = status_path.with_name(f".{status_path.name}.pending")
@@ -241,8 +242,8 @@ def deploy_picar_release(
     report(emit, "scope", scope="autonomy")
     report(emit, "remote_home", path=target.pi_home)
 
-    host_dir = RUNTIME_ROOT / safe_path_part(host_name)
-    bundle = controller_bundle_paths(host_dir)
+    directory = host_dir(host_name)
+    bundle = controller_bundle_paths(directory)
     source_summary = controller_bundle_source_summary()
     try:
         startup = startup_activations(bundle, host_name)
@@ -251,7 +252,7 @@ def deploy_picar_release(
 
     if dry_run:
         release_id = f"autonomy-{source_summary['tree_sha256'][:12]}-preview"
-        preview_dir = host_dir / "deploy" / "donkeycar" / release_id
+        preview_dir = directory / "deploy" / "donkeycar" / release_id
         preview_archive = Path(bundle["root_dir"]) / "releases" / f"{release_id}.tar.gz"
         commands = _autonomy_sync_commands(
             target=target,
@@ -292,7 +293,7 @@ def deploy_picar_release(
     release_id = Path(release["archive"]["path"]).name.removesuffix(".tar.gz")
     deploy_files = _write_remote_activation_files(
         target=target,
-        host_dir=host_dir,
+        host_dir=directory,
         release=release,
         release_id=release_id,
         activation_paths={step: bundle_activation_path(bundle, step) for step in activations},

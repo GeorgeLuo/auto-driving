@@ -12,31 +12,9 @@ from pathlib import Path
 from unittest import mock
 
 from cli.automa_cli import app
-from cli.automa_cli.hosts.deployment import picar_deploy, service
-from cli.automa_cli.hosts import staging
-from cli.automa_cli.hosts.views import view_discovery
-from cli.automa_cli.plugins.catalog import service as catalog
-from cli.automa_cli.simulators import store as simulator_store
-from cli.automa_cli.vehicles import store as vehicle_store
-from cli.automa_cli.releases import paths as release_paths
 from tests.support.cli_runner import WORKSPACE_ROOT, checked_result
 from tests.support.offline.sitecustomize import offline_getaddrinfo
 
-# These names read their variable once, when the module is imported. A command
-# run in this process sees a test's value only if the name is rebound.
-IMPORT_TIME_ENV = {
-    "AUTOMA_RUNTIME_ROOT": (
-        (service, "RUNTIME_ROOT"),
-        (picar_deploy, "RUNTIME_ROOT"),
-        (staging, "RUNTIME_ROOT"),
-        (release_paths, "RUNTIME_ROOT"),
-        (vehicle_store, "RUNTIME_ROOT"),
-        (simulator_store, "RUNTIME_ROOT"),
-        (catalog, "RUNTIME_ROOT"),
-        (view_discovery, "RUNTIME_ROOT"),
-        (view_discovery.runtime_view_dir.__kwdefaults__, "runtime_root"),
-    ),
-}
 LIVE_ENV = ("AUTOMA_TEST_LIVE_SIM", "AUTOMA_TEST_LIVE_PI")
 
 
@@ -59,12 +37,6 @@ def invoke_automa(
     stdout, stderr = io.StringIO(), io.StringIO()
     with ExitStack() as stack:
         stack.enter_context(mock.patch.dict(os.environ, env))
-        for name, value in env.items():
-            for target, attribute in IMPORT_TIME_ENV.get(name, ()):
-                if isinstance(target, dict):
-                    stack.enter_context(mock.patch.dict(target, {attribute: Path(value)}))
-                else:
-                    stack.enter_context(mock.patch.object(target, attribute, Path(value)))
         if not any(os.environ.get(name) == "1" for name in LIVE_ENV):
             stack.enter_context(
                 mock.patch.object(socket, "getaddrinfo", offline_getaddrinfo(socket.getaddrinfo))

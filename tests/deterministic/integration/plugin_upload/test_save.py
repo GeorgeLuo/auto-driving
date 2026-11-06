@@ -20,7 +20,7 @@ from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import arm_step, name_host, plugin_host, upload, write_plugin
 from tests.support.fake_hosts import closed_url
-from tests.support.runtime_fixtures import write_host_fixture
+from tests.support.runtime_fixtures import runtime_root_env, write_host_fixture
 
 DEFAULTS = {step: selection_activation(step) for step in STEPS}
 
@@ -28,13 +28,14 @@ DEFAULTS = {step: selection_activation(step) for step in STEPS}
 def update(runtime_root: Path) -> dict[str, Path]:
     """Stage every step with a packaged release, as hosts update does."""
 
-    configuration, error = staging_host("one", runtime_root=runtime_root)
-    assert error is None, error
-    bundle = bundle_paths("one", runtime_root)
-    return ensure_step_activations(
-        host_name="one", bundle=bundle, release=sync_controller_bundle(bundle, emit=None),
-        activations=startup_activations(bundle, "one"), vehicle=configuration,
-    )
+    with runtime_root_env(runtime_root):
+        configuration, error = staging_host("one")
+        assert error is None, error
+        bundle = bundle_paths("one")
+        return ensure_step_activations(
+            host_name="one", bundle=bundle, release=sync_controller_bundle(bundle, emit=None),
+            activations=startup_activations(bundle, "one"), vehicle=configuration,
+        )
 
 
 def staged(paths: dict[str, Path]) -> dict[str, dict]:

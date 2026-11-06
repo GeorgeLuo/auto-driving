@@ -9,7 +9,6 @@ run that replays as a source again.
 from __future__ import annotations
 
 import copy
-import hashlib
 import json
 import shutil
 import time
@@ -19,7 +18,12 @@ from typing import Any
 
 from autonomy.decision_cycle.activation import StepActivation
 from autonomy.plugins import uploaded_source
-from autonomy.runtime.recording import recorded_selections, recording_frame_entry
+from autonomy.runtime.recording import (
+    UPLOADED_SOURCES_DIR,
+    recorded_selections,
+    recording_frame_entry,
+    uploaded_sources,
+)
 
 from ...replay.frames import run_frame
 from ...replay.models import (
@@ -158,7 +162,11 @@ def record_inspect_run(
             shutil.copyfile(frame.image_path, run_dir / relative)
             entry["image_path"] = relative.as_posix()
             paths[frame.frame_id] = relative.as_posix()
-        _retain_uploaded_sources(run_dir, entry["steps"])
+        # Uploaded sources are named by their content, so a copy keeps the spec valid wherever the run moves.
+        for name in uploaded_sources(entry["steps"]):
+            target = run_dir / UPLOADED_SOURCES_DIR / name
+            target.parent.mkdir(exist_ok=True)
+            shutil.copyfile(uploaded_source(name), target)
     selections = {entry["frame_id"]: entry["steps"] for entry in entries}
     for item in report["frames"]:
         item["image_path"] = paths.get(item["frame_id"])
@@ -171,25 +179,3 @@ def record_inspect_run(
         + "\n", encoding="utf-8",
     )
 
-
-def _retain_uploaded_sources(run_dir: Path, steps: dict[str, Any]) -> None:
-    """Keep file-based plugin entrypoints relocatable, as runtime recordings do."""
-    for activation in steps.values():
-        if activation is None:
-            continue
-        metadata = activation.get("metadata") or {}
-        sources = metadata.pop("plugin_sources", {})
-        for plugin_id, spec in activation["plugin_specs"].items():
-            module, separator, name = spec.partition(":")
-            if not module.endswith(".py"):
-                continue
-            original = sources.get(module)
-            source = Path(original or module)
-            if original is None and not source.is_absolute():
-                source = uploaded_source(module)
-            data = source.read_bytes()
-            filename = f"{hashlib.sha256(data).hexdigest()}.py"
-            target = run_dir / "plugins" / filename
-            target.parent.mkdir(exist_ok=True)
-            target.write_bytes(data)
-            activation["plugin_specs"][plugin_id] = f"{filename}{separator}{name}"

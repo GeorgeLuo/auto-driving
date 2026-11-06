@@ -123,17 +123,6 @@ def _scale(box: list[float]) -> tuple[float, float]:
     return (max(box[2] - box[0], 1e-9), max(box[3] - box[1], 1e-9))
 
 
-def _fit_residual(times: list[float], values: list[float]) -> float:
-    if len(values) < 2:
-        return 0.0
-    x = np.asarray(times, dtype=float)
-    y = np.asarray(values, dtype=float)
-    x = x - x[0]
-    design = np.column_stack((np.ones(len(x)), x))
-    prediction = design @ np.linalg.lstsq(design, y, rcond=None)[0]
-    return float(np.sqrt(np.mean((y - prediction) ** 2)))
-
-
 def _observation(record: dict[str, Any], thing: dict[str, Any], ordinal: int) -> dict[str, Any]:
     box = [float(v) for v in thing["bbox_xyxy_norm"]]
     cx, cy = _center(box)
@@ -153,96 +142,6 @@ def _association_cost(previous: dict[str, Any], current: dict[str, Any]) -> tupl
     cs = current["scale"]
     ds = float(np.linalg.norm(np.log(np.asarray(cs) / np.asarray(ps))))
     return dc + 0.25 * ds, dc, ds
-
-
-def local_durability(detections_path: Path, output_dir: Path, tracking_config_path: Path | None = None) -> dict[str, Any]:
-    """Build auditable tracks from frozen detector JSONL; never invokes a detector."""
-    records = [json.loads(line) for line in detections_path.read_text(encoding="utf-8").splitlines() if line.strip()]
-    config = json.loads(tracking_config_path.read_text(encoding="utf-8")) if tracking_config_path else DEFAULT_TRACKING_CONFIG
-    thresholds = _thresholds(config)
-    output_dir.mkdir(parents=True, exist_ok=False)
-    tracks: list[dict[str, Any]] = []
-    active: dict[int, dict[str, Any]] = {}
-    alternatives: list[dict[str, Any]] = []
-    next_id = 0
-    per_frame: list[dict[str, Any]] = []
-    for record in records:
-        observations = [_observation(record, thing, i) for i, thing in enumerate(record.get("things", []))]
-        candidates: list[tuple[float, int, int, float, float]] = []
-        for tid, track in active.items():
-            for oi, obs in enumerate(observations):
-                cost, dc, ds = _association_cost(track["observations"][-1], obs)
-                gap = (obs["timestamp_ms"] - track["observations"][-1]["timestamp_ms"]) / 1000.0
-                if dc <= thresholds["association_max_center_distance"] and ds <= thresholds["association_max_scale_log_distance"] and gap <= thresholds["maximum_gap_duration"]:
-                    candidates.append((cost, tid, oi, dc, ds))
-        candidates.sort(key=lambda item: (item[0], item[1], item[2]))
-        used_tracks: set[int] = set(); used_obs: set[int] = set(); matches = []
-        for cost, tid, oi, dc, ds in candidates:
-            if tid in used_tracks or oi in used_obs:
-                continue
-            used_tracks.add(tid); used_obs.add(oi); matches.append((tid, oi, cost, dc, ds))
-        for cost, tid, oi, dc, ds in candidates:
-            if (tid, oi) not in [(a, b) for a, b, *_ in matches]:
-                alternatives.append({"frame_id": record["frame_id"], "track_id": tid, "observation_id": observations[oi]["observation_id"], "cost": cost, "center_distance": dc, "scale_log_distance": ds, "selected": False})
-        for tid, oi, cost, dc, ds in matches:
-            observations[oi]["association"] = {"status": "matched", "center_distance": dc, "scale_log_distance": ds, "cost": cost}
-            active[tid]["observations"].append(observations[oi])
-        for oi, obs in enumerate(observations):
-            if oi not in used_obs:
-                tid = next_id; next_id += 1
-                obs["association"] = {"status": "new"}
-                active[tid] = {"track_id": tid, "observations": [obs], "last_seen_ms": obs["timestamp_ms"]}
-        for tid in list(active):
-            if active[tid]["observations"][-1]["timestamp_ms"] != record["timestamp_ms"]:
-                gap = (record["timestamp_ms"] - active[tid]["observations"][-1]["timestamp_ms"]) / 1000.0
-                if gap > thresholds["maximum_gap_duration"]:
-                    active[tid]["closed_reason"] = "gap_exceeded"
-                    tracks.append(active.pop(tid))
-        per_frame.append({"frame_id": record["frame_id"], "position": record["position"], "observations": observations,
-                          "active_track_ids": sorted(active), "association_alternatives": [a for a in alternatives if a["frame_id"] == record["frame_id"]]})
-    tracks.extend(active.values())
-    decisions = []
-    emitted = []
-    for track in tracks:
-        obs = track["observations"]
-        times = [o["timestamp_ms"] / 1000.0 for o in obs]
-        unique_images = len({o.get("image_sha256") for o in obs})
-        gaps = [round((b - a) / 1000.0, 6) for a, b in zip([o["timestamp_ms"] for o in obs], [o["timestamp_ms"] for o in obs][1:])]
-        center_residual = _fit_residual(times, [o["center"][0] for o in obs]) + _fit_residual(times, [o["center"][1] for o in obs])
-        scale_residual = _fit_residual(times, [math.log(o["scale"][0] * o["scale"][1]) for o in obs])
-        span = max(times) - min(times) if times else 0.0
-        supported_fraction = len(obs) / max(1.0, len(obs) + sum(1 for gap in gaps if gap > 0.0))
-        flow_values = [float(o.get("flow_support") or 0.0) for o in obs]
-        checks = {
-            "minimum_independent_observations": {"measured": unique_images, "threshold": thresholds["minimum_independent_observations"], "passed": unique_images >= thresholds["minimum_independent_observations"]},
-            "minimum_time_span": {"measured": span, "threshold": thresholds["minimum_time_span"], "passed": span >= thresholds["minimum_time_span"]},
-            "minimum_supported_fraction": {"measured": supported_fraction, "threshold": thresholds["minimum_supported_fraction"], "passed": supported_fraction >= thresholds["minimum_supported_fraction"]},
-            "maximum_gap_duration": {"measured": max(gaps or [0.0]), "threshold": thresholds["maximum_gap_duration"], "passed": max(gaps or [0.0]) <= thresholds["maximum_gap_duration"]},
-            "maximum_center_trend_residual": {"measured": center_residual, "threshold": thresholds["maximum_center_trend_residual"], "passed": center_residual <= thresholds["maximum_center_trend_residual"]},
-            "maximum_scale_change_residual": {"measured": scale_residual, "threshold": thresholds["maximum_scale_change_residual"], "passed": scale_residual <= thresholds["maximum_scale_change_residual"]},
-            "minimum_flow_support": {"measured": min(flow_values or [0.0]), "threshold": thresholds["minimum_flow_support"], "passed": min(flow_values or [0.0]) >= thresholds["minimum_flow_support"]},
-        }
-        failed = [name for name, check in checks.items() if not check["passed"]]
-        if "minimum_independent_observations" in failed or "minimum_time_span" in failed:
-            verdict = "uncertain"
-        elif "maximum_gap_duration" in failed or "maximum_center_trend_residual" in failed or "maximum_scale_change_residual" in failed:
-            verdict = "rejected"
-        else:
-            verdict = "durable" if not failed else "uncertain"
-        decision = {"track_id": f"track_{track['track_id']:04d}", "verdict": verdict, "decision_source": "local", "observations": obs,
-                    "visible_interval": {"start_frame_id": obs[0]["frame_id"], "end_frame_id": obs[-1]["frame_id"], "duration_s": span},
-                    "gaps_s": gaps, "metrics": {"independent_observations": unique_images, "supported_fraction": supported_fraction, "center_trend_residual": center_residual, "scale_change_residual": scale_residual, "min_flow_support": min(flow_values or [0.0])},
-                    "checks": checks, "failed_checks": failed, "counterevidence": [{"reason": "duplicate_image"}] if unique_images < len(obs) else [], "prediction_count": 0}
-        decisions.append(decision)
-        for o in obs:
-            emitted.append({"frame_id": o["frame_id"], "track_id": decision["track_id"], "source_status": "observed", "bbox_xyxy_norm": o["bbox_xyxy_norm"], "verdict": verdict, "detection_id": o["detection_id"]})
-    (output_dir / "tracking-config.json").write_text(json.dumps(config, indent=2, sort_keys=True), encoding="utf-8")
-    (output_dir / "tracks.json").write_text(json.dumps({"schema_version": "durable_tracks_v1", "source_detections": str(detections_path), "tracks": decisions, "association_alternatives": alternatives}, indent=2, sort_keys=True), encoding="utf-8")
-    (output_dir / "decisions.json").write_text(json.dumps({"schema_version": "durability_decisions_v1", "policy": config, "decisions": decisions}, indent=2, sort_keys=True), encoding="utf-8")
-    (output_dir / "emitted-boxes.jsonl").write_text("\n".join(json.dumps(x, sort_keys=True) for x in emitted) + "\n", encoding="utf-8")
-    (output_dir / "per-frame.json").write_text(json.dumps(per_frame, indent=2, sort_keys=True), encoding="utf-8")
-    (output_dir / "diagnostics.json").write_text(json.dumps({"schema_version": "durability_diagnostics_v1", "trajectories": [{"track_id": d["track_id"], "points": [[o["frame_id"], *o["center"]] for o in d["observations"]], "verdict": d["verdict"]} for d in decisions], "disputed_spans": [a for a in alternatives if not a["selected"]]}, indent=2, sort_keys=True), encoding="utf-8")
-    return {"track_count": len(decisions), "verdict_counts": {v: sum(d["verdict"] == v for d in decisions) for v in ("durable", "rejected", "uncertain")}, "frame_count": len(per_frame), "detection_count": len(emitted)}
 
 
 def _corrected_observation(record: dict[str, Any], thing: dict[str, Any], ordinal: int) -> dict[str, Any]:

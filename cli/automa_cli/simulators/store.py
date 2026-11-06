@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from ..shared.io.processes import pid_alive
-from ..shared.paths import RUNTIME_ROOT, SIMULATORS_DIR
+from ..shared.paths import SIMULATORS_DIR, runtime_root
 
 
 SIMULATOR_RECORD = "simulator.json"
@@ -23,14 +23,14 @@ SIMULATOR_SCHEMA = "automa_created_simulator"
 
 
 def simulator_dir(port: int) -> Path:
-    return RUNTIME_ROOT / SIMULATORS_DIR / str(port)
+    return runtime_root() / SIMULATORS_DIR / str(port)
 
 
 def simulator_records() -> list[dict[str, Any]]:
     """Every record ``simulators create`` wrote, including one whose process has exited, by port."""
 
     records = []
-    for path in (RUNTIME_ROOT / SIMULATORS_DIR).glob(f"*/{SIMULATOR_RECORD}"):
+    for path in (runtime_root() / SIMULATORS_DIR).glob(f"*/{SIMULATOR_RECORD}"):
         try:
             record = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, ValueError):

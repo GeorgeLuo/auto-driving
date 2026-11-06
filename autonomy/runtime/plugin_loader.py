@@ -13,7 +13,7 @@ import sys
 import threading
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -31,18 +31,6 @@ class CodeSource:
 
     bundle_root: Path | None = None
     prefixes: tuple[str, ...] = BUNDLE_PREFIXES
-    plugin_sources: tuple[tuple[str, str], ...] = ()
-
-    def executable_activation(self, activation: StepActivation) -> StepActivation:
-        """Resolve source assets without changing the recorded activation's identity."""
-        if not self.plugin_sources:
-            return activation
-        sources = dict(self.plugin_sources)
-        specs = {}
-        for plugin_id, spec in activation.plugin_specs.items():
-            path, separator, name = spec.partition(":")
-            specs[plugin_id] = f"{sources.get(path, path)}{separator}{name}"
-        return replace(activation, plugin_specs=specs)
 
 
 INSTALLED_PACKAGE = CodeSource()
@@ -131,10 +119,8 @@ def code_source_from_activation(activation: StepActivation) -> CodeSource:
 
     controller_bundle = activation.metadata.get("controller_bundle")
     root = controller_bundle.get("root_dir") if isinstance(controller_bundle, dict) else None
-    sources = activation.metadata.get("plugin_sources", {})
     return CodeSource(
         bundle_root=Path(root) if isinstance(root, str) and root else None,
-        plugin_sources=tuple(sorted(sources.items())),
     )
 
 
@@ -148,15 +134,14 @@ def load_runner(activation: StepActivation, *, source: CodeSource | None = None)
     source = code_source_from_activation(activation) if source is None else source
     from autonomy.decision_cycle.steps import step_runner
 
-    executable = source.executable_activation(activation)
     if source.bundle_root is None:
-        runner = step_runner(executable)
+        runner = step_runner(activation)
         runner.activation = activation
         return runner
     if not source.bundle_root.is_dir():
         raise FileNotFoundError(f"Controller bundle is missing: {source.bundle_root}")
     import_context = StagedBundleImport(source.bundle_root, source.prefixes)
     with import_context.activate():
-        runner = step_runner(executable)
+        runner = step_runner(activation)
         runner.activation = activation
     return StagedStep(runner, import_context)

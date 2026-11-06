@@ -12,7 +12,7 @@ from tests.support.runtime_fixtures import stage_step, write_host_fixture
 from typing import Iterator
 from unittest import mock
 
-from cli.automa_cli.hosts import local, staging
+from cli.automa_cli.hosts import local
 from cli.automa_cli.hosts.local import ensure_chase_host
 from cli.automa_cli.hosts.errors import RuntimeHostError
 from tests.shared.implementations.runtime.wait import wait_until
@@ -40,8 +40,6 @@ def _staged_vehicle() -> Iterator[list[subprocess.Popen]]:
         try:
             with (
                 mock.patch.dict(os.environ, {"AUTOMA_RUNTIME_ROOT": str(root), **env}),
-                mock.patch.object(staging, "RUNTIME_ROOT", root),
-                mock.patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", root),
                 mock.patch.object(local.subprocess, "Popen", side_effect=launch),
             ):
                 yield launched

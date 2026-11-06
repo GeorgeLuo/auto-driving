@@ -1,9 +1,7 @@
 from __future__ import annotations
 import json
-import os
 import tempfile
 from pathlib import Path
-from unittest.mock import patch
 from autonomy.decision_cycle.cycle import DecisionCycleResult
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.action.publication import MODE_KEY
@@ -29,6 +27,7 @@ from cli.automa_cli.hosts.step_activations import (
     decision_identity,
 )
 from cli.automa_cli.releases.paths import bundle_paths
+from tests.support.runtime_fixtures import runtime_root_env
 
 
 LEFT_OBSTRUCTION_FRAME = Path(__file__).with_name("left_obstruction_frame.json")
@@ -183,24 +182,10 @@ class DecisionSurfaceFixture:
         self._tmp = tempfile.TemporaryDirectory()
         self.runtime_root = Path(self._tmp.name) / "vehicles"
         self.runtime_root.mkdir(parents=True)
-        self._env_patch = patch.dict(
-            os.environ,
-            {"AUTOMA_RUNTIME_ROOT": str(self.runtime_root)},
-        )
+        self._env_patch = runtime_root_env(self.runtime_root)
         self._env_patch.start()
-        # Staging and release paths read RUNTIME_ROOT at import time; rebind for tests.
-        import cli.automa_cli.hosts.staging as staging_mod
-
-        self._root_patches = [
-            patch.object(staging_mod, "RUNTIME_ROOT", self.runtime_root),
-            patch("cli.automa_cli.releases.paths.RUNTIME_ROOT", self.runtime_root),
-        ]
-        for root_patch in self._root_patches:
-            root_patch.start()
 
     def tearDown(self) -> None:
-        for root_patch in self._root_patches:
-            root_patch.stop()
         self._env_patch.stop()
         self._tmp.cleanup()
 
@@ -220,7 +205,7 @@ class DecisionSurfaceFixture:
         return self._identity(host_name)
 
     def _identity(self, host_name: str = "chase-sim-chaser") -> dict:
-        return decision_identity(bundle_paths(host_name, self.runtime_root))
+        return decision_identity(bundle_paths(host_name))
 
     def _sample_cycle(self, action: str = "hold") -> DecisionRecords:
         cycle = sample_records(action)

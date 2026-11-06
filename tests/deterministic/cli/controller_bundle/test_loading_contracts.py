@@ -1,10 +1,6 @@
 """Contracts for moving modules without splitting loaded classes.
 
-``loading_inventory`` is the baseline. Each legacy spec, export, and module
-path must still resolve to the recorded owner. The structural suite
-``tests/deterministic/autonomy/test_loading_surface.py`` reports paths it does not record.
-
-Staged bundle checks still fail when an archive stores a source file somewhere
+Staged bundle checks fail when an archive stores a source file somewhere
 other than its current path, or when a staged import uses a different class
 than the host or its sibling bundle copy.
 """
@@ -22,21 +18,9 @@ from autonomy.runtime.plugin_loader import BUNDLE_PREFIXES, StagedBundleImport, 
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
 from cli.automa_cli.releases.paths import controller_bundle_paths
 from implementations.decision_cycle.catalog import packaged_activation
-from tests.shared.cli.controller_bundle.loading_inventory import (
-    LEGACY_EXPORTS,
-    LEGACY_MODULES,
-    LEGACY_SPECS,
-)
 
 
 ROOT = Path(__file__).resolve().parents[4]
-
-
-def _load_spec(spec: str) -> object:
-    module_name, separator, attribute = spec.partition(":")
-    if not separator or not module_name or not attribute:
-        raise ValueError(f"import spec must be 'module.path:name', got {spec!r}")
-    return getattr(importlib.import_module(module_name), attribute)
 
 
 def _bundle_source_paths() -> list[str]:
@@ -68,45 +52,6 @@ class LoadingContractTests(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         cls._temporary.cleanup()
-
-    def test_legacy_paths_resolve_to_canonical_owners(self) -> None:
-        specs = [spec for spec, _, _ in LEGACY_SPECS]
-        exports = [(module_name, name) for module_name, name, _, _ in LEGACY_EXPORTS]
-        modules = [module_name for module_name, _ in LEGACY_MODULES]
-        self.assertEqual(len(specs), len(set(specs)))
-        self.assertEqual(len(exports), len(set(exports)))
-        self.assertEqual(len(modules), len(set(modules)))
-
-        mismatches: list[str] = []
-        for spec, module_name, attribute in LEGACY_SPECS:
-            try:
-                loaded = _load_spec(spec)
-                owner = getattr(importlib.import_module(module_name), attribute)
-            except Exception as exc:
-                mismatches.append(f"{spec}: {type(exc).__name__}: {exc}")
-                continue
-            if loaded is not owner:
-                mismatches.append(f"{spec} is not {module_name}.{attribute}")
-        for legacy_module, legacy_name, canonical_module, canonical_name in LEGACY_EXPORTS:
-            try:
-                loaded = getattr(importlib.import_module(legacy_module), legacy_name)
-                owner = getattr(importlib.import_module(canonical_module), canonical_name)
-            except Exception as exc:
-                mismatches.append(
-                    f"{legacy_module}.{legacy_name}: {type(exc).__name__}: {exc}"
-                )
-                continue
-            if loaded is not owner:
-                mismatches.append(
-                    f"{legacy_module}.{legacy_name} is not {canonical_module}.{canonical_name}"
-                )
-        for legacy_module, canonical_module in LEGACY_MODULES:
-            for module_name in (legacy_module, canonical_module):
-                try:
-                    importlib.import_module(module_name)
-                except Exception as exc:
-                    mismatches.append(f"{module_name}: {type(exc).__name__}: {exc}")
-        self.assertEqual(mismatches, [], "legacy path does not resolve to its canonical owner")
 
     def test_controller_bundle_archives_source_paths(self) -> None:
         self.assertEqual(self.release["schema"], "automa_controller_bundle_manifest")

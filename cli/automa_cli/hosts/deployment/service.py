@@ -22,7 +22,6 @@ from ...releases.errors import ReleaseError
 from ...releases.paths import bundle_paths, host_dir
 from ...releases.store import release_code_dir
 from ...shared.io.processes import pid_alive
-from ...shared.paths import runtime_root
 from ..progress import ProgressSink
 from ..bundles import controller_bundle_source_summary, sync_controller_bundle
 from ..discovery import running_base_url
@@ -250,7 +249,7 @@ def _install_created_host(
     host_name = configuration["host_name"]
     directory = host_dir(host_name)
     made_directory = not directory.exists()
-    write_host_configuration(runtime_root(), configuration)
+    write_host_configuration(configuration)
     core = None
     try:
         if not local:

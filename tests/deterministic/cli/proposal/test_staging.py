@@ -22,7 +22,7 @@ from tests.shared.cli.decision.decision_surfaces_fixtures import (
 class ProposalStagingTests(DecisionSurfaceFixture, unittest.TestCase):
     def test_staged_steps_load_their_plugins_from_the_staged_bundle(self) -> None:
         self._stage()
-        bundle = bundle_paths("chase-sim-chaser", self.runtime_root)
+        bundle = bundle_paths("chase-sim-chaser")
         activation_path = bundle_activation_path(bundle, "proposal")
         original = read_step_activation(activation_path, "proposal")
         plugin_path = Path(bundle["root_dir"]) / (

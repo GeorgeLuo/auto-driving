@@ -238,7 +238,7 @@ class HostLifecycleTests(unittest.TestCase):
 
         register_backend("bench", DeploymentBackend(create=None, update=update_bench, delete=None))
         self.addCleanup(BACKENDS.pop, "bench", None)
-        write_host_configuration(self.root, {
+        write_host_configuration({
             "host_name": "car", "provider": "bench", "vehicle_kind": "bench",
             "connection": {"endpoint": "bench://local"},
         })

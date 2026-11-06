@@ -1,4 +1,4 @@
-"""The viewer answers vehicles and simulators commands as its read and write routes."""
+"""The viewer answers vehicles, simulators and hosts commands as its read and write routes."""
 
 from __future__ import annotations
 

@@ -211,7 +211,6 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
             host_name="chase-sim-chaser",
             automation_dir=self.automation_dir,
             port=old_port,
-            run_id="run-replacement",
             decision_identity=self._producer("run-replacement"),
             replay_runner_factory=ImageReplayRunner,
         ).start()

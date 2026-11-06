@@ -1,29 +1,16 @@
-"""Image availability cannot stop a run or freeze behind recording export."""
+"""A view's failures end only that view."""
 from __future__ import annotations
 
-import io
-import json
 import tempfile
-import threading
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-from PIL import Image
-
-from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.report import HostReport, ReportApplication
-from cli.automa_cli.frontend.perception_view import PerceptionView
-from cli.automa_cli.hosts.runs import monitor
 from cli.automa_cli.hosts.views import view_feed as viewer
 from cli.automa_cli.plugins.stream import decision, session
 from cli.automa_cli.plugins.stream.commands import stream_host_step
 from cli.automa_cli.plugins.stream.models import StreamResult
-from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
-from tests.deterministic.cli.automation.test_runtime_monitor import (
-    DECISION, SELECTIONS, _FakeDecisionView, _host, _publication, _session,
-)
-from tests.shared.implementations.runtime.wait import wait_until
 
 
 class LiveViewCopyTests(unittest.TestCase):
@@ -71,124 +58,24 @@ class LiveViewCopyTests(unittest.TestCase):
         feed.read_observation.assert_called_once_with()
         feed.publish.assert_called_once_with(publication)
 
-    def test_perception_recovers_and_advances_while_recording_export_is_blocked(self):
-        export_entered, export_release = threading.Event(), threading.Event()
-        current = {"index": None}
-        holder = {}
-        results = []
-        output = io.BytesIO()
-        Image.new("RGB", (4, 4)).save(output, "JPEG")
+    def test_a_partial_start_releases_its_socket_and_stop_is_idempotent(self):
+        bound = []
 
-        class Client:
-            base_url = "http://host.invalid"
-            def host_status(self):
-                return _host(3)
-            def start(self, configuration, **kwargs):
-                return {"ok": True, "host_run_id": "host-1", "session": {"recording": {"run_id": "recording-1"}}}
-            def status(self):
-                return {"ok": True, "host_run_id": "host-1",
-                        "session": _session("completed" if export_release.is_set() else "running", 2)}
-            def stop(self):
-                return {"ok": True, "session": _session("stopped", 2)}
-
-        def sample(*args, **kwargs):
-            if current["index"] is None:
-                raise ValueError("temporary image error")
-            return _publication(current["index"]), output.getvalue()
-
-        def server(**kwargs):
-            holder["server"] = runtime_view_server(**kwargs)
-            return holder["server"]
-
-        def export(*args, **kwargs):
-            export_entered.set()
-            if not export_release.wait(3):
-                raise TimeoutError("test did not release recording export")
-            args[1]["recorded_count"] = 2
+        def thread_fails(httpd, *, name):
+            bound.append(httpd)
+            raise RuntimeError("no thread")
 
         with (
             tempfile.TemporaryDirectory() as tmp,
-            patch.object(monitor, "RuntimeClient", return_value=Client()),
-            patch.object(monitor, "runtime_view_server", side_effect=server),
-            patch.object(monitor, "DecisionViewAdapter", _FakeDecisionView),
-            patch.object(monitor, "fetch_observation_sample", side_effect=sample),
-            patch.object(monitor, "_sync_recording", side_effect=export),
+            patch.object(viewer, "runtime_view_dir", return_value=Path(tmp)),
+            patch("cli.automa_cli.frontend.server.start_server_thread", side_effect=thread_fails),
         ):
-            root = Path(tmp)
-            worker = threading.Thread(target=lambda: results.append(monitor.monitor_runtime(
-                host_name="picar-test", base_url=Client.base_url, automation_dir=root,
-                selections=SELECTIONS, decision=dict(DECISION),
-                configuration=RunConfiguration(mode="observe_only", num_decisions=2),
-                timeout_s=0.2, record=True, verbose=False,
-            )), daemon=True)
-            worker.start()
-            try:
-                self.assertTrue(export_entered.wait(2))
-                self.assertIsNone(holder["server"].perception.latest_json())
-                current["index"] = 1
+            feed = viewer.ViewFeed("fixture", base_url="http://host.invalid", timeout_s=0.1)
 
-                def latest():
-                    raw = holder["server"].perception.latest_json()
-                    return json.loads(raw) if raw else None
-
-                published = wait_until(latest, message="perception waited for recording export")
-                self.assertEqual(published["frame"]["frame_id"], "donkey_frame_000001")
-                served, content_type = holder["server"].perception.frame()
-                self.assertEqual(content_type, "image/jpeg")
-                self.assertEqual(served, output.getvalue())
-                # The run's latest files follow the view's publication.
-                front_camera = root / "latest" / "frames" / "latest_front_camera.jpg"
-                wait_until(
-                    lambda: front_camera.exists() and front_camera.read_bytes() == output.getvalue(),
-                    message="the monitor did not export the published frame",
-                )
-                self.assertTrue(worker.is_alive())
-                self.assertFalse(export_release.is_set())
-            finally:
-                export_release.set()
-                worker.join(3)
-            self.assertFalse(worker.is_alive())
-            self.assertEqual(results[0].exit_code, 0, results)
-
-    def test_a_failed_export_clears_the_view_and_the_next_poll_retries_the_capture(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            image = io.BytesIO()
-            Image.new("RGB", (4, 5)).save(image, "JPEG")
-            jpeg = image.getvalue()
-            first, second = _publication(1), _publication(2)
-            identity = {"run_id": "run-1", "control_source": "runtime_host"}
-            server = Mock(perception=PerceptionView(host_name="fixture"))
-            copied = {"publication": None, "ready": threading.Event()}
-            stop = threading.Event()
-            shown = []
-            write_json = monitor.write_json_atomically
-
-            def export_json(path, record):
-                if len(shown) == 1:
-                    raise PermissionError("export blocked")
-                write_json(path, record)
-
-            def after_poll(_timeout):
-                latest = server.perception.latest_json()
-                shown.append(json.loads(latest)["frame"]["frame_id"] if latest else server.perception.unavailable_reason)
-                if len(shown) == 3:
-                    stop.set()
-
-            with (
-                patch.object(monitor, "fetch_observation_sample", side_effect=[(first, jpeg), (second, jpeg), (second, jpeg)]),
-                patch.object(monitor, "write_json_atomically", side_effect=export_json),
-                patch.object(stop, "wait", side_effect=after_poll),
-            ):
-                monitor._copy_latest_perception(
-                    "http://host.invalid", server, stop, copied,
-                    front_camera_path=root / "frame.jpg", json_path=root / "latest_perception.json",
-                    text_path=root / "latest_perception.txt", identity=identity, timeout_s=0.1,
-                )
-            self.assertEqual(shown, [
-                first["frame"]["frame_id"], "PermissionError: export blocked", second["frame"]["frame_id"],
-            ])
-            self.assertEqual(json.loads((root / "latest_perception.json").read_text()), {**second, **identity})
-            self.assertEqual((root / "latest_perception.txt").read_text(), "signal id=lane\n")
-            self.assertEqual((root / "frame.jpg").read_bytes(), jpeg)
-            self.assertEqual(copied["publication"], second)
+        self.assertEqual(feed.error, "RuntimeError: no thread")
+        self.assertIsNone(feed.server)
+        self.assertIsNone(feed.url)
+        # The bound socket closed without shutdown(), which would wait forever.
+        self.assertEqual(bound[0].socket.fileno(), -1)
+        feed.stop()
+        feed.publish({"frame": {"frame_id": "one"}})

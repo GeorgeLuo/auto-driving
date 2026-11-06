@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Any
 
 from ...frontend.server import RuntimeViewServer
@@ -15,12 +16,12 @@ from .view_discovery import runtime_view_dir
 
 
 class ViewFeed:
-    """A loopback runtime view a terminal stream feeds from the host's publications.
+    """A loopback runtime view that ``hosts viewer`` or a terminal stream feeds.
 
-    As the view of ``hosts run`` does, its decision page aggregates the
-    host's latest decision with its matched frame, evidence and candidates, and
-    it serves the host's plugin catalog. The perception and memory pages publish
-    from the observation even while no matched decision is available.
+    Its decision page aggregates the host's latest decision with its matched
+    frame, evidence and candidates, and it serves the host's plugin catalog.
+    The perception and memory pages publish from the observation even while no
+    matched decision is available. Its failures end only this view.
     """
 
     def __init__(self, host_name: str, *, base_url: str, timeout_s: float) -> None:
@@ -36,17 +37,22 @@ class ViewFeed:
         self._observation: tuple[dict[str, Any], bytes | None] | None = None
         self.observation: ObservationPublisher | None = None
         try:
+            # Assigned before it starts, so stop() also releases a partial start.
             self.server = runtime_view_server(
                 host_name=host_name,
                 automation_dir=runtime_dir,
                 plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
-            ).start()
+            )
+            self.server.start()
             self.observation = ObservationPublisher(self.server.perception)
             self.decision = DecisionViewAdapter(
                 host_name=host_name, base_url=base_url, view_server=self.server, timeout_s=timeout_s,
             )
-        except OSError as exc:
+        except Exception as exc:  # noqa: BLE001 - a failed view ends only this view
             self.error = f"{type(exc).__name__}: {exc}"
+            # Releasing a partial start can fail the same way; the first failure is the one reported.
+            with suppress(Exception):
+                self.stop()
 
     @property
     def url(self) -> str | None:
@@ -108,5 +114,9 @@ class ViewFeed:
             self.observation.invalidate(self.error)
 
     def stop(self) -> None:
-        if self.server is not None:
-            self.server.stop()
+        """End this view's publication. Safe after a partial start and when called again."""
+
+        server, self.server = self.server, None
+        self.decision = self.observation = None
+        if server is not None:
+            server.stop()

@@ -616,14 +616,14 @@
         now >= freshness.published_at_ms && now <= freshness.expires_at_ms;
     }
 
-    // A worker that runs restaged proposals publishes a new generation; follow
-    // it while the run and worker are the ones this page has been showing.
+    // A run that applies restaged proposals publishes a new generation; follow
+    // it while the run is the one this page has been showing.
     function restagedGeneration(response, payload) {
       const shown = latest?.identity;
       const next = payload?.identity;
       return response.status === 409 && payload?.reason === "generation_mismatch" &&
         /^[0-9a-f]{64}$/.test(payload?.generation_id || "") &&
-        shown && next && shown.run_id === next.run_id && shown.worker_pid === next.worker_pid
+        shown && next && shown.run_id === next.run_id
         ? payload.generation_id
         : null;
     }

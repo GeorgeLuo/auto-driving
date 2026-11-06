@@ -51,14 +51,14 @@ class ChaseSimulatorSmokeTests(unittest.TestCase):
                 "--url", simulator["url"])
             try:
                 try:
-                    run = cli("hosts", "run", "--name", "chase-sim-chaser", "--observe-only",
-                              "--open-view", "--timeout-s", "6")
+                    run = cli("hosts", "run", "--name", "chase-sim-chaser", "--observe-only", "--timeout-s", "6")
                     self.assertIn("Run started on host", run.stdout)
-                    self.assertIn("Runtime view: http://127.0.0.1:", run.stdout)
+                    self.assertIn("View: ./cli/automa hosts viewer --name chase-sim-chaser", run.stdout)
 
                     host = json.loads(cli("hosts", "status", "--name", "chase-sim-chaser", "--json").stdout)["hosts"][0]["run"]
                     self.assertTrue(host["process"]["running"])
-                    self.assertTrue(host["published_view"]["available"])
+                    # A run serves no pages; hosts viewer does.
+                    self.assertFalse(host["published_view"]["available"])
                     self.assertEqual(host["state"]["action_policy"], "observe_only")
                     self.assertEqual(host["state"]["control_application"], "not_applied")
                     _assert_passive_preserved()

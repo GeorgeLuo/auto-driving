@@ -12,11 +12,9 @@ from unittest.mock import patch
 import numpy as np
 
 from autonomy.decision_cycle.steps import decision_steps
-from autonomy.runtime.frame_loop import DECISION_TRANSACTION_PATH
-from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs import monitor
-from cli.automa_cli.hosts.runs.worker import RunOutput
+from cli.automa_cli.hosts.runs.worker import startup_printer
 from cli.automa_cli.hosts.runs.render import render_run_result
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
@@ -99,10 +97,9 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                     part.wait_for_cycle()
                     part.shutdown()
 
-    def test_monitor_reads_publications_as_soon_as_the_worker_is_free(self) -> None:
+    def test_monitor_records_every_decision_as_soon_as_the_worker_is_free(self) -> None:
         perception = GatedPerception(3, blocked=())
         part = _part(perception)
-        routes = RuntimeRoutes(part)
         image = np.zeros((2, 2, 3), dtype=np.uint8)
 
         class RuntimeClient:
@@ -117,9 +114,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                     part.recording_root = root / "host-runs"
                     part.host_name = "picar-test"
                     part.recording_root.mkdir(parents=True, exist_ok=True)
-                # A bound of 3 would end the session inside the start, and a
-                # recorded terminal session is drained before the monitor reads
-                # the live publication.
+                # A bound of 3 would end the session inside the start.
                 status = part.start(replace(configuration, num_decisions=None), record=record)
                 part.run(image_array=image, mode="user")
                 part.wait_for_cycle()
@@ -142,52 +137,33 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                     part.host.stop(reason="completed")
                 return {"ok": True, "host_run_id": part.run_id, "session": part.host.session_status()}
 
-        def transaction(*_args, **_kwargs):
-            _status, _headers, body = routes.handle("GET", DECISION_TRANSACTION_PATH)
-            return json.loads(body)
-
-        seen = []
-
-        def sample(*_args, **_kwargs):
-            jpeg, payload = part.publish_latest_frame_jpeg()
-            seen.append(payload["frame"]["frame_index"])
-            return payload, jpeg
-
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             output = io.StringIO()
             try:
                 # Substitute HTTP reads and lifecycle transport only. Host, workers,
-                # publications, monitor polling, loopback view and records are real.
-                with (
-                    patch.object(monitor, "RuntimeClient", return_value=RuntimeClient()),
-                    patch.object(monitor, "fetch_observation_sample", side_effect=sample),
-                    patch("cli.automa_cli.hosts.views.decision_live.fetch_decision_transaction", side_effect=transaction),
-                ):
+                # monitor polling and records are real.
+                with patch.object(monitor, "RuntimeClient", return_value=RuntimeClient()):
                     started = time.monotonic()
                     outcome = monitor.monitor_runtime(
                         host_name="picar-test", base_url="http://picar.invalid", automation_dir=root,
                         selections={"perception": {"preset": "gated", "plugins": [], "activation": "perception/active.json"}},
                         decision={"generation_id": "test", "steps": {}, "published": False},
                         configuration=RunConfiguration(mode="observe_only", num_decisions=3),
-                        timeout_s=0.2, record=True, verbose=True, emit=RunOutput(output, verbose=True),
+                        timeout_s=0.2, record=True, emit=startup_printer(output),
                     )
                     code, message = outcome.exit_code, render_run_result(outcome.state, state_path=str(outcome.state_path))
                 self.assertEqual(code, 0, message)
                 self.assertLess(time.monotonic() - started, 2.0, "monitor waited after the worker was free")
                 state = json.loads((root / "state.json").read_text())
-                unique = list(dict.fromkeys(seen))
-                self.assertEqual((unique[0], unique[-1]), (0, 2))
-                self.assertEqual(unique, sorted(unique))
-                self.assertTrue(set(unique).issubset({0, 1, 2}))
+                self.assertEqual(state["last_frame"]["frame_index"], 2)
                 self.assertEqual((state["frames_received"], state["processed_count"]), (3, 3))
                 self.assertEqual(state["num_decisions"], 3)
                 self.assertNotIn("interval_s", state["session"]["configuration"])
                 recording_id = state["session"]["recording"]["run_id"]
                 records = [json.loads(p.read_text()) for p in (root / "runs" / recording_id).glob("perception/*/perception.json")]
                 records.sort(key=lambda record: record["frame_index"])
-                # The independent copier may observe intermediate frame 1.
-                # The recording always keeps every completed decision.
+                # The recording keeps every completed decision.
                 self.assertEqual([record["frame_index"] for record in records], [0, 1, 2])
                 self.assertIn("Frames received: 3", message)
             finally:

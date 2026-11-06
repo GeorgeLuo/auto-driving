@@ -14,10 +14,6 @@ from typing import Any, Literal
 
 from autonomy.runtime.session import RunConfiguration
 
-from ...frontend.perception_view import (
-    get_perception_view_status,
-    perception_view_ready,
-)
 from ...shared.io.processes import pid_alive
 from ...shared.paths import ROOT
 from .models import WORKER_MODULE
@@ -109,7 +105,6 @@ def worker_command(
     configuration: RunConfiguration,
     take_control: bool,
     record: bool,
-    verbose: bool,
 ) -> list[str]:
     command = [
         sys.executable,
@@ -130,8 +125,6 @@ def worker_command(
         command.append("--observe-only")
     if record:
         command.append("--record")
-    if verbose:
-        command.append("--verbose")
 
     return command
 
@@ -178,136 +171,52 @@ def _wait_for_exit(pid: int, *, timeout_s: float, interval_s: float) -> bool:
     return False
 
 
+def _state_dict(automation_dir: Path) -> dict[str, Any]:
+    state = read_run_state(automation_dir)
+    return state if isinstance(state, dict) else {}
+
+
+def _failed(reason: str, state: dict[str, Any]) -> dict[str, Any]:
+    return {"status": "failed", "reason": reason, "state": state}
+
+
 def wait_for_automation_startup(
     *,
     process: subprocess.Popen[Any],
     automation_dir: Path,
     timeout_s: float,
 ) -> dict[str, Any]:
-    deadline = time.monotonic() + max(0.1, float(timeout_s))
+    """Wait until the worker's runtime session is running, or the worker ends its run.
+
+    Only the record this worker's pid wrote counts. While the worker is alive,
+    a running session is ready. Once the worker records how its run ended,
+    that is the outcome, and only ``completed`` succeeds. A worker that exits
+    without recording an ending failed.
+    """
+
+    budget_s = max(0.1, float(timeout_s))
+    deadline = time.monotonic() + budget_s
     while True:
-        state = read_run_state(automation_dir)
-        state = state if isinstance(state, dict) else {}
-        status = state.get("status")
-        published_view = (
-            state.get("published_view")
-            if isinstance(state.get("published_view"), dict)
-            else {}
-        )
-        frames_received = state.get("frames_received")
-        processed_count = state.get("processed_count")
-        last_frame = (
-            state.get("last_frame") if isinstance(state.get("last_frame"), dict) else {}
-        )
-
-        if (
-            status == "running"
-            and isinstance(frames_received, int)
-            and frames_received > 0
-            and isinstance(processed_count, int)
-            and processed_count > 0
-        ):
-            expected_pid = (
-                state.get("pid") if isinstance(state.get("pid"), int) else None
-            )
-            expected_run_id = (
-                state.get("run_id") if isinstance(state.get("run_id"), str) else None
-            )
-            remaining = deadline - time.monotonic()
-            if remaining > 0:
-                view = get_perception_view_status(
-                    automation_dir,
-                    timeout_s=min(0.25, remaining),
-                    expected_run_id=expected_run_id,
-                    expected_worker_pid=expected_pid,
-                )
-                # The independent perception copier can advance while the
-                # status writer exports a recording batch. The view proves a
-                # matched image/result in this run and worker generation.
-                if perception_view_ready(view):
-                    return {
-                        "status": "ready",
-                        "frame_id": view["latest_frame_id"],
-                        "view_url": view.get("url"),
-                        "phases": {
-                            "capture": {"status": "complete"},
-                            "perception": {
-                                "status": "complete",
-                                "duration_ms": last_frame.get("perception_duration_ms"),
-                            },
-                            "view": {
-                                "status": "complete",
-                                "duration_ms": 0,
-                                "run_id": expected_run_id,
-                                "worker_pid": expected_pid,
-                            },
-                        },
-                        "state": state,
-                    }
-        if status == "completed":
-            return {"status": "completed", "state": state}
-        if status in {"error", "stopped"}:
-            return {
-                "status": "failed",
-                "reason": state.get("error")
-                or state.get("stop_reason")
-                or f"worker status is {status}",
-                "state": state,
-            }
-        if (
-            status == "running"
-            and isinstance(frames_received, int)
-            and frames_received > 0
-            and published_view.get("status") == "error"
-        ):
-            return {
-                "status": "failed",
-                "reason": published_view.get("reason")
-                or published_view.get("last_error")
-                or "perception view failed",
-                "state": state,
-            }
-
+        # Read the record after the exit check, so an exited worker's last write is seen.
         exit_code = process.poll()
+        state = _state_dict(automation_dir)
+        own = state.get("pid") == process.pid
+        status = state.get("status") if own else None
+        session = state.get("session") if own and isinstance(state.get("session"), dict) else {}
+        if status == "completed":
+            return {"status": "completed", "processed_count": state.get("processed_count", 0), "state": state}
+        if status in {"stopped", "error"}:
+            return _failed(state.get("error") or state.get("stop_reason") or f"the run {status}", state)
         if exit_code is not None:
-            state = read_run_state(automation_dir)
-            state = state if isinstance(state, dict) else {}
-            reason = state.get("error")
-            if not isinstance(reason, str) or not reason:
-                reason = f"automation worker exited with code {exit_code} before publishing a frame"
-                mark_automation_startup_error(
-                    automation_dir=automation_dir,
-                    error=reason,
-                    exit_code=exit_code,
-                )
-                state = read_run_state(automation_dir)
-            return {"status": "failed", "reason": reason, "state": state}
-
+            reason = f"automation worker exited with code {exit_code} before the runtime session completed"
+            mark_automation_startup_error(automation_dir=automation_dir, error=reason, exit_code=exit_code)
+            return _failed(reason, _state_dict(automation_dir))
+        if session.get("status") == "running":
+            return {"status": "ready", "processed_count": session.get("processed_decisions", 0), "state": state}
         if time.monotonic() >= deadline:
-            return {
-                "status": "failed",
-                "reason": (
-                    "worker is still running but did not publish one correlated "
-                    "camera/perception frame and current-generation view "
-                    f"within {max(0.1, float(timeout_s)):.1f}s"
-                ),
-                "phases": {
-                    "capture": {
-                        "status": "complete"
-                        if isinstance(frames_received, int) and frames_received > 0
-                        else "incomplete",
-                    },
-                    "perception": {
-                        "status": "complete"
-                        if isinstance(processed_count, int) and processed_count > 0
-                        else "incomplete",
-                    },
-                    "view": {
-                        "status": "complete"
-                        if perception_view_ready(published_view)
-                        else "incomplete",
-                    },
-                },
-                "state": state,
-            }
+            return _failed(
+                f"runtime session is {session.get('status') or 'missing'} and the worker is alive "
+                f"after {budget_s:.1f}s",
+                state,
+            )
         time.sleep(0.05)

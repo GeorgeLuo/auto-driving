@@ -9,12 +9,14 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from urllib.error import HTTPError
+from urllib.request import urlopen
 
 from implementations.vehicle.chase_sim.car import ChaseSimCar
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.implementations.runtime.wait import wait_until
-from tests.support.cli_runner import AUTOMA_PATH, WORKSPACE_ROOT, run_automa
+from tests.support.cli_runner import AUTOMA_PATH, WORKSPACE_ROOT, run_automa, start_automa
 from tests.support.fake_metrics_ui import fake_metrics_ui_server
 
 
@@ -31,6 +33,24 @@ def _session_fingerprint(ws_url: str) -> dict:
     session = dict(preservation["before"])
     session["playback"] = {key: value for key, value in session["playback"].items() if key != "frameIndex"}
     return session
+
+
+def _latest(view_url: str) -> dict | None:
+    """The view's latest publication, or ``None`` before it has one."""
+
+    try:
+        with urlopen(f"{view_url.rstrip('/')}/api/latest", timeout=5) as response:
+            return json.load(response)
+    except HTTPError:
+        return None
+
+
+def _read_line(process: subprocess.Popen, *, timeout_s: float = 10.0) -> str:
+    with selectors.DefaultSelector() as reader:
+        reader.register(process.stdout, selectors.EVENT_READ)
+        if not reader.select(timeout=timeout_s):
+            raise AssertionError("the command printed nothing")
+        return process.stdout.readline()
 
 
 class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
@@ -127,12 +147,47 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                         "--name",
                         "chase-sim-chaser",
                         "--observe-only",
-                        "--open-view",
                         runtime_root=runtime_root,
                         extra_env=env,
                     )
                     self.assertIn("Run started on host", run.stdout)
+                    self.assertIn("View: ./cli/automa hosts viewer --name chase-sim-chaser", run.stdout)
+                    self.assertNotIn("Browser", run.stdout)
                     self.assertNotIn("ready for:", run.stdout.lower())
+
+                    # Viewing is explicit: the viewer serves the pages until Ctrl-C ends it, not the run.
+                    with start_automa("hosts", "viewer", "--name", "chase-sim-chaser",
+                                      runtime_root=runtime_root, extra_env=env) as viewer:
+                        try:
+                            self.assertTrue(_read_line(viewer).startswith("Viewing host chase-sim-chaser at "))
+                            # The viewer prints its notice as one block; the rest is buffered already.
+                            browser = viewer.stdout.readline()
+                            self.assertTrue(browser.startswith("Browser opened: "), browser)
+                            view_url = browser.removeprefix("Browser opened: ").strip()
+                            with urlopen(f"{view_url.rstrip('/')}/perception", timeout=5) as page:
+                                self.assertEqual(page.status, 200)
+                            latest = wait_until(lambda: _latest(view_url), message="the viewer published no frame")
+                            self.assertTrue(latest["frame"]["frame_id"])
+                            shown = json.loads(invoke_automa(
+                                "hosts", "status", "--name", "chase-sim-chaser", "--json",
+                                runtime_root=runtime_root, extra_env=env,
+                            ).stdout)["hosts"][0]["run"]
+                            self.assertTrue(shown["process"]["running"])
+                            self.assertEqual(shown["published_view"]["url"], view_url)
+                            self.assertTrue(shown["published_view"]["available"])
+                            viewer.send_signal(signal.SIGINT)
+                            self.assertEqual(viewer.wait(timeout=10), 130)
+                        finally:
+                            if viewer.poll() is None:
+                                viewer.terminate()
+                                viewer.wait(timeout=5)
+                    after_view = json.loads(invoke_automa(
+                        "hosts", "status", "--name", "chase-sim-chaser", "--json",
+                        runtime_root=runtime_root, extra_env=env,
+                    ).stdout)["hosts"][0]["run"]
+                    self.assertTrue(after_view["process"]["running"])
+                    self.assertEqual(after_view["state"]["session"]["status"], "running")
+                    self.assertFalse(after_view["published_view"]["available"])
 
                     for step in ("perception", "memory"):
                         probe = json.loads(invoke_automa(
@@ -147,11 +202,11 @@ class SimulatorPerceptionCliJourneyTests(unittest.TestCase):
                     ).stdout)["hosts"][0]["run"]["state"]["run_id"]
                     restarted = run_automa(
                         "hosts", "restart", "--name", "chase-sim-chaser",
-                        "--observe-only", "--open-view",
+                        "--observe-only",
                         runtime_root=runtime_root, extra_env=env,
                     )
                     self.assertIn("Run started on host", restarted.stdout)
-                    self.assertIn("Browser opened:", restarted.stdout)
+                    self.assertNotIn("Browser", restarted.stdout)
                     new_run = json.loads(invoke_automa(
                         "hosts", "status", "--name", "chase-sim-chaser",
                         "--json", runtime_root=runtime_root, extra_env=env,

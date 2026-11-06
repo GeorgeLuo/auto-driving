@@ -81,9 +81,12 @@ def stop_server_thread(
 ) -> None:
     """Stop, close, and briefly join a loopback serving thread."""
 
-    server.shutdown()
+    # shutdown waits for serve_forever; a bound server whose thread failed to
+    # start has nobody to signal completion and must only close its socket.
+    if thread is not None and thread.is_alive():
+        server.shutdown()
     server.server_close()
-    if thread is not None:
+    if thread is not None and thread.ident is not None:
         thread.join(timeout=1.0)
 
 

@@ -77,27 +77,18 @@ class AutomationLivePipelineTests(unittest.TestCase):
         self.assertIsNone(part.host.last_error)
 
 
-    def test_startup_accepts_a_correlated_view_that_advanced_during_export(self) -> None:
+    def test_startup_accepts_a_running_session_before_any_decision(self) -> None:
         state = {
-            "status": "running", "pid": _RunningProcess.pid, "run_id": "current-run",
-            "frames_received": 3, "processed_count": 2,
-            "last_frame": {"frame_id": "frame_000001"},
+            "pid": _RunningProcess.pid,
+            "status": "running",
+            "session": {"status": "running", "processed_decisions": 0},
         }
-        view = {
-            "available": True, "url": "http://127.0.0.1:8555/",
-            "latest_frame_id": "frame_000002",
-        }
-        with (
-            patch("cli.automa_cli.hosts.runs.process.read_run_state", return_value=state),
-            patch("cli.automa_cli.hosts.runs.process.get_perception_view_status", return_value=view) as status,
-        ):
+        with patch("cli.automa_cli.hosts.runs.process.read_run_state", return_value=state):
             result = wait_for_automation_startup(
                 process=_RunningProcess(), automation_dir=Path("unused"), timeout_s=0.2,
             )
         self.assertEqual(result["status"], "ready")
-        self.assertEqual(result["frame_id"], "frame_000002")
-        self.assertEqual(status.call_args.kwargs["expected_run_id"], "current-run")
-        self.assertEqual(status.call_args.kwargs["expected_worker_pid"], _RunningProcess.pid)
+        self.assertEqual(result["processed_count"], 0)
 
     def test_background_start_fails_when_child_exits_before_readiness(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -130,7 +121,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
             self.assertEqual(state["status"], "error")
             self.assertIn("exited with code 7", state["error"])
 
-    def test_background_start_returns_only_after_first_frame_and_view(self) -> None:
+    def test_background_start_returns_once_the_session_runs_and_names_the_viewer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             runtime_root = Path(tmp) / "vehicles"
             write_host_fixture(runtime_root, "chase-sim-chaser")
@@ -145,24 +136,9 @@ class AutomationLivePipelineTests(unittest.TestCase):
                     state = json.loads(state_path.read_text(encoding="utf-8"))
                     state.update(
                         {
-                            "status": "running",
                             "pid": _RunningProcess.pid,
-                            "frames_received": 1,
-                            "processed_count": 1,
-                            "last_capture": {
-                                "frame_id": "frame_000000",
-                                "capture_duration_ms": 4,
-                            },
-                            "last_frame": {
-                                "frame_id": "frame_000000",
-                                "perception_duration_ms": 8,
-                            },
-                            "published_view": {
-                                "status": "running",
-                                "available": True,
-                                "url": "http://127.0.0.1:8555/",
-                                "latest_frame_id": "frame_000000",
-                            },
+                            "run_id": "run-current",
+                            "session": {"status": "running", "processed_decisions": 0},
                         }
                     )
                     state_path.write_text(json.dumps(state), encoding="utf-8")
@@ -174,98 +150,27 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 runtime_root_env(runtime_root),
                 patch("cli.automa_cli.hosts.runs.process.subprocess.Popen", side_effect=launch),
                 patch(
-                    "cli.automa_cli.hosts.runs.process.get_perception_view_status",
-                    return_value={
-                        "status": "running",
-                        "available": True,
-                        "url": "http://127.0.0.1:8555/",
-                        "latest_frame_id": "frame_000000",
-                    },
-                ),
-                patch(
                     "cli.automa_cli.shared.open_view.webbrowser.open",
-                    return_value=True,
-                ) as browser_open,
+                    side_effect=AssertionError("a run start opened a browser"),
+                ),
             ):
                 result = start_host_automation_background(
                     host_name="chase-sim-chaser",
                     take_control=False,
-                    open_view=True,
                     startup_wait_s=1.0,
                 )
+            files = sorted(path.name for path in automation_dir.iterdir())
+            process_record = json.loads((automation_dir / "process.json").read_text(encoding="utf-8"))
 
             self.assertEqual(result.exit_code, 0, render_lifecycle_result(result))
-            self.assertIn("Run started on host", render_lifecycle_result(result))
-            self.assertNotIn("ready for:", render_lifecycle_result(result).lower())
-            self.assertIn("frame_000000", render_lifecycle_result(result))
-            self.assertIn("http://127.0.0.1:8555/", render_lifecycle_result(result))
-            self.assertIn("Browser opened", render_lifecycle_result(result))
-            browser_open.assert_called_once_with(
-                "http://127.0.0.1:8555/",
-                new=2,
-            )
-
-    def test_open_view_reuses_existing_worker_and_browser_failure_is_nonfatal(
-        self,
-    ) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            runtime_root = Path(tmp) / "vehicles"
-            write_host_fixture(runtime_root, "chase-sim-chaser")
-            automation_dir = (
-                runtime_root / "chase-sim-chaser" / "bundle" / "runtime" / "automation"
-            )
-            automation_dir.mkdir(parents=True)
-            (automation_dir / "process.json").write_text(
-                json.dumps({"pid": 45454, "log_to_disk": False}),
-                encoding="utf-8",
-            )
-            (automation_dir / "state.json").write_text(
-                json.dumps(
-                    {
-                        "status": "running",
-                        "pid": 45454,
-                        "run_id": "run-current",
-                        "action_policy": "observe_only",
-                        "control_application": "not_applied",
-                    }
-                ),
-                encoding="utf-8",
-            )
-            view = {
-                "status": "running",
-                "available": True,
-                "url": "http://127.0.0.1:8666/",
-                "latest_frame_id": "frame_000001",
-            }
-
-            with (
-                runtime_root_env(runtime_root),
-                patch("cli.automa_cli.hosts.runs.service.pid_alive", return_value=True),
-                patch(
-                    "cli.automa_cli.hosts.runs.service.get_perception_view_status",
-                    return_value=view,
-                ),
-                patch(
-                    "cli.automa_cli.hosts.runs.process.subprocess.Popen",
-                    side_effect=AssertionError("must not spawn a duplicate worker"),
-                ),
-                patch(
-                    "cli.automa_cli.shared.open_view.webbrowser.open",
-                    return_value=False,
-                ) as browser_open,
-            ):
-                result = start_host_automation_background(
-                    host_name="chase-sim-chaser",
-                    take_control=False,
-                    open_view=True,
-                )
-
-        self.assertEqual(result.exit_code, 0, render_lifecycle_result(result))
-        self.assertIn("already has a run", render_lifecycle_result(result))
-        self.assertNotIn("ready for:", render_lifecycle_result(result).lower())
-        self.assertIn("Warning: could not open the browser", render_lifecycle_result(result))
-        self.assertIn("Open manually: http://127.0.0.1:8666/", render_lifecycle_result(result))
-        browser_open.assert_called_once_with("http://127.0.0.1:8666/", new=2)
+            rendered = render_lifecycle_result(result)
+            self.assertIn("Run started on host", rendered)
+            self.assertIn("Session: running", rendered)
+            self.assertIn("Decisions: 0", rendered)
+            self.assertNotIn("ready for:", rendered.lower())
+            self.assertIn("View: ./cli/automa hosts viewer --name chase-sim-chaser", rendered)
+            self.assertEqual(files, ["process.json", "state.json"])
+            self.assertNotIn("latest_perception_text", process_record)
 
     def test_existing_worker_must_match_requested_observation_only_authority(
         self,
@@ -297,17 +202,10 @@ class AutomationLivePipelineTests(unittest.TestCase):
             with (
                 runtime_root_env(runtime_root),
                 patch("cli.automa_cli.hosts.runs.service.pid_alive", return_value=True),
-                patch(
-                    "cli.automa_cli.hosts.runs.service.get_perception_view_status",
-                    side_effect=AssertionError(
-                        "mismatched authority is not inspectable"
-                    ),
-                ),
             ):
                 result = start_host_automation_background(
                     host_name="chase-sim-chaser",
                     take_control=False,
-                    open_view=True,
                 )
 
         self.assertEqual(result.exit_code, 2)
@@ -340,10 +238,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertNotIn("ready for:", render_lifecycle_result(result).lower())
         self.assertEqual(state["status"], "stopped")
-        self.assertEqual(state["readiness"]["status"], "ready")
-        self.assertEqual(
-            state["readiness"]["gates"]["automation_worker"]["status"], "stopped"
-        )
+        self.assertNotIn("readiness", state)
 
     def test_worker_early_failure_replaces_starting_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

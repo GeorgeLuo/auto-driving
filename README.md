@@ -310,13 +310,15 @@ Run the same staged plugins with movement enabled:
 ./cli/automa plugins stream --step perception --host-name piracer
 ```
 
-`hosts run` waits until the runtime session is running or completed. It
-returns a nonzero result when the session stops, errors, or never starts; a
-spawned PID alone is not reported as success. The run serves no pages and
+`hosts run` waits until the runtime session is running, or until its worker
+finishes the run. It returns a nonzero result when the run stops, errors, never
+starts, or records fewer decisions than it completed; a spawned PID alone is not
+reported as success. The run serves no pages and
 prints the viewing command, `hosts viewer --name <host>`.
 
 While `hosts viewer` or `plugins stream` serves a host's view, `hosts status
---long` reports its loopback URL, with or without a run. The page polls the
+--long` reports its loopback URL, with or without a run; with both, it reports
+the one that started first. The page polls the
 host's latest publication. Camera capture runs independently from perception, so a
 slow plugin consumes the newest available frame instead of accumulating a
 backlog. The page displays the latest camera frame with the findings perception

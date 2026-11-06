@@ -176,47 +176,6 @@ def _state_dict(automation_dir: Path) -> dict[str, Any]:
     return state if isinstance(state, dict) else {}
 
 
-def _acknowledged_run(
-    state: dict[str, Any], *, pid: int, acknowledged_run_id: str | None,
-) -> tuple[str | None, dict[str, Any] | None, str | None]:
-    """The worker's accepted run id and session, once this pid has written them.
-
-    A placeholder run id is not an acknowledgement. After one id is accepted,
-    a different id is a mismatch. The parent does not invent an expected id.
-    """
-
-    if state.get("pid") != pid:
-        return acknowledged_run_id, None, None
-    run_id = state.get("run_id")
-    if not isinstance(run_id, str) or run_id in {"", "starting"}:
-        return acknowledged_run_id, None, None
-    if acknowledged_run_id is not None and run_id != acknowledged_run_id:
-        return acknowledged_run_id, None, f"run id changed from {acknowledged_run_id} to {run_id}"
-    session = state.get("session")
-    if not isinstance(session, dict):
-        return run_id, None, None
-    return run_id, session, None
-
-
-def _session_status(session: dict[str, Any] | None) -> str | None:
-    if not isinstance(session, dict):
-        return None
-    status = session.get("status")
-    return status if isinstance(status, str) else None
-
-
-def _session_outcome(status: str, session: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
-    # Runtime completion does not erase a worker's failed recording export.
-    if state.get("status") == "error":
-        return _failed(state.get("error") or "automation worker failed", state)
-    return {
-        "status": "ready" if status == "running" else "completed",
-        "session_status": status,
-        "processed_count": session.get("processed_decisions", 0),
-        "state": state,
-    }
-
-
 def _failed(reason: str, state: dict[str, Any]) -> dict[str, Any]:
     return {"status": "failed", "reason": reason, "state": state}
 
@@ -227,73 +186,37 @@ def wait_for_automation_startup(
     automation_dir: Path,
     timeout_s: float,
 ) -> dict[str, Any]:
-    """Wait until the worker's copied session is running or completed.
+    """Wait until the worker's runtime session is running, or the worker ends its run.
 
-    The launched pid is known here. The run id arrives on the worker's state
-    record. A dead worker is not running: after it exits, only a matching
-    completed session is success.
+    Only the record this worker's pid wrote counts. While the worker is alive,
+    a running session is ready. Once the worker records how its run ended,
+    that is the outcome, and only ``completed`` succeeds. A worker that exits
+    without recording an ending failed.
     """
 
     budget_s = max(0.1, float(timeout_s))
     deadline = time.monotonic() + budget_s
-    acknowledged_run_id: str | None = None
-    last_status: str | None = None
     while True:
-        if process.poll() is not None:
-            state = _state_dict(automation_dir)
-            return _exited_startup(
-                process, state, acknowledged_run_id, automation_dir,
-            )
+        # Read the record after the exit check, so an exited worker's last write is seen.
+        exit_code = process.poll()
         state = _state_dict(automation_dir)
-        acknowledged_run_id, session, problem = _acknowledged_run(
-            state, pid=process.pid, acknowledged_run_id=acknowledged_run_id,
-        )
-        status = _session_status(session)
-        if status is not None:
-            last_status = status
-        if problem is not None:
-            return _failed(problem, state)
-        if status in {"running", "completed"} and session is not None:
-            return _session_outcome(status, session, state)
+        own = state.get("pid") == process.pid
+        status = state.get("status") if own else None
+        session = state.get("session") if own and isinstance(state.get("session"), dict) else {}
+        if status == "completed":
+            return {"status": "completed", "processed_count": state.get("processed_count", 0), "state": state}
         if status in {"stopped", "error"}:
-            reason = state.get("error") if isinstance(state.get("error"), str) and state.get("error") else None
-            return _failed(reason or f"runtime session is {status}", state)
+            return _failed(state.get("error") or state.get("stop_reason") or f"the run {status}", state)
+        if exit_code is not None:
+            reason = f"automation worker exited with code {exit_code} before the runtime session completed"
+            mark_automation_startup_error(automation_dir=automation_dir, error=reason, exit_code=exit_code)
+            return _failed(reason, _state_dict(automation_dir))
+        if session.get("status") == "running":
+            return {"status": "ready", "processed_count": session.get("processed_decisions", 0), "state": state}
         if time.monotonic() >= deadline:
-            alive = "alive" if process.poll() is None else "exited"
             return _failed(
-                f"runtime session is {last_status or 'missing'} and the worker is {alive} "
+                f"runtime session is {session.get('status') or 'missing'} and the worker is alive "
                 f"after {budget_s:.1f}s",
                 state,
             )
         time.sleep(0.05)
-
-
-def _exited_startup(
-    process: subprocess.Popen[Any],
-    state: dict[str, Any],
-    acknowledged_run_id: str | None,
-    automation_dir: Path,
-) -> dict[str, Any]:
-    """Reread is the caller's state. Accept only a completed session for this pid."""
-
-    _run_id, session, problem = _acknowledged_run(
-        state, pid=process.pid, acknowledged_run_id=acknowledged_run_id,
-    )
-    status = _session_status(session)
-    if problem is not None:
-        return _failed(problem, state)
-    if status == "completed" and session is not None:
-        return _session_outcome(status, session, state)
-    reason = state.get("error") if isinstance(state.get("error"), str) and state.get("error") else None
-    if reason is None:
-        exit_code = process.poll()
-        code = exit_code if isinstance(exit_code, int) else None
-        reason = (
-            f"automation worker exited with code {exit_code} "
-            "before the runtime session completed"
-        )
-        mark_automation_startup_error(
-            automation_dir=automation_dir, error=reason, exit_code=code,
-        )
-        state = _state_dict(automation_dir)
-    return _failed(reason, state)

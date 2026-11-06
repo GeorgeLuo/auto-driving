@@ -15,6 +15,7 @@ from .perception_view import (
     PerceptionView,
     VIEW_SCHEMA,
     VIEW_RECORD_NAME,
+    get_perception_view_status,
 )
 from .decision_view import (
     DecisionView,
@@ -146,16 +147,23 @@ class RuntimeViewServer:
             httpd,
             name=f"automa-runtime-view-{self.host_name}",
         )
-        self._write_record("running")
+        # The record names the first view still serving this host, so ``hosts status`` keeps
+        # finding it while another view of the host starts and stops; that view prints its own URL.
+        if self.record_path is not None and not self._another_view_is_recorded():
+            _write_json(self.record_path, self.describe())
         return self
 
-    def describe(self, *, status: str = "running") -> dict[str, Any]:
+    def _another_view_is_recorded(self) -> bool:
+        view = get_perception_view_status(self.automation_dir)
+        return view.get("url") != self.url and view["status"] in {"running", "warming"}
+
+    def describe(self) -> dict[str, Any]:
         # Keep the established discovery record/schema for existing CLI readers.
         return {
             "schema": VIEW_SCHEMA,
             "host_name": self.host_name,
-            "status": status,
-            "available": status == "running" and self._httpd is not None,
+            "status": "running",
+            "available": self._httpd is not None,
             "url": self.url,
             "host": self.host,
             "port": self._httpd.server_address[1] if self._httpd is not None else None,
@@ -210,13 +218,8 @@ class RuntimeViewServer:
         if self._replay_runner is not None:
             self._replay_runner.close()
         self.decision.stop()
-        self._write_record("stopped")
         self._httpd = None
         self._thread = None
-
-    def _write_record(self, status: str) -> None:
-        if self.record_path is not None:
-            _write_json(self.record_path, self.describe(status=status))
 
 
 class _RuntimeHttpServer(LoopbackHTTPServer):

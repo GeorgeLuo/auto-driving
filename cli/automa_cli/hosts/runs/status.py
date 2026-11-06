@@ -37,9 +37,8 @@ from .store import latest_frame
 # The run state fields status reports as the worker recorded them.
 _STATE_FIELDS = (
     "run_id", "pipeline", "frames_dropped", "num_decisions", "recording", "pid", "control_source",
-    "action_policy", "execution", "arming", "session", "control_application", "passive_capture",
-    "passive_session", "readiness", "error", "error_code", "error_details", "exit_code", "stop_reason",
-    "updated_at_ms",
+    "action_policy", "execution", "arming", "session", "control_application", "error", "exit_code",
+    "stop_reason", "updated_at_ms",
 )
 
 

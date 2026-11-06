@@ -11,7 +11,7 @@ from unittest import mock
 
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs import monitor
-from cli.automa_cli.hosts.runs.worker import RunOutput
+from cli.automa_cli.hosts.runs.worker import startup_printer
 from cli.automa_cli.hosts.runs.render import render_run_result
 from cli.automa_cli.hosts.runs.models import run_exit_code
 from cli.automa_cli.hosts.runs.store import CONTROL_SOURCE, control_application
@@ -122,8 +122,7 @@ class RuntimeMonitorTests(unittest.TestCase):
             "run_dir": None,
         }
         output = io.StringIO()
-        transcript = RunOutput(output)
-        transcript.startup(state)
+        startup_printer(output)(state)
         code, message = run_exit_code(state), render_run_result(state, state_path="automation/state.json")
 
         self.assertEqual(
@@ -165,7 +164,7 @@ class RuntimeMonitorTests(unittest.TestCase):
                 configuration=RunConfiguration(mode="autonomy", num_decisions=2),
                 timeout_s=1.0,
                 record=False,
-                emit=RunOutput(output),
+                emit=startup_printer(output),
             )
             code, message = outcome.exit_code, render_run_result(outcome.state, state_path=str(outcome.state_path))
         state = json.loads((automation_dir / "state.json").read_text(encoding="utf-8"))
@@ -223,10 +222,8 @@ class RuntimeMonitorTests(unittest.TestCase):
             (state["status"], state["stop_reason"], state["run_id"]),
             ("completed", "completed", "host-1"),
         )
-        self.assertEqual(state["readiness"]["status"], "ready")
+        # The host's observed ending stays in the record; stopping only releases control.
         self.assertEqual(state["session"]["status"], "completed")
-        self.assertEqual(state["readiness"]["ready_for"], "inspect the run")
-        self.assertIsNone(state["readiness"]["blocking_layer"])
         self.assertEqual(state["control_application"], "shared_execution")
         self.assertEqual(state["execution"]["mode"], "manual")
         self.assertEqual(
@@ -244,7 +241,7 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(state["last_frame"]["capture_to_perception_ms"], 40)
         self.assertEqual(state["last_frame"]["control"]["reason"], "steer-left")
         self.assertEqual(state["last_frame"]["cycle_duration_ms"], 40)
-        for removed in ("published_view", "latest", "last_capture"):
+        for removed in ("published_view", "latest", "last_capture", "readiness"):
             self.assertNotIn(removed, state)
         self.assertEqual(files, ["state.json"])
 
@@ -275,8 +272,6 @@ class RuntimeMonitorTests(unittest.TestCase):
             [f"The run on host {HOST_NAME} failed.", "Reason: RuntimeError: plan failed"],
         )
         self.assertEqual((state["status"], state["stop_reason"]), ("error", "error"))
-        self.assertEqual(state["readiness"]["blocking_layer"], "runtime_session")
-        self.assertEqual(state["readiness"]["status"], "blocked")
 
     def test_a_failed_drain_fails_a_completed_run_once(self) -> None:
         client = _FakeClient([_session("completed", 0)], [_host(0), _host(0)])
@@ -289,11 +284,9 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(code, 2)
         self.assertEqual((state["status"], state["stop_reason"]), ("error", "completed"))
         self.assertIn("host gone", state["error"])
-        # The observed terminal session outlives the failed cleanup.
         self.assertEqual(state["session"]["status"], "completed")
-        self.assertEqual(state["readiness"]["status"], "ready")
 
-    def test_interruption_and_monitor_failure_copy_the_stopped_runtime_session(self) -> None:
+    def test_interruption_and_monitor_failure_release_control_and_end_the_run(self) -> None:
         for failure, status, code in ((KeyboardInterrupt(), "stopped", 130),
                                       (RuntimeError("status read failed"), "error", 2)):
             with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp, mock.patch.object(
@@ -305,9 +298,8 @@ class RuntimeMonitorTests(unittest.TestCase):
             self.assertTrue(client.stopped)
             self.assertEqual(actual_code, code)
             self.assertEqual(state["status"], status)
-            self.assertEqual(state["session"]["status"], "stopped")
-            self.assertEqual(state["readiness"]["status"], "blocked")
-            self.assertEqual(state["readiness"]["blocking_layer"], "runtime_session")
+            self.assertEqual(state["execution"]["mode"], "manual")
+            self.assertIsInstance(state["completed_at_ms"], int)
 
 
 class ControlRecordTests(unittest.TestCase):

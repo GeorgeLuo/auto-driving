@@ -32,8 +32,9 @@ Movement uses the same commands as Chase after deployment:
 
 These commands use `/host/runtime` to operate the shared host. Restart
 stops execution and restarts the systemd-managed process before starting a new
-run. The service still boots in manual mode. The CLI's local monitor publishes
-the onboard frames and decisions; it never calculates a second control policy.
+run. The service still boots in manual mode. The CLI's local monitor records
+the run, and `hosts viewer` shows the onboard frames and decisions; neither
+calculates a second control policy.
 
 The CLI prepares the generated DonkeyCar vendor checkout from
 `donkeycar-vendor.json` and `patches/` before syncing. The generated checkout is

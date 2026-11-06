@@ -199,9 +199,6 @@ def _latest_status_label(state: dict[str, Any], last_frame: dict[str, Any]) -> s
         return "none"
     fields = {
         "frame": last_frame.get("frame_id"),
-        "signals": last_frame.get("signals"),
-        "things": last_frame.get("things"),
-        "perception_ms": last_frame.get("perception_duration_ms"),
         "cycle_ms": last_frame.get("cycle_duration_ms"),
         "age_ms": state.get("latest_perception_age_ms"),
     }
@@ -327,6 +324,15 @@ def render_start_result(result: StartResult) -> str:
                 f"State: {display_path(state_path)}",
             ]
         )
+    if result.kind == "session_not_running":
+        return "\n".join(
+            [
+                f"Host {host_name} has a live worker, but {error}.",
+                f"PID: {existing_pid}",
+                f"State: {display_path(state_path)}",
+                f"Recovery: {automa_command('hosts', 'stop', '--name', host_name)}",
+            ]
+        )
     if result.kind == "records_disagree":
         return "\n".join(
             [
@@ -379,7 +385,7 @@ def render_start_result(result: StartResult) -> str:
         lines = [
             f"Run started on host {host_name}.",
             f"PID: {pid}",
-            f"Session: {startup.get('session_status', 'running')}",
+            "Session: running",
             f"Decisions: {startup.get('processed_count', 0)}",
             f"View: {viewer_command(host_name)}",
             f"Stop: {automa_command('hosts', 'stop', '--name', host_name)}",

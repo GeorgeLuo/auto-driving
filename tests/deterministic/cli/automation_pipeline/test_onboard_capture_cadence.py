@@ -14,7 +14,7 @@ import numpy as np
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs import monitor
-from cli.automa_cli.hosts.runs.worker import RunOutput
+from cli.automa_cli.hosts.runs.worker import startup_printer
 from cli.automa_cli.hosts.runs.render import render_run_result
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
@@ -150,7 +150,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                         selections={"perception": {"preset": "gated", "plugins": [], "activation": "perception/active.json"}},
                         decision={"generation_id": "test", "steps": {}, "published": False},
                         configuration=RunConfiguration(mode="observe_only", num_decisions=3),
-                        timeout_s=0.2, record=True, emit=RunOutput(output),
+                        timeout_s=0.2, record=True, emit=startup_printer(output),
                     )
                     code, message = outcome.exit_code, render_run_result(outcome.state, state_path=str(outcome.state_path))
                 self.assertEqual(code, 0, message)

@@ -17,6 +17,7 @@ from cli.automa_cli.frontend.server import (
     RuntimeViewServer,
 )
 from cli.automa_cli.frontend.workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY
+from cli.automa_cli.hosts.views import view_feed
 from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
 from implementations.vehicle.chase_sim.defaults import CHASE_UI_WS_URL_ENV
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
@@ -42,6 +43,18 @@ class RuntimeViewStartupTests(unittest.TestCase):
         shutdown.assert_not_called()
         self.assertEqual(httpd.socket.fileno(), -1)
         self.assertIsNone(server.url)
+
+    def test_a_view_feed_whose_cleanup_also_fails_reports_the_start_failure(self):
+        server = mock.Mock(url=None)
+        server.start.side_effect = OSError("record not written")
+        server.stop.side_effect = OSError("record not written again")
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(view_feed, "runtime_view_dir", return_value=Path(tmp)), \
+             mock.patch.object(view_feed, "runtime_view_server", return_value=server):
+            feed = view_feed.ViewFeed("car", base_url="http://127.0.0.1:9", timeout_s=0.1)
+        self.assertEqual(feed.error, "OSError: record not written")
+        self.assertIsNone(feed.url)
+        server.stop.assert_called_once_with()
 
 
 class ViewerWithoutHostTests(unittest.TestCase):

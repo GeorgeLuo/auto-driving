@@ -22,7 +22,6 @@ from ..staging import automation_dir as host_automation_dir
 from .models import RunResult
 
 RUN_STATE_SCHEMA = "automa_automation_run_state"
-READINESS_SCHEMA = "automa_cli_readiness"
 
 
 # Every run's host applies its own wheel commands.
@@ -65,40 +64,7 @@ def new_run_state(
         "recording": record,
         "recorded_count": 0,
         "run_dir": display_path(run_dir) if run_dir is not None else None,
-        "readiness": session_readiness(None),
     }
-
-
-def _readiness(
-    status: str, ready_for: str, gates: dict[str, Any], blocking_layer: str | None
-) -> dict[str, Any]:
-    return {
-        "schema": READINESS_SCHEMA,
-        "status": status,
-        "ready_for": ready_for,
-        "checked_at_ms": timestamp_ms(),
-        "gates": gates,
-        "blocking_layer": blocking_layer,
-    }
-
-
-def session_readiness(session: Any) -> dict[str, Any]:
-    """Project the copied runtime session."""
-
-    status = session.get("status") if isinstance(session, dict) else None
-    if status in {"running", "completed"}:
-        return _readiness(
-            "ready",
-            "inspect the run",
-            {"runtime_session": {"status": "ready"}},
-            None,
-        )
-    return _readiness(
-        "blocked",
-        "wait for the runtime session",
-        {"runtime_session": {"status": "blocked"}},
-        "runtime_session",
-    )
 
 
 def decision_record(identity: dict[str, Any]) -> dict[str, Any]:
@@ -212,13 +178,10 @@ def finish_run(
     status: str,
     stop_reason: str | None = None,
     error: str | None = None,
-    error_code: str | None = None,
-    error_details: dict[str, Any] | None = None,
 ) -> None:
-    """Record how the run ended.
+    """Record how the run ended; ``hosts run`` reports this status once it is set.
 
-    Readiness stays a projection of the copied session. An incomplete recording
-    export still fails the run record when the session itself completed.
+    An incomplete recording export fails the run even when its session completed.
     """
 
     if status == "completed" and state["recording"] and state["recorded_count"] != state["processed_count"]:
@@ -228,10 +191,6 @@ def finish_run(
         state["stop_reason"] = stop_reason
     if status == "error":
         state["error"] = error
-        if error_code is not None:
-            state["error_code"] = error_code
-            state["error_details"] = error_details
-    state["readiness"] = session_readiness(state.get("session"))
     state["completed_at_ms"] = state["updated_at_ms"] = timestamp_ms()
 
 
@@ -258,7 +217,6 @@ def mark_state_stopped(path: Path, *, stopped_by: str) -> None:
         "stop_reason": stopped_by,
         "completed_at_ms": timestamp_ms(),
         "updated_at_ms": timestamp_ms(),
-        "readiness": session_readiness(state.get("session")),
     }
     write_json_atomically(path, updated)
 
@@ -289,7 +247,6 @@ def record_host_automation_terminal_result(
             "exit_code": result.exit_code,
             "completed_at_ms": completed_at_ms,
             "updated_at_ms": completed_at_ms,
-            "readiness": session_readiness(state.get("session")),
         },
     )
 
@@ -337,7 +294,6 @@ def mark_automation_startup_error(
             "exit_code": exit_code,
             "completed_at_ms": completed_at_ms,
             "updated_at_ms": completed_at_ms,
-            "readiness": session_readiness(state.get("session")),
         },
     )
 
@@ -361,7 +317,7 @@ def record_background_worker(
     automation_dir: Path, *, host_name: str, pid: int, started_at_ms: int,
     command: list[str], log_to_disk: bool,
 ) -> dict[str, Any]:
-    """Record the launched worker before readiness verification begins."""
+    """Record the launched worker before ``hosts run`` waits for its session."""
 
     log_path = automation_dir / "automation.log"
     record = {
@@ -382,7 +338,7 @@ def record_background_worker(
 def record_worker_startup(
     automation_dir: Path, process_record: dict[str, Any], startup: dict[str, Any],
 ) -> dict[str, Any]:
-    """Persist the readiness verdict without duplicating the full run state."""
+    """Persist the startup verdict without duplicating the full run state."""
 
     record = {**process_record, "startup": {
         key: value for key, value in startup.items() if key != "state"

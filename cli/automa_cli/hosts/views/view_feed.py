@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Any
 
 from ...frontend.server import RuntimeViewServer
@@ -49,7 +50,9 @@ class ViewFeed:
             )
         except Exception as exc:  # noqa: BLE001 - a failed view ends only this view
             self.error = f"{type(exc).__name__}: {exc}"
-            self.stop()
+            # Releasing a partial start can fail the same way; the first failure is the one reported.
+            with suppress(Exception):
+                self.stop()
 
     @property
     def url(self) -> str | None:

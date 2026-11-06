@@ -3,7 +3,7 @@
 Execution belongs to the host at ``base_url`` (a PiCar's Donkey service or a
 local Chase host); both serve ``autonomy.runtime.routes``. This module starts
 the session, copies its status and recording into the run record (``store``),
-and reports the accepted run through an optional data-event consumer. Live
+and passes the accepted run's state to an optional ``emit`` callback. Live
 pages belong to ``hosts viewer`` and ``plugins stream``; this monitor serves
 none.
 """
@@ -26,8 +26,8 @@ from ...shared.paths import display_path
 from ...shared.timestamps import timestamp_ms
 from ..publications.host_publications import observation_component
 from ..views.polling import pause_s
-from .models import RunEvent, RunResult, run_exit_code
-from .store import CONTROL_SOURCE, finish_run, new_run_state, record_host_status, session_readiness
+from .models import RunResult, run_exit_code
+from .store import CONTROL_SOURCE, finish_run, new_run_state, record_host_status
 
 MONITOR_POLL_INTERVAL_S = 0.1
 
@@ -48,10 +48,16 @@ def _host_status(client: RuntimeClient) -> dict[str, Any]:
     return autonomy
 
 
+def _copy_session(state: dict[str, Any], session: dict[str, Any]) -> None:
+    """Copy the host's runtime session; ``hosts run`` waits for this copy to say running."""
+
+    state.update(session=session, execution=session["execution"], processed_count=session["processed_decisions"])
+
+
 def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                     selections: dict[str, dict[str, Any]], decision: dict[str, Any],
                     configuration: RunConfiguration, timeout_s: float,
-                    record: bool, emit: Callable[[RunEvent], None] | None = None) -> RunResult:
+                    record: bool, emit: Callable[[dict[str, Any]], None] | None = None) -> RunResult:
     client = RuntimeClient(base_url, timeout_s=timeout_s)
     automation_dir.mkdir(parents=True, exist_ok=True)
     state_path = automation_dir / "state.json"
@@ -70,31 +76,17 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
         record_host_status(state, host)
         response = client.start(configuration, record=True) if record else client.start(configuration)
         run_id = str(response["host_run_id"])
-        accepted = response.get("session")
-        if not isinstance(accepted, dict):
-            accepted = None
-        recording = accepted.get("recording") if accepted is not None else None
+        accepted = response["session"]
+        recording = accepted.get("recording")
         if record and not isinstance(recording, dict):
             raise RuntimeError("the runtime host does not support complete recordings; update the host")
         recording_id = recording["run_id"] if record else None
         run_dir = automation_dir / "runs" / recording_id if record else None
-        # The parent reads this copy as the run's readiness.
-        state.update(
-            run_id=run_id,
-            readiness=session_readiness(accepted),
-            run_dir=display_path(run_dir) if run_dir is not None else None,
-        )
-        if accepted is not None:
-            state["session"] = accepted
-            if isinstance(accepted.get("status"), str):
-                state["status"] = accepted["status"]
-            if isinstance(accepted.get("processed_decisions"), int):
-                state["processed_count"] = accepted["processed_decisions"]
-            if isinstance(accepted.get("execution"), dict):
-                state["execution"] = accepted["execution"]
+        state.update(run_id=run_id, status="running", run_dir=display_path(run_dir) if run_dir is not None else None)
+        _copy_session(state, accepted)
         write_json_atomically(state_path, state)
         if emit is not None:
-            emit(RunEvent("startup", deepcopy(state)))
+            emit(deepcopy(state))
         while True:
             poll_started = time.monotonic()
             runtime = client.status()
@@ -102,12 +94,10 @@ def monitor_runtime(*, host_name: str, base_url: str, automation_dir: Path,
                 raise RuntimeError("the runtime host restarted during this run")
             session = runtime["session"]
             host = _host_status(client)
+            _copy_session(state, session)
             state.update(
                 frames_dropped=max(0, _frame_counter(host, "frames_dropped") - dropped_base),
-                session=session, execution=session["execution"],
-                processed_count=session["processed_decisions"],
                 frames_received=max(0, _frame_counter(host, "frames_received") - capture_base),
-                readiness=session_readiness(session),
             )
             record_host_status(state, host)
             settled = session["status"] not in {"starting", "stopping"}
@@ -179,10 +169,6 @@ def _stop(client: RuntimeClient, state: dict[str, Any], *,
     """Release control first, then drain every committed cycle of this run."""
     try:
         session = client.stop()["session"]
-        previous = state.get("session") or {}
-        # Cleanup releases control without erasing an observed terminal outcome.
-        if previous.get("status") not in {"completed", "error"}:
-            state["session"] = session
         state["execution"] = session["execution"]
         if run_dir is not None:
             state["processed_count"] = session["processed_decisions"]

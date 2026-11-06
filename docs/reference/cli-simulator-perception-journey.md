@@ -247,7 +247,7 @@ The commands keep these layers separate:
 | `passive_capture` | `available`, `unavailable`, `unsupported` | Read-only atomic capture with session preservation proof |
 | `automation_deployment` | `deployed`, `not_deployed`, `invalid` | Local bundle and activations |
 | `automation_worker` | `running`, `stopped`, `error` | PID and recorded worker state agree |
-| `perception_view` | `available`, `unavailable`, `stale` | Loopback view belongs to the current worker generation |
+| `perception_view` | `running`, `warming`, `unavailable` | Loopback view `hosts viewer` or `plugins stream` serves for the host |
 | `evaluator_reference` | `available`, `unavailable`, `invalid` | Optional frame-scoped scoring reference |
 
 `vehicles status --json` emits `automa_vehicles_status`, which lists vehicle

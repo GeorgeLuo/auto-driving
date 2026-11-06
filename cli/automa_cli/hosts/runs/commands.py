@@ -24,7 +24,7 @@ def register_host_runs(host_commands: argparse._SubParsersAction) -> None:
         help="Start a run on a host and wait until its runtime session is running.",
         description=(
             "Start autonomous movement using the staged plugins. Success is the runtime session "
-            "reaching running or completed. The run serves no pages; view it with "
+            "running, or the run completing with its recording. The run serves no pages; view it with "
             "hosts viewer --name HOST. --host-url runs an existing host instead of starting one; "
             "that host reports its host name."
         ),

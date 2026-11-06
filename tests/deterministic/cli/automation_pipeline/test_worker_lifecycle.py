@@ -80,7 +80,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
     def test_startup_accepts_a_running_session_before_any_decision(self) -> None:
         state = {
             "pid": _RunningProcess.pid,
-            "run_id": "current-run",
+            "status": "running",
             "session": {"status": "running", "processed_decisions": 0},
         }
         with patch("cli.automa_cli.hosts.runs.process.read_run_state", return_value=state):
@@ -88,7 +88,6 @@ class AutomationLivePipelineTests(unittest.TestCase):
                 process=_RunningProcess(), automation_dir=Path("unused"), timeout_s=0.2,
             )
         self.assertEqual(result["status"], "ready")
-        self.assertEqual(result["session_status"], "running")
         self.assertEqual(result["processed_count"], 0)
 
     def test_background_start_fails_when_child_exits_before_readiness(self) -> None:
@@ -239,9 +238,7 @@ class AutomationLivePipelineTests(unittest.TestCase):
         self.assertEqual(result.exit_code, 0)
         self.assertNotIn("ready for:", render_lifecycle_result(result).lower())
         self.assertEqual(state["status"], "stopped")
-        self.assertEqual(state["readiness"]["status"], "blocked")
-        self.assertEqual(state["readiness"]["blocking_layer"], "runtime_session")
-        self.assertEqual(state["readiness"]["ready_for"], "wait for the runtime session")
+        self.assertNotIn("readiness", state)
 
     def test_worker_early_failure_replaces_starting_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

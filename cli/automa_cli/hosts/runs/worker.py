@@ -1,44 +1,33 @@
 """Background entry point for ``hosts run``.
 
 The process runs the host session and records a failure that happens before
-the run has its own state. It formats data events for its standard output. Stop recognizes a worker
-only by this module.
+the run has its own state. It prints the accepted run and its ending to its
+standard output. Stop recognizes a worker only by this module.
 """
 
 from __future__ import annotations
 
 import argparse
 import sys
+from collections.abc import Callable
 from typing import Any, TextIO
 
 from ...shared.paths import display_path
 from ..step_formatting import format_activation_problems
-from .models import WORKER_MODULE, RunEvent
+from .models import WORKER_MODULE
 from .render import render_run_result, startup_lines
 from .service import run_host_automation
 from .store import record_host_automation_terminal_result
 
 
-class RunOutput:
-    """The transcript a run monitor updates. Live lines go to ``output``; the closing result does not."""
+def startup_printer(output: TextIO) -> Callable[[dict[str, Any]], None]:
+    """Print the accepted run's lines to ``output``; the closing result is printed separately."""
 
-    def __init__(self, output: TextIO | None = None) -> None:
-        self._output = output
+    def print_startup(state: dict[str, Any]) -> None:
+        for line in startup_lines(state):
+            print(line, file=output, flush=True)
 
-    def startup(self, state: dict[str, Any]) -> None:
-        self._write(startup_lines(state))
-
-    def _write(self, lines: list[str]) -> None:
-        if self._output is None:
-            return
-        for line in lines:
-            print(line, file=self._output, flush=True)
-
-    def __call__(self, event: RunEvent) -> None:
-        if event.kind == "startup":
-            self.startup(event.data)
-        else:
-            raise ValueError(f"Unknown run event: {event.kind!r}")
+    return print_startup
 
 
 def _run_worker(argv: list[str]) -> int:
@@ -62,7 +51,7 @@ def _run_worker(argv: list[str]) -> int:
         unbounded=args.unbounded,
         take_control=not args.observe_only,
         record=args.record,
-        emit=RunOutput(sys.stdout),
+        emit=startup_printer(sys.stdout),
     )
     message = render_run_result(result.state, state_path=display_path(result.state_path)) if result.state is not None else result.message
     if result.problems:

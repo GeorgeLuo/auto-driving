@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from pathlib import Path
+from typing import Any
 from urllib.parse import urlparse
 
 from autonomy.runtime.client import RuntimeClient
@@ -25,7 +26,7 @@ from ..step_activations import (
     staged_selections,
 )
 from ..vehicle_access import create_vehicle_access
-from .models import RestartResult, RunEvent, RunResult, StartResult, StopResult
+from .models import RestartResult, RunResult, StartResult, StopResult
 from .monitor import monitor_runtime
 from .process import (
     launch_worker,
@@ -129,7 +130,7 @@ def run_host_automation(
     unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
-    emit: Callable[[RunEvent], None] | None = None,
+    emit: Callable[[dict[str, Any]], None] | None = None,
 ) -> RunResult:
     try:
         if host_name is not None:
@@ -221,7 +222,13 @@ def start_host_automation_background(
             if isinstance(existing_state, dict)
             else "unknown"
         )
-        if existing_status == "starting":
+        session = (
+            existing_state.get("session")
+            if isinstance(existing_state, dict)
+            else None
+        )
+        session_status = session.get("status") if isinstance(session, dict) else None
+        if existing_status == "starting" or session_status == "starting":
             return StartResult(
                 2,
                 "starting",
@@ -260,23 +267,13 @@ def start_host_automation_background(
                 expected_authority=expected_authority,
                 actual_authority=actual_authority,
             )
-        session = (
-            existing_state.get("session")
-            if isinstance(existing_state, dict)
-            else None
-        )
-        session_status = session.get("status") if isinstance(session, dict) else None
         if session_status != "running":
-            observed = session_status or "missing"
             return StartResult(
                 2,
-                "error",
+                "session_not_running",
                 host_name=host_name,
                 pid=existing_pid,
-                error=(
-                    f"Host {host_name} has a live worker, "
-                    f"but its runtime session is {observed}."
-                ),
+                error=f"its runtime session is {session_status or 'missing'}",
                 state_path=automation_dir / "state.json",
             )
         return StartResult(

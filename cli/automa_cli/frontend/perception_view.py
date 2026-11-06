@@ -128,6 +128,14 @@ def get_perception_view_status(
             "status": "unavailable",
             "reason": "perception view returned an invalid health response",
         }
+    # A view that ended without a trace can leave its port to another host's view.
+    if health.get("host_name") != record.get("host_name"):
+        return {
+            **record,
+            "available": False,
+            "status": "unavailable",
+            "reason": f"the recorded view's port now serves host {health.get('host_name')!r}",
+        }
     if not perception_view_ready(health):
         return {
             **record,

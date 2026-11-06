@@ -11,7 +11,7 @@ def serve_plugin_catalog(handler: Any, api: Callable | None, *, include_body: bo
     """Thin HTTP adapter shared by the runtime viewer and replay workbench."""
 
     if handler.command == "POST":
-        error = local_write_error(handler, subject="catalog writes")
+        error = local_write_error(handler)
         if error is not None:
             handler._send_json(*error, include_body=include_body)
             return

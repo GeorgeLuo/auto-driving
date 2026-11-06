@@ -10,23 +10,23 @@ from pathlib import Path
 
 from autonomy.runtime.layout import RuntimeLayout
 
-from ..shared.paths import runtime_root as cli_runtime_root, safe_path_part
+from ..shared.paths import runtime_root, safe_path_part
 
 
 def controller_bundle_paths(host_dir: Path) -> dict[str, str]:
     return RuntimeLayout(host_dir / "bundle").bundle_paths()
 
 
-def host_dir(host_name: str, runtime_root: Path | None = None) -> Path:
-    """A host's directory under ``runtime_root``, by default the CLI's runtime root."""
+def host_dir(host_name: str) -> Path:
+    """A host's directory under the runtime root."""
 
-    return (cli_runtime_root() if runtime_root is None else Path(runtime_root)) / safe_path_part(host_name)
+    return runtime_root() / safe_path_part(host_name)
 
 
-def bundle_paths(host_name: str, runtime_root: Path | None = None) -> dict[str, str]:
-    """A host's controller bundle paths under ``runtime_root``, by default the CLI's runtime root."""
+def bundle_paths(host_name: str) -> dict[str, str]:
+    """A host's controller bundle paths."""
 
-    return controller_bundle_paths(host_dir(host_name, runtime_root))
+    return controller_bundle_paths(host_dir(host_name))
 
 
 def bundle_root(host_name: str) -> Path:

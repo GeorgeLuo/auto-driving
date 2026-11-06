@@ -38,7 +38,8 @@ from implementations.decision_cycle.catalog import (
 )
 
 from ..providers.registry import PROVIDERS
-from ..shared.paths import SIMULATORS_DIR, display_path, runtime_root as cli_runtime_root, safe_path_part
+from ..releases.paths import host_dir
+from ..shared.paths import SIMULATORS_DIR, display_path, runtime_root, safe_path_part
 from ..shared.text import automa_command
 from ..shared.timestamps import timestamp_ms
 from .bundles import release_activation_summary
@@ -101,20 +102,14 @@ def absent_step_error(step: str, host_name: str) -> str:
     )
 
 
-def staging_host(
-    host_name: str, *, runtime_root: Path | None = None,
-) -> tuple[dict[str, Any] | None, str | None]:
-    """Read the explicit host record; directory names and activations are not identity.
-
-    Omit ``runtime_root`` to use the CLI runtime root.
-    """
+def staging_host(host_name: str) -> tuple[dict[str, Any] | None, str | None]:
+    """Read the explicit host record; directory names and activations are not identity."""
 
     if (error := host_name_error(host_name)) is not None:
         return None, error
-    root = cli_runtime_root() if runtime_root is None else runtime_root
-    path = root / host_name / "host-configuration.json"
+    path = host_dir(host_name) / "host-configuration.json"
     if not path.is_file():
-        names = host_names(root)
+        names = host_names()
         known = f"Hosts: {', '.join(names)}." if names else "No hosts exist."
         return None, f"No host {host_name!r}. {known}"
     try:
@@ -129,16 +124,16 @@ def staging_host(
     return configuration, None
 
 
-def host_names(runtime_root: Path) -> list[str]:
-    return sorted(path.parent.name for path in Path(runtime_root).glob("*/host-configuration.json") if path.is_file())
+def host_names() -> list[str]:
+    return sorted(path.parent.name for path in runtime_root().glob("*/host-configuration.json") if path.is_file())
 
 
-def write_host_configuration(runtime_root: Path, configuration: dict[str, Any]) -> Path:
+def write_host_configuration(configuration: dict[str, Any]) -> Path:
     """Create a host identity without overwriting an existing host."""
     host_name = configuration["host_name"]
     if (error := host_name_error(host_name)) is not None:
         raise ValueError(error)
-    path = Path(runtime_root) / host_name / "host-configuration.json"
+    path = host_dir(host_name) / "host-configuration.json"
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("x", encoding="utf-8") as stream:
         json.dump({**configuration, "schema": "automa_host_configuration"}, stream, indent=2, sort_keys=True)

@@ -30,11 +30,8 @@ SHARED_PAGE_DIR = PAGES_DIR / "shared"
 SHARED_STATIC_PATTERN = re.compile(r"^/static/shared/([a-z]+\.(?:css|js))$")
 
 
-def local_write_error(handler: BaseHTTPRequestHandler, *, subject: str) -> tuple[int, dict[str, Any]] | None:
-    """Refuse a POST unless it names this server by a loopback host and comes from its own origin.
-
-    ``subject`` names the writes in the refusal.
-    """
+def local_write_error(handler: BaseHTTPRequestHandler) -> tuple[int, dict[str, Any]] | None:
+    """Refuse a POST unless it names this server by a loopback host and comes from its own origin."""
 
     authority = handler.headers.get("Host", "")
     try:
@@ -46,8 +43,8 @@ def local_write_error(handler: BaseHTTPRequestHandler, *, subject: str) -> tuple
     except ValueError:
         local = False
     if not local:
-        return 403, {"ok": False, "status": "failed", "error": f"{subject} require a loopback host"}
-    return catalog_write_error(handler.headers, origin=f"http://{authority}", subject=subject)
+        return 403, {"ok": False, "status": "failed", "error": "writes require a loopback host"}
+    return catalog_write_error(handler.headers, origin=f"http://{authority}")
 
 
 def read_json_object(handler: BaseHTTPRequestHandler, *, what: str) -> dict[str, Any]:

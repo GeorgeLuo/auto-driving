@@ -257,7 +257,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
     def _serve_write(self, command: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
         """Run a write route's command with the request's JSON object, as the plugin catalog route does."""
 
-        error = local_write_error(self, subject="writes")
+        error = local_write_error(self)
         if error is not None:
             self._send_json(*error)
             return

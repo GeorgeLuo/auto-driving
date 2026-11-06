@@ -18,6 +18,7 @@ from unittest.mock import patch
 from cli.automa_cli.simulators.service import create_simulator
 from cli.automa_cli.simulators.render import render_simulator_result
 from tests.shared.cli.invoke import invoke_automa
+from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_headless_sim import fake_headless_sim_command
 from tests.support.fake_metrics_ui import fake_metrics_ui
 from tests.support.runtime_fixtures import write_host_fixture
@@ -128,7 +129,8 @@ class CreatedSimulatorTests(unittest.TestCase):
         self.automa("simulators", "create")
         [record] = self.records()
         os.killpg(record["pid"], signal.SIGKILL)
-        os.waitpid(record["pid"], 0)
+        # This process started it and runs on, as the viewer does; it is reaped as it exits.
+        wait_until(lambda: _gone(record["pid"]))
 
         self.assertEqual(self.automa("vehicles", "status").stdout, "None listed.\n")
         shown = self.automa("simulators", "status")

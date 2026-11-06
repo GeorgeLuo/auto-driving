@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ..hosts.local import log_tail
-from ..shared.io.processes import pid_alive
+from ..shared.io.processes import pid_alive, reap_on_exit
 from ..shared.timestamps import timestamp_ms
 from .store import SIMULATOR_SCHEMA, remove_simulator_record, simulator_dir, write_simulator_record
 
@@ -90,6 +90,7 @@ def start_simulator(command: list[str], *, cwd: Path, port: int, timeout_s: floa
             command, cwd=cwd, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+    reap_on_exit(process)
     try:
         record = {
             "schema": SIMULATOR_SCHEMA,

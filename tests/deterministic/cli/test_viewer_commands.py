@@ -81,6 +81,20 @@ class ViewerCommandTests(unittest.TestCase):
                          (400, {"ok": False, "status": "failed", "error": "url must be a non-empty string"}))
         self.assertEqual(self.post("/api/vehicles/remove", ["url"])[1]["error"], "request body must be an object")
 
+    def test_hosts_status_reads_as_its_json_prints(self) -> None:
+        self.assertEqual(self.get("/api/hosts/status"), {"schema": "automa_hosts_status", "host_name": None, "hosts": []})
+
+    def test_a_restart_takes_run_flags_and_movement_without_a_count_is_refused(self) -> None:
+        code, restart = self.post("/api/hosts/restart", {"name": "chaser", "observe_only": False})
+
+        self.assertEqual((code, restart["ok"], restart["kind"], restart["stop"]), (400, False, "error", None))
+        self.assertEqual(restart["text"], "A run that applies control needs --num-decisions N (N > 0); "
+                                          "use --unbounded to run until stopped.")
+        self.assertEqual(self.post("/api/hosts/run", {"name": "chaser", "num_decisions": "10"}),
+                         (400, {"ok": False, "status": "failed", "error": "num_decisions must be a whole number or null"}))
+        self.assertEqual(self.post("/api/hosts/stop", {}),
+                         (400, {"ok": False, "status": "failed", "error": "name must be a non-empty string"}))
+
     def test_writes_come_only_from_the_viewer_itself(self) -> None:
         self.assertEqual(self.post("/api/vehicles/remove", {"url": "x"}, Origin="http://example.com")[0], 403)
         self.assertEqual(self.post("/api/vehicles/remove", {"url": "x"}, **{"Content-Type": "text/plain"}),

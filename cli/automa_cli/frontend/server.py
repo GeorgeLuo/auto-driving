@@ -35,6 +35,7 @@ from .loopback_http import (
     validate_loopback_host,
 )
 from .plugin_catalog import serve_plugin_catalog
+from .v2_page import serve_v2_file
 from .workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY, ReplayRunner, serve_workbench_route
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
@@ -317,6 +318,8 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         if self._serve_workbench(route, include_body=include_body):
             return
         if self._serve_shared_file(route, include_body=include_body):
+            return
+        if serve_v2_file(self, route, include_body=include_body):
             return
         if route == PLUGIN_CATALOG_PATH:
             serve_plugin_catalog(self, self.server.publisher.plugin_catalog, include_body=include_body)

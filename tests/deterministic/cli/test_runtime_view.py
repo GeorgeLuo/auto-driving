@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
 from urllib.error import HTTPError
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urljoin
 from urllib.request import Request, urlopen
 
 from cli.automa_cli import app
@@ -77,6 +78,23 @@ class ViewerWithoutHostTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as caught:
             urlopen(f"{self.server.url}static/shared/missing.js", timeout=1.0)
         self.assertEqual(caught.exception.code, 404)
+
+    def test_every_file_the_v2_page_loads_resolves_from_its_url(self) -> None:
+        page_url = f"{self.server.url}v2/"
+        with urlopen(page_url, timeout=1.0) as response:
+            self.assertEqual(response.headers["Content-Security-Policy"], WORKBENCH_CONTENT_SECURITY_POLICY)
+            page = response.read().decode("utf-8")
+        loads = re.findall(r'<(?:script src|link rel="stylesheet" href)="([^"]+)"', page)
+        self.assertIn("../shared/float.js", loads)
+        for link in loads:
+            with self.subTest(link=link):
+                with urlopen(urljoin(page_url, link), timeout=1.0) as response:
+                    self.assertEqual(response.status, 200)
+        for route in ("v2", "v2/index.html", "v2/shots/0-start.png", "v2/js/missing.js", "shared/missing.js"):
+            with self.subTest(route=route):
+                with self.assertRaises(HTTPError) as caught:
+                    urlopen(f"{self.server.url}{route}", timeout=1.0)
+                self.assertEqual(caught.exception.code, 404)
 
     def test_only_created_hosts_are_listed_with_their_status_state(self) -> None:
         runner = {"kind": "host", "host_name": "chase-sim-runner", "url": closed_url(), "pid": os.getpid()}
@@ -229,12 +247,15 @@ class OpenViewerCommandTests(unittest.TestCase):
         serve_viewer.assert_called_once()
         self.assertTrue(callable(serve_viewer.call_args.kwargs["emit"]))
 
-    def test_the_viewer_answers_the_vehicles_and_simulators_commands(self) -> None:
+    def test_the_viewer_answers_the_vehicles_simulators_and_hosts_commands(self) -> None:
         with mock.patch.object(app, "serve_viewer", return_value=130) as serve_viewer:
             app.main([])
-        self.assertEqual(sorted(serve_viewer.call_args.kwargs["reads"]), ["/api/simulators", "/api/vehicles"])
+        self.assertEqual(sorted(serve_viewer.call_args.kwargs["reads"]),
+                         ["/api/hosts/status", "/api/simulators", "/api/vehicles"])
         self.assertEqual(sorted(serve_viewer.call_args.kwargs["writes"]), [
-            "/api/simulators/create", "/api/simulators/delete", "/api/vehicles/discover", "/api/vehicles/remove",
+            "/api/hosts/create", "/api/hosts/delete", "/api/hosts/restart", "/api/hosts/run", "/api/hosts/stop",
+            "/api/hosts/update", "/api/simulators/create", "/api/simulators/delete", "/api/vehicles/discover",
+            "/api/vehicles/remove",
         ])
 
 

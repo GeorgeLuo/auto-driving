@@ -3,180 +3,16 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Automa (mock)</title>
-  <!-- The repo's components, unmodified: workbench.css for its fields, entries and kv lists. -->
-  <link rel="stylesheet" href="../workbench/workbench.css">
+  <title>Automa</title>
+  <!-- Opened from disk, js/mock.js answers every route. The viewer (./cli/automa) serves this page at
+       /v2/, where the routes it has are real and the mock answers the rest (v2_page.py). -->
   <link rel="stylesheet" href="../shared/float.css">
-  <style>
-    /* The column's centring margin must not pass through body, which is the window's height: that adds a scroll of empty space. */
-    body { display: flow-root; }
-    /* ---- home/index.html, as it is. ---- */
-    body { letter-spacing: -0.01em; overflow: auto; }
-    main { max-width: 280px; margin: 18vh auto; padding: 16px; }
-    .identity { display: flex; align-items: center; gap: 4px; margin: 0 0 14px; }
-    h1 { margin: 0; font-size: 13px; font-weight: 500; }
-    .status-dot { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; transform: translateY(2px); }
-    .status-dot.live { background: var(--green); }
-    .status-dot.busy { background: var(--amber); }
-    nav { display: grid; gap: 8px; }
-    nav + nav { margin-top: 40px; }
-    .nav {
-      display: block; padding: 7px 10px; border: 1px solid var(--line); border-radius: 6px;
-      color: var(--muted); background: transparent; font-size: 12px; text-decoration: none;
-    }
-    button.nav { width: 100%; font-family: inherit; text-align: left; cursor: pointer; }
-    a.nav:hover, a.nav:focus-visible, button.nav:hover:enabled, button.nav:focus-visible {
-      background: rgba(255, 255, 255, 0.06); color: var(--fg);
-    }
-    button.nav[aria-pressed="true"] { color: var(--fg); }
-    button.nav:disabled { color: #6a6a6a; cursor: default; }
-    .host-row { display: flex; gap: 12px; padding: 6px 0; color: var(--muted); line-height: 1.35; }
-    .host-row[hidden] { display: none; }
-    .host-row button { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
-    .host-row button:disabled { cursor: default; }
-    .host-name { flex: 1; min-width: 0; }
-    .host-row:has(.host-name:enabled):hover, .host-state:enabled:hover,
-    .host-row button:enabled:focus-visible { color: var(--fg); }
-    .host-note { margin: 0; color: var(--muted); line-height: 1.35; }
-    .host-note[hidden] { display: none; }
-
-    /* ---- Mock additions. ---- */
-    /* Each button carries its window's readout, so the column reads without opening anything. */
-    .nav small { float: right; color: #6a6a6a; font-size: 11px; font-family: var(--font-mono); }
-    button.nav:enabled small { color: var(--muted); }
-    .host-name span, .host-name small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .host-name small { font-size: 11px; color: #6a6a6a; }
-    .host-name small:empty { display: none; }
-    .host-row.exited .host-name span { color: var(--red, #ef6b6b); }
-    .split-list .host-row.child { padding-left: 12px; }
-    .host-row.connected .host-name span::after {
-      content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%;
-      background: var(--green, #3ecf8e); vertical-align: 1px;
-    }
-
-    .host-row.selected .host-name { color: var(--fg); }
-    .host-state { white-space: nowrap; }
-    .desk-form { display: grid; gap: 10px; }
-    .desk-form[hidden] { display: none; }
-    .desk-form .field { align-items: center; }
-    .desk-form .cadence-select { flex: 1; min-width: 0; }
-    .pane-form { position: absolute; inset: 8px 10px auto; z-index: 1; }
-    .pane-form .field { gap: 10px; }
-    .pane-form .kicker { flex: 0 0 64px; }
-    .pane-form .inline-edit { flex: 1; min-width: 0; }
-    .float-frame-status-actions button:disabled { opacity: .38; cursor: not-allowed; }
-    #pluginsFrame .float-frame-status { flex-basis: 110px; }
-    /* A step's heading in Plugins, and its `stream` button: plugins stream --step <step>. */
-    .step-head { display: flex; align-items: baseline; justify-content: space-between; margin: 10px 0 6px; }
-    .step-head:first-child { margin-top: 0; }
-    .step-stream { padding: 0; border: 0; background: transparent; color: var(--muted); font: inherit; font-size: 11px; cursor: pointer; }
-    .step-stream:hover:enabled, .step-stream[aria-pressed="true"] { color: var(--fg); }
-    .step-stream:disabled { color: #6a6a6a; cursor: default; }
-    .plugin-catalog.desk-steps { max-height: none; gap: 4px; }
-    .frame-stage { position: relative; aspect-ratio: 16 / 9; margin-bottom: 10px; background: #050505; display: grid; place-items: center; }
-    /* Perception: the v1 aside as the window's list column, the frame as its pane. */
-    .perception-info { overflow-y: auto; gap: 0; }
-    .info-panel { padding: 0 0 10px; }
-    .info-panel h2 { margin: 0 0 4px; font-size: 10px; font-weight: 500; }
-    .info-toggles { display: grid; gap: 0; }
-    .info-toggle { display: flex; align-items: center; gap: 6px; margin: 0; padding: 0; border: 0; background: none;
-                   color: var(--muted, #8c8c8c); font-size: 11px; line-height: 1.45; text-align: left; cursor: pointer; }
-    .info-toggle[aria-pressed="true"] { color: var(--fg, #ededed); }
-    .info-toggle:hover { color: var(--fg, #ededed); }
-    .info-toggle .swatch, .info-row .swatch { width: 6px; height: 6px; border-radius: 50%; flex: 0 0 auto; }
-    .info-toggle[aria-pressed="false"] .swatch { opacity: .3; }
-    /* Name and value on one line; a value too long for the column ends in an ellipsis (its title has it whole). */
-    .info-metrics { display: grid; grid-template-columns: minmax(0, max-content) minmax(0, 1fr); gap: 0 8px; margin: 0; font-size: 11px; line-height: 1.45; }
-    .info-metrics dt, .info-metrics dd { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    .info-metrics dt { color: var(--muted, #8c8c8c); }
-    .info-metrics dd { margin: 0; text-align: right; }
-    .info-list { display: grid; gap: 4px; font-size: 11px; line-height: 1.45; color: var(--muted, #8c8c8c); }
-    .info-row { display: grid; grid-template-columns: 6px minmax(0, 1fr); column-gap: 6px; align-items: start; }
-    .info-row .swatch { margin-top: 5px; background: var(--mark, #3a3a3a); }
-    .info-row > div { grid-column: 2; overflow-wrap: anywhere; }
-    .info-row > div:first-of-type { color: var(--fg, #ededed); }
-    .info-row.ok { --mark: var(--green, #3ecf8e); }
-    .info-row.error { --mark: var(--red, #ef6b6b); }
-    .info-row[hidden] { display: none; }
-    .perception-info details summary { cursor: pointer; color: var(--muted, #8c8c8c); font-size: 11px; }
-    .perception-info pre { margin: 6px 0 0; max-height: 220px; overflow: auto; font-size: 10px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
-    /* The feed is a pane like the others, but holds a frame rather than streamed text. */
-    .perception-feed { position: relative; flex: 1 1 auto; min-width: 0; display: grid; place-items: center;
-                       border: 1px solid var(--line); background: #050505; overflow: hidden; }
-    .feed-empty { color: var(--muted, #8c8c8c); font-size: 11px; }
-    .feed-empty[hidden], .feed-stage[hidden] { display: none; }
-    .feed-stage { position: relative; line-height: 0; max-width: 100%; max-height: 100%; }
-    .feed-stage img { display: block; max-width: 100%; max-height: calc(var(--feed-h, 240px)); width: auto; height: auto; }
-    .feed-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
-    .frame-stage svg { position: absolute; inset: 0; width: 100%; height: 100%; }
-    .frame-stage svg[hidden], .frame-stage .muted[hidden] { display: none; }
-    /* Only buttons are rounded; panes, fields and entries are square.
-       (Overrides float.css .float-frame-status and workbench.css .cadence-select / .plugin-entry.) */
-    .float-frame-status, .cadence-select, .plugin-entry, .inline-edit { border-radius: 0; }
-    /* Inside a window everything is one terminal face; the window chrome keeps the interface font. */
-    :root { --window-font: Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace; }
-    .float-frame-body, .float-frame-status,
-    .float-frame-body :is(button, input, select, strong, small, span, pre, p, label),
-    .float-frame-status :is(button, input, select, label) {
-      font-family: var(--window-font); letter-spacing: 0; font-variant-ligatures: none;
-    }
-    .float-frame-status-text { font-size: 11px; line-height: 1.45; }
-    /* The pane's clickable text: the pane's face, marked the way selected text is, pinned
-       to the pane's bottom edge while the streamed output above it scrolls. */
-    .float-frame-status-text { bottom: 22px; padding-bottom: 6px; }
-    .float-frame-status-actions { right: 6px; bottom: 6px; gap: 8px; }  /* equal gap right and below */
-    /* float.css backs the keys when output scrolls behind them; here it never reaches them. */
-    .float-frame-status-actions button,
-    .float-frame-status[data-scrollable="true"] .float-frame-status-actions button {
-      padding: 0 3px; border: 0; border-radius: 0;
-      font-size: 11px; line-height: 1.45;
-      background: Highlight; color: HighlightText;
-      text-transform: uppercase; cursor: pointer;
-    }
-    .float-frame-status .float-frame-status-actions button[data-tone="remove"] { background: color-mix(in srgb, Highlight 72%, #ef6b6b); }
-    .float-frame-status .float-frame-status-actions button[data-tone="remove"]:disabled { background: color-mix(in srgb, color-mix(in srgb, Highlight 72%, #ef6b6b) 30%, transparent); }
-    /* A list's NEW / DISC is the same clickable text as the pane's. */
-    .split-list .list-create {
-      align-self: flex-start; margin: 0; padding: 0 3px; border: 0; border-radius: 0;
-      font-size: 11px; line-height: 1.45;
-      background: Highlight; color: HighlightText; text-transform: uppercase; cursor: pointer;
-    }
-    .float-frame-status-actions button:enabled:hover, .float-frame-status-actions button:focus-visible,
-    .split-list .list-create:enabled:hover, .split-list .list-create:focus-visible { filter: brightness(1.25); color: HighlightText; }
-    .float-frame-status-actions button:disabled,
-    /* One mode at a time: the feed and its aside, or the text pane. */
-    .stream-frame .perception-feed[hidden], .stream-frame .float-frame-status[hidden], .stream-frame [data-aside][hidden] { display: none; }
-    .stream-frame[data-context="stream"] .split-rows, .stream-frame [data-step-meta][hidden] { display: none; }
-    .stream-frame .step-meta { margin-top: 10px; }
-    .stream-frame .status-dot { margin-left: 8px; }
-    .split-list .list-verbs { display: flex; gap: 8px; align-self: flex-start; }
-    .file-pick { display: flex; align-items: center; gap: 8px; min-width: 0; font-size: 11px; }
-    .file-pick .muted { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .pick-key { margin: 0; padding: 0 3px; border: 0; border-radius: 0; font-size: 11px; line-height: 1.45;
-                background: Highlight; color: HighlightText; text-transform: uppercase; cursor: pointer; }
-    .pick-key:hover { filter: brightness(1.25); }
-    .split-list .list-create:disabled { background: color-mix(in srgb, Highlight 30%, transparent); color: var(--muted); cursor: default; }
-    /* A window split into a list and the pane to its right (Simulators). */
-    .split-body { display: flex; gap: 12px; }
-    .split-list { flex: 0 0 calc((100% - 12px) / 3); min-width: 0; display: flex; flex-direction: column; overflow: hidden; padding-top: 0; font-size: 11px; line-height: 1.45; }
-    .split-list .host-row { padding: 0 0 2px; }
-    /* "create" stays on top; the simulators build under it and scroll. */
-    .split-rows { flex: 1 1 auto; min-height: 0; overflow-y: auto; margin-top: 6px; }
-    .split-body > .float-frame-status { flex: 1 1 auto; min-width: 0; margin: 0; }
-    .host-state:empty { display: none; }
-    .gap-item { display: flex; gap: 8px; padding: 4px 0; color: var(--muted); line-height: 1.4; }
-    .gap-item b { color: var(--amber); font-weight: 500; font-family: var(--font-mono); flex: 0 0 14px; }
-    /* Mock-only controls: bottom centre, under the column, where no window opens. */
-    #mockControls { position: fixed; left: 50%; bottom: 12px; transform: translateX(-50%); display: flex; gap: 8px; }
-    body.show-gaps [data-gap] { outline: 1px dashed var(--amber); outline-offset: 2px; }
-    body.show-gaps [data-gap]::after { content: attr(data-gap-n); margin-left: 4px; color: var(--amber); font: 500 9px var(--font-mono); vertical-align: super; }
-  </style>
+  <link rel="stylesheet" href="v2.css">
 </head>
 <body>
+  <!-- The column: one launcher per window, each with its window's readout. -->
   <main>
-    <div class="identity">
-      <h1>Automa</h1>
-    </div>
+    <h1>Automa</h1>
     <nav aria-label="Stream">
       <button type="button" class="nav" id="streamOpen">Stream <small id="streamReadout"></small></button>
     </nav>
@@ -190,1388 +26,168 @@
       <a class="nav" href="#" id="workbenchLink" data-gap="recordings" title="Opens /workbench/, the replay page, in its own layout">Workbench</a>
     </nav>
   </main>
-  <div id="mockControls">
-  <button type="button" class="text-action" id="gapsToggle" aria-pressed="false">gaps</button>
-  <!-- Mock only: end the selected simulator's process, to show an exited record. -->
-  <button type="button" class="text-action" id="endProcess" title="Mock only: the selected simulator's process dies" disabled>end process</button>
-  </div>
 
+  <!-- Every window's title bar: desk.js puts one at the top of each .float-frame[data-title]. -->
+  <template id="frameChrome">
+    <div class="float-frame-header" data-frame-header>
+      <div class="float-frame-title">
+        <span class="grip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg></span>
+        <strong data-title></strong><span class="muted" data-mode></span>
+      </div>
+      <div class="float-frame-controls">
+        <button type="button" class="icon-btn" data-frame-close title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+        <button type="button" class="icon-btn" data-frame-minimize title="Minimize"></button>
+      </div>
+    </div>
+  </template>
+
+  <!-- A window is a list in its left third and a pane in the rest. The list's verbs head it and its
+       rows build under them; the pane shows what a command prints, a form above that when one is
+       open, and its keys bottom right. The window's view (js/<window>.js) fills every slot. -->
   <div id="floatLayer">
-    <!-- Commands open left of the column. Rows = the list command; the status
-         box = the operation; its bottom-right keys = the verbs, relabelled per mode. -->
-    <article class="float-frame" id="vehiclesFrame" data-frame-start="closed" hidden>
-      <div class="float-frame-header" data-frame-header>
-        <div class="float-frame-title">
-          <span class="grip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg></span>
-          <strong>Vehicles</strong><span class="muted" data-mode></span>
-        </div>
-        <div class="float-frame-controls">
-          <button type="button" class="icon-btn" data-frame-close aria-label="Close Vehicles" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
-          <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Vehicles" title="Minimize"></button>
-        </div>
-      </div>
-      <div class="float-frame-body split-body" data-frame-body>
-        <div class="split-list">
-          <button type="button" class="list-create" data-create>DISC</button>
-          <p class="host-note" data-note></p>
-          <div class="split-rows" data-rows></div>
-        </div>
+    <article class="float-frame" id="vehiclesFrame" data-title="Vehicles" data-frame-start="closed" hidden>
+      <div class="float-frame-body split" data-frame-body>
+        <div class="list"><div class="list-verbs" data-verbs></div><div class="list-rows" data-rows></div></div>
         <section class="float-frame-status">
-          <!-- vehicles discover's flags, filled in the pane its Discover key answers. -->
-          <div class="desk-form pane-form" data-form="discover" hidden>
-            <label class="field"><span class="kicker">provider</span>
-              <select class="cadence-select" data-field="provider"><option value="picar">picar</option><option value="chase-sim">chase-sim</option></select></label>
-            <label class="field"><span class="kicker">url</span>
-              <input class="inline-edit" data-field="url" type="text" autocomplete="off" placeholder="http://piracer.local:8887"></label>
+          <!-- vehicles discover's flags. -->
+          <div class="pane-form" data-form="discover" hidden>
+            <label class="field"><span class="field-label">provider</span>
+              <select class="field-select" data-field="provider"><option value="picar">picar</option><option value="chase-sim">chase-sim</option></select></label>
+            <label class="field"><span class="field-label">url</span>
+              <input class="field-input" data-field="url" type="text" autocomplete="off" placeholder="http://piracer.local:8887"></label>
           </div>
           <p class="float-frame-status-text" role="status"></p>
-          <div class="float-frame-status-actions"><button type="button" data-key hidden></button><button type="button" data-key hidden></button><button type="button" data-key hidden></button><button type="button" data-key hidden></button></div>
+          <div class="pane-keys" data-keys></div>
         </section>
       </div>
     </article>
 
-    <article class="float-frame" id="simulatorsFrame" data-frame-start="closed" hidden>
-      <div class="float-frame-header" data-frame-header>
-        <div class="float-frame-title">
-          <span class="grip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg></span>
-          <strong>Simulators</strong><span class="muted" data-mode></span>
-        </div>
-        <div class="float-frame-controls">
-          <button type="button" class="icon-btn" data-frame-close aria-label="Close Simulators" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
-          <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Simulators" title="Minimize"></button>
-        </div>
-      </div>
-      <div class="float-frame-body split-body" data-frame-body>
-        <div class="split-list">
-          <button type="button" class="list-create" data-create>NEW</button>
-          <p class="host-note" data-note></p>
-          <div class="split-rows" data-rows></div>
-        </div>
+    <article class="float-frame" id="simulatorsFrame" data-title="Simulators" data-frame-start="closed" hidden>
+      <div class="float-frame-body split" data-frame-body>
+        <div class="list"><div class="list-verbs" data-verbs></div><div class="list-rows" data-rows></div></div>
         <section class="float-frame-status">
           <p class="float-frame-status-text" role="status"></p>
-          <div class="float-frame-status-actions"><button type="button" data-key hidden></button><button type="button" data-key hidden></button><button type="button" data-key hidden></button><button type="button" data-key hidden></button></div>
+          <div class="pane-keys" data-keys></div>
         </section>
       </div>
     </article>
 
-    <article class="float-frame" id="hostsFrame" data-frame-start="closed" hidden>
-      <div class="float-frame-header" data-frame-header>
-        <div class="float-frame-title">
-          <span class="grip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg></span>
-          <strong>Hosts</strong><span class="muted" data-mode></span>
-        </div>
-        <div class="float-frame-controls">
-          <button type="button" class="icon-btn" data-frame-close aria-label="Close Hosts" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
-          <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Hosts" title="Minimize"></button>
-        </div>
-      </div>
-      <div class="float-frame-body split-body" data-frame-body>
-        <div class="split-list">
-          <button type="button" class="list-create" data-create>NEW</button>
-          <p class="host-note" data-note></p>
-          <div class="split-rows" data-rows></div>
-        </div>
+    <article class="float-frame" id="hostsFrame" data-title="Hosts" data-frame-start="closed" hidden>
+      <div class="float-frame-body split" data-frame-body>
+        <div class="list"><div class="list-verbs" data-verbs></div><div class="list-rows" data-rows></div></div>
         <section class="float-frame-status">
-          <!-- hosts create's and hosts run's flags, filled in the pane their keys answer. -->
-          <div class="desk-form pane-form" data-form="create" hidden>
-            <label class="field"><span class="kicker">name</span>
-              <input class="inline-edit" data-field="name" type="text" autocomplete="off" placeholder="host name"></label>
-            <label class="field" data-gap="fixedVehicle"><span class="kicker">vehicle</span>
-              <select class="cadence-select" data-field="vehicle"></select></label>
+          <!-- hosts create's and hosts run's flags. -->
+          <div class="pane-form" data-form="create" hidden>
+            <label class="field"><span class="field-label">name</span>
+              <input class="field-input" data-field="name" type="text" autocomplete="off" placeholder="host name"></label>
+            <label class="field" data-gap="fixedVehicle"><span class="field-label">vehicle</span>
+              <select class="field-select" data-field="vehicle"></select></label>
           </div>
-          <div class="desk-form pane-form" data-form="run" hidden>
-            <label class="field"><span class="kicker">mode</span>
-              <select class="cadence-select" data-field="mode"><option value="observe_only">observe only</option><option value="autonomy">autonomy</option></select></label>
-            <label class="field"><span class="kicker">decisions</span>
-              <select class="cadence-select" data-field="count"><option value="unbounded">unbounded</option><option value="10">10</option><option value="100">100</option><option value="1000">1000</option></select></label>
-            <label class="field"><span class="kicker">record</span>
-              <select class="cadence-select" data-field="record"><option value="off">off</option><option value="on">on</option></select></label>
+          <div class="pane-form" data-form="run" hidden>
+            <label class="field"><span class="field-label">mode</span>
+              <select class="field-select" data-field="mode"><option value="observe_only">observe only</option><option value="autonomy">autonomy</option></select></label>
+            <label class="field"><span class="field-label">decisions</span>
+              <select class="field-select" data-field="count"><option value="unbounded">unbounded</option><option value="10">10</option><option value="100">100</option><option value="1000">1000</option></select></label>
+            <label class="field"><span class="field-label">record</span>
+              <select class="field-select" data-field="record"><option value="off">off</option><option value="on">on</option></select></label>
           </div>
           <p class="float-frame-status-text" role="status"></p>
-          <div class="float-frame-status-actions"><button type="button" data-key hidden></button><button type="button" data-key hidden></button><button type="button" data-key hidden></button><button type="button" data-key hidden></button><button type="button" data-key hidden></button></div>
+          <div class="pane-keys" data-keys></div>
         </section>
       </div>
     </article>
 
-    <article class="float-frame" id="pluginsFrame" data-frame-start="closed" hidden>
-      <div class="float-frame-header" data-frame-header>
-        <div class="float-frame-title">
-          <span class="grip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg></span>
-          <strong>Plugins</strong><span class="muted" data-mode></span>
-        </div>
-        <div class="float-frame-controls">
-          <button type="button" class="icon-btn" data-frame-close aria-label="Close Plugins" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
-          <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Plugins" title="Minimize"></button>
-        </div>
-      </div>
-      <!-- plugins list: the steps on the left, the selected step's plugins under it. The pane manages
-           what is selected: the host (save, disarm all), a step (preset, stream, disarm it) or a plugin. -->
-      <div class="float-frame-body split-body" data-frame-body>
-        <div class="split-list">
-          <div class="list-verbs"><button type="button" class="list-create" id="pluginsHosts">HOSTS</button><button type="button" class="list-create" data-create>UPLD</button></div>
-          <p class="host-note" data-note></p>
-          <div class="split-rows" data-rows></div>
-        </div>
+    <!-- plugins list: the steps, the selected step's plugins under it. The pane manages what is
+         selected: the host (save, disarm all), a step (preset, stream, disarm it) or a plugin. -->
+    <article class="float-frame" id="pluginsFrame" data-title="Plugins" data-frame-start="closed" hidden>
+      <div class="float-frame-body split" data-frame-body>
+        <div class="list"><div class="list-verbs" data-verbs></div><div class="list-rows" data-rows></div></div>
         <section class="float-frame-status">
-          <div class="desk-form pane-form" data-form="preset" hidden>
-            <label class="field"><span class="kicker">preset</span>
-              <select class="cadence-select" data-field="preset"></select></label>
+          <div class="pane-form" data-form="preset" hidden>
+            <label class="field"><span class="field-label">preset</span>
+              <select class="field-select" data-field="preset"></select></label>
           </div>
-          <div class="desk-form pane-form" data-form="upload" hidden>
-            <label class="field"><span class="kicker">step</span>
-              <select class="cadence-select" data-field="step"><option>perception</option><option>observation</option><option>memory</option><option>proposal</option><option>plan</option><option>action</option></select></label>
-            <label class="field"><span class="kicker">name</span>
-              <input class="inline-edit" data-field="name" type="text" autocomplete="off" placeholder="prototype"></label>
-            <!-- The native file control is hidden; FILE is the pane's highlighted text, beside the chosen name. -->
-            <div class="field"><span class="kicker">file</span>
-              <span class="file-pick"><button type="button" class="pick-key" id="filePick">FILE</button><span class="muted" id="fileName">none</span>
+          <!-- plugins upload's flags. FILE stands in for the native file control, which stays hidden. -->
+          <div class="pane-form" data-form="upload" hidden>
+            <label class="field"><span class="field-label">step</span>
+              <select class="field-select" data-field="step"><option>perception</option><option>observation</option><option>memory</option><option>proposal</option><option>plan</option><option>action</option></select></label>
+            <label class="field"><span class="field-label">name</span>
+              <input class="field-input" data-field="name" type="text" autocomplete="off" placeholder="prototype"></label>
+            <div class="field"><span class="field-label">file</span>
+              <span class="file-pick"><button type="button" class="key" data-file-pick>FILE</button><span class="file-name" data-file-name></span>
                 <input data-field="file" type="file" accept=".py" hidden></span></div>
-            <label class="field"><span class="kicker">entrypoint</span>
-              <input class="inline-edit" data-field="entrypoint" type="text" autocomplete="off" placeholder="prototype:Prototype"></label>
-            <label class="field"><span class="kicker">config</span>
-              <input class="inline-edit" data-field="config" type="text" autocomplete="off" placeholder="{}"></label>
-            <label class="field"><span class="kicker">arm</span>
-              <select class="cadence-select" data-field="arm"><option value="off">off</option><option value="on">on</option></select></label>
+            <label class="field"><span class="field-label">entrypoint</span>
+              <input class="field-input" data-field="entrypoint" type="text" autocomplete="off" placeholder="prototype:Prototype"></label>
+            <label class="field"><span class="field-label">config</span>
+              <input class="field-input" data-field="config" type="text" autocomplete="off" placeholder="{}"></label>
+            <label class="field"><span class="field-label">arm</span>
+              <select class="field-select" data-field="arm"><option value="off">off</option><option value="on">on</option></select></label>
           </div>
           <p class="float-frame-status-text" role="status"></p>
-          <div class="float-frame-status-actions"><button type="button" data-key hidden></button><button type="button" data-key hidden></button><button type="button" data-key hidden></button><button type="button" data-key hidden></button></div>
+          <div class="pane-keys" data-keys></div>
         </section>
       </div>
     </article>
 
-
-    <!-- Stream: one window per click. Any host, any step: the Perception feed, or plugins stream's screen. -->
+    <!-- Stream: one window per click, each on any host and step. Feeds lists the hosts, a host's steps
+         under it. Perception is the v1 /perception page: its aside in the list, its frame in the pane;
+         the other steps put their details in the list and plugins stream's screen in the pane. -->
     <template id="streamTemplate">
-      <article class="float-frame stream-frame" hidden>
-        <div class="float-frame-header" data-frame-header>
-          <div class="float-frame-title">
-            <span class="grip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg></span>
-            <strong>Stream</strong><span class="muted" data-summary></span><span class="status-dot" data-dot hidden></span>
-          </div>
-          <div class="float-frame-controls">
-            <button type="button" class="icon-btn" data-frame-close aria-label="Close Stream" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
-            <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Stream" title="Minimize"></button>
-          </div>
-        </div>
-        <!-- Two contexts. Feeds: the hosts on the left, a host's steps under it, its status on the right.
-             Stream: perception is the v1 /perception page, its aside on the left and its frame on the right;
-             the other steps put their details on the left and plugins stream's screen on the right. -->
-        <div class="float-frame-body split-body perception-body" data-frame-body>
-          <div class="split-list perception-info">
-            <div class="list-verbs"><button type="button" class="list-create" data-create>FEEDS</button><button type="button" class="list-create" data-plugins>PLGS</button></div>
-            <div class="split-rows" data-rows></div>
-            <dl class="info-metrics step-meta" data-step-meta></dl>
-            <div class="perception-aside" data-aside>
-              <section class="info-panel">
-                <div class="info-toggles">
-                  <button type="button" class="info-toggle" data-overlay="regions" aria-pressed="true">Regions</button>
-                  <button type="button" class="info-toggle" data-overlay="labels" aria-pressed="true">Labels</button>
-                  <div data-kinds></div>
-                </div>
+      <article class="float-frame stream-frame" data-title="Stream" hidden>
+        <div class="float-frame-body split" data-frame-body>
+          <div class="list">
+            <div class="list-verbs" data-verbs></div>
+            <div class="list-rows" data-rows></div>
+            <dl class="kv step-meta" data-step-meta hidden></dl>
+            <div class="aside" data-aside hidden>
+              <section class="aside-section">
+                <button type="button" class="aside-toggle" data-overlay="regions" aria-pressed="true">Regions</button>
+                <button type="button" class="aside-toggle" data-overlay="labels" aria-pressed="true">Labels</button>
+                <div class="aside-kinds" data-kinds></div>
               </section>
-              <section class="info-panel">
-                <h2 class="kicker">Frame</h2>
-                <dl class="info-metrics" data-metrics></dl>
-              </section>
-              <section class="info-panel">
-                <h2 class="kicker">Plugin runs</h2>
-                <div class="info-list" data-runs></div>
-              </section>
-              <section class="info-panel">
-                <h2 class="kicker">Findings</h2>
-                <div class="info-list" data-findings></div>
-              </section>
-              <section class="info-panel">
-                <details><summary>Published data</summary><pre data-raw></pre></details>
-              </section>
+              <section class="aside-section"><h2 class="kicker">Frame</h2><dl class="kv" data-metrics></dl></section>
+              <section class="aside-section"><h2 class="kicker">Plugin runs</h2><div class="aside-list" data-runs></div></section>
+              <section class="aside-section"><h2 class="kicker">Findings</h2><div class="aside-list" data-findings></div></section>
+              <section class="aside-section"><details><summary>Published data</summary><pre data-raw></pre></details></section>
             </div>
           </div>
-          <section class="perception-feed" aria-label="Current perception frame" data-feed>
-            <span class="feed-empty" data-empty>Waiting for the first published frame</span>
-            <div class="feed-stage" hidden><img alt="Current front camera frame"><canvas aria-hidden="true"></canvas></div>
-            <div class="float-frame-status-actions"><button type="button" data-pause hidden>PAUSE</button></div>
-          </section>
-          <section class="float-frame-status" data-text-pane>
+          <section class="float-frame-status">
+            <div class="feed" aria-label="Current perception frame" data-feed hidden>
+              <span class="feed-empty" data-empty>Waiting for the first published frame</span>
+              <div class="feed-stage" hidden><img alt="Current front camera frame"><canvas aria-hidden="true"></canvas></div>
+            </div>
             <p class="float-frame-status-text" role="status"></p>
-            <div class="float-frame-status-actions"><button type="button" data-key hidden></button></div>
+            <div class="pane-keys" data-keys></div>
           </section>
         </div>
       </article>
     </template>
 
-    <article class="float-frame" id="gapsFrame" data-frame-start="closed" hidden>
-      <div class="float-frame-header" data-frame-header>
-        <div class="float-frame-title">
-          <span class="grip" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="1"></circle><circle cx="9" cy="12" r="1"></circle><circle cx="9" cy="17" r="1"></circle><circle cx="15" cy="7" r="1"></circle><circle cx="15" cy="12" r="1"></circle><circle cx="15" cy="17" r="1"></circle></svg></span>
-          <strong>Gaps</strong><span class="muted">CLI signals this page lacks</span>
-        </div>
-        <div class="float-frame-controls">
-          <button type="button" class="icon-btn" data-frame-close aria-label="Close Gaps" title="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
-          <button type="button" class="icon-btn" data-frame-minimize aria-label="Minimize Gaps" title="Minimize"></button>
-        </div>
-      </div>
+    <!-- Mock only: what the CLI cannot back yet, numbered where the page needs it. -->
+    <article class="float-frame" id="gapsFrame" data-title="Gaps" data-frame-start="closed" hidden>
       <div class="float-frame-body" data-frame-body id="gapList"></div>
     </article>
   </div>
 
-  <script src="capture/frames.js"></script>
-  <script>
-    "use strict";
-    // A mock: timers stand in for the services. Log lines are the CLI renderers'
-    // text; lines in parentheses mark where the CLI prints nothing.
-    const FAST = new URLSearchParams(location.search).has("fast");
-    const ms = (n) => (FAST ? Math.round(n / 25) : n);
-    const $ = (id) => document.getElementById(id);
+  <!-- Mock only: bottom centre, under the column, where no window opens. -->
+  <div id="mockControls">
+    <button type="button" class="text-action" id="gapsToggle" aria-pressed="false">gaps</button>
+    <button type="button" class="text-action" id="endProcess" title="Mock only: the selected simulator's process dies" disabled>end process</button>
+  </div>
 
-    const GAPS = {
-      simProgress: "simulators create prints nothing until its simulator is ready (up to 45 s) and has no --json.",
-      simOrigin: "#508: no GET /api/simulators yet, and its automa_simulators_status payload is assembled in render_simulators_status; the mock reads the payload simulators_status should return.",
-      exitedDelete: "#508: simulators delete still answers 'missing' for an exited record; the mock removes the record, as the follow-up would.",
-      noNotify: "No change notification: every list read probes each host and vehicle under a 5 s deadline.",
-      runProgress: "hosts run starts the run in the background and answers after its startup wait; startup progress (RunEvent) reaches only a foreground monitor.",
-      noJson: "hosts run, stop, restart, delete and simulators print text only; the services return typed results in-process.",
-      noCancel: "Nothing cancels simulators create or a host deploy once started.",
-      saveRoute: "plugins save has no HTTP route; arm, disarm and upload do (POST /api/plugins).",
-      recordings: "No command lists recorded runs, so the workbench cannot offer a host's recordings as sources.",
-      presetArm: "No host command arms a preset: plugins arm takes each --name, so the mock arms the preset's plugins together in place of the step's. Presets are named only by workbench and plugins inspect (--preset).",
-      stepViews: "Proposal and plan have no runtime view of their own; the Action view carries them as candidates and selection.",
-      simRemove: "vehicles remove forgets only discovered vehicles: vehicles status always lists the default simulator and every running created one. The mock removes them from the list until they are discovered again.",
-      vehicleUrl: "vehicles status has no --url: showing one vehicle reads the whole list, probing every listed vehicle under one deadline.",
-      fixedVehicle: "A host's vehicle is fixed at hosts create: hosts update has no --url, so moving a host is delete + create.",
-    };
-    const GAP_KEYS = Object.keys(GAPS);
-
-    const STEPS = {
-      // implementations/decision_cycle/<step>/catalog.json, as plugins list prints them.
-      perception: { preset: "lightweight_observer", defaults: ["frame", "floor_plane"],
-                    ids: ["frame", "floor_plane", "classical_regions", "composite_box_fusion", "composite_box_fusion_object_separated",
-                          "floor_continuity", "floor_continuity_capture", "floor_continuity_temporal", "motion_tracks",
-                          "multi_obstruction_tracks", "sim_cardboard_obstacle", "sim_cardboard_permanence", "sim_color_targets"],
-                    presets: { lightweight_observer: ["frame", "floor_plane"], sim_debug: ["frame", "sim_color_targets"],
-                               "chase-v1-detect-by-color": ["sim_cardboard_obstacle", "sim_cardboard_permanence"],
-                               visual_observer: ["frame", "floor_plane", "motion_tracks"],
-                               multi_obstruction: ["multi_obstruction_tracks", "floor_continuity", "classical_regions"],
-                               obstruction_observer: ["frame", "floor_plane", "multi_obstruction_tracks"] } },
-      observation: { one: true, defaults: ["perception_summary"], ids: ["perception_summary"] },
-      memory: { preset: "recency_ledger", defaults: ["bounded_evidence"], ids: ["bounded_evidence"], presets: { recency_ledger: ["bounded_evidence"] } },
-      proposal: { preset: "obstruction_avoidance", defaults: ["avoid_recent_obstruction"], ids: ["avoid_recent_obstruction"],
-                  presets: { obstruction_avoidance: ["avoid_recent_obstruction"] } },
-      plan: { one: true, preset: "most_confident", defaults: ["highest_confidence"], ids: ["highest_confidence"],
-              presets: { most_confident: ["highest_confidence"] } },
-      action: { one: true, defaults: ["selected"], ids: ["selected", "hold", "mode"] },
-    };
-    const defaultSelection = () => Object.fromEntries(Object.entries(STEPS).map(([step, s]) => [step, [...s.defaults]]));
-    function selectionLabel(step, ids) {
-      const s = STEPS[step];
-      if (!ids.length) return "(none)";
-      const same = ids.length === s.defaults.length && ids.every((id, i) => id === s.defaults[i]);
-      return s.preset && same ? `${s.preset} (${ids.join(", ")})` : ids.join(", ");
-    }
-    const hex = (n) => Array.from({ length: n }, () => "0123456789abcdef"[Math.floor(Math.random() * 16)]).join("");
-    const clock = () => new Date().toISOString().replace("T", " ").slice(0, 19);
-    const titleCase = (step) => step[0].toUpperCase() + step.slice(1);
-
-    const state = {
-      // Clean start: nothing created, nothing discovered.
-      vehicles: [],
-      hosts: [],
-      frame: 0,
-      windows: {
-        vehicles: { mode: "rows", selected: null, log: [], ask: null, busy: false },
-        simulators: { selected: null, log: [], ask: null, busy: false },
-        hosts: { mode: "rows", selected: null, log: [], ask: null, busy: false },
-        plugins: { mode: "rows", ask: null, log: [], busy: false, host: null, context: "steps" },
-      },
-    };
-    // Every window picks its own host. Plugins' is its --host-name.
-    const pluginsHost = () => state.hosts.find((h) => h.name === state.windows.plugins.host) || null;
-    const hostStateText = (h) => (h.state === "running" && h.mode ? `running, ${h.mode.replace("_", " ")}` : h.state);
-    const listedVehicle = (v) => v.state !== "exited" && !v.unlisted;
-    const takesHost = (v) => listedVehicle(v) && v.state !== "unreachable";
-
-    function stream(win, lines, done, pace = 260) {
-      win.busy = true;
-      let i = 0;
-      const next = () => {
-        if (i < lines.length) {
-          const line = lines[i++];
-          if (typeof line === "function") line();
-          else if (typeof line === "string") {
-            if (win.log.length === 1 && win.log[0] === "...") win.log = [];
-            win.log.push(line);
-          }
-          render();
-          setTimeout(next, ms(typeof line === "number" ? line : pace));
-        } else {
-          win.busy = false;
-          if (done) done();
-          render();
-        }
-      };
-      next();
-    }
-    // An operation's pane: "..." until its first line arrives (the command is the key that was pressed).
-    const begin = (win) => { win.log = ["..."]; win.ask = null; };
-
-    // ---- Simulators: simulators status (#507) / create / delete. Lists only the
-    // simulators create started; the default and discovered ones are vehicles. ----
-    const created = () => state.vehicles.filter((v) => v.origin === "created");
-    const simulators = created;
-    // An operation that prints nothing on success: busy for `wait`, then `apply`.
-    function quietly(W, wait, apply) {
-      W.busy = true; W.ask = null; W.log = []; render();
-      setTimeout(() => { apply(); W.busy = false; render(); }, ms(wait));
-    }
-    function createSimulator() {
-      const W = state.windows.simulators;
-      const used = new Set(state.vehicles.map((v) => Number(new URL(v.url).port)));
-      let port = 5051; while (used.has(port)) port += 1;
-      const url = `http://127.0.0.1:${port}/`;
-      W.selected = null; W.ask = null; W.log = []; W.detail = null;
-      // Streams what simulators create prints. It prints nothing until Metrics UI's headless
-      // launcher answers (up to 45 s), so the pane holds "..." until the first line replaces it.
-      W.busy = true; W.log = ["..."]; render();
-      setTimeout(() => {
-        state.vehicles.push({ url, label: `127.0.0.1:${port}`, provider: "chase-sim", origin: "created", state: "running",
-                              pid: 48000 + Math.floor(Math.random() * 999), startedAt: Date.now() });
-        W.log = [`Created Simulator (chase-sim) at ${url}`];
-        W.busy = false; render();
-      }, ms(1800));
-    }
-    // What GET /api/simulators?url= would answer: simulators_status(url=...) as one
-    // automa_simulators_status payload, the same document --json prints (#508 point 2).
-    function simulatorsPayload(url) {
-      const records = created().filter((v) => !url || v.url === url);
-      return { schema: "automa_simulators_status", simulators: records.map((v) => ({
-        url: v.url, port: Number(new URL(v.url).port), pid: v.pid, state: v.state,
-        frontend: v.state === "running" ? "connected" : null, game: v.state === "running" ? "chase" : null,
-        error: null, hosts: state.hosts.filter((h) => h.vehicleUrl === v.url).map((h) => h.name),
-        started_at_ms: v.startedAt, metrics_ui_dir: "~/Projects/metrics-ui", config: "default",
-        log: `runtime/simulators/${new URL(v.url).port}/simulator.log`, log_tail: v.state === "exited" ? v.logTail : null,
-      })) };
-    }
-    // Selecting a simulator reads its status; the pane shows "..." until it answers.
-    function readSimulator(url) {
-      const W = state.windows.simulators;
-      W.detail = null; W.reading = true; W.log = []; W.ask = null; render();
-      setTimeout(() => {
-        W.reading = false;
-        if (W.selected === url) W.detail = simulatorsPayload(url).simulators[0] || null;
-        render();
-      }, ms(300));
-    }
-    // The selected simulator's block, as simulators status --url prints it (#508's _status_block).
-    function detailLines(entry) {
-      if (!entry) return [];
-      const lines = [`Simulator (chase-sim)  ${entry.state} at ${entry.url}`];
-      if (entry.frontend === "connected" && entry.game) lines.push(`  frontend connected, game ${entry.game}`);
-      else if (entry.frontend) lines.push(`  frontend ${entry.frontend}`);
-      if (entry.error) lines.push(`  ${entry.error}`);
-      if (entry.pid) lines.push(`  created by simulators create, pid ${entry.pid}`);
-      if (entry.hosts.length) lines.push(`  used by host${entry.hosts.length > 1 ? "s" : ""} ${entry.hosts.join(", ")}`);
-      if (entry.state === "exited") lines.push(`  Simulator log ${entry.log}:`, ...entry.log_tail.map((line) => `  ${line}`));
-      return lines;
-    }
-    function deleteSimulator() {
-      const W = state.windows.simulators;
-      const v = state.vehicles.find((x) => x.url === W.selected);
-      const user = state.hosts.find((h) => h.vehicleUrl === v.url);
-      W.ask = null;
-      if (user) { W.log = [`Host ${user.name} uses the simulator at ${v.url}; delete it first.`]; render(); return; }
-      W.selected = null; W.detail = null;
-      // Running: ends the process and removes the record. Exited: removes the record (#508 point 3).
-      quietly(W, v.state === "exited" ? 150 : 400, () => state.vehicles.splice(state.vehicles.indexOf(v), 1));
-    }
-    function endProcess() {
-      const v = created().find((x) => x.url === state.windows.simulators.selected);
-      if (!v || v.state === "exited") return;
-      Object.assign(v, { state: "exited", logTail: [
-        `[headless] chase ready on ws://127.0.0.1:${new URL(v.url).port}/`,
-        "[headless] browser disconnected: Target page, context or browser has been closed",
-        "[headless] exiting with code 1",
-      ] });
-      readSimulator(v.url);
-    }
-    // VEC: the selected simulator in Vehicles. A tracked one is selected there; an
-    // untracked one fills the discover form, ready for DISC.
-    function showInVehicles(sim) {
-      const V = state.windows.vehicles;
-      const frame = window.floatingFrames && floatingFrames.vehiclesFrame;
-      if (frame && (frame.isClosed() || frame.isMinimized())) frame.restore();
-      V.ask = null; V.log = [];
-      if (listedVehicle(sim)) { V.mode = "rows"; V.selected = sim.url; readVehicle(sim.url); return; }
-      V.mode = "discover"; V.selected = null; V.detail = null;
-      document.querySelector("#vehiclesFrame [data-field=provider]").value = sim.provider;
-      document.querySelector("#vehiclesFrame [data-field=url]").value = sim.url;
-      render();
-    }
-    function simulatorsView() {
-      const W = state.windows.simulators;
-      const sel = simulators().find((x) => x.url === W.selected);
-      const keys = W.ask ? [{ label: "YES", action: deleteSimulator }, { label: "NO", action: () => { W.ask = null; render(); } }]
-        : sel && !W.busy && !W.reading ? [
-            // An exited simulator is no vehicle: there is nothing to show or discover.
-            ...(sel.state === "exited" ? [] : [{ label: "VEC", action: () => showInVehicles(sel), disabled: state.windows.vehicles.busy }]),
-            { label: "DEL", action: () => { W.ask = "delete"; W.log = []; render(); },
-              gap: sel.state === "exited" ? "exitedDelete" : null },
-          ]
-        : [];
-      $("endProcess").disabled = !sel || sel.state === "exited" || W.busy || W.reading;
-      return {
-        rows: simulators().map((x) => ({
-          name: x.label, sub: "", state: "", selected: W.selected === x.url, exited: x.state === "exited",
-          nameAction: W.busy ? null : () => {
-            if (W.selected === x.url) { W.selected = null; W.detail = null; W.ask = null; W.log = []; render(); return; }
-            W.selected = x.url; readSimulator(x.url);
-          },
-        })),
-        create: { label: "NEW", action: createSimulator, disabled: W.busy, gap: "simProgress" },
-        status: W.ask ? "Delete?" : W.log.length ? W.log.join("\n") : W.reading ? "..." : detailLines(W.detail).join("\n"),
-        statusGap: "simOrigin",
-        keys,
-      };
-    }
-
-    // ---- Vehicles: vehicles status; vehicles discover / remove. ----
-    // Mock only: the endpoints vehicles discover can reach. Anything else refuses the connection.
-    const REACHABLE = {
-      "http://piracer.local:8887": { provider: "picar", state: "reachable, no host listening" },
-      "http://127.0.0.1:5060/": { provider: "chase-sim", state: "running" },
-    };
-    const HEADINGS = { picar: "PiCar (picar)", "chase-sim": "Simulator (chase-sim)" };
-    const MACHINES = { picar: "PiCar", "chase-sim": "Chase simulator" };
-    function normalizedUrl(provider, url) {
-      const u = new URL(url);
-      return provider === "chase-sim" ? `${u.protocol}//${u.host}/` : `${u.protocol}//${u.host}`;
-    }
-    // Streams what vehicles discover prints: "..." while it probes (up to 5 s), then its one line.
-    function discoverVehicle() {
-      const W = state.windows.vehicles;
-      const form = document.querySelector("#vehiclesFrame [data-form=discover]");
-      const provider = form.querySelector("[data-field=provider]").value;
-      let url;
-      try { url = normalizedUrl(provider, form.querySelector("[data-field=url]").value.trim()); }
-      catch { W.mode = "rows"; W.log = ["The URL must be an http(s) URL."]; render(); return; }
-      W.mode = "rows"; W.selected = null; W.detail = null; W.ask = null;
-      if (state.vehicles.some((v) => v.url === url && listedVehicle(v))) { W.log = [`Already listed: ${HEADINGS[provider]} at ${url}`]; render(); return; }
-      W.busy = true; W.log = ["..."]; render();
-      setTimeout(() => {
-        const removed = state.vehicles.find((v) => v.url === url && v.unlisted && v.provider === provider);
-        const found = REACHABLE[url];
-        if (removed) {
-          removed.unlisted = false;
-          W.log = [`Discovered ${HEADINGS[provider]} at ${url}`];
-        } else if (found && found.provider === provider) {
-          state.vehicles.push({ url, label: new URL(url).host, provider, origin: "discovered", state: found.state });
-          W.log = [`Discovered ${HEADINGS[provider]} at ${url}`];
-        } else {
-          W.log = [`No ${MACHINES[provider]} can take a host at ${url}: [Errno 61] Connection refused`];
-        }
-        W.busy = false; render();
-      }, ms(900));
-    }
-    function removeVehicle() {
-      const W = state.windows.vehicles;
-      const v = state.vehicles.find((x) => x.url === W.selected);
-      W.selected = null; W.detail = null;
-      W.ask = null; W.log = [];
-      // A discovered vehicle is forgotten. A created simulator keeps running and stays in
-      // Simulators; it only leaves this list until it is discovered again.
-      if (v.origin === "discovered") state.vehicles.splice(state.vehicles.indexOf(v), 1);
-      else v.unlisted = true;
-      render();
-    }
-    // Selecting a vehicle reads vehicles status and keeps its entry; the pane shows "..." until it answers.
-    function readVehicle(url) {
-      const W = state.windows.vehicles;
-      W.detail = null; W.reading = true; W.log = []; W.ask = null; render();
-      setTimeout(() => {
-        W.reading = false;
-        const v = state.vehicles.find((x) => x.url === url && listedVehicle(x));
-        if (W.selected === url && v) W.detail = {
-          provider: v.provider, url: v.url, state: v.state, error: v.error || null, pid: v.pid || null,
-          ...(v.provider === "chase-sim" ? { frontend: v.state === "running" ? "connected" : null, game: v.state === "running" ? "chase" : null } : {}),
-        };
-        render();
-      }, ms(300));
-    }
-    // The vehicle's block, as vehicles status prints it (_vehicle_block / simulator_lines).
-    function vehicleLines(entry) {
-      if (!entry) return [];
-      const heading = `${entry.provider === "picar" ? "PiCar (picar)" : "Simulator (chase-sim)"}  ${entry.state} at ${entry.url}`;
-      if (!("frontend" in entry)) return [heading + (entry.error ? `: ${entry.error}` : "")];
-      const lines = [heading];
-      if (entry.frontend === "connected" && entry.game) lines.push(`  frontend connected, game ${entry.game}`);
-      else if (entry.frontend) lines.push(`  frontend ${entry.frontend}`);
-      if (entry.error) lines.push(`  ${entry.error}`);
-      if (entry.pid) lines.push(`  created by simulators create, pid ${entry.pid}`);
-      return lines;
-    }
-    // A host created at this vehicle (the first, when there are several).
-    const hostAt = (v) => state.hosts.find((h) => h.vehicleUrl === v.url);
-    function showInHosts(v) {
-      const H = state.windows.hosts;
-      const frame = window.floatingFrames && floatingFrames.hostsFrame;
-      if (frame && (frame.isClosed() || frame.isMinimized())) frame.restore();
-      const h = hostAt(v);
-      H.ask = null; H.log = [];
-      if (h) { H.mode = "rows"; H.selected = h.name; readHost(h.name); return; }
-      H.mode = "create"; H.selected = null; H.detail = null;
-      field("create", "name").value = "";
-      render();  // fills the vehicle choices
-      field("create", "vehicle").value = v.url;
-      render(); field("create", "name").focus();
-    }
-    function vehiclesView() {
-      const W = state.windows.vehicles;
-      const v = state.vehicles.find((x) => x.url === W.selected);
-      const clear = () => { W.ask = null; W.selected = null; W.detail = null; W.mode = "rows"; W.log = []; render(); };
-      const urlField = document.querySelector("#vehiclesFrame [data-field=url]");
-      const keys = W.ask ? [{ label: "YES", action: removeVehicle }, { label: "NO", action: () => { W.ask = null; render(); } }]
-        : W.mode === "discover" ? [{ label: "DISC", action: discoverVehicle, disabled: !urlField.value.trim() }, { label: "CANCEL", action: clear }]
-            : v && !W.reading && !W.busy ? [
-                // HOST: the vehicle's host in Hosts, else a new host's form filled in for it.
-                { label: "HOST", action: () => showInHosts(v),
-                  disabled: state.windows.hosts.busy || (!hostAt(v) && !takesHost(v)) },
-                { label: "UNTRK", action: () => { W.ask = "remove"; W.log = []; render(); },
-                  gap: v.origin === "discovered" ? null : "simRemove" }]
-        : [];
-      return {
-        form: W.mode === "discover" ? "discover" : null,
-        rows: state.vehicles.filter(listedVehicle).map((x) => ({
-          name: x.label, sub: "", state: "", selected: W.selected === x.url,
-          nameAction: W.busy ? null : () => {
-            if (W.selected === x.url) { clear(); return; }
-            W.mode = "rows"; W.selected = x.url; readVehicle(x.url);
-          },
-        })),
-        create: { label: "DISC",
-                  action: () => {
-                    W.mode = "discover"; W.selected = null; W.detail = null; W.ask = null; W.log = [];
-                    urlField.value = ""; document.querySelector("#vehiclesFrame [data-field=provider]").selectedIndex = 0;
-                    render(); urlField.focus();
-                  },
-                  disabled: W.busy || W.mode === "discover" },
-        status: W.ask === "remove" ? "Untrack?" : W.log.length ? W.log.join("\n") : W.reading ? "..." : vehicleLines(W.detail).join("\n"),
-        statusGap: "vehicleUrl",
-        keys,
-      };
-    }
-
-    // ---- Hosts: hosts status; create/update/delete; run/stop/restart. ----
-    const hostsFrame = $("hostsFrame");
-    const field = (form, name) => hostsFrame.querySelector(`[data-form=${form}] [data-field=${name}]`);
-    function runFlags() {
-      const observe = field("run", "mode").value === "observe_only";
-      const count = field("run", "count").value;
-      const flags = [];
-      if (observe) flags.push("--observe-only");
-      if (count !== "unbounded") flags.push("--num-decisions", count);
-      else if (!observe) flags.push("--unbounded");
-      if (field("run", "record").value === "on") flags.push("--record");
-      return flags;
-    }
-    function createHost() {
-      const W = state.windows.hosts;
-      const name = field("create", "name").value.trim();
-      const url = field("create", "vehicle").value;
-      if (!name) { W.log = ["Name the host."]; render(); return; }
-      if (state.hosts.some((h) => h.name === name)) { W.log = [`Host ${name} already exists.`]; render(); return; }
-      const v = state.vehicles.find((x) => x.url === url);
-      W.mode = "rows";
-      const tree = hex(64);
-      const hostUrl = `http://127.0.0.1:${59000 + Math.floor(Math.random() * 999)}`;
-      const pid = 51000 + Math.floor(Math.random() * 999);
-      begin(W);
-      stream(W, [
-        "==> Package local controller bundle",
-        `Archive: runtime/hosts/${name}/bundle/releases/autonomy-${tree.slice(0, 12)}-${Date.now()}.tar.gz`,
-        `Tree SHA-256: ${tree}`,
-        `Archive SHA-256: ${hex(64)}`,
-        "==> Extract controller bundle release",
-        `Extracted release -> runtime/hosts/${name}/bundle/runtime`,
-        () => state.hosts.push({ name, provider: v.provider, vehicleUrl: url, vehicleLabel: `${v.provider === "picar" ? "PiCar" : "chaser"} at ${url}`, hostUrl, pid,
-                                 state: "not started", mode: null, armed: defaultSelection(), decisions: 0, count: null, since: clock() }),
-        `Host ${name} created for the chaser at ${url}`,
-        `Host ${name}  not started`,
-        `  chaser at ${url}`,
-        `  attached since ${clock()}`,
-        `  ${hostUrl}, pid ${pid}`,
-      ]);
-    }
-    function startLines(h, flags) {
-      const record = flags.includes("--record");
-      const observe = flags.includes("--observe-only");
-      const countIndex = flags.indexOf("--num-decisions");
-      const count = countIndex >= 0 ? Number(flags[countIndex + 1]) : null;
-      return [
-        1500,  // hosts run prints nothing until a camera frame, its perception and a healthy view arrive, up to 20 s
-        () => { Object.assign(h, { state: "running", mode: observe ? "observe_only" : "autonomy", count, decisions: 0, flags,
-                                   runPid: 52000 + Math.floor(Math.random() * 999) }); },
-        `Run started on host ${h.name}.`,
-        ...Object.keys(STEPS).map((step) => `${titleCase(step)}: ${selectionLabel(step, h.armed[step])}`),
-        record ? `Recording: runtime/hosts/${h.name}/bundle/runtime/automation/runs/chase_sim-run-${hex(24)}`
-               : "Recording: off; latest frame and perception are overwritten each iteration",
-        "Control source: runtime host",
-        `Action policy: ${observe ? "observe_only" : "autonomy"}`,
-        "Decision generation: decision-da86a44eb2557b69",
-        "Runtime view: http://127.0.0.1:8996/",
-        count === null ? "Decisions: unbounded" : `Decisions: ${count}`,
-      ];
-    }
-    function stopLines(h) {
-      return [() => { h.state = "stopped"; h.mode = null; },
-              `Stopped the run on host ${h.name}.`, `PID: ${h.runPid}`,
-              `State: runtime/hosts/${h.name}/bundle/runtime/automation/state.json`];
-    }
-    // A started run opens a Stream window on its host, in perception; one already open is brought forward.
-    function openPerception(h) {
-      const open = streams.find((s) => s.context === "stream" && s.host === h.name && s.step === "perception");
-      if (open) floatingFrames[open.root.id].restore(); else openStream({ host: h.name, step: "perception" });
-    }
-    function runHost(h) {
-      const W = state.windows.hosts;
-      const flags = runFlags();
-      W.mode = "rows";
-      begin(W);
-      stream(W, startLines(h, flags), () => { if (h.state === "running") openPerception(h); });
-    }
-    function stopHost(h) { const W = state.windows.hosts; begin(W); stream(W, stopLines(h)); }
-    function restartHost(h) {
-      const W = state.windows.hosts;
-      begin(W);
-      stream(W, [...stopLines(h), ...startLines(h, h.flags).slice(1)], () => { if (h.state === "running") openPerception(h); });
-    }
-    function updateHost(h) {
-      const W = state.windows.hosts;
-      const tree = hex(64);
-      begin(W);
-      stream(W, ["==> Package local controller bundle",
-                 `Archive: runtime/hosts/${h.name}/bundle/releases/autonomy-${tree.slice(0, 12)}-${Date.now()}.tar.gz`,
-                 `Tree SHA-256: ${tree}`, `Archive SHA-256: ${hex(64)}`, `Host updated: ${h.name}`]);
-    }
-    function deleteHost(h) {
-      const W = state.windows.hosts;
-      const wasRunning = h.state === "running";
-      W.selected = null;
-      begin(W);
-      stream(W, [`${wasRunning ? "Stopped the run. " : ""}Stopped host ${h.name}. Removed runtime/hosts/${h.name}.`,
-                 () => state.hosts.splice(state.hosts.indexOf(h), 1)]);
-    }
-    // Selecting a host reads hosts status --name; the pane shows "..." until it answers.
-    function readHost(name) {
-      const W = state.windows.hosts;
-      W.detail = null; W.reading = true; W.log = []; W.ask = null; W.mode = "rows"; render();
-      setTimeout(() => { W.reading = false; if (W.selected === name) W.detail = name; render(); }, ms(300));
-    }
-    // The host's block, as hosts status prints it.
-    function hostLines(name) {
-      const h = state.hosts.find((x) => x.name === name);
-      if (!h) return [];
-      return [`Host ${h.name}  ${hostStateText(h)}`, `  ${h.vehicleLabel}`, `  attached since ${h.since}`, `  ${h.hostUrl}, pid ${h.pid}`];
-    }
-    function hostsView() {
-      const W = state.windows.hosts;
-      const sel = state.hosts.find((h) => h.name === W.selected);
-      const usable = state.vehicles.filter(takesHost);
-      const back = () => { W.ask = null; W.mode = "rows"; W.log = []; render(); };
-      let keys = [];
-      if (W.busy || W.reading) keys = [];
-      else if (W.ask === "delete") keys = [{ label: "YES", action: () => deleteHost(sel) }, { label: "NO", action: back }];
-      else if (W.mode === "create") keys = [{ label: "NEW", action: createHost, disabled: !usable.length || !field("create", "name").value.trim() },
-                                            { label: "CANCEL", action: back }];
-      else if (W.mode === "run") keys = [{ label: "RUN", action: () => runHost(sel), gap: "runProgress" }, { label: "CANCEL", action: back }];
-      else if (sel) keys = [
-        ...(sel.state === "running"
-          ? [{ label: "STOP", action: () => stopHost(sel), gap: "noJson" }, { label: "RSTRT", action: () => restartHost(sel) }]
-          : [{ label: "RUN", action: () => { W.mode = "run"; W.log = []; render(); }, disabled: sel.state === "not answering" }]),
-        { label: "UPD", action: () => updateHost(sel) },
-        { label: "DEL", action: () => { W.ask = "delete"; W.log = []; render(); } },
-      ];
-      // An open form shows only the error it answers.
-      const status = W.ask === "delete" ? "Delete?"
-        : W.log.length ? W.log.join("\n") : W.mode !== "rows" ? "" : W.reading ? "..." : hostLines(W.detail).join("\n");
-      return {
-        form: W.mode === "create" || W.mode === "run" ? W.mode : null,
-        rows: state.hosts.map((h) => ({
-          name: h.name, sub: "", state: "", selected: W.selected === h.name,
-          nameAction: W.busy ? null : () => {
-            if (W.selected === h.name) { W.selected = null; W.detail = null; back(); return; }
-            W.selected = h.name; readHost(h.name);
-          },
-        })),
-        create: { label: "NEW", disabled: W.busy || W.mode === "create",
-                  action: () => {
-                    W.mode = "create"; W.selected = null; W.detail = null; W.ask = null; W.log = [];
-                    field("create", "name").value = ""; render(); field("create", "name").focus();
-                  } },
-        status, keys,
-      };
-    }
-
-    // ---- Plugins: plugins list (packaged, or what its host armed); arm / disarm / save. ----
-    function changePlugin(step, id, wanted) {
-      const W = state.windows.plugins;
-      const h = pluginsHost();
-      const s = STEPS[step];
-      if (!h || W.busy || (s.one && !wanted)) { render(); return; }
-      const next = s.one ? [id] : wanted ? [...h.armed[step], id] : h.armed[step].filter((x) => x !== id);
-      const listed = next.map((x) => `${x} (${sourceOf(h, step, x)})`).join(", ") || "(none)";
-      begin(W);
-      stream(W, [`Host: ${h.name}`, `Request: ${hex(12)}`, `Requested ${step}: ${listed}`, () => { h.armed[step] = next; }, `Applied ${step}: ${listed}`]);
-    }
-    function savePlugins() {
-      const W = state.windows.plugins;
-      const h = pluginsHost();
-      const uploaded = Object.entries(h.armed).flatMap(([step, ids]) => ids.filter((id) => uploadsOf(h)[`${step}/${id}`]).map((id) => `${step}/${id}`));
-      if (uploaded.length) { W.log = [`Cannot save: uploaded plugins cannot be saved (${uploaded.join(", ")}).`]; render(); return; }
-      begin(W);
-      stream(W, [`Host: ${h.name}`,
-        ...Object.keys(STEPS).map((step) => `${titleCase(step)}: ${selectionLabel(step, h.armed[step])} (${h.armed[step].join() === STEPS[step].defaults.join() ? "default" : "saved"})`),
-        `Activations: runtime/hosts/${h.name}/bundle/runtime`,
-        `Startup: ${h.name} starts with these plugins; hosts update keeps the saved steps.`]);
-    }
-    // ---- Plugins' management: plugins list --long, a preset, upload, disarm --all. ----
-    const uploadsOf = (h) => (h ? (h.uploads ||= {}) : {});
-    // A step's catalog on the host: packaged, then what was uploaded there.
-    const stepIds = (step, h) => [...STEPS[step].ids, ...Object.keys(uploadsOf(h)).filter((k) => k.startsWith(`${step}/`)).map((k) => k.split("/")[1])
-      .filter((id) => !STEPS[step].ids.includes(id))];
-    const sourceOf = (h, step, id) => { const u = uploadsOf(h)[`${step}/${id}`]; return u ? `revision ${u.revision}` : "packaged"; };
-    const mfield = (name) => document.querySelector(`#pluginsFrame [data-field=${name}]`);
-    const CAN_DISARM = ["perception", "memory", "proposal"];  // disarm --step / --all leave the one-plugin steps
-    function catalogLines(h, only) {
-      const armed = h ? h.armed : defaultSelection();
-      const steps = only ? [only] : Object.keys(STEPS);
-      if (!h) return [`Catalog: packaged${only ? ` (${only})` : ""}`, ...steps.flatMap((step) => stepIds(step, null)
-        .map((id) => `- ${step}/${id}: packaged${STEPS[step].defaults.includes(id) ? " (default)" : ""}`))];
-      // plugins list --long: each step's armed plugins in run order, then the rest of its catalog.
-      return [`Host: ${h.name}`, `Catalog version: ${h.catalogVersion || 1} (host run ${h.runId || "none"})`, ...(only ? [`Step: ${only}`] : []),
-        ...steps.flatMap((step) => [...armed[step], ...stepIds(step, h).filter((id) => !armed[step].includes(id))].map((id) => {
-          const u = uploadsOf(h)[`${step}/${id}`];
-          return `- ${step}/${id}: ${u ? `revision ${u.revision} (${u.filename})` : "packaged"}${armed[step].includes(id) ? " (armed)" : ""}`;
-        }))];
-    }
-    function fillPresets(step) {
-      const select = mfield("preset");
-      const names = Object.keys(STEPS[step].presets || {});
-      if (select.dataset.filled === step) return;
-      select.dataset.filled = step;
-      select.replaceChildren(...names.map((name) => new Option(name, name)));
-      select.value = STEPS[step].preset || names[0];
-    }
-    // plugins arm with every plugin of the preset, after disarming the step's others.
-    function armPreset(step) {
-      const W = state.windows.plugins, h = pluginsHost();
-      const name = mfield("preset").value, plugins = STEPS[step].presets[name];
-      const listed = plugins.map((id) => `${id} (packaged)`).join(", ");
-      W.mode = "rows"; begin(W);
-      stream(W, [`Host: ${h.name}`, `Request: ${hex(12)}`, `Requested ${step}: ${listed}`,
-                 () => { h.armed[step] = [...plugins]; }, `Applied ${step}: ${listed}`]);
-    }
-    function uploadPlugin() {
-      const W = state.windows.plugins, h = pluginsHost();
-      const step = mfield("step").value, id = mfield("name").value.trim(), file = mfield("file").files[0];
-      const config = mfield("config").value.trim() || "{}";
-      try { if (typeof JSON.parse(config) !== "object" || Array.isArray(JSON.parse(config))) throw new Error(); }
-      catch { W.log = ["--config must be a JSON object."]; render(); return; }
-      const key = `${step}/${id}`;
-      const revision = ((uploadsOf(h)[key] || {}).revision || 0) + 1;
-      const arm = mfield("arm").value === "on";
-      W.mode = "rows"; begin(W);
-      stream(W, [`Host: ${h.name}`, `Plugin: ${key}`, `Revision: ${revision}`,
-        () => { uploadsOf(h)[key] = { revision, filename: file.name }; h.catalogVersion = (h.catalogVersion || 1) + 1; },
-        `Catalog version: ${(h.catalogVersion || 1) + 1} (host run ${h.runId || "none"})`,
-        ...(arm ? [`Request: ${hex(12)}`, `Requested ${step}: ${[...(STEPS[step].one ? [] : h.armed[step].filter((x) => x !== id)), id].map((x) => `${x} (${x === id ? `revision ${revision}` : sourceOf(h, step, x)})`).join(", ")}`,
-                   () => { h.armed[step] = STEPS[step].one ? [id] : [...h.armed[step].filter((x) => x !== id), id]; },
-                   `Applied ${step}: ${h.armed[step].map((x) => `${x} (${sourceOf(h, step, x)})`).join(", ")}`] : [])]);
-    }
-    function disarmAll(only) {
-      const W = state.windows.plugins, h = pluginsHost();
-      const steps = only ? [only] : CAN_DISARM;
-      W.ask = null; begin(W);
-      stream(W, [`Host: ${h.name}`, `Request: ${hex(12)}`, ...steps.map((step) => `Requested ${step}: (none)`),
-                 () => { for (const step of steps) h.armed[step] = []; }, ...steps.map((step) => `Applied ${step}: (none)`)]);
-    }
-    $("filePick").addEventListener("click", () => mfield("file").click());
-    $("pluginsHosts").addEventListener("click", () => {
-      const W = state.windows.plugins;
-      W.context = W.context === "hosts" ? "steps" : "hosts"; W.log = []; render();
-    });
-    // STRM: plugins stream --step's terminal screen, redrawn in the pane each refresh, as the CLI
-    // replaces its screen. It reads the capture the Perception window plays.
-    function streamScreen(step, h, index = h.decisions) {
-      const live = h.state === "running" || h.decisions > 0;
-      const frame = live && CAPTURE.length ? publishedFrame(h, index) : null;
-      const st = frame && frame.stream;
-      const view = "view: http://127.0.0.1:8996/";
-      const armed = h.armed.perception;
-      if (step === "perception") {
-        // The recorded text, keeping only what the armed plugins produced.
-        const text = st ? st.perception_text.split("\n").filter((line) => {
-          const m = line.match(/^(?:plugin_run id|signal id=\S+ plugin|thing id=\S+ plugin)=(\S+)/);
-          return !m || armed.includes(m[1]);
-        }).map((line) => line.startsWith("plugins=") ? `plugins=${armed.join(",")}` : line).join("\n") : "";
-        return ["automa perception stream", "", `host: ${h.name}`, `url: ${h.hostUrl}`, `status: ${frame ? "live" : "waiting"}`,
-          `presets: perception=${STEPS.perception.preset} memory=${STEPS.memory.preset}  mode: ${st ? st.mode : "-"}`,
-          `control: steering=${st ? st.control.steering : "-"}  throttle=${st ? st.control.throttle : "-"}  reason=${st ? st.control.reason : "-"}`,
-          `cadence: processed=${frame ? h.decisions : "-"}  cycle_ms=${st ? st.cycle_ms : "-"}  age_ms=${frame ? 4 : "-"}`,
-          `latest: frame=${frame ? frame.frame.frame_id : "none"}  captured_at_ms=${frame ? frame.frame.captured_at_ms : "-"}  signals=${st ? st.signal_count : "-"}  things=${frame ? frame.perception.things.length : "-"}`,
-          view, `publication: ${frame ? "healthy" : "unavailable"}  json: /host/observation/latest  frame: /host/observation/latest/frame.jpg`,
-          "", "latest perception", "-----------------", text || "(no latest perception yet)"].join("\n");
-      }
-      if (step === "memory") {
-        const m = st && st.memory;
-        return [`Live memory: ${h.name} [${frame ? "live" : "waiting"}]`, `Endpoint: ${h.hostUrl}/host/memory`,
-          `Mode: ${st ? st.mode : "-"}  session: ${frame ? "running" : "idle"}`,
-          ...(m ? [`Applied plugins: ${h.armed.memory.join(", ")}`,
-                   ...m.plugins.map((x) => `  ${x.plugin_id}: health=${x.health} epoch=${x.epoch_id} records=${x.record_count}`),
-                   `Evidence publisher: ${m.publisher || "none"}`, `Counters: updates=${h.decisions} resets=0 failures=0`] : []),
-          "", "memory map: http://127.0.0.1:8996/memory", "perception view: http://127.0.0.1:8996/perception"].join("\n");
-      }
-      if (!st) return `Host ${h.name} has no fresh ${step} record yet.`;
-      return [`${step[0].toUpperCase()}${step.slice(1)} stream: ${h.name} frame=${frame.frame.frame_id} run=${st.run_id} age_ms=4 max_age_ms=2000`,
-        `Generation: ${st.generation_id}`, `Plugins: ${h.armed[step].join(", ") || "none"}`, ...st[step],
-        ...(step === "action" ? [st.application] : []),
-        `Timing: ${step} 1 ms; cycle ${st.cycle_ms} ms`, "", "perception view: http://127.0.0.1:8996/perception"].join("\n");
-    }
-    // VIEW: a Stream window on the selected host, in the step.
-    function streamStep(step) { openStream({ host: pluginsHost().name, step }); }
-    // The selected step's lines, as plugins list --step prints them; * marks what is armed.
-    function stepLines(step, h) {
-      const s = STEPS[step];
-      const armed = (h ? h.armed : defaultSelection())[step];
-      return [`${titleCase(step)}${s.preset ? ` (${s.preset} preset)` : ""}${s.one ? ", one plugin" : ""}`,
-              `Catalog: ${h ? `host ${h.name}` : "packaged"}`,
-              ...s.ids.map((id) => `${armed.includes(id) ? "*" : " "} ${id} (packaged)${s.defaults.includes(id) ? " default" : ""}`)];
-    }
-    function pluginsView() {
-      const W = state.windows.plugins;
-      if (W.host && !pluginsHost()) W.host = null;  // a deleted host leaves the packaged catalog
-      const h = pluginsHost();
-      const upload = { label: "UPLD", disabled: !h || W.busy || W.mode === "upload" || W.context === "hosts",
-                       action: () => {
-                         W.mode = "upload"; W.ask = null; W.log = []; W.streaming = null;
-                         mfield("step").value = (W.selected || "perception").split("/")[0];
-                         for (const name of ["name", "entrypoint", "config"]) mfield(name).value = "";
-                         mfield("file").value = ""; mfield("arm").value = "off";
-                         render(); mfield("name").focus();
-                       } };
-      // HOSTS: the hosts, and packaged for no host; picking one goes back to its steps.
-      if (W.context === "hosts") {
-        const pick = (name) => () => {
-          if (W.host !== name) { W.host = name; W.streaming = null; W.selected = null; }
-          W.context = "steps"; W.mode = "rows"; W.ask = null; W.log = []; render();
-        };
-        return {
-          rows: [{ name: "packaged", state: "", selected: !W.host, nameAction: pick(null) },
-                 ...state.hosts.map((x) => ({ name: x.name, state: "", selected: W.host === x.name, nameAction: pick(x.name) }))],
-          status: h ? feedLines(h).join("\n") : "Catalog: packaged", keys: [], create: upload, mode: "choose host",
-        };
-      }
-      const armed = h ? h.armed : defaultSelection();
-      const [step, id] = (W.selected || "").split("/");
-      const back = () => { W.mode = "rows"; W.ask = null; W.log = []; render(); };
-      // A stream belongs to its step; selecting another, or opening a form, ends it.
-      if (W.streaming && (W.streaming !== step || W.mode !== "rows")) W.streaming = null;
-      const streaming = !!W.streaming;
-      const disarmScope = step && CAN_DISARM.includes(step) ? step : null;
-      const streamKeys = step && step !== "observation" ? [
-        { label: streaming ? "STOP" : "STRM", action: () => { W.streaming = streaming ? null : step; W.log = []; render(); }, disabled: !h },
-        { label: "VIEW", action: () => streamStep(step), disabled: !h, gap: step === "proposal" || step === "plan" ? "stepViews" : null },
-      ] : [];
-      if (W.mode === "preset" && step) fillPresets(step);
-      const picked = mfield("file").files[0];
-      $("fileName").textContent = picked ? picked.name : "none";
-      $("fileName").classList.toggle("muted", !picked);
-      const uploadReady = mfield("name").value.trim() && picked && mfield("entrypoint").value.trim();
-      let keys = [];
-      if (W.busy) keys = [];
-      else if (W.ask) keys = [{ label: "YES", action: () => disarmAll(disarmScope) }, { label: "NO", action: back }];
-      else if (W.mode === "preset") keys = [{ label: "ARM", action: () => armPreset(step), gap: "presetArm" }, { label: "CANCEL", action: back }];
-      else if (W.mode === "upload") keys = [{ label: "UPLD", action: uploadPlugin, disabled: !uploadReady }, { label: "CANCEL", action: back }];
-      else if (id) {
-        const on = armed[step].includes(id);
-        // A one-plugin step is changed by arming another, never by disarming its one.
-        keys = [...(on ? (STEPS[step].one ? [] : [{ label: "DSARM", action: () => changePlugin(step, id, false), disabled: !h }])
-                       : [{ label: "ARM", action: () => changePlugin(step, id, true), disabled: !h }]), ...streamKeys];
-      } else if (step) keys = [
-        ...(STEPS[step].presets ? [{ label: "PRST", action: () => { W.mode = "preset"; W.log = []; W.streaming = null; render(); }, disabled: !h, gap: "presetArm" }] : []),
-        ...streamKeys,
-        ...(disarmScope ? [{ label: "DSALL", action: () => { W.ask = "disarm"; W.log = []; W.streaming = null; render(); }, disabled: !h }] : []),
-      ];
-      else keys = [
-        { label: "SAVE", action: savePlugins, disabled: !h, gap: "saveRoute" },
-        { label: "DSALL", action: () => { W.ask = "disarm"; W.log = []; render(); }, disabled: !h },
-      ];
-      const rows = [];
-      for (const name of Object.keys(STEPS)) {
-        rows.push({ name, sub: "", state: "", selected: W.selected === name,
-                    nameAction: W.busy ? null : () => { W.selected = W.selected === name || W.selected?.startsWith(`${name}/`) ? null : name; back(); } });
-        if (step !== name) continue;
-        for (const plugin of stepIds(name, h)) rows.push({
-          name: plugin, sub: "", state: "", child: true, connected: armed[name].includes(plugin),
-          selected: W.selected === `${name}/${plugin}`,
-          nameAction: W.busy ? null : () => { W.selected = W.selected === `${name}/${plugin}` ? name : `${name}/${plugin}`; back(); },
-        });
-      }
-      const status = W.ask ? (disarmScope ? `Disarm every ${disarmScope} plugin?` : "Disarm every plugin?")
-        : W.log.length ? W.log.join("\n")
-        : W.mode === "preset" ? `plugins: ${(STEPS[step].presets[mfield("preset").value] || []).join(", ")}`
-        : W.mode === "upload" ? ""
-        : streaming ? streamScreen(step, h)
-        : id ? [`${step}/${id} (${sourceOf(h, step, id)})`, `  ${armed[step].includes(id) ? `armed on ${h ? h.name : "nothing (no host)"}` : "not armed"}`,
-                `  ${STEPS[step].defaults.includes(id) ? "a default of " + step : "not a default"}`].join("\n")
-        : step ? stepLines(step, h).join("\n")
-        : catalogLines(h).join("\n");
-      return {
-        form: W.mode === "preset" || W.mode === "upload" ? W.mode : null,
-        rows, status, keys, keepScroll: streaming, create: upload,
-        mode: `${h ? h.name : "packaged"} · ${W.ask ? "disarm" : W.mode === "preset" ? `${step} preset` : W.mode === "upload" ? "upload"
-               : streaming ? `${step} stream` : "catalog"}`,
-      };
-    }
-
-    // Keys that take something away (a record, a listing, a connection, a form) carry a red tint.
-    const REMOVING = new Set(["DEL", "UNTRK", "CANCEL", "DSARM", "DSALL"]);
-
-    // ---- Window plumbing: fixed slots, refilled from each view. ----
-    function deskWindow(id, view) {
-      const root = $(id);
-      const w = { view, root, note: root.querySelector("[data-note]"), rowsEl: root.querySelector("[data-rows]"),
-                  forms: [...root.querySelectorAll("[data-form]")], text: root.querySelector(".float-frame-status-text"),
-                  keys: [...root.querySelectorAll("[data-key]")], create: root.querySelector("[data-create]"),
-                  slots: [], items: [], actions: [], createAction: null,
-                  paneForm: !!root.querySelector(".float-frame-status [data-form]"),
-                  modeEl: root.querySelector(".float-frame-title [data-mode]") };
-      if (w.create) w.create.addEventListener("click", () => w.createAction && w.createAction());
-      if (w.rowsEl) w.rowsEl.addEventListener("click", (event) => {
-        const button = event.target.closest(".host-row button");
-        if (!button || button.disabled) return;
-        const item = w.items[w.slots.indexOf(button.parentElement)];
-        const action = item && (button.dataset.part === "state" ? item.stateAction : item.nameAction);
-        if (action) action();
-      });
-      w.keys.forEach((key, i) => key.addEventListener("click", () => w.actions[i] && w.actions[i]()));
-      root.querySelectorAll("select").forEach((select) => select.addEventListener("change", render));
-      root.querySelectorAll(".pane-form input").forEach((input) => { input.addEventListener("input", render); input.addEventListener("change", render); });
-      return w;
-    }
-    function emptyRow(w) {
-      const row = document.createElement("div");
-      row.className = "host-row";
-      row.innerHTML = '<button type="button" class="host-name" data-part="name"><span></span><small></small></button><button type="button" class="host-state" data-part="state"></button>';
-      return w.rowsEl.appendChild(row);
-    }
-    function setGap(el, key) {
-      if (key) { el.dataset.gap = key; el.dataset.gapN = String(GAP_KEYS.indexOf(key) + 1); el.title = GAPS[key]; }
-      else { delete el.dataset.gap; delete el.dataset.gapN; el.removeAttribute("title"); }
-    }
-    const FORM_MODES = { discover: "discover", create: "new host", run: "run" };
-    function paint(w) {
-      const v = w.view();
-      if (w.modeEl) w.modeEl.textContent = v.mode ?? FORM_MODES[v.form] ?? "";
-      if (w.note) { w.note.textContent = v.note || ""; w.note.hidden = !v.note || !!v.form; }
-      w.forms.forEach((form) => { form.hidden = form.dataset.form !== v.form; });
-      if (w.rowsEl) {
-        const rows = v.form && !w.paneForm ? [] : v.rows;
-        while (w.slots.length < rows.length) w.slots.push(emptyRow(w));
-        w.items = rows;
-        w.slots.forEach((slot, i) => {
-          const item = rows[i];
-          slot.hidden = !item;
-          if (!item) return;
-          const [name, stateCell] = slot.children;
-          name.children[0].textContent = item.name;
-          name.children[1].textContent = item.sub || "";
-          setGap(name.children[1], item.subGap);
-          stateCell.textContent = item.state;
-          name.disabled = !item.nameAction;
-          stateCell.disabled = !item.stateAction;
-          slot.classList.toggle("selected", !!item.selected);
-          slot.classList.toggle("exited", !!item.exited);
-          slot.classList.toggle("connected", !!item.connected);
-          slot.classList.toggle("child", !!item.child);
-        });
-      }
-      if (w.create) {
-        w.create.textContent = v.create.label;
-        w.create.disabled = !!v.create.disabled;
-        w.createAction = v.create.disabled ? null : v.create.action;
-        setGap(w.create, v.create.gap);
-      }
-      if (v.statusGap !== undefined) setGap(w.text.parentElement, v.statusGap);
-      if (w.paneForm) {
-        // An open form fills the pane's top; an error it answers prints under it.
-        const open = w.forms.find((form) => form.dataset.form === v.form);
-        w.text.hidden = !!open && !v.status;
-        w.text.style.top = open ? `${open.offsetTop + open.offsetHeight}px` : "";
-      }
-      if (w.text.textContent !== v.status) {
-        const top = w.text.scrollTop;
-        w.text.textContent = v.status;
-        w.text.scrollTop = v.keepScroll ? top : w.text.scrollHeight;
-      }
-      w.keys.forEach((button, i) => {
-        const key = v.keys[i];
-        button.hidden = !key;
-        w.actions[i] = key && !key.disabled ? key.action : null;
-        if (!key) return;
-        button.textContent = key.label;
-        button.dataset.tone = REMOVING.has(key.label.toUpperCase()) ? "remove" : "";
-        button.disabled = !!key.disabled;
-        setGap(button, key.gap);
-      });
-    }
-    const windows = [deskWindow("vehiclesFrame", vehiclesView), deskWindow("hostsFrame", hostsView), deskWindow("pluginsFrame", pluginsView),
-                     deskWindow("simulatorsFrame", simulatorsView)];
-    function fillVehicleSelect() {
-      const usable = state.vehicles.filter(takesHost);
-      fillSelect(field("create", "vehicle"),
-                 usable.length ? usable.map((v) => [v.url, `${v.label} · ${v.provider}`]) : [["", "no vehicle can take a host"]]);
-    }
-    // Touch the options only when they change: rewriting them on every tick
-    // keeps re-opening a native dropdown, and one in use is left alone.
-    function fillSelect(select, wanted) {
-      const key = JSON.stringify(wanted);
-      if (select.dataset.filled === key || document.activeElement === select) return;
-      select.dataset.filled = key;
-      while (select.options.length < wanted.length) select.add(new Option());
-      [...select.options].forEach((option, i) => {
-        const hidden = i >= wanted.length;
-        if (option.hidden !== hidden) option.hidden = hidden;
-        const disabled = hidden || !wanted[i][0];
-        if (option.disabled !== disabled) option.disabled = disabled;
-        if (!hidden && option.value !== wanted[i][0]) option.value = wanted[i][0];
-        if (!hidden && option.textContent !== wanted[i][1]) option.textContent = wanted[i][1];
-      });
-      if (select.selectedIndex < 0 || select.selectedIndex >= wanted.length) select.selectedIndex = 0;
-    }
-
-    // ---- Perception: a recorded chase-sim run (capture/) stands in for the host's /api/latest. ----
-    const CAPTURE = window.CAPTURE || [];
-    const PALETTE = ["#00d084", "#ffb000", "#ff5a5f", "#4ea5ff", "#d678ff", "#f46f36", "#12b8b0"];
-    const colorFor = (value) => {
-      let hash = 0;
-      for (const char of value) hash = ((hash << 5) - hash + char.charCodeAt(0)) | 0;
-      return PALETTE[Math.abs(hash) % PALETTE.length];
-    };
-    const confidenceText = (value, digits = 2) => (Number.isFinite(Number(value)) && value !== null ? Number(value).toFixed(digits) : "—");
-    const drawable = (thing) => thing?.kind !== "sensor_frame" && thing?.location?.frame === "image" &&
-      (Array.isArray(thing.location.polygon_xy_norm) || Array.isArray(thing.location.bbox_xyxy_norm));
-    const METRICS = ["Frame", "Captured", "Resolution", "Overlay source", "Overlay lag", "Result age", "Cycle", "Perception",
-                     "Confidence", "Status", "Memory keys", "Evidence publisher"];
-    // A window's aside: every slot made once, from what the capture can show, and refilled each frame.
-    function buildAside(s) {
-      const in_ = (sel) => s.root.querySelector(sel);
-      const kinds = [...new Set(CAPTURE.flatMap((f) => (f.perception.things || []).filter(drawable).map((t) => String(t.kind || "unknown"))))].sort();
-      for (const kind of kinds) {
-        s.kinds.set(kind, true);
-        const toggle = document.createElement("button");
-        toggle.type = "button"; toggle.className = "info-toggle"; toggle.dataset.kind = kind; toggle.setAttribute("aria-pressed", "true");
-        toggle.innerHTML = `<span class="swatch" style="background:${colorFor(kind)}"></span><span>${kind}</span>`;
-        in_("[data-kinds]").append(toggle);
-      }
-      for (const name of METRICS) {
-        const dt = document.createElement("dt"); dt.textContent = name;
-        const dd = document.createElement("dd"); dd.dataset.metric = name;
-        in_("[data-metrics]").append(dt, dd);
-      }
-      const runSlots = Math.max(STEPS.perception.ids.length, ...CAPTURE.map((f) => (f.perception.plugin_runs || []).length));
-      const thingSlots = Math.max(1, ...CAPTURE.map((f) => (f.perception.things || []).length));
-      for (const [list, count, none] of [["[data-runs]", runSlots, "No plugin run data"], ["[data-findings]", thingSlots, "No findings"]]) {
-        for (let i = 0; i < count; i++) {
-          const row = document.createElement("div");
-          row.className = "info-row"; row.hidden = true;
-          row.innerHTML = `<span class="swatch"></span><div></div><div class="secondary"></div>`;
-          in_(list).append(row);
-        }
-        const note = document.createElement("div"); note.className = "info-none"; note.hidden = true; note.textContent = none;
-        in_(list).append(note);
-      }
-      const redraw = () => drawFindings(s.image, s.canvas, s.shown, s);
-      s.root.querySelectorAll("[data-overlay]").forEach((toggle) => toggle.addEventListener("click", () => {
-        const key = toggle.dataset.overlay;
-        s.overlays[key] = !s.overlays[key]; toggle.setAttribute("aria-pressed", String(s.overlays[key])); redraw();
-      }));
-      in_("[data-kinds]").addEventListener("click", (event) => {
-        const toggle = event.target.closest("[data-kind]");
-        if (!toggle) return;
-        const kind = toggle.dataset.kind;
-        s.kinds.set(kind, !s.kinds.get(kind)); toggle.setAttribute("aria-pressed", String(s.kinds.get(kind))); redraw();
-      });
-      in_("[data-pause]").addEventListener("click", () => { s.paused = !s.paused; render(); });
-      s.image.addEventListener("load", redraw);
-    }
-
-    // What the host published for this frame, with only the perception plugins it has armed.
-    function publishedFrame(h, index = h.decisions) {
-      const frame = CAPTURE[index % CAPTURE.length];
-      const armed = h.armed.perception;
-      const recorded = frame.perception.plugin_runs || [];
-      const runs = armed.map((id) => recorded.find((run) => run.plugin_id === id)
-        || { plugin_id: id, status: "ok", duration_ms: 1 + (id.length % 4), thing_count: 0 });
-      const things = (frame.perception.things || []).filter((t) => armed.includes(t.source_plugin_id));
-      return { ...frame, host_name: h.name, perception: { ...frame.perception, plugin_runs: runs, things },
-               overlay: { status: "current", source_frame_id: frame.frame.frame_id, frame_lag: 0, frame_lag_ms: 0, result_age_ms: 4 } };
-    }
-    // A frame's findings over its image; ``shown`` says which kinds, regions and labels to draw.
-    function drawFindings(image, canvas, frame, shown) {
-      if (!image.naturalWidth || !frame) return;
-      const context = canvas.getContext("2d");
-      canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
-      context.clearRect(0, 0, canvas.width, canvas.height);
-      // Labels are drawn at the image's own size; keep them the window's 11 px on screen.
-      const scale = canvas.width / Math.max(1, image.clientWidth);
-      const occupied = [];
-      for (const thing of frame.perception.things.filter(drawable)) {
-        const kind = String(thing.kind || "unknown");
-        if (shown.kinds.get(kind) === false) continue;
-        const loc = thing.location;
-        const polygon = Array.isArray(loc.polygon_xy_norm) && loc.polygon_xy_norm.length >= 3 ? loc.polygon_xy_norm : null;
-        const box = Array.isArray(loc.bbox_xyxy_norm) ? loc.bbox_xyxy_norm : null;
-        const [x1, y1, x2, y2] = box || [Math.min(...polygon.map((p) => p[0])), Math.min(...polygon.map((p) => p[1])),
-                                         Math.max(...polygon.map((p) => p[0])), Math.max(...polygon.map((p) => p[1]))];
-        const x = x1 * canvas.width, y = y1 * canvas.height, width = (x2 - x1) * canvas.width, height = (y2 - y1) * canvas.height;
-        if (width <= 0 || height <= 0) continue;
-        const color = colorFor(kind);
-        if (shown.overlays.regions) {
-          context.fillStyle = `${color}22`; context.strokeStyle = color; context.lineWidth = Math.max(2, scale * 1.5);
-          if (polygon) {
-            context.beginPath();
-            polygon.forEach(([px, py], i) => (i ? context.lineTo : context.moveTo).call(context, px * canvas.width, py * canvas.height));
-            context.closePath(); context.fill(); context.stroke();
-          } else { context.fillRect(x, y, width, height); context.strokeRect(x, y, width, height); }
-        }
-        if (shown.overlays.labels) {
-          const id = String(thing.thing_id || kind);
-          const label = `${id.length > 22 ? `${id.slice(0, 19)}...` : id}  ${confidenceText(thing.confidence)}`;
-          context.font = `${Math.round(11 * scale)}px Menlo, Consolas, monospace`;
-          const lw = context.measureText(label).width + 8 * scale, lh = 15 * scale;
-          const clampX = (v) => Math.max(0, Math.min(canvas.width - lw, v));
-          const spot = [[clampX(x), y - lh - 3], [clampX(x + width - lw), y - lh - 3], [clampX(x), y + 3], [clampX(x), y + height + 3]]
-            .map(([lx, ly]) => ({ x: lx, y: ly, w: lw, h: lh }))
-            .find((r) => r.y >= 0 && r.y + r.h <= canvas.height &&
-              !occupied.some((o) => !(r.x + r.w + 3 <= o.x || o.x + o.w + 3 <= r.x || r.y + r.h + 3 <= o.y || o.y + o.h + 3 <= r.y)));
-          if (spot) {
-            occupied.push(spot);
-            context.fillStyle = color; context.fillRect(spot.x, spot.y, spot.w, spot.h);
-            context.fillStyle = "#101214"; context.fillText(label, spot.x + 4 * scale, spot.y + 11 * scale);
-          }
-        }
-      }
-    }
-    // Perception mode: the frame on the right, the v1 page's aside under the steps.
-    function paintFeed(s, h, live) {
-      const in_ = (sel) => s.root.querySelector(sel);
-      in_("[data-pause]").hidden = !live;
-      in_("[data-pause]").textContent = s.paused ? "RESUME" : "PAUSE";
-      in_("[data-empty]").hidden = !!live;
-      in_("[data-empty]").textContent = h ? "Waiting for the first published frame" : "No host to stream.";
-      in_(".feed-stage").hidden = !live;
-      if (!live) { s.shown = null; return; }
-      const frame = publishedFrame(h, s.index);
-      s.shown = frame;
-      const pane = in_("[data-feed]");
-      pane.style.setProperty("--feed-h", `${pane.clientHeight}px`);
-      if (s.image.getAttribute("src") !== frame.image) s.image.src = frame.image;
-      else drawFindings(s.image, s.canvas, frame, s);
-      const p = frame.perception;
-      const values = {
-        Frame: frame.frame.frame_id, Captured: String(frame.frame.captured_at_ms),
-        Resolution: `${frame.frame.width_px} x ${frame.frame.height_px}`, "Overlay source": frame.overlay.source_frame_id,
-        "Overlay lag": "0 frames / 0 ms", "Result age": `${frame.overlay.result_age_ms} ms`,
-        Cycle: `${frame.cycle.cycle_duration_ms ?? "?"} ms`, Perception: `${frame.cycle.perception_ms ?? "?"} ms`,
-        Confidence: confidenceText(p.confidence), Status: p.status || "unknown",
-        "Memory keys": (frame.memory.plugins || []).length ? frame.memory.plugins.map((m) => m.plugin_id).join(", ") : "no plugins",
-        "Evidence publisher": frame.memory.evidence_publisher || "none",
-      };
-      s.root.querySelectorAll("[data-metrics] dd").forEach((dd) => { dd.textContent = dd.title = values[dd.dataset.metric] ?? "—"; });
-      const fill = (list, items, line) => {
-        const el = in_(list);
-        [...el.querySelectorAll(".info-row")].forEach((row, i) => {
-          const item = items[i];
-          row.hidden = !item;
-          if (!item) return;
-          const [name, detail, cls, mark] = line(item);
-          row.className = `info-row ${cls}`; row.hidden = false;
-          row.style.setProperty("--mark", mark || "");
-          if (!mark) row.style.removeProperty("--mark");
-          row.children[1].textContent = name; row.children[2].textContent = detail;
-        });
-        el.querySelector(".info-none").hidden = items.length > 0;
-      };
-      fill("[data-runs]", p.plugin_runs, (run) => [run.plugin_id, `${run.status} | ${run.duration_ms ?? "?"} ms | ${run.thing_count ?? 0} findings`, run.status || ""]);
-      fill("[data-findings]", p.things, (t) => [t.label || t.thing_id, `${t.kind} | ${t.location?.frame}:${t.location?.zone} | ${confidenceText(t.confidence)}`, "", colorFor(String(t.kind || "unknown"))]);
-      if (in_("details").open) in_("[data-raw]").textContent = JSON.stringify(frame, null, 2);
-    }
-
-    // ---- Stream: any number of windows, each on its own host and step. ----
-    const STREAM_STEPS = ["perception", "memory", "proposal", "plan", "action"];  // plugins stream --step
-    const streams = [];
-    let streamsOpened = 0;
-    function openStream({ host, step } = {}) {
-      const n = ++streamsOpened;
-      const root = $("streamTemplate").content.firstElementChild.cloneNode(true);
-      root.id = `streamFrame${n}`;
-      $("floatLayer").append(root);
-      // Each opens in the right column's middle slot, stepped down from the last; never over the launchers.
-      const col = document.querySelector("main").getBoundingClientRect();
-      const h = Math.round(innerHeight / 3), w = 2 * h, down = ((n - 1) % 8) * 28;
-      const x = Math.min(Math.max(8, innerWidth - w - 8), col.right + 16);
-      localStorage.setItem(`automa-float-${root.id}`, JSON.stringify({ position: { x, y: h + down }, size: { width: w, height: h }, minimized: false, closed: false }));
-      bindFloatingFrame(root);
-      bindFrameStatus(root.querySelector(".float-frame-status"));
-      // Given a step, it opens streaming it; otherwise on its feeds, the selected host's steps shown.
-      const s = { root, step: step || null, paused: false, index: 0, shown: null,
-                  context: step ? "stream" : "feeds", host: host || null, open: host || null,
-                  overlays: { regions: true, labels: true }, kinds: new Map(),
-                  image: root.querySelector(".feed-stage img"), canvas: root.querySelector(".feed-stage canvas") };
-      buildAside(s);
-      s.w = deskWindow(root.id, () => streamView(s));
-      root.querySelector("[data-plugins]").addEventListener("click", () => showInPlugins(s.host, s.step));
-      // One click is one window: closing it ends it.
-      root.querySelector("[data-frame-close]").addEventListener("click", () => {
-        streams.splice(streams.indexOf(s), 1);
-        localStorage.removeItem(`automa-float-${root.id}`);
-        root.remove();
-        render();
-      });
-      streams.push(s);
-      floatingFrames[root.id].restore();
-      render();
-    }
-    // A host's status and what it streams, for the feeds context's pane.
-    function feedLines(h) {
-      return [...hostLines(h.name), "", ...STREAM_STEPS.map((step) => `${titleCase(step)}: ${h.armed[step].join(", ") || "(none)"}`)];
-    }
-    function streamView(s) {
-      const h = state.hosts.find((x) => x.name === s.host);
-      const live = !!h && (h.state === "running" || h.decisions > 0);
-      const feeds = { label: "FEEDS", action: () => { s.context = "feeds"; s.open = s.host; render(); } };
-      if (s.context === "feeds") {
-        const open = state.hosts.find((x) => x.name === s.open);
-        const rows = state.hosts.flatMap((x) => [
-          { name: x.name, state: "", selected: x === open,
-            nameAction: () => { s.open = s.open === x.name ? null : x.name; render(); } },
-          ...(x === open ? STREAM_STEPS.map((step) => ({ name: step, state: "", child: true,
-            nameAction: () => { Object.assign(s, { host: x.name, step, context: "stream", paused: false }); render(); } })) : []),
-        ]);
-        // FEEDS goes back to the stream it left, when there is one.
-        const back = s.step && s.host;
-        return { rows, status: open ? feedLines(open).join("\n") : "", keys: [], keepScroll: true,
-                 create: { ...feeds, disabled: !back, action: () => { s.context = "stream"; render(); } } };
-      }
-      if (live && !s.paused) s.index = h.decisions;
-      return {
-        rows: [],
-        status: !h ? "No host to stream." : s.step === "perception" ? "" : streamScreen(s.step, h, s.index),
-        keys: live && s.step !== "perception" ? [{ label: s.paused ? "RESUME" : "PAUSE", action: () => { s.paused = !s.paused; render(); } }] : [],
-        keepScroll: true, create: feeds,
-      };
-    }
-    // PLGS: the Plugins window on a stream's host, its step selected.
-    function showInPlugins(host, step) {
-      const W = state.windows.plugins;
-      Object.assign(W, { host, selected: step, context: "steps", mode: "rows", ask: null, log: [], streaming: null });
-      floatingFrames.pluginsFrame.restore();
-      render();
-    }
-    function paintStream(s) {
-      if (s.host && !state.hosts.some((h) => h.name === s.host)) Object.assign(s, { host: null, step: null, context: "feeds" });
-      const h = state.hosts.find((x) => x.name === s.host);
-      const streaming = s.context === "stream";
-      const live = streaming && !!h && (h.state === "running" || h.decisions > 0) && CAPTURE.length > 0;
-      const perception = streaming && s.step === "perception";
-      s.root.dataset.context = s.context;
-      s.root.querySelector("[data-plugins]").disabled = !streaming || !h || state.windows.plugins.busy;
-      s.root.querySelector("[data-feed]").hidden = !perception;
-      s.root.querySelector("[data-aside]").hidden = !perception;
-      s.root.querySelector("[data-text-pane]").hidden = perception;
-      const frame = live ? publishedFrame(h, s.index) : null;
-      s.root.querySelector("[data-summary]").textContent = !streaming ? "feeds"
-        : `${h.name} · ${s.step}${frame ? ` · ${frame.frame.frame_id}` : ""}`;
-      const dot = s.root.querySelector("[data-dot]");
-      dot.hidden = !live; dot.className = `status-dot ${s.paused ? "" : "live"}`;
-      // The other steps' details, where perception has its aside.
-      const meta = s.root.querySelector("[data-step-meta]");
-      meta.hidden = !streaming || perception;
-      if (!meta.hidden) {
-        const st = frame && frame.stream;
-        const rows = [["Host", h.name], ["Step", s.step], ["Plugins", h.armed[s.step].join(", ") || "none"],
-                      ["Frame", frame ? frame.frame.frame_id : "—"], ["Run", st ? st.run_id : "—"],
-                      ["Generation", st ? st.generation_id : "—"], ["Cycle", st ? `${st.cycle_ms} ms` : "—"]];
-        while (meta.children.length < rows.length * 2) meta.append(document.createElement("dt"), document.createElement("dd"));
-        rows.forEach(([name, value], i) => {
-          meta.children[2 * i].textContent = name;
-          meta.children[2 * i + 1].textContent = meta.children[2 * i + 1].title = value;
-        });
-      }
-      if (perception) paintFeed(s, h, live);
-      else {
-        s.shown = null;
-        s.root.querySelector("[data-pause]").hidden = true;
-      }
-    }
-    $("streamOpen").addEventListener("click", () => openStream());
-
-    // ---- The column's readouts. ----
-    function paintColumn() {
-      const listed = state.vehicles.filter(listedVehicle);
-      $("vehiclesReadout").textContent = `${listed.filter(takesHost).length}/${listed.length} up`;
-      $("hostsReadout").textContent = `${state.hosts.length} host${state.hosts.length === 1 ? "" : "s"}`;
-      $("pluginsReadout").textContent = pluginsHost() ? pluginsHost().name : "packaged";
-      $("streamReadout").textContent = streams.length ? `${streams.length} open` : "";
-      $("simulatorsReadout").textContent = created().length ? `${created().length} created` : "none";
-    }
-    function render() {
-      fillVehicleSelect();
-      windows.forEach(paint);
-      for (const s of streams) { paint(s.w); paintStream(s); }
-      paintColumn();
-    }
-
-    setInterval(() => {
-      for (const host of state.hosts) {
-        if (host.state !== "running") continue;
-        host.decisions += 1;
-        if (host.count && host.decisions >= host.count) { host.state = "finished run"; host.mode = null; }
-      }
-      render();
-    }, ms(250) || 25);
-
-    $("workbenchLink").addEventListener("click", (event) => event.preventDefault());
-    $("gapList").innerHTML = GAP_KEYS.map((key, i) => `<p class="gap-item"><b>${i + 1}</b><span>${GAPS[key]}</span></p>`).join("");
-    document.querySelectorAll("[data-gap]").forEach((el) => setGap(el, el.dataset.gap));
-    $("endProcess").addEventListener("click", endProcess);
-    $("gapsToggle").addEventListener("click", () => {
-      const on = !document.body.classList.contains("show-gaps");
-      document.body.classList.toggle("show-gaps", on);
-      $("gapsToggle").setAttribute("aria-pressed", String(on));
-      if (window.floatingFrames) (on ? floatingFrames.gapsFrame.restore() : floatingFrames.gapsFrame.close());
-    });
-
-    // Every load: all windows closed, commands left of the column, steps right of it, never over it.
-    (function seedLayout() {
-      // Every window opens a third of the page tall and twice as wide as tall; any can be resized.
-      // Two stacks of three beside the column: the left in flow order (Simulators, Vehicles,
-      // Hosts), the right Plugins, with Stream windows opening below it.
-      const col = document.querySelector("main").getBoundingClientRect();
-      const gap = 16, h = Math.round(window.innerHeight / 3), w = 2 * h;
-      const left = Math.max(8, col.left - gap - w);
-      const right = Math.min(Math.max(8, window.innerWidth - w - 8), col.right + gap);
-      const slot = (i) => i * h;
-      const layout = {
-        simulatorsFrame: [left, slot(0), w, h], vehiclesFrame: [left, slot(1), w, h], hostsFrame: [left, slot(2), w, h],
-        pluginsFrame: [right, slot(0), w, h],  // Stream windows open below it, each a step down
-        gapsFrame: [Math.max(8, (window.innerWidth - w) / 2), window.innerHeight - h - 44, w, h],  // above the mock controls
-      };
-      for (const [id, [x, y, w, h]] of Object.entries(layout)) {
-        const key = `automa-float-${id}`;
-        localStorage.setItem(key, JSON.stringify({ position: { x, y }, size: { width: w, height: h }, minimized: false, closed: true }));
-      }
-    })();
-  </script>
+  <!-- Classic scripts, one global per file. float.js binds the windows, so it runs after the
+       layout is seeded (main.js) and before the first paint (on DOMContentLoaded). -->
+  <script src="capture/frames.js"></script> <!-- mock only: a recorded chase-sim run -->
+  <script src="js/desk.js"></script>
+  <script src="js/api.js"></script>
+  <script src="js/mock.js"></script> <!-- mock only: answers every route; without it the page asks the viewer -->
+  <script src="js/feed.js"></script>
+  <script src="js/vehicles.js"></script>
+  <script src="js/simulators.js"></script>
+  <script src="js/hosts.js"></script>
+  <script src="js/plugins.js"></script>
+  <script src="js/stream.js"></script>
+  <script src="js/main.js"></script>
   <script src="../shared/float.js"></script>
-  <script>render();</script>
 </body>
 </html>

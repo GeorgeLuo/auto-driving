@@ -93,6 +93,7 @@ _MODULE_ROLES = {
     "frontend.perception_view": "operation",
     "frontend.plugin_catalog": "operation",
     "frontend.server": "operation",
+    "frontend.v2_page": "operation",
     "frontend.workbench_contract": "pure",
     "frontend.workbench_view": "operation",
     "hosts.bundles": "store",

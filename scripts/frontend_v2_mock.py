@@ -1,7 +1,7 @@
 """Click through the frontend v2 mock (cli/automa_cli/frontend/pages/v2/index.html) and check each window.
 
-The mock is a static page with simulated hosts and vehicles; nothing here calls the CLI.
-Needs Playwright, which is not a project dependency:
+The page reaches its data only through js/api.js's reads and writes; js/mock.js answers every
+route from an in-page store, so nothing here calls the CLI. Needs Playwright, which is not a project dependency:
 
     pip install playwright && playwright install chromium
     python scripts/frontend_v2_mock.py
@@ -29,16 +29,40 @@ def status(page, frame_id):
     return frame(page, frame_id).locator(".float-frame-status-text")
 
 
+def record_pane(page, frame_id):
+    """Record the pane's text, and whether the window's first verb is disabled, at every change
+    from now: a command's busy state can pass before an expect looks. Returns a reader."""
+    page.evaluate("""id => {
+      const root = document.getElementById(id), text = root.querySelector(".float-frame-status-text");
+      const state = () => [text.textContent, root.querySelector("[data-verbs] .key").disabled];
+      const seen = (window.seen ??= {})[id] = [state()];
+      new MutationObserver(() => seen.push(state()))
+        .observe(root, { subtree: true, childList: true, characterData: true, attributes: true });
+    }""", frame_id)
+    return lambda: [tuple(state) for state in page.evaluate("id => window.seen[id]", frame_id)]
+
+
+def exactly(text):
+    return re.compile(rf"^{re.escape(text)}$")
+
+
 def key(page, frame_id, label):
-    return frame(page, frame_id).locator(".float-frame-status-actions button:not([hidden])", has_text=label)
+    """A key in the window's pane, bottom right."""
+    return frame(page, frame_id).locator("[data-keys] .key:not([hidden])", has_text=exactly(label))
+
+
+def verb(page, frame_id, label):
+    """A verb at the top of the window's list."""
+    return frame(page, frame_id).locator("[data-verbs] .key:not([hidden])", has_text=exactly(label))
 
 
 def plugin_keys(page):
-    return [b.inner_text() for b in page.locator("#pluginsFrame .float-frame-status-actions button:not([hidden])").all()]
+    return [b.inner_text() for b in page.locator("#pluginsFrame [data-keys] .key:not([hidden])").all()]
 
 
 def row(page, frame_id, name):
-    return frame(page, frame_id).locator(".host-row:not([hidden])", has=page.locator(".host-name span", has_text=name))
+    return frame(page, frame_id).locator(".row:not([hidden])", has_text=exactly(name))
+
 
 
 def button(page, name):
@@ -47,10 +71,10 @@ def button(page, name):
 
 def view(page, step, label="VIEW"):
     """Select the step in Plugins and return its pane key: VIEW opens the step's window, STRM streams it."""
-    step_row = page.locator("#pluginsFrame .host-row:not(.child)", has_text=step)
+    step_row = page.locator("#pluginsFrame .row:not(.child):not([hidden])", has_text=exactly(step))
     if "selected" not in (step_row.get_attribute("class") or ""):
-        step_row.locator(".host-name").click()
-    return page.locator("#pluginsFrame .float-frame-status-actions button:not([hidden])", has_text=label)
+        step_row.click()
+    return key(page, "pluginsFrame", label)
 
 
 def text_top(locator):
@@ -61,7 +85,7 @@ def text_top(locator):
 
 def list_level_with_pane(page):
     sims = frame(page, "simulatorsFrame")
-    first = sims.locator("[data-create]")  # always the top line
+    first = sims.locator("[data-verbs] .key").first  # always the top line
     pane = sims.locator(".float-frame-status").bounding_box()["y"]  # the pane's top edge
     assert abs(text_top(first) - pane) <= 1, ("list", text_top(first), "pane", pane)
 
@@ -101,64 +125,63 @@ with sync_playwright() as p:
             expect(status(page, frame_id)).to_contain_text("Catalog: packaged\n- perception/frame: packaged (default)")
         else:
             expect(status(page, frame_id)).to_have_text("")
-        expect(frame(page, frame_id).locator(".host-note")).to_be_hidden()
     list_level_with_pane(page)
     shot("0b-empty-windows")
     # Pane text is the terminal face; the pane's keys are not.
     family = lambda selector: page.locator(selector).first.evaluate("el => getComputedStyle(el).fontFamily")
     assert family("#simulatorsFrame .float-frame-status-text").startswith("Menlo"), family("#simulatorsFrame .float-frame-status-text")
-    assert family("#hostsFrame [data-create]").startswith("Menlo")  # the pane's face
+    assert family("#hostsFrame [data-verbs] .key").startswith("Menlo")  # the pane's face
     # One face inside windows; the title bar keeps the interface font.
-    for selector in ["#simulatorsFrame [data-create]", "#vehiclesFrame [data-create]", "#pluginsFrame [data-create]",
-                     "#hostsFrame [data-create]"]:
+    for selector in ["#simulatorsFrame [data-verbs] .key", "#vehiclesFrame [data-verbs] .key", "#pluginsFrame [data-verbs] .key",
+                     "#hostsFrame [data-verbs] .key"]:
         assert family(selector).startswith("Menlo"), (selector, family(selector))
     assert not family("#hostsFrame .float-frame-title strong").startswith("Menlo")
-    assert page.locator("#simulatorsFrame [data-create]").evaluate("el => getComputedStyle(el).backgroundColor") == \
-        page.locator("#hostsFrame [data-create]").evaluate("el => getComputedStyle(el).backgroundColor")
+    assert page.locator("#simulatorsFrame [data-verbs] .key").evaluate("el => getComputedStyle(el).backgroundColor") == \
+        page.locator("#hostsFrame [data-verbs] .key").evaluate("el => getComputedStyle(el).backgroundColor")
     # Buttons are the only rounded shapes.
     radius = lambda selector: page.locator(selector).first.evaluate("el => getComputedStyle(el).borderTopLeftRadius")
-    for selector in ["#hostsFrame .float-frame-status", ".float-frame", "#pluginsFrame .float-frame-status", "#hostsFrame .cadence-select"]:
+    for selector in ["#hostsFrame .float-frame-status", ".float-frame", "#pluginsFrame .float-frame-status", "#hostsFrame .field-select"]:
         assert radius(selector) == "0px", (selector, radius(selector))
-    assert radius("#hostsFrame [data-create]") == "0px"  # highlighted text, not a button
+    assert radius("#hostsFrame [data-verbs] .key") == "0px"  # highlighted text, not a button
     for selector in ["main button.nav", "#gapsToggle"]:
         assert radius(selector) != "0px", (selector, radius(selector))
     for name in ["Vehicles", "Hosts", "Plugins"]:
         button(page, name).click()
-    create_text = frame(page, "simulatorsFrame").locator("[data-create]")
+    create_text = verb(page, "simulatorsFrame", "NEW")
+    seen = record_pane(page, "simulatorsFrame")
     create_text.click()
     expect(create_text).to_have_text("NEW")
-    expect(create_text).to_be_disabled()
-    expect(status(page, "simulatorsFrame")).to_have_text("...")
     expect(row(page, "simulatorsFrame", "127.0.0.1:5051")).to_have_text("127.0.0.1:5051")  # the address only
     expect(create_text).to_be_enabled()
     expect(status(page, "simulatorsFrame")).to_have_text("Created Simulator (chase-sim) at http://127.0.0.1:5051/")
+    assert ("...", True) in seen(), seen()  # "..." while it runs, NEW disabled
     shot("0bb-simulator-created")
     expect(page.locator("#simulatorsReadout")).to_have_text("1 created")
     # The list on the left, "create" under it, the pane to its right.
-    listed = frame(page, "simulatorsFrame").locator(".split-list").bounding_box()
-    create = frame(page, "simulatorsFrame").locator("[data-create]").bounding_box()
+    listed = frame(page, "simulatorsFrame").locator(".list").bounding_box()
+    create = verb(page, "simulatorsFrame", "NEW").bounding_box()
     pane = frame(page, "simulatorsFrame").locator(".float-frame-status").bounding_box()
     first_row = row(page, "simulatorsFrame", "127.0.0.1:5051").bounding_box()
     assert first_row["y"] >= create["y"] + create["height"], (create, first_row)  # the list builds under "create"
     assert pane["x"] >= listed["x"] + listed["width"], (pane, listed)
-    row(page, "simulatorsFrame", "127.0.0.1:5051").locator(".host-name").click()
+    row(page, "simulatorsFrame", "127.0.0.1:5051").click()
     expect(status(page, "simulatorsFrame")).to_have_text(
         "Simulator (chase-sim)  running at http://127.0.0.1:5051/\n  frontend connected, game chase\n"
-        f"  created by simulators create, pid {page.evaluate('state.vehicles[0].pid')}")
+        f"  created by simulators create, pid {page.evaluate('mock.store.simulators[0].pid')}")
     expect(key(page, "simulatorsFrame", "DEL")).to_be_visible()
     list_level_with_pane(page)
-    list_w = frame(page, "simulatorsFrame").locator(".split-list").bounding_box()["width"]
+    list_w = frame(page, "simulatorsFrame").locator(".list").bounding_box()["width"]
     pane_w = frame(page, "simulatorsFrame").locator(".float-frame-status").bounding_box()["width"]
     assert abs(pane_w - 2 * list_w) <= 2, ("thirds", list_w, pane_w)
     shot("0c-simulators")
-    row(page, "simulatorsFrame", "127.0.0.1:5051").locator(".host-name").click()
+    row(page, "simulatorsFrame", "127.0.0.1:5051").click()
     expect(key(page, "simulatorsFrame", "DEL")).to_have_count(0)
     button(page, "Vehicles").click()
-    expect(row(page, "vehiclesFrame", "127.0.0.1:5051").locator(".host-name")).to_have_text("127.0.0.1:5051")
-    row(page, "vehiclesFrame", "127.0.0.1:5051").locator(".host-name").click()
+    expect(row(page, "vehiclesFrame", "127.0.0.1:5051")).to_have_text("127.0.0.1:5051")
+    row(page, "vehiclesFrame", "127.0.0.1:5051").click()
     expect(status(page, "vehiclesFrame")).to_have_text(
         "Simulator (chase-sim)  running at http://127.0.0.1:5051/\n  frontend connected, game chase\n"
-        f"  created by simulators create, pid {page.evaluate('state.vehicles[0].pid')}")
+        f"  created by simulators create, pid {page.evaluate('mock.store.simulators[0].pid')}")
     shot("0d-vehicle-status")
     # A simulator is removed like any vehicle, stays in Simulators, and is discovered again.
     key(page, "vehiclesFrame", "UNTRK").click()
@@ -166,7 +189,7 @@ with sync_playwright() as p:
     expect(row(page, "vehiclesFrame", "127.0.0.1:5051")).to_have_count(0)
     expect(row(page, "simulatorsFrame", "127.0.0.1:5051")).to_have_count(1)
     expect(page.locator("#vehiclesReadout")).to_have_text("0/0 up")
-    frame(page, "vehiclesFrame").locator("[data-create]").click()
+    verb(page, "vehiclesFrame", "DISC").click()
     frame(page, "vehiclesFrame").locator("[data-field=provider]").select_option("chase-sim")
     frame(page, "vehiclesFrame").locator("[data-field=url]").fill("http://127.0.0.1:5051/")
     key(page, "vehiclesFrame", "DISC").click()
@@ -178,7 +201,7 @@ with sync_playwright() as p:
 
     # Vehicles: "discover" heads the list; its flags fill the pane, and its output streams there.
     vehicles = frame(page, "vehiclesFrame")
-    discover = vehicles.locator("[data-create]")
+    discover = verb(page, "vehiclesFrame", "DISC")
     pane_text = lambda frame_id: frame(page, frame_id).locator(".float-frame-status").bounding_box()["y"]
     assert abs(discover.bounding_box()["y"] - pane_text("vehiclesFrame")) <= 1, "discover level with the pane"
     discover.click()
@@ -188,18 +211,18 @@ with sync_playwright() as p:
     expect(key(page, "vehiclesFrame", "DISC")).to_be_disabled()
     form.locator("[data-field=url]").fill("http://10.0.0.9:8887")
     key(page, "vehiclesFrame", "DISC").click()
-    expect(status(page, "vehiclesFrame")).to_have_text("No PiCar can take a host at http://10.0.0.9:8887: [Errno 61] Connection refused")
+    expect(status(page, "vehiclesFrame")).to_have_text("No PiCar can take a host at http://10.0.0.9:8887: GET http://10.0.0.9:8887/host/status did not answer within 5 s")
     discover.click()
     form.locator("[data-field=url]").fill("http://piracer.local:8887")
     assert key(page, "vehiclesFrame", "CANCEL").get_attribute("data-tone") == "remove"
     assert key(page, "vehiclesFrame", "DISC").get_attribute("data-tone") == ""
     shot("0e-discover-form")
+    seen = record_pane(page, "vehiclesFrame")
     key(page, "vehiclesFrame", "DISC").click()
-    expect(discover).to_be_disabled()
-    expect(status(page, "vehiclesFrame")).to_have_text("...")
     expect(status(page, "vehiclesFrame")).to_have_text("Discovered PiCar (picar) at http://piracer.local:8887")
+    assert ("...", True) in seen(), seen()
     expect(page.locator("#vehiclesReadout")).to_have_text("2/2 up")
-    row(page, "vehiclesFrame", "piracer.local:8887").locator(".host-name").click()
+    row(page, "vehiclesFrame", "piracer.local:8887").click()
     expect(status(page, "vehiclesFrame")).to_have_text("PiCar (picar)  reachable, no host listening at http://piracer.local:8887")
     expect(key(page, "vehiclesFrame", "UNTRK")).to_be_visible()
     shot("0f-discovered")
@@ -207,22 +230,22 @@ with sync_playwright() as p:
     expect(status(page, "vehiclesFrame")).to_have_text("Untrack?")
     key(page, "vehiclesFrame", "YES").click()
     expect(row(page, "vehiclesFrame", "piracer.local:8887")).to_have_count(0)
-    expect(vehicles.locator(".float-frame-status-actions button:not([hidden])")).to_have_count(0)  # nothing selected, no keys
+    expect(vehicles.locator("[data-keys] .key:not([hidden])")).to_have_count(0)  # nothing selected, no keys
 
     # Hosts: HOST on a vehicle with no host opens a new host's form filled in for it.
     if frame(page, "vehiclesFrame").is_hidden():
         button(page, "Vehicles").click()
     vrow = row(page, "vehiclesFrame", "127.0.0.1:5051")
     if "selected" not in (vrow.get_attribute("class") or ""):
-        vrow.locator(".host-name").click()
+        vrow.click()
     key(page, "vehiclesFrame", "HOST").click()
     expect(frame(page, "hostsFrame")).to_be_visible()
     create_form = frame(page, "hostsFrame").locator(".float-frame-status [data-form=create]")
     expect(create_form).to_be_visible()
     expect(create_form.locator("[data-field=vehicle]")).to_have_value("http://127.0.0.1:5051/")
     key(page, "hostsFrame", "CANCEL").click()
-    hosts_new = frame(page, "hostsFrame").locator("[data-create]")
-    expect(frame(page, "hostsFrame").locator(".float-frame-status-actions button:not([hidden])")).to_have_count(0)
+    hosts_new = verb(page, "hostsFrame", "NEW")
+    expect(frame(page, "hostsFrame").locator("[data-keys] .key:not([hidden])")).to_have_count(0)
     hosts_new.click()
     expect(create_form).to_be_visible()
     expect(key(page, "hostsFrame", "NEW")).to_be_disabled()  # no name yet
@@ -238,7 +261,7 @@ with sync_playwright() as p:
     key(page, "hostsFrame", "NEW").click()
     expect(status(page, "hostsFrame")).to_contain_text("Host chaser created for the chaser at http://127.0.0.1:5051/")
     expect(frame(page, "hostsFrame").locator("[data-form=create]")).to_be_hidden()
-    expect(row(page, "hostsFrame", "chaser").locator(".host-name")).to_have_text("chaser")
+    expect(row(page, "hostsFrame", "chaser")).to_have_text("chaser")
     # A second host by the same name answers with the error, under the open form.
     hosts_new.click()
     create_form.locator("[data-field=name]").fill("chaser")
@@ -248,21 +271,22 @@ with sync_playwright() as p:
     key(page, "hostsFrame", "CANCEL").click()
 
     # Selecting a host shows hosts status --name; no other window follows it.
-    row(page, "hostsFrame", "chaser").locator(".host-name").click()
-    expect(status(page, "hostsFrame")).to_contain_text("Host chaser  not started\n  chaser at http://127.0.0.1:5051/\n  attached since ")
-    labels = lambda: [b.inner_text() for b in frame(page, "hostsFrame").locator(".float-frame-status-actions button:not([hidden])").all()]
+    row(page, "hostsFrame", "chaser").click()
+    expect(status(page, "hostsFrame")).to_contain_text(
+        "Host chaser  not started\n  chaser at http://127.0.0.1:5051/\n  0 decisions, 0 errors\n  attached since ")
+    labels = lambda: [b.inner_text() for b in frame(page, "hostsFrame").locator("[data-keys] .key:not([hidden])").all()]
     assert labels() == ["RUN", "UPD", "DEL"], labels()
-    expect(row(page, "hostsFrame", "chaser")).to_have_class("host-row selected")
+    expect(row(page, "hostsFrame", "chaser")).to_have_class("row selected")
     expect(page.locator("#hostsReadout")).to_have_text("1 host")
     expect(page.locator("#pluginsReadout")).to_have_text("packaged")
     shot("2-selected")
     # HOST on a vehicle that has one selects that host in Hosts.
-    row(page, "hostsFrame", "chaser").locator(".host-name").click()  # deselect
+    row(page, "hostsFrame", "chaser").click()  # deselect
     vrow = row(page, "vehiclesFrame", "127.0.0.1:5051")
     if "selected" not in (vrow.get_attribute("class") or ""):
-        vrow.locator(".host-name").click()
+        vrow.click()
     key(page, "vehiclesFrame", "HOST").click()
-    expect(row(page, "hostsFrame", "chaser")).to_have_class("host-row selected")
+    expect(row(page, "hostsFrame", "chaser")).to_have_class("row selected")
     expect(status(page, "hostsFrame")).to_contain_text("Host chaser  not started")
 
     key(page, "hostsFrame", "RUN").click()
@@ -276,33 +300,40 @@ with sync_playwright() as p:
     expect(status(page, "hostsFrame")).to_contain_text("Decisions: unbounded")
     # RUN opens a Stream window on the host, in perception.
     expect(frame(page, "streamFrame1")).to_be_visible()
-    expect(frame(page, "streamFrame1").locator("[data-summary]")).to_contain_text("chaser · perception")
+    expect(frame(page, "streamFrame1").locator(".float-frame-title [data-mode]")).to_contain_text("chaser · perception")
     assert labels() == ["STOP", "RSTRT", "UPD", "DEL"], labels()
-    tones = [b.get_attribute("data-tone") for b in frame(page, "hostsFrame").locator(".float-frame-status-actions button:not([hidden])").all()]
+    tones = [b.get_attribute("data-tone") for b in frame(page, "hostsFrame").locator("[data-keys] .key:not([hidden])").all()]
     assert tones == ["", "", "", "remove"], tones
     bg = lambda label: key(page, "hostsFrame", label).evaluate("el => getComputedStyle(el).backgroundColor")
     assert bg("DEL") != bg("UPD"), "DEL is tinted"
+    # RSTRT takes run's form again: hosts restart does not keep the last run's flags.
+    key(page, "hostsFrame", "RSTRT").click()
+    expect(run_form).to_be_visible()
+    expect(frame(page, "hostsFrame").locator(".float-frame-title [data-mode]")).to_have_text("restart")
+    assert labels() == ["RSTRT", "CANCEL"], labels()
+    key(page, "hostsFrame", "CANCEL").click()
+    assert labels() == ["STOP", "RSTRT", "UPD", "DEL"], labels()
 
     # Plugins: HOSTS and UPLD head the step list; a step shows plugins list --step.
     button(page, "Plugins").click()
     # Plugins starts on the packaged catalog; HOSTS picks its host.
-    expect(frame(page, "pluginsFrame").locator("[data-create]")).to_be_disabled()
+    expect(verb(page, "pluginsFrame", "UPLD")).to_be_disabled()
     mode = lambda frame_id: frame(page, frame_id).locator(".float-frame-title [data-mode]")
     expect(mode("pluginsFrame")).to_have_text("packaged · catalog")
-    frame(page, "pluginsFrame").locator("#pluginsHosts").click()
+    verb(page, "pluginsFrame", "HOSTS").click()
     expect(mode("pluginsFrame")).to_have_text("choose host")
-    expect(row(page, "pluginsFrame", "packaged")).to_have_class("host-row selected")
+    expect(row(page, "pluginsFrame", "packaged")).to_have_class("row selected")
     shot("4-plugins-hosts")
-    row(page, "pluginsFrame", "chaser").locator(".host-name").click()
+    row(page, "pluginsFrame", "chaser").click()
     expect(page.locator("#pluginsReadout")).to_have_text("chaser")
     expect(mode("pluginsFrame")).to_have_text("chaser · catalog")
     expect(row(page, "pluginsFrame", "perception")).to_be_visible()
-    expect(frame(page, "pluginsFrame").locator("[data-create]")).to_have_text("UPLD")
-    expect(frame(page, "pluginsFrame").locator("[data-create]")).to_be_enabled()
+    expect(verb(page, "pluginsFrame", "UPLD")).to_have_text("UPLD")
+    expect(verb(page, "pluginsFrame", "UPLD")).to_be_enabled()
     # VIEW opens a Stream window on the host, in the step.
     for n, step in enumerate(["memory", "proposal", "plan", "action"], start=2):
         view(page, step).click()
-        expect(frame(page, f"streamFrame{n}").locator("[data-summary]")).to_contain_text(f"chaser · {step}")
+        expect(frame(page, f"streamFrame{n}").locator(".float-frame-title [data-mode]")).to_contain_text(f"chaser · {step}")
         expect(frame(page, f"streamFrame{n}").locator("[data-feed]")).to_be_hidden()
         frame(page, f"streamFrame{n}").locator("[data-frame-close]").click()
     # STRM is plugins stream --step's terminal screen in the pane; STOP ends it.
@@ -323,18 +354,18 @@ with sync_playwright() as p:
     page.locator("#streamOpen").click()
     # A new window opens on its feeds: the hosts, none chosen; choosing one shows its steps and status.
     feeds = frame(page, "streamFrame6")
-    expect(feeds.locator("[data-summary]")).to_have_text("feeds")
-    expect(feeds.locator(".host-row.child:not([hidden])")).to_have_count(0)
+    expect(feeds.locator(".float-frame-title [data-mode]")).to_have_text("feeds")
+    expect(feeds.locator(".row.child:not([hidden])")).to_have_count(0)
     expect(status(page, "streamFrame6")).to_have_text("")
-    row(page, "streamFrame6", "chaser").locator(".host-name").click()
-    expect(feeds.locator(".host-row.child:not([hidden])")).to_have_count(5)
-    expect(feeds.locator(".host-row.connected")).to_have_count(0)
+    row(page, "streamFrame6", "chaser").click()
+    expect(feeds.locator(".row.child:not([hidden])")).to_have_count(5)
+    expect(feeds.locator(".row.marked")).to_have_count(0)
     expect(status(page, "streamFrame6")).to_contain_text("Host chaser  running")
     expect(status(page, "streamFrame6")).to_contain_text("Perception: frame, floor_plane")
     shot("4b-feeds")
-    row(page, "streamFrame6", "perception").locator(".host-name").click()
-    expect(feeds.locator("[data-summary]")).to_contain_text("chaser · perception")
-    expect(feeds.locator(".split-rows")).to_be_hidden()
+    row(page, "streamFrame6", "perception").click()
+    expect(feeds.locator(".float-frame-title [data-mode]")).to_contain_text("chaser · perception")
+    expect(feeds.locator(".list-rows")).to_be_hidden()
     expect(feeds.locator("[data-aside]")).to_be_visible()
     page.wait_for_function(
         "() => { const c = document.querySelector('#streamFrame6 .feed-stage canvas'); if (!c || !c.width) return false;"
@@ -343,25 +374,25 @@ with sync_playwright() as p:
     page.locator("#streamOpen").click()
     expect(page.locator(".stream-frame:not([hidden])")).to_have_count(3)
     expect(page.locator("#streamReadout")).to_have_text("3 open")
-    row(page, "streamFrame7", "chaser").locator(".host-name").click()
-    row(page, "streamFrame7", "plan").locator(".host-name").click()
+    row(page, "streamFrame7", "chaser").click()
+    row(page, "streamFrame7", "plan").click()
     expect(status(page, "streamFrame7")).to_contain_text("Plan stream: chaser frame=chase_frame_")
     expect(frame(page, "streamFrame7").locator("[data-step-meta]")).to_contain_text("Plugins")
     # PLGS opens Plugins on the stream's host and step.
-    frame(page, "streamFrame7").locator("[data-plugins]").click()
+    verb(page, "streamFrame7", "PLGS").click()
     expect(frame(page, "pluginsFrame")).to_be_visible()
     expect(frame(page, "pluginsFrame").locator(".float-frame-title [data-mode]")).to_have_text("chaser · catalog")
     expect(row(page, "pluginsFrame", "plan")).to_have_class(re.compile(r"\bselected\b"))
     expect(status(page, "pluginsFrame")).to_contain_text("Plan (most_confident preset), one plugin")
     expect(frame(page, "streamFrame6").locator(".kicker", has_text="Overlays")).to_have_count(0)
-    row(page, "pluginsFrame", "perception").locator(".host-name").click()  # back to perception for the checks below
+    row(page, "pluginsFrame", "perception").click()  # back to perception for the checks below
     # FEEDS goes back to the selection; FEEDS there returns to the stream.
-    frame(page, "streamFrame7").locator("[data-create]").click()
-    expect(frame(page, "streamFrame7").locator("[data-summary]")).to_have_text("feeds")
-    expect(frame(page, "streamFrame7").locator("[data-plugins]")).to_be_disabled()
+    verb(page, "streamFrame7", "FEEDS").click()
+    expect(frame(page, "streamFrame7").locator(".float-frame-title [data-mode]")).to_have_text("feeds")
+    expect(verb(page, "streamFrame7", "PLGS")).to_be_disabled()
     expect(frame(page, "streamFrame7").locator("[data-step-meta]")).to_be_hidden()
-    frame(page, "streamFrame7").locator("[data-create]").click()
-    expect(frame(page, "streamFrame7").locator("[data-summary]")).to_contain_text("chaser · plan")
+    verb(page, "streamFrame7", "FEEDS").click()
+    expect(frame(page, "streamFrame7").locator(".float-frame-title [data-mode]")).to_contain_text("chaser · plan")
     expect(frame(page, "streamFrame7").locator("[data-feed]")).to_be_hidden()
     expect(frame(page, "streamFrame7").locator("[data-aside]")).to_be_hidden()
     expect(frame(page, "streamFrame6").locator("[data-feed]")).to_be_visible()
@@ -378,15 +409,15 @@ with sync_playwright() as p:
     expect(page.locator("#streamReadout")).to_have_text("2 open")
     page.locator("#streamFrame6 [data-frame-close]").click()
     expect(status(page, "pluginsFrame")).to_contain_text("Perception (lightweight_observer preset)\nCatalog: host chaser\n* frame (packaged) default")
-    children = frame(page, "pluginsFrame").locator(".host-row.child:not([hidden])")
+    children = frame(page, "pluginsFrame").locator(".row.child:not([hidden])")
     expect(children).to_have_count(13)  # the packaged perception catalog
-    expect(children.filter(has_text="floor_plane")).to_have_class("host-row connected child")
+    expect(children.filter(has_text="floor_plane")).to_have_class("row marked child")
     run_stream = frame(page, "streamFrame1")
     expect(run_stream.locator(".feed-stage img")).to_be_visible()
-    expect(run_stream.locator("[data-summary]")).to_contain_text("chase_frame_")
+    expect(run_stream.locator(".float-frame-title [data-mode]")).to_contain_text("chase_frame_")
     # The v1 page's column, under the steps: metrics, the armed plugins' runs, and their findings.
     expect(run_stream.locator("[data-metrics] dd[data-metric=Resolution]")).to_have_text("640 x 480")
-    expect(run_stream.locator("[data-runs] .info-row:not([hidden])").first).to_contain_text("frame")
+    expect(run_stream.locator("[data-runs] .aside-row:not([hidden])").first).to_contain_text("frame")
     # Frames change every tick; wait for the one shown to have loaded.
     page.wait_for_function("() => document.querySelector('#streamFrame1 .feed-stage img').naturalWidth === 640", timeout=5000)
     # The frame fills the pane's height: no bar under it.
@@ -401,19 +432,19 @@ with sync_playwright() as p:
     shot("4-running")
 
     button(page, "Vehicles").click()
-    children.filter(has_text="motion_tracks").locator(".host-name").click()
+    children.filter(has_text="motion_tracks").click()
     expect(status(page, "pluginsFrame")).to_contain_text("perception/motion_tracks (packaged)\n  not armed")
     key(page, "pluginsFrame", "ARM").click()
     expect(status(page, "pluginsFrame")).to_contain_text("Applied perception: frame (packaged), floor_plane (packaged), motion_tracks (packaged)")
-    expect(children.filter(has_text="motion_tracks")).to_have_class(re.compile(r"\bconnected\b"))
+    expect(children.filter(has_text="motion_tracks")).to_have_class(re.compile(r"\bmarked\b"))
     expect(key(page, "pluginsFrame", "DSARM")).to_have_attribute("data-tone", "remove")
     # Management is the same window, by level. The host: plugins list --long, SAVE and DSALL.
-    row(page, "pluginsFrame", "perception").locator(".host-name").click()  # from a plugin back to the host
+    row(page, "pluginsFrame", "perception").click()  # from a plugin back to the host
     expect(status(page, "pluginsFrame")).to_contain_text("Host: chaser\nCatalog version: 1")
     expect(status(page, "pluginsFrame")).to_contain_text("- perception/motion_tracks: packaged (armed)")
     assert plugin_keys(page) == ["SAVE", "DSALL"], plugin_keys(page)
     # A step: PRST, STRM, VIEW, DSALL.
-    row(page, "pluginsFrame", "perception").locator(".host-name").click()
+    row(page, "pluginsFrame", "perception").click()
     assert plugin_keys(page) == ["PRST", "STRM", "VIEW", "DSALL"], plugin_keys(page)
     key(page, "pluginsFrame", "PRST").click()
     expect(mode("pluginsFrame")).to_have_text("chaser · perception preset")
@@ -422,11 +453,11 @@ with sync_playwright() as p:
     shot("5a-plugins-preset")
     key(page, "pluginsFrame", "ARM").click()
     expect(status(page, "pluginsFrame")).to_contain_text("Applied perception: frame (packaged), floor_plane (packaged), multi_obstruction_tracks (packaged)")
-    expect(children.filter(has_text="multi_obstruction_tracks")).to_have_class(re.compile(r"\bconnected\b"))
+    expect(children.filter(has_text="multi_obstruction_tracks")).to_have_class(re.compile(r"\bmarked\b"))
     # UPLD: plugins upload, its step taken from the selection.
     plugin_file = Path(tempfile.mkdtemp()) / "prototype.py"  # outside the package the boundary tests scan
     plugin_file.write_text("class Prototype:\n    pass\n")
-    frame(page, "pluginsFrame").locator("[data-create]").click()
+    verb(page, "pluginsFrame", "UPLD").click()
     upload = frame(page, "pluginsFrame").locator("[data-form=upload]")
     expect(mode("pluginsFrame")).to_have_text("chaser · upload")
     expect(upload.locator("[data-field=step]")).to_have_value("perception")
@@ -439,8 +470,8 @@ with sync_playwright() as p:
     key(page, "pluginsFrame", "UPLD").click()
     expect(status(page, "pluginsFrame")).to_contain_text("Plugin: perception/prototype\nRevision: 1\nCatalog version: 2")
     expect(status(page, "pluginsFrame")).to_contain_text("prototype (revision 1)")
-    expect(row(page, "pluginsFrame", "prototype")).to_have_class(re.compile(r"\bconnected\b"))
-    row(page, "pluginsFrame", "perception").locator(".host-name").click()  # back to the host
+    expect(row(page, "pluginsFrame", "prototype")).to_have_class(re.compile(r"\bmarked\b"))
+    row(page, "pluginsFrame", "perception").click()  # back to the host
     expect(status(page, "pluginsFrame")).to_contain_text("- perception/prototype: revision 1 (prototype.py) (armed)")
     # Uploaded plugins cannot be saved.
     key(page, "pluginsFrame", "SAVE").click()
@@ -458,21 +489,21 @@ with sync_playwright() as p:
     key(page, "hostsFrame", "STOP").click()
     expect(status(page, "hostsFrame")).to_contain_text("Stopped the run on host chaser.")
     # Deselecting in Hosts changes nothing elsewhere; Plugins goes back to packaged through HOSTS.
-    row(page, "hostsFrame", "chaser").locator(".host-name").click()
-    expect(row(page, "hostsFrame", "chaser")).to_have_class("host-row")
+    row(page, "hostsFrame", "chaser").click()
+    expect(row(page, "hostsFrame", "chaser")).to_have_class("row")
     expect(page.locator("#pluginsReadout")).to_have_text("chaser")
-    frame(page, "pluginsFrame").locator("#pluginsHosts").click()
-    row(page, "pluginsFrame", "packaged").locator(".host-name").click()
+    verb(page, "pluginsFrame", "HOSTS").click()
+    row(page, "pluginsFrame", "packaged").click()
     expect(page.locator("#pluginsReadout")).to_have_text("packaged")
-    row(page, "pluginsFrame", "perception").locator(".host-name").click()
+    row(page, "pluginsFrame", "perception").click()
     expect(key(page, "pluginsFrame", "STRM")).to_be_disabled()
     expect(frame(page, "streamFrame1")).to_be_visible()  # a Stream window keeps its own host
-    expect(frame(page, "pluginsFrame").locator("[data-create]")).to_be_disabled()  # UPLD needs a host
+    expect(verb(page, "pluginsFrame", "UPLD")).to_be_disabled()  # UPLD needs a host
     shot("6-packaged")
 
     # simulators delete refuses while a host was created at the simulator.
     button(page, "Simulators").click() if frame(page, "simulatorsFrame").is_hidden() else None
-    row(page, "simulatorsFrame", "127.0.0.1:5051").locator(".host-name").click()
+    row(page, "simulatorsFrame", "127.0.0.1:5051").click()
     expect(status(page, "simulatorsFrame")).to_contain_text("  used by host chaser")
     shot("7a-simulator-status")
     # VEC on a tracked simulator selects it in Vehicles and shows its status.
@@ -501,9 +532,9 @@ with sync_playwright() as p:
     clear_of_column(page)
     shot("7-simulator-delete-blocked")
 
-    # Delete the host, then the simulator: both succeed silently, their rows go.
-    row(page, "hostsFrame", "chaser").locator(".host-name").click()
-    expect(row(page, "hostsFrame", "chaser")).to_have_class("host-row selected")
+    # Delete the host, then the simulator: their rows go.
+    row(page, "hostsFrame", "chaser").click()
+    expect(row(page, "hostsFrame", "chaser")).to_have_class("row selected")
     key(page, "hostsFrame", "DEL").click()
     expect(status(page, "hostsFrame")).to_have_text("Delete?")
     key(page, "hostsFrame", "YES").click()
@@ -512,23 +543,23 @@ with sync_playwright() as p:
     expect(status(page, "simulatorsFrame")).to_have_text("Delete?")
     key(page, "simulatorsFrame", "YES").click()
     expect(row(page, "simulatorsFrame", "127.0.0.1:5051")).to_have_count(0)
-    expect(status(page, "simulatorsFrame")).to_have_text("")
+    expect(status(page, "simulatorsFrame")).to_have_text("Deleted Simulator (chase-sim) at http://127.0.0.1:5051/")
     expect(page.locator("#simulatorsReadout")).to_have_text("none")
     shot("8-deleted")
 
     # A simulator whose process died: the pane reads its status, Vehicles drops it, Delete clears the record.
-    create_text = frame(page, "simulatorsFrame").locator("[data-create]")
+    create_text = verb(page, "simulatorsFrame", "NEW")
     create_text.click()
     expect(row(page, "simulatorsFrame", "127.0.0.1:5051")).to_have_count(1)
     expect(create_text).to_be_enabled()
-    row(page, "simulatorsFrame", "127.0.0.1:5051").locator(".host-name").click()
+    row(page, "simulatorsFrame", "127.0.0.1:5051").click()
     expect(key(page, "simulatorsFrame", "DEL")).to_be_visible()
     expect(status(page, "simulatorsFrame")).to_contain_text("Simulator (chase-sim)  running at http://127.0.0.1:5051/")
     page.locator("#endProcess").click()
     expect(status(page, "simulatorsFrame")).to_contain_text("Simulator (chase-sim)  exited at http://127.0.0.1:5051/")
     expect(status(page, "simulatorsFrame")).to_contain_text("Simulator log runtime/simulators/5051/simulator.log:")
     expect(status(page, "simulatorsFrame")).to_contain_text("exiting with code 1")
-    expect(row(page, "simulatorsFrame", "127.0.0.1:5051")).to_have_class("host-row selected exited")
+    expect(row(page, "simulatorsFrame", "127.0.0.1:5051")).to_have_class("row selected exited")
     expect(row(page, "vehiclesFrame", "127.0.0.1:5051")).to_have_count(0)
     expect(page.locator("#vehiclesReadout")).to_have_text("0/0 up")
     shot("8b-exited")
@@ -538,13 +569,13 @@ with sync_playwright() as p:
     expect(page.locator("#simulatorsReadout")).to_have_text("none")
 
     # Past the window's height the list scrolls; "create" stays put on top.
-    create_text = frame(page, "simulatorsFrame").locator("[data-create]")
+    create_text = verb(page, "simulatorsFrame", "NEW")
     top = create_text.bounding_box()["y"]
     for n in range(18):
         create_text.click()
         expect(row(page, "simulatorsFrame", f"127.0.0.1:{5051 + n}")).to_have_count(1)
         expect(create_text).to_be_enabled()
-    rows_el = frame(page, "simulatorsFrame").locator(".split-rows")
+    rows_el = frame(page, "simulatorsFrame").locator(".list-rows")
     assert rows_el.evaluate("el => el.scrollHeight > el.clientHeight"), "list should scroll"
     rows_el.evaluate("el => el.scrollTop = el.scrollHeight")
     assert create_text.bounding_box()["y"] == top, "create moved"
@@ -553,9 +584,9 @@ with sync_playwright() as p:
 
     # Long output scrolls; the pane's clickable text stays put below it.
     sims = frame(page, "simulatorsFrame")
-    row(page, "simulatorsFrame", "127.0.0.1:5068").locator(".host-name").click()
+    row(page, "simulatorsFrame", "127.0.0.1:5068").click()
     expect(status(page, "simulatorsFrame")).to_contain_text("running at http://127.0.0.1:5068/")
-    page.evaluate("""() => { const W = state.windows.simulators; W.log = Array.from({length: 40}, (_, i) => `line ${i}`); render(); }""")
+    page.evaluate("""() => { const W = Simulators.state; W.log = Array.from({length: 40}, (_, i) => `line ${i}`); render(); }""")
     text_box = sims.locator(".float-frame-status-text").bounding_box()
     del_key = key(page, "simulatorsFrame", "DEL")
     expect(del_key).to_be_visible()

@@ -6,8 +6,9 @@ the last result. A target-less host only computes decisions. ``set_step`` swaps
 one step's runner between frames, and ``status`` reports each step runner's
 status plus the applied decision identity. ``watch_selection`` records the
 activation files a running host follows. ``run`` synchronizes those selections
-before the cycle. Explicit arming adopts uploaded definitions as a group;
-staged files retain their selection-only behavior.
+before the cycle. Explicit arming adopts catalog definitions as a group, by ID
+or as a step's whole activation; staged files retain their selection-only
+behavior.
 """
 
 from __future__ import annotations
@@ -27,6 +28,7 @@ from autonomy.decision_cycle.activation import (
     activation_generation_id,
     read_step_activation,
     require_step,
+    step_activation_from_payload,
 )
 from autonomy.decision_cycle.cycle import (
     DecisionCycle,
@@ -171,34 +173,48 @@ class AutonomyCycleHost:
     def arm(self, selections: Mapping[str, Any]) -> dict[str, Any]:
         """Add/update named definitions from one catalog read and load them now.
 
-        A step that runs exactly one plugin swaps it for the named definition.
-        Loading between cycles answers the request with any import or
-        construction error and keeps the previous selection. A loaded group
-        publishes together at the next cycle.
+        Each step names ordered plugin IDs or a whole activation document.
+        Named IDs append and existing IDs update in place; a step that runs
+        exactly one plugin swaps it for the named definition. An activation
+        replaces what the step has armed with its plugins, in its order. The
+        catalog must hold each of them with the activation's entrypoint and
+        config, and once they apply the step reports the activation's
+        metadata, such as its preset. Loading between cycles answers the
+        request with any import or construction error and keeps the previous
+        selection. A loaded group publishes together at the next cycle.
         """
 
         if not isinstance(selections, Mapping) or not selections:
-            raise ValueError("arming requires a selection map of steps to ordered plugin IDs")
+            raise ValueError("arming requires a selection map of steps to ordered plugin IDs or activations")
         with self._lock:
             _, available = self.catalog.read()
             definitions = {(item.step, item.plugin_id): item for item in available}
-            requested = {}
+            requested, activations = {}, {}
             for step, ids in selections.items():
+                expected = None
+                if isinstance(ids, Mapping):
+                    activation = activations[step] = step_activation_from_payload(ids, step=step)
+                    expected = {item.plugin_id: item for item in activation.plugin_manager().selected}
+                    ids = activation.plugins
                 if not isinstance(ids, (list, tuple)) or not all(isinstance(item, str) for item in ids):
-                    raise ValueError(f"{step} selection must be an ordered list of plugin IDs")
+                    raise ValueError(f"{step} selection must be an ordered list of plugin IDs or an activation")
                 runner = self.step(step)
                 manager = getattr(runner, "plugin_manager", None)
                 if runner is not None and manager is None:
                     raise ValueError(f"{step} runner does not support catalog arming")
                 swap = getattr(runner if runner is not None else STEP_RUNNERS[step], "single_plugin", False)
-                current = {item.plugin_id: item for item in manager.selected} if manager and not swap else {}
+                keep = manager is not None and not swap and expected is None
+                current = {item.plugin_id: item for item in manager.selected} if keep else {}
                 for plugin_id in ids:
                     definition = definitions.get((step, plugin_id))
                     if definition is None:
                         raise ValueError(f"unknown plugin id {plugin_id!r} for step {step!r}")
+                    if expected is not None and definition != expected[plugin_id]:
+                        raise ValueError(f"the catalog holds {step}/{plugin_id} with another entrypoint, config "
+                                         "or revision than the activation selects")
                     current[plugin_id] = definition
                 requested[step] = tuple(current.values())
-            return self._request_selection(requested)
+            return self._request_selection(requested, activations)
 
     def disarm(self, selections: Mapping[str, Any], *, all_plugins: bool = False) -> dict[str, Any]:
         """Deselect named plugins, or clear steps, without deleting catalog entries."""
@@ -232,8 +248,13 @@ class AutonomyCycleHost:
                 )
             return self._request_selection(requested)
 
-    def _request_selection(self, requested: Mapping[str, tuple[Any, ...]]) -> dict[str, Any]:
-        """Prepare an explicit selection group while the caller holds the host lock."""
+    def _request_selection(self, requested: Mapping[str, tuple[Any, ...]],
+                           activations: Mapping[str, StepActivation] | None = None) -> dict[str, Any]:
+        """Prepare an explicit selection group while the caller holds the host lock.
+
+        A step armed with an activation adopts it as its selection applies,
+        as a restaged one does, or at once when that selection already runs.
+        """
 
         self._arm_request_id += 1
         previous: dict[str, tuple[Any, ...]] = {}
@@ -256,6 +277,14 @@ class AutonomyCycleHost:
         for step in requested:
             self._pending_activations.pop(step, None)
             self._armed_steps.add(step)
+            activation = (activations or {}).get(step)
+            if activation is None:
+                continue
+            runner = self.step(step)
+            if runner.plugin_manager.selected != tuple(item for item, _ in runner.applied):
+                self._pending_activations[step] = activation
+            else:
+                runner.adopt_activation(activation)
         self._selection_error = None
         state = self.selection_status()
         return {"ok": True, "status": state["status"], "arming": state}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import urlparse
@@ -183,6 +184,31 @@ def run_host_automation(
     )
 
 
+def _wait_for_view_initialization(
+    automation_dir: Path, state: dict, *, timeout_s: float,
+) -> dict:
+    """For an explicit browser request, wait for the view's one startup attempt.
+
+    Session acceptance is already complete. An unavailable view or an expired
+    wait only prevents opening its page; neither changes the startup verdict.
+    """
+
+    published = state.get("published_view")
+    view = published if isinstance(published, dict) else {}
+    deadline = time.monotonic() + max(0.0, timeout_s)
+    while view.get("status") == "starting" and time.monotonic() < deadline:
+        time.sleep(0.05)
+        latest = read_run_state(automation_dir)
+        if not isinstance(latest, dict):
+            continue
+        if (latest.get("pid"), latest.get("run_id")) != (state.get("pid"), state.get("run_id")):
+            break
+        published = latest.get("published_view")
+        if isinstance(published, dict):
+            view = published
+    return view
+
+
 def start_host_automation_background(
     *,
     host_name: str | None = None,
@@ -285,11 +311,8 @@ def start_host_automation_background(
                 ),
                 state_path=automation_dir / "state.json",
             )
-        view = (
-            existing_state.get("published_view")
-            if isinstance(existing_state, dict)
-            and isinstance(existing_state.get("published_view"), dict)
-            else {}
+        view = _wait_for_view_initialization(
+            automation_dir, existing_state, timeout_s=startup_wait_s if open_view else 0,
         )
         view_url = page_url(view.get("url"))
         browser = launch_browser(view_url) if open_view and view_url else None
@@ -347,6 +370,11 @@ def start_host_automation_background(
         automation_dir=automation_dir,
         timeout_s=startup_wait_s,
     )
+    if open_view and startup["status"] in {"ready", "completed"}:
+        state = startup.get("state") or {}
+        view = _wait_for_view_initialization(automation_dir, state, timeout_s=startup_wait_s)
+        startup = {**startup, "view_url": page_url(view.get("url")),
+                   "state": {**state, "published_view": view}}
     process_record = record_worker_startup(automation_dir, process_record, startup)
 
     view_url = page_url(startup.get("view_url"))

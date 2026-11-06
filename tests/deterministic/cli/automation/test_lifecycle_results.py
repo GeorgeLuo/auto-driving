@@ -11,7 +11,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from cli.automa_cli.hosts.runs import process, service
+from cli.automa_cli.hosts.runs import process, service, store
+from cli.automa_cli.shared.browser_result import BrowserOpenResult
 from cli.automa_cli.hosts.runs.models import RUN_EVENT_KINDS, RestartResult, RunEvent, StartResult, StopResult
 from cli.automa_cli.hosts.runs.worker import RunOutput
 from cli.automa_cli.hosts.runs.render import render_lifecycle_result
@@ -193,6 +194,30 @@ class WorkerProcessTests(unittest.TestCase):
         self.assertIn("exited with code 7", result["reason"])
         self.assertIn("before the runtime session completed", result["reason"])
 
+    def test_completed_session_does_not_hide_a_failed_recording_export(self):
+        for exit_code in (None, 2):
+            with self.subTest(exit_code=exit_code), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                state = {
+                    "pid": 42424,
+                    "run_id": "run-1",
+                    "session": {"status": "completed", "processed_decisions": 2},
+                    "recording": True,
+                    "recorded_count": 1,
+                    "processed_count": 2,
+                }
+                store.finish_run(state, {}, status="completed")
+                (root / "state.json").write_text(json.dumps(state))
+                result = process.wait_for_automation_startup(
+                    process=SimpleNamespace(pid=42424, poll=lambda: exit_code),
+                    automation_dir=root,
+                    timeout_s=0.2,
+                )
+                self.assertEqual(result["status"], "failed")
+                self.assertIn("Recording count does not match", result["reason"])
+                self.assertEqual(result["state"]["session"]["status"], "completed")
+                self.assertEqual(result["state"]["readiness"]["status"], "ready")
+
     def test_exited_worker_with_a_changed_run_id_is_not_completed(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -236,6 +261,48 @@ class OpenViewTests(unittest.TestCase):
 
     def write(self, name, data):
         (self.root / name).write_text(json.dumps(data))
+
+    def test_open_view_waits_for_initialization_after_session_acceptance(self):
+        state = {
+            "pid": 43434,
+            "run_id": "run-1",
+            "session": {"status": "running", "processed_decisions": 0},
+            "published_view": {"status": "starting", "available": False, "url": None},
+        }
+        view = {"status": "running", "available": True, "url": "http://127.0.0.1:9/"}
+        with patch.object(service, "launch_worker", return_value=SimpleNamespace(pid=43434)), \
+             patch.object(service, "wait_for_automation_startup", return_value={
+                 "status": "ready", "session_status": "running", "processed_count": 0,
+                 "view_url": None, "state": state,
+             }), \
+             patch.object(service, "read_run_state", return_value={**state, "published_view": view}), \
+             patch.object(service, "launch_browser", return_value=BrowserOpenResult(view["url"], True)) as browser:
+            result = service.start_host_automation_background(
+                host_name="car", take_control=False, open_view=True,
+            )
+        self.assertEqual(result.exit_code, 0)
+        self.assertEqual(result.startup["state"]["published_view"], view)
+        browser.assert_called_once_with(view["url"])
+
+    def test_view_initialization_failure_does_not_change_startup_success(self):
+        state = {
+            "pid": 43434, "run_id": "run-1",
+            "published_view": {"status": "starting", "available": False, "url": None},
+        }
+        failed = {"status": "unavailable", "available": False, "url": None, "reason": "bind failed"}
+        with patch.object(service, "launch_worker", return_value=SimpleNamespace(pid=43434)), \
+             patch.object(service, "wait_for_automation_startup", return_value={
+                 "status": "ready", "session_status": "running", "processed_count": 0,
+                 "view_url": None, "state": state,
+             }), \
+             patch.object(service, "read_run_state", return_value={**state, "published_view": failed}), \
+             patch.object(service, "launch_browser") as browser:
+            result = service.start_host_automation_background(
+                host_name="car", take_control=False, open_view=True,
+            )
+        self.assertEqual(result.exit_code, 0)
+        self.assertIn("View: unavailable (bind failed)", render_lifecycle_result(result))
+        browser.assert_not_called()
 
     def test_a_missing_view_url_never_launches_a_browser(self):
         self.write("process.json", {"pid": 42})

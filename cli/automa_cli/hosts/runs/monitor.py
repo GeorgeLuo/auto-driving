@@ -444,6 +444,10 @@ def _stop(client: RuntimeClient, state: dict[str, Any], *,
     """Release control first, then drain every committed cycle of this run."""
     try:
         session = client.stop()["session"]
+        previous = state.get("session") or {}
+        # Cleanup releases control without erasing an observed terminal outcome.
+        if previous.get("status") not in {"completed", "error"}:
+            state["session"] = session
         state["execution"] = session["execution"]
         if run_dir is not None:
             state["processed_count"] = session["processed_decisions"]

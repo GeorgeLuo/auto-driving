@@ -28,6 +28,22 @@ from tests.support.fake_hosts import closed_url
 from tests.support.fake_metrics_ui import fake_metrics_ui
 
 
+class RuntimeViewStartupTests(unittest.TestCase):
+    def test_failed_serving_thread_start_closes_the_bound_socket_without_shutdown(self):
+        server = runtime_view_server(host_name="viewer", automation_dir=None, port=0)
+        with mock.patch("cli.automa_cli.frontend.server.start_server_thread",
+                        side_effect=RuntimeError("thread could not start")):
+            with self.assertRaisesRegex(RuntimeError, "thread could not start"):
+                server.start()
+        httpd = server._httpd
+        self.addCleanup(httpd.server_close)
+        with mock.patch.object(httpd, "shutdown", side_effect=AssertionError("no serving thread")) as shutdown:
+            server.stop()
+        shutdown.assert_not_called()
+        self.assertEqual(httpd.socket.fileno(), -1)
+        self.assertIsNone(server.url)
+
+
 class ViewerWithoutHostTests(unittest.TestCase):
     def setUp(self) -> None:
         self.server = runtime_view_server(

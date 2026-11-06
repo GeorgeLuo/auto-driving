@@ -216,7 +216,10 @@ def _session_status(session: dict[str, Any] | None) -> str | None:
     return status if isinstance(status, str) else None
 
 
-def _accepted_outcome(status: str, session: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+def _session_outcome(status: str, session: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
+    # Runtime completion does not erase a worker's failed recording export.
+    if state.get("status") == "error":
+        return _failed(state.get("error") or "automation worker failed", state)
     return {
         "status": "ready" if status == "running" else "completed",
         "session_status": status,
@@ -263,7 +266,7 @@ def wait_for_automation_startup(
         if problem is not None:
             return _failed(problem, state)
         if status in {"running", "completed"} and session is not None:
-            return _accepted_outcome(status, session, state)
+            return _session_outcome(status, session, state)
         if status in {"stopped", "error"}:
             reason = state.get("error") if isinstance(state.get("error"), str) and state.get("error") else None
             return _failed(reason or f"runtime session is {status}", state)
@@ -292,7 +295,7 @@ def _exited_startup(
     if problem is not None:
         return _failed(problem, state)
     if status == "completed" and session is not None:
-        return _accepted_outcome(status, session, state)
+        return _session_outcome(status, session, state)
     reason = state.get("error") if isinstance(state.get("error"), str) and state.get("error") else None
     if reason is None:
         exit_code = process.poll()

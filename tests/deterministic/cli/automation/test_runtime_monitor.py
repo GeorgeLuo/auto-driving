@@ -244,6 +244,7 @@ class RuntimeMonitorTests(unittest.TestCase):
             ("completed", "completed", "host-1"),
         )
         self.assertEqual(state["readiness"]["status"], "ready")
+        self.assertEqual(state["session"]["status"], "completed")
         self.assertEqual(state["readiness"]["ready_for"], "inspect the run")
         self.assertIsNone(state["readiness"]["blocking_layer"])
         self.assertEqual(state["control_application"], "shared_execution")
@@ -350,6 +351,22 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(state["status"], "completed")
         self.assertNotIn("health failed", state.get("error", ""))
         self.assertTrue(client.stopped)
+
+    def test_interruption_and_monitor_failure_copy_the_stopped_runtime_session(self) -> None:
+        for failure, status, code in ((KeyboardInterrupt(), "stopped", 130),
+                                      (RuntimeError("status read failed"), "error", 2)):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as tmp, mock.patch.object(
+                _FakeClient, "status", side_effect=failure,
+            ):
+                client, actual_code, _message, _lines, state = self._monitor(
+                    Path(tmp) / "automation", sessions=[], hosts=[_host(0)],
+                )
+            self.assertTrue(client.stopped)
+            self.assertEqual(actual_code, code)
+            self.assertEqual(state["status"], status)
+            self.assertEqual(state["session"]["status"], "stopped")
+            self.assertEqual(state["readiness"]["status"], "blocked")
+            self.assertEqual(state["readiness"]["blocking_layer"], "runtime_session")
 
 
 class ControlRecordTests(unittest.TestCase):

@@ -30,14 +30,15 @@ def elapsed_ms(started: float) -> float:
 
 
 def cycle_timing(
-    duration_ms: float, step_durations: Mapping[str, float], steps: Any
+    duration_ms: float, step_durations: Mapping[str, float | None], steps: Any
 ) -> dict[str, Any]:
     """The cycle's total and each step's timing, in ``STEPS`` order.
 
-    ``step_durations`` holds each step call's duration; an empty slot has
-    none and reports null. ``steps`` is the cycle's ``DecisionSteps``; each
-    entry's ``plugins`` is the slot's ``StepRunner.plugin_timing()``: each
-    applied plugin's ``plugin_id``, ``duration_ms`` and ``error``, or none
+    ``step_durations`` has a key for each step call this cycle started: its
+    duration, or None when it raised. A step that did not start reports a
+    null duration and no plugins. ``steps`` is the cycle's ``DecisionSteps``;
+    a started step's ``plugins`` is the slot's ``StepRunner.plugin_timing()``:
+    each applied plugin's ``plugin_id``, ``duration_ms`` and ``error``, or none
     for a step callable that is not a runner. The steps are a list so the
     order survives JSON with sorted keys.
     """
@@ -45,11 +46,12 @@ def cycle_timing(
     records = []
     for step in STEPS:
         plugin_timing = getattr(getattr(steps, step, None), "plugin_timing", None)
+        started = step in step_durations and callable(plugin_timing)
         records.append(
             {
                 "step": step,
                 "duration_ms": step_durations.get(step),
-                "plugins": plugin_timing() if callable(plugin_timing) else [],
+                "plugins": plugin_timing() if started else [],
             }
         )
     return {"duration_ms": duration_ms, "steps": records}

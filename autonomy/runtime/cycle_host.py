@@ -431,26 +431,33 @@ class AutonomyCycleHost:
                 ).strip()
                 if isinstance(partial, DecisionCycleResult):
                     partial = replace(partial, context=recorded_context)
-                    if partial.application is None:
-                        mode = ticket.mode if ticket is not None else (mode or "manual")
-                        idle = error_application(mode)
-                        partial = replace(
-                            partial,
-                            application=ControlApplication(
-                                partial.context.frame_id, idle.mode, False, idle.reason,
-                                AutonomyControl(reason=idle.reason),
-                            ),
-                        )
-                    # The loop publishes this object. It does not read last_result,
-                    # which still names the previous completed frame.
-                    try:
-                        exc.cycle_result = partial
-                    except Exception:
-                        pass
+                idle_write = None
                 try:
                     if self.execution is not None:
+                        before = self.execution.last_application
                         self.execution.cycle_failed(ticket)
+                        if self.execution.last_application is not before:
+                            idle_write = self.execution.last_application
                 finally:
+                    if isinstance(partial, DecisionCycleResult):
+                        if partial.application is None:
+                            # The idle write this failure made, or none when execution
+                            # no longer owned the target.
+                            if idle_write is not None:
+                                application = replace(idle_write, frame_id=partial.context.frame_id)
+                            else:
+                                idle = error_application(ticket.mode if ticket is not None else (mode or "manual"))
+                                application = ControlApplication(
+                                    partial.context.frame_id, idle.mode, False, idle.reason,
+                                    AutonomyControl(reason=idle.reason),
+                                )
+                            partial = replace(partial, application=application)
+                        # The loop publishes this object. It does not read last_result,
+                        # which still names the previous completed frame.
+                        try:
+                            exc.cycle_result = partial
+                        except Exception:
+                            pass
                     with self._session_lock:
                         if (
                             not recorded
@@ -603,7 +610,6 @@ class AutonomyCycleHost:
             "last_control": (
                 last_result.control.to_dict() if last_result is not None else None
             ),
-            "last_cycle": last_result.to_dict() if last_result is not None else None,
         }
 
     def _report_steps(self) -> dict[str, Any]:

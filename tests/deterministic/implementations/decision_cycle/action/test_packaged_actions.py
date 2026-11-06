@@ -195,7 +195,8 @@ class ModeActionTests(unittest.TestCase):
         )
         part.run(image_array=object(), mode="local")
         part.wait_for_cycle()
-        steering, throttle, control, _generation, cycle = part.completed_outputs("local")
+        steering, throttle, control, _generation = part.completed_outputs("local")
+        cycle = part.latest_state.report
 
         self.assertGreater(steering, 0.0)
         self.assertAlmostEqual(throttle, 0.60)

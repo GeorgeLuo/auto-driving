@@ -15,6 +15,7 @@ from typing import Any, Callable
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, cycle_result_of
 from autonomy.decision_cycle.memory.runner import MemoryRunner
+from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.plugins import LocalPluginCatalog
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
 from autonomy.runtime.recording import recorded_selections
@@ -1253,10 +1254,16 @@ class ImageReplayRunner:
         }
 
     def _set_displayed_locked(self, cycle: dict[str, Any], perception: Any) -> None:
-        """Replace the displayed cycle and perception; the revision tells the page they changed."""
+        """Replace the displayed cycle and perception; the revision tells the page they changed.
+
+        The page shows the perception ``text`` rendered from the stored evidence.
+        """
 
         self._state["cycle"] = cycle
-        self._state["perception"] = perception
+        self._state["perception"] = (
+            {**perception, "text": PerceptionText.from_dict(perception).text}
+            if isinstance(perception, dict) else perception
+        )
         self._state["steps_revision"] = int(self._state.get("steps_revision", 0)) + 1
 
     def _record_action_locked(self, action: str, **fields: Any) -> None:

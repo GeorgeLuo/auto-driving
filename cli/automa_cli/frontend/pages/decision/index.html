@@ -344,7 +344,6 @@
 
   <script src="/static/shared/metrics.js"></script>
   <script>
-    const params = new URLSearchParams(location.search);
     const frameImage = document.getElementById("frame");
     const canvas = document.getElementById("overlay");
     const context = canvas.getContext("2d");
@@ -653,7 +652,9 @@
           captured_at_ms: report.timestamp_ms,
           age_ms: payload.result_age_ms,
           max_age_ms: payload.stale_after_ms,
-          capture_age_ms: payload.result_age_ms,
+          // The camera sample's age when the view read it; result age counts from completion.
+          capture_age_ms: Number.isInteger(payload.read_at_ms) && Number.isInteger(report.timestamp_ms)
+            ? Math.max(0, payload.read_at_ms - report.timestamp_ms) : null,
         },
         evidence: payload.evidence || null,
         host_telemetry: payload.host_telemetry || null,

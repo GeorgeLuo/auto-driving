@@ -38,7 +38,7 @@ def _perception_screen(event: StreamEvent) -> str:
     """The perception screen: the probe verdict and the host's latest cycle."""
 
     publication = event.source if isinstance(event.source, PerceptionPublication) else PerceptionPublication()
-    cadence = {"processed": publication.processed, "cycle_ms": publication.cycle_ms, "age_ms": publication.age_ms}
+    cadence = {"cycle_ms": publication.cycle_ms, "age_ms": publication.age_ms}
     lines = [
         "automa perception stream",
         "",
@@ -93,7 +93,11 @@ def _memory_screen(event: StreamEvent) -> str:
 
 def _decision_screen(event: StreamEvent) -> str:
     live = event.live
-    text = _format_stream_frame(event.step, live) if live.get("status") == "live" else str(live.get("error") or "")
+    # A stale or raised frame keeps its records under the reason it is not live.
+    parts = [] if live.get("status") == "live" else [str(live.get("error") or "")]
+    if "freshness" in live:
+        parts.append(_format_stream_frame(event.step, live))
+    text = "\n".join(parts)
     if event.view is None:
         return text
     return "\n".join([text, "", *_view_lines(event.view, *_DECISION_PAGES)])
@@ -130,15 +134,13 @@ def _live_memory_screen(*, host_name: str, live: dict[str, Any]) -> str:
     if live.get("endpoint"):
         lines.append(f"Endpoint: {live.get('endpoint')}")
     if live.get("mode") is not None:
-        lines.append(f"Mode: {live.get('mode')}  session: {live.get('session_status') or 'unknown'}")
+        lines.append(f"Mode: {live.get('mode')}")
     if status == "live":
         lines.append(f"Applied plugins: {', '.join(live.get('plugin_ids', [])) or 'none'}")
         lines.extend(_format_plugin_ledgers(_live_plugins(live)))
         lines.append(f"Evidence publisher: {live.get('evidence_publisher') or 'none'}")
         if live.get("last_duration_ms") is not None:
             lines.append(f"Last duration: {live.get('last_duration_ms')} ms")
-        if live.get("last_error"):
-            lines.append(f"Last error: {live.get('last_error')}")
     else:
         if live.get("error"):
             lines.append(f"Detail: {live.get('error')}")

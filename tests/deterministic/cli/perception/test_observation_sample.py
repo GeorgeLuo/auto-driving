@@ -4,7 +4,9 @@ from __future__ import annotations
 import base64
 import io
 import json
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import Mock, patch
 from urllib.error import HTTPError, URLError
 
@@ -62,9 +64,7 @@ def _feed():
     feed.observation = viewer.ObservationPublisher(feed.server.perception)
     feed.decision = Mock()
     def publish(publication, jpeg):
-        feed.decision.publication = publication
         feed.observation.publish(publication, jpeg)
-        return True
     feed.decision.publish_publication.side_effect = publish
     return feed
 
@@ -264,6 +264,28 @@ class ObservationSampleTests(unittest.TestCase):
                     self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
                 else:
                     self.assertEqual(feed.server.perception.frame(), (jpeg, "image/jpeg"))
+
+    def test_a_cleared_view_shows_the_same_frame_when_the_host_answers_again(self):
+        publication = _publication()
+        publication["report"]["values"] = {
+            "source_id": "fixture:local", "stale_after_ms": 1000,
+            "activation": {"generation_id": "decision-test", "steps": {}},
+        }
+        pair = publication, _jpeg((4, 4), (1, 2, 3))
+        with tempfile.TemporaryDirectory() as tmp, patch.object(viewer, "runtime_view_dir", return_value=Path(tmp)):
+            feed = viewer.ViewFeed("fixture", base_url="http://host.invalid", timeout_s=1.0)
+        self.addCleanup(feed.stop)
+        self.assertIsNone(feed.error)
+        with patch.object(viewer, "fetch_frame_sample", side_effect=[pair, ConnectionError("down"), pair]), \
+                patch("cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel",
+                      return_value={"status": "unavailable"}):
+            feed.publish(feed.read_observation()[0])
+            self.assertIsNone(feed.decision_error)
+            self.assertIsNotNone(feed.server.perception.latest_json())
+            feed.read_observation()
+            self.assertIsNone(feed.server.perception.latest_json())
+            feed.publish(feed.read_observation()[0])
+        self.assertIsNotNone(feed.server.perception.latest_json())
 
     def test_observation_remains_available_when_decision_refresh_fails(self):
         feed = _feed()

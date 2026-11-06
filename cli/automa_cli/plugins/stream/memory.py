@@ -7,7 +7,11 @@ from typing import Any, Callable
 from autonomy.decision_cycle.timing import step_timing
 
 from autonomy.runtime.frame_loop import LATEST_JSON_PATH
-from ...hosts.publications.frame_publication import read_frame_publication, FramePublicationError
+from ...hosts.publications.frame_publication import (
+    FramePublicationError,
+    read_frame_publication,
+    step_unavailable,
+)
 from ...hosts.discovery import runtime_base_url
 from ...hosts.step_activations import absent_step_error
 from ...hosts.errors import RuntimeHostError
@@ -96,6 +100,9 @@ def _probe_memory(
         frame_id=report.frame_id, generation_id=report.generation_id,
         mode=report.application.mode, record=memory,
     )
+    unavailable = step_unavailable(publication, "memory")
+    if unavailable is not None:
+        return {**probe, "status": unavailable[0], "error": unavailable[1]}
     if memory is None:
         return {**probe, "status": "absent", "error": absent_step_error("memory", host_name)}
     activation = report.values["activation"]["steps"].get("memory") or {}

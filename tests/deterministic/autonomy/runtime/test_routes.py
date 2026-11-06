@@ -171,6 +171,17 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertIsNone(transaction["image_base64"])
         self.assertIn("image_encoding_failed", transaction["image_error"])
 
+    def test_image_routes_name_an_encoding_failure(self) -> None:
+        loop, routes = _routes()
+        loop.submit(np.zeros((4, 6, 3), dtype=np.uint8), frame_id="first", frame_index=1)
+        loop.wait_for_cycle()
+        for path in ("/host/observation/latest/frame.jpg", "/host/camera/latest/frame.jpg"):
+            with self.subTest(path=path), patch.object(FrameLoop, "frame_jpeg", side_effect=ValueError("bad image")):
+                status, body = _json(routes.handle("GET", path))
+                self.assertEqual(status, 503)
+                self.assertEqual((body["health"], body["ok"]), ("error", False))
+                self.assertEqual(body["error"], "image_encoding_failed: ValueError: bad image")
+
     def test_decision_transaction_image_stays_with_its_completed_cycle(self) -> None:
         from autonomy.decision_cycle.activation import DECISION_STEPS
         from implementations.decision_cycle.catalog import packaged_activation

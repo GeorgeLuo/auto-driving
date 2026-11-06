@@ -197,9 +197,10 @@ memory, and `host_<step>_stream` for proposal, plan and action, or the
 `host_decision_error` that kept the step from a matched cycle. Every probe has
 a `status`. `--once` prints one render or probe without a local view and exits
 2 unless its `status` is `live`. Any other status
-(`stopped`, `stale`, `absent`, `error`, `unavailable`) comes with an `error`,
+(`stale`, `absent`, `error`, `unavailable`) comes with an `error`,
 the text of what went wrong; a `host_decision_error` also names its code in
-`error_code`.
+`error_code`. A `stale` frame, or a cycle that raised before the step recorded,
+keeps the frame's fields beside that `error`.
 When no runtime host can be addressed, every step emits one `unavailable` JSON
 probe and exits 2, even without `--once`; the error names the command that
 starts one. Terminal streams show the same probe verdict and reason, and

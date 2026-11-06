@@ -29,7 +29,7 @@ assert.equal(elements.perceptionPluginRuns.textContent, null);
 
 ctx.state.current_frame = { frame_id: "camera", absent: false };
 ctx.state.perception = {
-  status: "ok", plugin_runs: [{ plugin_id: "frame" }], things: [], signals: [], lines: ["frame output"]
+  status: "ok", plugin_runs: [{ plugin_id: "frame" }], things: [], signals: [], text: "frame output"
 };
 ctx.renderPerception();
 assert.equal(elements.perceptionSummary.textContent, "ok");

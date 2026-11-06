@@ -280,11 +280,6 @@ def _frame_record() -> dict:
                     "duration_ms": 17,
                     "steps": [{"step": "perception", "duration_ms": 8, "plugins": []}],
                 },
-                "source_frame": {
-                    "frame_id": "frame_000004",
-                    "captured_at_ms": 1234,
-                    "completed_at_ms": 1242,
-                },
             },
         },
     }

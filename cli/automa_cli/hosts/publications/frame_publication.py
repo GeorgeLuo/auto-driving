@@ -11,7 +11,7 @@ from typing import Any
 
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.activation import activation_presets
-from autonomy.decision_cycle.perception.evidence.rendering import text_for_stored_perception
+from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.decision_cycle.timing import step_timing
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA
 from autonomy.runtime.report import HostReport, diagnostic_ceiling
@@ -47,12 +47,11 @@ def read_frame_publication(
     *,
     host_name: str,
     now_ms: int,
-    max_age_ms: int | None = None,
 ) -> dict[str, Any]:
     """Read one completed frame. A null step, a raised cycle, or a stale age stays visible.
 
     The reader does not invent identity. A missing report is the only absence.
-    ``max_age_ms`` overrides the ceiling reported to the caller and does not hide the frame.
+    The age is the one the host computed on its own clock, when it sent one.
     """
 
     if publication is None:
@@ -84,7 +83,7 @@ def read_frame_publication(
             field="report",
         ) from exc
     try:
-        published_ceiling = diagnostic_ceiling(report.values)
+        ceiling = diagnostic_ceiling(report.values)
     except ValueError as exc:
         raise _publication_error(
             "incomplete",
@@ -92,22 +91,16 @@ def read_frame_publication(
             field="report.values.stale_after_ms",
         ) from exc
     advertised_ceiling = publication.get("stale_after_ms")
-    if type(advertised_ceiling) is int and advertised_ceiling != published_ceiling:
+    if type(advertised_ceiling) is int and advertised_ceiling != ceiling:
         raise _publication_error(
             "incomplete",
             "Frame publication stale_after_ms does not match the report.",
             field="stale_after_ms",
         )
-    if max_age_ms is None:
-        ceiling = published_ceiling
-    else:
-        if type(max_age_ms) is not int or max_age_ms <= 0:
-            raise ValueError("max_age_ms must be a positive non-bool int")
-        ceiling = int(max_age_ms)
     if report.host_name != host_name:
         raise _publication_error(
             "mismatched",
-            "Frame publication host_name does not match the requested host.",
+            f"Frame publication is from host {report.host_name!r}, not {host_name!r}.",
             field="report.host_name",
         )
     values = report.values
@@ -132,20 +125,14 @@ def read_frame_publication(
             "Frame activation steps must be an object.",
             field="report.values.activation.steps",
         )
-    source_frame = values.get("source_frame")
-    if source_frame is not None:
-        expected = {"frame_id": report.frame_id, "frame_index": report.frame_index,
-                    "captured_at_ms": report.timestamp_ms}
-        if not isinstance(source_frame, dict) or any(source_frame.get(key) != value for key, value in expected.items()):
-            raise _publication_error("mismatched", "Frame source identity does not match the report.", field="report.values.source_frame")
     if type(now_ms) is not int:
         raise ValueError("now_ms must be a non-bool int")
     read_at_ms = publication.get("read_at_ms")
     if type(read_at_ms) is not int:
         read_at_ms = int(now_ms)
-    advertised_age = publication.get("result_age_ms")
-    if type(advertised_age) is not int:
-        advertised_age = max(0, int(now_ms) - report.published_at_ms)
+    age_ms = publication.get("result_age_ms")
+    if type(age_ms) is not int or age_ms < 0:
+        age_ms = max(0, int(now_ms) - report.published_at_ms)
     return {
         "host_name": report.host_name,
         "source_id": source_id,
@@ -156,9 +143,8 @@ def read_frame_publication(
         "timestamp_ms": report.timestamp_ms,
         "published_at_ms": report.published_at_ms,
         "read_at_ms": read_at_ms,
-        "result_age_ms": int(now_ms) - report.published_at_ms,
+        "result_age_ms": age_ms,
         "max_age_ms": ceiling,
-        "advertised_result_age_ms": advertised_age,
         "report": report,
         "publication": publication,
     }
@@ -186,14 +172,12 @@ def publication_capture(publication: dict[str, Any]) -> tuple[Any, ...]:
     """What identifies one frame: its id, capture, completion, and generation."""
 
     report = _report(publication)
-    values = report.get("values") if isinstance(report.get("values"), dict) else {}
-    source = values.get("source_frame") if isinstance(values.get("source_frame"), dict) else {}
     return (
         report.get("host_name"),
         report.get("run_id"),
         report.get("frame_id"),
-        source.get("captured_at_ms", report.get("timestamp_ms")),
-        source.get("completed_at_ms", report.get("published_at_ms")),
+        report.get("timestamp_ms"),
+        report.get("published_at_ms"),
         report.get("generation_id"),
     )
 
@@ -223,7 +207,7 @@ def perception_text_from_publication(publication: dict[str, Any]) -> str:
 
     perception = _cycle(publication).get("perception")
     if isinstance(perception, dict):
-        text = text_for_stored_perception(perception)
+        text = PerceptionText.from_dict(perception).text
         if text.strip():
             return text.strip()
     report = _report(publication)
@@ -233,13 +217,40 @@ def perception_text_from_publication(publication: dict[str, Any]) -> str:
     return f"health={health}\n(no perception payload in latest state)"
 
 
-def health_error(publication: dict[str, Any]) -> str | None:
-    """Why no completed frame is visible. A stale, raised, or imageless frame stays visible."""
+def health_error(publication: dict[str, Any] | None) -> str | None:
+    """Why the host is not publishing live frames; None while its latest frame is fresh.
 
-    if not isinstance(publication, dict) or publication.get("report") is None:
-        health = str(publication.get("health") or "unknown") if isinstance(publication, dict) else "unknown"
+    A stale frame still has a report, and a page may keep showing it.
+    """
+
+    if not isinstance(publication, dict):
+        return "No frame publication was read."
+    health = str(publication.get("health") or "unknown")
+    if publication.get("report") is None:
         return f"The frame publication health is {health!r}."
-    health = str(publication.get("health") or "")
-    if health in {"absent", "warming"}:
+    if health == "stale":
+        return (
+            f"The latest frame is {publication.get('result_age_ms')} ms old, past its "
+            f"{publication.get('stale_after_ms')} ms ceiling."
+        )
+    if health != "healthy":
         return f"The frame publication health is {health!r}."
+    return None
+
+
+def step_unavailable(publication: dict[str, Any] | None, step: str) -> tuple[str, str] | None:
+    """A step stream's status and reason when it is not live, or None while it is.
+
+    ``absent``: no completed frame. ``stale``: the latest frame is past its
+    ceiling. ``error``: the cycle raised before ``step`` recorded.
+    """
+
+    error = health_error(publication)
+    if error is not None:
+        if not isinstance(publication, dict) or publication.get("report") is None:
+            return "absent", error
+        return ("stale" if publication.get("health") == "stale" else "error"), error
+    report = _report(publication)
+    if report.get("status") == "error" and _cycle(publication).get(step) is None:
+        return "error", f"The cycle for frame {report.get('frame_id')} raised before {step} recorded: {report.get('error')}"
     return None

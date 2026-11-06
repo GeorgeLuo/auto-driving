@@ -163,7 +163,7 @@ class DecisionCycle:
         steps = self.steps
         started_at_ms = timestamp_ms()
         started = clock()
-        durations: dict[str, float] = {}
+        durations: dict[str, float | None] = {}
         perception = observation = memory = proposal = plan = action = None
         try:
             perception = _completed(
@@ -187,9 +187,9 @@ class DecisionCycle:
                 expected=ActionResult,
             )
         except Exception as exc:
-            # The raising step stays null: its name is absent from ``durations``
-            # and its output was not assigned. Later steps stay at their initial
-            # None and are not copied from any earlier cycle.
+            # The raising step stays null: its duration is None and its output
+            # was not assigned. Later steps never started, so they stay None and
+            # report no plugins rather than an earlier cycle's.
             partial = _cycle_result(
                 context,
                 perception=perception,
@@ -241,7 +241,7 @@ def _cycle_result(
     action: ActionResult | None,
     control: AutonomyControl,
     started_at_ms: int,
-    durations: dict[str, float],
+    durations: dict[str, float | None],
     started: float,
     steps: DecisionSteps,
 ) -> DecisionCycleResult:
@@ -268,12 +268,13 @@ def cycle_result_of(exc: BaseException) -> DecisionCycleResult | None:
 
 
 def _run_memory_step(
-    durations: dict[str, float], run: MemoryStep | None, context: DecisionFrameContext,
+    durations: dict[str, float | None], run: MemoryStep | None, context: DecisionFrameContext,
 ) -> dict[str, Any] | None:
     """Run memory, translating failures at the cycle boundary for any callable."""
 
     if not run:
         return None
+    durations["memory"] = None
     started = clock()
     try:
         # Memory plugins write the host map; the step returns a report.
@@ -292,11 +293,12 @@ def _run_memory_step(
     return memory
 
 
-def _completed(durations: dict[str, float], step: str, run: Any, *args: Any, expected: type) -> Any:
-    """``run(*args)`` once it returns a usable record. A raise leaves no duration."""
+def _completed(durations: dict[str, float | None], step: str, run: Any, *args: Any, expected: type) -> Any:
+    """``run(*args)`` once it returns a usable record. A raise leaves the duration None."""
 
     if not run:
         return None
+    durations[step] = None
     started = clock()
     record = run(*args)
     if record is not None and not isinstance(record, expected):

@@ -6,37 +6,6 @@ from autonomy.decision_cycle.confidence import confidence_text
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal
 
 
-def text_for_stored_perception(perception: dict[str, Any] | None) -> str:
-    """Render one stored perception record. Recordings do not keep lines or text."""
-
-    if not isinstance(perception, dict):
-        return ""
-    from autonomy.decision_cycle.perception.interface import PerceptionPluginRun
-
-    runs = tuple(
-        PerceptionPluginRun.from_dict(item)
-        for item in perception.get("plugin_runs") or ()
-        if isinstance(item, dict)
-    )
-    signals = tuple(
-        PerceptionSignal.from_dict(item)
-        for item in perception.get("signals") or ()
-        if isinstance(item, dict)
-    )
-    things = tuple(
-        PerceivedThing.from_dict(item)
-        for item in perception.get("things") or ()
-        if isinstance(item, dict)
-    )
-    return render_perception_text(
-        schema=str(perception.get("schema") or ""),
-        plugin_id=str(perception.get("plugin_id") or ""),
-        plugin_runs=runs,
-        signals=signals,
-        things=things,
-    )
-
-
 def render_perception_text(
     *,
     schema: str,
@@ -73,7 +42,7 @@ def render_perception_text(
         if error:
             lines.append(
                 f"plugin_status id={catalog_id} status={getattr(run, 'status', '')} "
-                f"detail={_value_text(error)}"
+                f"detail={_line_value(error)}"
             )
         lines.extend(signal_line(signal) for signal in run_signals)
         lines.extend(thing_line(thing) for thing in run_things)
@@ -121,3 +90,9 @@ def _value_text(value: Any) -> str:
     if value is None:
         return "none"
     return str(value)
+
+
+def _line_value(value: Any) -> str:
+    """One space-free token, so a plugin error stays inside its ``detail=`` field."""
+
+    return str(value).replace("\n", " ").replace(" ", "_")

@@ -5,43 +5,16 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from ..publications.decision import (
-    accept_decision_publication,
-    decision_view_frame,
-)
-from ..publications.host_publications import (
-    TransactionCache,
-    fetch_host_telemetry_latest,
-    fetch_frame_sample,
-)
+from ..publications.decision import accept_decision_publication
+from ..publications.host_publications import fetch_host_telemetry_latest
 from ..publications.host_telemetry import (
     HostTelemetryError,
     host_telemetry_failure,
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
 )
-from ...frontend.server import RuntimeViewServer
 from .observation import ObservationPublisher
 from ..publications.frame_publication import publication_capture
-
-
-def _accepted_pair(
-    base_url: str,
-    *,
-    host_name: str,
-    timeout_s: float,
-    cache: TransactionCache | None = None,
-) -> tuple[dict[str, Any], tuple[bytes, str] | None]:
-    """Accept the frame the host published. The image is optional."""
-
-    publication, jpeg = fetch_frame_sample(base_url, timeout_s=timeout_s, cache=cache)
-    normalized = accept_decision_publication(
-        publication,
-        host_name=host_name,
-        now_ms=int(time.time() * 1000),
-    )
-    image = (jpeg, "image/jpeg") if jpeg else None
-    return normalized, image
 
 
 class DecisionViewAdapter:
@@ -52,47 +25,32 @@ class DecisionViewAdapter:
         *,
         host_name: str,
         base_url: str,
-        view_server: RuntimeViewServer,
+        publisher: ObservationPublisher,
         timeout_s: float,
     ) -> None:
         self.host_name = host_name
         self.base_url = base_url
-        self.view_server = view_server
-        self.publisher = ObservationPublisher(view_server.perception)
+        self.publisher = publisher
         self.timeout_s = timeout_s
-        self._transaction_cache = TransactionCache()
         self.publication: dict[str, Any] | None = None
 
-    def publish_frame(
-        self,
-        normalized: dict[str, Any],
-        image: tuple[bytes, str] | None,
-    ) -> bool:
-        decision_view_frame(normalized)
+    def publish_frame(self, normalized: dict[str, Any], jpeg: bytes | None) -> None:
         publication = normalized["publication"]
         if self.publication is None or publication_capture(publication) != publication_capture(self.publication):
-            self.publisher.publish(publication, image[0] if image else None)
+            # A new frame shows before its telemetry read answers.
+            self.publisher.publish(publication, jpeg)
         telemetry = read_host_telemetry_panel(
             self.base_url, normalized_decision=normalized,
             host_name=self.host_name, timeout_s=self.timeout_s,
         )
-        self.publication = {**normalized["publication"], "host_telemetry": telemetry}
-        self.publisher.publish(self.publication, image[0] if image else None)
-        return True
+        self.publication = {**publication, "host_telemetry": telemetry}
+        self.publisher.publish(self.publication, jpeg)
 
-    def publish_publication(self, publication: dict[str, Any], jpeg: bytes | None) -> bool:
+    def publish_publication(self, publication: dict[str, Any], jpeg: bytes | None) -> None:
         normalized = accept_decision_publication(
             publication, host_name=self.host_name, now_ms=int(time.time() * 1000),
         )
-        return self.publish_frame(normalized, (jpeg, "image/jpeg") if jpeg else None)
-
-    def refresh(self) -> bool:
-        normalized, image = _accepted_pair(
-            self.base_url,
-            host_name=self.host_name,
-            timeout_s=self.timeout_s, cache=self._transaction_cache,
-        )
-        return self.publish_frame(normalized, image)
+        self.publish_frame(normalized, jpeg)
 
 
 def read_host_telemetry_panel(

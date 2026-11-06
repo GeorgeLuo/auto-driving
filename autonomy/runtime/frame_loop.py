@@ -337,11 +337,6 @@ class FrameLoop:
         return {
             "generation_id": self.generation_id,
             "observation": self.observation_status(),
-            "latest_cycle_schema": (
-                None
-                if self.latest_state is None
-                else self.latest_state.report.get("schema")
-            ),
         }
 
     def publish_latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
@@ -398,10 +393,14 @@ class FrameLoop:
             return None, publication
         try:
             return cls.frame_jpeg(frame), publication
-        except Exception:
-            # An encoding failure leaves the publication alone. The caller
-            # reports the image error beside it.
-            return None, publication
+        except Exception as exc:
+            # The image route answers 503 with this body; it names the failure.
+            return None, {
+                **publication,
+                "health": PUBLICATION_HEALTH_ERROR,
+                "ok": False,
+                "error": f"image_encoding_failed: {type(exc).__name__}: {exc}",
+            }
 
     def wait_for_cycle(self, timeout_s: float = 5.0) -> None:
         """Block until the background decision cycle finishes, if one is running."""
@@ -415,7 +414,7 @@ class FrameLoop:
 
     def completed_outputs(
         self, mode: str = "manual"
-    ) -> tuple[float, float, dict[str, Any], Any, dict[str, Any] | None]:
+    ) -> tuple[float, float, dict[str, Any], Any]:
         """Return the pilot tuple from the last finished cycle."""
         return self._held_outputs(mode)
 
@@ -659,7 +658,6 @@ class FrameLoop:
         self,
         result: DecisionCycleResult,
         *,
-        camera: LatestCameraFrame,
         completed_at_ms: int,
         status: str,
         error: str | None,
@@ -667,7 +665,6 @@ class FrameLoop:
     ) -> dict[str, Any]:
         """The report for this camera frame. Another frame's outputs are not reused."""
 
-        frame_id = camera.frame_id
         report_application = None
         if result.application is None:
             report_application = error_application(mode_name)
@@ -678,12 +675,6 @@ class FrameLoop:
         values: dict[str, Any] = {
             "source_id": self.source_id or f"{self.runtime}:local",
             "activation": {"generation_id": generation_id, "steps": steps},
-            "source_frame": {
-                "frame_id": frame_id,
-                "frame_index": camera.frame_index,
-                "captured_at_ms": camera.captured_at_ms,
-                "completed_at_ms": completed_at_ms,
-            },
             "stale_after_ms": stale_after_ms(self._cycle_duration_ms),
         }
         if result.application is not None:
@@ -812,8 +803,8 @@ class FrameLoop:
                 duration_ms = cycle_result.duration_ms if cycle_result is not None else max(0, completed_at_ms - captured_at_ms)
                 status = "error"
                 error = f"{type(exc).__name__}: {exc}"
-            if cycle_result is None or getattr(cycle_result.context, "frame_id", None) != frame_id:
-                cycle_result = DecisionCycleResult(
+            def empty_result() -> DecisionCycleResult:
+                return DecisionCycleResult(
                     context=DecisionFrameContext(
                         frame_id=frame_id,
                         frame_index=frame_index,
@@ -830,6 +821,9 @@ class FrameLoop:
                     started_at_ms=captured_at_ms,
                     completed_at_ms=completed_at_ms,
                 )
+
+            if cycle_result is None or getattr(cycle_result.context, "frame_id", None) != frame_id:
+                cycle_result = empty_result()
             applied_decision = getattr(self.host, "applied_decision", None)
             applied = applied_decision() if callable(applied_decision) else None
             if status == "ok":
@@ -871,15 +865,27 @@ class FrameLoop:
                 try:
                     report = self._capture_frame_report(
                         cycle_result,
-                        camera=camera,
                         completed_at_ms=completed_at_ms,
                         status=status,
                         error=error,
                         mode_name=mode_name,
                     )
-                except Exception:
+                except Exception as exc:
+                    # A cycle that is not JSON data still publishes this frame,
+                    # as an error with null steps, so the pages do not freeze.
                     logger.exception("Frame report failed for %s", frame_id)
-                    report = None
+                    status = "error"
+                    try:
+                        report = self._capture_frame_report(
+                            empty_result(),
+                            completed_at_ms=completed_at_ms,
+                            status=status,
+                            error=f"frame report failed: {type(exc).__name__}: {exc}",
+                            mode_name=mode_name,
+                        )
+                    except Exception:
+                        logger.exception("Error report failed for %s", frame_id)
+                        report = None
                 if report is not None:
                     self._last_control = control_dict
                     self.latest_state = LatestObservationState(
@@ -902,5 +908,4 @@ class FrameLoop:
         with self._lock:
             control = deepcopy(self._last_control)
             generation_id = self.generation_id
-            cycle = None if self.latest_state is None else deepcopy(self.latest_state.report)
-        return (output.steering, output.throttle, control, generation_id, cycle)
+        return (output.steering, output.throttle, control, generation_id)

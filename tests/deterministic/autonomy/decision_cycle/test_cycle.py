@@ -282,6 +282,33 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertIsNone(durations["plan"])
         self.assertIsNone(durations["action"])
 
+    def test_a_raised_cycle_lists_plugins_only_for_steps_that_started(self) -> None:
+        class Timed:
+            """A step whose runner still holds an earlier call's plugin timing."""
+
+            def __call__(self, *args):
+                return None
+
+            def plugin_timing(self):
+                return [{"plugin_id": "earlier", "duration_ms": 1.0, "error": None}]
+
+        class Raising(Timed):
+            def __call__(self, *args):
+                raise RuntimeError("proposal failed")
+
+        cycle = DecisionCycle(DecisionSteps(
+            perception=Timed(), proposal=Raising(), plan=Timed(), action=Timed(),
+        ))
+        with self.assertRaises(RuntimeError) as raised:
+            cycle.run(self.context())
+        plugins = {
+            entry["step"]: [plugin["plugin_id"] for plugin in entry["plugins"]]
+            for entry in raised.exception.cycle_result.timing["steps"]
+        }
+        self.assertEqual(plugins["perception"], ["earlier"])
+        self.assertEqual(plugins["proposal"], ["earlier"])
+        self.assertEqual((plugins["plan"], plugins["action"]), ([], []))
+
 
 class AppliedActivationTests(unittest.TestCase):
     def test_applied_export_preserves_context_and_detaches_configs(self) -> None:

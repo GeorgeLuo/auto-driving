@@ -146,8 +146,11 @@ class LiveCommandsTests(LiveHostTestCase):
                    message="the stopped host's last frame never went stale")
         result, view_url, served = self.view_once("--host-url", self.host.base_url)
 
-        self.assertEqual(result.stdout, f"Viewing host {HOST_NAME} at {self.host.base_url}\n"
-                                        f"Browser opened: {view_url}\n")
+        viewing, not_live, browser = result.stdout.splitlines()
+        self.assertEqual((viewing, browser), (f"Viewing host {HOST_NAME} at {self.host.base_url}",
+                                              f"Browser opened: {view_url}"))
+        self.assertRegex(not_live, r"^Not live: The latest frame is \d+ ms old, past its \d+ ms ceiling\.$")
+        # The page keeps the stale frame.
         status, latest = served
         self.assertEqual(status, 200)
         self.assertEqual(latest["health"], "stale")

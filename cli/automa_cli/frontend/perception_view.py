@@ -63,13 +63,15 @@ class PerceptionView:
             "height_px": height_px,
             "url": f"/frame?v={quote(image_id, safe='')}" if frame_bytes else None,
         }
+        # Projected once per publish; every read of the latest frame serves it.
+        record = {**deepcopy(frame_record), "evidence": report_evidence(report)}
         with self._lock:
             if frame_bytes:
                 self._frames[image_id] = (frame_bytes, _CONTENT_TYPE)
                 self._frames.move_to_end(image_id)
                 if len(self._frames) > MAX_BUFFERED_FRAMES:
                     self._frames.popitem(last=False)
-            self._latest = frame, deepcopy(frame_record), image_id
+            self._latest = frame, record, image_id
 
     def invalidate_latest(self, reason: str | None = None) -> None:
         """An unavailable publication must not leave a usable latest frame; ``reason`` says why."""
@@ -182,12 +184,10 @@ def _frame_identity(record: Any) -> dict[str, Any]:
     frame_id = report.get("frame_id") if isinstance(report, dict) else None
     if not isinstance(frame_id, str) or not frame_id:
         raise ValueError("frame publication requires report.frame_id")
-    values = report.get("values") if isinstance(report.get("values"), dict) else {}
-    source = values.get("source_frame") if isinstance(values.get("source_frame"), dict) else {}
     return {
         "frame_id": frame_id,
         "frame_index": report.get("frame_index"),
-        "captured_at_ms": source.get("captured_at_ms", report.get("timestamp_ms")),
+        "captured_at_ms": report.get("timestamp_ms"),
         "published_at_ms": report.get("published_at_ms"),
     }
 
@@ -217,7 +217,7 @@ def _publication_payload(
         "report": report,
         "image": image,
         "host_telemetry": frame_record.get("host_telemetry"),
-        "evidence": report_evidence(report) if report is not None else None,
+        "evidence": frame_record.get("evidence"),
     }
 
 

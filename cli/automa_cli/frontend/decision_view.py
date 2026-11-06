@@ -34,7 +34,6 @@ def _supported_image_bbox(location: Any) -> bool:
 
 def _evidence_projection(
     *,
-    transaction_id: str,
     frame_id: str,
     observation: Any,
     evidence_input: Any,
@@ -139,7 +138,6 @@ def _evidence_projection(
     return {
         "status": status,
         "reason": reason,
-        "transaction_id": transaction_id,
         "frame_id": frame_id,
         "available_count": available_count,
         "record_count": len(projected),
@@ -151,7 +149,7 @@ def report_evidence(report: dict[str, Any]) -> dict[str, Any]:
     """Retained evidence attributable to this completed frame's observation."""
     cycle = report.get("cycle") or {}
     return _evidence_projection(
-        transaction_id=report["frame_id"], frame_id=report["frame_id"],
+        frame_id=report["frame_id"],
         observation=cycle.get("observation"),
         evidence_input=evidence_records(cycle.get("memory")),
     )

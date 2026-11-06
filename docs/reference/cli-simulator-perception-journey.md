@@ -64,7 +64,7 @@ It serves the runtime viewer fed from that host (Perception, Memory, Action and
 Plugins) and opens it in the browser until Ctrl-C. It exits 2 when no such host
 exists, it is not running, or it does not answer. While the host is not live,
 for example after its run stopped, it prints `Not live:` with the reason, and
-the Perception and Memory pages show that reason instead of a live frame.
+the Perception page keeps the host's last frame, marked Stale.
 
 Nothing is listed until you discover it or `simulators create` starts it.
 To list a simulator or a PiCar:

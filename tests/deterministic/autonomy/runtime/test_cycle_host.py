@@ -265,7 +265,6 @@ class CycleHostMemoryTests(unittest.TestCase):
             self.assertEqual(status["steps"]["action"]["plugin_ids"], ["pushy"])
             self.assertEqual(status["cycle_count"], 1)
             self.assertEqual(status["last_control"]["reason"], "pushy-test-action")
-            self.assertIsNotNone(status["last_cycle"])
 
     def test_memory_failure_stops_before_later_steps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

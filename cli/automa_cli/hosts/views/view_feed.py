@@ -41,9 +41,10 @@ class ViewFeed:
                 plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
             )
             self.server.start()
+            # One publisher, so clearing the page also forgets the frame it last showed.
             self.observation = ObservationPublisher(self.server.perception)
             self.decision = DecisionViewAdapter(
-                host_name=host_name, base_url=base_url, view_server=self.server, timeout_s=timeout_s,
+                host_name=host_name, base_url=base_url, publisher=self.observation, timeout_s=timeout_s,
             )
         except Exception as exc:  # noqa: BLE001 - a failed view ends only this view
             self.error = f"{type(exc).__name__}: {exc}"
@@ -93,14 +94,12 @@ class ViewFeed:
                 pair = self._observation
             publication, jpeg = pair
             # A stale, raised, or imageless frame stays on the page.
-            not_live = health_error(publication)
-            if not_live is not None:
-                self.observation.invalidate(not_live)
+            if publication.get("report") is None:
+                self.observation.invalidate(health_error(publication))
                 return
             try:
-                published = self.decision.publish_publication(publication, jpeg)
-                self.decision_error = None if published else "the view rejected the host frame"
-                publication = self.decision.publication
+                self.decision.publish_publication(publication, jpeg)
+                self.decision_error = None
             except Exception as exc:  # A failed diagnostic does not hide the frame.
                 self.decision_error = f"{type(exc).__name__}: {exc}"
                 self.observation.publish(publication, jpeg)

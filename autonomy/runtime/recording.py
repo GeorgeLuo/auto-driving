@@ -315,7 +315,6 @@ def ran_on_release(
 def cycle_frame(
     result: DecisionCycleResult, *, host_name: str, run_id: str,
     status: str = "ok", error: str | None = None,
-    application: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """The same completed frame, selections and application on either host."""
     context = result.context
@@ -329,7 +328,8 @@ def cycle_frame(
         {step: steps[step] for step in DECISION_STEPS}, prefix="decision",
     )
     cycle = result.export_cycle()
-    if application is None and result.application is not None and result.application.control is not None:
+    application = None
+    if result.application is not None and result.application.control is not None:
         control = result.application.control
         application = {
             "applied": result.application.applied,
@@ -380,7 +380,6 @@ class RunRecording:
         *,
         status: str = "ok",
         error: str | None = None,
-        application: dict[str, Any] | None = None,
     ) -> None:
         """Record a cycle and the applications the host published before it.
 
@@ -397,7 +396,7 @@ class RunRecording:
             raise ValueError("recording requires a camera image or an image encoder")
         frame = cycle_frame(
             result, host_name=self.host_name, run_id=self.run_id,
-            status=status, error=error, application=application,
+            status=status, error=error,
         )
         with self._lock:
             applications = control_applications or ()

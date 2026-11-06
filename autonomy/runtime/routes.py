@@ -197,12 +197,10 @@ class RuntimeRoutes:
     @staticmethod
     def _frame(jpeg: bytes | None, meta: dict[str, Any]) -> Response:
         report = meta.get("report") if isinstance(meta.get("report"), dict) else {}
-        source = report.get("values") if isinstance(report.get("values"), dict) else {}
-        source_frame = source.get("source_frame") if isinstance(source.get("source_frame"), dict) else {}
         identity = {
             "frame_id": report.get("frame_id"),
             "frame_index": report.get("frame_index"),
-            "captured_at_ms": source_frame.get("captured_at_ms", report.get("timestamp_ms")),
+            "captured_at_ms": report.get("timestamp_ms"),
             "completed_at_ms": report.get("published_at_ms"),
         }
         if not report:
@@ -244,14 +242,11 @@ class RuntimeRoutes:
         elif capture is None or (capture.image is None and capture.jpeg_cache.data is None):
             image_error = "image_unavailable"
         else:
+            # The capture is the state the report was read from, so they name one frame.
             try:
                 jpeg = self.loop.frame_jpeg(capture)
             except Exception as exc:
                 image_error = f"image_encoding_failed: {type(exc).__name__}: {exc}"
-            else:
-                if capture.frame_id != report.get("frame_id"):
-                    jpeg = None
-                    image_error = "mismatched_frame"
         payload = {
             "schema": FRAME_TRANSACTION_SCHEMA,
             "publication": publication,

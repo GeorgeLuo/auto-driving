@@ -18,6 +18,7 @@ from autonomy.decision_cycle.steps import decision_steps
 from cli.automa_cli.releases.paths import controller_bundle_paths
 from cli.automa_cli.hosts.publications.decision import accept_decision_publication
 from cli.automa_cli.hosts.views.decision_live import DecisionViewAdapter
+from cli.automa_cli.hosts.views.observation import ObservationPublisher
 from cli.automa_cli.hosts.publications.decision_records import activations_from_payloads
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.workbench.runner import ImageReplayRunner
@@ -41,9 +42,12 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         buffer = io.BytesIO()
         Image.new("RGB", (4, 4)).save(buffer, "JPEG")
         jpeg = buffer.getvalue()
-        adapter = DecisionViewAdapter(host_name="piracer", base_url="http://host.invalid", view_server=server, timeout_s=0.1)
+        adapter = DecisionViewAdapter(
+            host_name="piracer", base_url="http://host.invalid",
+            publisher=ObservationPublisher(server.perception), timeout_s=0.1,
+        )
         with patch("cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel", return_value={"status": "unavailable"}):
-            self.assertTrue(adapter.publish_frame(normalized, (jpeg, "image/jpeg")))
+            adapter.publish_frame(normalized, jpeg)
         with urlopen(f"{server.url}api/latest", timeout=1) as response:
             payload = json.loads(response.read())
         self.assertEqual(payload["report"], normalized["report"].to_dict())
@@ -165,7 +169,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                     age_ms = stale_after + 1 if fixture_state["force_expired"] else 0
                     report = deepcopy(report)
                     report["published_at_ms"] = now_ms - age_ms
-                    report["values"]["source_frame"]["completed_at_ms"] = now_ms - age_ms
                     payload = {
                         **template,
                         "ok": True,
@@ -231,9 +234,12 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 extra_env=env,
                 check=False,
             )
-            self.assertEqual(expired.returncode, 0, expired.stderr + expired.stdout)
+            # A frame past its ceiling is not live, and it keeps its records.
+            self.assertEqual(expired.returncode, 2, expired.stderr + expired.stdout)
             stale = json.loads(expired.stdout)
             self.assertEqual(stale["schema"], "host_action_stream")
+            self.assertEqual(stale["status"], "stale")
+            self.assertRegex(stale["error"], r"^The latest frame is \d+ ms old, past its 1000 ms ceiling\.$")
             self.assertEqual(stale["frame_id"], payload["frame_id"])
             self.assertEqual(stale["record"], payload["record"])
         finally:

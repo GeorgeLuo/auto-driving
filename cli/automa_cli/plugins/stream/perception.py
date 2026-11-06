@@ -7,10 +7,10 @@ from typing import Any, Callable
 from autonomy.runtime.frame_loop import LATEST_JSON_PATH
 
 from ...hosts.publications.frame_publication import (
-    health_error,
     perception_duration_ms,
     perception_text_from_publication,
     publication_presets,
+    step_unavailable,
 )
 from ...hosts.publications.host_publications import fetch_frame_publication
 from ...hosts.discovery import runtime_base_url
@@ -21,14 +21,6 @@ from .polling import poll_events, preflight_failure, unavailable_probe
 from .session import StreamView, with_view
 
 PERCEPTION_LIVE_SCHEMA = "host_perception_live"
-# Observation publication health -> probe status; "healthy" is the only live one.
-_PERCEPTION_STATUS = {
-    "warming": "absent",
-    "absent": "absent",
-    "stale": "stale",
-    "unavailable": "unavailable",
-    "error": "error",
-}
 
 
 def read_publication(base_url: str, *, timeout_s: float) -> tuple[dict[str, Any] | None, str | None]:
@@ -96,7 +88,6 @@ def perception_publication(publication: dict[str, Any] | None) -> PerceptionPubl
     application = report.get("application") if isinstance(report.get("application"), dict) else {}
     values = report.get("values") if isinstance(report.get("values"), dict) else {}
     timing = values.get("timing") if isinstance(values.get("timing"), dict) else {}
-    source = values.get("source_frame") if isinstance(values.get("source_frame"), dict) else {}
     signals, things = perception.get("signals"), perception.get("things")
     return PerceptionPublication(
         health=publication.get("health"),
@@ -105,11 +96,10 @@ def perception_publication(publication: dict[str, Any] | None) -> PerceptionPubl
         steering=application.get("steering"),
         throttle=application.get("throttle"),
         reason=application.get("reason"),
-        processed=None,
         cycle_ms=timing.get("duration_ms"),
         age_ms=publication.get("result_age_ms"),
         frame_id=report.get("frame_id"),
-        captured_at_ms=source.get("captured_at_ms", report.get("timestamp_ms")),
+        captured_at_ms=report.get("timestamp_ms"),
         signal_count=len(signals) if isinstance(signals, list) else None,
         thing_count=len(things) if isinstance(things, list) else None,
         text=perception_text_from_publication(publication) if publication else "",
@@ -140,15 +130,19 @@ def _probe_perception(
         presets=publication_presets(publication),
         mode=application.get("mode"),
     )
-    error = health_error(publication)
-    if error is not None:
-        return {**probe, "status": _PERCEPTION_STATUS.get(health, "error"), "error": error}
+    unavailable = step_unavailable(publication, "perception")
+    if publication.get("report") is None:
+        return {**probe, "status": unavailable[0], "error": unavailable[1]}
     # The host computes the result age on its own clock.
-    return _probe_latest_perception(
+    latest = _probe_latest_perception(
         probe,
         publication,
         age_ms=publication.get("result_age_ms"),
     )
+    if unavailable is not None:
+        # A stale or raised frame keeps its fields beside the reason it is not live.
+        return {**latest, "status": unavailable[0], "error": unavailable[1]}
+    return latest
 
 
 def _probe_latest_perception(
@@ -160,13 +154,11 @@ def _probe_latest_perception(
     """The latest frame's perception, as every provider's live probe reports it."""
 
     report = publication.get("report") if isinstance(publication.get("report"), dict) else {}
-    values = report.get("values") if isinstance(report.get("values"), dict) else {}
-    source = values.get("source_frame") if isinstance(values.get("source_frame"), dict) else {}
     cycle = report.get("cycle") if isinstance(report.get("cycle"), dict) else {}
     frame = {
         "frame_id": report.get("frame_id"),
         "frame_index": report.get("frame_index"),
-        "captured_at_ms": source.get("captured_at_ms", report.get("timestamp_ms")),
+        "captured_at_ms": report.get("timestamp_ms"),
         "perception_completed_at_ms": report.get("published_at_ms"),
         "perception_duration_ms": perception_duration_ms(publication),
         "age_ms": age_ms,

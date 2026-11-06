@@ -400,15 +400,8 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(published["frame_id"], part.latest_state.frame_id)
         self.assertEqual(published["frame_index"], part.latest_state.frame_index)
         self.assertEqual(published["timestamp_ms"], part.latest_state.captured_at_ms)
-        self.assertEqual(
-            values["source_frame"],
-            {
-                "frame_id": part.latest_state.frame_id,
-                "frame_index": part.latest_state.frame_index,
-                "captured_at_ms": part.latest_state.captured_at_ms,
-                "completed_at_ms": part.latest_state.completed_at_ms,
-            },
-        )
+        # The report's own fields are its frame identity; values do not repeat them.
+        self.assertNotIn("source_frame", values)
         self.assertEqual(
             sorted(published["cycle"]),
             ["action", "memory", "observation", "perception", "plan", "proposal"],

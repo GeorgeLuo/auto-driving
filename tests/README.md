@@ -35,7 +35,7 @@ The deterministic run fails any test that starts a program. The error names the 
 Run the tests your change reaches, not every suite. `commands` and `journeys` together take about two minutes, and most changes reach a few of their modules.
 
 1. While you work, run the deterministic tests beside the code you changed, for example `python3 tests/run.py -k decision_cycle`.
-2. Before pushing, run the whole deterministic suite once. It takes three to four minutes, and CI runs the same command.
+2. Before pushing, run the whole deterministic suite once. It takes about a minute and a half, and CI runs the same command.
 3. CI does not run `systems/`. Run the systems tests that drive the code you changed, chosen with a group and `-k`:
 
 | Change touches | Run |

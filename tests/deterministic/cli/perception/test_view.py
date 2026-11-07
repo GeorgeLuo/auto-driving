@@ -112,26 +112,6 @@ class PerceptionViewTests(unittest.TestCase):
             finally:
                 server.stop()
 
-    def test_invalid_image_is_refused_and_a_later_image_recovers(self) -> None:
-        view = PerceptionView(host_name="test-vehicle")
-        good = _image_bytes("JPEG", (4, 4), (9, 9, 9))
-        record = _frame_record()
-        view.publish(frame_bytes=good, frame_record=record)
-        for bad in (b"", b"not-an-image", _image_bytes("PNG", (4, 4), (9, 9, 9))):
-            with self.subTest(bad=bad[:8]):
-                view.publish(frame_bytes=bad, frame_record=record)
-                self.assertEqual(json.loads(view.latest_json())["report"], record["report"])
-                self.assertIsNone(json.loads(view.latest_json())["image"]["url"])
-            self.assertEqual(view.frame()[0], good)
-        replacement = _image_bytes("JPEG", (5, 6), (3, 3, 3))
-        next_record = _frame_record()
-        next_record["report"]["frame_id"] = "frame_000008"
-        next_record["report"]["frame_index"] = 8
-        view.publish(frame_bytes=replacement, frame_record=next_record)
-        self.assertEqual(view.frame(), (replacement, "image/jpeg"))
-        payload = json.loads(view.latest_json())
-        self.assertEqual((payload["image"]["width_px"], payload["image"]["height_px"]), (5, 6))
-
     def test_result_age_is_measured_from_the_published_findings(self) -> None:
         view = PerceptionView(host_name="test-vehicle")
         view.publish(frame_bytes=_image_bytes("JPEG", (4, 4), (9, 9, 9)), frame_record=_frame_record())

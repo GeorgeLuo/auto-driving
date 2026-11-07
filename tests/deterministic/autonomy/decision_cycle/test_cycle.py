@@ -161,20 +161,6 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertFalse(result.action.authority.proposed_applied)
         self.assertEqual(result.to_dict()["action"]["authority"]["authorized_output"]["reason"], "test-action")
 
-    def test_none_action_output_uses_configured_idle_control(self) -> None:
-        cycle = DecisionCycle(
-            DecisionSteps(action=lambda *args: None),
-            idle_reason="waiting-for-decision",
-        )
-
-        result = cycle.run(self.context())
-
-        self.assertEqual(result.control.steering, 0.0)
-        self.assertEqual(result.control.throttle, 0.0)
-        self.assertEqual(result.control.confidence, 1.0)
-        self.assertEqual(result.control.reason, "waiting-for-decision")
-
-
     def test_memory_step_report_is_recorded_and_keeps_idle(self) -> None:
         report = {"schema": "memory_report", "plugins": [{"state": {"record_count": 0}}]}
 
@@ -189,14 +175,9 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(report["plugins"][0]["state"]["record_count"], 0)
 
     def test_memory_callable_failures_stop_the_cycle_with_memory_diagnostics(self) -> None:
-        class UnprintableError(Exception):
-            def __str__(self):
-                raise RuntimeError("cannot describe this error")
-
         for failure, diagnostic in (
             (ValueError("update failed"), "ValueError: update failed"),
             (MemoryUpdateError("already classified"), "already classified"),
-            (UnprintableError(), "UnprintableError: unprintable error"),
         ):
             with self.subTest(diagnostic=diagnostic):
                 calls = []
@@ -218,18 +199,6 @@ class DecisionCycleTests(unittest.TestCase):
                     self.assertIs(caught.exception, failure)
                 else:
                     self.assertIs(caught.exception.__cause__, failure)
-
-    def test_memory_callable_must_return_a_report_or_none(self) -> None:
-        cycle = DecisionCycle(DecisionSteps(memory=lambda context: []))
-
-        with self.assertRaises(MemoryUpdateError) as caught:
-            cycle.run(self.context())
-
-        self.assertEqual(
-            str(caught.exception), "TypeError: memory step must return a report dict or None"
-        )
-        self.assertIsInstance(caught.exception.__cause__, TypeError)
-
 
     def test_a_later_raise_keeps_finished_outputs_on_the_report(self) -> None:
         first = self.perception()

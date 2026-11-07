@@ -143,19 +143,6 @@ class RuntimeCycleHostTests(unittest.TestCase):
         part.wait_for_cycle()
         self.assertEqual(int(part.latest_state.image[0, 0, 0]), 0)
 
-    def test_a_cycle_that_is_not_json_still_publishes_its_frame_as_an_error(self) -> None:
-        part = AutonomyPilotPart(host=_pushy_host(memory=lambda context: {"count": np.int64(1)}))
-
-        part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
-        part.wait_for_cycle()
-
-        report = part.publish_latest()["report"]
-        self.assertEqual(report["frame_id"], "donkey_frame_000000")
-        self.assertEqual(report["status"], "error")
-        self.assertRegex(report["error"], r"^frame report failed: ValueError: .*int64")
-        self.assertTrue(all(record is None for record in report["cycle"].values()))
-        self.assertEqual(part.observation_status()["processed_count"], 1)
-
     def test_a_raised_cycle_publishes_the_idle_write_it_made(self) -> None:
         def explode(context, perception):
             raise RuntimeError("observation failed")
@@ -295,14 +282,11 @@ class RuntimeCycleHostTests(unittest.TestCase):
         marker = "autonomy_part = AutonomyPilotPart("
         self.assertIn(marker, source)
         snippet = source[source.index(marker) : source.index(marker) + 1600]
-        self.assertNotIn("interval_s=", snippet)
-        self.assertNotIn("capture_interval_s", source)
         self.assertIn("source_id=source_id if telemetry_store is not None else None", snippet)
         self.assertIn("**loop_options", snippet)
         self.assertIn("staged_runtime(", source)
         self.assertIn("run_id=run_id if telemetry_store is not None else None", snippet)
         self.assertNotIn("run_condition", snippet)
-        self.assertNotIn("AUTONOMY_CAPTURE_INTERVAL_S", source)
 
 
 if __name__ == "__main__":

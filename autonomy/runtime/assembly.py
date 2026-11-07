@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 from autonomy.decision_cycle.activation import (
     STEPS,
@@ -51,8 +51,8 @@ def staged_runtime(
     create_host: Callable[[DecisionSteps], AutonomyCycleHost],
     *,
     host_name: str | None = None,
-) -> tuple[AutonomyCycleHost, dict[str, Any]]:
-    """The host for the staged steps and the ``FrameLoop`` options they imply.
+) -> AutonomyCycleHost:
+    """The host for the staged steps.
 
     ``host_name`` is stamped before the first cycle, so live reporting and a
     later recording name the same pipeline.
@@ -64,8 +64,4 @@ def staged_runtime(
     host.follow_activations(activations, runtime_root)
     if isinstance(host_name, str) and host_name:
         host.note_host_name(host_name)
-    return host, {
-        # The CLI exports recordings under automation/runs. Keep the host's
-        # authoritative history separate, even when both processes are local.
-        "recording_root": runtime_root / "automation" / "host-runs",
-    }
+    return host

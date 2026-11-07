@@ -674,11 +674,6 @@ class AutonomyCycleHost:
         with self._lock:
             self._status_providers[component_id] = provider
 
-    @property
-    def last_control(self) -> AutonomyControl | None:
-        result = self.last_result
-        return result.control if result is not None else None
-
     def status(self) -> dict[str, Any]:
         cycle = self._cycle_in_progress
         components: dict[str, Any] = {}
@@ -735,11 +730,9 @@ class AutonomyCycleHost:
                     steps[step] = {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
             else:
                 steps[step] = {"runner": type(runner).__name__}
-        last_result = self.last_result
         self._pipeline_report = {
             "steps": steps, "applied_decision": deepcopy(self._applied_decision),
             "arming": self._selection_status(),
-            "last_control": None if last_result is None else last_result.control.to_dict(),
         }
         self._step_reports_wanted = False
         return self._pipeline_report

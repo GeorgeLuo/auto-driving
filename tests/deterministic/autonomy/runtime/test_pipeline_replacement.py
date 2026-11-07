@@ -300,7 +300,6 @@ class PipelineReplacementTests(unittest.TestCase):
                 status = host.status()
                 self.assertNotEqual(status["applied_decision"]["generation_id"], previous)
                 self.assertEqual(status["steps"]["memory"]["run_count"], 0)
-                self.assertIsNone(status["last_control"])
             finally:
                 release.set()
                 thread.join(3)

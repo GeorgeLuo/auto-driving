@@ -14,7 +14,7 @@ import secrets
 import threading
 import time
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, Callable
 
@@ -47,51 +47,27 @@ def timestamp_ms() -> int:
 
 def detach_image(image_array: Any) -> Any:
     """Copy array-like camera memory so later writes cannot mutate it."""
-    if image_array is None:
-        return None
-    copy = getattr(image_array, "copy", None)
-    if callable(copy):
-        try:
-            return copy()
-        except Exception:
-            return image_array
-    return image_array
+    return deepcopy(image_array)
 
 
 def encode_jpeg(image_array: Any) -> bytes:
-    """Encode an RGB/BGR-like array as JPEG bytes without writing to disk."""
+    """Encode a grayscale or RGB array as JPEG bytes without writing to disk."""
+    from PIL import Image
+    import numpy as np
+
     if image_array is None:
         raise ValueError("image_array is required")
-    try:
-        from PIL import Image
-        import numpy as np
-
-        array = np.asarray(image_array)
-        if array.ndim == 2:
-            image = Image.fromarray(array.astype("uint8"), mode="L")
-        elif array.ndim == 3 and array.shape[2] >= 3:
-            image = Image.fromarray(array[:, :, :3].astype("uint8"), mode="RGB")
-        else:
-            raise ValueError(f"unsupported image shape {array.shape}")
-        buffer = io.BytesIO()
-        image.save(buffer, format="JPEG", quality=85)
-        return buffer.getvalue()
-    except Exception:
-        import cv2
-        import numpy as np
-
-        array = np.asarray(image_array)
-        if array.ndim == 2:
-            ok, encoded = cv2.imencode(".jpg", array)
-        elif array.ndim == 3 and array.shape[2] >= 3:
-            # Camera memory is RGB in this project; OpenCV expects BGR.
-            bgr = array[:, :, :3][:, :, ::-1]
-            ok, encoded = cv2.imencode(".jpg", bgr)
-        else:
-            raise ValueError(f"unsupported image shape {array.shape}")
-        if not ok:
-            raise RuntimeError("cv2.imencode failed")
-        return encoded.tobytes()
+    array = np.asarray(image_array)
+    if array.ndim == 2:
+        pixels = array
+    elif array.ndim == 3 and array.shape[2] >= 3:
+        pixels = array[:, :, :3]
+    else:
+        raise ValueError(f"unsupported image shape {array.shape}")
+    image = Image.fromarray(pixels.astype("uint8"))
+    buffer = io.BytesIO()
+    image.save(buffer, format="JPEG", quality=85)
+    return buffer.getvalue()
 
 
 def stale_after_ms(cycle_duration_ms: float | None) -> int:
@@ -202,7 +178,6 @@ class FrameLoop:
         self._pending_frame: _PendingFrame | None = None
         self._queue_generation = 0
         self._shutdown = False
-        self._decision_inflight = False
         self._memory_update_halted = False
         self._inflight_camera: LatestCameraFrame | None = None
         self._decision_thread: threading.Thread | None = None
@@ -285,24 +260,24 @@ class FrameLoop:
 
     def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
         with self._lifecycle_lock:
-            if record and (self.recording_root is None or self.host_name is None):
-                raise RuntimeError("recording requires a runtime directory and host identity")
-            recording = RunRecording(
-                self.recording_root, host_name=self.host_name, encode_image=self._recording_jpeg,
-            ) if record else None
+            recording = None
+            if record:
+                if self.recording_root is None or self.host_name is None:
+                    raise RuntimeError("recording requires a runtime directory and host identity")
+                recording = RunRecording(
+                    self.recording_root, host_name=self.host_name, encode_image=self._recording_jpeg,
+                )
             with self._lock:
                 self._session_frame_id = None
                 self._memory_update_halted = False
                 self._discard_pending_locked()
-            status = self.host.start(configuration, recording=recording)
-            return status
+            return self.host.start(configuration, recording=recording)
 
     def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, Any]:
         with self._lifecycle_lock:
             with self._lock:
                 self._discard_pending_locked()
-            status = self.host.stop(reason=reason, error=error)
-            return status
+            return self.host.stop(reason=reason, error=error)
 
     def stop_after_error(self, exc: Exception) -> None:
         """End the run ``exc`` broke; a loop thread outlives a stop that fails too."""
@@ -360,13 +335,16 @@ class FrameLoop:
             self._pending_frame = _PendingFrame(
                 camera, mode, user_steering, user_throttle,
             )
-            if not self._decision_inflight and not self._memory_update_halted and not self._shutdown:
-                self._decision_inflight = True
+            if self._decision_thread is None:
                 thread = threading.Thread(
                     target=self._decision_worker, name="automa-decision-worker", daemon=True
                 )
                 self._decision_thread = thread
-                thread.start()
+                try:
+                    thread.start()
+                except Exception:
+                    self._decision_thread = None
+                    raise
 
     def _store_camera_frame_locked(
         self,
@@ -476,9 +454,7 @@ class FrameLoop:
                     if pending is None or self._memory_update_halted or self._shutdown:
                         # Release ownership atomically with checking the slot,
                         # so a concurrent capture can start another worker.
-                        self._decision_inflight = False
-                        self._inflight_camera = None
-                        self._decision_thread = None
+                        self._release_worker_locked()
                         return
                     self._pending_frame = None
                     camera = pending.camera
@@ -506,28 +482,24 @@ class FrameLoop:
                     user_throttle=pending.user_throttle,
                 )
                 with self._lock:
+                    if generation != self._queue_generation:
+                        continue
                     ended = was_running and self.host.run_state != "running"
-                    if generation == self._queue_generation and (not succeeded or ended):
+                    if not succeeded or ended:
                         self._discard_pending_locked()
         finally:
             with self._lock:
-                if self._decision_thread is threading.current_thread():
-                    self._decision_inflight = False
-                    self._inflight_camera = None
-                    self._decision_thread = None
+                self._release_worker_locked()
 
-    def _process_frame(
-        self,
-        *,
-        camera: LatestCameraFrame,
-        mode_name: str,
-        user_steering: float | None,
-        user_throttle: float | None,
-    ) -> bool:
-        frame_id, frame_index = camera.frame_id, camera.frame_index
+    def _release_worker_locked(self) -> None:
+        if self._decision_thread is threading.current_thread():
+            self._inflight_camera = None
+            self._decision_thread = None
+
+    def _frame_context(self, camera: LatestCameraFrame) -> DecisionFrameContext:
         captured_at_ms = camera.captured_at_ms
         sensor_frame = SensorFrame(
-            read_id=frame_id,
+            read_id=camera.frame_id,
             readings={
                 FRONT_CAMERA_SENSOR_ID: SensorReading(
                     sensor_id=FRONT_CAMERA_SENSOR_ID,
@@ -541,110 +513,128 @@ class FrameLoop:
             completed_at_ms=captured_at_ms,
             metadata={**camera.metadata, "runtime": self.runtime},
         )
+        return DecisionFrameContext(
+            frame_id=camera.frame_id,
+            frame_index=camera.frame_index,
+            timestamp_ms=captured_at_ms,
+            sensor_frame=sensor_frame,
+            metadata={
+                **camera.metadata,
+                "runtime": self.runtime,
+                "control_application": "shared_execution",
+                "capture_sequence": camera.sequence,
+            },
+        )
 
-        status = "error"
+    @staticmethod
+    def _empty_frame_result(
+        context: DecisionFrameContext, *, completed_at_ms: int,
+    ) -> DecisionCycleResult:
+        return DecisionCycleResult(
+            context=replace(context, metadata={}, shared_memory=None),
+            perception=None,
+            observation=None,
+            memory=None,
+            proposal=None,
+            plan=None,
+            action=None,
+            control=AutonomyControl(reason="observation-cycle-error"),
+            started_at_ms=context.timestamp_ms,
+            completed_at_ms=completed_at_ms,
+        )
+
+    def _process_frame(
+        self,
+        *,
+        camera: LatestCameraFrame,
+        mode_name: str,
+        user_steering: float | None,
+        user_throttle: float | None,
+    ) -> bool:
+        context = self._frame_context(camera)
+        error = None
         try:
             try:
                 cycle_result = self.host.run(
-                    DecisionFrameContext(
-                        frame_id=frame_id,
-                        frame_index=frame_index,
-                        timestamp_ms=captured_at_ms,
-                        sensor_frame=sensor_frame,
-                        metadata={
-                            **camera.metadata,
-                            "runtime": self.runtime,
-                            "control_application": "shared_execution",
-                            "capture_sequence": camera.sequence,
-                        },
-                    ),
+                    context,
                     mode=mode_name,
                     user_steering=user_steering,
                     user_throttle=user_throttle,
                 )
-                completed_at_ms = int(cycle_result.completed_at_ms)
-                duration_ms = cycle_result.duration_ms
-                status = "ok"
-                error = None
             except Exception as exc:
-                logger.exception("Autonomy decision cycle failed for frame %s", frame_id)
+                logger.exception("Autonomy decision cycle failed for frame %s", camera.frame_id)
                 cycle_result = cycle_result_of(exc)
+                error = f"{type(exc).__name__}: {exc}"
                 if isinstance(exc, MemoryUpdateError):
                     with self._lock:
                         self._memory_update_halted = True
-                completed_at_ms = int(cycle_result.completed_at_ms) if cycle_result is not None else timestamp_ms()
-                duration_ms = cycle_result.duration_ms if cycle_result is not None else max(0, completed_at_ms - captured_at_ms)
-                status = "error"
-                error = f"{type(exc).__name__}: {exc}"
-            def empty_result() -> DecisionCycleResult:
-                return DecisionCycleResult(
-                    context=DecisionFrameContext(
-                        frame_id=frame_id,
-                        frame_index=frame_index,
-                        timestamp_ms=captured_at_ms,
-                        sensor_frame=sensor_frame,
-                    ),
-                    perception=None,
-                    observation=None,
-                    memory=None,
-                    proposal=None,
-                    plan=None,
-                    action=None,
-                    control=AutonomyControl(reason="observation-cycle-error"),
-                    started_at_ms=captured_at_ms,
-                    completed_at_ms=completed_at_ms,
-                )
 
-            if cycle_result is None or cycle_result.context.frame_id != frame_id:
-                cycle_result = empty_result()
-            # The host stamps the identity it applied on every cycle it runs,
-            # raised or not; an empty result names the host's current identity.
-            metadata = cycle_result.context.metadata
-            identity = (
-                {"generation_id": metadata["generation_id"], "steps": metadata["step_activations"]}
-                if "generation_id" in metadata
-                else self.host.applied_decision()
-            )
-            # The cycle ran outside this lock. Publishing borrows nothing from
-            # the previous frame: cycle_result is this attempt or an empty one.
+            if cycle_result is None:
+                completed_at_ms = timestamp_ms()
+                duration_ms = max(0, completed_at_ms - camera.captured_at_ms)
+            else:
+                completed_at_ms = int(cycle_result.completed_at_ms)
+                duration_ms = cycle_result.duration_ms
+            if cycle_result is None or cycle_result.context.frame_id != camera.frame_id:
+                cycle_result = self._empty_frame_result(context, completed_at_ms=completed_at_ms)
+
             with self._lock:
                 self._cycle_duration_ms = float(duration_ms)
-                try:
-                    report = self._capture_frame_report(
-                        cycle_result,
-                        completed_at_ms=completed_at_ms,
-                        status=status,
-                        error=error,
-                        mode_name=mode_name,
-                        identity=identity,
-                    )
-                except Exception as exc:
-                    # A cycle that is not JSON data still publishes this frame,
-                    # as an error with null steps, so the pages do not freeze.
-                    logger.exception("Frame report failed for %s", frame_id)
-                    status = "error"
-                    try:
-                        report = self._capture_frame_report(
-                            empty_result(),
-                            completed_at_ms=completed_at_ms,
-                            status=status,
-                            error=f"frame report failed: {type(exc).__name__}: {exc}",
-                            mode_name=mode_name,
-                            identity=identity,
-                        )
-                    except Exception:
-                        logger.exception("Error report failed for %s", frame_id)
-                        report = None
-                if report is not None:
-                    self.latest_state = LatestObservationState(
-                        report=report,
-                        image=camera.image,
-                        jpeg_cache=camera.jpeg_cache,
-                    )
-                    self._publication_revision += 1
-                    self.processed_count += 1
-                else:
-                    status = "error"
+                return self._publish_frame_result_locked(
+                    cycle_result, camera=camera, mode_name=mode_name, error=error,
+                )
         finally:
             self._frame_completed()
+
+    def _publish_frame_result_locked(
+        self,
+        result: DecisionCycleResult,
+        *,
+        camera: LatestCameraFrame,
+        mode_name: str,
+        error: str | None,
+    ) -> bool:
+        """Publish this attempt, recovering invalid reports while holding the frame lock."""
+        # The host stamps the identity it applied on every cycle it runs,
+        # raised or not; an empty result names the host's current identity.
+        metadata = result.context.metadata
+        identity = (
+            {"generation_id": metadata["generation_id"], "steps": metadata["step_activations"]}
+            if "generation_id" in metadata
+            else self.host.applied_decision()
+        )
+        completed_at_ms = int(result.completed_at_ms)
+        status = "ok" if error is None else "error"
+        try:
+            report = self._capture_frame_report(
+                result,
+                completed_at_ms=completed_at_ms,
+                status=status,
+                error=error,
+                mode_name=mode_name,
+                identity=identity,
+            )
+        except Exception as exc:
+            # Invalid step data still publishes this frame with null steps.
+            logger.exception("Frame report failed for %s", camera.frame_id)
+            status = "error"
+            try:
+                report = self._capture_frame_report(
+                    self._empty_frame_result(result.context, completed_at_ms=completed_at_ms),
+                    completed_at_ms=completed_at_ms,
+                    status=status,
+                    error=f"frame report failed: {type(exc).__name__}: {exc}",
+                    mode_name=mode_name,
+                    identity=identity,
+                )
+            except Exception:
+                logger.exception("Error report failed for %s", camera.frame_id)
+                return False
+        self.latest_state = LatestObservationState(
+            report=report,
+            image=camera.image,
+            jpeg_cache=camera.jpeg_cache,
+        )
+        self._publication_revision += 1
+        self.processed_count += 1
         return status == "ok"

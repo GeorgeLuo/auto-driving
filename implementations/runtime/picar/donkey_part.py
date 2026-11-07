@@ -17,6 +17,7 @@ from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.frame_loop import FrameLoop, detach_image
 from autonomy.runtime.session import RunConfiguration
 from .control import drive_mode, execution_mode
+from .host_telemetry import DriveModeTelemetryAdapter
 
 
 class AutonomyPilotPart(FrameLoop):
@@ -33,7 +34,7 @@ class AutonomyPilotPart(FrameLoop):
         host_name: str | None = None,
         source_id: str | None = None,
         run_id: str | None = None,
-        host_telemetry: Any | None = None,
+        host_telemetry: DriveModeTelemetryAdapter | None = None,
         controller: Any | None = None,
         recording_root: Path | None = None,
     ) -> None:
@@ -121,8 +122,8 @@ class AutonomyPilotPart(FrameLoop):
         repeat the completed source identity while camera capture advances.
         """
 
-        setter = getattr(self.host_telemetry, "set_source_frame", None)
-        if not callable(setter):
+        telemetry = self.host_telemetry
+        if telemetry is None:
             return
         with self._lock:
             latest = self.latest_state
@@ -137,12 +138,11 @@ class AutonomyPilotPart(FrameLoop):
                 }
             )
             generation_id = None if latest is None else latest.report["generation_id"]
-        store = getattr(self.host_telemetry, "store", None)
-        if store is not None and generation_id is not None:
-            # Telemetry names the generation of the frame it reports.
-            store.generation_id = generation_id
         try:
-            setter(source_frame)
+            if generation_id is not None:
+                # Telemetry names the generation of the frame it reports.
+                telemetry.store.generation_id = generation_id
+            telemetry.set_source_frame(source_frame)
         except Exception:
             # Telemetry is diagnostic only and must never change host outputs.
             return

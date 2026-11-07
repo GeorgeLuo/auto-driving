@@ -28,9 +28,9 @@ class RecordingTransferTests(unittest.TestCase):
             for step in STEPS:
                 activation = packaged_activation(step, ["frame"] if step == "perception" else None)
                 write_step_activation(step_activation_path(runtime_root, step), activation)
-            host, options = staged_runtime(runtime_root, lambda steps: create_host(steps=steps))
+            host = staged_runtime(runtime_root, lambda steps: create_host(steps=steps))
             self.addCleanup(host.close)
-            recording = RunRecording(options["recording_root"], host_name=HOST_NAME)
+            recording = RunRecording(runtime_root / "automation" / "host-runs", host_name=HOST_NAME)
             host.start(RunConfiguration(mode="observe_only", num_decisions=2), recording=recording)
             first = host.run(frame(root, 1))
             timings = {first.context.frame_id: first.timing}

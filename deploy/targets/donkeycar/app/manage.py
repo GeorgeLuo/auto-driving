@@ -500,7 +500,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 )
                 host_name = None
 
-            host, loop_options = staged_runtime(
+            host = staged_runtime(
                 runtime_root, lambda steps: create_host(steps=steps), host_name=host_name,
             )
             if host_name is not None:
@@ -521,7 +521,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 run_id=run_id if telemetry_store is not None else None,
                 host_telemetry=host_telemetry_publisher,
                 controller=autonomy_controller,
-                **loop_options,
+                recording_root=runtime_root / "automation" / "host-runs",
             )
             autonomy_execution = host.execution
             if telemetry_store is not None:

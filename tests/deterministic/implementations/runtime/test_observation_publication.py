@@ -16,14 +16,14 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.routes import RuntimeRoutes
-from autonomy.runtime.cycle_host import AutonomyCycleHost
 from implementations.decision_cycle.catalog import packaged_activation, selection_activation
 from autonomy.runtime.frame_loop import (
     FRAME_PUBLICATION_SCHEMA,
     OBSERVATION_TRANSACTION_PATH,
 )
-from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget, create_host
+from implementations.runtime.picar import AutonomyPilotPart, create_host
 from implementations.runtime.picar.host_telemetry import DriveModeTelemetryAdapter, HostTelemetryStore
+from tests.shared.implementations.runtime.cycle_host import ExplodingHost
 
 
 class ObservationPublicationTests(unittest.TestCase):
@@ -274,14 +274,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertTrue(stale["ok"])
         self.assertGreater(stale["result_age_ms"], stale["stale_after_ms"])
 
-        class Boom(AutonomyCycleHost):
-            """A host whose cycle raises before it produces any result."""
-
-            def run(self, context, **inputs):
-                del context
-                raise RuntimeError("boom")
-
-        failing = AutonomyPilotPart(host=Boom(target=DonkeyControlTarget()))
+        failing = AutonomyPilotPart(host=ExplodingHost())
         failing.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         failing.wait_for_cycle()
         errored = failing.publish_latest(now_ms=failing.latest_state.completed_at_ms)
@@ -540,7 +533,7 @@ class ObservationPublicationTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[4] / "deploy" / "targets" / "donkeycar"
         manage = (root / "app" / "manage.py").read_text(encoding="utf-8")
         self.assertIn("autonomy_controller.autonomy_routes = RuntimeRoutes(", manage)
-        self.assertIn("**loop_options", manage)
+        self.assertIn('recording_root=runtime_root / "automation" / "host-runs"', manage)
 
         # Vendor checkout is generated; the tracked patch is the durable source.
         patch = (root / "patches" / "waveshare-donkeycar-local.patch").read_text(encoding="utf-8")

@@ -17,7 +17,10 @@ from autonomy.decision_cycle.action.publication import (
 from autonomy.decision_cycle.steps import STEP_RUNNERS, decision_steps
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.execution import ControlExecution
-from implementations.decision_cycle.catalog import packaged_activation
+from autonomy.runtime.plugin_loader import CodeSource, StagedStep
+from cli.automa_cli.hosts.bundles import sync_controller_bundle
+from cli.automa_cli.releases.paths import controller_bundle_paths
+from implementations.decision_cycle.catalog import packaged_activation, preset_activation
 
 
 def cycle(host, index=0, **kwargs):
@@ -113,6 +116,80 @@ class PipelineReplacementTests(unittest.TestCase):
         self.assertIs(host.steps, steps)
         self.assertIs(host.shared_memory, memory)
         self.assertIs(host.shared_memory["history"], marker)
+        self.assertEqual(host.applied_decision(), identity)
+
+    def test_named_host_rearming_current_preset_preserves_runners_and_history(self):
+        release = {"tree_sha256": "installed", "created_at_ms": 123}
+        with patch("autonomy.runtime.cycle_host.INSTALLED_RELEASE", release):
+            preset = preset_activation("perception", "lightweight_observer")
+            host = AutonomyCycleHost(steps=decision_steps({"perception": preset}))
+            host.note_host_name("one")
+            cycle(host)
+            steps, memory, identity = host.steps, host.shared_memory, host.applied_decision()
+            memory["history"] = marker = object()
+            with patch("autonomy.runtime.cycle_host.decision_steps", side_effect=AssertionError("rebuilt no-op")):
+                request = host.arm({"perception": preset.to_payload()})
+            self.assertEqual(request["status"], "applied")
+            cycle(host, 1)
+            self.assertIs(host.steps, steps)
+            self.assertIs(host.shared_memory, memory)
+            self.assertIs(memory["history"], marker)
+            self.assertEqual(host.applied_decision(), identity)
+
+    def test_named_host_repeated_preset_request_reuses_pending_pipeline(self):
+        host = self.host()
+        host.note_host_name("one")
+        payload = preset_activation("perception", "visual_observer").to_payload()
+        self.assertTrue(host.arm({"perception": payload})["ok"])
+        pending = host._pending_steps
+        with patch("autonomy.runtime.cycle_host.decision_steps", side_effect=AssertionError("rebuilt pending")):
+            request = host.arm({"perception": payload})
+        self.assertEqual(request["status"], "requested")
+        self.assertIs(host._pending_steps, pending)
+        cycle(host)
+        self.assertIs(host.steps, pending)
+
+    def test_bundled_metadata_rearm_updates_runner_and_identity_without_rebuilding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            bundle = controller_bundle_paths(Path(tmp) / "vehicle")
+            sync_controller_bundle(bundle, emit=None)
+            host = AutonomyCycleHost(steps=decision_steps(
+                {"proposal": packaged_activation("proposal")},
+                source=CodeSource(bundle_root=Path(bundle["root_dir"])),
+            ))
+            cycle(host)
+            runner = host.step("proposal")
+            self.assertIsInstance(runner, StagedStep)
+            steps, memory, identity = host.steps, host.shared_memory, host.applied_decision()
+            memory["history"] = marker = object()
+            renamed = replace(runner.activation, metadata={**runner.activation.metadata, "preset": "renamed"})
+            request = host.arm({"proposal": renamed.to_payload()})
+            self.assertEqual(request["status"], "applied")
+            self.assertEqual(runner.activation.metadata["preset"], "renamed")
+            self.assertEqual(host.applied_decision()["steps"]["proposal"]["metadata"]["preset"], "renamed")
+            self.assertEqual(host.status()["steps"]["proposal"]["preset"], "renamed")
+            cycle(host, 1)
+            self.assertIs(host.steps, steps)
+            self.assertIs(host.shared_memory, memory)
+            self.assertIs(memory["history"], marker)
+            self.assertEqual(host.applied_decision()["generation_id"], identity["generation_id"])
+
+    def test_failed_metadata_assignment_keeps_cached_activation_and_identity(self):
+        host = self.host()
+        runner = host.step("proposal")
+        original = runner.activation
+        cached = host._applied_activations["proposal"]
+        identity = host.applied_decision()
+        renamed = replace(original, metadata={**original.metadata, "preset": "renamed"})
+
+        def refuse(_runner, _activation):
+            raise RuntimeError("metadata refused")
+
+        with patch.object(type(runner), "activation", property(lambda _: original, refuse), create=True):
+            with self.assertRaisesRegex(RuntimeError, "metadata refused"):
+                host.arm({"proposal": renamed.to_payload()})
+        self.assertIs(host._applied_activations["proposal"], cached)
+        self.assertIs(runner.activation, original)
         self.assertEqual(host.applied_decision(), identity)
 
     def test_returning_to_the_same_executable_pipeline_returns_to_its_content_id(self):

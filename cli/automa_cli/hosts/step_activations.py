@@ -20,7 +20,6 @@ from pathlib import Path
 from typing import Any
 
 from autonomy.decision_cycle.activation import (
-    DECISION_STEPS,
     STEPS,
     StepActivation,
     activation_generation_id,
@@ -392,15 +391,6 @@ def staged_selections(bundle: dict[str, str]) -> dict[str, dict[str, Any]]:
     return selections
 
 
-def decision_activations(bundle: dict[str, str]) -> dict[str, StepActivation | None]:
-    """The proposal, plan, and action activations a host would run, with built-ins."""
-
-    return {
-        step: read_bundle_activation(bundle, step) or builtin_activation(step)
-        for step in DECISION_STEPS
-    }
-
-
 def decision_generation_id(activations: dict[str, StepActivation | None]) -> str:
     return activation_generation_id(activations, prefix="decision")
 
@@ -443,7 +433,6 @@ __all__ = [
     "absent_step_error",
     "bundle_activation_path",
     "bundle_activation_problems",
-    "decision_activations",
     "decision_generation_id",
     "decision_identity",
     "ensure_step_activations",

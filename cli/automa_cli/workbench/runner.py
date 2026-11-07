@@ -14,7 +14,6 @@ from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, cycle_result_of
-from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.plugins import LocalPluginCatalog
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
@@ -42,7 +41,6 @@ from ..replay.models import (
 from ..replay.selections import (
     default_selection,
     recorded_runner,
-    recorded_release,
     replace_replay_pipeline,
     resolve_replay_activations,
 )
@@ -112,7 +110,6 @@ class ImageReplayRunner:
         self._steps: dict[str, Any] = {}
         self._shared_memory: dict[str, Any] = {}
         self._history: dict[str, dict[str, Any]] = {}
-        self._frame_checkpoint: dict[str, Any] | None = None
         self._seek_generation = 0
         self._generation = 0
         self._cadence_ms = self._validate_cadence(cadence_ms)
@@ -590,13 +587,6 @@ class ImageReplayRunner:
                             self._steps = runners
                             self._replay_activations = activations
                             self._shared_memory = {}
-                            memory = runners.get("memory")
-                            self._frame_checkpoint = {
-                                "memory": {},
-                                "publisher": (
-                                    memory.evidence_publisher if isinstance(memory, MemoryRunner) else None
-                                ),
-                            }
                             refresh = (
                                 self._state["phase"] == "paused"
                                 and self._state["latest_processed_position"] is not None
@@ -663,16 +653,7 @@ class ImageReplayRunner:
         factory = self.step_factories.get(step)
         if factory is not None:
             return factory()
-        if step in self._catalogs and recorded_release(activation) is None:
-            return self._catalogs[step].build(activation)
         return recorded_runner(activation)
-
-    def _restore_frame_checkpoint(self) -> None:
-        checkpoint = self._frame_checkpoint
-        self._shared_memory = copy.deepcopy(checkpoint["memory"])
-        memory = self._steps.get("memory")
-        if isinstance(memory, MemoryRunner):
-            memory.restore_shared_memory(self._shared_memory, publisher=checkpoint["publisher"])
 
     def _restart_capture_locked(self) -> None:
         """Start another pass over the capture with fresh pipelines.
@@ -1009,12 +990,6 @@ class ImageReplayRunner:
                             if name not in self._selection_overrides:
                                 self._store_recorded_activation(name, activation)
                     self._apply_plugin_configuration_locked()
-                    if not refresh:
-                        memory = steps.get("memory")
-                        self._frame_checkpoint = {
-                            "memory": copy.deepcopy(self._shared_memory),
-                            "publisher": memory.evidence_publisher if isinstance(memory, MemoryRunner) else None,
-                        }
                 outcome = run_frame(frame, steps=steps, shared_memory=self._shared_memory)
                 result = outcome.result
                 with self._condition:
@@ -1141,7 +1116,6 @@ class ImageReplayRunner:
             "recording_enabled": False,
         }
         self._steps = {}
-        self._frame_checkpoint = None
         return cleanup
 
     def _check_run_id_locked(self, action: str, run_id: str | None) -> None:

@@ -99,6 +99,10 @@ class StagedStep:
     def activation(self) -> StepActivation:
         return self.runner.activation
 
+    @activation.setter
+    def activation(self, activation: StepActivation) -> None:
+        self.runner.activation = activation
+
     def __getattr__(self, name: str) -> Any:
         value = getattr(self.runner, name)
         if not callable(value):

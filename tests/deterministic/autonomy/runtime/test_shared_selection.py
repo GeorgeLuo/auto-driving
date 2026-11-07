@@ -78,6 +78,33 @@ class SharedSelectionTests(unittest.TestCase):
             self.assertEqual(after.plugin_ids, ())
             self.assertEqual(after.activation.metadata["controller_bundle"], {"release": release})
 
+    def test_watched_selection_keeps_installed_source_instead_of_staging_provenance(self):
+        activation = replace(packaged_activation("proposal"), metadata={
+            "controller_bundle": {"root_dir": "/missing/staging-machine/bundle", "release": {"tree_sha256": "old"}},
+        })
+        release = {"tree_sha256": "installed", "created_at_ms": 123}
+        with tempfile.TemporaryDirectory() as tmp, patch("autonomy.runtime.recording.INSTALLED_RELEASE", release):
+            path = Path(tmp) / "active.json"
+            for vehicle in VEHICLES:
+                with self.subTest(vehicle=vehicle):
+                    host = _open(vehicle, {"proposal": activation}, source=INSTALLED_PACKAGE,
+                                 watches=[("proposal", path, activation)])
+                    self.addCleanup(host.close)
+                    host.note_host_name("one")
+                    before = host.step("proposal")
+                    write_step_activation(path, replace(activation, plugins=()))
+                    _frame(host, 0)
+                    after = host.step("proposal")
+                    self.assertIsNot(after, before)
+                    self.assertEqual(after.plugin_ids, ())
+                    self.assertEqual(after.activation.metadata["controller_bundle"], {"release": release})
+                    self.assertIsNone(host.selection_status()["error"])
+                    # Continue following the original file's specs and configs.
+                    write_step_activation(path, activation)
+                    _frame(host, 1)
+                    self.assertEqual(host.step("proposal").plugin_ids, activation.plugins)
+                    self.assertEqual(host.step("proposal").activation.metadata["controller_bundle"], {"release": release})
+
     def test_substituted_loader_is_shared(self) -> None:
         seen: list[tuple[str, CodeSource | None]] = []
         real = load_runner

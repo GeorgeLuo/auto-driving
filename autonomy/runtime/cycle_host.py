@@ -91,7 +91,7 @@ class AutonomyCycleHost:
         self.last_error: str | None = None
         self._status_providers: dict[str, Callable[[], dict[str, Any]]] = {}
         self._host_name: str | None = None
-        self._watched: dict[str, tuple[Path, StepActivation]] = {}
+        self._watched: dict[str, tuple[Path, StepActivation, StepActivation]] = {}
         self._last_staged_ids: dict[str, tuple[str, ...]] = {}
         self._applied_activations: dict[str, StepActivation | None] = {}
         self._pending_steps: DecisionSteps | None = None
@@ -142,7 +142,10 @@ class AutonomyCycleHost:
         """Follow ``path`` for selection changes to the runner loaded from ``loaded``."""
 
         with self._lock:
-            self._watched[require_step(step)] = (Path(path), loaded)
+            # Validate edits against the staged file, but rebuild from the source
+            # normalized by load_runner (an explicit installed source can differ).
+            executable = getattr(self.step(step), "activation", loaded)
+            self._watched[require_step(step)] = (Path(path), loaded, executable)
             self._last_staged_ids[step] = tuple(loaded.plugins)
 
     def follow_activations(self, activations: Mapping[str, StepActivation], runtime_root: Path) -> None:
@@ -184,14 +187,14 @@ class AutonomyCycleHost:
         with self._lock:
             requested: dict[str, StepActivation] = {}
             updates: dict[str, StepActivation] = {}
-            for step, (path, loaded) in self._watched.items():
+            for step, (path, loaded, executable) in self._watched.items():
                 live = sync_live_selection(
                     path, loaded, previous_ids=self._last_staged_ids.get(step),
                 )
                 if live is None:
                     continue
                 try:
-                    staged = replace(loaded, plugins=tuple(live.plugins))
+                    staged = replace(executable, plugins=tuple(live.plugins))
                 except (TypeError, ValueError, PluginManagementError) as exc:
                     self._selection_error = f"{step}: {type(exc).__name__}: {exc}"
                     continue
@@ -314,7 +317,10 @@ class AutonomyCycleHost:
         """Build ``desired`` beside the applied pipeline. A failure leaves both in place."""
 
         self._arm_request_id += 1
-        desired = {step: desired.get(step) for step in STEPS}
+        desired = {
+            step: self._stamp(item) if (item := desired.get(step)) is not None else None
+            for step in STEPS
+        }
         if _same_pipeline(desired, self._applied_activations):
             self._pending_steps = None
             self._pending_activations = None
@@ -324,24 +330,20 @@ class AutonomyCycleHost:
         if (
             self._pending_activations is not None
             and _same_pipeline(desired, self._pending_activations)
-            and _same_metadata(desired, self._pending_activations, self._stamp)
+            and _same_metadata(desired, self._pending_activations)
         ):
             self._selection_error = None
             return
         if self._fixed_steps:
             self._selection_error = "pipeline has a step that cannot be reconstructed"
             return
-        stamped = {
-            step: self._stamp(item) if item is not None else None
-            for step, item in desired.items()
-        }
         try:
-            built = decision_steps(stamped)
+            built = decision_steps(desired)
         except Exception as exc:  # noqa: BLE001 - construction must not touch the applied pipeline
             self._selection_error = f"{type(exc).__name__}: {exc}"
             return
         self._pending_steps = built
-        self._pending_activations = stamped
+        self._pending_activations = desired
         self._selection_error = None
 
     def _adopt_pending(self) -> None:
@@ -375,13 +377,13 @@ class AutonomyCycleHost:
             applied = self._applied_activations.get(step)
             if item is None or applied is None:
                 continue
-            stamped = self._stamp(replace(applied, metadata=dict(item.metadata)))
+            stamped = replace(applied, metadata=dict(item.metadata))
             if stamped.metadata == applied.metadata:
                 continue
-            self._applied_activations[step] = stamped
             runner = self.step(step)
             if runner is not None and hasattr(runner, "activation"):
                 runner.activation = stamped
+            self._applied_activations[step] = stamped
             changed = True
         if changed:
             self._record_applied_decision()
@@ -785,11 +787,10 @@ def _describe(activation: StepActivation | None) -> list[dict[str, Any]]:
 def _same_metadata(
     left: Mapping[str, StepActivation | None],
     right: Mapping[str, StepActivation | None],
-    stamp: Any,
 ) -> bool:
     return all(
         (left.get(step) is None) == (right.get(step) is None)
-        and (left.get(step) is None or stamp(left[step]).metadata == right[step].metadata)
+        and (left.get(step) is None or left[step].metadata == right[step].metadata)
         for step in STEPS
     )
 

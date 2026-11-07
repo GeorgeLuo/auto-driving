@@ -65,12 +65,10 @@ class LiveSelectionTests(unittest.TestCase):
             self.assertEqual(plugin.reset_count, 0)
             self.assertEqual(step.plugin_ids, ("frame", "floor_plane"))
             self.assertTrue(Path(step.plugins["floor_plane"].perceive.__code__.co_filename).is_relative_to(code))
-            # The discarded map and its checkpoint cannot restore old plugin state.
+            # Replacing the map cannot restore old plugin state.
             runner._shared_memory["recorded.frame"] = True
-            runner._frame_checkpoint["memory"]["recorded.frame"] = True
             self.select(runner, run_id, ["floor_plane"])
             self.assertNotIn("recorded.frame", runner._shared_memory)
-            self.assertNotIn("recorded.frame", runner._frame_checkpoint["memory"])
             self.assertEqual(plugin.reset_count, 0)
 
     def test_running_addition_reconstructs_plugins_with_tuned_configs_and_empty_history(self):
@@ -168,7 +166,7 @@ class LiveSelectionTests(unittest.TestCase):
             runner.dispatch("step", run_id=run_id)
             self.assertEqual(runner.state()["progress"]["completed"], 1)
             runner.dispatch("reset", run_id=run_id)
-            self.assertIsNone(runner._frame_checkpoint)
+            self.assertEqual(runner._shared_memory, {})
             self.assertIsNone(runner.state()["latest_processed_position"])
 
 

@@ -14,7 +14,7 @@ from typing import Any, Literal
 
 from autonomy.runtime.session import RunConfiguration
 
-from ...shared.io.processes import pid_alive
+from ...shared.io.processes import pid_alive, reap_on_exit
 from ...shared.paths import ROOT
 from .models import WORKER_MODULE
 from .store import mark_automation_startup_error, read_run_state
@@ -140,7 +140,7 @@ def launch_worker(
         else nullcontext(subprocess.DEVNULL)
     )
     with target as output:
-        return subprocess.Popen(
+        process = subprocess.Popen(
             command,
             cwd=ROOT,
             stdout=output,
@@ -150,6 +150,8 @@ def launch_worker(
             env={**os.environ, "PYTHONUNBUFFERED": "1"},
             text=True,
         )
+    reap_on_exit(process)
+    return process
 
 
 def stop_worker(pid: int, *, wait_s: float) -> Literal["stopped", "forced", "timeout"]:

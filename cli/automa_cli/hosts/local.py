@@ -21,7 +21,7 @@ from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA
 from .errors import RuntimeHostError
 from ..releases.store import release_code_dir, release_manifest, release_summary
 from ..shared.io.log_files import read_log_tail
-from ..shared.io.processes import pid_alive
+from ..shared.io.processes import pid_alive, reap_on_exit
 from ..shared.paths import ROOT, display_path
 from ..shared.text import automa_command, format_log_tail
 from .staging import automation_dir
@@ -116,6 +116,7 @@ def ensure_chase_host(host_name: str, *, timeout_s: float = HOST_START_TIMEOUT_S
             cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
             start_new_session=True, env={**os.environ, "PYTHONUNBUFFERED": "1"},
         )
+    reap_on_exit(process)
     try:
         return _wait_for_host(host_name, process, timeout_s)["base_url"]
     except BaseException:

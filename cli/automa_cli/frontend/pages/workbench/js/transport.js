@@ -106,7 +106,7 @@ function flushLoop() {
       }
     }
     if (!result.ok || (result.payload && result.payload.ok === false)) {
-      setNotice((result.payload && result.payload.message) || "Action was rejected.");
+      setNotice((result.payload && result.payload.error) || "Action was rejected.");
       if (pendingLoop === null && controls && typeof controls.loop === "boolean") {
         loopDraft = null;
         paintLoopToggle(controls.loop);
@@ -142,7 +142,7 @@ async function controlAction(action, extra) {
     var payload = await response.json();
     if (!acceptStateResponse(request, payload.state)) return;
     if (!response.ok || payload.ok === false) {
-      setNotice((payload && payload.message) || "Action was rejected.");
+      setNotice((payload && payload.error) || "Action was rejected.");
       return;
     }
     if (!payload.state) return;
@@ -203,7 +203,7 @@ async function action(action, extra) {
           revertPluginDraft(extra && extra.step);
           if (payload.state) render(payload.state);
         }
-        setNotice(payload.message || "Action was rejected.");
+        setNotice(payload.error || "Action was rejected.");
       }
       return;
     }
@@ -362,7 +362,7 @@ function flushSeek() {
     if (result.payload.state) render(result.payload.state);
     if (!result.ok || result.payload.ok === false) {
       pendingResume = false;
-      setNotice(result.payload.message || "Seek was rejected.");
+      setNotice(result.payload.error || "Seek was rejected.");
     } else {
       setNotice("");
     }

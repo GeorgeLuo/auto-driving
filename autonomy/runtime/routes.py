@@ -22,7 +22,7 @@ from autonomy.runtime.frame_loop import (
     OBSERVATION_TRANSACTION_PATH,
 )
 from autonomy.runtime.session import RunConfiguration
-from autonomy.runtime.plugin_catalog import catalog_write_error
+from autonomy.runtime.http_errors import error_payload, write_error
 
 logger = logging.getLogger(__name__)
 
@@ -82,22 +82,23 @@ class RuntimeRoutes:
         parts = urlsplit(target)
         path = parts.path.rstrip("/") or "/"
         method = "GET" if method.upper() == "HEAD" else method.upper()
-        if method == "POST" and path == PLUGINS_PATH:
-            error = catalog_write_error(headers or {}, origin=origin)
-            if error is not None:
-                status, payload = error
-                return json_response(payload, status)
         route = self._routes.get((method, path))
         if route is None:
             if path in self._paths:
-                return json_response({"ok": False, "error": f"{method} not allowed on {path}"}, 405)
-            return json_response({"ok": False, "error": f"no runtime route {path}"}, 404)
+                return json_response(error_payload(f"{method} not allowed on {path}"), 405)
+            return json_response(error_payload(f"no runtime route {path}"), 404)
+        if method == "POST":
+            # Every runtime write changes state a page on another site must not reach.
+            refusal = write_error(headers or {}, origin=origin)
+            if refusal is not None:
+                status, payload = refusal
+                return json_response(payload, status)
         try:
             query = parse_qs(parts.query, keep_blank_values=True, strict_parsing=False)
             return route(query, body or b"", headers or {})
         except Exception as exc:  # noqa: BLE001 - one bad request must not end the host
             logger.exception("Runtime route %s %s failed", method, path)
-            return json_response({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, 500)
+            return json_response(error_payload(f"{type(exc).__name__}: {exc}"), 500)
 
     def status_payload(self) -> dict[str, Any]:
         session = self.host.session_status()
@@ -154,11 +155,11 @@ class RuntimeRoutes:
             else:
                 raise ValueError(f"unknown runtime command {command!r}")
         except (TypeError, ValueError, RuntimeError) as exc:
-            return json_response({"ok": False, "error": str(exc)}, 400)
+            return json_response(error_payload(str(exc)), 400)
         response = self._runtime(query, body, headers)
         if command == "restart":
             if self.on_restart is None:
-                return json_response({"ok": False, "error": "this runtime cannot restart itself"}, 400)
+                return json_response(error_payload("this runtime cannot restart itself"), 400)
             threading.Timer(RESTART_DELAY_S, self.on_restart).start()
         return response
 
@@ -166,7 +167,7 @@ class RuntimeRoutes:
         try:
             payload = self._json_body(body) if body else None
         except ValueError as exc:
-            return json_response({"ok": False, "error": str(exc)}, 400)
+            return json_response(error_payload(str(exc)), 400)
         # Uploads last for this host run; the id shows when a restart cleared them.
         result = {**self.host.plugin_catalog(payload), "host_run_id": self.loop.run_id}
         return json_response(result, 200 if result.get("ok") else 400)

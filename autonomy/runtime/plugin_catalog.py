@@ -6,6 +6,7 @@ import base64
 from typing import Any, Callable, Mapping
 
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition
+from autonomy.runtime.http_errors import error_payload
 
 PLUGIN_CATALOG_PATH = "/api/plugins"
 
@@ -14,18 +15,6 @@ def _field(payload: Mapping[str, Any], name: str) -> Any:
     if name not in payload:
         raise ValueError(f"missing field: {name}")
     return payload[name]
-
-
-def catalog_write_error(headers: Mapping[str, str], *, origin: str) -> tuple[int, dict[str, Any]] | None:
-    """Allow JSON CLI writes and same-origin browser writes before reading a body."""
-
-    supplied = headers.get("Origin")
-    if (supplied is not None and supplied != origin
-            or headers.get("Sec-Fetch-Site") == "cross-site"):
-        return 403, {"ok": False, "status": "failed", "error": "writes require the same origin"}
-    if headers.get("Content-Type", "").partition(";")[0].strip().lower() != "application/json":
-        return 415, {"ok": False, "status": "failed", "error": "writes require application/json"}
-    return None
 
 
 def describe_plugin(definition: PluginDefinition) -> dict[str, Any]:
@@ -78,4 +67,4 @@ class PluginCatalogAPI:
                 result["applied_decision"] = self.applied_decision()
             return result
         except (OSError, ValueError, TypeError, KeyError) as exc:
-            return {"ok": False, "status": "failed", "error": str(exc)}
+            return error_payload(str(exc), status="failed")

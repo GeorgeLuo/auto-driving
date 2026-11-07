@@ -6,7 +6,6 @@ from unittest.mock import patch
 from cli.automa_cli.providers.urls import normalize_chase_url
 from cli.automa_cli.providers.models import Candidate
 from cli.automa_cli.vehicles.render import format_vehicles_status
-from tests.shared.cli.invoke import invoke_automa
 
 
 class VehicleStatusTests(unittest.TestCase):
@@ -106,10 +105,6 @@ class VehicleStatusTests(unittest.TestCase):
             "  used by hosts driver, spare"
         ))
         self.assertEqual(format_vehicles_status({"vehicles": []}), "None listed.")
-
-    def test_retired_discovery_command_is_unavailable(self):
-        result = invoke_automa("vehicles", "active", check=False)
-        self.assertEqual(result.returncode, 2)
 
 
 if __name__ == "__main__":

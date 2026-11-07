@@ -8,7 +8,7 @@ from autonomy.decision_cycle.proposal.values import (
     synthetic_error_proposal,
 )
 from autonomy.serialization import canonical_json_size_bytes
-from autonomy.decision_cycle.action.hold import idle_output
+from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON, HoldAction, idle_output
 from autonomy.decision_cycle.action.values import proposed_equals_authorized
 from tests.deterministic.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
@@ -94,6 +94,29 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertFalse(result.authority.proposed_applied)
         self.assertEqual(result.control.steering, 0.0)
         self.assertEqual(result.control.throttle, 0.0)
+
+    def test_hold_records_the_selected_command_and_authorizes_idle(self) -> None:
+        def propose(context) -> ActionProposal:
+            return _active_proposal(frame_id=context.frame_id)
+
+        # The proposed steering is the command hold recorded but did not apply.
+        cases = (({"avoid_recent_obstruction": propose}, "selected", 0.35), ({}, "idle", None))
+        for plugins, plan_status, proposed_steering in cases:
+            with self.subTest(plan_status=plan_status):
+                result = decision_chain(plugins=plugins, action=HoldAction()).run(
+                    frame_id="frame_001", frame_index=0, timestamp_ms=1
+                )
+                assert result.plan is not None and result.control is not None
+                self.assertEqual(result.plan.status, plan_status)
+                self.assertEqual((result.status, result.frame_id), ("ok", "frame_001"))
+                self.assertEqual(
+                    (result.control.steering, result.control.throttle, result.control.reason),
+                    (0.0, 0.0, HOLD_IDLE_REASON),
+                )
+                self.assertEqual(result.authority.gate_id, "hold")
+                self.assertFalse(result.authority.proposed_applied)
+                proposed = result.authority.proposed
+                self.assertEqual(None if proposed is None else proposed.steering, proposed_steering)
 
     def test_source_refs_name_an_observation_or_memory_record(self) -> None:
         for kind in ("observation", "memory_record"):

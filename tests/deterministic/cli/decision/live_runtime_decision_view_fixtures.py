@@ -37,19 +37,24 @@ class _NoRedirectHandler(HTTPRedirectHandler):
 
 
 class LiveRuntimeDecisionViewFixture:
-    def setUp(self) -> None:
-        self._temporary = tempfile.TemporaryDirectory()
-        self.addCleanup(self._temporary.cleanup)
-        self.runtime_root = Path(self._temporary.name) / "vehicles"
-        self.runtime_root.mkdir()
+    @classmethod
+    def setUpClass(cls) -> None:
+        # Tests read the staged runtime but never write it, so a class stages it once.
+        super().setUpClass()
+        cls._temporary = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(cls._temporary.cleanup)
+        cls.runtime_root = Path(cls._temporary.name) / "vehicles"
+        cls.runtime_root.mkdir()
         from tests.support.runtime_fixtures import runtime_root_env, stage_step
-        self.enterContext(runtime_root_env(self.runtime_root))
+        cls.enterClassContext(runtime_root_env(cls.runtime_root))
         for step in ("proposal", "action"):
-            stage_step(self.runtime_root, "chase-sim-chaser", step)
-        self.vehicle_runtime = self.runtime_root / "chase-sim-chaser"
-        self.runtime_dir = self.vehicle_runtime / "bundle" / "runtime"
-        self.automation_dir = self.runtime_dir / "automation"
-        self.activation = decision_identity(bundle_paths("chase-sim-chaser"), host_name="chase-sim-chaser")
+            stage_step(cls.runtime_root, "chase-sim-chaser", step)
+        cls.vehicle_runtime = cls.runtime_root / "chase-sim-chaser"
+        cls.runtime_dir = cls.vehicle_runtime / "bundle" / "runtime"
+        cls.automation_dir = cls.runtime_dir / "automation"
+        cls.activation = decision_identity(bundle_paths("chase-sim-chaser"), host_name="chase-sim-chaser")
+
+    def setUp(self) -> None:
         self.server = RuntimeViewServer(
             host_name="chase-sim-chaser",
             automation_dir=self.automation_dir,

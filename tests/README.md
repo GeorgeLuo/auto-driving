@@ -124,7 +124,7 @@ A fixture both suites import goes under `shared/`, at the path of the determinis
 
 For new or materially changed tests, name a concrete regression and the observable behavior that would catch it.
 
-Prefer realistic state transitions and their emitted signals. Do not assert frontend source snippets, help-text paragraphs, or retired delivery-process artifacts. Keep happy paths and meaningful failure boundaries. Split large modules by behavior (aim below 700 lines), with only small, adjacent fixtures; do not introduce a shared testing framework. Include `__init__.py` in test directories so the repository runner discovers them.
+Prefer realistic state transitions and their emitted signals. Do not assert frontend source snippets, help-text paragraphs, or retired delivery-process artifacts. Do not test what a packaged plugin does: plugins change as automations do and are not fixtures of the codebase. Test the framework that loads and runs them, the catalog, and the shared code and feeds under `implementations/`; a framework test that needs a plugin defines a small one beside it. Keep happy paths and meaningful failure boundaries. Split large modules by behavior (aim below 700 lines), with only small, adjacent fixtures; do not introduce a shared testing framework. Include `__init__.py` in test directories so the repository runner discovers them.
 
 ## Support Contract
 

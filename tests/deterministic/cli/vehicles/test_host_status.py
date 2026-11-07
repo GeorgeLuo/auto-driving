@@ -20,7 +20,6 @@ from cli.automa_cli.hosts.host_formatting import viewer_command
 from cli.automa_cli.hosts.local import HOST_RECORD
 from cli.automa_cli.hosts.publications.host_publications import host_state
 from cli.automa_cli.providers.urls import chase_operator_url
-from implementations.decision_cycle.catalog import preset_activation
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, write_host_record
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
 from implementations.vehicle.chase_sim.presence import MetricsUiPresence
@@ -29,6 +28,7 @@ from tests.shared.cli.invoke import invoke_automa
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_hosts import answering, closed_url, hung_url
 from tests.support.fake_metrics_ui import fake_metrics_ui
+from tests.support.perception_fixtures import local_perception
 from tests.support.runtime_fixtures import write_host_fixture, write_json
 
 
@@ -53,11 +53,10 @@ def _stage_picar(runtime_root: Path, host_name: str, url: str) -> None:
 
     write_host_fixture(runtime_root, host_name, provider="picar", url=url)
     bundle = controller_bundle_paths(runtime_root / host_name)
-    packaged = preset_activation("perception", "lightweight_observer")
+    local = local_perception("a")
     activation = step_activation(
-        "perception", packaged.plugins, packaged.plugin_specs, packaged.plugin_configs,
-        metadata={**packaged.metadata, "host_name": host_name, "provider": "picar",
-                  "runtime": {"connection": {"base_url": url}}},
+        "perception", local.plugins, local.plugin_specs, local.plugin_configs,
+        metadata={"host_name": host_name, "provider": "picar", "runtime": {"connection": {"base_url": url}}},
     )
     path = Path(bundle["perception_runtime_dir"]) / "active.json"
     path.parent.mkdir(parents=True, exist_ok=True)

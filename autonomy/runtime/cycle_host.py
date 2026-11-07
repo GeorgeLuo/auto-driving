@@ -77,8 +77,6 @@ class AutonomyCycleHost:
         for step in STEPS:
             self._attach_catalog(self.step(step))
         self.shared_memory: SharedMemory = {}
-        self.last_result: DecisionCycleResult | None = None
-        self.last_context: DecisionFrameContext | None = None
         self._session_lock = threading.RLock()
         self._session_view: dict[str, Any] = {}
         self.configuration = RunConfiguration(mode="manual", num_decisions=None)
@@ -359,7 +357,6 @@ class AutonomyCycleHost:
             if runner is not None:
                 self._attach_catalog(runner)
         self.shared_memory = {}
-        self.last_result = None
         self._applied_activations = activations
         self._pending_steps = None
         self._pending_activations = None
@@ -503,64 +500,51 @@ class AutonomyCycleHost:
                             self.stop(reason="completed")
                     self._refresh_session_view()
                 self.cycle_count += 1
-                self.last_result = result
             except Exception as exc:
-                partial = cycle_result_of(exc) or completed
-                if partial is None:
-                    partial = DecisionCycleResult(
-                        context=context, perception=None, observation=None, memory=None,
-                        proposal=None, plan=None, action=None,
-                        control=AutonomyControl(reason="observation-cycle-error"),
-                        started_at_ms=self._cycle_in_progress["started_at_ms"],
-                        completed_at_ms=timestamp_ms(),
-                    )
-                self._cycle_in_progress = None
-                recorded_context = self._record_frame_context(
-                    partial.context if isinstance(partial, DecisionCycleResult) else context
-                )
                 self.error_count += 1
                 self.last_error = "".join(
                     traceback.format_exception_only(type(exc), exc)
                 ).strip()
-                if isinstance(partial, DecisionCycleResult):
-                    partial = replace(partial, context=recorded_context)
                 idle_write = None
                 try:
+                    # Idle the vehicle before anything else this failure does can raise.
                     if self.execution is not None:
                         before = self.execution.last_application
                         self.execution.cycle_failed(ticket)
                         if self.execution.last_application is not before:
                             idle_write = self.execution.last_application
                 finally:
-                    if isinstance(partial, DecisionCycleResult):
-                        if partial.application is None:
-                            # The idle write this failure made, or none when execution
-                            # no longer owned the target.
-                            if idle_write is not None:
-                                application = replace(idle_write, frame_id=partial.context.frame_id)
-                            else:
-                                idle = error_application(ticket.mode if ticket is not None else (mode or "manual"))
-                                application = ControlApplication(
-                                    partial.context.frame_id, idle.mode, False, idle.reason,
-                                    AutonomyControl(reason=idle.reason),
-                                )
-                            partial = replace(partial, application=application)
-                        # The loop publishes this object. It does not read last_result,
-                        # which still names the previous completed frame.
-                        try:
-                            exc.cycle_result = partial
-                        except Exception:
-                            pass
+                    partial = cycle_result_of(exc) or completed or DecisionCycleResult(
+                        context=context, perception=None, observation=None, memory=None,
+                        proposal=None, plan=None, action=None,
+                        control=AutonomyControl(reason="observation-cycle-error"),
+                        started_at_ms=self._cycle_in_progress["started_at_ms"],
+                        completed_at_ms=timestamp_ms(),
+                    )
+                    self._cycle_in_progress = None
+                    partial = replace(partial, context=self._record_frame_context(partial.context))
+                    if partial.application is None:
+                        # The idle write this failure made, or none when execution
+                        # no longer owned the target.
+                        if idle_write is not None:
+                            application = replace(idle_write, frame_id=partial.context.frame_id)
+                        else:
+                            idle = error_application(ticket.mode if ticket is not None else (mode or "manual"))
+                            application = ControlApplication(
+                                partial.context.frame_id, idle.mode, False, idle.reason,
+                                AutonomyControl(reason=idle.reason),
+                            )
+                        partial = replace(partial, application=application)
+                    try:
+                        exc.cycle_result = partial
+                    except Exception:
+                        pass
                     with self._session_lock:
-                        if (
-                            not recorded
-                            and isinstance(partial, DecisionCycleResult)
-                            and self.recording is not None
-                            and self.run_state == "running"
-                            and run_generation == self._run_generation
-                        ):
+                        recording = None if recorded else self.recording
+                        if (recording is not None and self.run_state == "running"
+                                and run_generation == self._run_generation):
                             try:
-                                self.recording.append(
+                                recording.append(
                                     partial,
                                     ticket.control_applications if ticket is not None else None,
                                     status="error",
@@ -578,18 +562,17 @@ class AutonomyCycleHost:
             return result
 
     def _record_frame_context(self, context: DecisionFrameContext) -> DecisionFrameContext:
-        """Retain the applied selections even when a frame produces no cycle result."""
+        """Stamp the applied selections on this frame, including failed cycles."""
         activations = {
             step: None if item is None else item.to_payload()
             for step, item in self._applied_activations.items()
         }
         applied = self._applied_decision
-        self.last_context = replace(context, metadata={
+        return replace(context, metadata={
             **context.metadata,
             "step_activations": activations,
             "generation_id": None if applied is None else applied["generation_id"],
         })
-        return self.last_context
 
     def start(self, configuration: RunConfiguration, *,
               recording: RunRecording | None = None) -> dict[str, Any]:
@@ -674,11 +657,6 @@ class AutonomyCycleHost:
         with self._lock:
             self._status_providers[component_id] = provider
 
-    @property
-    def last_control(self) -> AutonomyControl | None:
-        result = self.last_result
-        return result.control if result is not None else None
-
     def status(self) -> dict[str, Any]:
         cycle = self._cycle_in_progress
         components: dict[str, Any] = {}
@@ -735,11 +713,9 @@ class AutonomyCycleHost:
                     steps[step] = {"status": "error", "error": f"{type(exc).__name__}: {exc}"}
             else:
                 steps[step] = {"runner": type(runner).__name__}
-        last_result = self.last_result
         self._pipeline_report = {
             "steps": steps, "applied_decision": deepcopy(self._applied_decision),
             "arming": self._selection_status(),
-            "last_control": None if last_result is None else last_result.control.to_dict(),
         }
         self._step_reports_wanted = False
         return self._pipeline_report

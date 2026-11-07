@@ -14,7 +14,7 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.session import RunConfiguration
 from tests.support.action_fixtures import fixed_control_steps
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget, create_host
+from implementations.runtime.picar import AutonomyPilotPart, create_host
 
 
 def _pushy_host(**steps) -> AutonomyCycleHost:
@@ -39,17 +39,6 @@ def _authorized(part: AutonomyPilotPart) -> dict:
     """The control the last published cycle authorized."""
 
     return part.latest_state.report["cycle"]["action"]["authority"]["authorized_output"]
-
-
-class _ExplodingHost(AutonomyCycleHost):
-    """A host whose cycle raises before it produces any result."""
-
-    def __init__(self) -> None:
-        super().__init__(target=DonkeyControlTarget())
-
-    def run(self, context: DecisionFrameContext, **inputs):
-        del context
-        raise RuntimeError("cycle failed")
 
 
 class RuntimeCycleHostTests(unittest.TestCase):
@@ -91,7 +80,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
     def test_donkey_part_returns_the_shared_cycle_shape(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
 
-        part.run(image_array=object(), mode="local")
+        part.run(image_array=None, mode="local")
         part.wait_for_cycle()
         cycle = part.latest_state.report
 
@@ -159,7 +148,10 @@ class RuntimeCycleHostTests(unittest.TestCase):
         )
 
     def test_cycle_failure_keeps_zero_controls_and_records_error_state(self) -> None:
-        part = AutonomyPilotPart(host=_ExplodingHost())
+        def explode(*_args):
+            raise RuntimeError("perception failed")
+
+        part = AutonomyPilotPart(host=_pushy_host(perception=explode))
 
         part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
@@ -283,7 +275,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertIn(marker, source)
         snippet = source[source.index(marker) : source.index(marker) + 1600]
         self.assertIn("source_id=source_id if telemetry_store is not None else None", snippet)
-        self.assertIn("**loop_options", snippet)
+        self.assertIn("recording_root=host_runs_dir(runtime_root)", snippet)
         self.assertIn("staged_runtime(", source)
         self.assertIn("run_id=run_id if telemetry_store is not None else None", snippet)
         self.assertNotIn("run_condition", snippet)

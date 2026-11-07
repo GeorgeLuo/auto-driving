@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import gc
 import json
 import tempfile
 import threading
 import time
 import unittest
+import weakref
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -264,7 +266,6 @@ class CycleHostMemoryTests(unittest.TestCase):
             )
             self.assertEqual(status["steps"]["action"]["plugin_ids"], ["pushy"])
             self.assertEqual(status["cycle_count"], 1)
-            self.assertEqual(status["last_control"]["reason"], "pushy-test-action")
 
     def test_memory_failure_stops_before_later_steps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -272,7 +273,6 @@ class CycleHostMemoryTests(unittest.TestCase):
             with self.assertRaisesRegex(MemoryUpdateError, "forced-update-failure"):
                 host.run(DecisionFrameContext("frame_x", 0, 1))
             self.assertIsNone(proposal.last_shared_memory)
-            self.assertIsNone(host.last_result)
             self.assertEqual(host.status()["error_count"], 1)
             self.assertIn("forced-update-failure", host.status()["last_error"])
 
@@ -326,6 +326,17 @@ class CycleHostMemoryTests(unittest.TestCase):
 
 
 class CycleHostStepTests(unittest.TestCase):
+    def test_completed_results_and_contexts_are_released_when_the_caller_drops_them(self):
+        host = AutonomyCycleHost(steps=DecisionSteps())
+        context = DecisionFrameContext("frame-1", 0, 1000)
+        result = host.run(context)
+        result_ref = weakref.ref(result)
+        context_ref = weakref.ref(result.context)
+        del result, context
+        gc.collect()
+        self.assertIsNone(result_ref())
+        self.assertIsNone(context_ref())
+
     def test_an_inflight_success_cannot_clear_an_external_stop_error(self):
         from unittest import mock
         from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception

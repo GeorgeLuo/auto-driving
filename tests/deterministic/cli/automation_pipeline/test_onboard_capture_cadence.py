@@ -48,7 +48,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
             self.assertEqual(int(perception.contexts[1].sensor_frame.readings["front_camera"].value[0, 0, 0]), 2)
             status = part.observation_status()
             self.assertEqual((status["frames_received"], status["frames_dropped"], status["processed_count"]), (3, 1, 2))
-            self.assertNotIn("frames_dropped", part.host.last_context.metadata)
+            self.assertNotIn("frames_dropped", perception.contexts[-1].metadata)
         finally:
             perception.release_all()
             part.wait_for_cycle()

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 import threading
 import tempfile
@@ -16,13 +17,12 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.routes import RuntimeRoutes
-from autonomy.runtime.cycle_host import AutonomyCycleHost
 from implementations.decision_cycle.catalog import packaged_activation, selection_activation
 from autonomy.runtime.frame_loop import (
     FRAME_PUBLICATION_SCHEMA,
     OBSERVATION_TRANSACTION_PATH,
 )
-from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget, create_host
+from implementations.runtime.picar import AutonomyPilotPart, create_host
 from implementations.runtime.picar.host_telemetry import DriveModeTelemetryAdapter, HostTelemetryStore
 
 
@@ -70,7 +70,8 @@ class ObservationPublicationTests(unittest.TestCase):
             files = list(Path(tmp).glob("*/frames/*.jpg"))
             self.assertEqual(len(files), 1)
             self.assertEqual(files[0].read_bytes(), wire)
-            self.assertNotIn("jpeg_bytes", part.host.last_context.sensor_frame.readings["front_camera"].to_dict())
+            recorded = part.host.recording.read(run_id=part.host.recording.run_id, after=0)["frames"][0]["frame"]
+            self.assertNotIn("jpeg_bytes", recorded["context"]["sensor_frame"]["readings"]["front_camera"])
 
     def test_recording_and_transaction_share_one_encode(self):
         from autonomy.runtime.frame_loop import encode_jpeg
@@ -274,14 +275,10 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertTrue(stale["ok"])
         self.assertGreater(stale["result_age_ms"], stale["stale_after_ms"])
 
-        class Boom(AutonomyCycleHost):
-            """A host whose cycle raises before it produces any result."""
+        def explode(*_args):
+            raise RuntimeError("perception failed")
 
-            def run(self, context, **inputs):
-                del context
-                raise RuntimeError("boom")
-
-        failing = AutonomyPilotPart(host=Boom(target=DonkeyControlTarget()))
+        failing = AutonomyPilotPart(host=create_host(steps=replace(decision_steps(), perception=explode)))
         failing.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         failing.wait_for_cycle()
         errored = failing.publish_latest(now_ms=failing.latest_state.completed_at_ms)
@@ -312,11 +309,17 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(transaction["publication"]["report"]["frame_id"], payload["report"]["frame_id"])
 
     def test_decision_publication_keeps_source_identity_and_cycle_atomic(self) -> None:
-        store = HostTelemetryStore(
-            host_name="piracer", source_id="donkeycar:piracer", run_id="donkey-run-fixture",
-            generation_id="decision-startup",
+        telemetry = DriveModeTelemetryAdapter(
+            HostTelemetryStore(host_name="piracer", source_id="donkeycar:piracer", run_id="donkey-run-fixture"),
         )
-        part = self._hold_part(host_telemetry=DriveModeTelemetryAdapter(store))
+
+        def telemetry_generation() -> str:
+            # One DriveMode tick: the record names the generation of the frame it reports.
+            idle = {"steering": 0.0, "throttle": 0.0}
+            telemetry.begin_tick(mode="user", user_input=idle, pilot_output=idle)
+            return telemetry.complete_tick(idle)["record"]["generation_id"]
+
+        part = self._hold_part(host_telemetry=telemetry)
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         assert part.latest_state is not None
@@ -342,8 +345,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(published["generation_id"], expected_generation)
         self.assertEqual(values["activation"]["generation_id"], expected_generation)
         self.assertEqual(expected_generation, part.host.applied_decision()["generation_id"])
-        # Telemetry names the generation of the frame it reports.
-        self.assertEqual(store.generation_id, expected_generation)
+        self.assertEqual(telemetry_generation(), expected_generation)
         self.assertEqual(sorted(values["activation"]["steps"]), sorted(STEPS))
         self.assertEqual(
             values["activation"]["steps"]["proposal"]["plugins"],
@@ -385,7 +387,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertNotEqual(restaged, expected_generation)
         self.assertEqual(restaged, part.host.applied_decision()["generation_id"])
         self.assertEqual(part.latest_state.report["values"]["activation"]["generation_id"], restaged)
-        self.assertEqual(store.generation_id, restaged)
+        self.assertEqual(telemetry_generation(), restaged)
         self.assertNotEqual(part.latest_state.frame_id, published["frame_id"])
 
     def test_both_publications_carry_the_cycles_timing(self) -> None:
@@ -540,7 +542,6 @@ class ObservationPublicationTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[4] / "deploy" / "targets" / "donkeycar"
         manage = (root / "app" / "manage.py").read_text(encoding="utf-8")
         self.assertIn("autonomy_controller.autonomy_routes = RuntimeRoutes(", manage)
-        self.assertIn("**loop_options", manage)
 
         # Vendor checkout is generated; the tracked patch is the durable source.
         patch = (root / "patches" / "waveshare-donkeycar-local.patch").read_text(encoding="utf-8")

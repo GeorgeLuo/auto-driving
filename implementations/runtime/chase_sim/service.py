@@ -22,6 +22,7 @@ from typing import Any, Callable
 
 from autonomy.runtime.assembly import staged_runtime
 from autonomy.runtime.frame_loop import FrameLoop
+from autonomy.runtime.recording import host_runs_dir
 from autonomy.runtime.routes import RuntimeRoutes
 from autonomy.runtime.session import RunConfiguration
 from implementations.vehicle.chase_sim import (
@@ -166,11 +167,12 @@ class ChaseRuntimeHost:
 
     def __init__(self, *, car: Any, runtime_dir: Path, host_name: str, port: int = 0,
                  on_restart: Callable[[], None] | None = None) -> None:
-        host, options = staged_runtime(
+        host = staged_runtime(
             runtime_dir, lambda steps: create_host(car, steps=steps), host_name=host_name,
         )
         self.loop = ChaseFrameLoop(
-            host=host, car=car, host_name=host_name, **options,
+            host=host, car=car, host_name=host_name,
+            recording_root=host_runs_dir(runtime_dir),
         )
         self.server = RuntimeHTTPServer(("127.0.0.1", port), RuntimeRoutes(self.loop, on_restart=on_restart))
         self.base_url = f"http://127.0.0.1:{self.server.server_address[1]}"

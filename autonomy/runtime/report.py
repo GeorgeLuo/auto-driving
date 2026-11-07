@@ -316,30 +316,28 @@ def report_from_host_result(
     values: Mapping[str, Any] | None = None,
     status: str = "ok",
     error: str | None = None,
-    report_application: ReportApplication | None = None,
 ) -> HostReport:
     """The viewer document for one completed host cycle.
 
     ``result`` is the host's cycle result. Any step may be null. The
-    application is the host's write, not the action step's earlier authority
-    envelope. Pass ``report_application`` when the cycle raised before that
-    write. The result's ``timing``, when it has one, goes in
-    ``values["timing"]``. ``status`` is ``ok`` unless execution raised.
+    application is the host's write, including the idle write a raised cycle
+    made, not the action step's earlier authority envelope. The result's
+    ``timing``, when it has one, goes in ``values["timing"]``. ``status`` is
+    ``ok`` unless execution raised.
     """
 
     context = result.context
     application = result.application
-    if report_application is None:
-        if application is None or application.control is None:
-            raise TypeError("host result must include its control application")
-        control = application.control
-        report_application = ReportApplication(
-            applied=application.applied,
-            mode=application.mode,
-            reason=application.reason,
-            steering=control.steering,
-            throttle=control.throttle,
-        )
+    if application is None or application.control is None:
+        raise TypeError("host result must include its control application")
+    control = application.control
+    report_application = ReportApplication(
+        applied=application.applied,
+        mode=application.mode,
+        reason=application.reason,
+        steering=control.steering,
+        throttle=control.throttle,
+    )
     values = {} if values is None else dict(values)
     if result.timing is not None:
         values["timing"] = result.timing

@@ -1,7 +1,7 @@
 // The page: every window's paint, the column's readouts, and the reads that keep them current.
 // Nothing tells the page what changed (gap noNotify), so it reads every list again after each
-// command and polls: each streamed host's latest publication every tick, hosts status every
-// HOSTS_EVERY ticks.
+// command and polls: what each stream shows (a host's latest frame, or a step's probe) every tick,
+// hosts status every HOSTS_EVERY ticks.
 "use strict";
 
 const TICK_MS = typeof mock !== "undefined" ? mock.ms(250) || 25 : 250;
@@ -33,7 +33,7 @@ let ticks = 0;
 async function poll() {
   ticks += 1;
   const streamed = new Set([...Stream.streamed(), ...Plugins.streamed()]);
-  await Promise.all([...[...streamed].map((host) => api.read(routes.latest(host))),
+  await Promise.all([...[...streamed].map(api.read),
                      ...(ticks % HOSTS_EVERY === 0 ? [api.read("/api/hosts/status")] : [])]);
   render();
   setTimeout(poll, TICK_MS);

@@ -383,7 +383,7 @@ with sync_playwright() as p:
     expect(frame(page, "pluginsFrame")).to_be_visible()
     expect(frame(page, "pluginsFrame").locator(".float-frame-title [data-mode]")).to_have_text("chaser · catalog")
     expect(row(page, "pluginsFrame", "plan")).to_have_class(re.compile(r"\bselected\b"))
-    expect(status(page, "pluginsFrame")).to_contain_text("Plan (most_confident preset), one plugin")
+    expect(status(page, "pluginsFrame")).to_contain_text("Plan, one plugin, default preset most_confident")
     expect(frame(page, "streamFrame6").locator(".kicker", has_text="Overlays")).to_have_count(0)
     row(page, "pluginsFrame", "perception").click()  # back to perception for the checks below
     # FEEDS goes back to the selection; FEEDS there returns to the stream.
@@ -408,7 +408,7 @@ with sync_playwright() as p:
     expect(page.locator("#streamFrame7")).to_have_count(0)
     expect(page.locator("#streamReadout")).to_have_text("2 open")
     page.locator("#streamFrame6 [data-frame-close]").click()
-    expect(status(page, "pluginsFrame")).to_contain_text("Perception (lightweight_observer preset)\nCatalog: host chaser\n* frame (packaged) default")
+    expect(status(page, "pluginsFrame")).to_contain_text("Perception, default preset lightweight_observer\nCatalog: host chaser\n* frame (packaged) default")
     children = frame(page, "pluginsFrame").locator(".row.child:not([hidden])")
     expect(children).to_have_count(13)  # the packaged perception catalog
     expect(children.filter(has_text="floor_plane")).to_have_class("row marked child")
@@ -480,7 +480,8 @@ with sync_playwright() as p:
     expect(status(page, "pluginsFrame")).to_have_text("Disarm every plugin?")
     expect(mode("pluginsFrame")).to_have_text("chaser · disarm")
     key(page, "pluginsFrame", "YES").click()
-    expect(status(page, "pluginsFrame")).to_contain_text("Applied perception: (none)\nApplied memory: (none)\nApplied proposal: (none)")
+    for step in ("memory", "perception", "proposal"):  # every step's line, in name order, as plugins disarm --all prints them
+        expect(status(page, "pluginsFrame")).to_contain_text(f"Applied {step}: (none)\n")
     clear_of_column(page)
     page.locator("#gapsToggle").click()
     shot("5-plugins-gaps")

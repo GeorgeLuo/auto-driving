@@ -121,6 +121,7 @@ _MODULE_ROLES = {
     "hosts.step_formatting": "pure",
     "hosts.vehicle_access": "operation",
     "hosts.views.decision_live": "operation",
+    "hosts.views.frames": "operation",
     "hosts.views.observation": "operation",
     "hosts.views.polling": "pure",
     "hosts.views.runtime_view": "operation",

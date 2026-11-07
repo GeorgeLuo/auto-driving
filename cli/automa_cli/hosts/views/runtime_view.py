@@ -6,7 +6,7 @@ import time
 from collections.abc import Callable
 from typing import Any, Mapping
 
-from ...frontend.server import VIEWER_PORT, RuntimeViewServer
+from ...frontend.server import VIEWER_PORT, Read, RuntimeViewServer
 from ...shared.browser_result import BrowserOpenResult
 from ...shared.open_view import launch_browser
 from ...workbench.runner import ImageReplayRunner
@@ -23,7 +23,7 @@ def runtime_view_server(**options: Any) -> RuntimeViewServer:
 
 def serve_viewer(
     *,
-    reads: Mapping[str, Callable[[], dict[str, Any]]] | None = None,
+    reads: Mapping[str, Read] | None = None,
     writes: Mapping[str, Callable[[dict[str, Any]], dict[str, Any]]] | None = None,
     emit: Callable[[BrowserOpenResult], None] | None = None,
 ) -> int:

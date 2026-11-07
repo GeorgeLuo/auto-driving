@@ -11,15 +11,14 @@ const Plugins = (() => {
   const W = { mode: "rows", ask: null, log: [], busy: false, host: null, context: "steps", selected: null, streaming: null };
   const root = $("pluginsFrame");
   const field = (name) => root.querySelector(`[data-field=${name}]`);
-  const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
 
   // ---- plugins list's documents: the packaged catalog, and each host's. ----
   const packaged = () => api.docs[routes.plugins(null)];
   const listing = (host) => (host ? api.docs[routes.plugins(host)] : packaged());
   const defaults = (step) => packaged()?.defaults[step] || [];
-  const presets = (step) => packaged()?.presets[step] || {};
-  // The step's defaults are its preset of the same plugins.
-  const defaultPreset = (step) => Object.keys(presets(step)).find((name) => sameList(presets(step)[name], defaults(step))) || null;
+  // Each step's presets, as plugins list --json gives them: their plugins, the default marked.
+  const presets = (step) => packaged()?.step_presets?.[step] || {};
+  const defaultPreset = (step) => Object.keys(presets(step)).find((name) => presets(step)[name].default) || null;
   // What runs in a step: what the host armed, or the defaults in the packaged catalog.
   const armed = (host, step) => (host ? (listing(host)?.armed || []).filter((p) => p.step === step).map((p) => p.id) : defaults(step));
   const definitions = (host, step) => (listing(host)?.catalog.plugins || []).filter((p) => p.step === step);
@@ -41,10 +40,10 @@ const Plugins = (() => {
         });
       })];
   }
-  // plugins list --step: * marks what is armed.
+  // plugins list --step: * marks what is armed; the step's default preset is named as its default.
   function stepLines(step, host) {
     const preset = defaultPreset(step), on = armed(host, step);
-    return [`${titleCase(step)}${preset ? ` (${preset} preset)` : ""}${ONE_PLUGIN.has(step) ? ", one plugin" : ""}`,
+    return [`${titleCase(step)}${ONE_PLUGIN.has(step) ? ", one plugin" : ""}${preset ? `, default preset ${preset}` : ""}`,
             `Catalog: ${host ? `host ${host}` : "packaged"}`,
             ...ids(null, step).map((id) => `${on.includes(id) ? "*" : " "} ${id} (packaged)${defaults(step).includes(id) ? " default" : ""}`)];
   }
@@ -62,7 +61,7 @@ const Plugins = (() => {
     back();
   }
   function change(step, id, wanted) {
-    command(W, wanted ? "/api/plugins/arm" : "/api/plugins/disarm", { ...target(), plugins: [`${step}/${id}`] });
+    command(W, wanted ? "/api/plugins/arm" : "/api/plugins/disarm", { ...target(), name: [`${step}/${id}`] });
   }
   function openPreset(step) {
     Object.assign(W, { mode: "preset", log: [], streaming: null });
@@ -73,7 +72,7 @@ const Plugins = (() => {
   }
   function armPreset(step) {
     W.mode = "rows";
-    command(W, "/api/plugins/arm", { ...target(), step, preset: field("preset").value });
+    command(W, "/api/plugins/arm", { ...target(), preset: `${step}/${field("preset").value}` });
   }
   function openUpload() {
     Object.assign(W, { mode: "upload", ask: null, log: [], streaming: null });
@@ -130,7 +129,6 @@ const Plugins = (() => {
         rows: [{ name: "packaged", selected: !host, action: choose(null) },
                ...Hosts.listing().map((x) => ({ name: x.host_name, selected: host === x.host_name, action: choose(x.host_name) }))],
         status: h ? Stream.feedLines(h).join("\n") : "Catalog: packaged",
-        statusGap: "hostViews",
       };
     }
     const [step, id] = (W.selected || "").split("/");
@@ -145,7 +143,7 @@ const Plugins = (() => {
     let keys = [];
     if (W.busy) keys = [];
     else if (W.ask) keys = [{ label: "YES", action: () => disarmAll(clearable) }, { label: "NO", action: back }];
-    else if (W.mode === "preset") keys = [{ label: "ARM", action: () => armPreset(step), gap: "presetArm" }, { label: "CANCEL", action: back }];
+    else if (W.mode === "preset") keys = [{ label: "ARM", action: () => armPreset(step) }, { label: "CANCEL", action: back }];
     else if (W.mode === "upload") keys = [{ label: "UPLD", action: upload, disabled: !uploadReady }, { label: "CANCEL", action: back }];
     else if (id) {
       // A one-plugin step is changed by arming another, never by disarming its one.
@@ -153,11 +151,11 @@ const Plugins = (() => {
       keys = [...(on ? (ONE_PLUGIN.has(step) ? [] : [{ label: "DSARM", action: () => change(step, id, false), disabled: !host }])
                      : [{ label: "ARM", action: () => change(step, id, true), disabled: !host }]), ...streamKeys];
     } else if (step) keys = [
-      ...(Object.keys(presets(step)).length ? [{ label: "PRST", action: () => openPreset(step), disabled: !host, gap: "presetArm" }] : []),
+      ...(Object.keys(presets(step)).length ? [{ label: "PRST", action: () => openPreset(step), disabled: !host }] : []),
       ...streamKeys,
       ...(clearable ? [{ label: "DSALL", action: askDisarm, disabled: !host }] : []),
     ];
-    else keys = [{ label: "SAVE", action: () => command(W, "/api/plugins/save", target()), disabled: !host, gap: "saveRoute" },
+    else keys = [{ label: "SAVE", action: () => command(W, "/api/plugins/save", target()), disabled: !host },
                  { label: "DSALL", action: askDisarm, disabled: !host }];
     const rows = STEPS.flatMap((name) => [
       { name, selected: W.selected === name, disabled: W.busy,
@@ -169,9 +167,9 @@ const Plugins = (() => {
     ]);
     const status = W.ask ? (clearable ? `Disarm every ${clearable} plugin?` : "Disarm every plugin?")
       : W.log.length ? W.log.join("\n")
-      : W.mode === "preset" ? `plugins: ${(presets(step)[field("preset").value] || []).join(", ")}`
+      : W.mode === "preset" ? `plugins: ${(presets(step)[field("preset").value]?.plugins || []).join(", ")}`
       : W.mode === "upload" ? ""
-      : streaming ? Stream.screen(step, Hosts.find(host), api.docs[routes.latest(host)])
+      : streaming ? api.docs[routes.stream(host, step)]?.text || `Reading ${step} on ${host}...`
       : id ? pluginLines(host, step, id).join("\n")
       : step ? stepLines(step, host).join("\n")
       : catalogLines(host).join("\n");
@@ -179,7 +177,7 @@ const Plugins = (() => {
     return {
       mode: `${host || "packaged"} · ${doing}`, verbs, rows,
       form: W.mode === "preset" || W.mode === "upload" ? W.mode : null,
-      status, statusGap: "hostViews", keys, keepScroll: streaming,
+      status, keys, keepScroll: streaming,
     };
   }
 
@@ -190,7 +188,7 @@ const Plugins = (() => {
     setText(root.querySelector("[data-file-name]"), picked ? picked.name : "");
     paintWindow(w);
   }
-  // The hosts this window streams, for the page's polling.
-  const streamed = () => (W.streaming && W.host ? [W.host] : []);
+  // The read this window streams, for the page's polling.
+  const streamed = () => (W.streaming && W.host ? [routes.stream(W.host, W.streaming)] : []);
   return { state: W, armed, defaultPreset, show, streamed, paint };
 })();

@@ -8,9 +8,13 @@
 // (opened from disk, every route); the rest go to the viewer.
 "use strict";
 
+// The reads that take a host: plugins list (the packaged catalog without one), the host's latest
+// frame as the perception page reads it, and plugins stream --once for one step.
+const query = (params) => new URLSearchParams(params).toString();
 const routes = {
-  plugins: (host) => (host ? `/api/plugins?host_name=${encodeURIComponent(host)}` : "/api/plugins"),
-  latest: (host) => `/api/latest?host_name=${encodeURIComponent(host)}`,
+  plugins: (host) => (host ? `/api/plugins/list?${query({ host_name: host })}` : "/api/plugins/list"),
+  latest: (host) => `/api/hosts/latest?${query({ host_name: host })}`,
+  stream: (host, step) => `/api/plugins/stream?${query({ host_name: host, step })}`,
 };
 
 const api = (() => {

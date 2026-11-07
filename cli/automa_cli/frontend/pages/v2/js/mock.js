@@ -4,8 +4,9 @@
 // routes the viewer has (viewer_commands.py); the rest are the ones the page needs next, and
 // GAPS says what the CLI lacks for them.
 // Opened from disk, the mock answers every route. Served by the viewer (at /v2/), it answers
-// only the routes the viewer lacks, and the windows that use them say "mock" in their title
-// bars. Porting a route: mark it viewer here; once all are, delete this file's script tag.
+// only the routes the viewer lacks; every route the page reads and writes is the viewer's now.
+// A new route: add it here, its answers shaped as the command's, then mark it viewer once the
+// viewer has it.
 "use strict";
 
 const mock = (() => {
@@ -23,11 +24,8 @@ const mock = (() => {
     noNotify: "No change notification: every list read probes each host and vehicle under a 5 s deadline, so the page reads everything again after each command and polls hosts.",
     runProgress: "hosts run starts the run in the background and answers after its startup wait; startup progress (RunEvent) reaches only a foreground monitor.",
     noStream: "The viewer's writes answer once, when the command ends: hosts create, update and delete print their progress as they go, and the page shows it all at the end.",
-    hostViews: "The viewer reads no host's publications or plugins: each host's own view serves /api/latest, /frame and /api/plugins. The mock takes a host_name on /api/latest and /api/plugins, and its frames name their capture image.",
     noCancel: "Nothing cancels simulators create or a host deploy once started.",
-    saveRoute: "plugins save has no HTTP route; a host's view takes arm, disarm and upload (POST /api/plugins).",
     recordings: "No command lists recorded runs, so the workbench cannot offer a host's recordings as sources.",
-    presetArm: "No host command arms a preset: plugins arm takes each --name, so the mock arms the preset's plugins together in place of the step's. Presets are named only by workbench and plugins inspect (--preset).",
     stepViews: "Proposal and plan have no runtime view of their own; the Action view carries them as candidates and selection.",
     vehicleUrl: "vehicles status has no --url: showing one vehicle reads the whole list, probing every listed vehicle under one deadline.",
     fixedVehicle: "A host's vehicle is fixed at hosts create: hosts update has no --url, so moving a host is delete + create.",
@@ -126,31 +124,95 @@ const mock = (() => {
       .map(([step, id]) => ({ step, id, metadata: metadata(step, id) })) : [];
     return [...packaged, ...uploaded];
   }
-  // plugins list --json: the packaged catalog and each step's defaults, or a host's catalog and what it armed.
+  const noHost = (name) => refused(`No host '${name}'. ${store.hosts.length ? `Hosts: ${store.hosts.map((h) => h.name).join(", ")}.` : "No hosts exist."}`);
+  // plugins list --json: the packaged catalog with each step's defaults and presets, or with a
+  // host (--long) its whole catalog and what it armed.
   function plugins({ host_name: name }) {
-    if (!name) return { schema: "automa_plugin_list", ok: true, host_name: null,
+    if (!name) return { schema: "automa_plugin_list", ok: true, host_name: null, url: null, step: null,
       defaults: Object.fromEntries(STEP_NAMES.map((step) => [step, [...STEPS[step].defaults]])),
-      presets: Object.fromEntries(STEP_NAMES.map((step) => [step, STEPS[step].presets || {}])),  // not in plugins list (presetArm)
-      catalog: { source: "packaged", plugins: definitions(null) } };
+      step_presets: Object.fromEntries(STEP_NAMES.map((step) => [step, Object.fromEntries(Object.entries(STEPS[step].presets || {})
+        .map(([preset, ids]) => [preset, { plugins: [...ids], default: preset === defaultPreset(step) }]))])),
+      catalog: { source: "implementations/decision_cycle/*/catalog.json", plugins: definitions(null) } };
     const h = findHost(name);
-    if (!h) return refused(`No host named ${name}.`);
-    return { schema: "automa_plugin_list", ok: true, host_name: h.name,
-      armed: STEP_NAMES.flatMap((step) => h.armed[step].map((id) => ({ step, id }))),
-      catalog: { source: "host", version: h.catalogVersion, host_run_id: null, plugins: definitions(h) } };
+    if (!h) return { ...noHost(name), schema: "automa_plugin_list", host_name: name, armed: null, arming_error: null };
+    return { schema: "automa_plugin_list", ok: true, host_name: h.name, url: h.url, step: null, arming_error: null,
+      armed: STEP_NAMES.flatMap((step) => h.armed[step].map((id) => ({ step, id, metadata: {} }))),
+      catalog: { source: h.url, version: h.catalogVersion, host_run_id: h.runId, plugins: definitions(h) } };
   }
-  // A host's latest publication: the capture's frame at its decision count, with only the
-  // perception plugins it has armed.
-  function latest({ host_name: name }) {
-    const h = findHost(name);
-    if (!h || !(h.state === "running" || h.decisions > 0) || !CAPTURE.length) return refused("no published frame yet");
+  // A running host's frame: the capture's frame at its decision count, keeping only what the
+  // perception plugins it has armed found.
+  function captured(h) {
+    if (!(h.state === "running" || h.decisions > 0) || !CAPTURE.length) return null;
     const frame = CAPTURE[h.decisions % CAPTURE.length];
     const armed = h.armed.perception;
     const recorded = frame.perception.plugin_runs || [];
     const runs = armed.map((id) => recorded.find((run) => run.plugin_id === id)
-      || { plugin_id: id, status: "ok", duration_ms: 1 + (id.length % 4), thing_count: 0 });
+      || { plugin_id: id, status: "ok", duration_ms: 1 + (id.length % 4), signal_count: 0, thing_count: 0, error: null });
     const things = (frame.perception.things || []).filter((t) => armed.includes(t.source_plugin_id));
-    return { ...frame, host_name: h.name, decision_count: h.decisions, perception: { ...frame.perception, plugin_runs: runs, things },
-             overlay: { status: "current", source_frame_id: frame.frame.frame_id, frame_lag: 0, frame_lag_ms: 0, result_age_ms: 4 } };
+    // A host whose run ended keeps its last frame, older than its 1000 ms ceiling.
+    const age = h.state === "running" ? 4 : Date.now() - h.lastFrameAt;
+    const stale = age > 1000 ? `The latest frame is ${age} ms old, past its 1000 ms ceiling.` : null;
+    return { frame, index: h.decisions, age, stale, perception: { ...frame.perception, plugin_runs: runs, things } };
+  }
+  // A host's latest frame, as the perception page reads it; the image is the capture's.
+  function latest({ host_name: name }) {
+    const h = findHost(name);
+    if (!h) return noHost(name);
+    const c = captured(h);
+    if (!c) return refused("The frame publication health is 'unavailable'.");
+    const { frame, index, age, stale, perception } = c, id = frame.frame.frame_id;
+    return { schema: "host_frame_publication", host_name: h.name, health: stale ? "stale" : "healthy", ok: true, read_at_ms: Date.now(),
+      result_age_ms: age, stale_after_ms: 1000, host_telemetry: null,
+      image: { frame_id: id, frame_index: index, captured_at_ms: frame.frame.captured_at_ms, content_type: "image/jpeg",
+               width_px: frame.frame.width_px, height_px: frame.frame.height_px, url: frame.image },
+      report: { schema: "host_frame_report", host_name: h.name, frame_id: id, frame_index: index, run_id: h.runId,
+        generation_id: frame.stream.generation_id, status: "ok", error: null, cycle: { perception, memory: frame.memory },
+        values: { timing: { duration_ms: frame.cycle.cycle_duration_ms, steps: [{ step: "perception", duration_ms: frame.cycle.perception_ms }] } } } };
+  }
+  // The preset each step's armed plugins are, as the perception stream names them.
+  const presetsOf = (h) => Object.fromEntries(STEP_NAMES.filter((step) => STEPS[step].presets)
+    .map((step) => [step, Object.keys(STEPS[step].presets).find((name) => same(STEPS[step].presets[name], h.armed[step])) || "custom"]));
+  // plugins stream --once --step: the probe, and as text the screen it prints.
+  function stream({ host_name: name, step }) {
+    const schema = ["perception", "memory"].includes(step) ? `host_${step}_live` : `host_${step}_stream`;
+    const h = findHost(name);
+    if (!h) return { schema, status: "unavailable", host_name: name, text: noHost(name).error };
+    const c = captured(h);
+    if (!c) return { schema, status: "waiting", host_name: h.name, text: `Host ${h.name} has no fresh ${step} record yet.` };
+    const { frame, index, age, stale, perception } = c, st = frame.stream, id = frame.frame.frame_id, endpoint = `${h.url}/host/observation/latest`;
+    const status = stale ? "stale" : "live", mode = h.mode || "manual";
+    if (step === "perception") {
+      const armed = h.armed.perception;
+      const text = st.perception_text.split("\n").filter((line) => {
+        const m = line.match(/^(?:plugin_run id|signal id=\S+ plugin|thing id=\S+ plugin)=(\S+)/);
+        return !m || armed.includes(m[1]);
+      }).map((line) => (line.startsWith("plugins=") ? `plugins=${armed.join(",")}` : line)).join("\n");
+      const presets = presetsOf(h);
+      return { schema, status, host_name: h.name, endpoint, frame_id: id, frame_index: index, captured_at_ms: frame.frame.captured_at_ms,
+        age_ms: age, signal_count: st.signal_count, thing_count: perception.things.length, mode, presets, perception_duration_ms: frame.cycle.perception_ms,
+        ...(stale ? { error: stale } : {}),
+        text: ["automa perception stream", "", `host: ${h.name}`, `url: ${h.url}`, `status: ${status}`, ...(stale ? [`error: ${stale}`] : []),
+          `presets: ${Object.entries(presets).sort().map(([k, v]) => `${k}=${v}`).join(" ")}  mode: ${mode}`,
+          `control: steering=${st.control.steering}  throttle=${st.control.throttle}  reason=${st.control.reason}`,
+          `cadence: cycle_ms=${st.cycle_ms}  age_ms=${age}`,
+          `latest: frame=${id}  captured_at_ms=${frame.frame.captured_at_ms}  signals=${st.signal_count}  things=${perception.things.length}`,
+          "publication: healthy  json: /host/observation/latest", "", "latest perception", "-----------------", text].join("\n") };
+    }
+    if (step === "memory") {
+      const m = st.memory, line = (x) => `  ${x.plugin_id}: health=${x.health} epoch=${x.epoch_id} records=${x.record_count} max_records=32 max_age_ms=10000 eviction=oldest_first`;
+      if (stale) return { schema, status, host_name: h.name, endpoint, frame_id: id, generation_id: st.generation_id, mode, error: stale,
+        text: [`Live memory: ${h.name} [stale]`, `Endpoint: ${endpoint}`, `Mode: ${mode}`, `Detail: ${stale}`, "", `publication memory: ${stale}`].join("\n") };
+      return { schema, status, host_name: h.name, endpoint, frame_id: id, generation_id: st.generation_id, mode,
+        plugin_ids: h.armed.memory, evidence_publisher: m.publisher, last_duration_ms: 0.6, health: "healthy",
+        text: [`Live memory: ${h.name} [live]`, `Endpoint: ${endpoint}`, `Mode: ${h.mode || "-"}`,
+          `Applied plugins: ${h.armed.memory.join(", ") || "(none)"}`, ...m.plugins.map(line), `Evidence publisher: ${m.publisher || "none"}`,
+          "Last duration: 0.600 ms", "", `publication memory: evidence publisher ${m.publisher || "none"}`, ...m.plugins.map(line)].join("\n") };
+    }
+    return { schema, status, host_name: h.name, frame_id: id, frame_index: index, run_id: h.runId, generation_id: st.generation_id,
+      plugins: h.armed[step], freshness: { age_ms: age, max_age_ms: 1000 }, timing: { duration_ms: st.cycle_ms }, ...(stale ? { error: stale } : {}),
+      text: [...(stale ? [stale] : []), `${titleCase(step)} stream: ${h.name} frame=${id} run=${h.runId} age_ms=${age} max_age_ms=1000`, `Generation: ${st.generation_id}`,
+        `Plugins: ${h.armed[step].join(", ") || "none"}`, ...st[step], ...(step === "action" ? [st.application] : []),
+        `Timing: ${step} 0.040 ms; cycle ${st.cycle_ms} ms`].join("\n") };
   }
 
   // ---- Writes ----
@@ -241,7 +303,7 @@ const mock = (() => {
       "==> Extract controller bundle release",
       `Extracted release -> runtime/hosts/${name}/bundle`,
       () => store.hosts.push({ name, provider, vehicleUrl: url, url: hostUrl, pid, since: new Date().toISOString(), state: "pre_start", mode: null, lastFrameAt: null,
-                               decisions: 0, count: null, runPid: null, armed, uploads: {}, catalogVersion: 1 }),
+                               decisions: 0, count: null, runPid: null, runId: null, request: 0, armed, uploads: {}, catalogVersion: 1 }),
       `Host ${name} created for the chaser at ${url}`,
       `Release: ${release}`,
       `Archive SHA-256: ${archiveHash}`,
@@ -261,7 +323,7 @@ const mock = (() => {
     return [
       1500,  // hosts run prints nothing until a camera frame, its perception and a healthy view arrive, up to 20 s
       () => Object.assign(h, { state: "running", mode: observe ? "observe_only" : "autonomy", count, decisions: 0,
-                               runPid: 52000 + Math.floor(Math.random() * 999) }),
+                               runPid: 52000 + Math.floor(Math.random() * 999), runId: `chase_sim-run-${hex(24)}` }),
       `Run started on host ${h.name}.`,
       ...STEP_NAMES.map((step) => `${titleCase(step)}: ${selectionLabel(step, h.armed[step])}`),
       record ? `Recording: runtime/hosts/${h.name}/bundle/runtime/automation/runs/chase_sim-run-${hex(24)}`
@@ -310,33 +372,45 @@ const mock = (() => {
 
   const sourceOf = (h, step, id) => { const u = h.uploads[`${step}/${id}`]; return u ? `revision ${u.revision}` : "packaged"; };
   const listed = (h, step, ids) => ids.map((id) => `${id} (${sourceOf(h, step, id)})`).join(", ") || "(none)";
-  // A new selection for one step: the request, then what the host applied.
-  const selection = (h, step, next, onLine) => play("selection", [`Host: ${h.name}`, `Request: ${hex(12)}`,
-    `Requested ${step}: ${listed(h, step, next)}`, () => { h.armed[step] = next; }, `Applied ${step}: ${listed(h, step, next)}`], onLine);
+  // A selection change: the request, every step's requested plugins, then what the host applied.
+  function selection(h, label, heading, next, onLine) {
+    h.request += 1;
+    const requested = { ...h.armed, ...next }, steps = [...STEP_NAMES].sort();
+    return play("selection", [`Host: ${h.name}`, `Endpoint: ${h.url}`, ...heading, `${label}: requested`, `Request: ${h.request}`,
+      ...steps.map((step) => `Requested ${step}: ${listed(h, step, requested[step])}`),
+      () => Object.assign(h.armed, next), ...steps.map((step) => `Applied ${step}: ${listed(h, step, requested[step])}`)], onLine);
+  }
   // A plugin armed into its step; a one-plugin step's replaces it.
   const withPlugin = (h, step, id) => (STEPS[step].one ? [id] : [...h.armed[step].filter((x) => x !== id), id]);
-  // plugins arm --name step/id; with a preset, its plugins in place of the step's (presetArm).
-  function arm({ host_name: name, plugins = [], step, preset }, onLine) {
+  const stepItem = (value) => { const [step, id] = String(value || "").split("/"); return STEPS[step] && id ? [step, id] : null; };
+  // plugins arm --name step/id ..., or --preset step/preset: the preset's plugins in place of the step's.
+  function arm({ host_name: name, name: names, preset }, onLine) {
     const h = findHost(name);
-    if (!h) return missingHost(name);
-    if (preset) {
-      const ids = (STEPS[step] && STEPS[step].presets || {})[preset];
-      return ids ? selection(h, step, [...ids], onLine) : refused(`No ${step} preset named ${preset}.`);
+    if (!h) return noHost(name);
+    if (preset !== undefined) {
+      const [step, id] = stepItem(preset) || [];
+      const ids = step && (STEPS[step].presets || {})[id];
+      if (!ids) return refused(`unknown ${step} preset '${id}'; known: ${Object.keys(STEPS[step]?.presets || {}).sort().join(", ")}`);
+      return selection(h, "Arming", [`Step: ${step}`, `Preset: ${id}`], { [step]: [...ids] }, onLine);
     }
-    const [plugin, id] = String(plugins[0] || "").split("/");
-    return STEPS[plugin] ? selection(h, plugin, withPlugin(h, plugin, id), onLine) : refused("plugins must name step/plugin");
+    const items = (names || []).map(stepItem);
+    if (!items.length || items.includes(null)) return refused("name must be a non-empty list of <step>/<plugin>");
+    const next = {};
+    for (const [step, id] of items) next[step] = withPlugin({ armed: { ...h.armed, ...next } }, step, id);
+    return selection(h, "Arming", [], next, onLine);
   }
-  // plugins disarm --name step/id, --step, or --all.
-  function disarm({ host_name: name, plugins = [], step, all }, onLine) {
+  // plugins disarm --name step/id ..., --step, or --all.
+  function disarm({ host_name: name, name: names, step, all }, onLine) {
     const h = findHost(name);
-    if (!h) return missingHost(name);
-    if (plugins.length) {
-      const [plugin, id] = plugins[0].split("/");
-      return selection(h, plugin, h.armed[plugin].filter((x) => x !== id), onLine);
+    if (!h) return noHost(name);
+    if (names !== undefined) {
+      const next = {};
+      for (const [s, id] of names.map(stepItem).filter(Boolean)) next[s] = (next[s] || h.armed[s]).filter((x) => x !== id);
+      return selection(h, "Disarming", [], next, onLine);
     }
+    if (step === undefined && !all) return refused("disarm needs name, step or all");
     const steps = all ? CLEARABLE : [step];
-    return play("selection", [`Host: ${h.name}`, `Request: ${hex(12)}`, ...steps.map((s) => `Requested ${s}: (none)`),
-                              () => { for (const s of steps) h.armed[s] = []; }, ...steps.map((s) => `Applied ${s}: (none)`)], onLine);
+    return selection(h, "Disarming", step ? [`Step: ${step}`] : [], Object.fromEntries(steps.map((s) => [s, []])), onLine);
   }
   // plugins upload --name step/id --file --entrypoint [--config] [--arm].
   function upload({ host_name: name, name: key, filename, arm: andArm }, onLine) {
@@ -378,12 +452,13 @@ const mock = (() => {
     "POST /api/hosts/run": { viewer: true, write: runHost },
     "POST /api/hosts/stop": { viewer: true, write: stopHost },
     "POST /api/hosts/restart": { viewer: true, write: restartHost },
-    "GET /api/plugins": { wait: 0, read: plugins },  // a host's view answers its own (hostViews)
-    "POST /api/plugins/arm": { write: arm },
-    "POST /api/plugins/disarm": { write: disarm },
-    "POST /api/plugins/upload": { write: upload },
-    "POST /api/plugins/save": { write: save },
-    "GET /api/latest": { wait: 0, read: latest },  // a host's view answers its own (hostViews)
+    "GET /api/plugins/list": { viewer: true, wait: 0, read: plugins },
+    "POST /api/plugins/arm": { viewer: true, write: arm },
+    "POST /api/plugins/disarm": { viewer: true, write: disarm },
+    "POST /api/plugins/upload": { viewer: true, write: upload },
+    "POST /api/plugins/save": { viewer: true, write: save },
+    "GET /api/plugins/stream": { viewer: true, wait: 0, read: stream },
+    "GET /api/hosts/latest": { viewer: true, wait: 0, read: latest },
   };
   const routeOf = (method, route) => ROUTES[`${method} ${route.split("?")[0]}`];
   const answers = (method, route) => { const r = routeOf(method, route); return !!r && !(SERVED && r.viewer); };
@@ -428,9 +503,8 @@ const mock = (() => {
     if (on) floatingFrames.gapsFrame.restore(); else floatingFrames.gapsFrame.close();
   });
   $("workbenchLink").addEventListener("click", (event) => event.preventDefault());
-  // Served, the simulators are real: the store has none to end, and the mocked windows are marked.
+  // Served, the simulators are real: the store has none to end.
   $("endProcess").hidden = SERVED;
-  document.body.classList.toggle("served", SERVED);
   // The selected simulator's process dies, to show an exited record.
   $("endProcess").addEventListener("click", () => {
     const s = store.simulators.find((x) => x.url === Simulators.state.selected);

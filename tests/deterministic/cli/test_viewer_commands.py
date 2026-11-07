@@ -1,7 +1,8 @@
-"""The viewer answers vehicles, simulators and hosts commands as its read and write routes."""
+"""The viewer answers vehicles, simulators, hosts and plugins commands as its read and write routes."""
 
 from __future__ import annotations
 
+import io
 import json
 import os
 import tempfile
@@ -11,7 +12,10 @@ from unittest import mock
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+from PIL import Image
+
 from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.hosts.views import frames
 from cli.automa_cli.providers.urls import chase_operator_url
 from cli.automa_cli.viewer_commands import VIEWER_READS, VIEWER_WRITES
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner
@@ -32,6 +36,11 @@ class ViewerCommandTests(unittest.TestCase):
     def get(self, route: str) -> dict:
         with urlopen(f"{self.server.url}{route.lstrip('/')}", timeout=5.0) as response:
             return json.loads(response.read())
+
+    def refused(self, route: str) -> tuple[int, dict]:
+        with self.assertRaises(HTTPError) as caught:
+            urlopen(f"{self.server.url}{route.lstrip('/')}", timeout=5.0)
+        return caught.exception.code, json.loads(caught.exception.read())
 
     def post(self, route: str, body: object, **headers: str) -> tuple[int, dict]:
         request = Request(
@@ -91,6 +100,67 @@ class ViewerCommandTests(unittest.TestCase):
                          (400, {"ok": False, "error": "num_decisions must be a whole number or null"}))
         self.assertEqual(self.post("/api/hosts/stop", {}),
                          (400, {"ok": False, "error": "name must be a non-empty string"}))
+
+    def test_plugins_list_reads_as_its_json_prints(self) -> None:
+        packaged = self.get("/api/plugins/list")
+        code, missing = self.refused("/api/plugins/list?host_name=chaser")
+
+        self.assertEqual((packaged["schema"], packaged["ok"], packaged["host_name"]), ("automa_plugin_list", True, None))
+        self.assertEqual(sorted(packaged["step_presets"]),
+                         ["action", "memory", "observation", "perception", "plan", "proposal"])
+        self.assertTrue(packaged["step_presets"]["perception"]["lightweight_observer"]["default"])
+        self.assertEqual((code, missing["schema"], missing["ok"], missing["host_name"]), (400, "automa_plugin_list", False, "chaser"))
+        self.assertIn("chaser", missing["error"])
+
+    def test_a_stream_probe_answers_what_plugins_stream_once_prints(self) -> None:
+        unavailable = self.get("/api/plugins/stream?host_name=chaser&step=plan")
+
+        self.assertEqual((unavailable["schema"], unavailable["status"], unavailable["host_name"]),
+                         ("host_plan_stream", "unavailable", "chaser"))
+        self.assertEqual(unavailable["text"], unavailable["error"])
+        self.assertEqual(self.refused("/api/plugins/stream?host_name=chaser&step=observation"),
+                         (400, {"ok": False, "error": "step must be one of perception, memory, proposal, plan, action"}))
+        self.assertEqual(self.refused("/api/plugins/stream?step=plan"),
+                         (400, {"ok": False, "error": "host_name must be a non-empty string"}))
+
+    def test_a_hosts_latest_frame_names_its_image_at_the_frame_route(self) -> None:
+        buffer = io.BytesIO()
+        Image.new("RGB", (8, 6), (20, 40, 60)).save(buffer, format="JPEG")
+        report = {"frame_id": "frame 1", "frame_index": 1, "run_id": "run", "generation_id": "decision",
+                  "status": "ok", "timestamp_ms": 5, "cycle": {}}
+        publication = {"schema": "host_frame_publication", "health": "healthy", "ok": True, "report": report}
+        with (mock.patch.object(frames, "runtime_base_url", return_value="http://host.invalid"),
+              mock.patch.object(frames, "fetch_frame_sample", return_value=(publication, buffer.getvalue()))):
+            latest = self.get("/api/hosts/latest?host_name=framed")
+        with urlopen(f"{self.server.url}{latest['image']['url'].lstrip('/')}", timeout=5.0) as response:
+            image = response.status, response.headers["Content-Type"], response.read()
+
+        self.assertEqual((latest["schema"], latest["host_name"], latest["report"]["frame_id"]),
+                         ("host_frame_publication", "framed", "frame 1"))
+        self.assertEqual(latest["image"]["url"],
+                         "/api/hosts/frame?host_name=framed&v=%5B%22run%22%2C%22decision%22%2C%22frame+1%22%5D")
+        self.assertEqual(image, (200, "image/jpeg", buffer.getvalue()))
+        self.assertEqual(self.refused("/api/hosts/frame?host_name=framed&v=gone"),
+                         (400, {"ok": False, "error": "That frame's image is no longer available."}))
+        code, missing = self.refused("/api/hosts/latest?host_name=chaser")
+        self.assertEqual((code, missing["ok"]), (400, False))
+        self.assertIn("chaser", missing["error"])
+
+    def test_a_malformed_plugins_request_is_refused_before_the_command_runs(self) -> None:
+        steps = "perception, observation, memory, proposal, plan, action"
+        for route, body, error in [
+            ("/api/plugins/arm", {"host_name": "chaser", "preset": "lightweight_observer"},
+             f"preset must name <step>/<id> with a step from {steps}"),
+            ("/api/plugins/arm", {"host_name": "chaser", "name": "perception/frame"},
+             "name must be a non-empty list of <step>/<plugin>"),
+            ("/api/plugins/disarm", {"host_name": "chaser"}, "disarm needs name, step or all"),
+            ("/api/plugins/upload", {"host_name": "chaser", "name": "perception/prototype", "entrypoint": "p:P",
+                                     "filename": "p.py", "source_base64": "not base64!"},
+             "source_base64 is not base64: Only base64 data is allowed"),
+            ("/api/plugins/save", {"host_name": "chaser", "step": "steering"}, f"step must be one of {steps}"),
+        ]:
+            with self.subTest(route=route, body=body):
+                self.assertEqual(self.post(route, body), (400, {"ok": False, "error": error}))
 
     def test_writes_come_only_from_the_viewer_itself(self) -> None:
         self.assertEqual(self.post("/api/vehicles/remove", {"url": "x"}, Origin="http://example.com")[0], 403)

@@ -1,6 +1,6 @@
 // Stream: one window per click, each on its own host and step. FEEDS lists the hosts, a host's
-// steps under the one opened; choosing a step streams it. Perception shows the latest frame
-// (Feed); the other steps show plugins stream --step's screen. PLGS opens Plugins on the
+// steps under the one opened; choosing a step streams it. Perception shows the host's latest
+// frame (Feed); the other steps show plugins stream --once's screen. PLGS opens Plugins on the
 // stream's host and step.
 "use strict";
 
@@ -11,44 +11,10 @@ const Stream = (() => {
 
   // A host's status and what it streams, for the feeds pane.
   const feedLines = (h) => [...Hosts.lines(h), "", ...STEPS.map((step) => `${titleCase(step)}: ${Plugins.armed(h.host_name, step).join(", ") || "(none)"}`)];
-
-  // plugins stream --step's terminal screen for a host's latest publication; the CLI redraws it
-  // in place, as the pane does.
-  function screen(step, h, latest) {
-    const frame = latest && latest.frame ? latest : null;
-    const st = frame && frame.stream;
-    const name = h.host_name;
-    const armed = (s) => Plugins.armed(name, s);
-    if (step === "perception") {
-      // The recorded text, keeping only what the armed plugins produced.
-      const on = armed("perception");
-      const text = st ? st.perception_text.split("\n").filter((line) => {
-        const m = line.match(/^(?:plugin_run id|signal id=\S+ plugin|thing id=\S+ plugin)=(\S+)/);
-        return !m || on.includes(m[1]);
-      }).map((line) => (line.startsWith("plugins=") ? `plugins=${on.join(",")}` : line)).join("\n") : "";
-      return ["automa perception stream", "", `host: ${name}`, `url: ${h.url}`, `status: ${frame ? "live" : "waiting"}`,
-        `presets: perception=${Plugins.defaultPreset("perception")} memory=${Plugins.defaultPreset("memory")}  mode: ${st ? st.mode : "-"}`,
-        `control: steering=${st ? st.control.steering : "-"}  throttle=${st ? st.control.throttle : "-"}  reason=${st ? st.control.reason : "-"}`,
-        `cadence: processed=${frame ? frame.decision_count : "-"}  cycle_ms=${st ? st.cycle_ms : "-"}  age_ms=${frame ? 4 : "-"}`,
-        `latest: frame=${frame ? frame.frame.frame_id : "none"}  captured_at_ms=${frame ? frame.frame.captured_at_ms : "-"}  signals=${st ? st.signal_count : "-"}  things=${frame ? frame.perception.things.length : "-"}`,
-        "view: http://127.0.0.1:8996/", `publication: ${frame ? "healthy" : "unavailable"}  json: /host/observation/latest  frame: /host/observation/latest/frame.jpg`,
-        "", "latest perception", "-----------------", text || "(no latest perception yet)"].join("\n");
-    }
-    if (step === "memory") {
-      const m = st && st.memory;
-      return [`Live memory: ${name} [${frame ? "live" : "waiting"}]`, `Endpoint: ${h.url}/host/memory`,
-        `Mode: ${st ? st.mode : "-"}  session: ${frame ? "running" : "idle"}`,
-        ...(m ? [`Applied plugins: ${armed("memory").join(", ")}`,
-                 ...m.plugins.map((x) => `  ${x.plugin_id}: health=${x.health} epoch=${x.epoch_id} records=${x.record_count}`),
-                 `Evidence publisher: ${m.publisher || "none"}`, `Counters: updates=${frame.decision_count} resets=0 failures=0`] : []),
-        "", "memory map: http://127.0.0.1:8996/memory", "perception view: http://127.0.0.1:8996/perception"].join("\n");
-    }
-    if (!st) return `Host ${name} has no fresh ${step} record yet.`;
-    return [`${titleCase(step)} stream: ${name} frame=${frame.frame.frame_id} run=${st.run_id} age_ms=4 max_age_ms=2000`,
-      `Generation: ${st.generation_id}`, `Plugins: ${armed(step).join(", ") || "none"}`, ...st[step],
-      ...(step === "action" ? [st.application] : []),
-      `Timing: ${step} 1 ms; cycle ${st.cycle_ms} ms`, "", "perception view: http://127.0.0.1:8996/perception"].join("\n");
-  }
+  // What a window reads: the host's latest frame for perception, the step's probe otherwise.
+  const routeOf = (host, step) => (step === "perception" ? routes.latest(host) : routes.stream(host, step));
+  // The frame a window's document names, when it has one.
+  const frameOf = (s) => (!s.doc ? null : s.step === "perception" ? (s.doc.report ? s.doc.image.frame_id : null) : s.doc.frame_id || null);
 
   // Given a step, a window opens streaming it; otherwise on its feeds.
   function open({ host = null, step = null } = {}) {
@@ -68,7 +34,7 @@ const Stream = (() => {
     localStorage.setItem(`automa-float-${root.id}`, JSON.stringify({ position: { x, y: height + down }, size: { width, height }, minimized: false, closed: false }));
     bindFloatingFrame(root);
     bindFrameStatus(root.querySelector(".float-frame-status"));
-    const s = { root, dot, host, step, context: step ? "stream" : "feeds", open: host, paused: false, latest: null,
+    const s = { root, dot, host, step, context: step ? "stream" : "feeds", open: host, paused: false, doc: null,
                 meta: root.querySelector("[data-step-meta]"), aside: root.querySelector("[data-aside]"), feed: Feed.create(root) };
     s.w = deskWindow(root, () => view(s));
     // One click is one window: closing it ends it.
@@ -95,31 +61,32 @@ const Stream = (() => {
       const rows = Hosts.listing().flatMap((x) => [
         { name: x.host_name, selected: x === chosen, action: () => { s.open = s.open === x.host_name ? null : x.host_name; render(); } },
         ...(x === chosen ? STEPS.map((step) => ({ name: step, child: true,
-          action: () => { Object.assign(s, { host: x.host_name, step, context: "stream", paused: false, latest: null }); render(); } })) : []),
+          action: () => { Object.assign(s, { host: x.host_name, step, context: "stream", paused: false, doc: null }); render(); } })) : []),
       ]);
       // FEEDS goes back to the stream it left, when there is one.
       return { mode: "feeds", verbs: [{ label: "FEEDS", action: () => { s.context = "stream"; render(); }, disabled: !(s.host && s.step) }, plgs],
-               rows, status: chosen ? feedLines(chosen).join("\n") : "", keepScroll: true, statusGap: "hostViews" };
+               rows, status: chosen ? feedLines(chosen).join("\n") : "", keepScroll: true };
     }
-    const h = Hosts.find(s.host);
-    const frame = s.latest && s.latest.frame ? s.latest : null;
+    const frame = frameOf(s);
     const perception = s.step === "perception";
     return {
-      mode: `${s.host} · ${s.step}${frame ? ` · ${frame.frame.frame_id}` : ""}`,
+      mode: `${s.host} · ${s.step}${frame ? ` · ${frame}` : ""}`,
       verbs: [{ label: "FEEDS", action: () => { Object.assign(s, { context: "feeds", open: s.host }); render(); } }, plgs],
       feed: perception,
-      status: perception ? "" : screen(s.step, h, s.latest),
+      status: perception ? "" : s.doc ? s.doc.text : `Reading ${s.step} on ${s.host}...`,
       keys: frame ? [{ label: s.paused ? "RESUME" : "PAUSE", action: () => { s.paused = !s.paused; render(); } }] : [],
-      keepScroll: true, statusGap: "hostViews",
+      keepScroll: true,
     };
   }
 
-  // The other steps' details, where perception has its aside.
+  // The other steps' details, from their probe, where perception has its aside.
   function paintMeta(s) {
-    const st = s.latest && s.latest.stream;
-    const rows = [["Host", s.host], ["Step", s.step], ["Plugins", Plugins.armed(s.host, s.step).join(", ") || "none"],
-                  ["Frame", st ? s.latest.frame.frame_id : "—"], ["Run", st ? st.run_id : "—"],
-                  ["Generation", st ? st.generation_id : "—"], ["Cycle", st ? `${st.cycle_ms} ms` : "—"]];
+    const p = s.doc || {};
+    const cycle = p.timing?.duration_ms;
+    const rows = [["Host", s.host], ["Step", s.step], ["Status", p.status || "—"],
+                  ["Plugins", (p.plugin_ids || p.plugins || []).join(", ") || "none"], ["Frame", p.frame_id || "—"],
+                  ["Run", p.run_id || "—"], ["Generation", p.generation_id || "—"],
+                  ["Cycle", Number.isFinite(cycle) ? `${cycle.toFixed(1)} ms` : "—"]];
     while (s.meta.children.length < rows.length * 2) s.meta.append(document.createElement("dt"), document.createElement("dd"));
     rows.forEach(([name, value], i) => {
       setText(s.meta.children[2 * i], name);
@@ -129,27 +96,29 @@ const Stream = (() => {
   }
   function paintOne(s) {
     // A deleted host's window goes back to its feeds.
-    if (s.host && !Hosts.find(s.host)) Object.assign(s, { host: null, step: null, context: "feeds", latest: null });
-    // A paused window keeps the publication it shows.
-    if (s.context === "stream" && !s.paused) s.latest = api.docs[routes.latest(s.host)] || null;
+    if (s.host && !Hosts.find(s.host)) Object.assign(s, { host: null, step: null, context: "feeds", doc: null });
+    // A paused window keeps the document it shows.
+    if (s.context === "stream" && !s.paused) s.doc = api.docs[routeOf(s.host, s.step)] || null;
     const v = paintWindow(s.w);
     const streaming = s.context === "stream";
-    const frame = streaming && s.latest && s.latest.frame ? s.latest : null;
+    const frame = streaming ? frameOf(s) : null;
     if (s.root.dataset.context !== s.context) s.root.dataset.context = s.context;
     s.dot.hidden = !frame;
-    s.dot.classList.toggle("live", !s.paused);
+    // Live while the host publishes fresh frames; a stopped host's last frame is stale.
+    const fresh = s.step === "perception" ? s.doc?.health !== "stale" : s.doc?.status === "live";
+    s.dot.classList.toggle("live", !s.paused && fresh);
     s.feed.pane.hidden = !v.feed;
     s.aside.hidden = !v.feed;
     s.meta.hidden = !streaming || !!v.feed;
     if (!s.meta.hidden) paintMeta(s);
-    Feed.paint(s.feed, v.feed ? frame : null);
+    Feed.paint(s.feed, v.feed && streaming ? s.doc : null);
   }
 
   return {
-    open, openPerception, screen, feedLines,
+    open, openPerception, feedLines, routeOf,
     paint: () => windows.forEach(paintOne),
     count: () => windows.length,
-    // The hosts the windows stream and are not paused on, for the page's polling.
-    streamed: () => windows.filter((s) => s.context === "stream" && !s.paused).map((s) => s.host),
+    // The reads of the windows that stream and are not paused, for the page's polling.
+    streamed: () => windows.filter((s) => s.context === "stream" && !s.paused).map((s) => routeOf(s.host, s.step)),
   };
 })();

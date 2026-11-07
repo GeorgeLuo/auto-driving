@@ -1,7 +1,7 @@
-// The perception feed: a host's latest published frame (GET /api/latest) with its findings drawn
-// over it, and the v1 /perception page's aside: the overlay toggles, the frame's metrics, the armed
-// plugins' runs, their findings, the raw document. Its toggles and rows grow as frames bring
-// new kinds and findings, and are refilled after that.
+// The perception feed: a host's latest completed frame (routes.latest) with its findings drawn
+// over its image, and the v1 /perception page's aside: the overlay toggles, the frame's metrics,
+// the armed plugins' runs, their findings, the raw document. Its toggles and rows grow as frames
+// bring new kinds and findings, and are refilled after that.
 "use strict";
 
 const Feed = (() => {
@@ -15,8 +15,18 @@ const Feed = (() => {
   const kindOf = (thing) => String(thing.kind || "unknown");
   const drawable = (thing) => thing?.kind !== "sensor_frame" && thing?.location?.frame === "image" &&
     (Array.isArray(thing.location.polygon_xy_norm) || Array.isArray(thing.location.bbox_xyxy_norm));
-  const METRICS = ["Frame", "Captured", "Resolution", "Overlay source", "Overlay lag", "Result age", "Cycle", "Perception",
-                   "Confidence", "Status", "Memory keys", "Evidence publisher"];
+  const METRICS = ["Frame", "Captured", "Resolution", "Result age", "Cycle", "Perception", "Confidence", "Status",
+                   "Memory keys", "Evidence publisher"];
+  const ms = (value) => (Number.isFinite(Number(value)) && value !== null ? `${Math.round(Number(value))} ms` : "pending");
+  // The frame document as the v1 perception page reads it: the completed frame's report carries
+  // its perception, memory and timing; the image is the one published with it.
+  const shown = (doc) => {
+    const report = doc.report || {}, cycle = report.cycle || {};
+    return { image: doc.image || {}, perception: cycle.perception || { things: [], plugin_runs: [] }, memory: cycle.memory,
+             timing: report.values?.timing, result_age_ms: doc.result_age_ms };
+  };
+  // Every memory plugin's record count by plugin_id.
+  const memoryKeys = (memory) => (memory?.plugins || []).map((m) => `${m.plugin_id} ${m.state?.record_count ?? m.state?.records?.length ?? "?"}`).join(", ") || "no plugins";
 
   function create(root) {
     const in_ = (selector) => root.querySelector(selector);
@@ -84,7 +94,7 @@ const Feed = (() => {
     // Labels are drawn at the image's own size; keep them the window's 11 px on screen.
     const scale = canvas.width / Math.max(1, image.clientWidth);
     const occupied = [];
-    for (const thing of frame.perception.things.filter(drawable)) {
+    for (const thing of (frame.perception.things || []).filter(drawable)) {
       const kind = kindOf(thing);
       if (f.kinds.get(kind) === false) continue;
       const loc = thing.location;
@@ -134,35 +144,37 @@ const Feed = (() => {
     list.none.hidden = items.length > 0;
   }
 
-  // Paints the frame, or the waiting note when there is none yet.
-  function paint(f, frame) {
+  // Paints a frame document, or the waiting note when there is none yet.
+  function paint(f, doc) {
     const in_ = (selector) => f.root.querySelector(selector);
+    const frame = doc && doc.report ? shown(doc) : null;
     in_("[data-empty]").hidden = !!frame;
     in_(".feed-stage").hidden = !frame;
     f.frame = frame;
     if (!frame) return;
     f.pane.style.setProperty("--feed-h", `${f.pane.clientHeight}px`);
-    if (f.image.getAttribute("src") !== frame.image) f.image.src = frame.image;
+    const url = frame.image.url;
+    if (url && f.image.getAttribute("src") !== url) f.image.src = url;
     else draw(f);
-    const p = frame.perception;
-    addKinds(f, p.things);
+    const p = frame.perception, image = frame.image;
+    addKinds(f, p.things || []);
+    const perceptionStep = (frame.timing?.steps || []).find((step) => step?.step === "perception");
     const values = {
-      Frame: frame.frame.frame_id, Captured: String(frame.frame.captured_at_ms),
-      Resolution: `${frame.frame.width_px} x ${frame.frame.height_px}`, "Overlay source": frame.overlay.source_frame_id,
-      "Overlay lag": `${frame.overlay.frame_lag} frames / ${frame.overlay.frame_lag_ms} ms`, "Result age": `${frame.overlay.result_age_ms} ms`,
-      Cycle: `${frame.cycle.cycle_duration_ms ?? "?"} ms`, Perception: `${frame.cycle.perception_ms ?? "?"} ms`,
+      Frame: image.frame_id, Captured: String(image.captured_at_ms ?? "—"),
+      Resolution: `${image.width_px || "?"} x ${image.height_px || "?"}`, "Result age": ms(frame.result_age_ms),
+      Cycle: ms(frame.timing?.duration_ms), Perception: ms(perceptionStep?.duration_ms),
       Confidence: confidenceText(p.confidence), Status: p.status || "unknown",
-      "Memory keys": (frame.memory.plugins || []).length ? frame.memory.plugins.map((m) => m.plugin_id).join(", ") : "no plugins",
-      "Evidence publisher": frame.memory.evidence_publisher || "none",
+      "Memory keys": frame.memory ? memoryKeys(frame.memory) : "—",
+      "Evidence publisher": frame.memory ? frame.memory.evidence_publisher || "none" : "—",
     };
     f.root.querySelectorAll("[data-metrics] dd").forEach((dd) => {
       const value = values[dd.dataset.metric] ?? "—";
       setText(dd, value);
       if (dd.title !== value) dd.title = value;
     });
-    paintRows(f.runs, p.plugin_runs, (run) => [run.plugin_id, `${run.status} | ${run.duration_ms ?? "?"} ms | ${run.thing_count ?? 0} findings`, run.status || ""]);
-    paintRows(f.findings, p.things, (t) => [t.label || t.thing_id, `${t.kind} | ${t.location?.frame}:${t.location?.zone} | ${confidenceText(t.confidence)}`, "", colorFor(kindOf(t))]);
-    if (in_("details").open) setText(in_("[data-raw]"), JSON.stringify(frame, null, 2));
+    paintRows(f.runs, p.plugin_runs || [], (run) => [run.plugin_id, `${run.status} | ${run.duration_ms ?? "?"} ms | ${run.thing_count ?? 0} findings`, run.status || ""]);
+    paintRows(f.findings, p.things || [], (t) => [t.label || t.thing_id, `${t.kind} | ${t.location?.frame}:${t.location?.zone} | ${confidenceText(t.confidence)}`, "", colorFor(kindOf(t))]);
+    if (in_("details").open) setText(in_("[data-raw]"), JSON.stringify(doc, null, 2));
   }
 
   return { create, paint };

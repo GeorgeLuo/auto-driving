@@ -8,14 +8,10 @@ import sys
 from collections.abc import Callable
 from typing import TextIO
 
-from autonomy.decision_cycle.activation import DECISION_STEPS
-
 from ...shared.command_result import CommandResult
 from .models import StreamEvent, StreamResult
 from .render import render_stream
-from .service import stream_host
-
-STREAM_STEPS = ("perception", "memory", *DECISION_STEPS)
+from .service import STREAM_STEPS, stream_host
 
 
 def register_stream(commands: argparse._SubParsersAction) -> None:

@@ -55,12 +55,18 @@ DECISION_PAGE_PATH = PAGES_DIR / "decision" / "index.html"
 PLUGINS_PAGE_PATH = PAGES_DIR / "plugins" / "index.html"
 
 
+# A read route: the request's query parameters to a document, or to an image's bytes and content type.
+Read = Callable[[Mapping[str, str]], "dict[str, Any] | tuple[bytes, str]"]
+
+
 class RuntimeViewServer:
     """Serve peer runtime pages; retain the existing discovery and health contract.
 
     ``hosts`` lists the hosts the home page shows. ``reads`` maps a GET route
-    to the document it serves; ``writes`` maps a POST route to the command it
-    runs with the request's JSON object, which returns a result with ``ok``.
+    to what it serves for the request's query parameters: a document, or an
+    image as its bytes and content type. ``writes`` maps a POST route to the
+    command it runs with the request's JSON object. A document or result with
+    ``ok`` false answers 400.
     A view serves only the routes it was built with. The workbench serves
     ``replay_runner``, or the one ``replay_runner_factory`` builds on the first
     visit; the server needs one of the two.
@@ -76,7 +82,7 @@ class RuntimeViewServer:
         plugin_catalog: Callable | None = None,
         connected: bool = True,
         hosts: Callable[[], list[dict[str, Any]]] | None = None,
-        reads: Mapping[str, Callable[[], dict[str, Any]]] | None = None,
+        reads: Mapping[str, Read] | None = None,
         writes: Mapping[str, Callable[[dict[str, Any]], dict[str, Any]]] | None = None,
         replay_runner: ReplayRunner | None = None,
         replay_runner_factory: Callable[[], ReplayRunner] | None = None,
@@ -252,6 +258,19 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             result = error_payload(str(exc))
         self._send_json(200 if result.get("ok") else 400, result)
 
+    def _serve_read(self, read: Read, query: str, *, include_body: bool) -> None:
+        """Answer a read route with what it reads for the query's parameters, each its first value."""
+
+        try:
+            answer = read({name: values[0] for name, values in parse_qs(query).items()})
+        except (OSError, ValueError, TypeError, RuntimeError) as exc:
+            answer = error_payload(str(exc))
+        if isinstance(answer, tuple):
+            body, content_type = answer
+            self._send(200, body, content_type, include_body=include_body)
+            return
+        self._send_json(200 if answer.get("ok", True) else 400, answer, include_body=include_body)
+
     def do_PUT(self) -> None:
         self._reject_write_method()
 
@@ -367,7 +386,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             self._send_json(200, {"hosts": [] if hosts is None else hosts()}, include_body=include_body)
             return
         if route in self.server.publisher.reads:
-            self._send_json(200, self.server.publisher.reads[route](), include_body=include_body)
+            self._serve_read(self.server.publisher.reads[route], request.query, include_body=include_body)
             return
         if route == "/api/latest":
             body = self.server.publisher.perception.latest_json()

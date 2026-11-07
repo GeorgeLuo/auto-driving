@@ -173,8 +173,4 @@ nav + nav { margin-top: 40px; }
 .gap-item { display: flex; gap: 8px; padding: 4px 0; color: var(--muted); line-height: 1.4; }
 .gap-item b { flex: 0 0 14px; color: var(--amber); font-weight: 500; }
 body.show-gaps [data-gap] { outline: 1px dashed var(--amber); outline-offset: 2px; }
-/* Served by the viewer, these windows still answer from the mock. */
-body.served :is(#pluginsFrame, .stream-frame) .float-frame-title [data-title]::after {
-  content: "mock"; margin-left: 6px; color: var(--amber); font: 500 9px var(--font-mono); text-transform: uppercase; letter-spacing: .06em;
-}
 body.show-gaps [data-gap]::after { content: attr(data-gap-n); margin-left: 4px; color: var(--amber); font: 500 9px var(--font-mono); vertical-align: super; }

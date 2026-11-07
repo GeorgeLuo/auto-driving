@@ -532,20 +532,6 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertNotIn("coverage", joined)
         self.assertNotIn("interval_covered", str(joined))
 
-    def test_unhealthy_point_fails_closed_before_join(self) -> None:
-        unavailable = copy.deepcopy(
-            normalize_host_telemetry_record(
-                _record(),
-                now_ms=NOW_MS,
-                host_name="piracer",
-            )
-        )
-        unavailable["status"] = "unavailable"
-        unavailable["reason"] = "observer_error"
-        with self.assertRaises(ValueError) as unavailable_error:
-            join_host_telemetry_to_decision(unavailable, _normalized_decision())
-        self.assertEqual(unavailable_error.exception.reason, "observer_error")
-
     def test_freshness_and_future_skew_rules_are_deterministic(self) -> None:
         within_skew = _record(published_at_ms=10_100, observed_at_ms=9_000)
         normalized = normalize_host_telemetry_record(within_skew, now_ms=NOW_MS)

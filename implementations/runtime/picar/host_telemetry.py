@@ -12,9 +12,7 @@ from __future__ import annotations
 import math
 import threading
 import time
-from collections import deque
 from copy import deepcopy
-from itertools import islice
 from typing import Any, Callable, Mapping, cast
 
 from autonomy.runtime.routes import TELEMETRY_SCHEMA
@@ -139,41 +137,13 @@ def identity_tuple(record: Mapping[str, Any]) -> tuple[Any, ...]:
     )
 
 
-def _query_int(value: Any, *, minimum: int) -> int:
-    if isinstance(value, bool):
-        raise ValueError("boolean is not an integer query value")
-    if type(value) is int:
-        result = value
-    elif isinstance(value, str) and value.isascii() and value.isdigit():
-        result = int(value)
-    else:
-        raise ValueError("query value must be a decimal integer")
-    if result < minimum:
-        raise ValueError("query value is below its minimum")
-    return result
-
-
-def parse_records_query(query: Mapping[str, Any]) -> tuple[int, int]:
-    """Validate the exact bounded-history query shape."""
-
-    if not isinstance(query, Mapping):
-        raise ValueError("query must be an object")
-    if set(query) != {"after_sequence", "limit"}:
-        raise ValueError("only after_sequence and limit are accepted")
-    after_sequence = _query_int(query["after_sequence"], minimum=0)
-    limit = _query_int(query["limit"], minimum=1)
-    if limit > 128:
-        raise ValueError("limit must be at most 128")
-    return after_sequence, limit
-
-
 class HostTelemetryStore:
-    """Thread-safe latest/history store for complete host-boundary ticks.
+    """Thread-safe latest store for complete host-boundary ticks.
 
-    ``observe`` is intentionally synchronous and memory-only.  The default
-    ring retains 256 records, and every read returns a deep copy while holding
-    the same lock used by publication, so a reader sees one complete record
-    rather than a mixture of two host ticks.
+    ``observe`` is intentionally synchronous and memory-only.  It keeps the
+    newest record, and every read returns a deep copy while holding the same
+    lock used by publication, so a reader sees one complete record rather
+    than a mixture of two host ticks.
     """
 
     def __init__(
@@ -184,11 +154,8 @@ class HostTelemetryStore:
         run_id: str,
         generation_id: str,
         clock: Callable[[], int] | None = None,
-        max_records: int = 256,
         limits: Mapping[str, int] | None = None,
     ) -> None:
-        if type(max_records) is not int or max_records < 256:
-            raise ValueError("max_records must retain at least 256 records")
         for field, value in (
             ("host_name", host_name),
             ("source_id", source_id),
@@ -207,7 +174,7 @@ class HostTelemetryStore:
         self.generation_id = generation_id
         self.limits = dict(HOST_TELEMETRY_LIMITS)
         self._clock = clock or epoch_ms
-        self._records: deque[dict[str, Any]] = deque(maxlen=max_records)
+        self._latest: dict[str, Any] | None = None
         self._lock = threading.RLock()
         self._stopped = False
         self._last_error_reason: str | None = None
@@ -240,7 +207,6 @@ class HostTelemetryStore:
                     "schema": TELEMETRY_SCHEMA,
                     "status": "stopped",
                     "reason": "producer_stopped",
-                    "record_count": len(self._records),
                     "latest_sequence": self._last_sequence or None,
                     "stopped": True,
                 }
@@ -251,7 +217,6 @@ class HostTelemetryStore:
                     "schema": TELEMETRY_SCHEMA,
                     "status": "error",
                     "reason": "field_invalid",
-                    "record_count": len(self._records),
                     "latest_sequence": self._last_sequence or None,
                     "stopped": self._stopped,
                 }
@@ -260,7 +225,6 @@ class HostTelemetryStore:
                     "schema": TELEMETRY_SCHEMA,
                     "status": "error",
                     "reason": "observer_error",
-                    "record_count": len(self._records),
                     "latest_sequence": self._last_sequence or None,
                     "stopped": self._stopped,
                 }
@@ -274,18 +238,15 @@ class HostTelemetryStore:
                     self._last_error_status or "error",
                     self._last_error_reason,
                 )
-            elif not self._records:
+            elif self._latest is None:
                 status, reason = "warming", "warming"
             else:
-                envelope = self._record_status_locked(
-                    self._records[-1], read_at_ms
-                )
+                envelope = self._record_status_locked(self._latest, read_at_ms)
                 status, reason = envelope["status"], envelope["reason"]
             return {
                 "schema": TELEMETRY_SCHEMA,
                 "status": status,
                 "reason": reason,
-                "record_count": len(self._records),
                 "latest_sequence": self._last_sequence or None,
                 "stopped": self._stopped,
             }
@@ -358,7 +319,7 @@ class HostTelemetryStore:
             except Exception:
                 return self._observation_error_locked("error", "observer_error")
 
-            previous = self._records[-1] if self._records else None
+            previous = self._latest
             next_sequence = self._last_sequence + 1
             if sequence is not None:
                 if type(sequence) is not int or sequence < 1:
@@ -460,50 +421,28 @@ class HostTelemetryStore:
             if coverage_reason is not None:
                 record["coverage_reason"] = coverage_reason
 
-            # A missing publication timestamp is filled after the provisional
-            # append while this lock is still held.  Readers cannot enter
-            # until the record and all state updates are complete.  Preserve a
-            # possible evicted item if the post-append clock check fails.
-            evicted_record = (
-                self._records[0]
-                if self._records.maxlen is not None
-                and len(self._records) == self._records.maxlen
-                else None
-            )
-            self._records.append(record)
+            # A missing publication timestamp is filled while this lock is
+            # still held, before the record becomes the latest, so readers
+            # never see a record without one.
             if published is None:
                 try:
                     published = self._clock_now_locked()
                 except (TypeError, ValueError, OverflowError):
-                    self._records.pop()
-                    if evicted_record is not None:
-                        self._records.appendleft(evicted_record)
                     return self._observation_error_locked("error", "field_invalid")
                 except Exception:
-                    self._records.pop()
-                    if evicted_record is not None:
-                        self._records.appendleft(evicted_record)
                     return self._observation_error_locked("error", "observer_error")
                 if published < now_ms:
-                    self._records.pop()
-                    if evicted_record is not None:
-                        self._records.appendleft(evicted_record)
                     return self._observation_error_locked(
                         "error", "sequence_regressed"
                     )
                 if published < observed:
-                    self._records.pop()
-                    if evicted_record is not None:
-                        self._records.appendleft(evicted_record)
                     return self._observation_error_locked("error", "field_invalid")
                 if previous is not None and published < previous["host_tick"]["published_at_ms"]:
-                    self._records.pop()
-                    if evicted_record is not None:
-                        self._records.appendleft(evicted_record)
                     return self._observation_error_locked(
                         "error", "sequence_regressed"
                     )
                 record["host_tick"]["published_at_ms"] = published
+            self._latest = record
             self._last_sequence = next_sequence
             # An explicitly supplied publication time is test/adapter data;
             # only the store clock advances the monotonic clock watermark.
@@ -525,7 +464,7 @@ class HostTelemetryStore:
                 return self._error_envelope_locked("stopped", "producer_stopped")
             if type(count) is not int or count < 1:
                 return self._error_envelope_locked("error", "field_invalid")
-            if not self._records:
+            if self._latest is None:
                 # Warming ticks are not an interval and do not move the first
                 # complete record away from the required sequence 1.
                 return self._error_envelope_locked("warming", "warming")
@@ -581,108 +520,11 @@ class HostTelemetryStore:
                     read_at_ms,
                     remember_error=False,
                 )
-            if not self._records:
+            if self._latest is None:
                 return self._error_envelope_locked(
                     "warming", "warming", read_at_ms, remember_error=False
                 )
-            return self._envelope_for_record_locked(self._records[-1], read_at_ms)
-
-    def records(
-        self,
-        *,
-        after_sequence: int | str,
-        limit: int | str,
-        now_ms: int | None = None,
-    ) -> dict[str, Any]:
-        with self._lock:
-            try:
-                after, bounded_limit = parse_records_query(
-                    {"after_sequence": after_sequence, "limit": limit}
-                )
-            except (TypeError, ValueError, OverflowError):
-                return self._history_error_locked("error", "query_invalid")
-            if self._stopped:
-                return self._history_error_locked(
-                    "stopped", "producer_stopped", self._safe_clock_locked()
-                )
-            try:
-                read_at_ms = (
-                    self._clock_now_locked() if now_ms is None else now_ms
-                )
-                if not _is_epoch_ms(read_at_ms):
-                    raise ValueError("read_at_ms_invalid")
-            except (TypeError, ValueError, OverflowError):
-                return self._history_error_locked(
-                    "error", "field_invalid"
-                )
-            except Exception:
-                return self._history_error_locked(
-                    "error", "observer_error"
-                )
-            if (
-                self._last_clock_ms is not None
-                and read_at_ms < self._last_clock_ms
-            ):
-                return self._history_error_locked(
-                    "error", "sequence_regressed", read_at_ms
-                )
-            if self._last_error_reason is not None:
-                return self._history_error_locked(
-                    self._last_error_status or "error",
-                    self._last_error_reason,
-                    read_at_ms,
-                )
-            if not self._records:
-                return self._history_error_locked("warming", "warming", read_at_ms)
-
-            earliest = self._records[0]["host_tick"]["sequence"]
-            if after < earliest - 1:
-                return {
-                    "schema": TELEMETRY_SCHEMA,
-                    "ok": False,
-                    "status": "unavailable",
-                    "reason": "coverage_gap",
-                    "coverage_reason": "history_evicted",
-                    "read_at_ms": read_at_ms,
-                    "records": [],
-                }
-
-            records = (record for record in self._records if record["host_tick"]["sequence"] > after)
-            selected = [deepcopy(record) for record in islice(records, bounded_limit)]
-            payload: dict[str, Any] = {
-                "schema": TELEMETRY_SCHEMA,
-                "ok": True,
-                "status": "healthy",
-                "reason": "",
-                "read_at_ms": read_at_ms,
-                "records": selected,
-                "coverage": "complete" if selected else "empty",
-            }
-            if selected and selected[0]["host_tick"]["sequence"] != after + 1:
-                payload.update(
-                    ok=False,
-                    status="unavailable",
-                    reason="sequence_gap",
-                    coverage_reason="sequence_gap",
-                )
-            for record in selected:
-                record_status = record.get("status")
-                record_reason = record.get("reason") or ""
-                tick = record["host_tick"]
-                publication_age = read_at_ms - tick["published_at_ms"]
-                if publication_age < -self.limits["future_skew_tolerance_ms"]:
-                    payload.update(ok=False, status="error", reason="future_dated")
-                elif publication_age > self.limits["max_publication_age_ms"]:
-                    payload.update(ok=False, status="stale", reason="publication_stale")
-                elif record_status == "stale":
-                    payload.update(ok=False, status="stale", reason=record_reason or "source_stale")
-                elif record_status != "healthy" or record.get("coverage_reason"):
-                    payload.update(
-                        ok=False,
-                        status="unavailable",
-                        reason=record_reason or record.get("coverage_reason") or "coverage_gap",
-                    )
-            return payload
+            return self._envelope_for_record_locked(self._latest, read_at_ms)
 
     def _clock_now_locked(self) -> int:
         value = self._clock()
@@ -693,7 +535,7 @@ class HostTelemetryStore:
     def _reserve_uncovered_tick_locked(self) -> None:
         """Advance coverage over one attempted but unpublished host tick."""
 
-        if self._records:
+        if self._latest is not None:
             self._last_sequence += 1
 
     def _observation_error_locked(
@@ -727,20 +569,6 @@ class HostTelemetryStore:
             "record": None,
             "read_at_ms": read_at_ms if read_at_ms is not None else self._safe_clock_locked(),
         }
-
-    def _history_error_locked(
-        self,
-        status: str,
-        reason: str,
-        read_at_ms: int | None = None,
-    ) -> dict[str, Any]:
-        # History is an HTTP/read surface.  A malformed query or an old
-        # reader must not poison the producer's next latest publication.
-        envelope = self._error_envelope_locked(
-            status, reason, read_at_ms, remember_error=False
-        )
-        envelope["records"] = []
-        return envelope
 
     def _safe_clock_locked(self) -> int | None:
         try:
@@ -803,19 +631,6 @@ class DriveModeTelemetryAdapter:
 
     def latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
         return self.store.latest(now_ms=now_ms)
-
-    def records(
-        self,
-        *,
-        after_sequence: int | str,
-        limit: int | str,
-        now_ms: int | None = None,
-    ) -> dict[str, Any]:
-        return self.store.records(
-            after_sequence=after_sequence,
-            limit=limit,
-            now_ms=now_ms,
-        )
 
     def stop(self) -> None:
         with self._lock:

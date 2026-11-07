@@ -353,7 +353,7 @@ Useful run options:
   configured capture interval.
 - Each capture goes straight to the decision worker, so no capture waits and none
   is dropped. Drive ticks during an in-flight cycle are not captures, and
-  `/host/camera/latest` updates once per capture.
+  `frames_received` in `/host/status` counts once per capture.
 - `--observe-only` applies no decision output on either vehicle. Starting passive observation in Chase preserves its current simulator session.
 - `--record` keeps every completed decision and its exact camera image, capture
   time, and applied step configurations. Both vehicles commit these artifacts
@@ -688,12 +688,11 @@ are the `lightweight_observer` perception, `recency_ledger` memory,
 default observation and action plugins. Every deployed step records the
 same release and bundle paths. The Pi loads those activations. The Donkey assembly runs the
 shared autonomy cycle independently of `run_pilot`. The drive loop still runs at
-`DRIVE_LOOP_HZ` (20 Hz) and submits a detached sample every tick, so
-`/host/camera/latest` updates at the drive-loop rate. Each background
+`DRIVE_LOOP_HZ` (20 Hz) and submits a detached sample every tick. Each background
 decision takes the newest waiting sample; received samples increment
 `frames_received` and waiting samples replaced by newer arrivals increment
-`frames_dropped`. No backlog builds. A memory halt keeps camera inspection
-available without accumulating pending work or overload drops. The matched result remains
+`frames_dropped`. No backlog builds. A memory halt keeps receiving samples
+without accumulating pending work or overload drops. The matched result remains
 `/host/observation/latest`. While mode remains `user`, pilot outputs stay
 zero and Donkey DriveMode keeps manual input authoritative.
 
@@ -818,13 +817,11 @@ The Donkey server exposes:
 - `http://piracer.local:8887/frame-highres.jpg`
 - `http://piracer.local:8887/host/status`
 - `http://piracer.local:8887/host/observation/latest`
-- `http://piracer.local:8887/host/observation/latest/frame.jpg`
 - `http://piracer.local:8887/host/observation/transaction`
 
-`/frame.jpg` is the live camera feed. The `/host/observation/latest*`
+`/frame.jpg` is the live camera feed. The `/host/observation/*`
 endpoints publish the exact onboard-processed frame and its matching
-findings (in-memory only; no default history or disk writes). The JPEG
-response includes `X-Frame-Id` so clients can pair image and JSON.
+findings (in-memory only; no default history or disk writes).
 The CLI viewer uses `/host/observation/transaction`, which returns the
 publication and its JPEG together so a newer frame cannot split the pair
 between requests over Wi-Fi.

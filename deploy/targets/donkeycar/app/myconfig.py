@@ -826,7 +826,7 @@ CONTROLLER_TYPE = "xbox360"
 JOYSTICK_MAX_THROTTLE = 1.0
 
 # Generic autonomy runtime. Starts idle and only controls the car when
-# Donkey mode is switched to local_angle or local. Camera samples publish
-# on /host/camera/latest when the decision worker is free. Decisions run
-# in manual user mode too.
+# Donkey mode is switched to local_angle or local. Each camera sample goes
+# to the decision worker when it is free. Decisions run in manual user
+# mode too.
 AUTONOMY_ENABLED = True

@@ -50,6 +50,21 @@ PYTHONDONTWRITEBYTECODE=1 python3 tests/run.py --systems
 
 Before pushing, run only the tests your change reaches. [`tests/README.md`](tests/README.md#validating-a-change) explains how to choose them with a group and `-k`.
 
+For Python changes, install the development checks and run the same command as CI:
+
+```sh
+python3 -m pip install -r requirements-quality.txt
+python3 -m scripts.validation.check
+```
+
+Use `--ruff-only` for the fast lint pass while editing. Ruff checks maintained
+Python code and tests; basedpyright checks production code and analysis tooling.
+Existing findings are recorded in `.ruff-baseline.json` and
+`.basedpyright/baseline.json`; new findings fail the check. Ruff also rejects
+increased complexity at a baselined function. See [the validation guide](tests/README.md#python-quality-checks)
+for baseline maintenance. Every PR also receives a non-blocking QCA inspection
+summary and a downloadable report in GitHub Actions.
+
 Include the live smoke test against the Chase simulator at `CHASE_UI_WS_URL`, or check a powered-on Pi without moving it. Both commands run the systems suite:
 
 ```sh

@@ -54,6 +54,53 @@ Run a whole group only when the change reaches code that most of its tests go th
 
 List each command you ran and its result under Validation in the pull request. Do not rerun a check that passed unless the code it covers has changed since. After merging `main`, rerun only the tests the merged changes reach. If a test outside your change fails, run it alone with `-k`, and on `main`, before treating it as yours, and report it either way.
 
+## Python quality checks
+
+Install `requirements-test.txt` (which includes the quality tools), or install
+`requirements-quality.txt` for checks alone, then run
+`python3 -m scripts.validation.check`. CI runs this command in the Python quality
+job on PRs and main. `--ruff-only` skips type checking for a faster editing loop.
+The configuration in `pyproject.toml` also works with Ruff and basedpyright editor
+integrations; an editor's Ruff diagnostics include existing baselined findings.
+
+The checks cover `autonomy/`, `cli/`, `implementations/`, `qca/`, and
+`scripts/validation/`. Ruff additionally checks `tests/` for name/import errors;
+test complexity and typing are outside this initial rollout. Generated runtime
+bundles, experiments, and vendored code are outside the check scope.
+The initial type gate enables explicit `Any`, redundant instance/comparison
+checks, unreachable code, missing imports, and invalid type forms. General
+argument/return checking and `Any` propagation are left for a separate rollout.
+
+Existing debt is recorded explicitly. Ruff matches each diagnostic by file,
+owning symbol, message, and source text, independent of line numbers. Its metric
+limits allow an existing large function to improve while still above a threshold;
+an increase fails. Moving code to another symbol may require review of the baseline.
+basedpyright uses its native baseline and removes resolved entries automatically.
+Commit those reductions with the repair.
+
+To intentionally accept existing debt when changing rules, run
+`python3 -m scripts.validation.check --write-ruff-baseline` and
+`python3 -m basedpyright --writebaseline`, then review the baseline diffs. These
+are maintenance commands, not steps in the normal check. Do not refresh a baseline
+to silence a new defect. Keep necessary validation at external boundaries; a
+targeted rule suppression should explain why the runtime check is still needed.
+
+QCA runs automatically on each PR using its merge base and head. Its summary
+highlights growing functions, conditional/clone candidates involving changed
+functions, and added import edges outside the standard library. Candidates can
+predate the PR and require inspection; the full report retains file-level evidence.
+The job is informational, including when analysis fails; its log and summary make
+failure visible. Full JSON and HTML evidence is retained in the `qca-inspection`
+artifact. To reproduce it locally against committed revisions:
+
+```sh
+python3 -m scripts.validation.qca_summary --base <merge-base> --head <head> --output /tmp/qca-review
+```
+
+Changes to the quality runner also need
+`python3 tests/run.py --systems packaging -k test_quality`; changes to the QCA
+summary need `python3 tests/run.py --systems qca -k test_quality_summary`.
+
 ## Where a test goes
 
 File a test by what its behavior needs, not by what its setup happens to call.

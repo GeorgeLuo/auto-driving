@@ -19,6 +19,7 @@ deploy/targets/donkeycar/app/*.pid
 # Local Python environments.
 .venv/
 env/
+.ruff_cache/
 
 # Local coverage output.
 .coverage

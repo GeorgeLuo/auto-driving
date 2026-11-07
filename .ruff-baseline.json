@@ -1,0 +1,1769 @@
+{
+  "version": 1,
+  "entries": [
+    {
+      "key": [
+        "autonomy/decision_cycle/action/publication.py",
+        "B905",
+        "control_applications_over",
+        "`zip()` without an explicit `strict=` parameter",
+        "if any(at is None for at in times) or any(left > right for left, right in zip(times, times[1:])):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/decision_cycle/action/result.py",
+        "C901",
+        "ActionResult.__post_init__",
+        "`__post_init__` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        12
+      ]
+    },
+    {
+      "key": [
+        "autonomy/decision_cycle/action/values.py",
+        "C901",
+        "AuthorityResult.__post_init__",
+        "`__post_init__` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        12
+      ]
+    },
+    {
+      "key": [
+        "autonomy/decision_cycle/memory/runner.py",
+        "PLR1702",
+        "MemoryRunner.update",
+        "Too many nested blocks (count > 5)",
+        ""
+      ],
+      "limits": [
+        6
+      ]
+    },
+    {
+      "key": [
+        "autonomy/decision_cycle/plan/values.py",
+        "C901",
+        "ActionPlan.__post_init__",
+        "`__post_init__` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        32
+      ]
+    },
+    {
+      "key": [
+        "autonomy/decision_cycle/plan/values.py",
+        "PLR0912",
+        "ActionPlan.__post_init__",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        32
+      ]
+    },
+    {
+      "key": [
+        "autonomy/decision_cycle/plan/values.py",
+        "PLR0915",
+        "ActionPlan.__post_init__",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        79
+      ]
+    },
+    {
+      "key": [
+        "autonomy/decision_cycle/proposal/values.py",
+        "C901",
+        "ActionProposal.__post_init__",
+        "`__post_init__` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        23
+      ]
+    },
+    {
+      "key": [
+        "autonomy/decision_cycle/proposal/values.py",
+        "PLR0912",
+        "ActionProposal.__post_init__",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        23
+      ]
+    },
+    {
+      "key": [
+        "autonomy/decision_cycle/proposal/values.py",
+        "PLR0915",
+        "ActionProposal.__post_init__",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        56
+      ]
+    },
+    {
+      "key": [
+        "autonomy/plugins.py",
+        "B905",
+        "LocalPluginCatalog.upload_collection",
+        "`zip()` without an explicit `strict=` parameter",
+        "for definition, (factory, file) in zip(definitions, plugins)"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/shared_memory.py",
+        "PLR0916",
+        "_load_record_class",
+        "Too many Boolean expressions (count > 5)",
+        ""
+      ],
+      "limits": [
+        6
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/frontend/decision_view.py",
+        "C901",
+        "_evidence_projection",
+        "`_evidence_projection` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        18
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/frontend/decision_view.py",
+        "PLR0912",
+        "_evidence_projection",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        20
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/frontend/decision_view.py",
+        "PLR0915",
+        "_evidence_projection",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        55
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/frontend/server.py",
+        "C901",
+        "_RuntimeViewHandler._handle_request",
+        "`_handle_request` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        19
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/frontend/server.py",
+        "PLR0912",
+        "_RuntimeViewHandler._handle_request",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        18
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/frontend/server.py",
+        "PLR0915",
+        "_RuntimeViewHandler._handle_request",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        51
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/frontend/workbench_view.py",
+        "C901",
+        "_action_payload",
+        "`_action_payload` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        13
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/deployment/render.py",
+        "C901",
+        "render_progress",
+        "`render_progress` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        15
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/deployment/render.py",
+        "PLR0912",
+        "render_progress",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        14
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/host_status.py",
+        "C901",
+        "read_hosts",
+        "`read_hosts` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        14
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/host_status.py",
+        "PLR0912",
+        "read_hosts",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        13
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/publications/frame_publication.py",
+        "C901",
+        "read_frame_publication",
+        "`read_frame_publication` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/publications/frame_publication.py",
+        "PLR0912",
+        "read_frame_publication",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        16
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/publications/host_publications.py",
+        "C901",
+        "fetch_frame_sample",
+        "`fetch_frame_sample` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        11
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/publications/host_telemetry.py",
+        "C901",
+        "normalize_host_telemetry_record",
+        "`normalize_host_telemetry_record` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        26
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/publications/host_telemetry.py",
+        "PLR0912",
+        "normalize_host_telemetry_record",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        26
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/publications/host_telemetry.py",
+        "PLR0915",
+        "normalize_host_telemetry_record",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        95
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/runs/monitor.py",
+        "C901",
+        "monitor_runtime",
+        "`monitor_runtime` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        12
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/runs/monitor.py",
+        "PLR0915",
+        "monitor_runtime",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        60
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/runs/render.py",
+        "C901",
+        "render_start_result",
+        "`render_start_result` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        12
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/runs/status.py",
+        "B905",
+        "hosts_status",
+        "`zip()` without an explicit `strict=` parameter",
+        "for host, run in zip(hosts, runs):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/plugins/catalog/render.py",
+        "B905",
+        "render_save",
+        "`zip()` without an explicit `strict=` parameter",
+        "*(f\"{row} ({'saved' if entry['saved'] else 'default'})\" for row, entry in zip(rows, selections.values())),"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/plugins/inspect/service.py",
+        "C901",
+        "inspect_step",
+        "`inspect_step` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        12
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/plugins/stream/decision.py",
+        "C901",
+        "stream_decision",
+        "`stream_decision` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        16
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/replay/source.py",
+        "B905",
+        "_validate_frame_sequence",
+        "`zip()` without an explicit `strict=` parameter",
+        "current < previous for previous, current in zip(timestamps, timestamps[1:])"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/replay/source.py",
+        "B905",
+        "_validate_frame_sequence",
+        "`zip()` without an explicit `strict=` parameter",
+        "if any(current <= previous for previous, current in zip(indices, indices[1:])):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/replay/source.py",
+        "C901",
+        "_build_frame",
+        "`_build_frame` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        12
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/replay/source.py",
+        "C901",
+        "normalize_image_directory",
+        "`normalize_image_directory` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/replay/source.py",
+        "PLR0912",
+        "normalize_image_directory",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/simulators/status.py",
+        "B905",
+        "simulators_status",
+        "`zip()` without an explicit `strict=` parameter",
+        "by_url = {record[\"url\"]: probe for record, probe in zip(alive, probes)}"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/vehicles/status.py",
+        "B905",
+        "vehicles_status",
+        "`zip()` without an explicit `strict=` parameter",
+        "for candidate, vehicle in zip(candidates, vehicles):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/workbench/replay.py",
+        "C901",
+        "run_workbench_replay",
+        "`run_workbench_replay` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        16
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/workbench/replay.py",
+        "PLR0912",
+        "run_workbench_replay",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        16
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/workbench/runner.py",
+        "C901",
+        "ImageReplayRunner._run_loop",
+        "`_run_loop` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        13
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/workbench/runner.py",
+        "C901",
+        "ImageReplayRunner._select_plugins",
+        "`_select_plugins` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        11
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/workbench/runner.py",
+        "C901",
+        "ImageReplayRunner.dispatch",
+        "`dispatch` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        22
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/workbench/runner.py",
+        "PLR0912",
+        "ImageReplayRunner._run_loop",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        13
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/workbench/runner.py",
+        "PLR0912",
+        "ImageReplayRunner.dispatch",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        21
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/workbench/runner.py",
+        "PLR0915",
+        "ImageReplayRunner.dispatch",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        67
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/workbench/runner.py",
+        "PLR1702",
+        "ImageReplayRunner._process_one",
+        "Too many nested blocks (count > 5)",
+        ""
+      ],
+      "limits": [
+        6
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/memory/shared/evidence_ledger/reduction.py",
+        "B905",
+        "json_values_equal",
+        "`zip()` without an explicit `strict=` parameter",
+        "json_values_equal(a, b) for a, b in zip(left, right)"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/memory/shared/evidence_ledger/reduction.py",
+        "C901",
+        "BoundedEvidenceReducer._extract_records",
+        "`_extract_records` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        13
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/feeds/camera.py",
+        "C901",
+        "_value_to_rgb",
+        "`_value_to_rgb` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        11
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/geometry.py",
+        "B905",
+        "weighted_median_bbox",
+        "`zip()` without an explicit `strict=` parameter",
+        "zip((proposal.bbox[coordinate] for proposal in family_proposals), weights),"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/geometry.py",
+        "C901",
+        "cluster_proposals",
+        "`cluster_proposals` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        19
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/geometry.py",
+        "F841",
+        "_context_rejection_reasons",
+        "Local variable `width` is assigned to but never used",
+        "width = x2 - x1"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/geometry.py",
+        "PLR0912",
+        "cluster_proposals",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        16
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/issue219_cues.py",
+        "B007",
+        "_corner_junctions",
+        "Loop control variable `index` not used within loop body",
+        "for index, (px, py) in enumerate(points_xy):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/plugin.py",
+        "C901",
+        "CompositeBoxFusionPlugin._detect_candidates",
+        "`_detect_candidates` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        11
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/plugin.py",
+        "C901",
+        "CompositeBoxFusionPlugin._enumerate_geometry",
+        "`_enumerate_geometry` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        11
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/plugin.py",
+        "C901",
+        "CompositeBoxFusionPlugin._filter_rejection_reasons",
+        "`_filter_rejection_reasons` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        11
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/plugin.py",
+        "PLR0915",
+        "CompositeBoxFusionPlugin._detect_candidates",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        53
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion_object_separated/plugin.py",
+        "F401",
+        "<module>",
+        "`implementations.decision_cycle.perception.shared.obstructions.boxes.center_distance` imported but unused",
+        "from implementations.decision_cycle.perception.shared.obstructions.boxes import center_distance"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion_object_separated/plugin.py",
+        "F401",
+        "<module>",
+        "`implementations.decision_cycle.perception.shared.serialization.canonical.canonical_json` imported but unused",
+        "canonical_json,"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion_object_separated/plugin.py",
+        "F401",
+        "<module>",
+        "`implementations.decision_cycle.perception.shared.serialization.canonical.json_safe` imported but unused",
+        "json_safe,"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/floor_plane/model.py",
+        "B905",
+        "compute_homography",
+        "`zip()` without an explicit `strict=` parameter",
+        "for (x, y), (u, v) in zip(src, dst):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/floor_plane/model.py",
+        "B905",
+        "raycast_source_occupancy",
+        "`zip()` without an explicit `strict=` parameter",
+        "for left, right in zip(segments, segments[1:]):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/floor_plane/model.py",
+        "C901",
+        "raycast_source_occupancy",
+        "`raycast_source_occupancy` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/floor_plane/model.py",
+        "PLR0912",
+        "raycast_source_occupancy",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        18
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/motion_tracks/plugin.py",
+        "C901",
+        "MotionTracksPlugin._update_tracks",
+        "`_update_tracks` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        11
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/motion_tracks/plugin.py",
+        "PLR0916",
+        "_scene_track_from_item",
+        "Too many Boolean expressions (count > 5)",
+        ""
+      ],
+      "limits": [
+        8
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/multi_obstruction_tracks/plugin.py",
+        "C901",
+        "MultiObstructionTracksPlugin._filter_candidates",
+        "`_filter_candidates` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        11
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/sim_cardboard_obstacle/plugin.py",
+        "B905",
+        "_visible_regions",
+        "`zip()` without an explicit `strict=` parameter",
+        "return [(left, component[:, left:right]) for left, right in zip(boundaries, boundaries[1:])]"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/sim_cardboard_permanence/plugin.py",
+        "PLR0916",
+        "_restore_history",
+        "Too many Boolean expressions (count > 5)",
+        ""
+      ],
+      "limits": [
+        8
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/features/feature_sequence.py",
+        "B905",
+        "analyze_tracked_sequence",
+        "`zip()` without an explicit `strict=` parameter",
+        "for source, target in zip(usable_observations, usable_observations[1:]):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/features/feature_tracking.py",
+        "B905",
+        "mark_inliers",
+        "`zip()` without an explicit `strict=` parameter",
+        "for match, inlier in zip(matches, best_inliers):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/features/feature_tracking.py",
+        "F401",
+        "<module>",
+        "`typing.Any` imported but unused",
+        "from typing import Any"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/landmarks/distance.py",
+        "F401",
+        "<module>",
+        "`implementations.decision_cycle.perception.shared.features.feature_tracking.FeatureTrackingResult` imported but unused",
+        "from implementations.decision_cycle.perception.shared.features.feature_tracking import FeatureMatch, FeatureTrackingResult, track_features"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/landmarks/distance.py",
+        "F401",
+        "<module>",
+        "`typing.Any` imported but unused",
+        "from typing import Any"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/motion/scene_motion.py",
+        "B905",
+        "render_scene_motion",
+        "`zip()` without an explicit `strict=` parameter",
+        "for group, color in zip(groups, GROUP_COLORS):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/obstructions/tracker.py",
+        "B905",
+        "ObstructionTrackState._associate",
+        "`zip()` without an explicit `strict=` parameter",
+        "for old, new in zip(lost_match.bbox, bbox)"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/obstructions/tracker.py",
+        "B905",
+        "ObstructionTrackState._associate",
+        "`zip()` without an explicit `strict=` parameter",
+        "for old, new in zip(prior_bbox, bbox)"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/obstructions/tracker.py",
+        "B905",
+        "_bbox_l1_distance",
+        "`zip()` without an explicit `strict=` parameter",
+        "return sum(abs(a - b) for a, b in zip(left, right))"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/obstructions/tracker.py",
+        "C901",
+        "ObstructionTrackState._associate",
+        "`_associate` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        21
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/obstructions/tracker.py",
+        "PLR0912",
+        "ObstructionTrackState._associate",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        22
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/obstructions/tracker.py",
+        "PLR0915",
+        "ObstructionTrackState._associate",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        82
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/regions/detection.py",
+        "B905",
+        "detect_regions",
+        "`zip()` without an explicit `strict=` parameter",
+        "for value, count in zip(values, counts):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/proposal/plugins/avoid_recent_obstruction/plugin.py",
+        "C901",
+        "propose",
+        "`propose` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        15
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/proposal/plugins/avoid_recent_obstruction/plugin.py",
+        "PLR0912",
+        "propose",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        14
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/camera_stream.py",
+        "PLR0916",
+        "ChaseCameraStream._accept_frame",
+        "Too many Boolean expressions (count > 5)",
+        ""
+      ],
+      "limits": [
+        8
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/camera_stream.py",
+        "PLR0916",
+        "ChaseCameraStream._validate_subscription",
+        "Too many Boolean expressions (count > 5)",
+        ""
+      ],
+      "limits": [
+        9
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/camera_stream.py",
+        "PLR1702",
+        "ChaseCameraStream._receive",
+        "Too many nested blocks (count > 5)",
+        ""
+      ],
+      "limits": [
+        6
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/car.py",
+        "C901",
+        "ChaseSimCar._passive_receipt_result",
+        "`_passive_receipt_result` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        16
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/car.py",
+        "PLR0912",
+        "ChaseSimCar._passive_receipt_result",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        16
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/car.py",
+        "PLR0915",
+        "ChaseSimCar._passive_receipt_result",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        81
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/frame_identity.py",
+        "C901",
+        "_validate_image_envelope",
+        "`_validate_image_envelope` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        13
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/frame_identity.py",
+        "C901",
+        "evaluate_chase_evaluator_reference",
+        "`evaluate_chase_evaluator_reference` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/frame_identity.py",
+        "C901",
+        "validate_chase_sensor_capture",
+        "`validate_chase_sensor_capture` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/frame_identity.py",
+        "PLR0912",
+        "evaluate_chase_evaluator_reference",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        16
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/frame_identity.py",
+        "PLR0912",
+        "validate_chase_sensor_capture",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/frame_identity.py",
+        "PLR0916",
+        "_bounded_control",
+        "Too many Boolean expressions (count > 5)",
+        ""
+      ],
+      "limits": [
+        8
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/metrics_ws.py",
+        "C901",
+        "MetricsUiWsClient.command",
+        "`command` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        12
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/picar/car.py",
+        "F401",
+        "<module>",
+        "`pathlib.Path` imported but unused",
+        "from pathlib import Path"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/analyzer.py",
+        "C901",
+        "_TreeReader.files",
+        "`files` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        12
+      ]
+    },
+    {
+      "key": [
+        "qca/analyzer.py",
+        "C901",
+        "_read_git_diff",
+        "`_read_git_diff` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        13
+      ]
+    },
+    {
+      "key": [
+        "qca/analyzer.py",
+        "C901",
+        "classify_source",
+        "`classify_source` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        13
+      ]
+    },
+    {
+      "key": [
+        "qca/analyzer.py",
+        "C901",
+        "render_markdown",
+        "`render_markdown` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        21
+      ]
+    },
+    {
+      "key": [
+        "qca/analyzer.py",
+        "F401",
+        "<module>",
+        "`collections.Counter` imported but unused",
+        "from collections import Counter, defaultdict"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/analyzer.py",
+        "F401",
+        "<module>",
+        "`typing.Iterable` imported but unused",
+        "from typing import Any, Iterable, Mapping, Protocol, Sequence"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/analyzer.py",
+        "PLR0912",
+        "_read_git_diff",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        13
+      ]
+    },
+    {
+      "key": [
+        "qca/analyzer.py",
+        "PLR0912",
+        "render_markdown",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        21
+      ]
+    },
+    {
+      "key": [
+        "qca/analyzer.py",
+        "PLR0915",
+        "render_markdown",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        51
+      ]
+    },
+    {
+      "key": [
+        "qca/factors/verification.py",
+        "C901",
+        "_validate_factor_record",
+        "`_validate_factor_record` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        15
+      ]
+    },
+    {
+      "key": [
+        "qca/factors/verification.py",
+        "C901",
+        "attach_verification",
+        "`attach_verification` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        15
+      ]
+    },
+    {
+      "key": [
+        "qca/factors/verification.py",
+        "PLR0912",
+        "_validate_factor_record",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        14
+      ]
+    },
+    {
+      "key": [
+        "qca/factors/verification.py",
+        "PLR0912",
+        "attach_verification",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        15
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/__init__.py",
+        "B009",
+        "_module_entries",
+        "Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.",
+        "detector_ids = getattr(module, \"DETECTOR_IDS\")"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/__init__.py",
+        "B009",
+        "_module_entries",
+        "Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.",
+        "indicator_id = str(getattr(module, \"INDICATOR_ID\"))"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/__init__.py",
+        "B009",
+        "_module_entries",
+        "Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.",
+        "version = str(getattr(module, \"INDICATOR_VERSION\"))"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/context.py",
+        "B009",
+        "_node_location",
+        "Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.",
+        "end_col = getattr(node, \"end_col_offset\")"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/context.py",
+        "B009",
+        "_node_location",
+        "Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.",
+        "end_line = getattr(node, \"end_lineno\")"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/context.py",
+        "B009",
+        "_node_location",
+        "Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.",
+        "start_col = getattr(node, \"col_offset\")"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/context.py",
+        "B009",
+        "_node_location",
+        "Do not call `getattr` with a constant attribute value. It is not any safer than normal property access.",
+        "start_line = getattr(node, \"lineno\")"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/context.py",
+        "C901",
+        "AnalysisContext.nodes_at",
+        "`nodes_at` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        12
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/contracts.py",
+        "B905",
+        "_literal",
+        "`zip()` without an explicit `strict=` parameter",
+        "for key, value in zip(node.keys, node.values)"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/contracts.py",
+        "B905",
+        "_signature",
+        "`zip()` without an explicit `strict=` parameter",
+        "for arg, value in zip(args.kwonlyargs, args.kw_defaults)"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/contracts.py",
+        "B905",
+        "_signature",
+        "`zip()` without an explicit `strict=` parameter",
+        "for arg, value in zip(positional[-len(args.defaults) :], args.defaults)"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/coupling.py",
+        "C901",
+        "_coupling",
+        "`_coupling` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        13
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/coupling.py",
+        "C901",
+        "_scc_cycles",
+        "`_scc_cycles` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        11
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/coupling.py",
+        "PLR0912",
+        "_coupling",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        14
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/evidence.py",
+        "C901",
+        "build_evidence",
+        "`build_evidence` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        15
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/evidence.py",
+        "PLR0912",
+        "build_evidence",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/functional_style.py",
+        "C901",
+        "_analyze_trees",
+        "`_analyze_trees` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        13
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/opaque_conditionals.py",
+        "B905",
+        "inspect_condition",
+        "`zip()` without an explicit `strict=` parameter",
+        "\"reasons\": [reason for reason, matched in zip(REASONS, matches) if matched],"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/opaque_conditionals.py",
+        "C901",
+        "_candidates",
+        "`_candidates` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        14
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/opaque_conditionals.py",
+        "C901",
+        "_guard_subject",
+        "`_guard_subject` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        11
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/opaque_conditionals.py",
+        "PLR0912",
+        "_candidates",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        14
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/test_effectiveness.py",
+        "C901",
+        "_test_effectiveness_factor",
+        "`_test_effectiveness_factor` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        18
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/test_effectiveness.py",
+        "C901",
+        "assignment_readbacks",
+        "`assignment_readbacks` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        15
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/test_effectiveness.py",
+        "PLR0912",
+        "_test_effectiveness_factor",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        18
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/test_effectiveness.py",
+        "PLR0912",
+        "assignment_readbacks",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        15
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/test_effectiveness.py",
+        "PLR0915",
+        "_test_effectiveness_factor",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        62
+      ]
+    },
+    {
+      "key": [
+        "scripts/validation/workbench_e2e.py",
+        "C901",
+        "check_parity",
+        "`check_parity` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
+        "scripts/validation/workbench_e2e.py",
+        "C901",
+        "check_selector",
+        "`check_selector` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        11
+      ]
+    },
+    {
+      "key": [
+        "scripts/validation/workbench_e2e.py",
+        "PLR0912",
+        "check_parity",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    }
+  ]
+}

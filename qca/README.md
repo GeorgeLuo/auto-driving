@@ -5,6 +5,12 @@ It is intentionally Python-first and standard-library-only.  It does not
 assign a quality score, change proposal workflow state, or create a blocking
 check.
 
+PRs automatically run the informational QCA inspection job. It publishes a
+filtered summary and retains the full JSON/HTML evidence as an Actions artifact.
+`python3 -m scripts.validation.qca_summary --base <merge-base> --head <head> --output /tmp/qca-review`
+reproduces that report locally. The summary distinguishes measured growth from
+inspection candidates involving changed functions, which may predate the PR.
+
 From the repository root:
 
 ```sh

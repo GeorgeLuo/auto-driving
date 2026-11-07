@@ -10,6 +10,7 @@ from typing import Any
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
+from autonomy.runtime.http_errors import error_payload
 from autonomy.runtime.plugin_catalog import describe_plugin
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS, DEFAULT_STEP_PRESETS, STEP_PRESETS, catalog_path, preset_activation,
@@ -270,7 +271,7 @@ def _arming(value: Any) -> Arming:
 
 
 def _failure(exc: Exception) -> Receipt:
-    return Receipt({"ok": False, "status": "failed", "error": str(exc)}, answered=False, ok=False,
+    return Receipt(error_payload(str(exc), status="failed"), answered=False, ok=False,
                    status="failed", error=str(exc))
 
 

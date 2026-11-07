@@ -208,7 +208,7 @@ class PluginUploadFlows(unittest.TestCase):
                     failure = json.load(response)
                     self.assertFalse(failure["ok"])
                     self.assertEqual(failure["boundary"], "plugin_catalog")
-                    self.assertTrue(failure["message"])
+                    self.assertTrue(failure["error"])
                 unchanged = get_json(base, "/api/state")
                 self.assertEqual(unchanged["active_perception_plugin_ids"], before["active_perception_plugin_ids"])
                 self.assertEqual((unchanged["cycle"], unchanged["perception"]), (before["cycle"], before["perception"]))

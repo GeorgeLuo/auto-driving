@@ -42,6 +42,9 @@ def _routes(steps=None, **kwargs) -> tuple[FrameLoop, RuntimeRoutes]:
     return loop, RuntimeRoutes(loop, **kwargs)
 
 
+JSON = {"Content-Type": "application/json"}
+
+
 def _json(response):
     status, headers, body = response
     return status, json.loads(body)
@@ -61,20 +64,20 @@ class RuntimeRoutesTests(unittest.TestCase):
     def test_runtime_commands_start_and_stop_the_shared_session(self) -> None:
         _, routes = _routes()
         body = json.dumps({"command": "run", "configuration": {"mode": "observe_only", "num_decisions": 2}})
-        status, payload = _json(routes.handle("POST", "/host/runtime", body.encode()))
+        status, payload = _json(routes.handle("POST", "/host/runtime", body.encode(), headers=JSON))
         self.assertEqual(status, 200)
         self.assertEqual(payload["session"]["status"], "running")
         self.assertEqual(_json(routes.handle("GET", "/host/status"))[1]["mode"], "observe_only")
-        status, payload = _json(routes.handle("POST", "/host/runtime", b'{"command": "stop"}'))
+        status, payload = _json(routes.handle("POST", "/host/runtime", b'{"command": "stop"}', headers=JSON))
         self.assertEqual(payload["session"]["status"], "stopped")
 
     def test_bad_requests_return_the_reason(self) -> None:
         _, routes = _routes()
         self.assertEqual(
-            _json(routes.handle("POST", "/host/runtime", b'{"command": "fly"}')),
+            _json(routes.handle("POST", "/host/runtime", b'{"command": "fly"}', headers=JSON)),
             (400, {"ok": False, "error": "unknown runtime command 'fly'"}),
         )
-        status, payload = _json(routes.handle("POST", "/host/runtime", b"{"))
+        status, payload = _json(routes.handle("POST", "/host/runtime", b"{", headers=JSON))
         self.assertEqual(status, 400)
         self.assertIn("not JSON", payload["error"])
         self.assertEqual(_json(routes.handle("GET", "/host/nothing"))[0], 404)
@@ -82,6 +85,24 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertEqual(_json(routes.handle("POST", "/host/mode", b"{}"))[0], 404)
         self.assertFalse(routes.handles("/host/memory/reset"))
         self.assertEqual(_json(routes.handle("POST", "/host/memory/reset", b"{}"))[0], 404)
+
+    def test_writes_a_page_on_another_site_could_send_do_not_run(self) -> None:
+        _, routes = _routes()
+        body = json.dumps({"command": "run", "configuration": {"mode": "autonomy", "num_decisions": 1}}).encode()
+        origin = "http://car.local:8887"
+        for headers, refusal in (
+            ({"Content-Type": "text/plain"}, (415, {"ok": False, "error": "writes require application/json"})),
+            ({**JSON, "Origin": "https://attacker.example"},
+             (403, {"ok": False, "error": "writes require the same origin"})),
+            ({**JSON, "Sec-Fetch-Site": "cross-site"}, (403, {"ok": False, "error": "writes require the same origin"})),
+        ):
+            with self.subTest(headers=headers):
+                self.assertEqual(_json(routes.handle("POST", RUNTIME_PATH, body, headers=headers, origin=origin)),
+                                 refusal)
+                self.assertEqual(_json(routes.handle("GET", RUNTIME_PATH))[1]["session"]["status"], "pre_start")
+        status, payload = _json(routes.handle("POST", RUNTIME_PATH, b'{"command": "stop"}',
+                                              headers={**JSON, "Origin": origin}, origin=origin))
+        self.assertEqual(status, 200)
 
     def test_run_without_named_settings_is_refused(self) -> None:
         _, routes = _routes()
@@ -91,18 +112,18 @@ class RuntimeRoutesTests(unittest.TestCase):
              "configuration must name mode"),
         ):
             with self.subTest(request=request):
-                status, payload = _json(routes.handle("POST", RUNTIME_PATH, json.dumps(request).encode()))
+                status, payload = _json(routes.handle("POST", RUNTIME_PATH, json.dumps(request).encode(), headers=JSON))
                 self.assertEqual((status, payload["error"]), (400, reason))
                 self.assertEqual(_json(routes.handle("GET", RUNTIME_PATH))[1]["session"]["status"], "pre_start")
 
     def test_restart_stops_then_replaces_the_process(self) -> None:
         restarted = threading.Event()
         _, routes = _routes(on_restart=restarted.set)
-        status, payload = _json(routes.handle("POST", "/host/runtime", b'{"command": "restart"}'))
+        status, payload = _json(routes.handle("POST", "/host/runtime", b'{"command": "restart"}', headers=JSON))
         self.assertEqual(status, 200)
         self.assertTrue(restarted.wait(2.0))
         _, fixed = _routes()
-        self.assertEqual(_json(fixed.handle("POST", "/host/runtime", b'{"command": "restart"}'))[0], 400)
+        self.assertEqual(_json(fixed.handle("POST", "/host/runtime", b'{"command": "restart"}', headers=JSON))[0], 400)
 
     def test_submitted_frames_publish_the_observation(self) -> None:
         loop, routes = _routes()
@@ -217,8 +238,7 @@ class RuntimeRoutesTests(unittest.TestCase):
         status, payload = _json(routes.handle("GET", "/api/plugins"))
         self.assertEqual(status, 200)
         self.assertTrue(payload["ok"])
-        self.assertEqual(_json(routes.handle("POST", "/api/plugins", b"[]",
-                         headers={"Content-Type": "application/json"}))[0], 400)
+        self.assertEqual(_json(routes.handle("POST", "/api/plugins", b"[]", headers=JSON))[0], 400)
 
     def test_a_failed_loop_stops_the_session_with_its_error(self) -> None:
         loop, routes = _routes()

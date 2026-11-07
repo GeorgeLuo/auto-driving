@@ -73,15 +73,15 @@ class ViewerCommandTests(unittest.TestCase):
 
     def test_a_malformed_request_is_refused_before_the_command_runs(self) -> None:
         self.assertEqual(self.post("/api/vehicles/discover", {"provider": "boat", "url": "x"}),
-                         (400, {"ok": False, "status": "failed", "error": "provider must be one of chase-sim, picar"}))
+                         (400, {"ok": False, "error": "provider must be one of chase-sim, picar"}))
         self.assertEqual(self.post("/api/vehicles/remove", {}),
-                         (400, {"ok": False, "status": "failed", "error": "url must be a non-empty string"}))
+                         (400, {"ok": False, "error": "url must be a non-empty string"}))
         self.assertEqual(self.post("/api/vehicles/remove", ["url"])[1]["error"], "request body must be an object")
 
     def test_writes_come_only_from_the_viewer_itself(self) -> None:
         self.assertEqual(self.post("/api/vehicles/remove", {"url": "x"}, Origin="http://example.com")[0], 403)
         self.assertEqual(self.post("/api/vehicles/remove", {"url": "x"}, **{"Content-Type": "text/plain"}),
-                         (415, {"ok": False, "status": "failed", "error": "writes require application/json"}))
+                         (415, {"ok": False, "error": "writes require application/json"}))
         with self.assertRaises(HTTPError) as caught:
             urlopen(Request(f"{self.server.url}api/vehicles", data=b"{}", method="POST",
                             headers={"Content-Type": "application/json"}), timeout=5.0)

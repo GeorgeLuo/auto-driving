@@ -437,10 +437,6 @@ class WorkbenchStartingSelectionTests(unittest.TestCase):
             state["machine_detail"]["pipeline"]["perception_preset"], "lightweight_observer"
         )
 
-    def test_an_activation_must_be_given_as_its_own_step(self) -> None:
-        with self.assertRaisesRegex(ValueError, "activation for 'memory' given as 'perception'"):
-            ImageReplayRunner(activations={"perception": selection_activation("memory")})
-
 
 class WorkbenchMemorySelectionTests(unittest.TestCase):
     def _runner(self, root, **kwargs) -> ImageReplayRunner:

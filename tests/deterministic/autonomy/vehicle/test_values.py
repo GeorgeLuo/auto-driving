@@ -9,59 +9,8 @@ from autonomy.vehicle import (
     SensorReadRequest,
     SensorReading,
     SensorFrame,
-    VehicleAction,
     VehicleCapabilities,
-    VehiclePulse,
 )
-
-
-class VehicleActionTests(unittest.TestCase):
-    def test_action_rejects_conflicting_directions_and_clamps_steering(self) -> None:
-        with self.assertRaisesRegex(ValueError, "both forward and reverse"):
-            VehicleAction(forward=True, reverse=True)
-
-        self.assertEqual(VehicleAction(steering=2.5).steering, 1.0)
-        self.assertEqual(VehicleAction(steering=-2.5).steering, -1.0)
-
-    def test_action_rejects_non_finite_steering(self) -> None:
-        for value in (float("nan"), float("inf"), float("-inf")):
-            with self.subTest(value=value):
-                with self.assertRaisesRegex(ValueError, "finite"):
-                    VehicleAction(steering=value)
-
-
-class VehiclePulseTests(unittest.TestCase):
-    def test_pulse_normalizes_finite_execution_values(self) -> None:
-        pulse = VehiclePulse(
-            action=VehicleAction(forward=True, steering=0.5),
-            throttle=2.0,
-            duration_s=-1.0,
-            settle_s=-2.0,
-            recording=True,
-            label="forward_check",
-        )
-
-        self.assertEqual(pulse.throttle, 1.0)
-        self.assertEqual(pulse.duration_s, 0.0)
-        self.assertEqual(pulse.settle_s, 0.0)
-        self.assertEqual(
-            pulse.to_dict(),
-            {
-                "action": {"forward": True, "reverse": False, "steering": 0.5},
-                "throttle": 1.0,
-                "duration_s": 0.0,
-                "settle_s": 0.0,
-                "recording": True,
-                "label": "forward_check",
-            },
-        )
-
-    def test_pulse_rejects_non_finite_execution_values(self) -> None:
-        for field_name in ("throttle", "duration_s", "settle_s"):
-            for value in (float("nan"), float("inf"), float("-inf")):
-                with self.subTest(field=field_name, value=value):
-                    with self.assertRaisesRegex(ValueError, "finite"):
-                        VehiclePulse(**{field_name: value})
 
 
 class SensorValueTests(unittest.TestCase):

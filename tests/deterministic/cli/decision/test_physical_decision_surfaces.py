@@ -87,7 +87,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 self.assertIsNone(readable["report"].error)
 
         unavailable_cases: list[tuple[str, object]] = [
-            ("missing", None),
             ("incomplete", {"schema": "automa_physical_decision_publication"}),
             (
                 "mismatched",

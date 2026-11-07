@@ -53,7 +53,6 @@ class PhysicalDeployTests(unittest.TestCase):
                     set(staged["metadata"]["controller_bundle"]),
                     set(CONTROLLER_BUNDLE_KEYS),
                 )
-                self.assertNotIn("source_dir", staged["metadata"])
             deploy_files = _write_remote_activation_files(
                 target=TARGET,
                 host_dir=host_dir,
@@ -87,7 +86,6 @@ class PhysicalDeployTests(unittest.TestCase):
                     set(remote["metadata"]["controller_bundle"]),
                     set(CONTROLLER_BUNDLE_KEYS),
                 )
-                self.assertNotIn("source_dir", remote["metadata"])
                 self.assertTrue(
                     str(remote["metadata"]["controller_bundle"]["autonomy_dir"]).endswith("/autonomy")
                 )

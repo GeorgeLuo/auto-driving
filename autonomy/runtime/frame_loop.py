@@ -37,20 +37,14 @@ logger = logging.getLogger(__name__)
 
 ONBOARD_OBSERVATION_STATE_SCHEMA = "automa_onboard_observation_state"
 FRAME_PUBLICATION_SCHEMA = "host_frame_publication"
-LATEST_FRAME_PATH = "/host/observation/latest/frame.jpg"
 OBSERVATION_TRANSACTION_PATH = "/host/observation/transaction"
 FRAME_TRANSACTION_SCHEMA = "host_frame_transaction"
 LATEST_JSON_PATH = "/host/observation/latest"
-CAMERA_LATEST_FRAME_PATH = "/host/camera/latest/frame.jpg"
-CAMERA_LATEST_JSON_PATH = "/host/camera/latest"
-CAMERA_PUBLICATION_SCHEMA = "automa_physical_camera_publication"
 
 PUBLICATION_HEALTH_ABSENT = "absent"
 PUBLICATION_HEALTH_WARMING = "warming"
 PUBLICATION_HEALTH_HEALTHY = "healthy"
 PUBLICATION_HEALTH_STALE = "stale"
-PUBLICATION_HEALTH_UNAVAILABLE = "unavailable"
-PUBLICATION_HEALTH_ERROR = "error"
 
 
 def timestamp_ms() -> int:
@@ -193,7 +187,7 @@ class LatestObservationState:
 
 @dataclass
 class LatestCameraFrame:
-    """One camera sample published without waiting for a decision cycle.
+    """One camera sample, kept as it arrives and before any decision reads it.
 
     ``sequence`` counts captures in this loop; ``frame_index`` is the
     vehicle's frame identity, which may skip (a simulator frame index).
@@ -207,10 +201,6 @@ class LatestCameraFrame:
     metadata: dict[str, Any] = field(default_factory=dict)
     jpeg_cache: _FrameJpegCache = field(default_factory=_FrameJpegCache, repr=False, compare=False)
     image_loader: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
-
-    @property
-    def has_image(self) -> bool:
-        return self.image is not None or self.jpeg_cache.data is not None
 
 
 @dataclass(frozen=True)
@@ -327,10 +317,6 @@ class FrameLoop:
                 "presets": dict(self.presets),
                 "latest": latest,
                 "latest_camera_frame_id": None if camera is None else camera.frame_id,
-                "latest_json_path": LATEST_JSON_PATH,
-                "latest_frame_path": LATEST_FRAME_PATH,
-                "latest_camera_json_path": CAMERA_LATEST_JSON_PATH,
-                "latest_camera_frame_path": CAMERA_LATEST_FRAME_PATH,
             }
 
     def status(self) -> dict[str, Any]:
@@ -359,48 +345,9 @@ class FrameLoop:
             revision = f"{self.run_id}:frame:{self._publication_revision}:{self._queue_generation}"
             return publication, self.latest_state, revision
 
-    def publish_latest_frame_jpeg(self) -> tuple[bytes | None, dict[str, Any]]:
-        """Return the exact processed frame JPEG with matching publication metadata."""
-        read_at_ms = timestamp_ms()
-        with self._lock:
-            latest = self.latest_state
-            publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
-        publication = deepcopy(publication)
-        return self._jpeg(latest, publication)
-
-    def publish_latest_camera(self, *, now_ms: int | None = None) -> dict[str, Any]:
-        """Return the newest camera sample, whether or not perception has finished."""
-        read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
-        with self._lock:
-            return self._camera_publication_from_locked_state(read_at_ms=read_at_ms)
-
-    def publish_latest_camera_jpeg(self) -> tuple[bytes | None, dict[str, Any]]:
-        """Return the JPEG for the newest camera sample, paired with its metadata."""
-        read_at_ms = timestamp_ms()
-        with self._lock:
-            camera = self.latest_camera_frame
-            publication = self._camera_publication_from_locked_state(read_at_ms=read_at_ms)
-        return self._jpeg(camera, publication)
-
     @staticmethod
     def frame_jpeg(frame: LatestCameraFrame | LatestObservationState) -> bytes:
         return frame.jpeg_cache.get(frame.image)
-
-    @classmethod
-    def _jpeg(cls, frame: LatestCameraFrame | LatestObservationState | None,
-              publication: dict[str, Any]) -> tuple[bytes | None, dict[str, Any]]:
-        if frame is None or (frame.image is None and frame.jpeg_cache.data is None):
-            return None, publication
-        try:
-            return cls.frame_jpeg(frame), publication
-        except Exception as exc:
-            # The image route answers 503 with this body; it names the failure.
-            return None, {
-                **publication,
-                "health": PUBLICATION_HEALTH_ERROR,
-                "ok": False,
-                "error": f"image_encoding_failed: {type(exc).__name__}: {exc}",
-            }
 
     def wait_for_cycle(self, timeout_s: float = 5.0) -> None:
         """Block until the background decision cycle finishes, if one is running."""
@@ -512,68 +459,6 @@ class FrameLoop:
                 self._decision_thread = thread
                 thread.start()
             return camera
-
-    def _camera_publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
-        camera = self.latest_camera_frame
-        threshold_ms = stale_after_ms(self._cycle_duration_ms)
-        observation = self.latest_state
-        perception_frame_id = None if observation is None else observation.frame_id
-        if camera is None:
-            health = PUBLICATION_HEALTH_WARMING if self.frames_received == 0 else PUBLICATION_HEALTH_ABSENT
-            perception_state = "pending" if self._decision_inflight else "absent"
-            return {
-                "schema": CAMERA_PUBLICATION_SCHEMA,
-                "ok": False,
-                "health": health,
-                "read_at_ms": read_at_ms,
-                "result_age_ms": None,
-                "stale_after_ms": threshold_ms,
-                "frame": None,
-                "frames_received": self.frames_received,
-                "frames_dropped": self.frames_dropped,
-                "perception_state": perception_state,
-                "perception_frame_id": perception_frame_id,
-                "perception_inflight": self._decision_inflight,
-                "latest_camera_json_path": CAMERA_LATEST_JSON_PATH,
-                "latest_camera_frame_path": CAMERA_LATEST_FRAME_PATH,
-            }
-        age_ms = max(0, read_at_ms - int(camera.captured_at_ms))
-        if not camera.has_image:
-            health = PUBLICATION_HEALTH_UNAVAILABLE
-        elif age_ms > threshold_ms:
-            health = PUBLICATION_HEALTH_STALE
-        else:
-            health = PUBLICATION_HEALTH_HEALTHY
-        if self._decision_inflight:
-            perception_state = "pending"
-        elif perception_frame_id == camera.frame_id:
-            perception_state = "matched"
-        elif perception_frame_id is None:
-            perception_state = "absent"
-        else:
-            perception_state = "behind"
-        return {
-            "schema": CAMERA_PUBLICATION_SCHEMA,
-            "ok": health in {PUBLICATION_HEALTH_HEALTHY, PUBLICATION_HEALTH_STALE},
-            "health": health,
-            "read_at_ms": read_at_ms,
-            "result_age_ms": age_ms,
-            "stale_after_ms": threshold_ms,
-            "frame": {
-                "frame_id": camera.frame_id,
-                "frame_index": camera.frame_index,
-                "captured_at_ms": camera.captured_at_ms,
-                "has_image": camera.has_image,
-                "frame_path": CAMERA_LATEST_FRAME_PATH,
-            },
-            "frames_received": self.frames_received,
-            "frames_dropped": self.frames_dropped,
-            "perception_state": perception_state,
-            "perception_frame_id": perception_frame_id,
-            "perception_inflight": self._decision_inflight,
-            "latest_camera_json_path": CAMERA_LATEST_JSON_PATH,
-            "latest_camera_frame_path": CAMERA_LATEST_FRAME_PATH,
-        }
 
     def _store_camera_frame_locked(
         self,

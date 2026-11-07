@@ -6,7 +6,7 @@ import json
 from typing import Any
 
 from autonomy.decision_cycle.memory.interface import BOUNDS, EPOCH_ID, HEALTH, RECORD_COUNT
-from autonomy.runtime.frame_loop import LATEST_FRAME_PATH, LATEST_JSON_PATH
+from autonomy.runtime.frame_loop import LATEST_JSON_PATH
 
 from ...hosts.publications.frame_publication import presets_text
 from ...shared.memory_report import evidence_publisher, plugin_ledgers
@@ -61,7 +61,7 @@ def _perception_screen(event: StreamEvent) -> str:
         *_view_lines(event.view, *_PERCEPTION_PAGES),
         (
             f"publication: {publication.health or 'unavailable'}  "
-            f"json: {LATEST_JSON_PATH}  frame: {LATEST_FRAME_PATH}"
+            f"json: {LATEST_JSON_PATH}"
         ),
         "",
         "latest perception",

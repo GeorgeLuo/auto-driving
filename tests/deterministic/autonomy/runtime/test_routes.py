@@ -104,7 +104,7 @@ class RuntimeRoutesTests(unittest.TestCase):
         _, fixed = _routes()
         self.assertEqual(_json(fixed.handle("POST", "/host/runtime", b'{"command": "restart"}'))[0], 400)
 
-    def test_submitted_frames_publish_observation_camera_and_jpeg(self) -> None:
+    def test_submitted_frames_publish_the_observation(self) -> None:
         loop, routes = _routes()
         self.assertEqual(_json(routes.handle("GET", "/host/observation/latest"))[1]["health"], "warming")
         loop.submit(np.zeros((4, 6, 3), dtype=np.uint8), frame_id="sim_frame_000042", frame_index=42,
@@ -114,12 +114,6 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["report"]["frame_id"], "sim_frame_000042")
         self.assertEqual(payload["report"]["application"]["mode"], "manual")
-        status, headers, body = routes.handle("GET", "/host/observation/latest/frame.jpg")
-        self.assertEqual((status, headers["Content-Type"], headers["X-Frame-Id"]), (200, "image/jpeg", "sim_frame_000042"))
-        self.assertTrue(body.startswith(b"\xff\xd8"))
-        status, headers, _ = routes.handle("HEAD", "/host/camera/latest/frame.jpg")
-        self.assertEqual((status, headers["X-Frame-Index"]), (200, "42"))
-        self.assertEqual(_json(routes.handle("GET", "/host/camera/latest"))[1]["perception_state"], "matched")
 
     def test_transaction_paths_are_handled_and_reject_write_methods(self):
         _, routes = _routes()
@@ -171,17 +165,6 @@ class RuntimeRoutesTests(unittest.TestCase):
         self.assertIsNone(transaction["image_base64"])
         self.assertIn("image_encoding_failed", transaction["image_error"])
 
-    def test_image_routes_name_an_encoding_failure(self) -> None:
-        loop, routes = _routes()
-        loop.submit(np.zeros((4, 6, 3), dtype=np.uint8), frame_id="first", frame_index=1)
-        loop.wait_for_cycle()
-        for path in ("/host/observation/latest/frame.jpg", "/host/camera/latest/frame.jpg"):
-            with self.subTest(path=path), patch.object(FrameLoop, "frame_jpeg", side_effect=ValueError("bad image")):
-                status, body = _json(routes.handle("GET", path))
-                self.assertEqual(status, 503)
-                self.assertEqual((body["health"], body["ok"]), ("error", False))
-                self.assertEqual(body["error"], "image_encoding_failed: ValueError: bad image")
-
     def test_decision_transaction_image_stays_with_its_completed_cycle(self) -> None:
         from autonomy.decision_cycle.activation import DECISION_STEPS
         from implementations.decision_cycle.catalog import packaged_activation
@@ -216,10 +199,7 @@ class RuntimeRoutesTests(unittest.TestCase):
             status, transaction = _json(routes.handle("GET", "/host/observation/transaction"))
             self.assertEqual(status, 200, transaction)
             self.assertEqual(transaction["publication"]["report"]["frame_id"], "sim_frame_000042")
-            self.assertEqual(
-                _json(routes.handle("GET", "/host/camera/latest"))[1]["frame"]["frame_id"],
-                "sim_frame_000043",
-            )
+            self.assertEqual(loop.observation_status()["latest_camera_frame_id"], "sim_frame_000043")
         finally:
             perception.release_all()
             loop.wait_for_cycle()
@@ -255,27 +235,15 @@ class TelemetryRouteTests(unittest.TestCase):
         status, payload = _json(routes.handle("GET", "/host/telemetry/latest"))
         self.assertEqual((status, payload["reason"], payload["record"]), (503, "publisher_missing", None))
 
-    def test_routes_are_read_only_and_queries_exact(self) -> None:
-        calls = []
-
+    def test_latest_is_read_only_and_takes_no_query(self) -> None:
         class Telemetry:
             def latest(self):
                 return {"ok": True, "record": {}}
-
-            def records(self, *, after_sequence, limit):
-                calls.append((after_sequence, limit))
-                return {"ok": True, "records": []}
 
         _, routes = _routes(telemetry=Telemetry())
         self.assertEqual(_json(routes.handle("GET", "/host/telemetry/latest"))[0], 200)
         self.assertEqual(_json(routes.handle("GET", "/host/telemetry/latest?x=1"))[1]["reason"], "query_invalid")
         self.assertEqual(_json(routes.handle("POST", "/host/telemetry/latest"))[0], 405)
-        self.assertEqual(_json(routes.handle("GET", "/host/telemetry/records?limit=5"))[0], 400)
-        self.assertEqual(
-            _json(routes.handle("GET", "/host/telemetry/records?after_sequence=1&limit=5&limit=6"))[0], 400,
-        )
-        self.assertEqual(_json(routes.handle("GET", "/host/telemetry/records?after_sequence=1&limit=5"))[0], 200)
-        self.assertEqual(calls, [("1", "5")])
 
 
 if __name__ == "__main__":

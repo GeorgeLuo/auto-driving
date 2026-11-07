@@ -530,11 +530,6 @@
             <td>Health is computed at read time (<code>warming</code>, <code>healthy</code>, <code>stale</code>, <code>error</code>, <code>unavailable</code>, <code>absent</code>). No history or disk writes.</td>
           </tr>
           <tr>
-            <td><code>GET /host/observation/latest/frame.jpg</code></td>
-            <td>Returns the exact processed JPEG retained with the latest state.</td>
-            <td>Headers include <code>X-Frame-Id</code> and <code>X-Observation-Health</code> so clients pair image and JSON without using the live camera feed.</td>
-          </tr>
-          <tr>
             <td><code>GET|POST /host/runtime</code></td>
             <td>Reads the session, or runs <code>run</code>, <code>stop</code>, <code>restart</code>, and <code>read_recording</code>.</td>
             <td>The same route table (<code>autonomy/runtime/routes.py</code>) is served by every vehicle runtime. A run shows Donkey <code>local</code>; stopping returns to <code>user</code>.</td>

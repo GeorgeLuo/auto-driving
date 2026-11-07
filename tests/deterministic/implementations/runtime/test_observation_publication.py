@@ -7,7 +7,6 @@ from types import SimpleNamespace
 import threading
 import tempfile
 import unittest
-from copy import deepcopy
 from unittest import mock
 from pathlib import Path
 
@@ -21,8 +20,6 @@ from autonomy.runtime.execution import ControlExecution
 from implementations.decision_cycle.catalog import packaged_activation, selection_activation
 from autonomy.runtime.frame_loop import (
     FRAME_PUBLICATION_SCHEMA,
-    LATEST_FRAME_PATH,
-    LATEST_JSON_PATH,
     OBSERVATION_TRANSACTION_PATH,
 )
 from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget, create_host
@@ -44,20 +41,18 @@ class ObservationPublicationTests(unittest.TestCase):
         part.run(image_array=np.zeros((8, 12, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", wraps=encode_jpeg) as encode:
-            first, metadata = part.publish_latest_frame_jpeg()
-            repeated, _ = part.publish_latest_frame_jpeg()
-            transaction_image = self._transaction_image(part)
-            self.assertEqual(first, repeated)
-            self.assertEqual(first, transaction_image)
+            first = self._transaction_image(part)
+            first_id = part.publish_latest()["report"]["frame_id"]
+            self.assertEqual(self._transaction_image(part), first)
             self.assertEqual(encode.call_count, 1)
             part.run(image_array=np.full((8, 12, 3), 200, dtype=np.uint8), mode="user")
             part.wait_for_cycle()
-            second, next_metadata = part.publish_latest_frame_jpeg()
+            second = self._transaction_image(part)
             self.assertNotEqual(first, second)
-            self.assertNotEqual(metadata["report"]["frame_id"], next_metadata["report"]["frame_id"])
+            self.assertNotEqual(first_id, part.publish_latest()["report"]["frame_id"])
             self.assertEqual(encode.call_count, 2)
 
-    def test_wire_jpeg_is_reused_by_camera_decision_and_recording(self):
+    def test_wire_jpeg_is_reused_by_decision_and_recording(self):
         from autonomy.runtime.frame_loop import encode_jpeg
         image = np.full((8, 12, 3), 70, dtype=np.uint8)
         wire = encode_jpeg(image)
@@ -69,46 +64,28 @@ class ObservationPublicationTests(unittest.TestCase):
             with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", side_effect=AssertionError("reencoded")):
                 part.submit(image, jpeg_bytes=wire)
                 part.wait_for_cycle()
-                camera, _ = part.publish_latest_camera_jpeg()
-                observation, _ = part.publish_latest_frame_jpeg()
                 decision = self._transaction_image(part)
-            self.assertEqual((camera, observation, decision), (wire, wire, wire))
+            self.assertEqual(decision, wire)
             files = list(Path(tmp).glob("*/frames/*.jpg"))
             self.assertEqual(len(files), 1)
             self.assertEqual(files[0].read_bytes(), wire)
             self.assertNotIn("jpeg_bytes", part.host.last_context.sensor_frame.readings["front_camera"].to_dict())
 
-    def test_recording_and_concurrent_camera_read_share_one_encode(self):
+    def test_recording_and_transaction_share_one_encode(self):
         from autonomy.runtime.frame_loop import encode_jpeg
         part = self._hold_part()
         self.addCleanup(part.shutdown)
-        entered, release = threading.Event(), threading.Event()
-        def encode(image):
-            entered.set()
-            if not release.wait(2):
-                raise AssertionError("JPEG encode was not released")
-            return encode_jpeg(image)
         with tempfile.TemporaryDirectory() as tmp:
             part.recording_root = Path(tmp)
             part.start(RunConfiguration(mode="observe_only", num_decisions=None), record=True)
-            published = []
-            with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", side_effect=encode) as encoder:
+            with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", wraps=encode_jpeg) as encoder:
                 part.run(image_array=np.zeros((8, 12, 3), dtype=np.uint8), mode="user")
-                self.assertTrue(entered.wait(1))
-                reader = threading.Thread(target=lambda: published.append(part.publish_latest_camera_jpeg()[0]))
-                reader.start()
-                release.set()
                 part.wait_for_cycle()
-                reader.join(1)
-                self.assertFalse(reader.is_alive())
-                observation, _ = part.publish_latest_frame_jpeg()
                 decision = self._transaction_image(part)
                 self.assertEqual(encoder.call_count, 1)
-            self.assertEqual(published, [observation])
-            self.assertEqual(decision, observation)
             files = list(Path(tmp).glob("*/frames/*.jpg"))
             self.assertEqual(len(files), 1)
-            self.assertEqual(files[0].read_bytes(), observation)
+            self.assertEqual(files[0].read_bytes(), decision)
 
     def _hold_part(self) -> AutonomyPilotPart:
         activations = {step: packaged_activation(step) for step in DECISION_STEPS}
@@ -134,8 +111,6 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertIsNone(payload["report"])
         status = part.observation_status()
         self.assertEqual(status["presets"], {"perception": "lightweight_observer"})
-        self.assertEqual(status["latest_json_path"], LATEST_JSON_PATH)
-        self.assertEqual(status["latest_frame_path"], LATEST_FRAME_PATH)
 
     def test_healthy_publication_includes_detached_perception_and_matching_frame(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
@@ -167,10 +142,7 @@ class ObservationPublicationTests(unittest.TestCase):
             report["cycle"]["action"]["authority"]["authorized_output"]["reason"],
             "action_plan_invariant_violated",
         )
-        jpeg, meta = part.publish_latest_frame_jpeg()
-        self.assertTrue(jpeg.startswith(b"\xff\xd8"))
-        self.assertEqual(meta["report"]["frame_id"], report["frame_id"])
-        self.assertEqual(part.observation_status()["latest_frame_path"], LATEST_FRAME_PATH)
+        self.assertTrue(self._transaction_image(part).startswith(b"\xff\xd8"))
 
     def test_presets_follow_the_activations_each_frame_applied(self) -> None:
         """Regression: the runtime reported only perception's preset, fixed at start,
@@ -254,12 +226,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(state["records"][0]["kind"], "floor_boundary")
         self.assertEqual(report["evidence_publisher"], "bounded_evidence")
 
-        jpeg, frame_meta = part.publish_latest_frame_jpeg()
-        self.assertIsNotNone(jpeg)
-        self.assertGreater(len(jpeg), 32)
-        self.assertEqual(frame_meta["report"]["frame_id"], payload["report"]["frame_id"])
-        self.assertEqual(frame_meta["health"], "healthy")
-        self.assertTrue(jpeg.startswith(b"\xff\xd8"))
+        self.assertTrue(self._transaction_image(part).startswith(b"\xff\xd8"))
 
     def test_publication_lists_each_memory_plugin_and_the_evidence_publisher(self) -> None:
         from autonomy.decision_cycle.cycle import DecisionSteps
@@ -353,10 +320,6 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["health"], "healthy")
         self.assertTrue(payload["ok"])
         self.assertEqual(payload["report"]["status"], "ok")
-        jpeg, meta = part.publish_latest_frame_jpeg()
-        self.assertIsNone(jpeg)
-        self.assertEqual(meta["health"], "healthy")
-        self.assertTrue(meta["ok"])
         status, _, body = RuntimeRoutes(part).handle("GET", OBSERVATION_TRANSACTION_PATH)
         transaction = json.loads(body)
         self.assertEqual(status, 200)
@@ -446,32 +409,6 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertNotIn("timing", observation)
         self.assertNotIn("duration_ms", observation)
 
-    def test_copying_a_publication_does_not_block_camera_reads(self) -> None:
-        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
-        for method in ("publish_latest", "publish_latest_frame_jpeg"):
-            with self.subTest(method=method):
-                copying, release = threading.Event(), threading.Event()
-
-                def slow_copy(payload):
-                    copying.set()
-                    release.wait(5)
-                    return deepcopy(payload)
-
-                publisher = threading.Thread(target=getattr(part, method))
-                camera = threading.Thread(target=part.publish_latest_camera)
-                with mock.patch("autonomy.runtime.frame_loop.deepcopy", side_effect=slow_copy):
-                    publisher.start()
-                    try:
-                        self.assertTrue(copying.wait(2))
-                        camera.start()
-                        camera.join(2)
-                        self.assertFalse(camera.is_alive(), "camera read blocked behind publication copy")
-                    finally:
-                        release.set()
-                        publisher.join(2)
-                        if camera.ident is not None:
-                            camera.join(2)
-
     def test_concurrent_reads_keep_frame_identity_paired(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
         stop = threading.Event()
@@ -487,18 +424,9 @@ class ObservationPublicationTests(unittest.TestCase):
         def reader() -> None:
             for _ in range(40):
                 payload = part.publish_latest()
-                jpeg, frame_meta = part.publish_latest_frame_jpeg()
                 report = payload.get("report")
                 if report is None:
                     continue
-                left = report["frame_id"]
-                paired = frame_meta.get("report") if isinstance(frame_meta.get("report"), dict) else None
-                right = None if paired is None else paired.get("frame_id")
-                if jpeg is not None and right is not None and left != right:
-                    # Separate reads may advance. Each read names one frame.
-                    pass
-                if paired is not None and jpeg is not None and not paired.get("frame_id"):
-                    errors.append("missing frame id with jpeg")
                 perception = report.get("cycle", {}).get("perception")
                 if perception is not None and not report.get("frame_id"):
                     errors.append("perception without frame id")
@@ -526,9 +454,6 @@ class ObservationPublicationTests(unittest.TestCase):
         part.wait_for_cycle()
         self.assertEqual(errors, [])
         # Single atomic call still pairs metadata and image.
-        jpeg, meta = part.publish_latest_frame_jpeg()
-        self.assertIsNotNone(jpeg)
-        self.assertEqual(meta["report"]["frame_id"], part.latest_state.frame_id)
         status, _, body = RuntimeRoutes(part).handle("GET", OBSERVATION_TRANSACTION_PATH)
         transaction = json.loads(body)
         self.assertEqual(status, 200)

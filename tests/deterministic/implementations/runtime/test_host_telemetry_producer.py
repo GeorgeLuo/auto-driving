@@ -19,7 +19,6 @@ from implementations.runtime.picar.host_telemetry import (
     DriveModeTelemetryAdapter,
     HostTelemetryStore,
     identity_tuple,
-    parse_records_query,
 )
 
 
@@ -44,7 +43,7 @@ def _frame(index: int, *, captured_at_ms: int = 10_000) -> dict[str, int | str]:
     }
 
 
-def _store(clock: _Clock | None = None, *, max_records: int = 256) -> HostTelemetryStore:
+def _store(clock: _Clock | None = None) -> HostTelemetryStore:
     active_clock = clock or _Clock()
     return HostTelemetryStore(
         host_name="piracer",
@@ -52,7 +51,6 @@ def _store(clock: _Clock | None = None, *, max_records: int = 256) -> HostTeleme
         run_id="donkey-run-test",
         generation_id="decision-test",
         clock=active_clock,
-        max_records=max_records,
     )
 
 
@@ -259,14 +257,10 @@ class HostTelemetryStoreTests(unittest.TestCase):
         self.assertEqual(failed_latest["reason"], "observer_error")
         self.assertIsNone(failed_latest["record"])
 
-        # Read validation is side-effect free: a bad route query cannot turn a
-        # previously healthy latest publication into a cached query error.
+        # Read validation is side-effect free: a bad read time cannot turn a
+        # previously healthy latest publication into a cached error.
         read_only = _store()
         _observe(read_only, 1)
-        self.assertEqual(
-            read_only.records(after_sequence=0, limit=0, now_ms=10_000)["reason"],
-            "query_invalid",
-        )
         self.assertTrue(read_only.latest(now_ms=10_000)["ok"])
         self.assertEqual(
             read_only.latest(now_ms=-1)["reason"],
@@ -274,7 +268,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
         )
         self.assertTrue(read_only.latest(now_ms=10_000)["ok"])
 
-    def test_sequence_gap_time_gap_skip_arithmetic_and_history_bounds(self) -> None:
+    def test_sequence_gap_time_gap_and_skip_arithmetic(self) -> None:
         store = _store()
         self.assertTrue(_observe(store, 1, sequence=1)["ok"])
 
@@ -316,33 +310,6 @@ class HostTelemetryStoreTests(unittest.TestCase):
         self.assertEqual(skipped["record"]["host_tick"]["sequence"], 4)
         self.assertEqual(skipped["record"]["host_tick"]["skipped_since_previous"], 2)
 
-        query_cases = (
-            ({"after_sequence": "4", "limit": "8"}, (4, 8)),
-            ({"after_sequence": 0, "limit": 1, "extra": 1}, None),
-            ({"after_sequence": -1, "limit": 1}, None),
-            ({"after_sequence": 0, "limit": 0}, None),
-            ({"after_sequence": 0, "limit": 129}, None),
-            ({"after_sequence": True, "limit": 1}, None),
-        )
-        for query, expected in query_cases:
-            with self.subTest(query=query):
-                if expected is None:
-                    with self.assertRaises(ValueError):
-                        parse_records_query(query)
-                else:
-                    self.assertEqual(parse_records_query(query), expected)
-
-        bounded = _store()
-        for index in range(257):
-            _observe(bounded, index)
-        evicted = bounded.records(after_sequence=0, limit=128, now_ms=10_000)
-        self.assertFalse(evicted["ok"])
-        self.assertEqual(evicted["coverage_reason"], "history_evicted")
-        self.assertEqual(evicted["records"], [])
-        limited = bounded.records(after_sequence=1, limit=128, now_ms=10_000)
-        self.assertTrue(limited["ok"])
-        self.assertLessEqual(len(limited["records"]), 128)
-
         # An unpublished host tick reserves coverage, so the next complete
         # record cannot silently look contiguous with the prior success.
         failed_tick = _store()
@@ -358,7 +325,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
         self.assertEqual(resumed["record"]["host_tick"]["skipped_since_previous"], 1)
         self.assertEqual(resumed["reason"], "sequence_gap")
 
-    def test_implicit_publication_timestamp_is_taken_after_append(self) -> None:
+    def test_implicit_publication_timestamp_is_taken_last(self) -> None:
         class SteppingClock:
             def __init__(self) -> None:
                 self.values = iter((10_000, 10_001))
@@ -377,39 +344,22 @@ class HostTelemetryStoreTests(unittest.TestCase):
         )
         self.assertEqual(result["record"]["host_tick"]["published_at_ms"], 10_001)
 
-    def test_history_only_copies_returned_records_and_status_does_not_export(self) -> None:
-        from copy import deepcopy
-
+    def test_status_does_not_export_the_latest_record(self) -> None:
         store = _store()
-        for index in range(256):
-            _observe(store, index)
-        with patch("implementations.runtime.picar.host_telemetry.deepcopy", wraps=deepcopy) as copied:
-            result = store.records(after_sequence=0, limit=1, now_ms=10_000)
-            self.assertEqual(len(result["records"]), 1)
-            self.assertEqual(copied.call_count, 1)
+        _observe(store, 0)
         with patch("implementations.runtime.picar.host_telemetry.deepcopy", side_effect=AssertionError("status exported a record")):
             self.assertEqual(store.status()["status"], "healthy")
-        result["records"][0]["host_tick"]["sequence"] = 99
-        self.assertEqual(store.records(after_sequence=0, limit=1, now_ms=10_000)["records"][0]["host_tick"]["sequence"], 1)
 
-    def test_latest_and_history_are_atomic_detached_records(self) -> None:
+    def test_latest_is_a_detached_record(self) -> None:
         store = _store()
         for index in range(3):
             _observe(store, index)
 
         latest = store.latest(now_ms=10_000)
-        history = store.records(after_sequence=0, limit=128, now_ms=10_000)
         self.assertEqual(latest["record"]["host_tick"]["sequence"], 3)
-        self.assertEqual(
-            [record["host_tick"]["sequence"] for record in history["records"]],
-            [1, 2, 3],
-        )
         latest["record"]["source_frame"]["frame_id"] = "mutated"
-        history["records"][0]["host_tick"]["sequence"] = 99
         fresh_latest = store.latest(now_ms=10_000)
-        fresh_history = store.records(after_sequence=0, limit=128, now_ms=10_000)
         self.assertEqual(fresh_latest["record"]["source_frame"]["frame_id"], "donkey_frame_000002")
-        self.assertEqual(fresh_history["records"][0]["host_tick"]["sequence"], 1)
 
 
 class DriveModeBoundaryTests(unittest.TestCase):
@@ -479,17 +429,16 @@ class DriveModeBoundaryTests(unittest.TestCase):
                 perception.wait_started(1)
                 drive_mode = _drive_mode_class()(host_telemetry=adapter)
                 drive_mode.run("user", 0.1, 0.2, 0.0, 0.0)
+                first = adapter.latest(now_ms=10_000)["record"]
                 part.run(image_array=object(), mode="user")
                 drive_mode.run("user", 0.3, 0.4, 0.0, 0.0)
-                records = adapter.records(after_sequence=0, limit=128, now_ms=10_000)
-                self.assertTrue(records["ok"])
-                self.assertEqual(len(records["records"]), 2)
-                self.assertEqual(
-                    records["records"][0]["source_frame"],
-                    records["records"][1]["source_frame"],
-                )
+                latest = adapter.latest(now_ms=10_000)
+                self.assertTrue(latest["ok"])
+                second = latest["record"]
+                self.assertEqual(second["source_frame"], first["source_frame"])
+                self.assertEqual(second["host_tick"]["sequence"], first["host_tick"]["sequence"] + 1)
                 self.assertEqual(part.frames_received, 3)
-                self.assertEqual(records["records"][1]["host_tick"]["skipped_since_previous"], 0)
+                self.assertEqual(second["host_tick"]["skipped_since_previous"], 0)
                 perception.release[1].set()
                 part.wait_for_cycle()
                 part.run(image_array=object(), mode="user")

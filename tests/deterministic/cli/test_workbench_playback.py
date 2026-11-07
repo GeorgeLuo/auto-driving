@@ -7,7 +7,7 @@ from functools import partial
 from unittest import mock
 from urllib.parse import urlencode
 from urllib.request import urlopen
-from autonomy.decision_cycle.activation import STEPS
+from autonomy.decision_cycle.activation import STEPS, step_activation
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceptionEvidenceBatch,
     PerceptionSignal,
@@ -15,9 +15,7 @@ from autonomy.decision_cycle.perception.evidence.values import (
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
 from autonomy.decision_cycle.perception.runner import PerceptionRunner
-from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
-from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import EvidenceLedger
-from implementations.decision_cycle.catalog import selection_activation
+from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
 from cli.automa_cli.workbench import runner as workbench_runner
 from cli.automa_cli.frontend.workbench_contract import ReplayActionError
 from tests.shared.cli.workbench_fixtures import (
@@ -33,16 +31,8 @@ from tests.shared.cli.workbench_fixtures import (
 )
 
 
-class RecordingMapper(FixtureMapper):
-    def __init__(self) -> None:
-        super().__init__()
-        self.priors: list[object] = []
-        self.legacy_handoff: list[bool] = []
-
-    def perceive(self, request):
-        self.legacy_handoff.append("prior_memory" in request.metadata)
-        self.priors.append(request.shared_memory.get(LEDGER_KEY))
-        return super().perceive(request)
+# Where the recording memory plugin keeps its state in the host map.
+RECORDING_STATE = "recording_test.state"
 
 
 class SharedMemoryProbe:
@@ -55,7 +45,7 @@ class SharedMemoryProbe:
     def perceive(self, inputs):
         shared_memory = inputs.shared_memory
         self.reads.append((
-            shared_memory.get(LEDGER_KEY),
+            shared_memory.get(RECORDING_STATE),
             shared_memory.get("test.step"),
         ))
         shared_memory["test.perception"] = inputs.frame_id
@@ -164,7 +154,9 @@ class WorkbenchTests(unittest.TestCase):
         published = []
 
         def memory_factory():
-            step = MemoryRunner.from_activation(selection_activation("memory"))
+            step = MemoryRunner.from_activation(
+                step_activation("memory", ["recording_test"], {"recording_test": RECORDING_SPEC})
+            )
 
             class RecordingStep:
                 def __call__(self, context):
@@ -172,7 +164,7 @@ class WorkbenchTests(unittest.TestCase):
                     context.shared_memory["test.step"] = context.frame_id
                     report = step(context)
                     reports.append(report)
-                    published.append(context.shared_memory[LEDGER_KEY])
+                    published.append(context.shared_memory[RECORDING_STATE])
                     return report
 
                 def reset(self, shared_memory=None):
@@ -242,40 +234,6 @@ class WorkbenchTests(unittest.TestCase):
             for entry in timing["steps"]:
                 self.assertIsInstance(entry["duration_ms"], float, entry)
                 self.assertTrue(entry["plugins"], entry)
-
-    def test_sequential_replay_uses_shared_memory_without_legacy_handoff(self) -> None:
-        with image_source(2) as root:
-            write_manifest(root, {
-                "frames": [
-                    {
-                        "frame_id": "camera-first",
-                        "frame_index": 10,
-                        "timestamp_ms": 1000,
-                        "image_path": "frame_00.png",
-                    },
-                    {
-                        "frame_id": "camera-next",
-                        "frame_index": 13,
-                        "timestamp_ms": 1080,
-                        "image_path": "frame_01.png",
-                    },
-                ]
-            })
-            perception_step = RecordingMapper()
-            runner = ImageReplayRunner(
-                root,
-                cadence_ms=0,
-                step_factories={"perception": lambda: perception_step},
-            )
-
-            runner.start()
-            completed = runner.wait(5)
-
-        self.assertEqual(completed["phase"], "completed")
-        self.assertEqual(len(perception_step.priors), 2)
-        self.assertIsNone(perception_step.priors[0])
-        self.assertIsInstance(perception_step.priors[1], EvidenceLedger)
-        self.assertEqual(perception_step.legacy_handoff, [False, False])
 
     def test_seek_jumps_current_frame_and_reuses_processed_history(self) -> None:
         with image_source(4) as root:

@@ -35,7 +35,7 @@ The deterministic run fails any test that starts a program. The error names the 
 Run the tests your change reaches, not every suite. `commands` and `journeys` together take about two minutes, and most changes reach a few of their modules.
 
 1. While you work, run the deterministic tests beside the code you changed, for example `python3 tests/run.py -k decision_cycle`.
-2. Before pushing, run the whole deterministic suite once. It takes three to four minutes, and CI runs the same command.
+2. Before pushing, run the whole deterministic suite once. It takes about a minute and a half, and CI runs the same command.
 3. For Python changes, run `python3 -m scripts.validation.check` before pushing.
    It runs Ruff and basedpyright; repair new diagnostics and report the result.
 4. For Python changes and reviews, inspect QCA for the final committed revision.
@@ -134,7 +134,7 @@ A fixture both suites import goes under `shared/`, at the path of the determinis
 
 For new or materially changed tests, name a concrete regression and the observable behavior that would catch it.
 
-Prefer realistic state transitions and their emitted signals. Do not assert frontend source snippets, help-text paragraphs, or retired delivery-process artifacts. Keep happy paths and meaningful failure boundaries. Split large modules by behavior (aim below 700 lines), with only small, adjacent fixtures; do not introduce a shared testing framework. Include `__init__.py` in test directories so the repository runner discovers them.
+Prefer realistic state transitions and their emitted signals. Do not assert frontend source snippets, help-text paragraphs, or retired delivery-process artifacts. Do not test what a packaged plugin does: plugins change as automations do and are not fixtures of the codebase. Test the framework that loads and runs them, the catalog, and the shared code and feeds under `implementations/`; a framework test that needs a plugin defines a small one beside it. Keep happy paths and meaningful failure boundaries. Split large modules by behavior (aim below 700 lines), with only small, adjacent fixtures; do not introduce a shared testing framework. Include `__init__.py` in test directories so the repository runner discovers them.
 
 ## Support Contract
 

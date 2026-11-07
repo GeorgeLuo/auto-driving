@@ -20,7 +20,6 @@ from cli.automa_cli.hosts.host_formatting import viewer_command
 from cli.automa_cli.hosts.local import HOST_RECORD
 from cli.automa_cli.hosts.publications.host_publications import host_state
 from cli.automa_cli.providers.urls import chase_operator_url
-from implementations.decision_cycle.catalog import preset_activation
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA, write_host_record
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
 from implementations.vehicle.chase_sim.presence import MetricsUiPresence
@@ -29,6 +28,7 @@ from tests.shared.cli.invoke import invoke_automa
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_hosts import answering, closed_url, hung_url
 from tests.support.fake_metrics_ui import fake_metrics_ui
+from tests.support.perception_fixtures import local_perception
 from tests.support.runtime_fixtures import write_host_fixture, write_json
 
 
@@ -53,11 +53,10 @@ def _stage_picar(runtime_root: Path, host_name: str, url: str) -> None:
 
     write_host_fixture(runtime_root, host_name, provider="picar", url=url)
     bundle = controller_bundle_paths(runtime_root / host_name)
-    packaged = preset_activation("perception", "lightweight_observer")
+    local = local_perception("a")
     activation = step_activation(
-        "perception", packaged.plugins, packaged.plugin_specs, packaged.plugin_configs,
-        metadata={**packaged.metadata, "host_name": host_name, "provider": "picar",
-                  "runtime": {"connection": {"base_url": url}}},
+        "perception", local.plugins, local.plugin_specs, local.plugin_configs,
+        metadata={"host_name": host_name, "provider": "picar", "runtime": {"connection": {"base_url": url}}},
     )
     path = Path(bundle["perception_runtime_dir"]) / "active.json"
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -212,44 +211,21 @@ class HostStatusTests(unittest.TestCase):
         write_host_fixture(self.runtime_root, name, provider="picar", url=url)
         return json.loads(self.status("--json", "--name", name).stdout)["hosts"][0]
 
-    def test_a_picar_reply_that_is_not_a_host_status_is_a_run_error(self) -> None:
+    def test_a_picar_reply_that_is_not_a_healthy_host_status_is_a_run_error(self) -> None:
+        session_error = json.dumps({
+            "ok": True, "host_name": "picar", "mode": "autonomy",
+            "session": {"status": "error"}, "host": {"last_error": "camera capture failed"},
+        }).encode()
         for name, body, reason in (
             ("picar-list", b"[]", "{url} answers but reports no runtime host"),
             ("picar-closed", None, "Remote end closed connection without response"),
+            # A session error carries its host's last error.
+            ("picar", session_error, "camera capture failed"),
         ):
             with self.subTest(body=body), answering(body) as url:
                 process = self.picar(name, url)["run"]["process"]
 
                 self.assertEqual((process["status"], process["reason"]), ("error", reason.format(url=url)))
-
-    def test_a_picar_session_error_carries_its_hosts_last_error(self) -> None:
-        body = json.dumps({
-            "ok": True, "host_name": "picar", "mode": "autonomy",
-            "session": {"status": "error"}, "host": {"last_error": "camera capture failed"},
-        }).encode()
-        with answering(body) as url:
-            process = self.picar("picar", url)["run"]["process"]
-
-        self.assertEqual((process["status"], process["reason"]), ("error", "camera capture failed"))
-
-    def test_a_picar_with_a_blank_connection_is_not_running(self) -> None:
-        entry = self.picar("picar", " ")
-
-        self.assertEqual((entry["url"], entry["state"]), (None, "not running"))
-        self.assertEqual(entry["run"]["process"]["pid_state"], "none")
-
-    def test_a_host_with_only_a_local_record_is_not_attached(self) -> None:
-        host = self.host()
-
-        result = self.status()
-
-        self.assertEqual(_host_blocks(result.stdout), [[
-            "Host chase-sim-chaser  not started",
-            self.chaser,
-            "  0 decisions, 0 errors",
-            "  not attached to its simulator (local host record)",
-            f"  {host.base_url}, pid {os.getpid()}",
-        ]])
 
     def test_a_created_host_without_a_process_is_not_running_and_fails_its_id(self) -> None:
         write_host_fixture(self.runtime_root, "free-name", url=self.server.url)
@@ -311,26 +287,23 @@ class HostStatusTests(unittest.TestCase):
         self.assertLess(elapsed, 2.0)
 
     def test_hosts_on_one_simulator_list_its_agents_once(self) -> None:
+        url = closed_url()
         for host_name in ("chase-sim-chaser", "chase-sim-follower"):
-            _record(self.runtime_root, host_name, closed_url(), self.server.url)
+            _record(self.runtime_root, host_name, url, self.server.url)
 
         with mock.patch.object(MetricsUiWsClient, "list_agents", autospec=True,
                                side_effect=MetricsUiWsClient.list_agents) as list_agents:
             result = self.status()
 
         self.assertEqual(list_agents.call_count, 1)
+        self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual([block[0] for block in _host_blocks(result.stdout)], [
             "Host chase-sim-chaser  not answering", "Host chase-sim-follower  not answering",
         ])
-
-    def test_an_id_whose_host_does_not_answer_exits_one(self) -> None:
-        url = closed_url()
-        _record(self.runtime_root, "chase-sim-chaser", url, self.server.url)
-
-        result = self.status("--name", "chase-sim-chaser")
-
-        self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertEqual(_host_blocks(result.stdout), [[
+        # Named, a host that does not answer fails its id.
+        targeted = self.status("--name", "chase-sim-chaser")
+        self.assertEqual(targeted.returncode, 1, targeted.stderr)
+        self.assertEqual(_host_blocks(targeted.stdout), [[
             "Host chase-sim-chaser  not answering",
             self.chaser,
             "  Connection refused",

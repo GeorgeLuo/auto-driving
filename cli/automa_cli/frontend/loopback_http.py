@@ -28,6 +28,8 @@ STATIC_CONTENT_TYPES = {
 PAGES_DIR = Path(__file__).with_name("pages")
 SHARED_PAGE_DIR = PAGES_DIR / "shared"
 SHARED_STATIC_PATTERN = re.compile(r"^/static/shared/([a-z]+\.(?:css|js))$")
+# How often a serving thread checks for shutdown; ``shutdown()`` waits up to this long.
+SERVE_POLL_INTERVAL_S = 0.05
 
 
 def local_write_error(handler: BaseHTTPRequestHandler) -> tuple[int, dict[str, Any]] | None:
@@ -70,7 +72,12 @@ def validate_loopback_host(host: str, *, owner: str) -> str:
 def start_server_thread(server: ThreadingHTTPServer, *, name: str) -> threading.Thread:
     """Start a daemon serving thread for a configured loopback server."""
 
-    thread = threading.Thread(target=server.serve_forever, name=name, daemon=True)
+    thread = threading.Thread(
+        target=server.serve_forever,
+        kwargs={"poll_interval": SERVE_POLL_INTERVAL_S},
+        name=name,
+        daemon=True,
+    )
     thread.start()
     return thread
 

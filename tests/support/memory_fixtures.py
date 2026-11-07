@@ -13,21 +13,17 @@ from autonomy.decision_cycle.memory.interface import (
 )
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
-from implementations.decision_cycle.catalog import step_plugins
-from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import (
-    BoundedEvidenceLedger,
-)
-from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
+from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _EvidenceMemory, _RecordingMemory
 
 # Selection order of ``two_plugin_runner``: the publisher first, so the last
 # plugin in the list is not the one that published ``EVIDENCE_KEY``.
-TWO_PLUGIN_IDS = ("bounded_evidence", "recording_test")
+TWO_PLUGIN_IDS = ("evidence_test", "recording_test")
 
 
 def memory_report(
     state: dict[str, Any],
     *,
-    plugin_id: str = "bounded_evidence",
+    plugin_id: str = "evidence_test",
     publishes: bool = True,
 ) -> dict[str, Any]:
     """A one-plugin memory report whose plugin state is ``state``.
@@ -56,17 +52,16 @@ def plugins_report(
 
 
 def two_plugin_runner(*, frames: int = 1) -> tuple[MemoryRunner, dict[str, Any]]:
-    """``bounded_evidence`` then the recording test plugin, after ``frames`` updates.
+    """An evidence-publishing test plugin then the recording one, after ``frames`` updates.
 
     Returns the runner and its shared-memory map. Each frame observes one
-    floor boundary, so both plugins hold one record and ``bounded_evidence``
+    floor boundary, so both plugins hold one record and ``evidence_test``
     publishes ``EVIDENCE_KEY``.
     """
 
-    config = step_plugins("memory")["bounded_evidence"]["default_config"]
     runner = MemoryRunner.from_plugins(
         {
-            "bounded_evidence": BoundedEvidenceLedger(**config),
+            "evidence_test": _EvidenceMemory(plugin_id="evidence_test"),
             "recording_test": _RecordingMemory(),
         }
     )

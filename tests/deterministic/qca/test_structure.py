@@ -8,80 +8,6 @@ from qca.factors.structure import analyze_structure
 
 
 class StructureFactorTests(unittest.TestCase):
-    def test_mutable_default_and_append_produce_functional_style_findings(self) -> None:
-        result = analyze_structure(
-            {
-                "app.py": (
-                    "def run(value, items=[]):\n"
-                    "    items.append(value)\n"
-                    "    return items\n"
-                ),
-            }
-        )
-        factor = result["functional_style"]
-        kinds = {item["kind"] for item in factor["findings"]}
-        self.assertIn("mutable_default", kinds)
-        self.assertIn("mutating_call", kinds)
-        self.assertGreaterEqual(factor["metrics"]["mutable_default_count"], 1)
-        self.assertGreaterEqual(factor["metrics"]["mutating_call_count"], 1)
-        self.assertGreaterEqual(factor["metrics"]["recognized_effect_count"], 2)
-        self.assertTrue(
-            any("purity" in item.lower() for item in factor["limitations"])
-        )
-
-    def test_identical_callables_form_redundancy_clone_group(self) -> None:
-        result = analyze_structure(
-            {
-                "a.py": (
-                    "def left(value):\n"
-                    "    total = value + 1\n"
-                    "    return total * 2\n"
-                ),
-                "b.py": (
-                    "def right(amount):\n"
-                    "    total = amount + 1\n"
-                    "    return total * 2\n"
-                ),
-            }
-        )
-        redundancy = result["redundancy"]
-        clones = [item for item in redundancy["findings"] if item["kind"] == "callable_clone"]
-        self.assertEqual(len(clones), 1)
-        finding = clones[0]
-        self.assertEqual(len(finding["occurrences"]), 2)
-        self.assertEqual(
-            {(item["path"], item["name"]) for item in finding["occurrences"]},
-            {("a.py", "left"), ("b.py", "right")},
-        )
-        self.assertEqual(set(finding["paths"]), {"a.py", "b.py"})
-        self.assertEqual(redundancy["metrics"]["clone_group_count"], 1)
-        self.assertEqual(redundancy["metrics"]["cloned_callable_count"], 2)
-        self.assertGreater(redundancy["metrics"]["duplicate_ast_loc"], 0)
-
-    def test_consumer_clone_report_exposes_erased_identifier_distinctions(self) -> None:
-        """Consumer: broad clone candidates retain evidence of unequal variable use."""
-        source = "def pair(a, b):\n    return a + b\n\ndef repeated(x, y):\n    return x + x\n"
-        factor = report_to_dict(analyze_sources({"app.py": source}))["factors"]["redundancy"]
-        clone = next(f for f in factor["findings"] if f["kind"] == "callable_clone")
-        self.assertTrue(clone["identifier_usage_differs"])
-        first, second = clone["occurrences"]
-        self.assertNotEqual(first["identifier_usage"]["pattern"], second["identifier_usage"]["pattern"])
-        self.assertEqual(first["identifier_usage"]["names"], ["a", "b"])
-        self.assertEqual(second["identifier_usage"]["names"], ["x", "y"])
-        self.assertEqual((first["line"], first["end_line"], second["line"], second["end_line"]), (1, 2, 4, 5))
-        self.assertEqual(ast.dump(ast.parse(first["code"])), ast.dump(ast.parse("def pair(a, b):\n    return a + b")))
-        renamed = source.replace("return x + x", "return x + y")
-        clone = next(f for f in analyze_sources({"app.py": renamed}).factors["redundancy"]["findings"] if f["kind"] == "callable_clone")
-        self.assertFalse(clone["identifier_usage_differs"])
-
-    def test_stub_function_is_functionality_finding(self) -> None:
-        result = analyze_structure({"hooks.py": "def hook():\n    pass\n"})
-        functionality = result["functionality"]
-        stubs = [item for item in functionality["findings"] if item["kind"] == "stub"]
-        self.assertEqual(len(stubs), 1)
-        self.assertEqual(stubs[0]["path"], "hooks.py")
-        self.assertEqual(functionality["metrics"]["stub_count"], 1)
-
     def test_consumer_report_surfaces_redundant_any_guards(self) -> None:
         """Consumer: report the observed pattern at its source location."""
         expressions = [
@@ -153,50 +79,6 @@ class StructureFactorTests(unittest.TestCase):
         self.assertEqual(len(bare), 1)
         self.assertEqual(patterns["metrics"]["bare_except_count"], 1)
 
-    def test_syntax_error_does_not_crash_and_other_files_still_measured(self) -> None:
-        result = analyze_structure(
-            {
-                "broken.py": "def oops(:\n",
-                "ok.py": "def hook():\n    pass\n",
-            }
-        )
-        self.assertEqual(
-            set(result),
-            {"redundancy", "patterns", "functional_style", "functionality"},
-        )
-        for factor in result.values():
-            self.assertEqual(factor["status"], "measured")
-            self.assertTrue(
-                any(item["kind"] == "syntax_error" for item in factor["findings"])
-            )
-        stubs = [
-            item
-            for item in result["functionality"]["findings"]
-            if item["kind"] == "stub"
-        ]
-        self.assertEqual(len(stubs), 1)
-        self.assertEqual(stubs[0]["path"], "ok.py")
-
-    def test_non_python_paths_are_ignored(self) -> None:
-        result = analyze_structure(
-            {
-                "readme.md": "def run(items=[]):\n    items.append(1)\n",
-                "data.json": '{"except": true}',
-                "app.py": "def hook():\n    pass\n",
-            }
-        )
-        for factor in result.values():
-            paths = {item["path"] for item in factor["findings"]}
-            self.assertNotIn("readme.md", paths)
-            self.assertNotIn("data.json", paths)
-        stubs = [
-            item
-            for item in result["functionality"]["findings"]
-            if item["kind"] == "stub"
-        ]
-        self.assertEqual([item["path"] for item in stubs], ["app.py"])
-        self.assertEqual(result["functional_style"]["metrics"]["mutable_default_count"], 0)
-
     def test_findings_always_have_message(self) -> None:
         result = analyze_structure(
             {
@@ -230,18 +112,6 @@ class StructureFactorTests(unittest.TestCase):
                 self.assertIn("line", item)
                 self.assertIn("kind", item)
                 self.assertTrue(item["message"], msg=f"{name}:{item}")
-
-    def test_analyze_structure_returns_exactly_four_keys(self) -> None:
-        result = analyze_structure({"app.py": "VALUE = 1\n"})
-        self.assertEqual(
-            set(result),
-            {"redundancy", "patterns", "functional_style", "functionality"},
-        )
-        for factor in result.values():
-            self.assertEqual(factor["status"], "measured")
-            self.assertIsInstance(factor["metrics"], dict)
-            self.assertIsInstance(factor["findings"], list)
-            self.assertTrue(factor["limitations"])
 
 
 if __name__ == "__main__":

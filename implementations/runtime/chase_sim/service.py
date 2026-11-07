@@ -39,6 +39,8 @@ RESTART_EXIT_CODE = 75
 HOST_RECORD_SCHEMA = "automa_runtime_host"
 CAPTURE_POLL_S = 0.01
 RECORD_CHECK_S = 1.0
+# How often the routes thread checks for shutdown; ``close()`` waits up to this long.
+SERVE_POLL_INTERVAL_S = 0.05
 
 
 class ChaseFrameLoop(FrameLoop):
@@ -179,7 +181,12 @@ class ChaseRuntimeHost:
         self._stop = threading.Event()
         self._threads = (
             threading.Thread(target=self.loop.serve_captures, args=(self._stop,), name="chase-capture", daemon=True),
-            threading.Thread(target=self.server.serve_forever, name="chase-routes", daemon=True),
+            threading.Thread(
+                target=self.server.serve_forever,
+                kwargs={"poll_interval": SERVE_POLL_INTERVAL_S},
+                name="chase-routes",
+                daemon=True,
+            ),
         )
 
     def start(self) -> "ChaseRuntimeHost":

@@ -108,17 +108,26 @@
               <select class="field-select" data-field="preset"></select></label>
           </div>
           <!-- plugins upload's flags. FILE stands in for the native file control, which stays hidden. -->
+          <div class="pane-form" data-form="collection" hidden>
+            <label class="field"><span class="field-label">collection</span>
+              <select class="field-select" data-field="collection"></select></label>
+          </div>
+          <!-- source: --file and its flags, or --manifest, a path on the viewer's machine. -->
           <div class="pane-form" data-form="upload" hidden>
-            <label class="field"><span class="field-label">step</span>
+            <label class="field"><span class="field-label">source</span>
+              <select class="field-select" data-field="source"><option value="file">file</option><option value="manifest">manifest</option></select></label>
+            <label class="field" data-upload="manifest"><span class="field-label">manifest</span>
+              <input class="field-input" data-field="manifest" type="text" autocomplete="off" placeholder="/path/to/manifest.json"></label>
+            <label class="field" data-upload="file"><span class="field-label">step</span>
               <select class="field-select" data-field="step"><option>perception</option><option>observation</option><option>memory</option><option>proposal</option><option>plan</option><option>action</option></select></label>
-            <label class="field"><span class="field-label">name</span>
+            <label class="field" data-upload="file"><span class="field-label">name</span>
               <input class="field-input" data-field="name" type="text" autocomplete="off" placeholder="prototype"></label>
-            <div class="field"><span class="field-label">file</span>
+            <div class="field" data-upload="file"><span class="field-label">file</span>
               <span class="file-pick"><button type="button" class="key" data-file-pick>FILE</button><span class="file-name" data-file-name></span>
                 <input data-field="file" type="file" accept=".py" hidden></span></div>
-            <label class="field"><span class="field-label">entrypoint</span>
+            <label class="field" data-upload="file"><span class="field-label">entrypoint</span>
               <input class="field-input" data-field="entrypoint" type="text" autocomplete="off" placeholder="prototype:Prototype"></label>
-            <label class="field"><span class="field-label">config</span>
+            <label class="field" data-upload="file"><span class="field-label">config</span>
               <input class="field-input" data-field="config" type="text" autocomplete="off" placeholder="{}"></label>
             <label class="field"><span class="field-label">arm</span>
               <select class="field-select" data-field="arm"><option value="off">off</option><option value="on">on</option></select></label>

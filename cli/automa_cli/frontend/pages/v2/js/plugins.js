@@ -1,7 +1,8 @@
 // Plugins: plugins list for one host, or the packaged catalog. The list is the steps, the
 // selected step's plugins under it; HOSTS chooses the host. The pane manages what is selected:
 // the host (plugins save, disarm --all), a step (a preset, plugins stream, disarm --step) or a
-// plugin (arm, disarm). UPLD is plugins upload.
+// plugin (arm, disarm). UPLD is plugins upload, a file or a manifest's collection; COLL arms or
+// disarms a host's collection.
 "use strict";
 
 const Plugins = (() => {
@@ -24,6 +25,9 @@ const Plugins = (() => {
   const definitions = (host, step) => (listing(host)?.catalog.plugins || []).filter((p) => p.step === step);
   const ids = (host, step) => definitions(host, step).map((p) => p.id);
   const uploaded = (host, step, id) => definitions(host, step).find((p) => p.id === id && p.metadata.revision)?.metadata;
+  // The host's collections, as plugins list --long --json gives them: each one's plugins by step.
+  const collections = (host) => (host ? listing(host)?.catalog.collections || {} : {});
+  const collectionPlugins = (by) => Object.entries(by || {}).flatMap(([step, list]) => list.map((id) => `${step}/${id}`));
   const sourceOf = (host, step, id) => { const u = uploaded(host, step, id); return u ? `revision ${u.revision}` : "packaged"; };
 
   // plugins list, or plugins list --long for a host: each step's armed plugins, then the rest.
@@ -38,7 +42,9 @@ const Plugins = (() => {
           const u = uploaded(host, step, id);
           return `- ${step}/${id}: ${u ? `revision ${u.revision} (${u.filename})` : "packaged"}${on.includes(id) ? " (armed)" : ""}`;
         });
-      })];
+      }),
+      ...(Object.keys(collections(host)).length ? ["Collections:", ...Object.entries(collections(host))
+        .map(([name, by]) => `- ${name}: ${collectionPlugins(by).join(", ")}`)] : [])];
   }
   // plugins list --step: * marks what is armed; the step's default preset is named as its default.
   function stepLines(step, host) {
@@ -74,8 +80,20 @@ const Plugins = (() => {
     W.mode = "rows";
     command(W, "/api/plugins/arm", { ...target(), preset: `${step}/${field("preset").value}` });
   }
+  // COLL: arm or disarm one of the host's collections.
+  function openCollection() {
+    Object.assign(W, { mode: "collection", ask: null, log: [], streaming: null });
+    fillSelect(field("collection"), Object.keys(collections(W.host)).map((name) => [name, name]));
+    render();
+  }
+  function changeCollection(route) {
+    W.mode = "rows";
+    command(W, route, { ...target(), collection: field("collection").value });
+  }
   function openUpload() {
     Object.assign(W, { mode: "upload", ask: null, log: [], streaming: null });
+    field("source").value = "file";
+    field("manifest").value = "";
     field("step").value = (W.selected || "perception").split("/")[0];
     for (const name of ["name", "entrypoint", "config"]) field(name).value = "";
     field("file").value = "";
@@ -91,6 +109,11 @@ const Plugins = (() => {
   });
   // --config must be a JSON object; the form stays open on that error.
   async function upload() {
+    if (field("source").value === "manifest") {
+      W.mode = "rows";
+      command(W, "/api/plugins/upload", { ...target(), manifest: field("manifest").value.trim(), arm: field("arm").value === "on" });
+      return;
+    }
     let config;
     try { config = JSON.parse(field("config").value.trim() || "{}"); } catch { config = null; }
     if (!config || typeof config !== "object" || Array.isArray(config)) { W.log = ["--config must be a JSON object."]; render(); return; }
@@ -139,12 +162,16 @@ const Plugins = (() => {
       { label: "VIEW", action: () => Stream.open({ host, step }), disabled: !host, gap: step === "proposal" || step === "plan" ? "stepViews" : null },
     ] : [];
     const askDisarm = () => { Object.assign(W, { ask: "disarm", log: [], streaming: null }); render(); };
-    const uploadReady = field("name").value.trim() && field("file").files[0] && field("entrypoint").value.trim();
+    const uploadReady = field("source").value === "manifest" ? field("manifest").value.trim()
+      : field("name").value.trim() && field("file").files[0] && field("entrypoint").value.trim();
     let keys = [];
     if (W.busy) keys = [];
     else if (W.ask) keys = [{ label: "YES", action: () => disarmAll(clearable) }, { label: "NO", action: back }];
     else if (W.mode === "preset") keys = [{ label: "ARM", action: () => armPreset(step) }, { label: "CANCEL", action: back }];
     else if (W.mode === "upload") keys = [{ label: "UPLD", action: upload, disabled: !uploadReady }, { label: "CANCEL", action: back }];
+    else if (W.mode === "collection") keys = [{ label: "ARM", action: () => changeCollection("/api/plugins/arm") },
+                                              { label: "DSARM", action: () => changeCollection("/api/plugins/disarm") },
+                                              { label: "CANCEL", action: back }];
     else if (id) {
       // A one-plugin step is changed by arming another, never by disarming its one.
       const on = armed(host, step).includes(id);
@@ -156,6 +183,7 @@ const Plugins = (() => {
       ...(clearable ? [{ label: "DSALL", action: askDisarm, disabled: !host }] : []),
     ];
     else keys = [{ label: "SAVE", action: () => command(W, "/api/plugins/save", target()), disabled: !host },
+                 ...(Object.keys(collections(host)).length ? [{ label: "COLL", action: openCollection }] : []),
                  { label: "DSALL", action: askDisarm, disabled: !host }];
     const rows = STEPS.flatMap((name) => [
       { name, selected: W.selected === name, disabled: W.busy,
@@ -168,15 +196,17 @@ const Plugins = (() => {
     const status = W.ask ? (clearable ? `Disarm every ${clearable} plugin?` : "Disarm every plugin?")
       : W.log.length ? W.log.join("\n")
       : W.mode === "preset" ? `plugins: ${(presets(step)[field("preset").value]?.plugins || []).join(", ")}`
+      : W.mode === "collection" ? [...Object.entries(collections(host)[field("collection").value] || {})
+          .map(([name, list]) => `${name}: ${list.join(", ")}`), "DSARM leaves observation, plan and action their plugin."].join("\n")
       : W.mode === "upload" ? ""
       : streaming ? api.docs[routes.stream(host, step)]?.text || `Reading ${step} on ${host}...`
       : id ? pluginLines(host, step, id).join("\n")
       : step ? stepLines(step, host).join("\n")
       : catalogLines(host).join("\n");
-    const doing = W.ask ? "disarm" : W.mode === "preset" ? `${step} preset` : W.mode === "upload" ? "upload" : streaming ? `${step} stream` : "catalog";
+    const doing = W.ask ? "disarm" : W.mode === "preset" ? `${step} preset` : W.mode === "upload" ? "upload" : W.mode === "collection" ? "collection" : streaming ? `${step} stream` : "catalog";
     return {
       mode: `${host || "packaged"} · ${doing}`, verbs, rows,
-      form: W.mode === "preset" || W.mode === "upload" ? W.mode : null,
+      form: ["preset", "upload", "collection"].includes(W.mode) ? W.mode : null,
       status, keys, keepScroll: streaming,
     };
   }
@@ -186,6 +216,7 @@ const Plugins = (() => {
     if (W.host && !Hosts.find(W.host)) W.host = null;  // a deleted host leaves the packaged catalog
     const picked = field("file").files[0];
     setText(root.querySelector("[data-file-name]"), picked ? picked.name : "");
+    for (const el of root.querySelectorAll("[data-upload]")) el.hidden = el.dataset.upload !== field("source").value;
     paintWindow(w);
   }
   // The read this window streams, for the page's polling.

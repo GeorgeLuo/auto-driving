@@ -6,7 +6,8 @@
 // Opened from disk, the mock answers every route. Served by the viewer (at /v2/), it answers
 // only the routes the viewer lacks; every route the page reads and writes is the viewer's now.
 // A new route: add it here, its answers shaped as the command's, then mark it viewer once the
-// viewer has it.
+// viewer has it. plugins upload --manifest cannot read a path from the page, so any .json path
+// uploads MANIFEST, a stand-in for an external collection.
 "use strict";
 
 const mock = (() => {
@@ -31,6 +32,13 @@ const mock = (() => {
     fixedVehicle: "A host's vehicle is fixed at hosts create: hosts update has no --url, so moving a host is delete + create.",
   };
   const GAP_KEYS = Object.keys(GAPS);
+
+  // The collection an uploaded manifest names, its plugins in manifest order with their source files.
+  const MANIFEST = { name: "chase-413", plugins: [
+    "perception/sim_cardboard_obstacle", "perception/sim_cardboard_permanence", "perception/sim_wall", "perception/view_stagnation",
+    "perception/clearance", "perception/closeness", "memory/stop_row", "memory/turn_model", "memory/approach_model",
+    "proposal/drive_forward", "proposal/drive_backwards", "proposal/avoid_obstacle", "plan/select_proposal",
+  ].map((key) => { const [step, id] = key.split("/"); return { step, id, filename: `chase/${step}/plugins/${id}/plugin.py` }; }) };
 
   // implementations/decision_cycle/<step>/catalog.json, as plugins list prints them.
   const STEPS = {
@@ -137,7 +145,7 @@ const mock = (() => {
     if (!h) return { ...noHost(name), schema: "automa_plugin_list", host_name: name, armed: null, arming_error: null };
     return { schema: "automa_plugin_list", ok: true, host_name: h.name, url: h.url, step: null, arming_error: null,
       armed: STEP_NAMES.flatMap((step) => h.armed[step].map((id) => ({ step, id, metadata: {} }))),
-      catalog: { source: h.url, version: h.catalogVersion, host_run_id: h.runId, plugins: definitions(h) } };
+      catalog: { source: h.url, version: h.catalogVersion, host_run_id: h.runId, plugins: definitions(h), collections: copy(h.collections) } };
   }
   // A running host's frame: the capture's frame at its decision count, keeping only what the
   // perception plugins it has armed found.
@@ -303,7 +311,8 @@ const mock = (() => {
       "==> Extract controller bundle release",
       `Extracted release -> runtime/hosts/${name}/bundle`,
       () => store.hosts.push({ name, provider, vehicleUrl: url, url: hostUrl, pid, since: new Date().toISOString(), state: "pre_start", mode: null, lastFrameAt: null,
-                               decisions: 0, count: null, runPid: null, runId: null, request: 0, armed, uploads: {}, catalogVersion: 1 }),
+                               decisions: 0, count: null, runPid: null, runId: null, request: 0, armed, uploads: {}, collections: {},
+                               catalogVersion: 1 }),
       `Host ${name} created for the chaser at ${url}`,
       `Release: ${release}`,
       `Archive SHA-256: ${archiveHash}`,
@@ -383,10 +392,23 @@ const mock = (() => {
   // A plugin armed into its step; a one-plugin step's replaces it.
   const withPlugin = (h, step, id) => (STEPS[step].one ? [id] : [...h.armed[step].filter((x) => x !== id), id]);
   const stepItem = (value) => { const [step, id] = String(value || "").split("/"); return STEPS[step] && id ? [step, id] : null; };
-  // plugins arm --name step/id ..., or --preset step/preset: the preset's plugins in place of the step's.
-  function arm({ host_name: name, name: names, preset }, onLine) {
+  // A collection's members by step, each step's in manifest order; refused when the host has none by that name.
+  const members = (h, collection) => h.collections[collection];
+  const unknownCollection = (h, label, collection) => ({ ok: false, kind: "error", text: [`Host: ${h.name}`, `Endpoint: ${h.url}`,
+    `Collection: ${collection}`, `${label}: failed`, `Reason: unknown plugin collection '${collection}'`,
+    `Next: ./cli/automa plugins list --host-name ${h.name} --long`].join("\n") });
+  // plugins arm --name step/id ..., --preset step/preset (the preset's plugins in place of the step's),
+  // or --collection: its plugins added to each step, a one-plugin step's replaced.
+  function arm({ host_name: name, name: names, preset, collection }, onLine) {
     const h = findHost(name);
     if (!h) return noHost(name);
+    if (collection !== undefined) {
+      const by = members(h, collection);
+      if (!by) return unknownCollection(h, "Arming", collection);
+      const next = {};
+      for (const [step, ids] of Object.entries(by)) for (const id of ids) next[step] = withPlugin({ armed: { ...h.armed, ...next } }, step, id);
+      return selection(h, "Arming", [`Collection: ${collection}`], next, onLine);
+    }
     if (preset !== undefined) {
       const [step, id] = stepItem(preset) || [];
       const ids = step && (STEPS[step].presets || {})[id];
@@ -399,23 +421,32 @@ const mock = (() => {
     for (const [step, id] of items) next[step] = withPlugin({ armed: { ...h.armed, ...next } }, step, id);
     return selection(h, "Arming", [], next, onLine);
   }
-  // plugins disarm --name step/id ..., --step, or --all.
-  function disarm({ host_name: name, name: names, step, all }, onLine) {
+  // plugins disarm --name step/id ..., --collection (a one-plugin step keeps its plugin), --step, or --all.
+  function disarm({ host_name: name, name: names, collection, step, all }, onLine) {
     const h = findHost(name);
     if (!h) return noHost(name);
+    if (collection !== undefined) {
+      const by = members(h, collection);
+      if (!by) return unknownCollection(h, "Disarming", collection);
+      const steps = Object.keys(by).filter((s) => CLEARABLE.includes(s));
+      if (!steps.length) return refused(`plugin collection '${collection}' only arms one-plugin steps, which keep their plugin; arm a replacement instead`);
+      return selection(h, "Disarming", [`Collection: ${collection}`],
+                       Object.fromEntries(steps.map((s) => [s, h.armed[s].filter((id) => !by[s].includes(id))])), onLine);
+    }
     if (names !== undefined) {
       const next = {};
       for (const [s, id] of names.map(stepItem).filter(Boolean)) next[s] = (next[s] || h.armed[s]).filter((x) => x !== id);
       return selection(h, "Disarming", [], next, onLine);
     }
-    if (step === undefined && !all) return refused("disarm needs name, step or all");
+    if (step === undefined && !all) return refused("disarm needs name, collection, step or all");
     const steps = all ? CLEARABLE : [step];
     return selection(h, "Disarming", step ? [`Step: ${step}`] : [], Object.fromEntries(steps.map((s) => [s, []])), onLine);
   }
   // plugins upload --name step/id --file --entrypoint [--config] [--arm].
-  function upload({ host_name: name, name: key, filename, arm: andArm }, onLine) {
+  function upload({ host_name: name, name: key, filename, manifest, arm: andArm }, onLine) {
     const h = findHost(name);
     if (!h) return missingHost(name);
+    if (manifest !== undefined) return uploadCollection(h, manifest, andArm, onLine);
     const [step, id] = key.split("/");
     const revision = ((h.uploads[key] || {}).revision || 0) + 1;
     const next = withPlugin(h, step, id);
@@ -424,6 +455,23 @@ const mock = (() => {
       () => { h.uploads[key] = { revision, filename }; h.catalogVersion += 1; },
       `Catalog version: ${h.catalogVersion + 1} (host run none)`,
       ...(andArm ? [`Request: ${hex(12)}`, `Requested ${step}: ${armedText}`, () => { h.armed[step] = next; }, `Applied ${step}: ${armedText}`] : [])], onLine);
+  }
+  // plugins upload --manifest [--arm]: every plugin MANIFEST names as one revision, then the collection.
+  function uploadCollection(h, manifest, andArm, onLine) {
+    const head = [`Host: ${h.name}`, `Endpoint: ${h.url}`];
+    if (!/\.json$/.test(manifest)) return { ok: false, kind: "error", text: [...head, "Upload: failed",
+      `Reason: [Errno 2] No such file or directory: '${manifest}'`, `Next: Fix ${manifest.split("/").pop()}, then upload it again.`].join("\n") };
+    const revision = hex(64), { name: collection, plugins } = MANIFEST;
+    const by = {};
+    for (const { step, id } of [...plugins].sort((a, b) => a.step.localeCompare(b.step))) (by[step] ||= []).push(id);
+    const lines = [...head, "Upload: uploaded", `Collection: ${collection}`, `Revision: ${revision}`,
+      () => { for (const { step, id, filename } of plugins) h.uploads[`${step}/${id}`] = { revision, filename };
+              h.collections[collection] = by; h.catalogVersion += 1; },
+      `Catalog version: ${h.catalogVersion + 1} (host run ${h.runId || "none"})`,
+      ...plugins.map(({ step, id, filename }) => `- ${step}/${id}: revision ${revision} (${filename})`)];
+    if (!andArm) return play("uploaded", [...lines, "Selection: unchanged",
+      `Next: ./cli/automa plugins arm --host-name ${h.name} --collection ${collection}`], onLine);
+    return play("uploaded", lines, onLine).then(() => arm({ host_name: h.name, collection }, onLine));
   }
   // plugins save: what the host runs now becomes what it starts with.
   function save({ host_name: name }, onLine) {

@@ -34,7 +34,8 @@ from .hosts.runs.status import hosts_status
 from .hosts.views.frames import HostFrames
 from .plugins.catalog.render import render_listing, render_save, render_selection, render_upload
 from .plugins.catalog.service import (
-    arm_plugins, arm_preset, disarm_plugins, list_plugins, save_plugins, upload_plugin,
+    arm_collection, arm_plugins, arm_preset, disarm_collection, disarm_plugins, list_plugins, save_plugins,
+    upload_collection, upload_plugin,
 )
 from .plugins.stream.render import render_stream
 from .plugins.stream.service import STREAM_STEPS, stream_host
@@ -188,10 +189,12 @@ def _plugins_stream(query: dict[str, str]) -> dict[str, Any]:
 
 
 def _arm(body: dict[str, Any]) -> dict[str, Any]:
-    """plugins arm --name ... or --preset <step>/<preset>."""
+    """plugins arm --name ..., --preset <step>/<preset> or --collection."""
 
     host_name = _text(body, "host_name")
-    if "preset" in body:
+    if "collection" in body:
+        result = arm_collection(url=None, host_name=host_name, name=_text(body, "collection"))
+    elif "preset" in body:
         step, preset = _step_item(body["preset"], "preset")
         result = arm_preset(url=None, host_name=host_name, step=step, preset=preset)
     else:
@@ -200,10 +203,12 @@ def _arm(body: dict[str, Any]) -> dict[str, Any]:
 
 
 def _disarm(body: dict[str, Any]) -> dict[str, Any]:
-    """plugins disarm --name ..., --step or --all."""
+    """plugins disarm --name ..., --collection, --step or --all."""
 
     host_name, step = _text(body, "host_name"), body.get("step")
-    if "name" in body:
+    if "collection" in body:
+        result = disarm_collection(url=None, host_name=host_name, name=_text(body, "collection"))
+    elif "name" in body:
         result = disarm_plugins(url=None, host_name=host_name, plugins=_step_items(body))
     elif step is not None:
         if step not in CLEARABLE_STEPS:
@@ -212,13 +217,18 @@ def _disarm(body: dict[str, Any]) -> dict[str, Any]:
     elif _flag(body, "all"):
         result = disarm_plugins(url=None, host_name=host_name)
     else:
-        raise ValueError("disarm needs name, step or all")
+        raise ValueError("disarm needs name, collection, step or all")
     return _answer(result, render_selection(result, json_output=False))
 
 
 def _upload(body: dict[str, Any]) -> dict[str, Any]:
-    """plugins upload --name --entrypoint [--config] [--arm], the file sent as filename and source_base64."""
+    """plugins upload --name --entrypoint [--config] [--arm], the file sent as filename and source_base64;
+    or --manifest [--arm], the manifest a path on this machine, as the CLI reads it with its source directory."""
 
+    if "manifest" in body:
+        result = upload_collection(url=None, host_name=_text(body, "host_name"),
+                                   manifest=Path(_text(body, "manifest")).expanduser(), arm=_flag(body, "arm"))
+        return _answer(result, render_upload(result, json_output=False))
     step, plugin_id = _step_item(body.get("name"), "name")
     filename = Path(_text(body, "filename")).name
     config = body.get("config")

@@ -365,6 +365,7 @@ class AutonomyCycleHost:
         self._pending_activations = None
         self._record_applied_decision()
         self._refresh_step_reports()
+        logger.info("Decision generation: %s (restaged)", self._applied_decision["generation_id"])
 
     def _adopt_metadata(self, desired: Mapping[str, StepActivation | None]) -> None:
         """Rename running steps whose code is unchanged, such as to a preset that selects it.

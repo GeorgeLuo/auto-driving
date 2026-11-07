@@ -20,9 +20,7 @@ from tests.shared.cli.automation_pipeline.pipeline_fixtures import _FakeCar
 
 def _active_routes():
     activations = {step: packaged_activation(step) for step in DECISION_STEPS}
-    return _routes(decision_steps(activations), decision_activations={
-        step: activation.to_payload() for step, activation in activations.items()
-    })
+    return _routes(decision_steps(activations))
 
 
 class CaptureCloseoutTests(unittest.TestCase):

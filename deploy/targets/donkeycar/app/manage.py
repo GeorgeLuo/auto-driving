@@ -503,13 +503,12 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             host, loop_options = staged_runtime(
                 runtime_root, lambda steps: create_host(steps=steps), host_name=host_name,
             )
-            generation_id = loop_options["generation_id"]
             if host_name is not None:
                 telemetry_store = HostTelemetryStore(
                     host_name=host_name,
                     source_id=source_id,
                     run_id=run_id,
-                    generation_id=generation_id,
+                    generation_id=host.applied_decision()["generation_id"],
                 )
                 host_telemetry_publisher = DriveModeTelemetryAdapter(telemetry_store)
             # Capture runs when the decision worker is free, independently of

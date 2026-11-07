@@ -3,8 +3,8 @@
 PiCar ticks and Chase streams submit continuously: one pending slot holds the
 newest sample while one worker runs decisions sequentially. Replacing a waiting
 sample increments frames_dropped.
-The cycle host owns movement authority, freshness, stopping, and recording;
-this loop owns pending frames, publications, and the applied decision identity.
+The cycle host owns movement authority, freshness, stopping, recording, and
+the applied decision identity; this loop owns pending frames and publications.
 """
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 
-from autonomy.decision_cycle.activation import STEPS, activation_generation_id
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycleResult, cycle_result_of
 from autonomy.decision_cycle.memory.errors import MemoryUpdateError
@@ -169,8 +168,9 @@ class FrameLoop:
     """Feed camera samples to the shared cycle host and publish the results.
 
     One completed cycle publishes one ``host_report``. ``host.run`` applies
-    restaged selections and records the applied identity; this loop copies
-    that identity into the report. The live camera sample stays separate.
+    restaged selections and stamps the identity it applied on the cycle's
+    context; the report names that identity. The live camera sample stays
+    separate.
     """
 
     def __init__(
@@ -179,8 +179,6 @@ class FrameLoop:
         host: AutonomyCycleHost,
         host_name: str | None = None,
         source_id: str | None = None,
-        decision_activations: dict[str, dict[str, Any] | None] | None = None,
-        generation_id: str | None = None,
         run_id: str | None = None,
         recording_root: Path | None = None,
         runtime: str = "frame_loop",
@@ -213,29 +211,13 @@ class FrameLoop:
         self._session_frame_id: str | None = None
         self.host_name = host_name
         self.source_id = source_id or (f"{runtime}:{host_name}" if host_name else None)
-        self.decision_activations = (
-            deepcopy(dict(decision_activations))
-            if isinstance(decision_activations, dict)
-            else None
-        )
-        if generation_id is None and self.decision_activations is not None:
-            try:
-                generation_id = activation_generation_id(
-                    self.decision_activations, prefix="decision"
-                )
-            except (TypeError, ValueError):
-                generation_id = None
-        self.generation_id = generation_id
         self.run_id = run_id or f"{runtime}-run-{secrets.token_hex(12)}"
         host.register_status_provider("observation", self.observation_status)
 
-    # Adapter hooks. A vehicle adapter overrides these to mirror the shared
-    # session in its own vocabulary; the loop never depends on them.
+    # Adapter hook. A vehicle adapter overrides it to mirror the shared
+    # session in its own vocabulary; the loop never depends on it.
 
     def _frame_completed(self) -> None:
-        pass
-
-    def _identity_applied(self, generation_id: str) -> None:
         pass
 
     def observation_status(self) -> dict[str, Any]:
@@ -448,19 +430,6 @@ class FrameLoop:
             "report": report,
         }
 
-    def _write_applied_decision(self, applied: dict[str, Any]) -> None:
-        """Copy the host's applied identity into this loop's publication."""
-
-        generation_id = applied.get("generation_id")
-        steps = applied.get("steps")
-        if not isinstance(generation_id, str) or not isinstance(steps, dict):
-            return
-        with self._lock:
-            self.decision_activations = deepcopy(steps)
-            self.generation_id = generation_id
-        self._identity_applied(generation_id)
-        logger.info("Decision generation: %s (restaged)", generation_id)
-
     def _capture_frame_report(
         self,
         result: DecisionCycleResult,
@@ -469,19 +438,20 @@ class FrameLoop:
         status: str,
         error: str | None,
         mode_name: str,
+        identity: dict[str, Any],
     ) -> dict[str, Any]:
-        """The report for this camera frame. Another frame's outputs are not reused."""
+        """The report for this camera frame. Another frame's outputs are not reused.
+
+        ``identity`` is the host's applied decision, ``generation_id`` and ``steps``.
+        """
 
         report_application = None
         if result.application is None:
             report_application = error_application(mode_name)
-        generation_id = self.generation_id or "unassigned"
-        activations = result.context.metadata.get("step_activations")
-        steps = deepcopy(activations if isinstance(activations, dict) else self.decision_activations)
-        steps = steps if isinstance(steps, dict) else {}
+        generation_id = identity["generation_id"]
         values: dict[str, Any] = {
             "source_id": self.source_id or f"{self.runtime}:local",
-            "activation": {"generation_id": generation_id, "steps": steps},
+            "activation": {"generation_id": generation_id, "steps": identity["steps"]},
             "stale_after_ms": stale_after_ms(self._cycle_duration_ms),
         }
         if result.application is not None:
@@ -627,30 +597,18 @@ class FrameLoop:
 
             if cycle_result is None or cycle_result.context.frame_id != frame_id:
                 cycle_result = empty_result()
-            applied = self.host.applied_decision()
+            # The host stamps the identity it applied on every cycle it runs,
+            # raised or not; an empty result names the host's current identity.
+            metadata = cycle_result.context.metadata
+            identity = (
+                {"generation_id": metadata["generation_id"], "steps": metadata["step_activations"]}
+                if "generation_id" in metadata
+                else self.host.applied_decision()
+            )
             # The cycle ran outside this lock. Publishing borrows nothing from
             # the previous frame: cycle_result is this attempt or an empty one.
             with self._lock:
                 self._cycle_duration_ms = float(duration_ms)
-                if isinstance(applied, dict) and applied.get("generation_id") != self.generation_id:
-                    self._write_applied_decision(applied)
-                metadata = cycle_result.context.metadata or {}
-                applied_steps = metadata.get("step_activations")
-                if isinstance(applied_steps, dict):
-                    # A loop started without an identity still publishes the
-                    # pipeline this frame applied, under the host's generation.
-                    if not self.decision_activations:
-                        identity = {step: applied_steps.get(step) for step in STEPS}
-                        stored = metadata.get("generation_id")
-                        try:
-                            self.generation_id = (
-                                stored if isinstance(stored, str) and stored
-                                else activation_generation_id(identity, prefix="decision")
-                            )
-                        except (TypeError, ValueError):
-                            pass
-                        else:
-                            self.decision_activations = deepcopy(identity)
                 try:
                     report = self._capture_frame_report(
                         cycle_result,
@@ -658,6 +616,7 @@ class FrameLoop:
                         status=status,
                         error=error,
                         mode_name=mode_name,
+                        identity=identity,
                     )
                 except Exception as exc:
                     # A cycle that is not JSON data still publishes this frame,
@@ -671,6 +630,7 @@ class FrameLoop:
                             status=status,
                             error=f"frame report failed: {type(exc).__name__}: {exc}",
                             mode_name=mode_name,
+                            identity=identity,
                         )
                     except Exception:
                         logger.exception("Error report failed for %s", frame_id)

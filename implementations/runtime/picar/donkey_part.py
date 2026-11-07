@@ -2,9 +2,10 @@
 
 Each drive tick submits camera memory. The loop
 (``autonomy.runtime.frame_loop``) owns the latest waiting frame, the decision
-worker, publications, and the applied identity. This part translates
-Donkey's drive-mode vocabulary, hands the car back to the operator when a run
-ends, and passes completed source frames to the DriveMode telemetry observer.
+worker, and publications. This part translates Donkey's drive-mode
+vocabulary, hands the car back to the operator when a run ends, and passes
+completed source frames and their generation to the DriveMode telemetry
+observer.
 """
 from __future__ import annotations
 
@@ -31,8 +32,6 @@ class AutonomyPilotPart(FrameLoop):
         host: AutonomyCycleHost,
         host_name: str | None = None,
         source_id: str | None = None,
-        decision_activations: dict[str, dict[str, Any] | None] | None = None,
-        generation_id: str | None = None,
         run_id: str | None = None,
         host_telemetry: Any | None = None,
         controller: Any | None = None,
@@ -48,7 +47,6 @@ class AutonomyPilotPart(FrameLoop):
         super().__init__(
             host=host,
             host_name=host_name, source_id=source_id,
-            decision_activations=decision_activations, generation_id=generation_id,
             run_id=run_id or f"donkey-run-{secrets.token_hex(12)}",
             recording_root=recording_root,
             runtime="donkeycar", camera_source="donkeycar_vehicle_memory", frame_prefix="donkey",
@@ -100,11 +98,6 @@ class AutonomyPilotPart(FrameLoop):
     def _frame_completed(self) -> None:
         self._publish_host_source_frame()
 
-    def _identity_applied(self, generation_id: str) -> None:
-        store = getattr(self.host_telemetry, "store", None)
-        if store is not None:
-            store.generation_id = generation_id
-
     def _hand_back(self) -> None:
         """Return Donkey to the operator from rest."""
         if self.controller is not None:
@@ -143,6 +136,11 @@ class AutonomyPilotPart(FrameLoop):
                     "completed_at_ms": latest.completed_at_ms,
                 }
             )
+            generation_id = None if latest is None else latest.report["generation_id"]
+        store = getattr(self.host_telemetry, "store", None)
+        if store is not None and generation_id is not None:
+            # Telemetry names the generation of the frame it reports.
+            store.generation_id = generation_id
         try:
             setter(source_frame)
         except Exception:

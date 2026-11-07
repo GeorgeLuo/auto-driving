@@ -1,0 +1,38 @@
+[tool.ruff]
+required-version = "==0.17.1"
+target-version = "py311"
+extend-exclude = [".claude", "runtime", "lab", "deploy/targets/donkeycar/vendor"]
+
+[tool.ruff.lint]
+select = ["F", "B", "C901", "PLR0912", "PLR0915", "PLR0916", "PLR1702"]
+preview = true
+explicit-preview-rules = true
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["B", "C901", "PLR"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-branches = 12
+max-statements = 50
+max-bool-expr = 5
+max-nested-blocks = 5
+
+[tool.basedpyright]
+include = ["autonomy", "cli", "implementations", "qca", "scripts/validation"]
+exclude = ["**/__pycache__", "**/cache"]
+pythonVersion = "3.11"
+pythonPlatform = "Linux"
+# Start with the agreed contract checks; broad third-party inference checks
+# can be enabled separately once their diagnostics are stable.
+typeCheckingMode = "off"
+reportMissingImports = "error"
+reportInvalidTypeForm = "error"
+reportUnnecessaryIsInstance = "error"
+reportUnnecessaryComparison = "error"
+reportUnreachable = "error"
+reportExplicitAny = "error"
+# Enable propagation checks after the explicit contracts have been narrowed.
+reportAny = "none"

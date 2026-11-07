@@ -34,6 +34,9 @@ Confirm changes adhere to the priorities defined in this document.
    they drive, and run a whole group only when the change reaches code that
    most of its tests use. CI runs only the deterministic suite, so list each
    systems run under Validation.
+   For Python changes, also run `python3 -m scripts.validation.check` (install
+   `requirements-quality.txt` first). Repair new diagnostics; baseline refreshes
+   are deliberate debt acceptance, not a normal validation step.
 6. Review the final diff for accidental files, generated artifacts, secrets,
    unrelated cleanup, and missing validation.
 

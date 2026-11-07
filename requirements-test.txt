@@ -1,4 +1,4 @@
--r requirements.txt
+-r requirements-quality.txt
 
 coverage>=7.15,<8
 pyflakes>=3.2,<5

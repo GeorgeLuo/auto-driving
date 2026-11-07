@@ -23,6 +23,7 @@ from ..replay.models import SourceValidationError
 from ..replay.source import WORKBENCH_DEFAULT_MAX_FRAMES
 from ..shared.open_view import launch_browser
 from .models import WorkbenchEvent, WorkbenchResult
+from .plugins import PluginCatalogError
 from .runner import ImageReplayRunner
 
 
@@ -101,7 +102,7 @@ def run_workbench_replay(
         if emit is not None:
             emit(WorkbenchEvent(state=state, server_url=displayed_url, serving=False))
         return WorkbenchResult(exit_code)
-    except (ReplayActionError, SourceValidationError) as exc:
+    except (ReplayActionError, SourceValidationError, PluginCatalogError) as exc:
         return WorkbenchResult(2, error=str(exc))
     finally:
         if server is not None:

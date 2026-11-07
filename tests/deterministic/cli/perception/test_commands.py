@@ -27,26 +27,25 @@ class PerceptionCommandTests(unittest.TestCase):
                 pid=os.getpid(),
                 manifest_bundle_root=ROOT,
             )
-            automation_dir = (
-                runtime_root / host_name / "bundle" / "runtime" / "automation"
-            )
             server = RuntimeViewServer(
                 host_name=host_name,
-                automation_dir=automation_dir,
+                automation_dir=runtime_root / host_name / "bundle" / "runtime" / "view",
                 port=0,
-                run_id="test-run",
-                worker_pid=os.getpid(),
                 replay_runner_factory=ImageReplayRunner,
             ).start()
             frame_bytes = io.BytesIO()
             Image.new("RGB", (16, 12), (20, 40, 60)).save(frame_bytes, format="JPEG")
             frame_record = {
-                "frame": {
+                "schema": "host_frame_publication",
+                "health": "healthy",
+                "ok": True,
+                "report": {
                     "frame_id": "frame_000002",
                     "frame_index": 2,
-                    "captured_at_ms": 1000,
+                    "timestamp_ms": 1000,
+                    "published_at_ms": 1000,
+                    "cycle": {"perception": {"things": [], "signals": []}},
                 },
-                "perception": {"things": [], "signals": []},
             }
             server.perception.publish(frame_bytes=frame_bytes.getvalue(), frame_record=frame_record)
             expected_url = server.url

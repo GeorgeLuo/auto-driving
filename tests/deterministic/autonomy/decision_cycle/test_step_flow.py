@@ -35,7 +35,6 @@ class DecisionStageFlowTests(unittest.TestCase):
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id="test-perception",
             status="ok",
-            lines=("signal id=path_clear value=true",),
             signals=(),
             things=(),
             limits=("test evidence only",),
@@ -46,7 +45,6 @@ class DecisionStageFlowTests(unittest.TestCase):
             sensor_frame={},
             perception_schema=perception.schema,
             perception_plugin_id=perception.plugin_id,
-            summary=perception.lines,
         )
         shared_memory: dict = {}
         context = DecisionFrameContext(

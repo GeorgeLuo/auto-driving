@@ -69,8 +69,8 @@ class CatalogWriteBoundaryFlows(unittest.TestCase):
                                 with rejected.exception as response:
                                     self.assertEqual(response.code, status)
                                     failure = json.load(response)
+                                self.assertEqual(set(failure), {"ok", "error"})
                                 self.assertFalse(failure["ok"])
-                                self.assertEqual(failure["status"], "failed")
                                 self.assertEqual(get_json(base, "/api/plugins"), before)
                     # CLI-shaped JSON was accepted above; same-origin browser JSON is also accepted.
                     request = Request(base + "api/plugins", data=json.dumps({**payloads[0], "plugin_id": "browser"}).encode(),

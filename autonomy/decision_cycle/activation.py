@@ -4,8 +4,8 @@ Every step is activated the same way. ``runtime/<step>/active.json`` holds a
 ``StepActivation``: the step ID, the selected plugin IDs in order
 (``plugins``), each available plugin's ``module.path:Name`` entrypoint
 (``plugin_specs``), and the keyword arguments each is constructed with
-(``plugin_configs``). ``metadata`` is free-form description for tools, such as
-the preset a selection was built from; runners do not read it.
+(``plugin_configs``). ``metadata`` carries the preset label and the source
+provenance a generation hashes. Runners do not branch on the preset.
 """
 
 from __future__ import annotations
@@ -16,16 +16,16 @@ import os
 import tempfile
 from collections.abc import Mapping
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from autonomy.plugins import PluginManager
+from autonomy.plugins import PluginDefinition, PluginManagementError
 
 STEP_ACTIVATION_SCHEMA = "automa_step_activation"
 # The cycle's steps in the order they run.
 STEPS = ("perception", "observation", "memory", "proposal", "plan", "action")
-# The steps that decide the cycle's action; their activations identify a decision generation.
+# The three steps that decide the cycle's action. Pipeline identity uses all STEPS.
 DECISION_STEPS = ("proposal", "plan", "action")
 ACTIVATION_FILENAME = "active.json"
 _PAYLOAD_KEYS = {"schema", "step", "plugins", "plugin_specs", "plugin_configs", "metadata"}
@@ -77,14 +77,7 @@ class StepActivation:
         )
         object.__setattr__(self, "metadata", deepcopy(dict(self.metadata)))
         # Unknown plugin IDs fail here, before any plugin is constructed.
-        self.plugin_manager()
-
-    def plugin_manager(self) -> PluginManager:
-        """A fresh manager for this step with the activation's selection applied."""
-
-        manager = PluginManager.from_specs(self.step, self.plugin_specs, self.plugin_configs)
-        manager.select(self.plugins)
-        return manager
+        selected_definitions(self)
 
     def to_payload(self) -> dict[str, Any]:
         payload: dict[str, Any] = {
@@ -219,6 +212,176 @@ def activation_presets(
     return presets
 
 
+def selected_definitions(activation: StepActivation) -> tuple[PluginDefinition, ...]:
+    """The activation's plugins in order. An ID with no spec is unknown."""
+
+    missing = [plugin_id for plugin_id in activation.plugins if plugin_id not in activation.plugin_specs]
+    if missing:
+        raise PluginManagementError(
+            f"unknown plugin id {missing[0]!r} for step {activation.step!r}"
+        )
+    revisions = activation.metadata.get("plugin_revisions")
+    revisions = revisions if isinstance(revisions, Mapping) else {}
+    definitions: list[PluginDefinition] = []
+    for plugin_id in activation.plugins:
+        spec = activation.plugin_specs[plugin_id]
+        metadata: dict[str, Any] = {}
+        module, separator, _attribute = spec.partition(":")
+        file_name = Path(module).name
+        if separator and _revision_filename(file_name):
+            metadata["source_file"] = file_name
+        revision = revisions.get(plugin_id)
+        if isinstance(revision, str) and revision:
+            metadata["revision"] = revision
+        definitions.append(PluginDefinition(
+            step=activation.step,
+            plugin_id=plugin_id,
+            entrypoint=spec,
+            config=activation.plugin_configs.get(plugin_id, {}),
+            metadata=metadata,
+        ))
+    return tuple(definitions)
+
+
+def activation_for_definitions(
+    step: str,
+    definitions: tuple[PluginDefinition, ...] | list[PluginDefinition],
+    *,
+    metadata: Mapping[str, Any] | None = None,
+    source_path: Path | None = None,
+) -> StepActivation:
+    """An activation whose selected definitions are exactly ``definitions``.
+
+    Specs are the definitions' executable entrypoints, so an uploaded revision
+    stays the file it was built from. Display metadata is copied through and
+    is not part of the executable identity.
+    """
+
+    specs: dict[str, str] = {}
+    configs: dict[str, Mapping[str, Any]] = {}
+    revisions: dict[str, str] = {}
+    for definition in definitions:
+        if definition.step != step:
+            raise PluginManagementError(
+                f"plugin {definition.plugin_id!r} belongs to {definition.step!r}, not {step!r}"
+            )
+        specs[definition.plugin_id] = definition.executable_entrypoint
+        if definition.config:
+            configs[definition.plugin_id] = dict(definition.config)
+        revision = definition.metadata.get("revision")
+        if isinstance(revision, str) and revision:
+            revisions[definition.plugin_id] = revision
+    kept = dict(metadata or {})
+    if revisions:
+        kept["plugin_revisions"] = revisions
+    else:
+        kept.pop("plugin_revisions", None)
+    return StepActivation(
+        step=step,
+        plugins=tuple(definition.plugin_id for definition in definitions),
+        plugin_specs=specs,
+        plugin_configs=configs,
+        metadata=kept,
+        source_path=source_path,
+    )
+
+
+def stamp_source(
+    activation: StepActivation,
+    *,
+    host_name: str | None = None,
+    release: Mapping[str, Any] | None = None,
+) -> StepActivation:
+    """Fill source provenance that is not already on ``activation``.
+
+    A recorded release and host name are left as they were. Recording can copy
+    this provenance later without changing the generation.
+    """
+
+    metadata = dict(activation.metadata)
+    if isinstance(host_name, str) and host_name and not isinstance(metadata.get("host_name"), str):
+        metadata["host_name"] = host_name
+    if isinstance(release, Mapping) and isinstance(release.get("tree_sha256"), str):
+        bundle = dict(metadata.get("controller_bundle") or {})
+        existing = bundle.get("release")
+        tree = existing.get("tree_sha256") if isinstance(existing, Mapping) else None
+        if not isinstance(tree, str) or not tree:
+            bundle["release"] = {
+                key: value for key, value in release.items() if key in {"tree_sha256", "created_at_ms"}
+            }
+            metadata["controller_bundle"] = bundle
+    if metadata == dict(activation.metadata):
+        return activation
+    return replace(activation, metadata=metadata)
+
+
+def _revision_filename(name: str) -> bool:
+    stem = name[:-3] if name.endswith(".py") else ""
+    return len(stem) == 64 and all(character in "0123456789abcdef" for character in stem)
+
+
+def _canonical_spec(spec: str) -> str:
+    """An entrypoint whose uploaded file is named by its revision, not its path."""
+
+    module, separator, attribute = spec.partition(":")
+    name = Path(module).name
+    if separator and _revision_filename(name):
+        return f"{name}:{attribute}"
+    return spec
+
+
+def _source_identity(metadata: Mapping[str, Any], plugins: list[str]) -> dict[str, Any]:
+    """Release and upload revisions. Preset labels and absolute paths are omitted."""
+
+    identity: dict[str, Any] = {}
+    host_name = metadata.get("host_name")
+    if isinstance(host_name, str) and host_name:
+        identity["host_name"] = host_name
+    bundle = metadata.get("controller_bundle")
+    release = bundle.get("release") if isinstance(bundle, Mapping) else None
+    tree = release.get("tree_sha256") if isinstance(release, Mapping) else None
+    if isinstance(tree, str) and tree:
+        identity["tree_sha256"] = tree
+    revisions = metadata.get("plugin_revisions")
+    if isinstance(revisions, Mapping):
+        kept = {
+            key: value for key, value in revisions.items()
+            if key in plugins and isinstance(key, str) and isinstance(value, str) and value
+        }
+        if kept:
+            identity["plugin_revisions"] = {key: kept[key] for key in sorted(kept)}
+    return identity
+
+
+def executable_document(activation: StepActivation | Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """The fields that make one step's selection the same code and configuration."""
+
+    if activation is None:
+        return None
+    if isinstance(activation, StepActivation):
+        plugins = list(activation.plugins)
+        specs = dict(activation.plugin_specs)
+        configs = {key: dict(value) for key, value in activation.plugin_configs.items()}
+        metadata = activation.metadata
+    elif isinstance(activation, Mapping):
+        plugins = list(activation.get("plugins") or [])
+        specs = dict(activation.get("plugin_specs") or {})
+        raw_configs = activation.get("plugin_configs") or {}
+        configs = {key: dict(value) for key, value in raw_configs.items()} if isinstance(raw_configs, Mapping) else {}
+        metadata = activation.get("metadata") or {}
+        metadata = metadata if isinstance(metadata, Mapping) else {}
+    else:
+        raise TypeError("activation must be a StepActivation, a payload, or None")
+    return {
+        "plugins": plugins,
+        "plugin_specs": {plugin_id: _canonical_spec(specs[plugin_id]) for plugin_id in plugins if plugin_id in specs},
+        "plugin_configs": {
+            plugin_id: configs[plugin_id] for plugin_id in plugins if plugin_id in configs and configs[plugin_id]
+        },
+        "source": _source_identity(metadata, plugins),
+    }
+
+
 def activation_generation_id(
     activations: Mapping[str, StepActivation | Mapping[str, Any] | None],
     *,
@@ -226,21 +389,13 @@ def activation_generation_id(
 ) -> str:
     """A content-derived ID for a set of step activations.
 
-    Equal selections, specs, and configs give the same ID regardless of where
-    or when they were written; ``metadata`` is not part of the identity.
+    Equal plugin order, specs, configs, and source provenance give the same ID.
+    Display metadata and absolute install paths do not. An absent step is null.
     """
 
     canonical: dict[str, Any] = {}
     for step in sorted(activations):
-        activation = activations[step]
-        if activation is None:
-            canonical[require_step(step)] = None
-            continue
-        payload = (
-            activation.to_payload() if isinstance(activation, StepActivation) else dict(activation)
-        )
-        payload.pop("metadata", None)
-        canonical[require_step(step)] = payload
+        canonical[require_step(step)] = executable_document(activations[step])
     digest = hashlib.sha256(
         json.dumps(canonical, sort_keys=True, separators=(",", ":")).encode("utf-8")
     ).hexdigest()

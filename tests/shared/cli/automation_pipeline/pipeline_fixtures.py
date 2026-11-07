@@ -51,7 +51,6 @@ class _SlowMapper:
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id="test.slow-mapper",
             status="empty",
-            lines=(f"schema={PERCEPTION_TEXT_SCHEMA}", "plugin=test.slow-mapper"),
             signals=(),
             things=(),
         )

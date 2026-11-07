@@ -12,8 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from ...shared.paths import display_path
-from ...shared.text import automa_command, format_browser_result
-from ..host_formatting import host_block, perception_stream_command
+from ...shared.text import automa_command
+from ..host_formatting import host_block, perception_stream_command, viewer_command
 from ..step_formatting import format_activation_problems, selection_label, step_lines
 from .models import RestartResult, StartResult, StopResult, status_reason
 
@@ -69,7 +69,11 @@ def _run_lines(item: dict[str, Any] | None) -> list[str]:
     ]
     arming = state.get("arming")
     if isinstance(arming, dict) and arming.get("request_id"):
-        lines.append(f"  arming: {arming['status']} (request {arming['request_id']})")
+        request = f"request {arming['request_id']}"
+        generation = arming.get("generation_id")
+        if isinstance(generation, str) and generation:
+            request = f"{request}, generation {generation}"
+        lines.append(f"  arming: {arming['status']} ({request})")
         if arming.get("error"):
             lines.append(f"  problem: {arming['error']}")
     problems = item.get("activation_problems")
@@ -199,9 +203,6 @@ def _latest_status_label(state: dict[str, Any], last_frame: dict[str, Any]) -> s
         return "none"
     fields = {
         "frame": last_frame.get("frame_id"),
-        "signals": last_frame.get("signals"),
-        "things": last_frame.get("things"),
-        "perception_ms": last_frame.get("perception_duration_ms"),
         "cycle_ms": last_frame.get("cycle_duration_ms"),
         "age_ms": state.get("latest_perception_age_ms"),
     }
@@ -224,7 +225,6 @@ def _status_log_label(process: dict[str, Any]) -> str:
 
 def startup_lines(state: dict[str, Any]) -> list[str]:
     selections = state["selections"]
-    view = state["published_view"]
     source = state["control_source"]
     return [
         f"Run started on host {state['host_name']}.",
@@ -239,28 +239,16 @@ def startup_lines(state: dict[str, Any]) -> list[str]:
         (
             f"Recording: {state['run_dir']}"
             if state["run_dir"] is not None
-            else "Recording: off; latest frame and perception are overwritten each iteration"
+            else "Recording: off"
         ),
         f"Control source: {_CONTROL_SOURCE_LABELS.get(source, source)}",
         f"Action policy: {state['action_policy']}",
         f"Decision generation: {state['decision']['generation_id']}",
-        (
-            f"Runtime view: {view.get('url')}"
-            if view.get("available")
-            else f"Runtime view: unavailable ({view.get('reason', 'startup failed')})"
-        ),
+        f"View: {viewer_command(state['host_name'])}",
         "Decisions: unbounded"
         if state["num_decisions"] is None
         else f"Decisions: {state['num_decisions']}",
     ]
-
-
-def reports_frame(count: int, *, verbose: bool) -> bool:
-    return verbose or count == 1 or count % 10 == 0
-
-
-def frame_line(frame_id: str, *, signals: int, things: int, action: Any) -> str:
-    return f"{frame_id}: signals={signals} things={things} action={action}"
 
 
 def render_run_result(state: dict[str, Any], *, state_path: str) -> str:
@@ -297,7 +285,6 @@ def render_run_result(state: dict[str, Any], *, state_path: str) -> str:
                     else []
                 ),
                 f"State: {state_path}",
-                f"Latest perception: {state['latest']['perception_text']}",
             ]
         )
     return "\n".join(
@@ -306,11 +293,6 @@ def render_run_result(state: dict[str, Any], *, state_path: str) -> str:
             f"State: {state_path}",
         ]
     )
-
-
-def _duration_label(phase: dict[str, Any]) -> str:
-    value = phase.get("duration_ms")
-    return f"{value}ms" if isinstance(value, (int, float)) else "not reported"
 
 
 def _log_status_line(process: Any, log_path: Path) -> str:
@@ -336,8 +318,7 @@ def render_start_result(result: StartResult) -> str:
         result.expected_authority,
         result.actual_authority,
     )
-    view, existing = result.view, result.process_record
-    browser_line = format_browser_result(result.browser) if result.browser else None
+    existing = result.process_record
     error = result.error
     if result.kind == "starting":
         return "\n".join(
@@ -345,6 +326,15 @@ def render_start_result(result: StartResult) -> str:
                 f"The run on host {host_name} is still starting.",
                 f"PID: {existing_pid}",
                 f"State: {display_path(state_path)}",
+            ]
+        )
+    if result.kind == "session_not_running":
+        return "\n".join(
+            [
+                f"Host {host_name} has a live worker, but {error}.",
+                f"PID: {existing_pid}",
+                f"State: {display_path(state_path)}",
+                f"Recovery: {automa_command('hosts', 'stop', '--name', host_name)}",
             ]
         )
     if result.kind == "records_disagree":
@@ -374,22 +364,12 @@ def render_start_result(result: StartResult) -> str:
                 (f"Recovery: {automa_command('hosts', 'stop', '--name', host_name)}"),
             ]
         )
-    if result.kind == "view_unready":
-        return "\n".join(
-            [
-                f"Host {host_name} has a run, but its perception view is not ready.",
-                f"PID: {existing_pid}",
-                f"Reason: {view.get('reason') or 'no correlated publication'}",
-                f"State: {display_path(state_path)}",
-            ]
-        )
     if result.kind == "existing":
         return "\n".join(
             [
                 f"Host {host_name} already has a run.",
                 f"PID: {existing_pid}",
-                f"Runtime view: {view['url']}",
-                *([browser_line] if browser_line else []),
+                f"View: {viewer_command(host_name)}",
                 f"State: {display_path(state_path)}",
                 _log_status_line(existing, log_path),
                 f"Stream: {perception_stream_command(host_name)}",
@@ -406,29 +386,14 @@ def render_start_result(result: StartResult) -> str:
     startup, process_record = result.startup, result.process_record
     startup_status = startup["status"]
     if startup_status == "ready":
-        phases = (
-            startup.get("phases") if isinstance(startup.get("phases"), dict) else {}
-        )
-        perception_phase = (
-            phases.get("perception")
-            if isinstance(phases.get("perception"), dict)
-            else {}
-        )
         lines = [
             f"Run started on host {host_name}.",
             f"PID: {pid}",
-            f"First frame: {startup.get('frame_id', 'captured')}",
-            (
-                "Startup phases: "
-                "capture=complete, "
-                f"perception={_duration_label(perception_phase)}, "
-                "view=current-generation correlated"
-            ),
-            f"Runtime view: {startup.get('view_url')}",
+            "Session: running",
+            f"Decisions: {startup.get('processed_count', 0)}",
+            f"View: {viewer_command(host_name)}",
             f"Stop: {automa_command('hosts', 'stop', '--name', host_name)}",
         ]
-        if browser_line:
-            lines.append(browser_line)
     elif startup_status == "completed":
         lines = [
             f"The run on host {host_name} completed during startup verification.",

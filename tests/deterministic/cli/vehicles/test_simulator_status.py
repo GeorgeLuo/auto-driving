@@ -31,8 +31,8 @@ class SimulatorStatusTests(unittest.TestCase):
             runtime_root=self.runtime_root, check=False,
         )
 
-    def test_vehicle_status_does_not_report_or_probe_hosts(self) -> None:
-        # A hung host must not delay or appear in the vehicle environment view.
+    def test_vehicle_status_names_hosts_without_probing_them(self) -> None:
+        # A hung host must not delay the vehicle environment view; its name comes from local records.
         hung = self.enterContext(hung_url())
         _record(self.runtime_root, "controller-a", hung, self.server.url)
         self.discover(self.server.url)
@@ -43,11 +43,12 @@ class SimulatorStatusTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(payload, {"schema": "automa_vehicles_status", "vehicles": [{
             "provider": "chase-sim", "url": chase_operator_url(self.server.url), "state": "running",
-            "error": None, "frontend": "connected", "game": "chase", "pid": None,
+            "error": None, "frontend": "connected", "game": "chase", "pid": None, "hosts": ["controller-a"],
         }]})
         self.assertEqual(self.status().stdout, (
             f"Simulator (chase-sim)  running at {chase_operator_url(self.server.url)}\n"
             "  frontend connected, game chase\n"
+            "  used by host controller-a\n"
         ))
 
     def test_unreachable_or_frontend_disconnected_simulator(self) -> None:
@@ -123,7 +124,7 @@ class EnvironmentStatusTests(unittest.TestCase):
                     text = invoke_automa("vehicles", "status", runtime_root=Path(tmp), check=False)
                 self.assertEqual(result.returncode, code, result.stderr)
                 self.assertEqual(json.loads(result.stdout)["vehicles"][0],
-                                 {"provider": "picar", "url": url, "state": expected, "error": probe.error})
+                                 {"provider": "picar", "url": url, "state": expected, "error": probe.error, "hosts": []})
                 self.assertIn(f"PiCar (picar)  {expected} at {url}", text.stdout)
 
 

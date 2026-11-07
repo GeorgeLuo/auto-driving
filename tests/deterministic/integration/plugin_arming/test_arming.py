@@ -36,15 +36,17 @@ class PluginArmingFlows(unittest.TestCase):
             write_plugin(file, "proposal", "prototype", 2)
             _, second = upload(base, file, "proposal", "prototype")
             available = catalog(base)
-            self.assertEqual(selected(available, "applied", "proposal")[0], first["plugin"])
+            first_applied = selected(available, "applied", "proposal")[0]
+            self.assertEqual(first_applied["metadata"]["revision"], first["plugin"]["metadata"]["revision"])
+            self.assertEqual(first_applied["id"], first["plugin"]["id"])
             self.assertEqual(available["applied_decision"], old_identity)
             self.assertEqual(proposal(host.run(frame(root, 2)), "prototype").metadata["revision"], 1)
             arm_step(base, "proposal", "prototype")
             write_plugin(file, "proposal", "prototype", 3)
             _, third = upload(base, file, "proposal", "prototype")
             queued = catalog(base)
-            self.assertEqual(selected(queued, "requested", "proposal")[0], second["plugin"])
-            self.assertEqual(selected(queued, "applied", "proposal")[0], first["plugin"])
+            self.assertEqual(selected(queued, "requested", "proposal")[0]["metadata"]["revision"], second["plugin"]["metadata"]["revision"])
+            self.assertEqual(selected(queued, "applied", "proposal")[0], first_applied)
             self.assertEqual(next(item for item in queued["plugins"] if item["id"] == "prototype"), third["plugin"])
             self.assertEqual(proposal(host.run(frame(root, 3)), "prototype").metadata["revision"], 2)
             identity2 = catalog(base)["applied_decision"]
@@ -108,6 +110,42 @@ class PluginArmingFlows(unittest.TestCase):
                 unknown = arm("perception/missing", check=False)
                 self.assertEqual(unknown.returncode, 2)
                 self.assertIn("unknown plugin id 'missing'", json.loads(unknown.stdout)["error"])
+
+    def test_a_preset_replaces_what_its_step_has_armed_and_names_it(self):
+        staged = {"perception": packaged_activation("perception", ["frame", "classical_regions"])}
+        with image_source(1) as root, plugin_host(root, "chase", staged) as (host, base):
+            runtime_root = root / "hosts"
+            name_host(runtime_root, base, "chase-sim")
+
+            def arm(preset):
+                return invoke_automa("plugins", "arm", "--host-name", "one", "--preset", preset, "--json",
+                                     runtime_root=runtime_root, check=False)
+
+            def perception():
+                return [item["id"] for item in selected(catalog(base), "requested", "perception")]
+
+            receipt = json.loads(arm("perception/lightweight_observer").stdout)
+            self.assertEqual((receipt["schema"], receipt["step"], receipt["preset"], receipt["status"]),
+                             ("automa_plugin_arm", "perception", "lightweight_observer", "requested"))
+            # Arming by --name would have kept classical_regions and appended floor_plane.
+            self.assertEqual(perception(), ["frame", "floor_plane"])
+            host.run(frame(root, 1))
+            self.assertEqual([item["id"] for item in selected(catalog(base), "applied", "perception")],
+                             ["frame", "floor_plane"])
+            self.assertEqual(host.status()["steps"]["perception"]["preset"], "lightweight_observer")
+
+            # The host refuses a preset unless its catalog holds each plugin as the preset configures it.
+            def refused(preset, plugin_id):
+                result = arm(f"perception/{preset}")
+                self.assertEqual(result.returncode, 2)
+                self.assertIn(f"perception/{plugin_id} with another entrypoint, config or revision",
+                              json.loads(result.stdout)["error"])
+                self.assertEqual(perception(), ["frame", "floor_plane"])
+
+            refused("obstruction_observer", "multi_obstruction_tracks")
+            write_plugin(root / "frame.py", "perception", "frame", 1)
+            upload(base, root / "frame.py", "perception", "frame")
+            refused("visual_observer", "frame")
 
     def test_arming_before_during_and_after_completion_does_not_start_or_change_mode(self):
         with image_source(1) as root, plugin_host(root) as (host, base):

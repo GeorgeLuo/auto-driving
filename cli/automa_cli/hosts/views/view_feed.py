@@ -2,25 +2,23 @@
 
 from __future__ import annotations
 
+from contextlib import suppress
 from typing import Any
 
 from ...frontend.server import RuntimeViewServer
 from .decision_live import DecisionViewAdapter
 from .observation import ObservationPublisher
-from ..publications.decision_publication import health_error
-from ..publications.host_publications import TransactionCache, fetch_observation_sample
+from ..publications.frame_publication import health_error
+from ..publications.host_publications import TransactionCache, fetch_frame_sample
 from ..publications.plugin_catalog import PluginCatalogClient
 from .runtime_view import runtime_view_server
 from .view_discovery import runtime_view_dir
 
 
 class ViewFeed:
-    """A loopback runtime view a terminal stream feeds from the host's publications.
+    """Feed all runtime pages from one host frame read, with telemetry beside it.
 
-    As the view of ``hosts run`` does, its decision page aggregates the
-    host's latest decision with its matched frame, evidence and candidates, and
-    it serves the host's plugin catalog. The perception and memory pages publish
-    from the observation even while no matched decision is available.
+    ``hosts viewer`` and a terminal stream each run one. Its failures end only this view.
     """
 
     def __init__(self, host_name: str, *, base_url: str, timeout_s: float) -> None:
@@ -36,17 +34,23 @@ class ViewFeed:
         self._observation: tuple[dict[str, Any], bytes | None] | None = None
         self.observation: ObservationPublisher | None = None
         try:
+            # Assigned before it starts, so stop() also releases a partial start.
             self.server = runtime_view_server(
                 host_name=host_name,
                 automation_dir=runtime_dir,
                 plugin_catalog=PluginCatalogClient(base_url, timeout_s=timeout_s),
-            ).start()
+            )
+            self.server.start()
+            # One publisher, so clearing the page also forgets the frame it last showed.
             self.observation = ObservationPublisher(self.server.perception)
             self.decision = DecisionViewAdapter(
-                host_name=host_name, base_url=base_url, view_server=self.server, timeout_s=timeout_s,
+                host_name=host_name, base_url=base_url, publisher=self.observation, timeout_s=timeout_s,
             )
-        except OSError as exc:
+        except Exception as exc:  # noqa: BLE001 - a failed view ends only this view
             self.error = f"{type(exc).__name__}: {exc}"
+            # Releasing a partial start can fail the same way; the first failure is the one reported.
+            with suppress(Exception):
+                self.stop()
 
     @property
     def url(self) -> str | None:
@@ -61,12 +65,12 @@ class ViewFeed:
 
         page = None
         if self.server is not None and self.url is not None:
-            page = self.server.decision.page_url()
+            page = "/decision"
         return self.url, self.error, page, self.decision_error
 
     def read_observation(self) -> tuple[dict[str, Any] | None, str | None]:
         try:
-            self._observation = fetch_observation_sample(self.base_url, timeout_s=self.timeout_s,
+            self._observation = fetch_frame_sample(self.base_url, timeout_s=self.timeout_s,
                                                          cache=self._observation_cache)
             return self._observation[0], None
         except (ConnectionError, OSError, TypeError, ValueError) as exc:
@@ -79,13 +83,6 @@ class ViewFeed:
     def publish(self, publication: dict[str, Any] | None) -> None:
         if self.server is None or self.decision is None or self.observation is None:
             return
-        try:
-            published = self.decision.refresh()
-            self.decision_error = None if published else "the view rejected the host's cycle"
-        except Exception as exc:  # noqa: BLE001 - the decision page is observational
-            self.server.decision.invalidate_latest()
-            self.decision_error = f"{type(exc).__name__}: {exc}"
-        # The observation publishes last, as the latest perception and memory.
         if publication is None:
             return
         try:
@@ -96,17 +93,25 @@ class ViewFeed:
                     return
                 pair = self._observation
             publication, jpeg = pair
-            # A host whose run stopped still serves its last frame, as stale.
-            not_live = health_error(publication)
-            if jpeg is None or not_live is not None:
-                self.observation.invalidate(not_live)
+            # A stale, raised, or imageless frame stays on the page.
+            if publication.get("report") is None:
+                self.observation.invalidate(health_error(publication))
                 return
-            self.observation.publish(publication, jpeg)
+            try:
+                self.decision.publish_publication(publication, jpeg)
+                self.decision_error = None
+            except Exception as exc:  # A failed diagnostic does not hide the frame.
+                self.decision_error = f"{type(exc).__name__}: {exc}"
+                self.observation.publish(publication, jpeg)
             self.error = None
         except (ConnectionError, OSError, TypeError, ValueError) as exc:
             self.error = f"{type(exc).__name__}: {exc}"
             self.observation.invalidate(self.error)
 
     def stop(self) -> None:
-        if self.server is not None:
-            self.server.stop()
+        """End this view's publication. Safe after a partial start and when called again."""
+
+        server, self.server = self.server, None
+        self.decision = self.observation = None
+        if server is not None:
+            server.stop()

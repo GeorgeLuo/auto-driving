@@ -13,7 +13,8 @@ from ...hosts.publications.decision import (
     decision_error_payload,
     require_valid_activations,
 )
-from ...hosts.publications.host_publications import fetch_decision_publication
+from ...hosts.publications.frame_publication import step_unavailable
+from ...hosts.publications.host_publications import fetch_frame_publication
 from ...hosts.discovery import runtime_base_url
 from ...hosts.errors import RuntimeHostError
 from ...shared.timestamps import timestamp_ms
@@ -35,8 +36,10 @@ def stream_decision(
 ) -> StreamResult:
     """Poll one decision step in the latest cycle the host published.
 
-    Each probe is the ``host_<step>_stream`` frame with ``status: live``, or
-    the decision error that kept it from one with ``status: error``.
+    Each probe is the ``host_<step>_stream`` frame with ``status: live``; the
+    same frame with ``status: stale`` or ``error`` and its reason when the frame
+    is past its ceiling or the cycle raised before ``step`` recorded; or the
+    decision error that kept it from one with ``status: error``.
     ``serve_view`` hosts the runtime view and shares one observation read
     with that view's decision page.
     """
@@ -56,16 +59,20 @@ def stream_decision(
 
     view = StreamView(host_name, base_url=base_url, timeout_s=timeout_s) if serve_view else None
 
-    def read_frame() -> dict[str, Any]:
+    def unreadable(detail: str) -> DecisionSurfaceError:
+        return DecisionSurfaceError(
+            "runtime_decision_unavailable",
+            f"Could not read the decision publication at {base_url}: {detail}",
+            host_name=host_name,
+            details={"reason": "missing", "transport": detail},
+        )
+
+    def read_frame(publication: dict[str, Any] | None = None) -> dict[str, Any]:
         try:
-            publication = fetch_decision_publication(base_url, timeout_s=timeout_s)
+            if publication is None:
+                publication = fetch_frame_publication(base_url, timeout_s=timeout_s)
         except (ConnectionError, OSError) as exc:
-            raise DecisionSurfaceError(
-                "runtime_decision_unavailable",
-                f"Could not read the decision publication at {base_url}: {exc}",
-                host_name=host_name,
-                details={"reason": "missing", "transport": str(exc)},
-            ) from exc
+            raise unreadable(str(exc)) from exc
         normalized = accept_decision_publication(
             publication, host_name=host_name, now_ms=timestamp_ms(),
         )
@@ -83,7 +90,7 @@ def stream_decision(
             # The host computes the result age on its own clock.
             "freshness": {"age_ms": normalized["result_age_ms"], "max_age_ms": normalized["max_age_ms"]},
             "plugins": list((activation["steps"].get(step) or {}).get("plugins") or []),
-            "record": deepcopy(cycle[step]),
+            "record": deepcopy(cycle.get(step)),
             # The cycle's timing; a host that does not publish it leaves None.
             "timing": deepcopy(report.values.get("timing")),
         }
@@ -92,13 +99,20 @@ def stream_decision(
         if step == "proposal":
             frame["observation"] = deepcopy(cycle["observation"])
             frame["memory"] = deepcopy(cycle["memory"])
-        return frame
+        unavailable = step_unavailable(publication, step)
+        if unavailable is None:
+            return {**frame, "status": "live"}
+        return {**frame, "status": unavailable[0], "error": unavailable[1]}
 
     def probe() -> tuple[dict[str, Any], None]:
-        if view is not None:
-            view.publish(view.read_observation()[0])
+        publication = None
         try:
-            return {**read_frame(), "status": "live"}, None
+            if view is not None:
+                publication, error = view.read_observation()
+                view.publish(publication)
+                if error is not None:
+                    raise unreadable(error)
+            return read_frame(publication), None
         except DecisionSurfaceError as exc:
             return _error_probe(exc), None
 

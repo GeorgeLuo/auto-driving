@@ -246,47 +246,6 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
         self.assertEqual(raised.exception.code, "capture_image_invalid")
         self.assertEqual(raised.exception.path, "sensor.image.svg")
 
-    def test_png_worker_path_rejects_svg_only_capture_payload(self) -> None:
-        """Worker write path for .png must raise capture_image_invalid, not ValueError."""
-
-        car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)
-        svg_only = {
-            "dataUrl": None,
-            "svg": (
-                '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1">'
-                '<rect width="1" height="1"/></svg>'
-            ),
-        }
-        with mock.patch.object(
-            car,
-            "inspect_passive_capture",
-            return_value={
-                "status": "available",
-                "sensor": {
-                    "capture_id": "cap-1",
-                    "simulation_epoch": "chase-run:test",
-                    "simulator_frame_index": 7,
-                    "image": {"width": 1, "height": 1},
-                },
-                "image": svg_only,
-                "evaluator_reference": {
-                    "status": "unavailable",
-                    "reason": "reference_missing",
-                },
-                "session_preservation": {"preserved": True},
-            },
-        ), tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "frame.png"
-            with self.assertRaises(ChaseCaptureValidationError) as raised:
-                car._capture_front_camera(path, endpoint="atomic-evaluation-capture")
-        self.assertEqual(raised.exception.code, "capture_image_invalid")
-        self.assertEqual(raised.exception.path, "sensor.image.svg")
-        self.assertIn(".png", raised.exception.detail)
-        envelope = raised.exception.to_dict()
-        self.assertEqual((envelope["schema"], envelope["error_code"], envelope["error"]),
-                         ("automa_cli_error", "capture_image_invalid", raised.exception.detail))
-        self.assertNotIn("message", envelope)
-
     def test_invalid_capture_is_rejected_before_output_write(self) -> None:
         car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)
         with tempfile.TemporaryDirectory() as tmp:

@@ -7,14 +7,14 @@ import re
 from typing import Any, Protocol
 from urllib.parse import parse_qs, urlparse
 
-from .loopback_http import PAGES_DIR, STATIC_CONTENT_TYPES
+from .loopback_http import PAGES_DIR, STATIC_CONTENT_TYPES, local_write_error
 from .workbench_contract import (
     ReplayActionError,
     WORKBENCH_ACTION_RESULT_SCHEMA,
-    WORKBENCH_ERROR_SCHEMA,
     WORKBENCH_MAX_ACTION_BYTES,
 )
 from .plugin_catalog import serve_plugin_catalog
+from autonomy.runtime.http_errors import error_payload
 from autonomy.runtime.plugin_catalog import PLUGIN_CATALOG_PATH
 
 
@@ -263,6 +263,10 @@ def _serve_frame(handler: Any, runner: ReplayRunner, query_string: str, *, inclu
 
 
 def _serve_action(handler: Any, runner: ReplayRunner) -> None:
+    error = local_write_error(handler)
+    if error is not None:
+        handler._send_json(*error)
+        return
     content_length = handler.headers.get("Content-Length")
     try:
         size = int(content_length) if content_length is not None else -1
@@ -334,16 +338,9 @@ def _error_payload(
     message: str,
     state: dict[str, Any] | None,
 ) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "schema": WORKBENCH_ERROR_SCHEMA,
-        "ok": False,
-        "boundary": boundary,
-        "message": message,
-        "recovery": "Inspect the returned state and use the allowed action.",
-    }
-    if state is not None:
-        payload["state"] = state
-    return payload
+    """The shared error reply, naming the failing ``boundary``; the page redraws from ``state``."""
+
+    return error_payload(message, boundary=boundary, **({} if state is None else {"state": state}))
 
 
 __all__ = ["serve_workbench_route"]

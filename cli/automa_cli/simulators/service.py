@@ -11,7 +11,7 @@ import shlex
 import socket
 from pathlib import Path
 
-from ..hosts.discovery import local_hosts
+from ..hosts.discovery import hosts_by_vehicle
 from ..providers.registry import CHASE_SIM
 from ..providers.urls import chase_operator_url, normalize_chase_url
 from .models import SimulatorResult
@@ -49,16 +49,6 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Simulat
     return SimulatorResult(0, "created", url=record["url"])
 
 
-def hosts_by_simulator() -> dict[str, list[str]]:
-    """Host names created at each simulator, by its control URL. Delete refuses while one has any."""
-
-    hosts: dict[str, list[str]] = {}
-    for host in local_hosts():
-        if host["provider"] == CHASE_SIM.name:
-            hosts.setdefault(host["vehicle_url"], []).append(host["host_name"])
-    return hosts
-
-
 def delete_simulator(*, url: str) -> SimulatorResult:
     """End a simulator ``simulators create`` started, unless a host was created at it.
 
@@ -74,7 +64,7 @@ def delete_simulator(*, url: str) -> SimulatorResult:
     record = next((simulator for simulator in records if simulator["url"] == ws_url), None)
     if record is None:
         return SimulatorResult(2, "missing", url=url, urls=tuple(chase_operator_url(item["url"]) for item in records))
-    hosts = hosts_by_simulator().get(ws_url)
+    hosts = hosts_by_vehicle().get((CHASE_SIM.name, ws_url))
     if hosts:
         return SimulatorResult(2, "blocked", url=ws_url, hosts=tuple(hosts))
     return SimulatorResult(0, "deleted", url=ws_url, ended=stop_simulator(record))

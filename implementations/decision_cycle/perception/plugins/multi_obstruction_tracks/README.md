@@ -17,8 +17,8 @@ before the score tie-break, and both detector misses and lost-identity expiry
 are bounded by configuration.
 
 Track association, optical-flow history, and ID allocation live in this
-plugin and keep their history in the host map, so a replacement instance
-continues the same tracks. The `obstruction_observer` preset selects it after
+plugin and keep their history in the host map. A pipeline selection change
+starts fresh tracks and warmup on an empty map. The `obstruction_observer` preset selects it after
 `frame` and `floor_plane`. The durability scoring and diagnostic panels are
 scripts under `scripts/perception/multi_obstruction_tracks/`.
 

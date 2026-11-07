@@ -12,7 +12,7 @@ from dataclasses import asdict, replace
 from unittest.mock import patch
 
 from autonomy.decision_cycle.action.result import ActionResult
-from autonomy.decision_cycle.activation import STEPS
+from autonomy.decision_cycle.activation import STEPS, activation_generation_id
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycle, DecisionCycleResult, DecisionSteps
 from autonomy.decision_cycle.observation.values import Observation
@@ -35,7 +35,8 @@ from tests.support.action_fixtures import fixed_action_runner, plan_runner, prop
 
 
 def _live_parts(root):
-    context = replace(frame(root, 1), metadata={"step_activations": {step: None for step in STEPS}})
+    context = replace(frame(root, 1), metadata={"step_activations": {step: None for step in STEPS},
+                                               "generation_id": activation_generation_id({step: None for step in STEPS}, prefix="decision")})
     observation = Observation(context.frame_id, context.timestamp_ms, {}, metadata={"labels": ["first"]})
     memory = {"schema": "memory_report", "plugins": [{"plugin_id": "fixture", "state": {"count": 1}}]}
     return context, observation, memory
@@ -68,7 +69,8 @@ def _populated_result() -> DecisionCycleResult:
     """A real cycle whose proposal and plan keep nested frozen metadata."""
 
     context = DecisionFrameContext(
-        "frame_001", 1, 1_000, metadata={"step_activations": {step: None for step in STEPS}},
+        "frame_001", 1, 1_000, metadata={"step_activations": {step: None for step in STEPS},
+                                               "generation_id": activation_generation_id({step: None for step in STEPS}, prefix="decision")},
     )
     proposal_metadata = {"labels": ["left"], "nested": {"b": [1, 2]}}
     plan_metadata = {"trace": {"nodes": ["a"], "empty": []}}

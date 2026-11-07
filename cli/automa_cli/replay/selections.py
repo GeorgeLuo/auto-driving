@@ -8,11 +8,12 @@ whatever is checked out or staged now.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
-from autonomy.decision_cycle.activation import StepActivation
+from autonomy.decision_cycle.activation import StepActivation, executable_document
 from autonomy.decision_cycle.steps import builtin_activation
 from autonomy.runtime.plugin_loader import code_source_from_activation, load_runner
 from autonomy.shared_memory import read_shared_memory_file
@@ -46,25 +47,38 @@ def add_seed_provenance(report: dict[str, Any], seed: SharedMemorySeed | None) -
         report["shared_memory_seed"] = {"path": str(seed.path), "document": seed.document}
 
 
-def replay_step(runner: Any, activation: StepActivation | None, shared_memory: dict[str, Any]) -> Any:
-    """Restore a step using the live runner's selection and reset lifecycle."""
-    previous = getattr(runner, "activation", None)
-    if activation is not None and previous is not None:
-        if (
-            previous.plugin_specs == activation.plugin_specs
-            and previous.plugin_configs == activation.plugin_configs
-            and recorded_release(previous) == recorded_release(activation)
-            and code_source_from_activation(previous) == code_source_from_activation(activation)
-        ):
-            if tuple(runner.plugin_ids) != activation.plugins:
-                runner.plugin_manager.select(activation.plugins)
-                runner.apply_selection(shared_memory)
-            runner.adopt_activation(activation)
-            return runner
-    replacement = recorded_runner(activation) if activation is not None else None
-    if runner is not None:
-        runner.reset(shared_memory)
-    return replacement
+def replace_replay_pipeline(
+    runners: dict[str, Any],
+    activations: dict[str, StepActivation | None],
+    recorded: dict[str, StepActivation | None],
+    *,
+    overrides: set[str],
+    build: Callable[[str, StepActivation], Any] | None = None,
+) -> tuple[dict[str, Any], dict[str, StepActivation | None], bool]:
+    """Build a fresh pipeline when the effective selection changed.
+
+    ``recorded`` replaces steps that are not overridden. The current runners
+    stay in place when that selection is the one already running, including
+    when an override cancels a recorded change. Construction finishes before
+    the caller installs the result or clears its map.
+    """
+
+    desired = resolve_replay_activations(
+        recorded, defaults=activations,
+        overrides={step: activations[step] for step in overrides if step in activations},
+    )
+    same = all(
+        executable_document(desired.get(step)) == executable_document(activations.get(step))
+        for step in set(desired) | set(activations)
+    )
+    if same:
+        return runners, activations, False
+    construct = build or (lambda step, activation: recorded_runner(activation))
+    built = {
+        step: None if activation is None else construct(step, activation)
+        for step, activation in desired.items()
+    }
+    return built, desired, True
 
 
 def default_selection(step: str) -> StepActivation:
@@ -82,24 +96,6 @@ def resolve_replay_activations(
         step: overrides[step] if step in overrides else recorded.get(step, default)
         for step, default in defaults.items()
     }
-
-
-def restage_replay_steps(
-    runners: dict[str, Any], activations: dict[str, StepActivation | None],
-    recorded: dict[str, StepActivation | None], *,
-    overrides: set[str], shared_memory: dict[str, Any],
-) -> set[str]:
-    """Apply recorded transitions to non-overridden slots and return changed steps."""
-    changed = set()
-    for step, activation in recorded.items():
-        if step not in activations or step in overrides:
-            continue
-        previous = activations[step]
-        runners[step] = replay_step(runners.get(step), activation, shared_memory)
-        activations[step] = activation
-        if previous != activation:
-            changed.add(step)
-    return changed
 
 
 def recorded_release(activation: StepActivation) -> tuple[str, str] | None:

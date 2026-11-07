@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import io
 import re
 import tempfile
 import unittest
@@ -12,20 +11,20 @@ from unittest import mock
 
 from autonomy.decision_cycle.steps import STEP_RUNNERS
 from autonomy.plugins import DuplicatePluginIdError
-from cli.automa_cli import app
 from implementations.decision_cycle import catalog
-from tests.support.runtime_fixtures import runtime_root_env
+from tests.shared.cli.invoke import invoke_automa
+from tests.shared.cli.workbench_fixtures import image_source
 
 
 class DeclaredIdTests(unittest.TestCase):
     def tearDown(self) -> None:
         catalog._declared_entries.cache_clear()
 
-    def _clashing_actions(self) -> contextlib.AbstractContextManager:
+    def _clashing(self, step: str) -> contextlib.AbstractContextManager:
         # A second entry whose plugin declares an ID already taken in the step.
-        entries = catalog.STEP_PLUGINS["action"]
+        entries = catalog.STEP_PLUGINS[step]
         catalog._declared_entries.cache_clear()
-        return mock.patch.dict(catalog.STEP_PLUGINS, {"action": (*entries, dict(entries[0]))})
+        return mock.patch.dict(catalog.STEP_PLUGINS, {step: (*entries, dict(entries[0]))})
 
     def test_every_step_lists_plugins_by_declared_id(self) -> None:
         for step in catalog.STEPS:
@@ -35,25 +34,26 @@ class DeclaredIdTests(unittest.TestCase):
                 self.assertTrue(set(catalog.DEFAULT_STEP_PLUGINS[step]) <= set(plugins))
 
     def test_two_plugins_declaring_one_id_stop_the_step(self) -> None:
-        with self._clashing_actions():
+        with self._clashing("action"):
             with self.assertRaisesRegex(DuplicatePluginIdError, "duplicate action plugin id 'selected'"):
                 catalog.step_plugins("action")
             self.assertEqual(sorted(catalog.step_plugins("memory")), ["bounded_evidence"])
 
-    def test_cli_reports_the_clash_and_exits_2(self) -> None:
-        stderr = io.StringIO()
-        with (
-            self._clashing_actions(),
-            tempfile.TemporaryDirectory() as tmp,
-            runtime_root_env(tmp),
-            contextlib.redirect_stdout(io.StringIO()),
-            contextlib.redirect_stderr(stderr),
-        ):
-            code = app.main(
-                ["plugins", "list", "--step", "action"]
-            )
-        self.assertEqual(code, 2)
-        self.assertIn("error: duplicate action plugin id 'selected'", stderr.getvalue())
+    def test_plugins_list_reports_the_clash_and_exits_2(self) -> None:
+        with self._clashing("action"), tempfile.TemporaryDirectory() as tmp:
+            result = invoke_automa("plugins", "list", "--step", "action", runtime_root=Path(tmp), check=False)
+        self.assertEqual(result.returncode, 2)
+        lines = result.stdout.splitlines()
+        self.assertEqual(lines[0], "Catalog: unavailable")
+        self.assertRegex(lines[1], r"^Reason: duplicate action plugin id 'selected'")
+        # The packaged catalog has no endpoint to retry.
+        self.assertEqual(len(lines), 2)
+
+    def test_workbench_reports_the_clash_and_exits_2(self) -> None:
+        with self._clashing("perception"), image_source(1) as frames:
+            result = invoke_automa("workbench", str(frames), "--cadence-ms", "0", check=False)
+        self.assertEqual(result.returncode, 2)
+        self.assertRegex(result.stdout, r"Workbench replay failed: duplicate perception plugin id ")
 
 
 class PresetActivationTests(unittest.TestCase):

@@ -10,12 +10,12 @@ providers, and commit publishes them with the plugins.
 from __future__ import annotations
 
 import importlib
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, replace
 from typing import Any, ClassVar
 
-from autonomy.decision_cycle.activation import step_activation
+from autonomy.decision_cycle.activation import StepActivation, step_activation
 from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.runner import (
     StepRunner,
@@ -23,10 +23,9 @@ from autonomy.decision_cycle.runner import (
     reset_plugin,
 )
 from autonomy.decision_cycle.timing import clock, elapsed_ms
-from autonomy.plugins import PluginDefinition, PluginManager
+from autonomy.plugins import PluginDefinition
 from autonomy.decision_cycle.perception.feeds.context import PerceptionRequest
 from autonomy.decision_cycle.perception.feeds.interface import FeedProvider
-from autonomy.decision_cycle.perception.evidence.rendering import signal_line, thing_line
 from autonomy.decision_cycle.perception.evidence.values import (
     PerceivedThing,
     PerceptionEvidenceBatch,
@@ -69,18 +68,15 @@ class PerceptionRunner(StepRunner[Any]):
 
     def __init__(
         self,
-        plugin_manager: PluginManager,
+        definitions: Sequence[PluginDefinition],
         *,
+        activation: StepActivation | None = None,
         provided: Mapping[str, Any] | None = None,
     ) -> None:
         self.last_output: PerceptionText | None = None
         self.last_frame_index: int | None = None
         self._feed_providers: dict[str, FeedProvider] = {}
-        # Providers a changed selection resolves while it validates, held with
-        # the prepared plugins until commit publishes both.
-        self._validated_providers: dict[str, FeedProvider] | None = None
-        self._pending_providers: dict[str, FeedProvider] | None = None
-        super().__init__(plugin_manager, provided=provided)
+        super().__init__(definitions, activation=activation, provided=provided)
 
     @classmethod
     def from_selection(
@@ -138,13 +134,18 @@ class PerceptionRunner(StepRunner[Any]):
 
     @property
     def plugin_specs(self) -> dict[str, str]:
-        return {item.plugin_id: item.entrypoint for item in self.plugin_manager.available}
+        if self.activation is not None:
+            return dict(self.activation.plugin_specs)
+        return {definition.plugin_id: definition.entrypoint for definition, _plugin in self.applied}
 
     @property
     def plugin_configs(self) -> dict[str, dict[str, Any]]:
+        if self.activation is not None:
+            return {key: deepcopy(dict(value)) for key, value in self.activation.plugin_configs.items()}
         return {
-            item.plugin_id: deepcopy(dict(item.config))
-            for item in self.plugin_manager.available
+            definition.plugin_id: deepcopy(dict(definition.config))
+            for definition, _plugin in self.applied
+            if definition.config
         }
 
     def reset(self, shared_memory=None) -> None:
@@ -167,11 +168,6 @@ class PerceptionRunner(StepRunner[Any]):
             return output
 
     def _perceive_selected(self, request: PerceptionRequest) -> PerceptionText:
-        lines = [
-            f"schema={PERCEPTION_TEXT_SCHEMA}",
-            f"plugin={self.plugin_id}",
-            f"plugins={','.join(self.plugin_ids)}",
-        ]
         signals: list[PerceptionSignal] = []
         things: list[PerceivedThing] = []
         measurements: dict[str, dict[str, Any]] = {}
@@ -206,18 +202,6 @@ class PerceptionRunner(StepRunner[Any]):
                     error=execution.error,
                 )
             )
-            lines.append(
-                f"plugin_run id={catalog_id} status={execution.status} "
-                f"duration_ms={execution.duration_ms:.3f} "
-                f"signals={len(attributed_signals)} things={len(attributed_things)}"
-            )
-            if execution.error:
-                lines.append(
-                    f"plugin_status id={catalog_id} status={execution.status} "
-                    f"detail={_line_value(execution.error)}"
-                )
-            lines.extend(signal_line(signal) for signal in attributed_signals)
-            lines.extend(thing_line(thing) for thing in attributed_things)
             signals.extend(attributed_signals)
             things.extend(attributed_things)
             if execution.batch.measurements:
@@ -228,7 +212,6 @@ class PerceptionRunner(StepRunner[Any]):
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id=self.plugin_id,
             status=_overall_status(plugin_runs),
-            lines=tuple(lines),
             signals=tuple(signals),
             things=tuple(things),
             plugin_runs=tuple(plugin_runs),
@@ -272,24 +255,7 @@ class PerceptionRunner(StepRunner[Any]):
                         f"feed {item.feed_id!r} declares conflicting providers: "
                         f"{existing!r} and {spec!r}"
                     )
-        self._validated_providers = providers
-
-    def _prepare_selection(self) -> None:
-        self._validated_providers = None
-        super()._prepare_selection()
-        # An unchanged selection is not validated, so commit keeps the
-        # published providers.
-        self._pending_providers = self._validated_providers
-
-    def _commit_selection(self, shared_memory=None) -> None:
-        providers, self._pending_providers = self._pending_providers, None
-        super()._commit_selection(shared_memory)
-        if providers is not None:
-            self._feed_providers = providers
-
-    def _discard_selection(self) -> None:
-        super()._discard_selection()
-        self._pending_providers = None
+        self._feed_providers = providers
 
     def _reset_plugin(self, plugin: Any, shared_memory=None) -> None:
         try:
@@ -424,7 +390,3 @@ def _load_symbol(spec: str) -> Any:
         raise ValueError(f"import spec must be 'module.path:name', got {spec!r}")
     module = importlib.import_module(module_name)
     return getattr(module, name)
-
-
-def _line_value(value: str) -> str:
-    return value.replace("\n", " ").replace(" ", "_")

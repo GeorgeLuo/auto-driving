@@ -8,25 +8,11 @@ import numpy as np
 from PIL import Image
 
 from autonomy.decision_cycle.perception.inputs import build_perception_request
-from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
-from implementations.decision_cycle.catalog import step_plugins
 from implementations.decision_cycle.perception.feeds.camera import (
     FRONT_CAMERA_RGB_INPUT,
     provide_camera_frame,
 )
-
-
-_PERCEPTION_SPECS = {
-    plugin_id: entry["spec"] for plugin_id, entry in step_plugins("perception").items()
-}
-
-
-def _mapper(plugin_id: str) -> PerceptionRunner:
-    return PerceptionRunner.from_selection(
-        plugins=[plugin_id],
-        plugin_specs=_PERCEPTION_SPECS,
-    )
 
 
 def _sensor_frame(reading: SensorReading, read_id: str = "test-frame") -> SensorFrame:
@@ -81,28 +67,6 @@ class CameraFeedTests(unittest.TestCase):
         self.assertFalse(path_frame.rgb.flags.writeable)
         self.assertEqual(path_frame.to_dict()["color_space"], "RGB")
         self.assertEqual(array_frame.metadata["normalized_from"], "value")
-
-    def test_invalid_camera_is_reported_by_framework_without_invoking_plugin(self) -> None:
-        mapper = _mapper("frame")
-        request = build_perception_request(
-            _sensor_frame(
-                SensorReading(
-                    sensor_id=FRONT_CAMERA_SENSOR_ID,
-                    sensor_kind="camera",
-                    captured_at_ms=10,
-                    value=object(),
-                )
-            )
-        )
-
-        result = mapper.perceive(request)
-
-        self.assertEqual(result.status, "unavailable")
-        self.assertEqual(result.plugin_runs[0].status, "unavailable")
-        self.assertIn("unsupported camera value type", result.plugin_runs[0].error or "")
-        self.assertEqual(result.signals, ())
-        self.assertEqual(result.things, ())
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

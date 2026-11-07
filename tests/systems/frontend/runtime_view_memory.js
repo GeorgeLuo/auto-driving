@@ -26,6 +26,7 @@ function fakeElement() {
     replaceChildren(...nodes) { this._text = ""; this.children = [...nodes]; },
     setAttribute(name, value) { this.attributes[name] = String(value); },
     getAttribute(name) { return this.attributes[name]; },
+    removeAttribute(name) { delete this.attributes[name]; },
     addEventListener(type, handler) { (this.listeners[type] ||= []).push(handler); },
     removeEventListener() {},
     descendants() { return this.children.flatMap((child) => [child, ...child.descendants()]); },
@@ -99,13 +100,26 @@ const RECORDING = {
   state: { health: null, epoch_id: "epoch-1", record_count: 1, records: [record("rec-1")] }
 };
 
-function publication(plugins, publisher) {
+function publication(plugins, publisher, timing) {
   return {
-    schema: "automa_perception_publication",
+    schema: "host_frame_publication",
     host_name: "piracer",
-    frame: { frame_id: "frame_1" },
-    perception: { things: [], plugin_runs: [] },
-    memory: { schema: "memory_report", plugins, evidence_publisher: publisher }
+    health: "healthy",
+    ok: true,
+    report: {
+      host_name: "piracer",
+      frame_id: "frame_1",
+      status: "ok",
+      error: null,
+      cycle: {
+        perception: { things: [], plugin_runs: [] },
+        memory: publisher === undefined
+          ? null
+          : { schema: "memory_report", plugins, evidence_publisher: publisher }
+      },
+      values: { timing: timing || { duration_ms: null, steps: [] } }
+    },
+    image: { frame_id: "frame_1", url: "/frame?v=frame_1", width_px: 4, height_px: 4 }
   };
 }
 
@@ -140,10 +154,10 @@ async function memoryPage() {
   assert.equal($("statusText").textContent, "Live | bounded_evidence: 2 keys");
 
   // The cycle's memory step time fills the Update row.
-  latest = {
-    ...publication([BOUNDED], "bounded_evidence"),
-    timing: { steps: [{ step: "observation", duration_ms: 9 }, { step: "memory", duration_ms: 1.25 }] }
-  };
+  latest = publication([BOUNDED], "bounded_evidence", {
+    duration_ms: 12,
+    steps: [{ step: "observation", duration_ms: 9 }, { step: "memory", duration_ms: 1.25 }]
+  });
   await ctx.refresh();
   assert.equal(metrics($("ledgerMetrics"))["Update"], "1.25 ms");
 
@@ -192,7 +206,8 @@ function perceptionPage() {
   const ctx = pageContext(() => new Promise(() => {}));
   runPage("cli/automa_cli/frontend/pages/perception/index.html", ctx);
   const frameMetrics = () => metrics(ctx.document.getElementById("frameMetrics"));
-  const render = (payload) => vm.runInContext(`latest = ${JSON.stringify(payload)}; renderData();`, ctx);
+  const render = (payload) => vm.runInContext(
+    `latest = shownFrame(${JSON.stringify(payload)}); renderData();`, ctx);
 
   render(publication([BOUNDED], "bounded_evidence"));
   assert.equal(frameMetrics()["Memory keys"], "bounded_evidence 2");
@@ -202,20 +217,46 @@ function perceptionPage() {
   assert.equal(frameMetrics()["Memory keys"], "bounded_evidence 2, recording_test 1");
   assert.equal(frameMetrics()["Evidence publisher"], "bounded_evidence");
 
-  render({ ...publication([], null), memory: null });
+  const withoutMemory = publication([], null);
+  withoutMemory.report.cycle.memory = null;
+  render(withoutMemory);
   assert.equal(frameMetrics()["Memory keys"], "open /memory");
   assert.equal(frameMetrics()["Evidence publisher"], "—");
 
-  render({ ...publication([], null), timing: null, duration_ms: 12.5 });
+  render(publication([], null, { duration_ms: 12.5, steps: [] }));
   assert.equal(frameMetrics()["Cycle"], "12.5 ms");
   assert.equal(frameMetrics()["Perception"], "—");
-  render({ ...publication([], null), timing: { duration_ms: 0 }, duration_ms: 99 });
+  render(publication([], null, { duration_ms: 0, steps: [] }));
   assert.equal(frameMetrics()["Cycle"], "0 ms");
 }
 
-function decisionPage() {
+async function decisionPage() {
   const ctx = pageContext(() => new Promise(() => {}));
   runPage("cli/automa_cli/frontend/pages/decision/index.html", ctx);
+  const report = {
+    frame_id: "error-frame", host_name: "fixture", status: "error", error: "proposal failed",
+    cycle: { perception: { signals: [], things: [] }, observation: null, memory: null, proposal: null, plan: null, action: null },
+    application: { applied: false, reason: "observation-cycle-error" },
+  };
+  const shown = ctx.shownDecision({ report, image: null, evidence: { records: [] }, health: "stale" });
+  assert.strictEqual(shown.decision, report);
+  assert.equal(shown.status, "error");
+  ctx.liveStatus(shown);
+  ctx.renderData();
+  assert.equal(metrics(ctx.document.getElementById("cycleMetrics")).Frame, "error-frame");
+  assert.equal(ctx.document.getElementById("candidates").textContent, "No candidates");
+  let release;
+  const reads = [];
+  const live = pageContext((path) => {
+    reads.push(path);
+    return new Promise((resolve) => { release = resolve; });
+  });
+  runPage("cli/automa_cli/frontend/pages/decision/index.html", live);
+  release({ ok: true, json: async () => ({ report, image: null, health: "stale", evidence: { records: [] } }) });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(reads, ["/api/latest"]);
+  assert.equal(metrics(live.document.getElementById("cycleMetrics")).Frame, "error-frame");
+  assert.equal(live.document.getElementById("candidates").textContent, "No candidates");
   const composed = { decision: { cycle: {
     plan: { status: "composed", candidates: [], contributions: [] }, action: { status: "ok" }
   } } };
@@ -231,7 +272,7 @@ function decisionPage() {
 (async () => {
   await memoryPage();
   perceptionPage();
-  decisionPage();
+  await decisionPage();
   console.log("runtime view memory ok");
 })().catch((error) => {
   console.error(error);

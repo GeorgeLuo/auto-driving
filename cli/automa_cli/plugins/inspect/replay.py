@@ -36,8 +36,8 @@ from ...replay.selections import (
     SharedMemorySeed,
     default_selection,
     recorded_runner,
+    replace_replay_pipeline,
     resolve_replay_activations,
-    restage_replay_steps,
     selection_report,
 )
 from ...replay.source import normalize_image_directory, normalize_image_file
@@ -62,12 +62,12 @@ class StepReplay:
     """Step runners that replay a source with the selections it recorded.
 
     Each step uses its override, else the selection the source's first frame
-    recorded, else ``default_selection``. A frame that recorded a restage replaces
-    that step's selection from then on, unless the step is overridden; the replaced runner
-    is reset over the map. Starting from the first frame's selection, its
-    restage keeps the runners and the map. Constructing the runners raises
-    before any frame runs, including for a recorded release that is not
-    available locally. A seed starts the run from its decoded map.
+    recorded, else ``default_selection``. A later frame installs a fresh
+    pipeline and an empty map only when its effective selection differs.
+    An override that cancels a recorded change keeps the runners and the map.
+    Constructing the runners raises before any frame runs, including for a
+    recorded release that is not available locally. A seed starts the run
+    from its decoded map.
     """
 
     def __init__(
@@ -91,12 +91,17 @@ class StepReplay:
         self.shared_memory = seed.shared_memory if seed is not None else {}
 
     def restage(self, frame: ReplayFrame) -> None:
-        """Apply this frame's recorded selections, unless the step is overridden."""
+        """Install this frame's recorded pipeline, unless the step is overridden."""
 
-        restage_replay_steps(
+        runners, activations, changed = replace_replay_pipeline(
             self.runners, self.activations, recorded_selections(frame.metadata),
-            overrides=set(self.overrides), shared_memory=self.shared_memory,
+            overrides=set(self.overrides),
         )
+        if not changed:
+            return
+        self.runners = runners
+        self.activations = activations
+        self.shared_memory = {}
 
     def run(self, frame: ReplayFrame) -> FrameOutcome:
         self.restage(frame)

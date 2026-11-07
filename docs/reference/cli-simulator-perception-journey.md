@@ -27,10 +27,9 @@ are replaced by the `hosts update` that `hosts status --long` prints.
 ./cli/automa vehicles status
 ./cli/automa hosts create --name chase-sim-chaser --provider chase-sim --url http://localhost:5050
 
-./cli/automa hosts run \
-  --name chase-sim-chaser \
-  --observe-only \
-  --open-view
+./cli/automa hosts run --name chase-sim-chaser --observe-only
+
+./cli/automa hosts viewer --name chase-sim-chaser   # Ctrl-C ends the view, not the run
 
 ./cli/automa hosts status --name chase-sim-chaser
 
@@ -65,7 +64,7 @@ It serves the runtime viewer fed from that host (Perception, Memory, Action and
 Plugins) and opens it in the browser until Ctrl-C. It exits 2 when no such host
 exists, it is not running, or it does not answer. While the host is not live,
 for example after its run stopped, it prints `Not live:` with the reason, and
-the Perception and Memory pages show that reason instead of a live frame.
+the Perception page keeps the host's last frame, marked Stale.
 
 Nothing is listed until you discover it or `simulators create` starts it.
 To list a simulator or a PiCar:
@@ -116,13 +115,13 @@ movement, or requires a live simulator. `hosts status --long` reports
 invalid staged steps, and `hosts run` checks them before it starts.
 
 `hosts run --observe-only` preserves the current scenario, playback
-state, control source, and input. It succeeds only after one camera frame, the
-perception result for that frame, and the loopback view health all agree on the
-same live worker generation. `--open-view` is explicit. A browser-launch
-failure leaves the healthy worker running and prints the URL for manual use.
+state, control source, and input. It succeeds once the runtime session is
+running or completed, serves no pages, and prints `hosts viewer --name <host>`.
+That viewer opens the browser and serves the pages until interrupted; its
+failures end only that view, never the run.
 
 `--unbounded` starts an unbounded background worker in either mode and overrides
-`--num-decisions`. The launch command returns once the correlated view is ready
+`--num-decisions`. The launch command returns once the runtime session is running
 and prints `hosts stop`, which stops the worker. Without `--unbounded`,
 a movement-enabled run requires a positive `--num-decisions N`.
 An observation-only run without a count is unbounded.
@@ -130,11 +129,11 @@ Ctrl-C in a terminal stream stops that stream, not the worker. For a passive
 restart, keep `--observe-only` explicit:
 
 ```sh
-./cli/automa hosts restart --name chase-sim-chaser --observe-only --open-view
+./cli/automa hosts restart --name chase-sim-chaser --observe-only
 ```
 
-Stopping the worker keeps its local deployment staged and makes its previous
-view unavailable or stale, never current.
+Stopping the worker keeps its local deployment staged. A running `hosts viewer`
+keeps serving the host's pages, which report that the host is not live.
 
 ## Upload to an Existing Catalog
 
@@ -203,8 +202,10 @@ construction error fails the arm with exit 2 and the error, keeps the previous
 selection, and `plugins list` prints the arming error and exits 2 until an arm
 succeeds. `plugins list` shows what is armed as soon as the arm answers; the
 viewer's **Plugins** page also shows when the host's cycle has applied it. New
-IDs append in command order. An existing ID updates in place; other plugins
-retain their definitions and configurations. Uploading a newer revision does not
+IDs append in command order. An existing ID replaces its definition; other plugins
+retain their definitions and configurations. Every executable selection change rebuilds all
+step runners and starts an empty shared-memory map at the next frame.
+Uploading a newer revision does not
 change what is armed until another arm request names that ID; `plugins list
 --long` then lists the armed revision beside the newer one. Re-arming an unchanged definition preserves its instance
 and history.
@@ -248,12 +249,13 @@ The commands keep these layers separate:
 | `passive_capture` | `available`, `unavailable`, `unsupported` | Read-only atomic capture with session preservation proof |
 | `automation_deployment` | `deployed`, `not_deployed`, `invalid` | Local bundle and activations |
 | `automation_worker` | `running`, `stopped`, `error` | PID and recorded worker state agree |
-| `perception_view` | `available`, `unavailable`, `stale` | Loopback view belongs to the current worker generation |
+| `perception_view` | `running`, `warming`, `unavailable` | Loopback view `hosts viewer` or `plugins stream` serves for the host |
 | `evaluator_reference` | `available`, `unavailable`, `invalid` | Optional frame-scoped scoring reference |
 
 `vehicles status --json` emits `automa_vehicles_status`, which lists vehicle
-environments in `vehicles` with provider, URL, state and error. Simulator
-entries also include frontend, game and created-process information.
+environments in `vehicles` with provider, URL, state, error, and the names of
+the hosts created at each in `hosts`. Simulator entries also include frontend,
+game and created-process information.
 `hosts status --json` reports hosts separately, with their host names, the http
 URLs of their vehicles, their runtime URLs and their simulator attachment.
 When the simulator does not answer, `simulator` is `not answering`.
@@ -298,8 +300,8 @@ external change.
 | Passive proof missing | Metrics UI must expose the missing fingerprint field or a fail-closed `preserveSession` receipt; Automa does not work around it |
 | Deployment absent | Run the printed `hosts update` command, which stages every step's default |
 | Staged step invalid (including a retired schema) | `hosts status --long` and startup identify its step, activation path, and the `hosts update` command that replaces it with the step's default. Run it, then rerun `hosts status --long`. Checking never rewrites configs, and known invalid documents prevent worker startup and restart |
-| Worker stopped | Run the printed observation-only `hosts run --open-view` command |
-| View stale/unavailable | Use the printed worker recovery; a recorded URL is not treated as healthy |
+| Worker stopped | Run the printed observation-only `hosts run` command |
+| View unavailable | Run `hosts viewer --name <host>`; a recorded URL is not treated as healthy |
 
 `vehicles status` exits 1 when a vehicle is listed and none is reachable, and 0
 when nothing is listed. `hosts status

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import tempfile
 import unittest
 from dataclasses import replace
@@ -16,7 +17,7 @@ from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.report import report_from_host_result
-from cli.automa_cli.frontend.decision_view import DecisionView
+from cli.automa_cli.frontend.perception_view import PerceptionView
 from cli.automa_cli.plugins.inspect.replay import read_replay_source
 from cli.automa_cli.replay.frames import run_frame
 from cli.automa_cli.replay.selections import default_selection
@@ -109,48 +110,34 @@ class ViewerCycleAgreementTests(unittest.TestCase):
                 published_at_ms=published_at_ms,
                 values={"source_id": "runtime-host", "stale_after_ms": 5000},
             )
-            view = DecisionView(host_name="fixture", identity={
-                "host_name": "fixture",
-                "source_id": "runtime-host",
-                "run_id": "run",
-                "producer_generation_id": "generation",
-            })
-            self.assertTrue(view.publish(
-                report=report,
-                image=(_png(), "image/png"),
-                host_telemetry={"status": "unavailable", "reason": "publisher_missing"},
-            ))
+            view = PerceptionView(host_name="fixture")
+            view.publish(frame_record={"report": report.to_dict(), "host_telemetry": {"status": "unavailable", "reason": "publisher_missing"}}, frame_bytes=None)
             report.cycle["observation"]["metadata"]["labels"].append("source")
-
-            payload = view.latest_payload(
-                generation=view.generation_id, now_ms=published_at_ms + 10,
-            )
-            cycle = payload["decision"]["cycle"]
+            payload = json.loads(view.latest_json())
+            cycle = payload["report"]["cycle"]
             self.assertEqual(set(cycle), set(CYCLE_RECORD_KEYS))
             self.assertIsNone(cycle["memory"])
             self.assertEqual(cycle["observation"]["metadata"]["labels"], ["first"])
             self.assertEqual(cycle["observation"]["things"][0]["thing_id"], "one")
             self.assertNotIn("perception", payload)
             self.assertNotIn("provenance", payload)
-            self.assertEqual(payload["current_image"]["frame_id"], payload["decision"]["frame_id"])
-            self.assertEqual(payload["freshness"]["captured_at_ms"], payload["decision"]["timestamp_ms"])
+            self.assertEqual(payload["image"]["frame_id"], payload["report"]["frame_id"])
+            self.assertEqual(payload["image"]["captured_at_ms"], payload["report"]["timestamp_ms"])
             self.assertNotEqual(
-                payload["freshness"]["captured_at_ms"],
-                payload["freshness"]["published_at_ms"],
+                payload["image"]["captured_at_ms"],
+                payload["report"]["published_at_ms"],
             )
             self.assertNotIn("authority", payload)
-            self.assertFalse(payload["decision"]["application"]["applied"])
+            self.assertFalse(payload["report"]["application"]["applied"])
             self.assertEqual(cycle["action"]["authority"]["authorized_output"]["steering"], 0.25)
             self.assertEqual(payload["host_telemetry"]["reason"], "publisher_missing")
 
-            payload["decision"]["cycle"]["observation"]["metadata"]["labels"].append("caller")
-            payload["decision"]["cycle"]["action"]["authority"]["authorized_output"]["steering"] = 1
-            again = view.latest_payload(
-                generation=view.generation_id, now_ms=published_at_ms + 10,
-            )
-            self.assertEqual(again["decision"]["cycle"]["observation"]["metadata"]["labels"], ["first"])
+            payload["report"]["cycle"]["observation"]["metadata"]["labels"].append("caller")
+            payload["report"]["cycle"]["action"]["authority"]["authorized_output"]["steering"] = 1
+            again = json.loads(view.latest_json())
+            self.assertEqual(again["report"]["cycle"]["observation"]["metadata"]["labels"], ["first"])
             self.assertEqual(
-                again["decision"]["cycle"]["action"]["authority"]["authorized_output"]["steering"],
+                again["report"]["cycle"]["action"]["authority"]["authorized_output"]["steering"],
                 0.25,
             )
 
@@ -188,8 +175,8 @@ class ViewerCycleAgreementTests(unittest.TestCase):
             started = failed.start()
             state = failed.wait(5) if started["phase"] == "running" else started
             self.assertEqual(state["phase"], "failed")
-            self.assertIsNone(state["timing"])
-            self.assertIsNone(state["perception"])
+            self.assertIsNotNone(state["timing"])
+            self.assertIsNotNone(state["perception"])
             self.assertIsNone(state["cycle"]["action"])
 
     def test_returned_workbench_state_does_not_own_the_retained_cycle(self) -> None:

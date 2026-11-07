@@ -37,7 +37,6 @@ class ObservationAdaptationTests(unittest.TestCase):
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id="test-perception",
             status="ok",
-            lines=tuple(f"evidence line {index}" for index in range(15)),
             signals=(
                 PerceptionSignal(
                     signal_id="path_clear",
@@ -74,7 +73,7 @@ class ObservationAdaptationTests(unittest.TestCase):
         self.assertEqual(observation.created_at_ms, 0)
         self.assertEqual(observation.perception_schema, PERCEPTION_TEXT_SCHEMA)
         self.assertEqual(observation.perception_plugin_id, "test-perception")
-        self.assertEqual(observation.summary, perception.lines[:12])
+        self.assertEqual(observation.summary, ())
         self.assertEqual(observation.signals[0]["signal_id"], "path_clear")
         self.assertEqual(observation.things[0]["thing_id"], "region_1")
         self.assertEqual(observation.metadata["limits"], list(perception.limits))

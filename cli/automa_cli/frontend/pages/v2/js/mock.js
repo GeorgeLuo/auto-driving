@@ -86,7 +86,7 @@ const mock = (() => {
     if (!/^https?:$/.test(u.protocol)) throw new TypeError("not http(s)");
     return provider === "chase-sim" ? `${u.protocol}//${u.host}/` : `${u.protocol}//${u.host}`;
   }
-  const refused = (error) => ({ ok: false, status: "failed", error });
+  const refused = (error) => ({ ok: false, error });
   const missingHost = (name) => ({ ok: false, kind: "missing", text: `No host named ${name}.` });
 
   // ---- Reads ----

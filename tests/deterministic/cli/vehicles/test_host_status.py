@@ -16,7 +16,7 @@ from unittest import mock
 from autonomy.decision_cycle.activation import step_activation
 from cli.automa_cli.frontend import perception_view
 from cli.automa_cli.releases.paths import controller_bundle_paths
-from cli.automa_cli.hosts.host_formatting import perception_stream_command
+from cli.automa_cli.hosts.host_formatting import viewer_command
 from cli.automa_cli.hosts.local import HOST_RECORD
 from cli.automa_cli.hosts.publications.host_publications import host_state
 from cli.automa_cli.providers.urls import chase_operator_url
@@ -112,8 +112,8 @@ class HostStatusTests(unittest.TestCase):
         # --long adds the run lines under the same block.
         self.assertTrue(long.stdout.startswith("\n".join(block[:3]) + "\n"), long.stdout)
         self.assertIn(f"\n  {host.base_url}, pid {os.getpid()}\n  deployment: ", long.stdout)
-        stream = perception_stream_command("chase-sim-chaser")
-        self.assertIn(f"\n  view: unavailable (start `{stream}` to host it)\n", long.stdout)
+        viewer = viewer_command("chase-sim-chaser")
+        self.assertIn(f"\n  view: unavailable (start `{viewer}` to host it)\n", long.stdout)
         self.assertEqual((machine["schema"], machine["host_name"]), ("automa_hosts_status", None))
         [entry] = machine["hosts"]
         self.assertEqual(
@@ -126,7 +126,7 @@ class HostStatusTests(unittest.TestCase):
         self.assertEqual(entry["run"]["host_name"], "chase-sim-chaser")
 
     def test_a_host_without_a_monitor_reports_its_standalone_view(self) -> None:
-        """Only a monitor serves a run's view, so a host without one is checked for its stream's view.
+        """A host without a monitor reports the view ``hosts viewer`` or a stream records.
 
         The run detail reuses discovery's reads of the host's configuration and record.
         """
@@ -161,6 +161,28 @@ class HostStatusTests(unittest.TestCase):
         self.assertEqual(health_requests.call_count, 1)
         self.assertEqual(reads.count(self.runtime_root / "chase-sim-chaser/host-configuration.json"), 1)
         self.assertEqual(reads.count(runtime / "automation" / HOST_RECORD), 1)
+
+    def test_a_monitored_run_reports_the_same_standalone_view(self) -> None:
+        """A live worker serves no view; status finds the explicit one without its pid or run id."""
+
+        self.host()
+        health = json.dumps({
+            "schema": perception_view.VIEW_SCHEMA, "available": True, "url": "http://127.0.0.1/",
+            "latest_frame_id": "frame-1",
+        }).encode()
+        with answering(health) as view_url:
+            runtime = self.runtime_root / "chase-sim-chaser/bundle/runtime"
+            write_json(runtime / "view" / perception_view.VIEW_RECORD_NAME, {"url": view_url})
+            write_json(runtime / "automation" / "process.json", {"pid": os.getpid()})
+            write_json(runtime / "automation" / "state.json", {"pid": os.getpid(), "run_id": "run-1",
+                                                               "status": "running"})
+            result = self.status("--json")
+
+        self.assertEqual(result.returncode, 0, result.stderr)
+        [entry] = json.loads(result.stdout)["hosts"]
+        self.assertEqual(entry["run"]["process"]["pid"], os.getpid())
+        view = entry["run"]["published_view"]
+        self.assertEqual((view["available"], view["latest_frame_id"]), (True, "frame-1"))
 
     def test_a_hung_view_does_not_hold_up_the_other_hosts(self) -> None:
         """Each host's view is checked once, side by side with the others'."""

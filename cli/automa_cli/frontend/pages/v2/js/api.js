@@ -17,7 +17,7 @@ const api = (() => {
   const docs = {};
   const mocked = (method, route) => typeof mock !== "undefined" && mock.answers(method, route);
 
-  const refused = (error) => ({ ok: false, status: "failed", error });
+  const refused = (error) => ({ ok: false, error });
   // The viewer's answer; one that failed without a refusal's shape, or no answer, becomes one.
   async function fetchJson(route, init) {
     try {

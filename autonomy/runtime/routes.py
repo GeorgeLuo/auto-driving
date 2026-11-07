@@ -12,24 +12,17 @@ import json
 import logging
 import threading
 from collections.abc import Mapping
-from functools import partial
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
 
 from autonomy.runtime.frame_loop import (
-    CAMERA_LATEST_FRAME_PATH,
-    CAMERA_LATEST_JSON_PATH,
-    DECISION_LATEST_PATH,
-    DECISION_TRANSACTION_PATH,
-    DECISION_TRANSACTION_SCHEMA,
+    FRAME_TRANSACTION_SCHEMA,
     FrameLoop,
-    LATEST_FRAME_PATH,
     LATEST_JSON_PATH,
     OBSERVATION_TRANSACTION_PATH,
-    OBSERVATION_TRANSACTION_SCHEMA,
 )
 from autonomy.runtime.session import RunConfiguration
-from autonomy.runtime.plugin_catalog import catalog_write_error
+from autonomy.runtime.http_errors import error_payload, write_error
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +30,6 @@ STATUS_PATH = "/host/status"
 RUNTIME_PATH = "/host/runtime"
 PLUGINS_PATH = "/api/plugins"
 TELEMETRY_LATEST_PATH = "/host/telemetry/latest"
-TELEMETRY_RECORDS_PATH = "/host/telemetry/records"
 TELEMETRY_SCHEMA = "automa_host_boundary_telemetry"
 RESTART_DELAY_S = 0.2
 
@@ -52,9 +44,9 @@ def json_response(payload: dict[str, Any], status: int = 200) -> Response:
 class RuntimeRoutes:
     """Serve one runtime's status, lifecycle, catalog, and publications.
 
-    ``telemetry`` is the optional host-boundary observer (``latest`` and
-    ``records``). ``on_restart`` replaces the process after a restart
-    response is sent; the service manager starts a fresh host.
+    ``telemetry`` is the optional host-boundary observer (``latest``).
+    ``on_restart`` replaces the process after a restart response is sent;
+    the service manager starts a fresh host.
     """
 
     def __init__(
@@ -75,14 +67,8 @@ class RuntimeRoutes:
             ("GET", PLUGINS_PATH): self._catalog,
             ("POST", PLUGINS_PATH): self._catalog,
             ("GET", LATEST_JSON_PATH): self._observation,
-            ("GET", LATEST_FRAME_PATH): self._observation_frame,
-            ("GET", CAMERA_LATEST_JSON_PATH): self._camera,
-            ("GET", CAMERA_LATEST_FRAME_PATH): self._camera_frame,
-            ("GET", DECISION_LATEST_PATH): self._decision,
-            ("GET", OBSERVATION_TRANSACTION_PATH): partial(self._transaction, "observation"),
-            ("GET", DECISION_TRANSACTION_PATH): partial(self._transaction, "decision"),
+            ("GET", OBSERVATION_TRANSACTION_PATH): self._transaction,
             ("GET", TELEMETRY_LATEST_PATH): self._telemetry_latest,
-            ("GET", TELEMETRY_RECORDS_PATH): self._telemetry_records,
         }
         self._paths = {path for _, path in self._routes}
 
@@ -96,22 +82,23 @@ class RuntimeRoutes:
         parts = urlsplit(target)
         path = parts.path.rstrip("/") or "/"
         method = "GET" if method.upper() == "HEAD" else method.upper()
-        if method == "POST" and path == PLUGINS_PATH:
-            error = catalog_write_error(headers or {}, origin=origin)
-            if error is not None:
-                status, payload = error
-                return json_response(payload, status)
         route = self._routes.get((method, path))
         if route is None:
             if path in self._paths:
-                return json_response({"ok": False, "error": f"{method} not allowed on {path}"}, 405)
-            return json_response({"ok": False, "error": f"no runtime route {path}"}, 404)
+                return json_response(error_payload(f"{method} not allowed on {path}"), 405)
+            return json_response(error_payload(f"no runtime route {path}"), 404)
+        if method == "POST":
+            # Every runtime write changes state a page on another site must not reach.
+            refusal = write_error(headers or {}, origin=origin)
+            if refusal is not None:
+                status, payload = refusal
+                return json_response(payload, status)
         try:
             query = parse_qs(parts.query, keep_blank_values=True, strict_parsing=False)
             return route(query, body or b"", headers or {})
         except Exception as exc:  # noqa: BLE001 - one bad request must not end the host
             logger.exception("Runtime route %s %s failed", method, path)
-            return json_response({"ok": False, "error": f"{type(exc).__name__}: {exc}"}, 500)
+            return json_response(error_payload(f"{type(exc).__name__}: {exc}"), 500)
 
     def status_payload(self) -> dict[str, Any]:
         session = self.host.session_status()
@@ -168,11 +155,11 @@ class RuntimeRoutes:
             else:
                 raise ValueError(f"unknown runtime command {command!r}")
         except (TypeError, ValueError, RuntimeError) as exc:
-            return json_response({"ok": False, "error": str(exc)}, 400)
+            return json_response(error_payload(str(exc)), 400)
         response = self._runtime(query, body, headers)
         if command == "restart":
             if self.on_restart is None:
-                return json_response({"ok": False, "error": "this runtime cannot restart itself"}, 400)
+                return json_response(error_payload("this runtime cannot restart itself"), 400)
             threading.Timer(RESTART_DELAY_S, self.on_restart).start()
         return response
 
@@ -180,120 +167,69 @@ class RuntimeRoutes:
         try:
             payload = self._json_body(body) if body else None
         except ValueError as exc:
-            return json_response({"ok": False, "error": str(exc)}, 400)
+            return json_response(error_payload(str(exc)), 400)
         # Uploads last for this host run; the id shows when a restart cleared them.
         result = {**self.host.plugin_catalog(payload), "host_run_id": self.loop.run_id}
         return json_response(result, 200 if result.get("ok") else 400)
 
     def _observation(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:
         payload = self.loop.publish_latest()
-        return json_response(payload, 503 if payload.get("health") == "absent" else 200)
+        return json_response(payload, 503 if payload.get("report") is None else 200)
 
-    def _camera(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:
-        payload = self.loop.publish_latest_camera()
-        unavailable = payload.get("health") in {"absent", "unavailable"} and not payload.get("ok")
-        return json_response(payload, 503 if unavailable else 200)
-
-    def _observation_frame(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:
-        return self._frame(*self.loop.publish_latest_frame_jpeg())
-
-    def _camera_frame(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:
-        return self._frame(*self.loop.publish_latest_camera_jpeg())
-
-    @staticmethod
-    def _frame(jpeg: bytes | None, meta: dict[str, Any]) -> Response:
-        frame = meta.get("frame") if isinstance(meta.get("frame"), dict) else {}
-        headers = {"Cache-Control": "no-store"}
-        for header, key in (
-            ("X-Frame-Id", "frame_id"),
-            ("X-Frame-Index", "frame_index"),
-            ("X-Captured-At-Ms", "captured_at_ms"),
-            ("X-Completed-At-Ms", "completed_at_ms"),
-        ):
-            if frame.get(key) is not None:
-                headers[header] = str(frame[key])
-        if meta.get("health") is not None:
-            headers["X-Observation-Health"] = str(meta["health"])
-        if jpeg is None:
-            status, json_headers, body = json_response(meta, 503)
-            return status, {**json_headers, **headers}, body
-        return 200, {**headers, "Content-Type": "image/jpeg", "Content-Length": str(len(jpeg))}, jpeg
-
-    def _decision(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:
-        payload = self.loop.publish_decision_latest()
-        return json_response(payload, 200 if payload.get("status") == "ready" else 503)
-
-    def _transaction(self, kind: str, query: dict[str, list[str]], body: bytes,
+    def _transaction(self, query: dict[str, list[str]], body: bytes,
                      request_headers: Mapping[str, str]) -> Response:
-        publication, capture, revision = self.loop.read_transaction(kind)
-        usable = (publication.get("status") == "ready" if kind == "decision"
-                  else publication.get("health") in {"healthy", "stale"})
-        state = publication.get("status") if kind == "decision" else publication.get("health")
+        publication, capture, revision = self.loop.read_transaction()
+        report = publication.get("report") if isinstance(publication.get("report"), dict) else None
+        state = publication.get("health")
         etag = f'W/"{revision}:{state}"'
         headers = {"Cache-Control": "no-cache", "ETag": etag,
                    "X-Read-At-Ms": str(publication["read_at_ms"])}
         matched = next((value for key, value in request_headers.items()
                         if key.lower() == "if-none-match"), None)
-        if usable and capture is not None and matched == etag and capture.jpeg_cache.data is not None:
+        image_ready = capture is not None and capture.jpeg_cache.data is not None
+        if report is not None and matched == etag and image_ready:
             return 304, headers, b""
         jpeg = None
-        reason = publication.get("reason") or state
-        if usable and capture is not None:
+        image_error = None
+        if report is None:
+            image_error = state or "absent"
+        elif capture is None or (capture.image is None and capture.jpeg_cache.data is None):
+            image_error = "image_unavailable"
+        else:
+            # The capture is the state the report was read from, so they name one frame.
             try:
                 jpeg = self.loop.frame_jpeg(capture)
             except Exception as exc:
-                reason = "image_encoding_failed"
-                publication = {**publication, "ok": False, "health": "error", "status": "error",
-                               "reason": reason, "error": f"{type(exc).__name__}: {exc}"}
+                image_error = f"image_encoding_failed: {type(exc).__name__}: {exc}"
         payload = {
-            "schema": DECISION_TRANSACTION_SCHEMA if kind == "decision" else OBSERVATION_TRANSACTION_SCHEMA,
+            "schema": FRAME_TRANSACTION_SCHEMA,
             "publication": publication,
-            "image_frame_id": capture.frame_id if jpeg is not None else None,
+            "image_frame_id": report.get("frame_id") if jpeg is not None and report is not None else None,
             "image_content_type": "image/jpeg" if jpeg is not None else None,
             "image_base64": base64.b64encode(jpeg).decode("ascii") if jpeg is not None else None,
-            "reason": None if jpeg is not None else reason,
+            "image_error": image_error,
         }
-        status, json_headers, encoded = json_response(payload, 200 if jpeg is not None else 503)
+        status, json_headers, encoded = json_response(payload, 200 if report is not None else 503)
         return status, {**json_headers, **headers}, encoded
 
-    def _telemetry_unavailable(self, field: str, reason: str, status: int) -> Response:
+    def _telemetry_unavailable(self, reason: str, status: int) -> Response:
         return json_response({
             "schema": TELEMETRY_SCHEMA, "ok": False,
             "status": "error" if status != 503 else "unavailable",
-            "reason": reason, field: None if field == "record" else [],
+            "reason": reason, "record": None,
         }, status)
 
     def _telemetry_latest(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:
         latest = getattr(self.telemetry, "latest", None)
         if not callable(latest):
-            return self._telemetry_unavailable("record", "publisher_missing", 503)
+            return self._telemetry_unavailable("publisher_missing", 503)
         if query:
-            return self._telemetry_unavailable("record", "query_invalid", 400)
+            return self._telemetry_unavailable("query_invalid", 400)
         try:
             payload = latest()
             if not isinstance(payload, dict):
                 raise TypeError("host telemetry latest publication is not an object")
         except Exception:
             logger.exception("Unable to read host telemetry latest publication")
-            return self._telemetry_unavailable("record", "observer_error", 500)
+            return self._telemetry_unavailable("observer_error", 500)
         return json_response(payload, 200 if payload.get("ok") else 503)
-
-    def _telemetry_records(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:
-        records = getattr(self.telemetry, "records", None)
-        if not callable(records):
-            return self._telemetry_unavailable("records", "publisher_missing", 503)
-        if set(query) != {"after_sequence", "limit"} or any(
-            len(values) != 1 or not values[0].isascii() for values in query.values()
-        ):
-            return self._telemetry_unavailable("records", "query_invalid", 400)
-        try:
-            payload = records(after_sequence=query["after_sequence"][0], limit=query["limit"][0])
-            if not isinstance(payload, dict):
-                raise TypeError("host telemetry history publication is not an object")
-        except Exception:
-            logger.exception("Unable to read host telemetry history")
-            return self._telemetry_unavailable("records", "observer_error", 500)
-        status = 200 if payload.get("ok") else 503
-        if payload.get("reason") == "query_invalid":
-            status = 400
-        return json_response(payload, status)

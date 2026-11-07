@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlsplit
 
-from autonomy.runtime.plugin_catalog import catalog_write_error
+from autonomy.runtime.http_errors import error_payload, write_error
 
 
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
@@ -43,8 +43,8 @@ def local_write_error(handler: BaseHTTPRequestHandler) -> tuple[int, dict[str, A
     except ValueError:
         local = False
     if not local:
-        return 403, {"ok": False, "status": "failed", "error": "writes require a loopback host"}
-    return catalog_write_error(handler.headers, origin=f"http://{authority}")
+        return 403, error_payload("writes require a loopback host")
+    return write_error(handler.headers, origin=f"http://{authority}")
 
 
 def read_json_object(handler: BaseHTTPRequestHandler, *, what: str) -> dict[str, Any]:
@@ -81,9 +81,12 @@ def stop_server_thread(
 ) -> None:
     """Stop, close, and briefly join a loopback serving thread."""
 
-    server.shutdown()
+    # shutdown waits for serve_forever; a bound server whose thread failed to
+    # start has nobody to signal completion and must only close its socket.
+    if thread is not None and thread.is_alive():
+        server.shutdown()
     server.server_close()
-    if thread is not None:
+    if thread is not None and thread.ident is not None:
         thread.join(timeout=1.0)
 
 

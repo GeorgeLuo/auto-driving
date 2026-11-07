@@ -16,6 +16,12 @@ def vehicle_label(configuration: dict[str, Any]) -> str:
     return f"the {vehicle.label} at {vehicle.operator_url(configuration['connection'][vehicle.url_key])}"
 
 
+def viewer_command(host_name: str) -> str:
+    """The command that serves a host's runtime pages until interrupted."""
+
+    return automa_command("hosts", "viewer", "--name", host_name)
+
+
 def perception_stream_command(host_name: str) -> str:
     """The command that streams a host's perception and serves its local runtime view."""
 

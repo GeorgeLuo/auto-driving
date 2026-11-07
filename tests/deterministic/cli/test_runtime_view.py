@@ -18,6 +18,7 @@ from cli.automa_cli.frontend.server import (
     RuntimeViewServer,
 )
 from cli.automa_cli.frontend.workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY
+from cli.automa_cli.hosts.views import view_feed
 from cli.automa_cli.hosts.views.runtime_view import runtime_view_server
 from implementations.vehicle.chase_sim.defaults import CHASE_UI_WS_URL_ENV
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiWsClient
@@ -27,6 +28,34 @@ from tests.shared.cli.workbench_fixtures import FixtureMapper, ImageReplayRunner
 from tests.shared.implementations.runtime.wait import wait_until
 from tests.support.fake_hosts import closed_url
 from tests.support.fake_metrics_ui import fake_metrics_ui
+
+
+class RuntimeViewStartupTests(unittest.TestCase):
+    def test_failed_serving_thread_start_closes_the_bound_socket_without_shutdown(self):
+        server = runtime_view_server(host_name="viewer", automation_dir=None, port=0)
+        with mock.patch("cli.automa_cli.frontend.server.start_server_thread",
+                        side_effect=RuntimeError("thread could not start")):
+            with self.assertRaisesRegex(RuntimeError, "thread could not start"):
+                server.start()
+        httpd = server._httpd
+        self.addCleanup(httpd.server_close)
+        with mock.patch.object(httpd, "shutdown", side_effect=AssertionError("no serving thread")) as shutdown:
+            server.stop()
+        shutdown.assert_not_called()
+        self.assertEqual(httpd.socket.fileno(), -1)
+        self.assertIsNone(server.url)
+
+    def test_a_view_feed_whose_cleanup_also_fails_reports_the_start_failure(self):
+        server = mock.Mock(url=None)
+        server.start.side_effect = OSError("record not written")
+        server.stop.side_effect = OSError("record not written again")
+        with tempfile.TemporaryDirectory() as tmp, \
+             mock.patch.object(view_feed, "runtime_view_dir", return_value=Path(tmp)), \
+             mock.patch.object(view_feed, "runtime_view_server", return_value=server):
+            feed = view_feed.ViewFeed("car", base_url="http://127.0.0.1:9", timeout_s=0.1)
+        self.assertEqual(feed.error, "OSError: record not written")
+        self.assertIsNone(feed.url)
+        server.stop.assert_called_once_with()
 
 
 class ViewerWithoutHostTests(unittest.TestCase):
@@ -138,7 +167,6 @@ class ConnectedSplashTests(unittest.TestCase):
         self.assertIn('class="status-dot live"', html)
         for href in ("/perception", "/memory", "/plugins", "/workbench/"):
             self.assertIn(f'<a class="nav" href="{href}">', html)
-        self.assertIn('<span class="nav unavailable" title="Action view unavailable">Action</span>', html)
 
     def test_workbench_is_created_on_first_visit_and_closed_with_the_viewer(self) -> None:
         runner = ImageReplayRunner(cadence_ms=0, step_factories={"perception": FixtureMapper})

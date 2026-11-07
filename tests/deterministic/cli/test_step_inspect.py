@@ -140,8 +140,8 @@ class StepInspectTests(unittest.TestCase):
                 actual = report["frames"][0]["record"]
                 if step == "perception":
                     for record in (actual, expected):
-                        record.pop("lines")
-                        record.pop("text")
+                        self.assertNotIn("lines", record)
+                        self.assertNotIn("text", record)
                         for run in record["plugin_runs"]:
                             run.pop("duration_ms")
                 self.assertEqual(actual, expected)

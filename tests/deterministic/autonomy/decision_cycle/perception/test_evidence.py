@@ -76,7 +76,6 @@ class PerceptionEvidenceSerializationTests(unittest.TestCase):
             schema=PERCEPTION_TEXT_SCHEMA,
             plugin_id="test-plugin",
             status="ok",
-            lines=("signal id=ready value=true", "thing id=region"),
             signals=(
                 PerceptionSignal(
                     "ready",

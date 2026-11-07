@@ -22,7 +22,7 @@ from ...shared.io.json_files import read_json
 from ...shared.io.processes import pid_alive
 from ...shared.paths import display_path
 from ...shared.timestamps import timestamp_ms
-from ..host_formatting import perception_stream_command
+from ..host_formatting import viewer_command
 from ..host_status import read_hosts
 from ..publications.host_publications import observation_component
 from ..step_activations import (
@@ -32,13 +32,13 @@ from ..step_activations import (
 )
 from ..views.view_discovery import runtime_view_dir
 from .models import status_reason
+from .store import latest_frame
 
 # The run state fields status reports as the worker recorded them.
 _STATE_FIELDS = (
     "run_id", "pipeline", "frames_dropped", "num_decisions", "recording", "pid", "control_source",
-    "action_policy", "execution", "arming", "session", "control_application", "passive_capture",
-    "passive_session", "readiness", "error", "error_code", "error_details", "exit_code", "stop_reason",
-    "updated_at_ms",
+    "action_policy", "execution", "arming", "session", "control_application", "error", "exit_code",
+    "stop_reason", "updated_at_ms",
 )
 
 
@@ -91,12 +91,12 @@ def _run_status(host: dict[str, Any], read: dict[str, Any] | None) -> dict[str, 
     alive = pid is not None and pid_alive(pid)
     selections = staged_selections(bundle)
     if read is not None and not alive:
-        run, applied = _host_run(name, host["url"], read, selections)
+        run, applied = _host_run(host["url"], read, selections)
     else:
         run, applied = _worker_run(automation_dir, process, state, selections, pid=pid, state_pid=state_pid,
                                    alive=alive)
     try:
-        decision = applied or decision_identity(bundle)
+        decision = applied or decision_identity(bundle, host_name=name)
     except (OSError, TypeError, ValueError):
         decision = None  # Its activation problem says why.
     try:
@@ -117,6 +117,7 @@ def _run_status(host: dict[str, Any], read: dict[str, Any] | None) -> dict[str, 
             "generation_id": decision.get("generation_id") if isinstance(decision, dict) else None,
         },
         **run,
+        "published_view": _published_view(name),
     }
 
 
@@ -132,13 +133,10 @@ def _worker_run(
 ) -> tuple[dict[str, Any], Any]:
     """A run as its monitor's records report it, and the decision it applies.
 
-    ``pid`` is the process record's, else the state's. The view is the one
-    the monitor serves; ``hosts start`` waits for it, so only a run still
-    starting reports it warming.
+    ``pid`` is the process record's, else the state's.
     """
 
     status, reason = _worker_state(state, pid=pid, state_pid=state_pid, alive=alive)
-    run_id = state.get("run_id") if isinstance(state.get("run_id"), str) else None
     last_frame = _dict(state.get("last_frame"))
     run = {
         "process": {
@@ -158,15 +156,10 @@ def _worker_run(
             "status": state.get("status", "none"),
             "frames_received": state.get("frames_received", 0),
             "processed_count": state.get("processed_count", 0),
-            "last_capture": _dict(state.get("last_capture")),
             "last_frame": last_frame,
-            "latest_perception_text": display_path(automation_dir / "latest_perception.txt"),
             "state_record": display_path(automation_dir / "state.json"),
             "latest_perception_age_ms": _age_ms(_int_or_none(last_frame.get("perception_completed_at_ms"))),
         },
-        "published_view": get_perception_view_status(
-            automation_dir, expected_run_id=run_id, expected_worker_pid=pid,
-        ),
         **_compared_steps(
             selections, state.get("steps") if alive else None,
             unreported="the run has not reported its steps" if alive else "host not running",
@@ -176,24 +169,19 @@ def _worker_run(
 
 
 def _host_run(
-    host_name: str, base_url: str, read: dict[str, Any], selections: dict[str, dict[str, Any]],
+    base_url: str, read: dict[str, Any], selections: dict[str, dict[str, Any]],
 ) -> tuple[dict[str, Any], Any]:
     """A run as its host's ``/host/status`` reports it, and the decision it applied.
 
     Without a monitor, its host reports the same cycle counters from its
-    observation status provider. No run view is served then, so the view is
-    the one a terminal ``plugins stream`` hosts.
+    observation status provider.
     """
 
     endpoint = f"{base_url}/host/status"
     autonomy = _dict((read["reply"] or {}).get("host"))
     observation = observation_component(autonomy)
-    latest = _dict(observation.get("latest"))
     error = read["error"] if read["state"] in {"not answering", "error"} else None
     status = "error" if error is not None else read["state"]
-    view = get_perception_view_status(runtime_view_dir(host_name))
-    if view.get("url") is None:  # No view is recorded here.
-        view["reason"] = f"start `{perception_stream_command(host_name)}` to host it"
     run = {
         "process": {
             "pid": None,
@@ -220,19 +208,22 @@ def _host_run(
             "execution": autonomy.get("execution"),
             "session": autonomy.get("session"),
             "error": error,
-            "last_frame": {
-                "frame_id": latest.get("frame_id"),
-                "perception_completed_at_ms": read["last_frame_at_ms"],
-                "cycle_duration_ms": latest.get("duration_ms"),
-            } if latest else {},
-            "latest_perception_text": endpoint,
+            "last_frame": latest_frame(autonomy) or {},
             "state_record": endpoint,
             "latest_perception_age_ms": _age_ms(read["last_frame_at_ms"]),
         },
-        "published_view": view,
         **_compared_steps(selections, autonomy.get("steps"), unreported=f"host {read['state']}"),
     }
     return run, autonomy.get("applied_decision")
+
+
+def _published_view(host_name: str) -> dict[str, Any]:
+    """The standalone view ``hosts viewer`` or ``plugins stream`` records, with or without a monitor."""
+
+    view = get_perception_view_status(runtime_view_dir(host_name))
+    if view.get("url") is None:  # No view is recorded here.
+        view["reason"] = f"start `{viewer_command(host_name)}` to host it"
+    return view
 
 
 def _compared_steps(

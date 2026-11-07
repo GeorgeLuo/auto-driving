@@ -10,43 +10,39 @@ from tests.deterministic.cli.decision.live_runtime_decision_view_fixtures import
 class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.TestCase):
     def test_serves_exact_decision_image_and_separate_authority_facts(self) -> None:
         stream_frame, expected_image = self._publish_exact_transaction()
-        generation = self.server.decision.generation_id
-        self.assertIsNotNone(generation)
-        with urlopen(
-            f"{self.server.url}api/decision/latest?generation={generation}", timeout=1.0
-        ) as response:
+        with urlopen(f"{self.server.url}api/latest", timeout=1.0) as response:
             self.assertEqual(response.headers["Cache-Control"], "no-store")
-            payload = json.loads(response.read().decode("utf-8"))
-        self.assertEqual(payload["status"], "current")
-        self.assertEqual(payload["decision"]["frame_id"], stream_frame["frame_id"])
-        self.assertEqual(payload["current_image"]["frame_id"], stream_frame["frame_id"])
-        authority = payload["decision"]["cycle"]["action"]["authority"]
+            payload = json.loads(response.read())
+        self.assertEqual(payload["report"]["status"], "ok")
+        self.assertEqual(payload["report"]["frame_id"], stream_frame["frame_id"])
+        self.assertEqual(payload["image"]["frame_id"], stream_frame["frame_id"])
+        authority = payload["report"]["cycle"]["action"]["authority"]
         self.assertNotIn("authority", payload)
         self.assertFalse(authority["proposed_applied"])
         self.assertIn("authorized_output", authority)
         self.assertNotIn("host_application", authority)
 
         with urlopen(
-            f"{self.server.url.rstrip('/')}{payload['current_image']['url']}",
+            f"{self.server.url.rstrip('/')}{payload['image']['url']}",
             timeout=1.0,
         ) as response:
-            self.assertEqual(response.headers.get_content_type(), "image/png")
+            self.assertEqual(response.headers.get_content_type(), "image/jpeg")
             self.assertEqual(response.read(), expected_image)
 
         with urlopen(
-            f"{self.server.url}decision?generation={generation}", timeout=1.0
+            f"{self.server.url}decision", timeout=1.0
         ) as response:
             self.assertEqual(response.status, 200)
             self.assertEqual(response.headers.get_content_type(), "text/html")
 
-        self.assertEqual(self.server.decision.health_payload()["status"], "running")
+        self.assertEqual(self.server.perception.health_payload()["latest_frame_id"], stream_frame["frame_id"])
         self.assertEqual(
-            payload["freshness"]["captured_at_ms"],
+            payload["report"]["timestamp_ms"],
             stream_frame["timestamp_ms"],
         )
         self.assertNotEqual(
-            payload["freshness"]["captured_at_ms"],
-            payload["freshness"]["published_at_ms"],
+            payload["report"]["timestamp_ms"],
+            payload["report"]["published_at_ms"],
         )
 
     def test_exact_retained_evidence_is_machine_visible_and_renderable(self) -> None:
@@ -56,13 +52,12 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
         payload = self._latest_payload()
         evidence = payload["evidence"]
         self.assertEqual(evidence["status"], "available")
-        self.assertEqual(evidence["frame_id"], payload["current_image"]["frame_id"])
-        self.assertEqual(evidence["transaction_id"], payload["transaction_id"])
+        self.assertEqual(evidence["frame_id"], payload["image"]["frame_id"])
         self.assertEqual(evidence["available_count"], 1)
         projected = evidence["records"][0]
         self.assertEqual(projected["status"], "available")
         self.assertEqual(projected["reason"], "")
-        retained = evidence_records(payload["decision"]["cycle"]["memory"])
+        retained = evidence_records(payload["report"]["cycle"]["memory"])
         self.assertEqual(projected["record"], retained[0])
 
     def test_unmatched_retained_evidence_preserves_origin_without_overlay(
@@ -111,5 +106,5 @@ class LiveRuntimeDecisionViewTests(LiveRuntimeDecisionViewFixture, unittest.Test
                 self.assertEqual(projected["status"], "unavailable")
                 self.assertEqual(projected["reason"], expected_reason)
                 self.assertIsNone(projected["record"])
-                retained = evidence_records(payload["decision"]["cycle"]["memory"])
+                retained = evidence_records(payload["report"]["cycle"]["memory"])
                 self.assertEqual(projected["origin"], retained[0]["origin"])

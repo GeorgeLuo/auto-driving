@@ -161,8 +161,8 @@ class BeliefRunnerTests(unittest.TestCase):
                 self.assertEqual(shared, {belief_key("other.row"): other})
                 self.assertEqual(runner.failure_count, int(fail))
                 runner.update(_context(shared, 20))
-                runner.plugin_manager.select(())
-                runner.apply_selection(shared)
+                self.assertIs(runner.plugins["learner"], runner.plugins["learner"])
+                runner.reset(shared)
                 self.assertEqual(shared, {belief_key("other.row"): other})
 
     def test_report_keys_follow_publication_keys_not_embedded_ids(self):

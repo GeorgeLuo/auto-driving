@@ -8,7 +8,7 @@ sends: ``step``, ``id``, ``entrypoint``, ``config`` and ``metadata``.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
@@ -42,6 +42,7 @@ class Arming:
     error: str | None
     requested: dict[str, list[Definition]]
     applied: dict[str, list[Definition]]
+    generation_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -89,7 +90,7 @@ class UploadResult:
 
 @dataclass(frozen=True)
 class SelectionResult:
-    """An arm or disarm request; ``step`` is set when disarm cleared one step."""
+    """An arm or disarm request; ``step`` is set when it armed a step's ``preset`` or disarm cleared one step."""
 
     operation: Literal["arm", "disarm"]
     host_name: str | None
@@ -97,6 +98,7 @@ class SelectionResult:
     step: str | None
     receipt: Receipt
     recovery: Recovery
+    preset: str | None = None
 
     @property
     def exit_code(self) -> int:
@@ -115,11 +117,13 @@ class CatalogListing:
 
 @dataclass(frozen=True)
 class ListingResult:
-    """The packaged catalog with each step's defaults, or what a host has armed.
+    """The packaged catalog with each step's defaults and presets, or what a host has armed.
 
-    ``defaults`` is set only for the packaged catalog. A host listing sets
-    ``armed`` and, with ``--long``, ``catalog``. A successful read still exits
-    unsuccessfully while the host reports ``arming_error``.
+    ``defaults`` is set only for the packaged catalog, with ``step_presets``:
+    each step's presets as its catalog file lists them, the default marked.
+    A host listing sets ``armed`` and, with ``--long``, ``catalog``. A
+    successful read still exits unsuccessfully while the host reports
+    ``arming_error``.
     """
 
     host_name: str | None
@@ -128,6 +132,7 @@ class ListingResult:
     ok: bool
     error: str | None = None
     defaults: dict[str, list[str]] | None = None
+    step_presets: dict[str, dict[str, dict[str, Any]]] = field(default_factory=dict)
     catalog: CatalogListing | None = None
     armed: list[Definition] | None = None
     arming_error: str | None = None

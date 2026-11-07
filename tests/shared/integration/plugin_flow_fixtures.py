@@ -146,7 +146,7 @@ def write_plugin(file: Path, step: str, plugin_id: str, revision: int) -> None:
             "    def update(self, context):\n"
             "        memory = context.shared_memory\n"
             "        prior = memory.get('prototype.memory', {})\n"
-            f"        memory['prototype.memory'] = {{'revision': {revision}, 'perception': memory['prototype.perception'], 'count': prior.get('count', 0) + 1}}\n"
+            f"        memory['prototype.memory'] = {{'revision': {revision}, 'perception': memory.get('prototype.perception'), 'count': prior.get('count', 0) + 1}}\n"
             "    def reset(self, shared_memory):\n"
             "        shared_memory.pop('prototype.memory', None)\n"
             "    def status(self, shared_memory):\n"

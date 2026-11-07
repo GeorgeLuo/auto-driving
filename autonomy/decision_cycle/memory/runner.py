@@ -15,11 +15,12 @@ Update and reset failures follow ``FAILURE_POLICY`` in ``interface``.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, ClassVar
 
+from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.memory.interface import (
     MEMORY_REPORT_SCHEMA,
@@ -33,7 +34,7 @@ from autonomy.decision_cycle.memory.publication import BELIEF_KEY_PREFIX, EVIDEN
 from autonomy.decision_cycle.observation.publication import read_observation
 from autonomy.decision_cycle.runner import StepRunner, reset_plugin
 from autonomy.decision_cycle.timing import clock, elapsed_ms
-from autonomy.plugins import PluginDefinition, PluginManager
+from autonomy.plugins import PluginDefinition
 from autonomy.shared_memory import SharedMemory
 
 # Cap for status and worker-facing diagnostic strings.
@@ -143,7 +144,7 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
     it. Storing the object already there, or changing it in place, is not a
     new value. The publisher is None while the key is absent or holds a value
     no applied plugin left there, for example after a host clears its map at a
-    reset, and once the publisher leaves the selection.
+    reset. A selection change constructs a new runner with no publisher.
     """
 
     step: ClassVar[str] = "memory"
@@ -151,8 +152,9 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
 
     def __init__(
         self,
-        plugin_manager: PluginManager,
+        definitions: Sequence[PluginDefinition],
         *,
+        activation: StepActivation | None = None,
         provided: Mapping[str, MemoryPlugin] | None = None,
     ) -> None:
         self.reset_count = 0
@@ -161,7 +163,7 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
         self._shared_memory: SharedMemory | None = None
         self._publisher: str | None = None
         self._published_evidence: object = _ABSENT
-        super().__init__(plugin_manager, provided=provided)
+        super().__init__(definitions, activation=activation, provided=provided)
 
     @property
     def update_count(self) -> int:
@@ -186,14 +188,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
         self, plugin: MemoryPluginRuntime, shared_memory: SharedMemory | None
     ) -> None:
         plugin.reset(shared_memory)
-
-    def _commit_selection(self, shared_memory: SharedMemory | None = None) -> None:
-        super()._commit_selection(shared_memory)
-        if shared_memory is not None:
-            self._shared_memory = shared_memory
-        if self._publisher not in self.plugin_ids:
-            self._publisher = None
-            self._published_evidence = _ABSENT
 
     def __call__(
         self, context: DecisionFrameContext,
@@ -277,13 +271,6 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
         if after is not before:
             self._publisher = plugin_id if after is not _ABSENT else None
             self._published_evidence = after
-
-    def restore_shared_memory(self, shared_memory: SharedMemory, *, publisher: str | None) -> None:
-        """Rebind reporting to a replay checkpoint without resetting plugin history."""
-        with self._runtime_lock:
-            self._shared_memory = shared_memory
-            self._publisher = publisher if publisher in self.plugin_ids else None
-            self._published_evidence = _evidence(shared_memory) if self._publisher else _ABSENT
 
     @property
     def evidence_publisher(self) -> str | None:

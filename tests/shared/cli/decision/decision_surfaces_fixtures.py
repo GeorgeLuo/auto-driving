@@ -205,7 +205,7 @@ class DecisionSurfaceFixture:
         return self._identity(host_name)
 
     def _identity(self, host_name: str = "chase-sim-chaser") -> dict:
-        return decision_identity(bundle_paths(host_name))
+        return decision_identity(bundle_paths(host_name), host_name=host_name)
 
     def _sample_cycle(self, action: str = "hold") -> DecisionRecords:
         cycle = sample_records(action)
@@ -236,22 +236,15 @@ class DecisionSurfaceFixture:
             values={
                 "source_id": "donkeycar:piracer",
                 "activation": identity,
-                "source_frame": {
-                    "frame_id": "frame_001",
-                    "frame_index": 1,
-                    "captured_at_ms": 1_000,
-                    "completed_at_ms": published_at_ms,
-                },
                 "stale_after_ms": 1_000,
             },
         )
         return {
-            "schema": "automa_physical_decision_publication",
+            "schema": "host_frame_publication",
+            "health": "healthy",
             "ok": True,
-            "status": "ready",
-            "reason": "",
             "read_at_ms": published_at_ms,
             "result_age_ms": 0,
             "stale_after_ms": 1_000,
-            "decision": report,
+            "report": report,
         }

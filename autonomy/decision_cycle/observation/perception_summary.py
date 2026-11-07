@@ -42,14 +42,13 @@ def observation_from_perception(
             metadata=metadata or {},
         )
 
-    summary = tuple(perception.lines[:12])
     return Observation(
         observation_id=observation_id,
         created_at_ms=observation_created_at_ms,
         sensor_frame=sensor_frame_dict,
         perception_schema=perception.schema,
         perception_plugin_id=perception.plugin_id,
-        summary=summary,
+        summary=(),
         things=tuple(thing.to_dict() for thing in perception.things),
         signals=tuple(signal.to_dict() for signal in perception.signals),
         metadata={

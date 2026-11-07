@@ -14,7 +14,10 @@ from contextlib import contextmanager
 from pathlib import Path
 from unittest.mock import Mock, patch
 
+from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
+from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA
 from autonomy.runtime.report import HostReport, ReportApplication
+from autonomy.decision_cycle.perception.interface import PerceptionText
 from cli.automa_cli.plugins.stream import decision, memory, perception, session
 from cli.automa_cli.plugins.stream.commands import stream_host_step
 from cli.automa_cli.plugins.stream.models import PerceptionPublication, StreamEvent, ViewState
@@ -30,10 +33,15 @@ NORMALIZED = {
         host_name="fixture", run_id="run", generation_id="generation",
         frame_id="next", frame_index=0, timestamp_ms=1, published_at_ms=1,
         values={"activation": {"steps": {"plan": {"plugins": []}}}},
-        cycle={"observation": None, "memory": None, "proposal": {}, "plan": {}, "action": {}},
+        cycle={
+            "perception": None, "observation": None, "memory": None,
+            "proposal": {}, "plan": {}, "action": {},
+        },
         application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
     ),
 }
+# What the host serves for NORMALIZED; acceptance itself is patched.
+PUBLICATION = {"health": "healthy", "report": NORMALIZED["report"].to_dict()}
 OFFLINE = "Could not read the decision publication at http://host.invalid: offline"
 ROOT = Path(__file__).resolve().parents[3]
 STREAM = ROOT / "cli" / "automa_cli" / "plugins" / "stream"
@@ -47,7 +55,7 @@ def _stream_plan(fetch, *, feed=None, **kwargs):
         patch.object(decision, "require_valid_activations"),
         patch.object(decision, "runtime_base_url", return_value="http://host.invalid"),
         patch.object(session, "ViewFeed", return_value=feed) as view,
-        patch.object(decision, "fetch_decision_publication", side_effect=fetch),
+        patch.object(decision, "fetch_frame_publication", side_effect=fetch),
         patch.object(decision, "accept_decision_publication", return_value=NORMALIZED),
     ):
         return stream_host_step("plan", host_name="fixture", **kwargs), view
@@ -64,6 +72,22 @@ def _referenced_modules(path: Path) -> set[str]:
         elif isinstance(node, ast.Import):
             found.update(alias.name for alias in node.names)
     return found
+
+
+def _frame_publication(*, health="healthy", status="ok", error=None, **cycle):
+    """A host's frame publication that the stream readers accept for host ``fixture``."""
+
+    report = HostReport(
+        host_name="fixture", run_id="run", generation_id="generation",
+        frame_id="next", frame_index=0, timestamp_ms=1, published_at_ms=1,
+        values={"source_id": "fixture:local", "stale_after_ms": 1000,
+                "activation": {"generation_id": "generation", "steps": {}}},
+        cycle={**{step: None for step in CYCLE_RECORD_KEYS}, **cycle},
+        application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
+        status=status, error=error,
+    )
+    return {"schema": FRAME_PUBLICATION_SCHEMA, "health": health, "result_age_ms": 1500,
+            "stale_after_ms": 1000, "report": report.to_dict()}
 
 
 class FlushedOutput(io.StringIO):
@@ -172,7 +196,7 @@ class StreamOutputTests(unittest.TestCase):
                 feed.read_observation.return_value = None, None
                 feed.state.return_value = ("http://view/", None, "/decision", None)
                 with patch("cli.automa_cli.plugins.stream.polling.time.sleep", side_effect=[None, KeyboardInterrupt]):
-                    result, view = _stream_plan([ConnectionError("offline"), {}], feed=feed,
+                    result, view = _stream_plan([ConnectionError("offline"), PUBLICATION], feed=feed,
                                                 json_output=json_output, output=output)
                 self.assertEqual((result.exit_code, result.message), (130, ""))
                 self.assertEqual(len(output.frames), 2)
@@ -192,9 +216,58 @@ class StreamOutputTests(unittest.TestCase):
                     self.assertTrue(recovered.endswith(footer), recovered)
                     feed.stop.assert_called_once_with()
 
+    def test_decision_once_reports_a_stale_or_raised_frame_and_keeps_its_records(self):
+        stale = {**PUBLICATION, "health": "stale", "result_age_ms": 1500, "stale_after_ms": 1000}
+        raised = {**PUBLICATION, "report": {
+            **PUBLICATION["report"], "status": "error", "error": "RuntimeError: boom",
+            "cycle": {**PUBLICATION["report"]["cycle"], "plan": None, "action": None},
+        }}
+        for publication, status, reason in (
+            (stale, "stale", "The latest frame is 1500 ms old, past its 1000 ms ceiling."),
+            (raised, "error", "The cycle for frame next raised before plan recorded: RuntimeError: boom"),
+        ):
+            with self.subTest(status=status):
+                output = FlushedOutput()
+                result, _view = _stream_plan([publication], once=True, json_output=False, output=output)
+                self.assertEqual(result.exit_code, 2)
+                screen = output.getvalue()
+                self.assertTrue(screen.startswith(reason + "\nPlan stream: fixture frame=next "), screen)
+                output = FlushedOutput()
+                _stream_plan([publication], once=True, json_output=True, output=output)
+                live = json.loads(output.getvalue())
+                self.assertEqual((live["status"], live["error"], live["frame_id"]), (status, reason, "next"))
+
+    def test_memory_names_a_raised_cycle_instead_of_a_missing_step(self):
+        probe = memory._probe_memory(
+            host_name="fixture", base_url="http://host.invalid", fetch_error=None,
+            publication=_frame_publication(status="error", error="RuntimeError: boom"),
+        )
+        self.assertEqual((probe["status"], probe["error"]), (
+            "error", "The cycle for frame next raised before memory recorded: RuntimeError: boom",
+        ))
+        absent = memory._probe_memory(
+            host_name="fixture", base_url="http://host.invalid", fetch_error=None,
+            publication=_frame_publication(),
+        )
+        self.assertEqual(absent["status"], "absent")
+
+    def test_perception_reports_a_stale_frame_with_its_fields(self):
+        probe = perception._probe_perception(
+            host_name="fixture", base_url="http://host.invalid", fetch_error=None,
+            publication=_frame_publication(health="stale", perception={"signals": [], "things": []}),
+        )
+        self.assertEqual((probe["status"], probe["frame_id"], probe["signal_count"]), ("stale", "next", 0))
+        self.assertEqual(probe["error"], "The latest frame is 1500 ms old, past its 1000 ms ceiling.")
+
+    def test_a_plugin_error_stays_inside_its_detail_field(self):
+        text = PerceptionText.from_dict({"plugin_runs": [
+            {"plugin_id": "lens", "status": "error", "error": "bad frame\nretry later"},
+        ]}).text
+        self.assertIn("plugin_status id=lens status=error detail=bad_frame_retry_later", text.splitlines())
+
     def test_decision_once_writes_one_frame_without_a_view(self):
         for json_output in (False, True):
-            for fetch, code in ((ConnectionError("offline"), 2), ({}, 0)):
+            for fetch, code in ((ConnectionError("offline"), 2), (PUBLICATION, 0)):
                 with self.subTest(json=json_output, live=not code):
                     output = FlushedOutput()
                     with patch("cli.automa_cli.plugins.stream.polling.time.sleep") as sleep:
@@ -241,21 +314,24 @@ class StreamOutputTests(unittest.TestCase):
                         )
                     view.assert_not_called()
 
-    def test_memory_text_reads_the_publication_and_json_does_not(self):
-        status = {"session": {"status": "idle"}, "host": {"steps": {}}}
+    def test_memory_text_and_json_read_the_same_completed_report(self):
+        report = NORMALIZED["report"].to_dict()
+        report["cycle"]["memory"] = {"schema": "memory_report", "plugins": [], "evidence_publisher": None}
+        report["values"].update(source_id="fixture:local", stale_after_ms=1000)
+        report["values"]["activation"]["generation_id"] = report["generation_id"]
+        publication = {"schema": "host_frame_publication", "health": "healthy", "report": report}
         with (
             patch.object(memory, "runtime_base_url", return_value="http://host.invalid"),
-            patch.object(memory, "fetch_autonomy_status", return_value=status),
-            patch.object(memory, "read_publication", return_value=({"memory": {"plugins": []}}, None)) as read,
+            patch.object(memory, "read_publication", return_value=(publication, None)) as read,
         ):
             text = stream_host_step("memory", host_name="fixture", once=True, output=io.StringIO())
-            self.assertEqual(text.exit_code, 2)
+            self.assertEqual(text.exit_code, 0)
             read.assert_called_once()
-            rendered = stream_host_step(
-                "memory", host_name="fixture", once=True, json_output=True, output=io.StringIO(),
-            )
-        self.assertEqual(rendered.exit_code, 2)
-        read.assert_called_once()
+            output = io.StringIO()
+            rendered = stream_host_step("memory", host_name="fixture", once=True, json_output=True, output=output)
+        self.assertEqual(rendered.exit_code, 0)
+        self.assertEqual(read.call_count, 2)
+        self.assertEqual(json.loads(output.getvalue())["record"], report["cycle"]["memory"])
 
     def test_perception_json_still_reads_the_publication(self):
         with (
@@ -316,20 +392,29 @@ class StreamOutputTests(unittest.TestCase):
         self.assertEqual(render_stream(replace_view(event), json_output=False), "offline")
 
     def test_perception_screen_formats_the_summary_the_stream_read(self):
+        evidence = {
+            "schema": "perception_text", "plugin_id": "lightweight_observer",
+            "signals": [{"signal_id": "clear", "value": True}, {"signal_id": "distance", "value": 2}],
+            "things": [{"thing_id": "ahead", "kind": "obstacle", "label": "ahead"}],
+        }
         summary = perception.perception_publication({
-            "health": "healthy", "mode": "observe_only", "processed_count": 12, "duration_ms": 33,
-            "result_age_ms": 40, "presets": {"perception": "lightweight_observer"},
-            "frame": {"frame_id": "f-12", "captured_at_ms": 1000},
-            "perception": {"text": "two things ahead", "signals": [1, 2], "things": [{}]},
-            "control": {"steering": 0.1, "throttle": 0.2, "reason": "hold"},
+            "health": "healthy", "result_age_ms": 40,
+            "report": {
+                "frame_id": "f-12", "timestamp_ms": 1000,
+                "cycle": {"perception": evidence},
+                "application": {"mode": "observe_only", "steering": 0.1, "throttle": 0.2, "reason": "hold"},
+                "values": {"timing": {"duration_ms": 33}, "activation": {
+                    "steps": {"perception": {"metadata": {"preset": "lightweight_observer"}}},
+                }},
+            },
         })
         self.assertEqual((summary.frame_id, summary.signal_count, summary.thing_count, summary.text),
-                         ("f-12", 2, 1, "two things ahead"))
+                         ("f-12", 2, 1, PerceptionText.from_dict(evidence).text))
         self.assertEqual(perception.perception_publication(None), PerceptionPublication())
         text = render_stream(StreamEvent("perception", {"status": "live"}, source=summary), json_output=False)
         self.assertIn("presets: perception=lightweight_observer  mode: observe_only", text)
         self.assertIn("control: steering=0.1  throttle=0.2  reason=hold", text)
-        self.assertIn("cadence: processed=12  cycle_ms=33  age_ms=40", text)
+        self.assertIn("cadence: cycle_ms=33  age_ms=40", text)
         self.assertIn("latest: frame=f-12  captured_at_ms=1000  signals=2  things=1", text)
         unread = render_stream(StreamEvent("perception", {"status": "error"}), json_output=False)
         self.assertIn("latest: frame=none  captured_at_ms=unknown  signals=unknown  things=unknown", unread)
@@ -371,7 +456,6 @@ def _offline(step: str):
     if step == "memory":
         with (
             patch.object(memory, "runtime_base_url", return_value="http://host.invalid"),
-            patch.object(memory, "fetch_autonomy_status", return_value={"session": {}, "host": {"steps": {}}}),
             patch.object(memory, "read_publication", return_value=({"memory": {}}, None)),
         ):
             yield
@@ -379,7 +463,7 @@ def _offline(step: str):
     with (
         patch.object(decision, "require_valid_activations"),
         patch.object(decision, "runtime_base_url", return_value="http://host.invalid"),
-        patch.object(decision, "fetch_decision_publication", return_value={}),
+        patch.object(decision, "fetch_frame_publication", return_value={}),
         patch.object(decision, "accept_decision_publication", return_value=NORMALIZED),
     ):
         yield

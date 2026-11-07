@@ -77,7 +77,8 @@ class LiveCatalogViewTests(unittest.TestCase):
                             revisions.uncheck()
                             expect(available).to_be_hidden()
                             expect(page.get_by_role("columnheader", name="Source", exact=True)).to_be_visible()
-                            expect(page.locator("#status")).to_be_hidden()
+                            expect(page.locator("#status")).to_have_text(
+                                "Decision generation " + host.applied_decision()["generation_id"])
                         finally:
                             page.close()
             finally:

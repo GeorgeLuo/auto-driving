@@ -534,6 +534,40 @@ class CycleHostArmingTests(unittest.TestCase):
             arm("obstruction_observer")
         self.assertEqual(perception(), ("visual_observer", visual, visual))
 
+    def test_a_step_names_its_preset_only_while_it_runs_the_presets_plugins(self) -> None:
+        host = AutonomyCycleHost(steps=decision_steps({
+            "perception": preset_activation("perception", "lightweight_observer"),
+        }))
+
+        def perception(change):
+            self.assertTrue(change()["ok"])
+            host.run(DecisionFrameContext("frame_1", 0, 1_000))
+            report = host.status()["steps"]["perception"]
+            return report["preset"], report["plugin_ids"]
+
+        # Arming a plugin the preset already runs changes nothing.
+        self.assertEqual(perception(lambda: host.arm({"perception": ["frame"]})),
+                         ("lightweight_observer", ["frame", "floor_plane"]))
+        self.assertEqual(perception(lambda: host.arm({"perception": ["motion_tracks"]})),
+                         (None, ["frame", "floor_plane", "motion_tracks"]))
+        self.assertEqual(perception(lambda: host.arm({
+            "perception": preset_activation("perception", "lightweight_observer").to_payload(),
+        })), ("lightweight_observer", ["frame", "floor_plane"]))
+        self.assertEqual(perception(lambda: host.disarm({"perception": ["floor_plane"]})), (None, ["frame"]))
+
+    def test_a_watched_file_whose_ids_change_ends_the_preset_it_was_loaded_with(self) -> None:
+        loaded = preset_activation("perception", "lightweight_observer")
+        host = AutonomyCycleHost(steps=decision_steps({"perception": loaded}))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = step_activation_path(Path(tmp), "perception")
+            write_step_activation(path, loaded)
+            host.watch_selection("perception", path, loaded)
+            write_step_activation(path, replace(loaded, plugins=("frame",)))
+            host.sync_selection()
+        host.run(DecisionFrameContext("frame_1", 0, 1_000))
+        report = host.status()["steps"]["perception"]
+        self.assertEqual((report["preset"], report["plugin_ids"]), (None, ["frame"]))
+
     def test_an_unreadable_staged_activation_keeps_the_current_selection(self) -> None:
         loaded = packaged_activation("proposal")
         with tempfile.TemporaryDirectory() as tmp:

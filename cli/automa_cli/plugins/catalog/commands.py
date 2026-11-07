@@ -9,8 +9,12 @@ from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS, ONE_PLUGIN_STEPS
 from implementations.decision_cycle.catalog import STEP_PRESETS
 
+from ...shared.plugin_catalog import step_plugin
 from .render import render_listing, render_save, render_selection, render_upload
-from .service import arm_plugins, arm_preset, disarm_plugins, list_plugins, save_plugins, upload_plugin
+from .service import (
+    arm_collection, arm_plugins, arm_preset, disarm_collection, disarm_plugins, list_plugins, save_plugins,
+    upload_collection, upload_plugin,
+)
 
 
 def register_catalog(commands: argparse._SubParsersAction) -> None:
@@ -33,9 +37,11 @@ def register_catalog(commands: argparse._SubParsersAction) -> None:
     listing.set_defaults(handler=_handle_list)
 
     upload = commands.add_parser(
-        "upload", help="Register a plugin file; optionally arm it on a runtime host.",
+        "upload", help="Register a plugin file or named collection; optionally arm it on a runtime host.",
         description=(
-            "Store a file in an existing host or workbench catalog. A successful upload makes the plugin "
+            "Store a file or a manifest's named plugin collection in an existing host or workbench catalog. "
+            "A manifest's modules, each file under its source_directory that Python can import by name, upload as one "
+            "revision, and plugins arm --collection arms its plugins together. A successful upload makes the plugin "
             "available; source that does not compile is refused, and its imports and dependencies load only when armed. "
             "Re-uploading a name makes a new revision available and leaves the running revision unchanged; "
             "uploads last until the host restarts. Selection stays unchanged unless --arm, which arms the "
@@ -49,12 +55,14 @@ def register_catalog(commands: argparse._SubParsersAction) -> None:
     upload_target = upload.add_mutually_exclusive_group(required=True)
     upload_target.add_argument("--host-name", help="Host name from hosts status.")
     upload_target.add_argument("--url", help="Runtime or workbench URL; bypass host lookup.")
-    upload.add_argument("--file", type=Path, required=True, help="Local source file to upload; it must compile but is not imported until armed.")
-    upload.add_argument("--name", required=True, type=_step_plugin, metavar="STEP/PLUGIN",
-                        help="Plugin to register, named as plugins list --long will list it; upload the same name again to make a new revision available.")
-    upload.add_argument("--entrypoint", required=True, help="Registered module:Class name, for example prototype:Prototype; resolved when armed.")
-    upload.add_argument("--config", metavar="JSON", help="JSON object of constructor settings stored with this revision, for example '{\"throttle\": -0.6}'; arming constructs the plugin with it. Default: {}.")
-    upload.add_argument("--arm", action="store_true", help="After registration, add/update this plugin in the runtime host's requested selection; other plugins stay selected.")
+    upload_source = upload.add_mutually_exclusive_group(required=True)
+    upload_source.add_argument("--manifest", type=Path, help="JSON manifest naming a collection and its ordered plugins, each a step/plugin name, module:Class entrypoint and optional config; its source_directory is relative to it.")
+    upload_source.add_argument("--file", type=Path, help="Local source file to upload; it must compile but is not imported until armed.")
+    upload.add_argument("--name", type=_step_plugin, metavar="STEP/PLUGIN",
+                        help="Required with --file: plugin to register, named as plugins list --long will list it; upload the same name again to make a new revision available.")
+    upload.add_argument("--entrypoint", help="Required with --file: registered module:Class name, for example prototype:Prototype; resolved when armed.")
+    upload.add_argument("--config", metavar="JSON", help="With --file: JSON object of constructor settings stored with this revision, for example '{\"throttle\": -0.6}'; arming constructs the plugin with it. Default: {}.")
+    upload.add_argument("--arm", action="store_true", help="After registration, add/update this plugin, or the collection's plugins, in the runtime host's requested selection; other plugins stay selected.")
     upload.add_argument("--json", action="store_true", help="Print the registration receipt as JSON.")
     upload.set_defaults(handler=_handle_upload)
 
@@ -77,6 +85,7 @@ def register_catalog(commands: argparse._SubParsersAction) -> None:
     arm_input = arm.add_mutually_exclusive_group(required=True)
     arm_input.add_argument("--name", dest="plugins", action="append", type=_step_plugin, metavar="STEP/PLUGIN",
                            help="Plugin to arm, named as plugins list --host-name <host> --long lists it; repeat to arm several together, in order.")
+    arm_input.add_argument("--collection", help="Collection to arm, named as plugins upload --manifest prints it and plugins list --long lists it; arms its plugins together.")
     arm_input.add_argument("--preset", metavar="STEP/PRESET",
                            choices=[f"{step}/{name}" for step, presets in STEP_PRESETS.items() for name in presets],
                            help="Packaged preset to arm, as plugins list lists it: %(choices)s.")
@@ -99,6 +108,7 @@ def register_catalog(commands: argparse._SubParsersAction) -> None:
     disarm_input = disarm.add_mutually_exclusive_group(required=True)
     disarm_input.add_argument("--name", dest="plugins", action="append", type=_step_plugin, metavar="STEP/PLUGIN",
                               help="Plugin to disarm, named as plugins list --host-name <host> lists it; repeat to disarm several together.")
+    disarm_input.add_argument("--collection", help="Collection to disarm, named as plugins list --host-name <host> --long lists it; one-plugin steps keep their plugin.")
     disarm_input.add_argument("--step", choices=CLEARABLE_STEPS, help="Disarm every plugin in this step.")
     disarm_input.add_argument("--all", dest="all_plugins", action="store_true",
                               help="Disarm every plugin in every step that can run without plugins.")
@@ -124,12 +134,10 @@ def register_catalog(commands: argparse._SubParsersAction) -> None:
 
 
 def _step_plugin(value: str) -> tuple[str, str]:
-    """``step/plugin``, as ``plugins list --long`` names a plugin, as ``(step, plugin)``."""
-
-    step, _, plugin_id = value.partition("/")
-    if step not in STEPS or not plugin_id:
-        raise argparse.ArgumentTypeError(f"expected <step>/<plugin> with a step from {', '.join(STEPS)}: {value!r}")
-    return step, plugin_id
+    try:
+        return step_plugin(value)
+    except ValueError as exc:
+        raise argparse.ArgumentTypeError(str(exc)) from exc
 
 
 def _handle_list(args: argparse.Namespace) -> int:
@@ -139,15 +147,21 @@ def _handle_list(args: argparse.Namespace) -> int:
 
 
 def _handle_upload(args: argparse.Namespace) -> int:
-    step, plugin_id = args.name
-    result = upload_plugin(url=args.url, host_name=args.host_name, file=args.file, step=step, plugin_id=plugin_id,
-                           entrypoint=args.entrypoint, config=args.config, arm=args.arm)
+    step, plugin_id = args.name or (None, None)
+    if args.manifest is not None:
+        result = upload_collection(url=args.url, host_name=args.host_name, manifest=args.manifest, arm=args.arm,
+                                   plugin_id=plugin_id, entrypoint=args.entrypoint, config=args.config)
+    else:
+        result = upload_plugin(url=args.url, host_name=args.host_name, file=args.file, step=step,
+                               plugin_id=plugin_id, entrypoint=args.entrypoint, config=args.config, arm=args.arm)
     print(render_upload(result, json_output=args.json))
     return result.exit_code
 
 
 def _handle_arm(args: argparse.Namespace) -> int:
-    if args.preset is not None:
+    if args.collection is not None:
+        result = arm_collection(url=args.url, host_name=args.host_name, name=args.collection)
+    elif args.preset is not None:
         step, _, preset = args.preset.partition("/")
         result = arm_preset(url=args.url, host_name=args.host_name, step=step, preset=preset)
     else:
@@ -157,7 +171,10 @@ def _handle_arm(args: argparse.Namespace) -> int:
 
 
 def _handle_disarm(args: argparse.Namespace) -> int:
-    result = disarm_plugins(url=args.url, host_name=args.host_name, plugins=args.plugins, step=args.step)
+    if args.collection is not None:
+        result = disarm_collection(url=args.url, host_name=args.host_name, name=args.collection)
+    else:
+        result = disarm_plugins(url=args.url, host_name=args.host_name, plugins=args.plugins, step=args.step)
     print(render_selection(result, json_output=args.json))
     return result.exit_code
 

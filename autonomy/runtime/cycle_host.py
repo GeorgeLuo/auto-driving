@@ -179,7 +179,8 @@ class AutonomyCycleHost:
         """Stage a file whose plugin IDs changed and whose specs and configs did not.
 
         An unchanged file does not replace a later arm or disarm. A file whose
-        specs or configs differ is ignored until the process restarts.
+        specs or configs differ is ignored until the process restarts. Changed
+        IDs end the preset the step was loaded with.
         """
 
         with self._lock:
@@ -192,7 +193,7 @@ class AutonomyCycleHost:
                 if live is None:
                     continue
                 try:
-                    staged = replace(executable, plugins=tuple(live.plugins))
+                    staged = _preset_while_unchanged(executable, replace(executable, plugins=tuple(live.plugins)))
                 except (TypeError, ValueError, PluginManagementError) as exc:
                     self._selection_error = f"{step}: {type(exc).__name__}: {exc}"
                     continue
@@ -212,7 +213,8 @@ class AutonomyCycleHost:
         An activation replaces the step's selection with its plugins, in its
         order; the catalog must hold each of them with the activation's
         entrypoint and config, and the step then reports the activation's
-        metadata, such as its preset. Construction answers the request now.
+        metadata, such as its preset. IDs that change what a step runs end
+        its preset. Construction answers the request now.
         The running pipeline changes at the next frame, and only when
         construction succeeded; an activation whose plugins already run only
         renames the step.
@@ -260,16 +262,19 @@ class AutonomyCycleHost:
                     for plugin_id in named:
                         if plugin_id not in current:
                             chosen.append(_require_catalog(known, step, plugin_id))
-                updates[step] = activation_for_definitions(
+                updates[step] = _preset_while_unchanged(base, activation_for_definitions(
                     step, tuple(chosen),
                     metadata=dict(base.metadata) if base is not None else {},
                     source_path=base.source_path if base is not None else None,
-                )
+                ))
             self._stage_pipeline(self._with_updates(updates))
             return self._selection_result()
 
     def disarm(self, selections: Mapping[str, Any], *, all_plugins: bool = False) -> dict[str, Any]:
-        """Stage the selection with named plugins removed. An absent step stays absent."""
+        """Stage the selection with named plugins removed. An absent step stays absent.
+
+        A step that loses a plugin no longer reports its preset.
+        """
 
         if not isinstance(all_plugins, bool):
             raise ValueError("disarming all must be a boolean")
@@ -295,9 +300,9 @@ class AutonomyCycleHost:
                 chosen = () if all_plugins else tuple(
                     definition for plugin_id, definition in current.items() if plugin_id not in set(ids)
                 )
-                updates[step] = activation_for_definitions(
+                updates[step] = _preset_while_unchanged(base, activation_for_definitions(
                     step, chosen, metadata=dict(base.metadata), source_path=base.source_path,
-                )
+                ))
             self._stage_pipeline(self._with_updates(updates))
             return self._selection_result()
 
@@ -770,6 +775,18 @@ def _same_metadata(
         and (left.get(step) is None or left[step].metadata == right[step].metadata)
         for step in STEPS
     )
+
+
+def _preset_while_unchanged(base: StepActivation | None, update: StepActivation) -> StepActivation:
+    """``update``, made from ``base``'s metadata, keeping its preset only while it runs the same code.
+
+    A preset names the plugins it armed; once they change, the step reports no
+    preset. Every change that carries a step's metadata forward goes through here.
+    """
+
+    if base is None or executable_document(update) == executable_document(base):
+        return update
+    return replace(update, metadata={key: value for key, value in update.metadata.items() if key != "preset"})
 
 
 def _same_pipeline(

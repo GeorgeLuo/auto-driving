@@ -31,13 +31,14 @@ def render_upload(result: UploadResult, *, json_output: bool) -> str:
 
     upload, armed = result.upload, result.arm
     last = armed or upload
+    noun = "Collection" if result.collection is not None else "Plugin"
     if armed is not None:
         label, state = "Arming", armed.status
-        message = "Plugin uploaded and loaded; the host applies it at its next cycle."
+        message = f"{noun} uploaded and loaded; the host applies it at its next cycle."
         answer = {**upload.body, **armed.body, "upload": upload.body}
     else:
         label, state = "Upload", "uploaded" if upload.ok else "failed"
-        message = "Plugin uploaded and available; selection unchanged."
+        message = f"{noun} uploaded and available; selection unchanged."
         answer = upload.body
     message = message if last.ok else _reason(last)
     recovery = _recovery_text(result.recovery)
@@ -47,11 +48,11 @@ def render_upload(result: UploadResult, *, json_output: bool) -> str:
                                        status, message, recovery))
     lines = [*_target_lines(result.host_name, result.url, result.step), f"{label}: {state}"]
     if armed is not None:
-        lines.extend([f"Upload: {upload.status}", *_uploaded_lines(result.plugin_id, upload)])
+        lines.extend([f"Upload: {upload.status}", *_uploaded_lines(result, upload)])
     if not last.ok:
         lines.append(f"Reason: {message}")
     elif armed is None:
-        lines.extend([*_uploaded_lines(result.plugin_id, upload), "Selection: unchanged"])
+        lines.extend([*_uploaded_lines(result, upload), "Selection: unchanged"])
     return "\n".join([*lines, *_arming_lines(last.arming), *_next_lines(recovery)])
 
 
@@ -64,9 +65,11 @@ def render_selection(result: SelectionResult, *, json_output: bool) -> str:
     recovery = _recovery_text(result.recovery)
     if json_output:
         return _json({**_receipt_document(receipt.body, schema, result.host_name, result.url, result.step,
-                                          receipt.status, message, recovery), "preset": result.preset})
+                                          receipt.status, message, recovery),
+                      "preset": result.preset, "collection": result.collection})
     lines = [*_target_lines(result.host_name, result.url, result.step),
-             *([f"Preset: {result.preset}"] if result.preset else []), f"{label}: {receipt.status}"]
+             *([f"Preset: {result.preset}"] if result.preset else []),
+             *([f"Collection: {result.collection}"] if result.collection else []), f"{label}: {receipt.status}"]
     if not receipt.ok:
         lines.append(f"Reason: {message}")
     return "\n".join([*lines, *_arming_lines(receipt.arming), *_next_lines(recovery)])
@@ -129,7 +132,8 @@ def _listing_document(result: ListingResult) -> dict[str, Any]:
     if result.catalog is not None:
         catalog: dict[str, Any] = {"source": result.catalog.source, "plugins": result.catalog.plugins}
         if not result.packaged:
-            catalog.update(version=result.catalog.version, host_run_id=result.catalog.host_run_id)
+            catalog.update(version=result.catalog.version, host_run_id=result.catalog.host_run_id,
+                           collections=result.catalog.collections)
         document["catalog"] = catalog
     if result.error is not None:
         document["error"] = result.error
@@ -156,6 +160,8 @@ def _listing_lines(result: ListingResult) -> list[str]:
                                     {_plugin_key(plugin) for plugin in armed}, "armed")])
     else:
         lines.extend([*([] if host_name else [f"Catalog: {result.url}"]), "Armed:", *_plugin_rows(armed)])
+    if result.catalog is not None:
+        lines.extend(_collection_rows(result.catalog.collections))
     if result.arming_error:
         lines.append(f"Arming error: {result.arming_error}")
     return lines
@@ -174,14 +180,27 @@ def _preset_rows(step_presets: dict[str, dict[str, dict[str, Any]]]) -> list[str
     return ["Presets:", *rows] if rows else []
 
 
+def _collection_rows(collections: dict[str, dict[str, list[str]]]) -> list[str]:
+    """One ``- name: step/plugin, ...`` row per collection, its plugins as ``plugins arm --collection`` arms them."""
+
+    rows = []
+    for name, members in collections.items():
+        plugins = [f"{step}/{plugin_id}" for step, plugin_ids in members.items() for plugin_id in plugin_ids]
+        rows.append(f"- {name}: {', '.join(plugins)}")
+    return ["Collections:", *rows] if rows else []
+
+
 def _target_lines(host_name: str | None, url: str | None, step: str | None) -> list[str]:
     return [line for value, line in ((host_name, f"Host: {host_name}"), (url, f"Endpoint: {url}"),
                                      (step, f"Step: {step}")) if value]
 
 
-def _uploaded_lines(plugin_id: str, upload: Receipt) -> list[str]:
-    return [f"Plugin: {plugin_id}", f"Revision: {upload.revision}",
-            _catalog_version(upload.catalog_version, upload.host_run_id)]
+def _uploaded_lines(result: UploadResult, upload: Receipt) -> list[str]:
+    """What an accepted upload made available: the plugin, or the collection and each of its plugins."""
+
+    uploaded = f"Plugin: {result.plugin_id}" if result.collection is None else f"Collection: {result.collection}"
+    return [uploaded, f"Revision: {upload.revision}", _catalog_version(upload.catalog_version, upload.host_run_id),
+            *(_plugin_rows(upload.body["plugins"]) if result.collection is not None else [])]
 
 
 def _arming_lines(arming: Arming | None) -> list[str]:
@@ -252,6 +271,11 @@ def _target_args(url: str | None, host_name: str | None) -> tuple[str, str]:
 
 
 def _recovery_text(recovery: Recovery) -> str | None:
+    if recovery.kind == "usage":
+        return None
+    if recovery.kind == "arm":
+        return automa_command("plugins", "arm", *_target_args(recovery.url, recovery.host_name),
+                              "--collection", recovery.collection)
     if recovery.kind == "config":
         return "Pass --config as a JSON object of the plugin's constructor settings."
     if recovery.kind == "file":

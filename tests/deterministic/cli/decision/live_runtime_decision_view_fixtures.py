@@ -5,7 +5,7 @@ import tempfile
 import time
 from copy import deepcopy
 from pathlib import Path
-from urllib.request import HTTPRedirectHandler, urlopen
+from urllib.request import urlopen
 from PIL import Image
 from cli.automa_cli.hosts.publications.decision_records import DecisionRunners
 from cli.automa_cli.frontend.server import RuntimeViewServer
@@ -29,11 +29,6 @@ def _jpeg_bytes(color: tuple[int, int, int]) -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", (40, 30), color).save(buffer, format="JPEG")
     return buffer.getvalue()
-
-
-class _NoRedirectHandler(HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, newurl):
-        return None
 
 
 class LiveRuntimeDecisionViewFixture:

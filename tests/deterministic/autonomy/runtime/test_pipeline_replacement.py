@@ -38,13 +38,12 @@ class PipelineReplacementTests(unittest.TestCase):
         host.execution = ControlExecution(Mock(write=Mock(return_value={})))
         host.set_mode("observe_only")
         self.addCleanup(host.close)
-        previous = cycle(host)
+        cycle(host)
         applications = host.execution.ticket().control_applications
         steps, generation = host.steps, host.applied_decision()["generation_id"]
         old_map = host.shared_memory
         old_map["old-history"] = True
         self.assertTrue(host.disarm({"perception": ["floor_plane"]})["ok"])
-        self.assertIs(host.last_result, previous)
         self.assertEqual(host.applied_decision()["generation_id"], generation)
         run = host.cycle.run
 
@@ -52,7 +51,6 @@ class PipelineReplacementTests(unittest.TestCase):
             self.assertIs(context.shared_memory, host.shared_memory)
             self.assertIsNot(context.shared_memory, old_map)
             self.assertNotIn("old-history", context.shared_memory)
-            self.assertIsNone(host.last_result)
             self.assertEqual(read_mode(context.shared_memory), "observe_only")
             self.assertEqual(read_user_steering(context.shared_memory), 0.25)
             self.assertEqual(read_user_throttle(context.shared_memory), 0.5)
@@ -65,21 +63,19 @@ class PipelineReplacementTests(unittest.TestCase):
         with patch.object(host.cycle, "run", side_effect=inspect):
             cycle(host, 1, shared_memory=old_map)
         self.assertNotEqual(host.applied_decision()["generation_id"], generation)
-        self.assertIsNot(host.last_result, previous)
 
     def test_any_construction_or_validation_failure_keeps_the_applied_pipeline(self):
         for step in STEPS:
             for hook in ("load_plugin", "validate_selection"):
                 with self.subTest(step=step, hook=hook):
                     host = self.host()
-                    previous = cycle(host)
+                    cycle(host)
                     steps, memory, identity = host.steps, host.shared_memory, host.applied_decision()
                     with patch.object(STEP_RUNNERS[step], hook, side_effect=RuntimeError("replacement refused")):
                         request = host.disarm({"perception": ["floor_plane"]})
                     self.assertFalse(request["ok"])
                     self.assertIs(host.steps, steps)
                     self.assertIs(host.shared_memory, memory)
-                    self.assertIs(host.last_result, previous)
                     self.assertEqual(host.applied_decision(), identity)
                     cycle(host, 1)
                     self.assertIs(host.steps, steps)
@@ -202,10 +198,10 @@ class PipelineReplacementTests(unittest.TestCase):
         cycle(host, 1)
         self.assertEqual(host.applied_decision()["generation_id"], original)
 
-    def test_an_upload_alone_keeps_the_applied_pipeline_map_and_result(self):
+    def test_an_upload_alone_keeps_the_applied_pipeline_and_map(self):
         import base64
         host = self.host()
-        result = cycle(host)
+        cycle(host)
         steps, memory, identity = host.steps, host.shared_memory, host.applied_decision()
         receipt = host.plugin_catalog({
             "step": "proposal", "plugin_id": "uploaded", "entrypoint": "uploaded:Uploaded",
@@ -213,7 +209,6 @@ class PipelineReplacementTests(unittest.TestCase):
         })
         self.assertTrue(receipt["ok"])
         self.assertIs(host.steps, steps)
-        self.assertIs(host.last_result, result)
         cycle(host, 1)
         self.assertIs(host.steps, steps)
         self.assertIs(host.shared_memory, memory)

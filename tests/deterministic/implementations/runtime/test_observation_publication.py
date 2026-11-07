@@ -70,7 +70,8 @@ class ObservationPublicationTests(unittest.TestCase):
             files = list(Path(tmp).glob("*/frames/*.jpg"))
             self.assertEqual(len(files), 1)
             self.assertEqual(files[0].read_bytes(), wire)
-            self.assertNotIn("jpeg_bytes", part.host.last_context.sensor_frame.readings["front_camera"].to_dict())
+            recorded = part.host.recording.read(run_id=part.host.recording.run_id, after=0)["frames"][0]["frame"]
+            self.assertNotIn("jpeg_bytes", recorded["context"]["sensor_frame"]["readings"]["front_camera"])
 
     def test_recording_and_transaction_share_one_encode(self):
         from autonomy.runtime.frame_loop import encode_jpeg

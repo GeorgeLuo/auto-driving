@@ -30,8 +30,8 @@ def ids(state, phase, step):
     return [item["id"] for item in state[phase][step]]
 
 
-def ran(host, step):
-    return [item["plugin_id"] for item in step_timing(host.last_result.timing, step)["plugins"]]
+def ran(result, step):
+    return [item["plugin_id"] for item in step_timing(result.timing, step)["plugins"]]
 
 
 class CatalogSelectionTests(unittest.TestCase):
@@ -61,15 +61,15 @@ class CatalogSelectionTests(unittest.TestCase):
                     self.assertEqual(ids(armed["arming"], "requested", step), [plugin_id])
                     self.assertEqual(ids(armed["arming"], "applied", step), ids(arming, "applied", step))
                 self.assertEqual(host.session_status(), session)
-                host.run(frame(root, 1))
+                result = host.run(frame(root, 1))
                 adopted = host.plugin_catalog()["arming"]
                 self.assertEqual(adopted["status"], "applied")
                 for step in STEPS:
                     expected = [swaps[step]] if step in swaps else ids(arming, "applied", step)
                     self.assertEqual(ids(adopted, "applied", step), expected)
-                    self.assertEqual(ran(host, step), expected)
+                    self.assertEqual(ran(result, step), expected)
                 # The swapped plan records the plugin that built it.
-                plan = host.last_result.plan
+                plan = result.plan
                 self.assertIsNotNone(plan, host.step("plan").last_error)
                 self.assertEqual(plan.selector_id, swaps["plan"])
 
@@ -84,8 +84,8 @@ class CatalogSelectionTests(unittest.TestCase):
                     self.assertIn(error, refused["error"])
                     self.assertEqual(refused["arming"]["requested"], adopted["applied"])
                     self.assertEqual(refused["arming"]["applied"], adopted["applied"])
-                host.run(frame(root, 2))
-                self.assertEqual((ran(host, "plan"), ran(host, "action")), (["prototype-plan"], ["hold"]))
+                result = host.run(frame(root, 2))
+                self.assertEqual((ran(result, "plan"), ran(result, "action")), (["prototype-plan"], ["hold"]))
 
     def test_both_hosts_apply_restaged_selections_on_the_next_frame(self):
         for vehicle, host in hosts(self.activations):
@@ -114,12 +114,12 @@ class CatalogSelectionTests(unittest.TestCase):
                 write_step_activation(step_activation_path(root / "runtime", "plan"),
                                       replace(self.activations["plan"], plugins=()))
                 host.sync_selection()
-                host.run(frame(root, 2))
+                result = host.run(frame(root, 2))
                 failed = host.plugin_catalog()["arming"]
                 self.assertEqual(failed["status"], "failed")
                 self.assertIn("the plan step runs exactly one plugin; 0 selected", failed["error"])
                 self.assertEqual(ids(failed, "applied", "plan"), ["highest_confidence"])
-                self.assertEqual(ran(host, "plan"), ["highest_confidence"])
+                self.assertEqual(ran(result, "plan"), ["highest_confidence"])
 
 
 if __name__ == "__main__":

@@ -35,7 +35,6 @@ OBSERVATION_TRANSACTION_PATH = "/host/observation/transaction"
 FRAME_TRANSACTION_SCHEMA = "host_frame_transaction"
 LATEST_JSON_PATH = "/host/observation/latest"
 
-PUBLICATION_HEALTH_ABSENT = "absent"
 PUBLICATION_HEALTH_WARMING = "warming"
 PUBLICATION_HEALTH_HEALTHY = "healthy"
 PUBLICATION_HEALTH_STALE = "stale"
@@ -170,11 +169,9 @@ class FrameLoop:
         self.recording_root = recording_root
         self._lock = threading.RLock()
         self._lifecycle_lock = threading.RLock()
-        self._capture_sequence = 0
         self.frames_received = 0
         self.frames_dropped = 0
         self.processed_count = 0
-        self._cycle_duration_ms: float | None = None
         self._pending_frame: _PendingFrame | None = None
         self._queue_generation = 0
         self._shutdown = False
@@ -320,14 +317,18 @@ class FrameLoop:
                 # A paused simulator repeats its frame; there is nothing new to decide.
                 return
             self._session_frame_id = frame_id
-            camera = self._store_camera_frame_locked(
-                image,
-                timestamp_ms() if captured_at_ms is None else int(captured_at_ms),
-                frame_id=frame_id,
-                frame_index=frame_index,
-                metadata=metadata, jpeg_bytes=jpeg_bytes,
+            sequence = self.frames_received
+            camera = LatestCameraFrame(
+                frame_id=frame_id or f"{self.frame_prefix}_frame_{sequence:06d}",
+                frame_index=sequence if frame_index is None else int(frame_index),
+                captured_at_ms=timestamp_ms() if captured_at_ms is None else int(captured_at_ms),
+                image=image,
+                sequence=sequence,
+                metadata=dict(metadata or {}),
+                jpeg_cache=_FrameJpegCache(jpeg_bytes),
+                image_loader=image_loader,
             )
-            camera.image_loader = image_loader
+            self.frames_received += 1
             if self._memory_update_halted:
                 return
             if self._pending_frame is not None:
@@ -346,30 +347,6 @@ class FrameLoop:
                     self._decision_thread = None
                     raise
 
-    def _store_camera_frame_locked(
-        self,
-        image: Any,
-        captured_at_ms: int,
-        *,
-        frame_id: str | None = None,
-        frame_index: int | None = None,
-        metadata: dict[str, Any] | None = None,
-        jpeg_bytes: bytes | None = None,
-    ) -> LatestCameraFrame:
-        sequence = self._capture_sequence
-        frame = LatestCameraFrame(
-            frame_id=frame_id or f"{self.frame_prefix}_frame_{sequence:06d}",
-            frame_index=sequence if frame_index is None else int(frame_index),
-            captured_at_ms=captured_at_ms,
-            image=image,
-            sequence=sequence,
-            metadata=dict(metadata or {}),
-            jpeg_cache=_FrameJpegCache(jpeg_bytes),
-        )
-        self._capture_sequence += 1
-        self.frames_received += 1
-        return frame
-
     def _discard_pending_locked(self) -> None:
         self._pending_frame = None
         self._queue_generation += 1
@@ -377,34 +354,22 @@ class FrameLoop:
     def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
         """The frame envelope, borrowing the completed report."""
         latest = self.latest_state
-        threshold_ms = stale_after_ms(self._cycle_duration_ms)
-        if latest is None:
-            health = (
-                PUBLICATION_HEALTH_WARMING
-                if self.processed_count == 0
-                else PUBLICATION_HEALTH_ABSENT
-            )
-            return {
-                "schema": FRAME_PUBLICATION_SCHEMA,
-                "ok": False,
-                "health": health,
-                "read_at_ms": read_at_ms,
-                "result_age_ms": None,
-                "stale_after_ms": threshold_ms,
-                "report": None,
-            }
-        report = latest.report
-        age_ms = max(0, read_at_ms - latest.completed_at_ms)
-        # This loop wrote the report's stale_after_ms when the frame completed.
-        ceiling = report["values"]["stale_after_ms"]
-        health = PUBLICATION_HEALTH_STALE if age_ms > ceiling else PUBLICATION_HEALTH_HEALTHY
+        report = None
+        age_ms = None
+        ceiling_ms = stale_after_ms(None)
+        health = PUBLICATION_HEALTH_WARMING
+        if latest is not None:
+            report = latest.report
+            age_ms = max(0, read_at_ms - latest.completed_at_ms)
+            ceiling_ms = report["values"]["stale_after_ms"]
+            health = PUBLICATION_HEALTH_STALE if age_ms > ceiling_ms else PUBLICATION_HEALTH_HEALTHY
         return {
             "schema": FRAME_PUBLICATION_SCHEMA,
-            "ok": True,
+            "ok": latest is not None,
             "health": health,
             "read_at_ms": read_at_ms,
             "result_age_ms": age_ms,
-            "stale_after_ms": ceiling,
+            "stale_after_ms": ceiling_ms,
             "report": report,
         }
 
@@ -412,11 +377,10 @@ class FrameLoop:
         self,
         result: DecisionCycleResult,
         *,
-        completed_at_ms: int,
-        status: str,
         error: str | None,
         mode_name: str,
         identity: dict[str, Any],
+        ceiling_ms: int,
     ) -> dict[str, Any]:
         """The report for this camera frame. Another frame's outputs are not reused.
 
@@ -430,7 +394,7 @@ class FrameLoop:
         values: dict[str, Any] = {
             "source_id": self.source_id or f"{self.runtime}:local",
             "activation": {"generation_id": generation_id, "steps": identity["steps"]},
-            "stale_after_ms": stale_after_ms(self._cycle_duration_ms),
+            "stale_after_ms": ceiling_ms,
         }
         if result.application is not None:
             values.update(delivery_values(result.application))
@@ -439,9 +403,9 @@ class FrameLoop:
             host_name=self.host_name or self.runtime,
             run_id=self.run_id,
             generation_id=generation_id,
-            published_at_ms=completed_at_ms,
+            published_at_ms=int(result.completed_at_ms),
             values=values,
-            status=status,
+            status="ok" if error is None else "error",
             error=error,
             report_application=report_application,
         ).to_dict()
@@ -569,17 +533,11 @@ class FrameLoop:
                     with self._lock:
                         self._memory_update_halted = True
 
-            if cycle_result is None:
-                completed_at_ms = timestamp_ms()
-                duration_ms = max(0, completed_at_ms - camera.captured_at_ms)
-            else:
-                completed_at_ms = int(cycle_result.completed_at_ms)
-                duration_ms = cycle_result.duration_ms
             if cycle_result is None or cycle_result.context.frame_id != camera.frame_id:
+                completed_at_ms = timestamp_ms() if cycle_result is None else int(cycle_result.completed_at_ms)
                 cycle_result = self._empty_frame_result(context, completed_at_ms=completed_at_ms)
 
             with self._lock:
-                self._cycle_duration_ms = float(duration_ms)
                 return self._publish_frame_result_locked(
                     cycle_result, camera=camera, mode_name=mode_name, error=error,
                 )
@@ -603,29 +561,26 @@ class FrameLoop:
             if "generation_id" in metadata
             else self.host.applied_decision()
         )
-        completed_at_ms = int(result.completed_at_ms)
-        status = "ok" if error is None else "error"
+        ceiling_ms = stale_after_ms(result.duration_ms)
         try:
             report = self._capture_frame_report(
                 result,
-                completed_at_ms=completed_at_ms,
-                status=status,
                 error=error,
                 mode_name=mode_name,
                 identity=identity,
+                ceiling_ms=ceiling_ms,
             )
         except Exception as exc:
             # Invalid step data still publishes this frame with null steps.
             logger.exception("Frame report failed for %s", camera.frame_id)
-            status = "error"
+            error = f"frame report failed: {type(exc).__name__}: {exc}"
             try:
                 report = self._capture_frame_report(
-                    self._empty_frame_result(result.context, completed_at_ms=completed_at_ms),
-                    completed_at_ms=completed_at_ms,
-                    status=status,
-                    error=f"frame report failed: {type(exc).__name__}: {exc}",
+                    self._empty_frame_result(result.context, completed_at_ms=int(result.completed_at_ms)),
+                    error=error,
                     mode_name=mode_name,
                     identity=identity,
+                    ceiling_ms=ceiling_ms,
                 )
             except Exception:
                 logger.exception("Error report failed for %s", camera.frame_id)
@@ -637,4 +592,4 @@ class FrameLoop:
         )
         self._publication_revision += 1
         self.processed_count += 1
-        return status == "ok"
+        return error is None

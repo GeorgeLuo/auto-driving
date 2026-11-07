@@ -15,8 +15,10 @@ revision without selecting or importing it; existing selections retain their
 definitions until explicitly changed. An uploaded source is named by its
 sha256, ``<sha256>.py:Name``, so the catalog that received it and every
 recording that ran it hold the same code under the same name.
-``instantiate_plugin`` constructs a definition's entrypoint with its config; a
-step checks the resulting instance against its own plugin protocol.
+A collection is plugins uploaded together from one source package; it names
+their IDs by step, as arming takes them. ``instantiate_plugin`` constructs a
+definition's entrypoint with its config; a step checks the resulting instance
+against its own plugin protocol.
 """
 
 from __future__ import annotations
@@ -32,9 +34,11 @@ import threading
 import weakref
 from collections.abc import Iterable, Mapping
 from copy import deepcopy
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any, TypeVar
+
+from autonomy.plugin_collections import collection_source
 
 
 class PluginManagementError(ValueError):
@@ -57,11 +61,14 @@ class PluginDefinition:
 
     @property
     def executable_entrypoint(self) -> str:
-        """An uploaded source is independent of the installed module namespace."""
+        """An uploaded source is independent of the installed module namespace.
+
+        A collection's plugin is its factory in the collection's source.
+        """
 
         source = self.metadata.get("source_file")
         if source is not None:
-            return f"{source}:{self.entrypoint.partition(':')[2]}"
+            return f"{source}:{self.metadata.get('source_attribute') or self.entrypoint.partition(':')[2]}"
         return self.entrypoint
 
     def __post_init__(self) -> None:
@@ -128,7 +135,7 @@ class LocalPluginCatalog:
         self._lock = threading.RLock()
         self.version = 0
         self._sources: str | None = None
-        self._collections: dict[str, list[str]] = {}
+        self._collections: dict[str, dict[str, list[str]]] = {}
         for definition in definitions:
             self.register(definition)
 
@@ -165,6 +172,54 @@ class LocalPluginCatalog:
         """
 
         definition = PluginDefinition(step, plugin_id, entrypoint, config or {})
+        definition = replace(definition, metadata={**self._store(source, filename), "filename": filename})
+        with self._lock:
+            self._definitions[(step, plugin_id)] = definition
+            self.version += 1
+            return definition
+
+    def upload_collection(self, name: str, definitions: Iterable[PluginDefinition],
+                          sources: Mapping[str, str]) -> tuple[PluginDefinition, ...]:
+        """Store ``sources`` as one revision, publish ``definitions`` from it, and name them ``name``.
+
+        Each entrypoint is a ``module:Class`` in ``sources``; nothing is imported.
+        The definitions and their collection are published together or not at all.
+        """
+
+        definitions = tuple(definitions)
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("collection name must be a non-empty string")
+        if not definitions:
+            raise ValueError("a collection needs at least one plugin")
+        keys = [(definition.step, definition.plugin_id) for definition in definitions]
+        if len(keys) != len(set(keys)):
+            raise ValueError("collection plugins must be unique")
+        source, plugins = collection_source(sources, [definition.entrypoint for definition in definitions])
+        stored = self._store(source, f"{name}.py")
+        published = tuple(
+            replace(definition, metadata={**stored, "filename": file, "source_attribute": factory})
+            for definition, (factory, file) in zip(definitions, plugins)
+        )
+        with self._lock:
+            members: dict[str, list[str]] = {}
+            for definition in published:
+                self._definitions[(definition.step, definition.plugin_id)] = definition
+                members.setdefault(definition.step, []).append(definition.plugin_id)
+            self._collections[name] = members
+            self.version += 1
+            return published
+
+    def collection(self, name: str) -> dict[str, list[str]]:
+        """The plugin IDs collection ``name`` names, by step, as arming takes them."""
+
+        with self._lock:
+            if name not in self._collections:
+                raise ValueError(f"unknown plugin collection {name!r}")
+            return deepcopy(self._collections[name])
+
+    def _store(self, source: bytes, filename: str) -> dict[str, str]:
+        """Keep ``source`` under its sha256; the metadata that names it."""
+
         try:
             compile(source, filename, "exec")
         except SyntaxError as exc:
@@ -181,59 +236,7 @@ class LocalPluginCatalog:
                 with os.fdopen(descriptor, "wb") as stream:
                     stream.write(source)
                 os.replace(partial, path)
-            definition = PluginDefinition(
-                step, plugin_id, entrypoint, definition.config,
-                {"source_file": path.name, "revision": revision, "filename": filename},
-            )
-            self._definitions[(step, plugin_id)] = definition
-            self.version += 1
-            return definition
-
-    def upload_collection(self, name: str, plugins: list[dict[str, Any]],
-                          sources: Mapping[str, str]) -> tuple[PluginDefinition, ...]:
-        """Register the plugins using ordinary uploads, then publish their membership."""
-        from autonomy.decision_cycle.activation import require_step
-        from autonomy.plugin_collections import collection_source
-
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError("collection name must be a non-empty string")
-        if not isinstance(plugins, list) or not plugins:
-            raise ValueError("collection plugins must be a non-empty list")
-        references = []
-        for item in plugins:
-            if not isinstance(item["name"], str):
-                raise ValueError("collection plugin name must be step/plugin")
-            step, separator, plugin_id = item["name"].partition("/")
-            require_step(step)
-            if not separator or not plugin_id or "/" in plugin_id:
-                raise ValueError("collection plugin name must be step/plugin")
-            PluginDefinition(step, plugin_id, item["entrypoint"], item.get("config", {}))
-            references.append(item["name"])
-        if len(references) != len(set(references)):
-            raise ValueError("collection plugin names must be unique")
-        source = collection_source(sources, [item["entrypoint"] for item in plugins])
-        with self._lock:
-            definitions = tuple(self.upload(
-                step=item["name"].partition("/")[0], plugin_id=item["name"].partition("/")[2],
-                entrypoint=f"collection:plugin_{index}", source=source,
-                filename=f"{name}.py", config=item.get("config", {}),
-            ) for index, item in enumerate(plugins))
-            self._collections[name] = references
-            return definitions
-
-    def collections(self) -> dict[str, list[str]]:
-        with self._lock:
-            return deepcopy(self._collections)
-
-    def collection_selections(self, name: str) -> dict[str, list[str]]:
-        with self._lock:
-            if name not in self._collections:
-                raise ValueError(f"unknown plugin collection {name!r}")
-            selections: dict[str, list[str]] = {}
-            for reference in self._collections[name]:
-                step, _, plugin_id = reference.partition("/")
-                selections.setdefault(step, []).append(plugin_id)
-            return selections
+        return {"source_file": path.name, "revision": revision}
 
     def list(self, step: str) -> tuple[PluginDefinition, ...]:
         with self._lock:
@@ -247,6 +250,12 @@ class LocalPluginCatalog:
 
         with self._lock:
             return self.version, tuple(value for _, value in sorted(self._definitions.items()))
+
+    def read_with_collections(self) -> tuple[int, tuple[PluginDefinition, ...], dict[str, dict[str, list[str]]]]:
+        """``read``, with each collection's plugin IDs by step, from the same moment."""
+
+        with self._lock:
+            return (*self.read(), deepcopy(self._collections))
 
     def resolve(self, step: str, plugin_id: str) -> PluginDefinition:
         if not isinstance(plugin_id, str) or not plugin_id.strip():
@@ -340,9 +349,9 @@ def plugin_report(
     }
 
 
-def _ordered_collection(value: Iterable[Any], *, what: str) -> list[Any]:
+def _ordered_items(value: Iterable[Any], *, what: str) -> list[Any]:
     if isinstance(value, (str, bytes, Mapping, set, frozenset)):
-        raise PluginManagementError(f"{what} must be an ordered collection")
+        raise PluginManagementError(f"{what} must be an ordered sequence")
     try:
         return list(value)
     except TypeError as exc:
@@ -354,7 +363,7 @@ def _applied_pairs(
 ) -> tuple[tuple[PluginDefinition, _T], ...]:
     pairs: list[tuple[PluginDefinition, _T]] = []
     seen: set[str] = set()
-    for item in _ordered_collection(applied, what="applied plugins"):
+    for item in _ordered_items(applied, what="applied plugins"):
         definition = item[0] if isinstance(item, tuple) and len(item) == 2 else None
         if not isinstance(definition, PluginDefinition):
             raise PluginManagementError(
@@ -375,7 +384,7 @@ def _report_records(
     if records is None:
         return {}
     indexed: dict[str, Mapping[str, Any]] = {}
-    for record in _ordered_collection(records, what="plugin report records"):
+    for record in _ordered_items(records, what="plugin report records"):
         if not isinstance(record, Mapping):
             raise PluginManagementError("plugin report records must be objects")
         plugin_id = record.get("plugin_id")

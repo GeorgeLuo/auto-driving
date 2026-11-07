@@ -175,7 +175,6 @@ A starting manifest format is:
   "plugins": [
     {
       "name": "proposal/drive_forward",
-      "file": "src/chase/drive.py",
       "entrypoint": "chase.drive:DriveForward",
       "config": {"throttle": 0.6}
     }
@@ -183,9 +182,10 @@ A starting manifest format is:
 }
 ```
 
-Paths are relative to the manifest. `source_directory` defaults to its directory;
-all Python files under it are included, so point it at the experiment's source
-rather than a whole checkout. Use relative imports between collection modules
+`source_directory` is relative to the manifest and defaults to its directory.
+Every module under it that Python can import by name is included, and each
+entrypoint names one of them; scripts such as `run-sim.py` and folders such as
+`.venv` are skipped. Use relative imports between collection modules
 and installed imports for framework interfaces (including camera feed types).
 Package modules and shared code travel together as one uploaded source revision,
 which recordings retain for replay. Upload validates Python syntax without
@@ -200,11 +200,10 @@ observation, plan and action keep theirs until you arm a replacement. Use
 `plugins disarm --all` first when replacing the existing perception, memory and
 proposal selections. Collection references resolve to the
 catalog's available plugin revisions when armed. Re-uploading alone leaves the
-running pipeline unchanged. Membership is published only after all uploads
-succeed; a failed upload may leave individual revisions available. Collections
-last with their live catalog, just like uploaded plugins, and cannot be saved
-as staged defaults. `--arm` also works with `--manifest`; `--json` reports the
-collection name and each registered definition.
+running pipeline unchanged. A collection and its plugins are published together,
+or not at all. Collections last with their live catalog, just like uploaded
+plugins, and cannot be saved as staged defaults. `--arm` also works with
+`--manifest`; `--json` reports the collection name and each registered definition.
 
 Uploaded plugins stay in the host's catalog until that host restarts; `plugins upload`
 and `plugins list --long` print the host run beside the catalog version. A

@@ -13,17 +13,19 @@ from pathlib import Path
 from typing import Any, Literal
 
 Definition = dict[str, Any]
-RecoveryKind = Literal["config", "file", "endpoint", "rejected", "list"]
+RecoveryKind = Literal["usage", "config", "file", "endpoint", "rejected", "list", "arm"]
 
 
 @dataclass(frozen=True)
 class Recovery:
     """Which follow-up to offer after a catalog request.
 
-    ``config``, ``file`` and ``rejected`` point at the upload's inputs;
-    ``endpoint`` at a catalog that did not answer, and is omitted for a named
-    host, whose error already says why; ``list`` at the listing that shows the
-    change. The renderer turns it into the command text.
+    ``usage`` follows options the command refuses together, and offers nothing
+    the reason does not already say. ``config``, ``file`` and ``rejected`` point
+    at the upload's inputs; ``endpoint`` at a catalog that did not answer, and is
+    omitted for a named host, whose error already says why; ``list`` at the
+    listing that shows the change; ``arm`` at arming the ``collection`` just
+    uploaded. The renderer turns it into the command text.
     """
 
     kind: RecoveryKind
@@ -32,6 +34,7 @@ class Recovery:
     host_name: str | None = None
     step: str | None = None
     long: bool = False
+    collection: str | None = None
 
 
 @dataclass(frozen=True)
@@ -70,15 +73,16 @@ class Receipt:
 class UploadResult:
     """An upload, and with ``--arm`` the arming that followed a successful one.
 
-    ``url`` is the catalog endpoint that was called; ``recovery`` still names
-    the caller's original ``--url`` or ``--host-name``. The command succeeds
-    when the last request it made did.
+    A file uploads one ``step``'s ``plugin_id``; a manifest uploads a
+    ``collection``, and leaves both unset. ``url`` is the catalog endpoint that
+    was called; ``recovery`` still names the caller's original ``--url`` or
+    ``--host-name``. The command succeeds when the last request it made did.
     """
 
     host_name: str | None
     url: str | None
     step: str | None
-    plugin_id: str
+    plugin_id: str | None
     upload: Receipt
     arm: Receipt | None
     recovery: Recovery
@@ -91,7 +95,10 @@ class UploadResult:
 
 @dataclass(frozen=True)
 class SelectionResult:
-    """An arm or disarm request; ``step`` is set when it armed a step's ``preset`` or disarm cleared one step."""
+    """An arm or disarm request; ``step`` is set when it armed a step's ``preset`` or disarm cleared one step.
+
+    ``collection`` is set when the request named the host's collection.
+    """
 
     operation: Literal["arm", "disarm"]
     host_name: str | None
@@ -100,6 +107,7 @@ class SelectionResult:
     receipt: Receipt
     recovery: Recovery
     preset: str | None = None
+    collection: str | None = None
 
     @property
     def exit_code(self) -> int:
@@ -108,13 +116,16 @@ class SelectionResult:
 
 @dataclass(frozen=True)
 class CatalogListing:
-    """Definitions a listing shows; ``version`` and ``host_run_id`` come only from a host."""
+    """Definitions a listing shows; ``version``, ``host_run_id`` and ``collections`` come only from a host.
+
+    ``collections`` holds each collection's listed plugin IDs by step.
+    """
 
     source: str
     plugins: list[Definition]
     version: int | None = None
     host_run_id: str | None = None
-    collections: dict[str, list[str]] = field(default_factory=dict)
+    collections: dict[str, dict[str, list[str]]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

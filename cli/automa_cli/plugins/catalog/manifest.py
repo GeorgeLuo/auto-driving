@@ -1,40 +1,68 @@
-"""Read an external collection without importing its plugin code."""
+"""Read a collection manifest and the sources it names, without importing them."""
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
-from autonomy.plugin_collections import collection_source
+from autonomy.plugin_collections import is_module_path
+
+from ...shared.plugin_catalog import step_plugin
 
 
 def read_manifest(path: Path) -> dict[str, Any]:
-    manifest = json.loads(path.read_text(encoding='utf-8'))
+    """The ``upload_collection`` request for the manifest at ``path``.
+
+    Each plugin is a ``step/plugin`` name, a ``module:Class`` entrypoint and an
+    optional config. The modules are every file under ``source_directory``,
+    relative to the manifest and by default its directory, that Python can import
+    by name; the host checks the entrypoints against them.
+    """
+
+    manifest = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(manifest, dict):
-        raise ValueError('manifest must be a JSON object')
-    name, plugins = manifest.get('name'), manifest.get('plugins')
-    if not isinstance(name, str) or not name.strip():
-        raise ValueError('manifest name must be a non-empty string')
+        raise ValueError("manifest must be a JSON object")
+    plugins = _field(manifest, "plugins", "manifest")
     if not isinstance(plugins, list) or not plugins:
-        raise ValueError('manifest plugins must be a non-empty list')
-    root = (path.parent / manifest.get('source_directory', '.')).resolve()
-    if not root.is_dir():
-        raise ValueError(f'collection source directory does not exist: {root}')
-    sources = {}
-    for source in sorted(root.rglob('*.py')):
-        if source.is_symlink() or not source.resolve().is_relative_to(root):
-            raise ValueError(f'collection source escapes its directory: {source}')
-        sources[source.relative_to(root).as_posix()] = source.read_text(encoding='utf-8')
-    for plugin in plugins:
+        raise ValueError("manifest plugins must be a non-empty list")
+    definitions = []
+    for index, plugin in enumerate(plugins):
+        where = f"manifest plugins[{index}]"
         if not isinstance(plugin, dict):
-            raise ValueError('manifest plugins must contain objects')
-        file = (path.parent / plugin['file']).resolve()
-        if not file.is_relative_to(root) or file.relative_to(root).as_posix() not in sources:
-            raise ValueError(f'plugin file is not in the source directory: {file}')
-        if not isinstance(plugin['entrypoint'], str):
-            raise ValueError('collection entrypoint must be module:Class')
-        module = plugin['entrypoint'].partition(':')[0].replace('.', '/')
-        if file.relative_to(root).as_posix() not in (module + '.py', module + '/__init__.py'):
-            raise ValueError(f"plugin file does not match entrypoint: {plugin['entrypoint']}")
-    collection_source(sources, [plugin['entrypoint'] for plugin in plugins])
-    return {'operation': 'upload_collection', 'name': name, 'plugins': plugins, 'sources': sources}
+            raise ValueError(f"{where} must be an object")
+        name = _field(plugin, "name", where)
+        try:
+            step, plugin_id = step_plugin(name)
+        except ValueError as exc:
+            raise ValueError(f"{where}: {exc}") from exc
+        definitions.append({"step": step, "plugin_id": plugin_id, "entrypoint": _field(plugin, "entrypoint", where),
+                            **({"config": plugin["config"]} if "config" in plugin else {})})
+    root = (path.parent / manifest.get("source_directory", ".")).resolve()
+    if not root.is_dir():
+        raise ValueError(f"collection source directory does not exist: {root}")
+    return {"operation": "upload_collection", "name": _field(manifest, "name", "manifest"),
+            "plugins": definitions, "sources": _sources(root)}
+
+
+def _field(entry: dict[str, Any], key: str, where: str) -> Any:
+    if key not in entry:
+        raise ValueError(f"{where}: missing field: {key}")
+    return entry[key]
+
+
+def _sources(root: Path) -> dict[str, str]:
+    """Each module under ``root`` by its relative path; scripts such as ``run-sim.py`` and folders such as ``.venv`` are skipped."""
+
+    sources = {}
+    for directory, folders, files in os.walk(root):
+        folders[:] = sorted(folder for folder in folders if folder.isidentifier())
+        for file in sorted(files):
+            source = Path(directory, file)
+            name = source.relative_to(root).as_posix()
+            if not is_module_path(name):
+                continue
+            if source.is_symlink():
+                raise ValueError(f"collection source is a link: {source}")
+            sources[name] = source.read_text(encoding="utf-8")
+    return sources

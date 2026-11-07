@@ -86,7 +86,6 @@ def _import_edges(imports: dict[str, list[CliImport]], modules: set[str]) -> dic
 _NAMED_ROLES = {name: name for name in ("commands", "service", "models", "render", "store", "monitor", "registry")}
 _OPERATION_ROLES = {"service", "store", "monitor", "registry", "operation"}
 _MODULE_ROLES = {
-    "plugins.catalog.manifest": "operation",
     "app": "entrypoint",
     "viewer_commands": "commands",  # the viewer's adapter: runs services, renders their results
     "frontend.decision_view": "operation",
@@ -127,6 +126,7 @@ _MODULE_ROLES = {
     "hosts.views.view_discovery": "operation",
     "hosts.views.view_feed": "operation",
     "hosts.views.viewer": "operation",
+    "plugins.catalog.manifest": "operation",
     "plugins.inspect.replay": "operation",
     "plugins.step_formatting": "pure",
     "plugins.stream.decision": "operation",

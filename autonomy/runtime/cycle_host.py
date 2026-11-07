@@ -181,7 +181,8 @@ class AutonomyCycleHost:
         """Stage a file whose plugin IDs changed and whose specs and configs did not.
 
         An unchanged file does not replace a later arm or disarm. A file whose
-        specs or configs differ is ignored until the process restarts.
+        specs or configs differ is ignored until the process restarts. Changed
+        IDs end the preset the step was loaded with.
         """
 
         with self._lock:
@@ -194,7 +195,7 @@ class AutonomyCycleHost:
                 if live is None:
                     continue
                 try:
-                    staged = replace(executable, plugins=tuple(live.plugins))
+                    staged = _preset_while_unchanged(executable, replace(executable, plugins=tuple(live.plugins)))
                 except (TypeError, ValueError, PluginManagementError) as exc:
                     self._selection_error = f"{step}: {type(exc).__name__}: {exc}"
                     continue
@@ -801,9 +802,10 @@ def _same_metadata(
 
 
 def _preset_while_unchanged(base: StepActivation | None, update: StepActivation) -> StepActivation:
-    """``update``, keeping ``base``'s preset only while it runs the same code.
+    """``update``, made from ``base``'s metadata, keeping its preset only while it runs the same code.
 
-    A preset names the plugins it armed; once they change, the step reports no preset.
+    A preset names the plugins it armed; once they change, the step reports no
+    preset. Every change that carries a step's metadata forward goes through here.
     """
 
     if base is None or executable_document(update) == executable_document(base):

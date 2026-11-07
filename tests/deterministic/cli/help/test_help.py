@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import unittest
 
 from cli.automa_cli.app import build_parser
@@ -207,12 +208,15 @@ class HelpCommandTests(unittest.TestCase):
         self.assertEqual((args.collection, args.plugins, args.step, args.all_plugins), ("experiment", None, None, False))
         with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
             parser.parse_args(["plugins", "disarm", "--host-name", "one", "--collection", "experiment", "--all"])
-        for options in (
-            ["--file", "p.py", "--name", "perception/x"],
-            ["--manifest", "m.json", "--entrypoint", "x:X"],
+        for options, reason in (
+            (["--file", "p.py", "--name", "perception/x"], "--file requires --name and --entrypoint"),
+            (["--manifest", "m.json", "--entrypoint", "x:X"], "use --name, --entrypoint and --config with --file"),
         ):
-            with self.subTest(options=options), contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(main(["plugins", "upload", "--host-name", "one", *options]), 2)
+            with self.subTest(options=options), contextlib.redirect_stdout(io.StringIO()) as printed:
+                self.assertEqual(main(["plugins", "upload", "--host-name", "one", *options, "--json"]), 2)
+                receipt = json.loads(printed.getvalue())
+                self.assertEqual((receipt["ok"], receipt["outcome"]["recovery"]), (False, None))
+                self.assertIn(reason, receipt["error"])
 
     def test_plugin_arm_parses_step_plugin_names(self) -> None:
         parser = build_parser()

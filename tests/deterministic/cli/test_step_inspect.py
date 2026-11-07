@@ -3,31 +3,69 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 import unittest
 from pathlib import Path
-
-from PIL import Image
-from dataclasses import replace
-from cli.automa_cli.replay.selections import default_selection
-from cli.automa_cli.shared.memory_report import plugin_summaries
-from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
-from implementations.decision_cycle.catalog import selection_activation
 from unittest.mock import patch
 
-from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS
-from cli.automa_cli.plugins.step_formatting import format_step_record
+from PIL import Image
+
+from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation, step_activation
+from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch, PerceptionSignal
+from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract
 from cli.automa_cli.plugins.inspect.commands import INSPECT_STEPS, inspect_step
 from cli.automa_cli.plugins.inspect.replay import StepReplay
+from cli.automa_cli.plugins.step_formatting import format_step_record
 from cli.automa_cli.replay.models import ImageSource, ReplayFrame
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PRESETS, PRESET_STEPS
-from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import LEDGER_KEY
-from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import (
-    LedgerBounds,
-    empty_ledger,
+from cli.automa_cli.shared.memory_report import plugin_summaries
+from implementations.decision_cycle.catalog import (
+    DEFAULT_STEP_PLUGINS,
+    DEFAULT_STEP_PRESETS,
+    PRESET_STEPS,
+    STEP_PRESETS,
+    step_plugins,
 )
+from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import EVIDENCE_SPEC, RECORDING_SPEC
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.memory.frame_fixtures import write_frames
+
+
+_HERE = "tests.deterministic.cli.test_step_inspect"
+LOCAL_PERCEPTION = {"local_perception": f"{_HERE}:_LocalPerception"}
+
+
+class _LocalPerception:
+    """Reports one signal; with ``fail`` it raises, as a broken plugin does."""
+
+    plugin_id = "local_perception"
+    contract = PerceptionPluginContract()
+
+    def __init__(self, *, fail: bool = False, **_ignored) -> None:
+        self.fail = fail
+
+    def perceive(self, inputs) -> PerceptionEvidenceBatch:
+        if self.fail:
+            raise RuntimeError("plugin failed")
+        return PerceptionEvidenceBatch(signals=(PerceptionSignal("local_seen", True),), things=())
+
+
+def _local(step: str, specs: dict[str, str], configs: dict[str, dict] | None = None) -> StepActivation:
+    """An activation of ``step`` that loads these test plugins, in order."""
+
+    return step_activation(step, list(specs), specs, configs)
+
+
+def _record_steps(frames: Path, steps: dict[int, dict[str, StepActivation]]) -> Path:
+    """Have frame N of ``write_frames``' three record the selections ``steps[N]``."""
+
+    (frames / "manifest.json").write_text(json.dumps({"frames": [
+        {"image_path": f"frame_{index}.png",
+         **({"steps": {step: activation.to_payload() for step, activation in steps[index].items()}}
+            if index in steps else {})}
+        for index in range(3)
+    ]}))
+    return frames
 
 
 def _source(metadata: dict | None = None) -> ImageSource:
@@ -108,7 +146,7 @@ class StepInspectTests(unittest.TestCase):
         self.assertIsInstance(frame["memory"], dict)
         text = inspect_step("proposal", source=self.frames).message
         self.assertIn(f"Observation: {frame['observation']['observation_id']}", text)
-        self.assertIn("Memory: plugin=bounded_evidence", text)
+        self.assertIn(f"Memory: plugin={frame['memory']['plugins'][0]['plugin_id']}", text)
 
     def test_each_frame_carries_every_steps_and_plugins_time(self) -> None:
         """Regression: no command showed step or plugin time, so a slow plugin was invisible."""
@@ -125,10 +163,10 @@ class StepInspectTests(unittest.TestCase):
                 self.assertGreaterEqual(timing["duration_ms"], entry["duration_ms"])
                 for plugin in entry["plugins"]:
                     self.assertGreaterEqual(entry["duration_ms"], plugin["duration_ms"])
+        plan = report["selections"]["plan"]["plugins"]
+        plugins = ", ".join(rf"{re.escape(plugin)} \d+\.\d{{3}} ms" for plugin in plan)
         text = inspect_step("plan", source=self.frames).message
-        self.assertRegex(
-            text, r"Timing: plan \d+\.\d{3} ms \(highest_confidence \d+\.\d{3} ms\); cycle \d+\.\d{3} ms"
-        )
+        self.assertRegex(text, rf"Timing: plan \d+\.\d{{3}} ms \({plugins}\); cycle \d+\.\d{{3}} ms")
 
     def test_each_step_reports_one_frame_after_replaying_its_history(self) -> None:
         for step in INSPECT_STEPS:
@@ -208,6 +246,8 @@ class StepInspectTests(unittest.TestCase):
                 with self.subTest(step=step, options=options):
                     result = inspect_step(step, **{"source": self.frames, **options})
                     self.assertEqual(result.exit_code, 2, result.message)
+        both = inspect_step("perception", source=self.frames, preset="not-a-preset", plugins=[])
+        self.assertIn("preset or plugins, not both", both.message)
 
     def test_every_step_names_a_failed_frame_or_recording_and_exits_2(self) -> None:
         for step in INSPECT_STEPS:
@@ -225,37 +265,22 @@ class StepInspectTests(unittest.TestCase):
 
     def test_plugin_failure_is_reported_with_exit_zero(self) -> None:
         # A plugin failure is data; an exception escaping the replay is a command error.
-        with patch(
-            "implementations.decision_cycle.perception.plugins.frame.plugin.FrameObservationPlugin.perceive",
-            side_effect=RuntimeError("plugin failed"),
-        ):
-            report = self.inspect("perception", plugins=["frame"])
+        failing = _local("perception", LOCAL_PERCEPTION, {"local_perception": {"fail": True}})
+        report = self.inspect("perception", source=_record_steps(self.frames, {0: {"perception": failing}}))
         run = report["frames"][0]["record"]["plugin_runs"][0]
-        self.assertEqual(run["status"], "error")
+        self.assertEqual((run["plugin_id"], run["status"]), ("local_perception", "error"))
         self.assertIn("plugin failed", run["error"])
-
-    def test_plugin_replaces_the_inspected_steps_selection(self) -> None:
-        report = self.inspect("action", plugins=["mode"])
-        self.assertEqual(report["selections"]["action"]["plugins"], ["mode"])
-        self.assertEqual(report["frames"][0]["record"]["authority"]["gate_id"], "mode")
+    def test_plugin_replaces_the_inspected_steps_selection_and_its_recording_keeps_it(self) -> None:
+        plugin_id = next(plugin for plugin in step_plugins("action") if plugin not in DEFAULT_STEP_PLUGINS["action"])
+        with patch.dict(os.environ, {"AUTOMA_ACTION_INSPECT_ROOT": str(self.tmp / "inspections")}):
+            recorded = self.inspect("action", plugins=[plugin_id], record=True)
+        self.assertEqual(recorded["selections"]["action"]["plugins"], [plugin_id])
+        replayed = self.inspect("proposal", source=Path(recorded["run_dir"]))
+        self.assertEqual(replayed["selections"]["action"]["plugins"], [plugin_id])
         unknown = inspect_step("proposal", source=self.frames, plugins=["nope"])
         self.assertEqual(unknown.exit_code, 2)
         self.assertIn("Could not load plugins for proposal inspect:", unknown.message)
         self.assertIn("nope", unknown.message)
-
-    def test_a_recorded_inspect_replays_with_its_selections(self) -> None:
-        with patch.dict(os.environ, {"AUTOMA_ACTION_INSPECT_ROOT": str(self.tmp / "inspections")}):
-            recorded = self.inspect("action", plugins=["mode"], record=True)
-        run_dir = Path(recorded["run_dir"])
-        written = sorted(path.relative_to(run_dir).as_posix() for path in run_dir.rglob("*") if path.is_file())
-        self.assertEqual(
-            written,
-            ["frames/frame_000000.png", "frames/frame_000001.png", "frames/frame_000002.png", "manifest.json", "report.json"],
-        )
-        replayed = self.inspect("proposal", source=run_dir)
-        self.assertEqual(replayed["source"]["frame_count"], 3)
-        self.assertEqual(replayed["selections"]["action"]["plugins"], ["mode"])
-
     def test_a_recording_that_disabled_a_selectable_step_replays_without_its_plugins(self) -> None:
         """A recorded absent slot stays absent, even when its step is clearable."""
         replay = StepReplay(_source({"steps": dict.fromkeys(PRESET_STEPS)}), steps=PRESET_STEPS)
@@ -268,25 +293,31 @@ class StepInspectTests(unittest.TestCase):
         """Regression: a source that records selections only per frame built default
         runners, and frame 0's restage reset them over the map, replacing the ledger."""
 
-        recorded = default_selection("memory").to_payload()
-        recorded["plugin_configs"]["bounded_evidence"]["max_records"] = 8
+        recorded = _local("memory", {"recording_test": RECORDING_SPEC}).to_payload()
         source = _source({"steps": {"memory": recorded}})
         replay = StepReplay(source, steps=("memory",))
         self.assertEqual(replay.activations["memory"].to_payload(), recorded)
         runner = replay.runners["memory"]
-        replay.shared_memory[LEDGER_KEY] = empty_ledger(
-            memory_id="memory-7",
-            epoch_id="epoch-7",
-            bounds=LedgerBounds(max_records=8),
-            created_at_ms=0,
-            plugin_id="bounded_evidence",
-        )
+        replay.shared_memory["recording_test.state"] = {"epoch": 7, "records": ()}
 
         replay.restage(source.frames[0])
 
         self.assertIs(replay.runners["memory"], runner)
-        self.assertEqual(replay.shared_memory[LEDGER_KEY].epoch_id, "epoch-7")
+        self.assertEqual(replay.shared_memory["recording_test.state"]["epoch"], 7)
 
+    def test_every_step_restages_the_selection_each_frame_records(self) -> None:
+        local = _local("perception", LOCAL_PERCEPTION)
+        frames = _record_steps(self.frames, {1: {"perception": local}, 2: {"perception": local}})
+        expected = [list(DEFAULT_STEP_PLUGINS["perception"]), ["local_perception"], ["local_perception"]]
+        for step in ("perception", "memory"):
+            with self.subTest(step=step):
+                report = self.inspect(step, source=frames)
+                self.assertEqual([item["steps"]["perception"]["plugins"] for item in report["frames"]], expected)
+                if step == "perception":
+                    self.assertEqual(
+                        [[run["plugin_id"] for run in item["record"]["plugin_runs"]] for item in report["frames"]],
+                        expected,
+                    )
     def test_cli_has_one_inspect_group_and_no_decision_command(self) -> None:
         for step in INSPECT_STEPS:
             with self.subTest(step=step):
@@ -304,74 +335,27 @@ class StepInspectTests(unittest.TestCase):
         self.assertIn("invalid choice: 'decision'", removed.stderr)
 
 
+
 class PerceptionInspectTests(unittest.TestCase):
-    def test_inspect_runs_selected_catalog_plugins_on_one_image(self) -> None:
+    def test_one_image_runs_the_preset_or_plugins_its_flags_name(self) -> None:
+        preset = next(name for name in STEP_PRESETS["perception"] if name != DEFAULT_STEP_PRESETS["perception"])
+        plugins = list(STEP_PRESETS["perception"][preset]["plugins"])
         with tempfile.TemporaryDirectory() as tmp:
             image = Path(tmp) / "single.jpg"
             Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
-            result = inspect_step(
-                "perception", source=image,
-                plugins=["frame", "classical_regions"],
-                json_output=True,
-            )
-
-        self.assertEqual(result.exit_code, 0, result.message)
-        report = json.loads(result.message)
-        self.assertEqual(report["source"]["path"], str(image.resolve()))
-        self.assertEqual(len(report["frames"]), 1)
-        runs = report["frames"][0]["record"]["plugin_runs"]
-        self.assertEqual([run["plugin_id"] for run in runs], ["frame", "classical_regions"])
-
-    def test_inspect_rejects_preset_and_plugins_together(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            image = Path(tmp) / "single.jpg"
-            Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
-            both = inspect_step("perception", source=image, preset="visual_observer", plugins=["frame"])
-
-        self.assertEqual(both.exit_code, 2)
-        self.assertIn("preset or plugins, not both", both.message)
-
-    def test_inspect_reports_the_preset_or_custom_selection_it_applied(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            image = Path(tmp) / "single.jpg"
-            Image.new("RGB", (48, 32), (25, 35, 45)).save(image)
-            preset = inspect_step("perception", source=image, preset="visual_observer", json_output=True)
-            custom = inspect_step("perception", source=image, plugins=["frame"], json_output=True)
-
-        self.assertEqual(json.loads(preset.message)["selections"]["perception"]["preset"], "visual_observer")
-        self.assertEqual(json.loads(custom.message)["selections"]["perception"]["preset"], "custom")
-        self.assertEqual(json.loads(custom.message)["selections"]["perception"]["plugins"], ["frame"])
-
-    def test_inspect_restages_perception_from_frame_metadata(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            Image.new("RGB", (48, 32), (25, 35, 45)).save(root / "a.png")
-            Image.new("RGB", (48, 32), (30, 40, 50)).save(root / "b.png")
-            switched = selection_activation("perception", plugins=["frame"])
-            manifest = {
-                "source_id": "restage-source",
-                "frames": [
-                    {"image_path": "a.png"},
-                    {
-                        "image_path": "b.png",
-                        "steps": {"perception": switched.to_payload()},
-                    },
-                ],
-            }
-            (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-            result = inspect_step("perception", source=root, json_output=True)
-
-        self.assertEqual(result.exit_code, 0, result.message)
-        report = json.loads(result.message)
-        self.assertEqual(
-            [run["plugin_id"] for run in report["frames"][0]["record"]["plugin_runs"]],
-            ["frame", "floor_plane"],
-        )
-        self.assertEqual(
-            [run["plugin_id"] for run in report["frames"][1]["record"]["plugin_runs"]],
-            ["frame"],
-        )
-
+            for flags, expected in (({"preset": preset}, plugins), ({"plugins": plugins[:1]}, plugins[:1])):
+                with self.subTest(**flags):
+                    result = inspect_step("perception", source=image, json_output=True, **flags)
+                    self.assertEqual(result.exit_code, 0, result.message)
+                    report = json.loads(result.message)
+                    self.assertEqual(report["source"]["path"], str(image.resolve()))
+                    self.assertEqual(len(report["frames"]), 1)
+                    selection = report["selections"]["perception"]
+                    self.assertEqual(selection["plugins"], expected)
+                    if "preset" in flags:
+                        self.assertEqual(selection["preset"], preset)
+                    runs = report["frames"][0]["record"]["plugin_runs"]
+                    self.assertEqual([run["plugin_id"] for run in runs], expected)
 
 class MemoryInspectTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -390,52 +374,24 @@ class MemoryInspectTests(unittest.TestCase):
         return json.loads(result.message)
 
     def test_two_recorded_plugins_each_report_and_the_publisher_is_named(self) -> None:
-        # The recording plugin runs after bounded_evidence and keeps its own state.
-        bounded = selection_activation("memory", plugins=["bounded_evidence"])
-        run = write_frames(self.tmp / "run")
-        selection = replace(
-            bounded, plugins=("bounded_evidence", "recording_test"),
-            plugin_specs={**dict(bounded.plugin_specs), "recording_test": RECORDING_SPEC},
-            plugin_configs={**dict(bounded.plugin_configs), "recording_test": {}},
+        # Both plugins keep their own state; only the first publishes evidence.
+        selection = _local(
+            "memory",
+            {"publishing_test": EVIDENCE_SPEC, "recording_test": RECORDING_SPEC},
+            {"publishing_test": {"plugin_id": "publishing_test"}},
         )
-        (run / "manifest.json").write_text(json.dumps({
-            "frames": [{"image_path": f"frame_{index}.png", "steps": {"memory": selection.to_payload()}}
-                       for index in range(3)],
-        }))
+        run = _record_steps(write_frames(self.tmp / "run"), dict.fromkeys(range(3), {"memory": selection}))
         report = self.inspect(run)
-        self.assertEqual(report["selections"]["memory"]["plugins"], ["bounded_evidence", "recording_test"])
+        self.assertEqual(report["selections"]["memory"]["plugins"], ["publishing_test", "recording_test"])
         for item in report["frames"]:
             rows = {plugin["plugin_id"]: plugin for plugin in plugin_summaries(item["record"])}
-            self.assertEqual(list(rows), ["bounded_evidence", "recording_test"])
+            self.assertEqual(list(rows), ["publishing_test", "recording_test"])
             self.assertIsNone(rows["recording_test"]["health"])
             self.assertEqual(rows["recording_test"]["record_count"], 1)
-            self.assertEqual(item["record"]["evidence_publisher"], "bounded_evidence")
+            self.assertEqual(item["record"]["evidence_publisher"], "publishing_test")
 
         text = inspect_step("memory", source=str(run)).message
         self.assertIn("Frame 2:", text)
-        self.assertIn("Memory: plugin=bounded_evidence health=healthy", text)
+        self.assertIn("Memory: plugin=publishing_test health=None records=1 epoch=epoch-1", text)
         self.assertIn("Memory: plugin=recording_test health=None records=1 epoch=epoch-1", text)
-        self.assertIn("Memory: publisher=bounded_evidence", text)
-
-    def test_perception_restores_the_selection_a_recorded_run_names(self) -> None:
-        plain = self.inspect()
-        self.assertEqual(plain["selections"]["perception"]["preset"], DEFAULT_STEP_PRESETS["perception"])
-        self.assertNotIn("multi_obstruction_tracks", plain["selections"]["perception"]["plugins"])
-
-        selection = selection_activation("perception", preset="multi_obstruction")
-        run = write_frames(self.tmp / "run")
-        (run / "manifest.json").write_text(json.dumps({
-            "frames": [{
-                "image_path": f"frame_{index}.png", "timestamp_ms": 5000 + 400 * index,
-                "steps": {"perception": selection.to_payload()},
-            } for index in range(3)],
-        }))
-        report = self.inspect(run, plugins=["bounded_evidence"])
-        self.assertEqual(report["selections"]["perception"]["preset"], "multi_obstruction")
-        self.assertEqual(report["selections"]["perception"]["plugins"], list(selection.plugins))
-        retained = [
-            record["record_id"] for record in report["frames"][-1]["record"]["plugins"][0]["state"]["records"]
-        ]
-        self.assertTrue(
-            any(":multi_obstruction_tracks:" in record_id for record_id in retained), retained
-        )
+        self.assertIn("Memory: publisher=publishing_test", text)

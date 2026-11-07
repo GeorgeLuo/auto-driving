@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.memory.evidence import MemoryOrigin, RetainedEvidence
+from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 from autonomy.decision_cycle.activation import STEP_ACTIVATION_SCHEMA
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
@@ -83,11 +84,27 @@ class _RecordingMemory:
         }
 
 
+class _EvidenceMemory(_RecordingMemory):
+    """Publishes its records at ``EVIDENCE_KEY``, as a retained-evidence plugin does."""
+
+    publish = True
+
+    def update(self, context):
+        super().update(context)
+        if self.publish:
+            context.shared_memory[EVIDENCE_KEY] = self.state(context.shared_memory)["records"]
+
+    def reset(self, shared_memory):
+        super().reset(shared_memory)
+        shared_memory[EVIDENCE_KEY] = ()
+
+
 class _ConfigurableIdMemory(_RecordingMemory):
     """Allows activation to declare a custom plugin_id (including multibyte)."""
 
 
 RECORDING_SPEC = "tests.shared.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
+EVIDENCE_SPEC = "tests.shared.autonomy.decision_cycle.memory.activation_fixtures:_EvidenceMemory"
 
 
 def _valid_payload(plugin_id: str = "recording_test") -> dict:

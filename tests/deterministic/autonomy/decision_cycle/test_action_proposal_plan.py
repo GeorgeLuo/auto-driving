@@ -1,6 +1,7 @@
 from __future__ import annotations
 import unittest
-from implementations.decision_cycle.plan.plugins.highest_confidence.plugin import select_highest_confidence_plan
+from dataclasses import replace
+from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
     ProposedVehicleCommand,
@@ -13,7 +14,8 @@ from autonomy.decision_cycle.action.values import proposed_equals_authorized
 from tests.deterministic.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
 )
-from tests.support.action_fixtures import decision_chain, packaged_decision_chain
+from autonomy.decision_cycle.proposal.runner import ProposalRunner
+from tests.support.action_fixtures import DecisionChain, FirstActivePlan, InactiveProposal, decision_chain
 
 
 class ActionProposalMatrixTests(unittest.TestCase):
@@ -188,13 +190,8 @@ class RunnerBoundaryTests(unittest.TestCase):
         assert plan_metadata is not None
         self.assertEqual(canonical_json_size_bytes(plan_metadata), 1024)
 
-        plan = select_highest_confidence_plan(
-            frame_id=frame,
-            timestamp_ms=9_007_199_254_740_991,
-            candidates=candidates,
-            selector_id="highest_confidence",
-            metadata=plan_metadata,
-        )
+        selected = FirstActivePlan().plan(DecisionFrameContext(frame, 0, 9_007_199_254_740_991), tuple(candidates))
+        plan = replace(selected, metadata=plan_metadata)
         self.assertEqual(len(plan.candidates), 6)
         self.assertEqual(plan.status, "selected")
         self.assertTrue(plan.selected_proposal_id.endswith(":" + frame))
@@ -243,7 +240,7 @@ class RunnerBoundaryTests(unittest.TestCase):
 
 
     def test_authority_records_decision_without_host_application(self) -> None:
-        engine = packaged_decision_chain()
+        engine = DecisionChain(ProposalRunner.from_plugins({"inactive": InactiveProposal()}))
         result = engine.run(
             frame_id="frame_001",
             frame_index=0,

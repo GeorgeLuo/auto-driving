@@ -36,15 +36,6 @@ class DecisionCycleTests(unittest.TestCase):
             limits=("test evidence only",),
         )
 
-    def test_empty_cycle_returns_idle_without_observation(self) -> None:
-        result = DecisionCycle().run(self.context())
-
-        self.assertEqual(result.control.reason, "decision-cycle-idle")
-        self.assertEqual(result.control.throttle, 0.0)
-        self.assertEqual(result.control.steering, 0.0)
-        self.assertIsNone(result.perception)
-        self.assertIsNone(result.observation)
-
     def test_observe_only_cycle_returns_observation_and_idle(self) -> None:
         def observe(context, perception):
             self.assertIsNone(perception)
@@ -61,33 +52,19 @@ class DecisionCycleTests(unittest.TestCase):
         self.assertEqual(result.observation.observation_id, "frame_000")
         self.assertEqual(result.control.reason, "decision-cycle-idle")
 
-    def test_builtin_observation_step_records_perception(self) -> None:
+    def test_absent_steps_record_none_and_the_cycle_idles(self) -> None:
         perception = self.perception()
+        for steps in (DecisionSteps(), DecisionSteps(perception=lambda context: perception)):
+            with self.subTest(perception=steps.perception is not None):
+                result = DecisionCycle(steps).run(self.context())
 
-        result = DecisionCycle(
-            DecisionSteps(
-                perception=lambda context: perception,
-                observation=decision_steps().observation,
-            ),
-        ).run(self.context())
-
-        self.assertIs(result.perception, perception)
-        self.assertIsNotNone(result.observation)
-        self.assertEqual(result.observation.observation_id, "frame_000")
-        self.assertEqual(result.observation.perception_plugin_id, "test-perception")
-        self.assertEqual(result.observation.metadata["source"], "perception_summary")
-        self.assertEqual(result.control.reason, "decision-cycle-idle")
-
-    def test_empty_step_records_none(self) -> None:
-        result = DecisionCycle(
-            DecisionSteps(perception=lambda context: self.perception()),
-        ).run(self.context())
-
-        self.assertIsNotNone(result.perception)
-        self.assertIsNone(result.observation)
-        self.assertIsNone(result.proposal)
-        self.assertIsNone(result.plan)
-        self.assertIsNone(result.action)
+                self.assertIs(result.perception, None if steps.perception is None else perception)
+                for record in (result.observation, result.proposal, result.plan, result.action):
+                    self.assertIsNone(record)
+                self.assertEqual(
+                    (result.control.reason, result.control.steering, result.control.throttle),
+                    ("decision-cycle-idle", 0.0, 0.0),
+                )
 
     def test_each_step_receives_the_previous_records(self) -> None:
         calls = []
@@ -133,6 +110,9 @@ class DecisionCycleTests(unittest.TestCase):
             ["observation", "memory", "proposal", "plan", "action"],
         )
         self.assertIs(calls[0][1], perception)
+        # The built-in observation step summarizes the perception it receives.
+        self.assertEqual(result.observation.perception_plugin_id, "test-perception")
+        self.assertEqual(result.observation.metadata["source"], "perception_summary")
         self.assertIs(calls[1][1], result.observation)
         self.assertIs(calls[2][1], result.observation)
         self.assertIsNone(calls[3][1])
@@ -314,7 +294,7 @@ class AppliedActivationTests(unittest.TestCase):
 
         activations = applied_step_activations(steps)
 
-        self.assertEqual(activations["plan"]["plugins"], ["highest_confidence"])
+        self.assertEqual(activations["plan"]["plugins"], ["first_active"])
         self.assertEqual(activations["proposal"]["plugins"], [])
         self.assertEqual({step: value for step, value in activations.items() if step not in ("plan", "proposal")},
                          dict.fromkeys(("perception", "observation", "memory", "action")))

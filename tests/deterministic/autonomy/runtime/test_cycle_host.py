@@ -19,6 +19,7 @@ from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.activation import (
     STEP_ACTIVATION_SCHEMA,
     read_step_activation,
+    step_activation,
     step_activation_path,
     write_step_activation,
 )
@@ -32,10 +33,11 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost, sync_live_selection
 from autonomy.runtime.execution import ControlExecution
 from autonomy.runtime.session import RunConfiguration
-from implementations.decision_cycle.catalog import packaged_activation, preset_activation
-from tests.support.action_fixtures import action_runner, plan_runner, proposal_runner
+from tests.support.action_fixtures import INACTIVE_PROPOSAL_SPEC, action_runner, plan_runner, proposal_runner
+from tests.support.perception_fixtures import local_perception
 
 RECORDING_SPEC = "tests.shared.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
+PUSHY_SPEC = "tests.deterministic.autonomy.runtime.test_cycle_host:_PushyAction"
 STATE_KEY = "recording_test.state"
 
 
@@ -369,24 +371,20 @@ class CycleHostStepTests(unittest.TestCase):
     def test_runtime_activations_load_with_builtin_fallbacks(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
-            write_step_activation(
-                step_activation_path(root, "proposal"), packaged_activation("proposal")
-            )
-            write_step_activation(
-                step_activation_path(root, "action"), packaged_activation("action", ["mode"])
-            )
+            for step, plugin_id, spec in (("proposal", "inactive", INACTIVE_PROPOSAL_SPEC), ("action", "pushy", PUSHY_SPEC)):
+                activation = step_activation(step, [plugin_id], {plugin_id: spec})
+                write_step_activation(step_activation_path(root, step), activation)
             host = AutonomyCycleHost.from_runtime(root)
 
         self.assertIsNone(host.steps.perception)
         self.assertIsNone(host.steps.memory)
         self.assertEqual(host.steps.observation.plugin_ids, ("perception_summary",))
-        self.assertEqual(host.steps.proposal.plugin_ids, ("avoid_recent_obstruction",))
+        self.assertEqual(host.steps.proposal.plugin_ids, ("inactive",))
         self.assertIsNone(host.steps.plan)
-        self.assertEqual(host.steps.action.plugin_ids, ("mode",))
+        self.assertEqual(host.steps.action.plugin_ids, ("pushy",))
         result = host.run(DecisionFrameContext("frame_1", 1, 1), mode="autonomy")
         self.assertEqual(result.proposal.status, "ok")
-        self.assertEqual(result.action.authority.gate_id, "mode")
-        self.assertEqual(result.control.reason, "mode-action-error")
+        self.assertEqual(result.control.reason, "pushy-test-action")
 
     def test_action_failure_holds_with_an_error_record_and_recovers(self) -> None:
         action = _FailOnceAction()
@@ -504,12 +502,10 @@ class CycleHostArmingTests(unittest.TestCase):
         self.assertEqual([item.plugin_id for item in result.proposal.candidates], ["working"])
 
     def test_an_armed_activation_is_its_steps_whole_selection_and_names_its_preset(self) -> None:
-        host = AutonomyCycleHost(steps=decision_steps({
-            "perception": packaged_activation("perception", ["frame", "floor_plane"]),
-        }))
+        host = AutonomyCycleHost(steps=decision_steps({"perception": local_perception("a", "b")}))
 
-        def arm(preset):
-            return host.arm({"perception": preset_activation("perception", preset).to_payload()})
+        def arm(activation):
+            return host.arm({"perception": activation.to_payload()})
 
         def perception():
             status = host.status()
@@ -520,24 +516,23 @@ class CycleHostArmingTests(unittest.TestCase):
         # The host already runs these plugins, so the step names the preset at
         # once, without a rebuild or a new generation.
         generation = host.applied_decision()["generation_id"]
-        self.assertTrue(arm("lightweight_observer")["ok"])
-        self.assertEqual(perception(), ("lightweight_observer", ["frame", "floor_plane"], ["frame", "floor_plane"]))
+        self.assertTrue(arm(local_perception("a", "b", preset="pair"))["ok"])
+        self.assertEqual(perception(), ("pair", ["a", "b"], ["a", "b"]))
         self.assertEqual(host.applied_decision()["generation_id"], generation)
         # Another preset is requested as a whole pipeline, and names the step once it applies.
-        self.assertTrue(arm("visual_observer")["ok"])
-        visual = ["frame", "floor_plane", "motion_tracks"]
-        self.assertEqual(perception(), ("lightweight_observer", visual, ["frame", "floor_plane"]))
+        self.assertTrue(arm(local_perception("a", "b", "c", preset="triple"))["ok"])
+        triple = ["a", "b", "c"]
+        self.assertEqual(perception(), ("pair", triple, ["a", "b"]))
         host.run(DecisionFrameContext("frame_1", 0, 1_000))
-        self.assertEqual(perception(), ("visual_observer", visual, visual))
-        # The catalog holds multi_obstruction_tracks with its default config, not this preset's.
-        with self.assertRaisesRegex(ValueError, "perception/multi_obstruction_tracks with another entrypoint, config"):
-            arm("obstruction_observer")
-        self.assertEqual(perception(), ("visual_observer", visual, visual))
+        self.assertEqual(perception(), ("triple", triple, triple))
+        # The catalog holds c with its own config, not this preset's.
+        tuned = local_perception("a", "c", preset="tuned", configs={"c": {"plugin_id": "c", "threshold": 2}})
+        with self.assertRaisesRegex(ValueError, "perception/c with another entrypoint, config"):
+            arm(tuned)
+        self.assertEqual(perception(), ("triple", triple, triple))
 
     def test_a_step_names_its_preset_only_while_it_runs_the_presets_plugins(self) -> None:
-        host = AutonomyCycleHost(steps=decision_steps({
-            "perception": preset_activation("perception", "lightweight_observer"),
-        }))
+        host = AutonomyCycleHost(steps=decision_steps({"perception": local_perception("a", "b", preset="pair")}))
 
         def perception(change):
             self.assertTrue(change()["ok"])
@@ -546,30 +541,28 @@ class CycleHostArmingTests(unittest.TestCase):
             return report["preset"], report["plugin_ids"]
 
         # Arming a plugin the preset already runs changes nothing.
-        self.assertEqual(perception(lambda: host.arm({"perception": ["frame"]})),
-                         ("lightweight_observer", ["frame", "floor_plane"]))
-        self.assertEqual(perception(lambda: host.arm({"perception": ["motion_tracks"]})),
-                         (None, ["frame", "floor_plane", "motion_tracks"]))
+        self.assertEqual(perception(lambda: host.arm({"perception": ["a"]})), ("pair", ["a", "b"]))
+        self.assertEqual(perception(lambda: host.arm({"perception": ["c"]})), (None, ["a", "b", "c"]))
         self.assertEqual(perception(lambda: host.arm({
-            "perception": preset_activation("perception", "lightweight_observer").to_payload(),
-        })), ("lightweight_observer", ["frame", "floor_plane"]))
-        self.assertEqual(perception(lambda: host.disarm({"perception": ["floor_plane"]})), (None, ["frame"]))
+            "perception": local_perception("a", "b", preset="pair").to_payload(),
+        })), ("pair", ["a", "b"]))
+        self.assertEqual(perception(lambda: host.disarm({"perception": ["b"]})), (None, ["a"]))
 
     def test_a_watched_file_whose_ids_change_ends_the_preset_it_was_loaded_with(self) -> None:
-        loaded = preset_activation("perception", "lightweight_observer")
+        loaded = local_perception("a", "b", preset="pair")
         host = AutonomyCycleHost(steps=decision_steps({"perception": loaded}))
         with tempfile.TemporaryDirectory() as tmp:
             path = step_activation_path(Path(tmp), "perception")
             write_step_activation(path, loaded)
             host.watch_selection("perception", path, loaded)
-            write_step_activation(path, replace(loaded, plugins=("frame",)))
+            write_step_activation(path, replace(loaded, plugins=("a",)))
             host.sync_selection()
         host.run(DecisionFrameContext("frame_1", 0, 1_000))
         report = host.status()["steps"]["perception"]
-        self.assertEqual((report["preset"], report["plugin_ids"]), (None, ["frame"]))
+        self.assertEqual((report["preset"], report["plugin_ids"]), (None, ["a"]))
 
     def test_an_unreadable_staged_activation_keeps_the_current_selection(self) -> None:
-        loaded = packaged_activation("proposal")
+        loaded = step_activation("proposal", ["inactive"], {"inactive": INACTIVE_PROPOSAL_SPEC})
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "active.json"
             self.assertIsNone(sync_live_selection(path, loaded))

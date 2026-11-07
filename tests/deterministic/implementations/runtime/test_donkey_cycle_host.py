@@ -90,47 +90,32 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(cycle["schema"], "host_report")
         self.assertEqual(cycle["frame_id"], "donkey_frame_000000")
 
-    def test_manual_mode_runs_cycle_and_forces_zero_pilot_outputs(self) -> None:
-        part = AutonomyPilotPart(host=_pushy_host())
+    def test_manual_mode_runs_the_cycle_but_only_local_mode_drives_its_outputs(self) -> None:
+        for mode, outputs in (("user", (0.0, 0.0)), ("local", (0.7, 0.4))):
+            with self.subTest(mode=mode):
+                part = AutonomyPilotPart(host=_pushy_host())
+                image = np.zeros((4, 4, 3), dtype=np.uint8)
+                user_inputs = {"user_steering": 0.2, "user_throttle": 0.1} if mode == "user" else {}
 
-        part.run(
-            image_array=np.zeros((4, 4, 3), dtype=np.uint8),
-            mode="user",
-            user_steering=0.2,
-            user_throttle=0.1,
-        )
-        part.wait_for_cycle()
-        cycle = part.latest_state.report
+                part.run(image_array=image, mode=mode, **user_inputs)
+                image[:] = 9
+                part.wait_for_cycle()
+                cycle = part.latest_state.report
 
-        self.assertEqual(_outputs(part), (0.0, 0.0))
-        self.assertEqual(_authorized(part)["reason"], "pushy-test-action")
-        self.assertEqual(_authorized(part)["steering"], 0.7)
-        self.assertEqual(part.host.shared_memory[MODE_KEY], "manual")
-        self.assertEqual(part.host.shared_memory[USER_STEERING_KEY], 0.2)
-        self.assertEqual(part.host.shared_memory[USER_THROTTLE_KEY], 0.1)
-        self.assertEqual(cycle["status"], "ok")
-        self.assertEqual(cycle["application"]["mode"], "manual")
-        self.assertEqual(part.latest_state.frame_id, "donkey_frame_000000")
-        self.assertIsNotNone(part.latest_state.image)
-
-    def test_local_mode_preserves_action_pilot_outputs(self) -> None:
-        part = AutonomyPilotPart(host=_pushy_host())
-
-        part.run(image_array=np.zeros((2, 2, 3), dtype=np.uint8), mode="local")
-        part.wait_for_cycle()
-
-        self.assertEqual(_outputs(part), (0.7, 0.4))
-        self.assertNotIn(USER_STEERING_KEY, part.host.shared_memory)
-        self.assertNotIn(USER_THROTTLE_KEY, part.host.shared_memory)
-        self.assertEqual(_authorized(part)["steering"], 0.7)
-
-    def test_detaches_image_from_vehicle_memory(self) -> None:
-        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
-        image = np.zeros((3, 3, 3), dtype=np.uint8)
-        part.run(image_array=image, mode="user")
-        image[:] = 9
-        part.wait_for_cycle()
-        self.assertEqual(int(part.latest_state.image[0, 0, 0]), 0)
+                self.assertEqual(_outputs(part), outputs)
+                self.assertEqual((_authorized(part)["reason"], _authorized(part)["steering"]), ("pushy-test-action", 0.7))
+                self.assertEqual(cycle["status"], "ok")
+                # The part keeps its own copy of the frame.
+                self.assertEqual(int(part.latest_state.image[0, 0, 0]), 0)
+                memory = part.host.shared_memory
+                if mode == "user":
+                    self.assertEqual(cycle["application"]["mode"], "manual")
+                    self.assertEqual(
+                        (memory[MODE_KEY], memory[USER_STEERING_KEY], memory[USER_THROTTLE_KEY]), ("manual", 0.2, 0.1)
+                    )
+                else:
+                    self.assertNotIn(USER_STEERING_KEY, memory)
+                    self.assertNotIn(USER_THROTTLE_KEY, memory)
 
     def test_a_raised_cycle_publishes_the_idle_write_it_made(self) -> None:
         def explode(context, perception):
@@ -241,15 +226,6 @@ class RuntimeCycleHostTests(unittest.TestCase):
         part.run(image_array=image, mode="local")
         self.assertEqual(host.run_state, "running")
 
-    def test_status_omits_raw_image_payload(self) -> None:
-        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
-        part.run(image_array=np.ones((2, 2, 3), dtype=np.uint8), mode="user")
-        part.wait_for_cycle()
-        latest = part.observation_status()["latest"]
-        self.assertEqual(
-            set(latest), {"frame_id", "frame_index", "captured_at_ms", "completed_at_ms", "duration_ms"},
-        )
-
     def test_observation_status_provider_does_not_reenter_host_status(self) -> None:
         host = create_host(steps=decision_steps())
         part = AutonomyPilotPart(host=host)
@@ -260,6 +236,10 @@ class RuntimeCycleHostTests(unittest.TestCase):
         observation = status["components"]["observation"]
         self.assertEqual(observation["processed_count"], 1)
         self.assertEqual(observation["latest"]["frame_id"], "donkey_frame_000000")
+        # The status carries no raw image.
+        self.assertEqual(
+            set(observation["latest"]), {"frame_id", "frame_index", "captured_at_ms", "completed_at_ms", "duration_ms"},
+        )
         self.assertEqual(status["cycle_count"], 1)
 
     def test_manage_assembly_wires_always_on_observation(self) -> None:

@@ -10,9 +10,8 @@ from cli.automa_cli.releases.paths import controller_bundle_paths
 from dataclasses import replace
 
 from cli.automa_cli.hosts.step_activations import replace_metadata
-from autonomy.decision_cycle.activation import read_step_activation, write_step_activation
-from implementations.decision_cycle.catalog import packaged_activation
-from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import BoundedEvidenceLedger
+from autonomy.decision_cycle.activation import read_step_activation, step_activation, write_step_activation
+from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
 from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     HOST_NAME,
     _SlowMapper,
@@ -20,10 +19,6 @@ from tests.shared.cli.automation_pipeline.pipeline_fixtures import (
     chase_runtime,
     staged_runners,
 )
-
-
-class SecondLedger(BoundedEvidenceLedger):
-    plugin_id = "second"
 
 
 def edit_staged_selection(path, plugin_id, enabled):
@@ -44,9 +39,11 @@ class AutomationMemorySelectionTests(unittest.TestCase):
             runtime_root = Path(tmp) / "vehicles"
             bundle = controller_bundle_paths(runtime_root / HOST_NAME)
             _write_activations(bundle)
-            payload = packaged_activation("memory", ["bounded_evidence"]).to_payload()
-            payload["plugin_specs"]["second"] = f"{__name__}:SecondLedger"
-            payload["plugin_configs"]["second"] = dict(payload["plugin_configs"]["bounded_evidence"])
+            # Two recording memory plugins; the staged selection starts with the first.
+            payload = step_activation(
+                "memory", ["first"], dict.fromkeys(("first", "second"), RECORDING_SPEC),
+                {plugin_id: {"plugin_id": plugin_id} for plugin_id in ("first", "second")},
+            ).to_payload()
             path = Path(bundle["memory_runtime_dir"]) / "active.json"
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_text(json.dumps(payload), encoding="utf-8")
@@ -54,7 +51,7 @@ class AutomationMemorySelectionTests(unittest.TestCase):
             outputs = []
             edits = []
             steps = []
-            actions = [("second", True), ("bounded_evidence", False), ("second", False), ("bounded_evidence", True)]
+            actions = [("second", True), ("first", False), ("second", False), ("first", True)]
 
             def wrap_memory(step_name, step):
                 if step_name != "memory":
@@ -84,18 +81,18 @@ class AutomationMemorySelectionTests(unittest.TestCase):
                 )
             self.assertEqual(result.exit_code, 0, result.message)
             self.assertEqual(
-                edits, [["bounded_evidence", "second"]] * 4
+                edits, [["first", "second"]] * 4
             )
             self.assertEqual(
                 list(steps[0].activation.plugin_specs),
-                ["bounded_evidence", "second"],
+                ["first", "second"],
             )
             self.assertEqual(applied, [
-                ("bounded_evidence",), ("bounded_evidence", "second"), ("second",), (), ("bounded_evidence",),
+                ("first",), ("first", "second"), ("second",), (), ("first",),
             ])
-            self.assertEqual(outputs, ["bounded_evidence", "second", "second", None, "bounded_evidence"])
+            self.assertEqual(outputs, ["first", "second", "second", None, "first"])
             self.assertEqual(len(steps), 5)
             self.assertEqual(len({id(step) for step in steps}), 5)
             state = json.loads((Path(bundle["runtime_dir"]) / "automation/state.json").read_text())
             self.assertEqual(state["processed_count"], 5)
-            self.assertEqual(state["selections"]["memory"]["status"]["plugin_ids"], ["bounded_evidence"])
+            self.assertEqual(state["selections"]["memory"]["status"]["plugin_ids"], ["first"])

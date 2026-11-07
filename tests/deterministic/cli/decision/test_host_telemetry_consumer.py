@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import copy
+import json
 import math
-from dataclasses import replace
-from pathlib import Path
-from tempfile import TemporaryDirectory
 import unittest
+from dataclasses import replace
 from unittest.mock import Mock, patch
 
+from autonomy.decision_cycle.activation import step_activation
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA
 from autonomy.runtime.report import HostReport
 from autonomy.runtime.routes import TELEMETRY_SCHEMA
-import cli.automa_cli.hosts.publications.host_publications as host_publications
-import cli.automa_cli.hosts.publications.host_telemetry as telemetry_api
-import cli.automa_cli.hosts.views.decision_live as decision_live
 from cli.automa_cli.hosts.views.decision_live import (
     DecisionViewAdapter,
     read_host_telemetry_panel,
@@ -28,19 +25,24 @@ from cli.automa_cli.hosts.publications.host_telemetry import (
     join_host_telemetry_to_decision,
     normalize_host_telemetry_record,
 )
+from cli.automa_cli.hosts.step_activations import decision_generation_id
 from tests.shared.cli.decision.decision_surfaces_fixtures import (
     frame_inputs,
     left_obstruction_frame,
-    packaged_decision_steps,
-    packaged_identity,
     published_cycle,
     vehicle_report_for_records,
 )
+from tests.support.action_fixtures import FIRST_ACTIVE_PLAN_SPEC, INACTIVE_PROPOSAL_SPEC
 
 
 NOW_MS = 10_000
-_PACKAGED_IDENTITY = packaged_identity("hold")
-GENERATION_ID = _PACKAGED_IDENTITY["generation_id"]
+# The decision steps the reports name: test plugins and the framework's hold action.
+_STEPS = {
+    "proposal": step_activation("proposal", ["inactive"], {"inactive": INACTIVE_PROPOSAL_SPEC}),
+    "plan": step_activation("plan", ["first_active"], {"first_active": FIRST_ACTIVE_PLAN_SPEC}),
+    "action": step_activation("action", ["hold"], {"hold": "autonomy.decision_cycle.action.hold:HoldAction"}),
+}
+GENERATION_ID = decision_generation_id(_STEPS)
 
 
 def _record(
@@ -102,7 +104,7 @@ def _decision(*, source_frame: dict | None = None) -> dict:
         "completed_at_ms": 8_500,
     }
     recorded = left_obstruction_frame()
-    records = DecisionRunners.from_payloads(packaged_decision_steps("hold")).run(
+    records = DecisionRunners.from_payloads({step: activation.to_payload() for step, activation in _STEPS.items()}).run(
         frame_id=frame["frame_id"],
         frame_index=frame["frame_index"],
         timestamp_ms=frame["captured_at_ms"],
@@ -124,7 +126,7 @@ def _decision(*, source_frame: dict | None = None) -> dict:
             "source_id": "donkeycar:piracer",
             "activation": {
                 "generation_id": GENERATION_ID,
-                "steps": _PACKAGED_IDENTITY["steps"],
+                "steps": {step: activation.to_payload() for step, activation in _STEPS.items()},
             },
             "stale_after_ms": 1_500,
         },
@@ -155,126 +157,94 @@ def _normalized_decision() -> dict:
     )
 
 
+FETCH = "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest"
+READ_PANEL = "cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel"
+
+
 class HostTelemetryConsumerTests(unittest.TestCase):
-    def test_physical_decision_adapter_preserves_provider_identity(self) -> None:
-        normalized = read_frame_publication(
-            _physical_publication(),
-            host_name="piracer",
-            now_ms=NOW_MS,
-        )
-
-        self.assertEqual(normalized["frame_id"], "frame-1")
-        self.assertEqual(normalized["result_age_ms"], 500)
-        self.assertEqual(
-            decision_publication_identity(normalized)["source_frame"]["frame_id"],
-            "frame-1",
-        )
-
-    def test_the_completed_frame_is_visible_before_telemetry_answers(self):
+    def test_the_adapter_publishes_the_frame_then_joins_its_telemetry(self) -> None:
         from cli.automa_cli.frontend.perception_view import PerceptionView
+
         normalized = _normalized_decision()
-        view = Mock(perception=PerceptionView(host_name="piracer"))
+        view = PerceptionView(host_name="piracer")
+        joined = join_host_telemetry_to_decision(normalize_host_telemetry_record(_record(), now_ms=NOW_MS), normalized)
         adapter = DecisionViewAdapter(
-            host_name="piracer", base_url="http://host.invalid",
-            publisher=ObservationPublisher(view.perception), timeout_s=1,
+            host_name="piracer", base_url="http://piracer.local:8887",
+            publisher=ObservationPublisher(view), timeout_s=1.0,
         )
-        def telemetry(*args, **kwargs):
-            import json
-            self.assertEqual(json.loads(view.perception.latest_json())["report"], normalized["report"].to_dict())
-            return {"status": "unavailable"}
-        with patch("cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel", side_effect=telemetry):
+
+        seen = []
+
+        def read_panel(*_args, **kwargs):
+            seen.append((json.loads(view.latest_json())["report"], kwargs["normalized_decision"]))
+            return joined
+
+        with patch(READ_PANEL, side_effect=read_panel):
             adapter.publish_frame(normalized, None)
 
-    def test_live_view_adapter_joins_against_physical_publication(self) -> None:
-        normalized = read_frame_publication(
-            _physical_publication(),
-            host_name="piracer",
-            now_ms=NOW_MS,
-        )
-
-        class FakePerceptionView:
-            def publish(self, **_kwargs) -> None:
-                return None
-
-        class FakeRuntimeView:
-            def __init__(self, automation_dir: Path) -> None:
-                self.automation_dir = automation_dir
-                self.perception = FakePerceptionView()
-
-        joined = join_host_telemetry_to_decision(
-            normalize_host_telemetry_record(_record(), now_ms=NOW_MS),
-            normalized,
-        )
-        with TemporaryDirectory() as temporary:
-            view = FakeRuntimeView(Path(temporary))
-            with patch(
-                "cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel",
-                return_value=joined,
-            ) as read_panel:
-                adapter = DecisionViewAdapter(
-                    host_name="piracer",
-                    base_url="http://piracer.local:8887",
-                    publisher=ObservationPublisher(view.perception),
-                    timeout_s=1.0,
-                )
-                adapter.publish_frame(normalized, b"jpeg")
-
-        read_panel.assert_called_once()
-        self.assertIs(read_panel.call_args.kwargs["normalized_decision"], normalized)
+        # The completed frame was visible before telemetry answered.
+        self.assertEqual(len(seen), 1)
+        published, joined_against = seen[0]
+        self.assertEqual(published, normalized["report"].to_dict())
+        self.assertIs(joined_against, normalized)
         self.assertEqual(adapter.publication["host_telemetry"], joined)
 
-    def _read_panel(self, payload, *, normalized):
-        with patch(
-            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest",
-            return_value=payload,
-        ) as fetched, patch(
-            "cli.automa_cli.hosts.views.decision_live.time.sleep",
-            side_effect=AssertionError("telemetry refresh slept"),
-        ):
+    def test_telemetry_failure_still_publishes_the_decision_image(self) -> None:
+        perception = Mock()
+        with patch(FETCH, side_effect=ConnectionError("down")):
+            adapter = DecisionViewAdapter(
+                host_name="piracer", base_url="http://piracer.local:8887",
+                publisher=ObservationPublisher(perception), timeout_s=1.0,
+            )
+            adapter.publish_frame(_normalized_decision(), b"jpeg-bytes")
+
+        self.assertEqual(perception.publish.call_args.kwargs["frame_bytes"], b"jpeg-bytes")
+        self.assertEqual(adapter.publication["report"]["frame_id"], "frame-1")
+        panel = adapter.publication["host_telemetry"]
+        self.assertEqual(
+            (panel["status"], panel["reason"], panel["joined"]), ("unavailable", "publisher_missing", False)
+        )
+        self.assertNotIn("authority", panel)
+
+    def _read_panel(self, fetched):
+        """Read the panel once against the healthy decision; ``fetched`` is the latest record or the read's error."""
+
+        answer = {"side_effect": fetched} if isinstance(fetched, Exception) else {"return_value": fetched}
+        with patch(FETCH, **answer) as fetch, \
+                patch("cli.automa_cli.hosts.views.decision_live.time.sleep",
+                      side_effect=AssertionError("telemetry refresh slept")):
             panel = read_host_telemetry_panel(
                 "http://piracer.local:8887",
-                normalized_decision=normalized,
+                normalized_decision=_normalized_decision(),
                 host_name="piracer",
                 timeout_s=1.0,
                 now_ms=NOW_MS,
             )
-        return panel, fetched
+        self.assertEqual(fetch.call_count, 1)
+        return panel
 
     def test_matching_latest_point_is_useful_after_one_read(self) -> None:
-        normalized = read_frame_publication(
-            _physical_publication(),
-            host_name="piracer",
-            now_ms=NOW_MS,
-        )
-        panel, fetched = self._read_panel(_record(), normalized=normalized)
+        panel = self._read_panel(_record())
 
-        self.assertEqual(fetched.call_count, 1)
         self.assertTrue(panel["joined"])
         self.assertEqual(panel["status"], "healthy")
-        self.assertEqual(panel["source_frame"]["frame_id"], "frame-1")
+        self.assertEqual(panel["identity"]["source_frame"], {
+            "frame_id": "frame-1", "frame_index": 1, "captured_at_ms": 8_000, "completed_at_ms": 8_500,
+        })
         self.assertEqual(panel["host_tick"]["observed_at_ms"], 9_000)
         self.assertEqual(panel["host_tick"]["published_at_ms"], 9_500)
+        self.assertIsNone(panel["host_tick"]["gap_since_previous_ms"])
+        self.assertIsNone(panel["host_tick"]["skipped_since_previous"])
         self.assertEqual(panel["freshness"]["source_age_ms"], 500)
         self.assertEqual(panel["freshness"]["publication_age_ms"], 500)
         self.assertEqual(panel["pilot_output"], {"steering": 0.25, "throttle": 0.0})
-        self.assertEqual(
-            panel["host_selected_output"], {"steering": 0.0, "throttle": 0.0}
-        )
+        self.assertEqual(panel["host_selected_output"], {"steering": 0.0, "throttle": 0.0})
         self.assertEqual(panel["application"]["actuator_feedback"], "unavailable")
         self.assertNotIn("authority", panel)
         self.assertNotIn("coverage", panel)
         self.assertNotIn("interval_covered", str(panel))
-        self.assertFalse(hasattr(decision_live, "fetch_host_telemetry_records"))
-        self.assertFalse(hasattr(host_publications, "fetch_host_telemetry_records"))
-        self.assertFalse(hasattr(telemetry_api, "normalize_host_telemetry_records"))
 
     def test_latest_point_mismatch_stays_explicit_without_history(self) -> None:
-        normalized = read_frame_publication(
-            _physical_publication(),
-            host_name="piracer",
-            now_ms=NOW_MS,
-        )
-
         def mismatch_frame(record: dict) -> None:
             record["source_frame"]["frame_id"] = "frame-2"
             record["source_frame"]["frame_index"] = 2
@@ -286,209 +256,71 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             record["generation_id"] = "other-gen"
             record["activation"] = {"generation_id": "other-gen"}
 
-        for name, mutate in (
-            ("frame", mismatch_frame),
-            ("run", mismatch_run),
-            ("generation", mismatch_generation),
-        ):
+        for name, mutate in (("frame", mismatch_frame), ("run", mismatch_run), ("generation", mismatch_generation)):
             with self.subTest(mismatch=name):
-                latest = _record(
-                    sequence=2,
-                    gap_since_previous_ms=50,
-                    skipped_since_previous=0,
-                )
+                latest = _record(sequence=2, gap_since_previous_ms=50, skipped_since_previous=0)
                 latest["host_selected_output"] = {"steering": 0.4, "throttle": 0.2}
                 mutate(latest)
-                panel, fetched = self._read_panel(latest, normalized=normalized)
+                panel = self._read_panel(latest)
 
-                self.assertEqual(fetched.call_count, 1)
                 self.assertFalse(panel["joined"])
-                self.assertEqual(panel["status"], "mismatched")
-                self.assertEqual(panel["reason"], "identity_mismatch")
+                self.assertEqual((panel["status"], panel["reason"]), ("mismatched", "identity_mismatch"))
                 self.assertIsNone(panel["host_selected_output"])
                 self.assertIsNone(panel["pilot_output"])
                 self.assertIsNone(panel["application"])
-                self.assertNotIn("coverage", panel)
-                self.assertNotIn("interval_covered", str(panel))
 
     def test_bad_latest_samples_stay_on_that_read(self) -> None:
-        normalized = read_frame_publication(
-            _physical_publication(),
-            host_name="piracer",
-            now_ms=NOW_MS,
-        )
         malformed = _record()
         malformed["schema"] = "wrong"
         unavailable = _record()
         unavailable["status"] = "unavailable"
         unavailable["reason"] = "publisher_missing"
-        reported_gap = _record(
-            sequence=2,
-            gap_since_previous_ms=100,
-            skipped_since_previous=1,
-        )
+        reported_gap = _record(sequence=2, gap_since_previous_ms=100, skipped_since_previous=1)
         reported_gap["status"] = "unavailable"
         reported_gap["reason"] = "sequence_gap"
         cases = (
-            (
-                "source_stale",
-                _record(
-                    captured_at_ms=6_500,
-                    completed_at_ms=7_000,
-                    observed_at_ms=9_000,
-                ),
-                "stale",
-                "source_stale",
-            ),
-            (
-                "publication_stale",
-                _record(
-                    captured_at_ms=7_000,
-                    completed_at_ms=7_500,
-                    observed_at_ms=8_000,
-                    published_at_ms=8_000,
-                ),
-                "stale",
-                "publication_stale",
-            ),
-            (
-                "future_dated",
-                _record(published_at_ms=10_251, observed_at_ms=9_000),
-                "stale",
-                "future_dated",
-            ),
+            ("source_stale", _record(captured_at_ms=6_500, completed_at_ms=7_000, observed_at_ms=9_000),
+             "stale", "source_stale"),
+            ("publication_stale",
+             _record(captured_at_ms=7_000, completed_at_ms=7_500, observed_at_ms=8_000, published_at_ms=8_000),
+             "stale", "publication_stale"),
+            ("future_dated", _record(published_at_ms=10_251, observed_at_ms=9_000), "stale", "future_dated"),
             ("malformed", malformed, "error", "schema_invalid"),
             ("unavailable", unavailable, "unavailable", "publisher_missing"),
             ("producer_sequence_gap", reported_gap, "limited", "sequence_gap"),
+            ("read_failed", ConnectionError("down"), "unavailable", "publisher_missing"),
         )
-        for name, payload, status, reason in cases:
+        for name, fetched, status, reason in cases:
             with self.subTest(sample=name):
-                panel, fetched = self._read_panel(payload, normalized=normalized)
-                self.assertEqual(fetched.call_count, 1)
+                panel = self._read_panel(fetched)
                 self.assertFalse(panel["joined"])
-                self.assertEqual(panel["status"], status)
-                self.assertEqual(panel["reason"], reason)
+                self.assertEqual((panel["status"], panel["reason"]), (status, reason))
                 self.assertIsNone(panel["host_selected_output"])
                 self.assertIsNone(panel["pilot_output"])
-                self.assertNotIn("interval_covered", str(panel))
-
-        with patch(
-            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest",
-            side_effect=ConnectionError("down"),
-        ) as fetched, patch(
-            "cli.automa_cli.hosts.views.decision_live.time.sleep",
-            side_effect=AssertionError("telemetry refresh slept"),
-        ):
-            panel = read_host_telemetry_panel(
-                "http://piracer.local:8887",
-                normalized_decision=normalized,
-                host_name="piracer",
-                timeout_s=1.0,
-                now_ms=NOW_MS,
-            )
-        self.assertEqual(fetched.call_count, 1)
-        self.assertFalse(panel["joined"])
-        self.assertEqual(panel["status"], "unavailable")
-        self.assertEqual(panel["reason"], "publisher_missing")
-        self.assertIsNone(panel["record"])
-        self.assertNotIn("interval_covered", str(panel))
+        self.assertIsNone(self._read_panel(ConnectionError("down"))["record"])
 
     def test_a_later_failure_does_not_reuse_the_previous_success(self) -> None:
-        normalized = read_frame_publication(
-            _physical_publication(),
-            host_name="piracer",
-            now_ms=NOW_MS,
-        )
-        with patch(
-            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest",
-            side_effect=[_record(), ConnectionError("down")],
-        ) as fetched:
-            first = read_host_telemetry_panel(
-                "http://piracer.local:8887",
-                normalized_decision=normalized,
-                host_name="piracer",
-                timeout_s=1.0,
-                now_ms=NOW_MS,
-            )
-            second = read_host_telemetry_panel(
-                "http://piracer.local:8887",
-                normalized_decision=normalized,
-                host_name="piracer",
-                timeout_s=1.0,
-                now_ms=NOW_MS,
+        with patch(FETCH, side_effect=[_record(), ConnectionError("down")]) as fetched:
+            first, second = (
+                read_host_telemetry_panel(
+                    "http://piracer.local:8887",
+                    normalized_decision=_normalized_decision(),
+                    host_name="piracer",
+                    timeout_s=1.0,
+                    now_ms=NOW_MS,
+                )
+                for _ in range(2)
             )
 
         self.assertEqual(fetched.call_count, 2)
         self.assertTrue(first["joined"])
-        self.assertEqual(
-            first["host_selected_output"], {"steering": 0.0, "throttle": 0.0}
-        )
+        self.assertEqual(first["host_selected_output"], {"steering": 0.0, "throttle": 0.0})
         self.assertFalse(second["joined"])
-        self.assertEqual(second["status"], "unavailable")
-        self.assertEqual(second["reason"], "publisher_missing")
+        self.assertEqual((second["status"], second["reason"]), ("unavailable", "publisher_missing"))
         self.assertIsNone(second["host_selected_output"])
         self.assertIsNone(second["record"])
 
-    def test_telemetry_failure_still_publishes_the_decision_image(self) -> None:
-        normalized = read_frame_publication(
-            _physical_publication(),
-            host_name="piracer",
-            now_ms=NOW_MS,
-        )
-
-        class FakeRuntimeView:
-            def __init__(self) -> None:
-                self.perception = Mock()
-
-        view = FakeRuntimeView()
-        with patch(
-            "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest",
-            side_effect=ConnectionError("down"),
-        ):
-            adapter = DecisionViewAdapter(
-                host_name="piracer",
-                base_url="http://piracer.local:8887",
-                publisher=ObservationPublisher(view.perception),
-                timeout_s=1.0,
-            )
-            adapter.publish_frame(normalized, b"jpeg-bytes")
-
-        self.assertEqual(view.perception.publish.call_args.kwargs["frame_bytes"], b"jpeg-bytes")
-        self.assertEqual(adapter.publication["report"]["frame_id"], "frame-1")
-        panel = adapter.publication["host_telemetry"]
-        self.assertEqual(panel["status"], "unavailable")
-        self.assertEqual(panel["reason"], "publisher_missing")
-        self.assertFalse(panel["joined"])
-        self.assertNotIn("authority", panel)
-
-    def test_normalizes_point_with_exact_identity_and_freshness(self) -> None:
-        normalized = normalize_host_telemetry_record(
-            _record(), now_ms=NOW_MS, host_name="piracer"
-        )
-
-        self.assertEqual(normalized["status"], "healthy")
-        self.assertEqual(normalized["freshness"]["source_age_ms"], 500)
-        self.assertEqual(normalized["freshness"]["publication_age_ms"], 500)
-        self.assertIsNone(normalized["host_tick"]["gap_since_previous_ms"])
-        self.assertIsNone(normalized["host_tick"]["skipped_since_previous"])
-        self.assertNotIn("coverage", normalized)
-        self.assertNotIn("interval_covered", str(normalized))
-        self.assertEqual(
-            normalized["identity"]["source_frame"],
-            {
-                "frame_id": "frame-1",
-                "frame_index": 1,
-                "captured_at_ms": 8_000,
-                "completed_at_ms": 8_500,
-            },
-        )
-        self.assertEqual(
-            normalized["host_selected_output"], {"steering": 0.0, "throttle": 0.0}
-        )
-
-    def test_join_requires_complete_composite_identity_and_keeps_authority_separate(
-        self,
-    ) -> None:
+    def test_join_requires_complete_composite_identity_and_keeps_authority_separate(self) -> None:
         point = normalize_host_telemetry_record(_record(), now_ms=NOW_MS)
         decision = _normalized_decision()
         joined = join_host_telemetry_to_decision(point, decision)
@@ -501,22 +333,21 @@ class HostTelemetryConsumerTests(unittest.TestCase):
 
         mismatched = copy.deepcopy(_record())
         mismatched["source_frame"]["captured_at_ms"] += 1
-        mismatched_point = normalize_host_telemetry_record(mismatched, now_ms=NOW_MS)
-        with self.assertRaisesRegex(ValueError, "exactly match") as raised:
-            join_host_telemetry_to_decision(mismatched_point, _normalized_decision())
-        self.assertEqual(raised.exception.reason, "identity_mismatch")
+        later_decision = _decision()
+        report = later_decision["report"]
+        later_decision["report"] = replace(report, timestamp_ms=report.timestamp_ms + 1)
+        # The decision's timestamp is part of the source identity, like the frame's capture time.
+        for point, decision in (
+            (normalize_host_telemetry_record(mismatched, now_ms=NOW_MS), _normalized_decision()),
+            (point, later_decision),
+        ):
+            with self.assertRaisesRegex(ValueError, "exactly match") as raised:
+                join_host_telemetry_to_decision(point, decision)
+            self.assertEqual(raised.exception.reason, "identity_mismatch")
 
     def test_gap_facts_remain_visible_without_an_interval_claim(self) -> None:
-        skipped = _record(
-            sequence=2,
-            gap_since_previous_ms=2_500,
-            skipped_since_previous=3,
-        )
-        skipped_point = normalize_host_telemetry_record(
-            skipped,
-            now_ms=NOW_MS,
-            host_name="piracer",
-        )
+        skipped = _record(sequence=2, gap_since_previous_ms=2_500, skipped_since_previous=3)
+        skipped_point = normalize_host_telemetry_record(skipped, now_ms=NOW_MS, host_name="piracer")
         self.assertEqual(skipped_point["status"], "healthy")
         self.assertEqual(skipped_point["host_tick"]["gap_since_previous_ms"], 2_500)
         self.assertEqual(skipped_point["host_tick"]["skipped_since_previous"], 3)
@@ -526,80 +357,40 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         joined = join_host_telemetry_to_decision(skipped_point, _normalized_decision())
         self.assertTrue(joined["joined"])
         self.assertEqual(joined["host_tick"]["skipped_since_previous"], 3)
-        self.assertEqual(
-            joined["host_selected_output"], {"steering": 0.0, "throttle": 0.0}
-        )
+        self.assertEqual(joined["host_selected_output"], {"steering": 0.0, "throttle": 0.0})
         self.assertNotIn("coverage", joined)
         self.assertNotIn("interval_covered", str(joined))
 
-    def test_freshness_and_future_skew_rules_are_deterministic(self) -> None:
+    def test_a_publication_within_the_skew_tolerance_reads_with_a_negative_age(self) -> None:
+        # Past the tolerance it is future_dated: test_bad_latest_samples_stay_on_that_read.
         within_skew = _record(published_at_ms=10_100, observed_at_ms=9_000)
         normalized = normalize_host_telemetry_record(within_skew, now_ms=NOW_MS)
         self.assertEqual(normalized["freshness"]["future_skew_ms"], 100)
         self.assertEqual(normalized["freshness"]["publication_age_ms"], -100)
 
-        future = _record(published_at_ms=10_251, observed_at_ms=9_000)
-        with self.assertRaises(ValueError) as raised:
-            normalize_host_telemetry_record(future, now_ms=NOW_MS)
-        self.assertEqual(raised.exception.reason, "future_dated")
-
-        source_stale = _record(
-            captured_at_ms=6_500,
-            completed_at_ms=7_000,
-            observed_at_ms=9_000,
-        )
-        with self.assertRaises(ValueError) as raised:
-            normalize_host_telemetry_record(source_stale, now_ms=NOW_MS)
-        self.assertEqual(raised.exception.reason, "source_stale")
-
-        publication_stale = _record(
-            captured_at_ms=7_000,
-            completed_at_ms=7_500,
-            observed_at_ms=8_000,
-            published_at_ms=8_000,
-        )
-        with self.assertRaises(ValueError) as raised:
-            normalize_host_telemetry_record(publication_stale, now_ms=NOW_MS)
-        self.assertEqual(raised.exception.reason, "publication_stale")
-
-    def test_decision_timestamp_is_part_of_the_exact_source_identity(self) -> None:
-        point = normalize_host_telemetry_record(_record(), now_ms=NOW_MS)
-        decision = _decision()
-        decision["report"] = replace(decision["report"], timestamp_ms=decision["report"].timestamp_ms + 1)
-        with self.assertRaises(ValueError) as raised:
-            join_host_telemetry_to_decision(point, decision)
-        self.assertEqual(raised.exception.reason, "identity_mismatch")
-
     def test_invalid_schema_numbers_and_mode_fail_closed(self) -> None:
-        invalid_schema = _record()
-        invalid_schema["schema"] = "wrong"
-        with self.assertRaises(ValueError) as raised:
-            normalize_host_telemetry_record(invalid_schema, now_ms=NOW_MS)
-        self.assertEqual(raised.exception.reason, "schema_invalid")
+        def field(path: tuple[str, ...], value):
+            def mutate(record: dict) -> None:
+                target = record
+                for key in path[:-1]:
+                    target = target[key]
+                target[path[-1]] = value
+            return mutate
 
-        nonfinite = _record()
-        nonfinite["pilot_output"]["steering"] = math.inf
-        with self.assertRaises(ValueError) as raised:
-            normalize_host_telemetry_record(nonfinite, now_ms=NOW_MS)
-        self.assertEqual(raised.exception.reason, "field_invalid")
-
-        invalid_mode = _record()
-        invalid_mode["mode"] = "remote"
-        with self.assertRaises(ValueError) as raised:
-            normalize_host_telemetry_record(invalid_mode, now_ms=NOW_MS)
-        self.assertEqual(raised.exception.reason, "field_invalid")
-
-        bad_boolean = _record()
-        bad_boolean["user_input"]["throttle"] = False
-        with self.assertRaises(ValueError) as raised:
-            normalize_host_telemetry_record(bad_boolean, now_ms=NOW_MS)
-        self.assertEqual(raised.exception.reason, "field_invalid")
-
-        invalid_sequence = _record()
-        invalid_sequence["host_tick"]["sequence"] = 0
-        with self.assertRaises(ValueError) as raised:
-            normalize_host_telemetry_record(invalid_sequence, now_ms=NOW_MS)
-        self.assertEqual(raised.exception.reason, "field_invalid")
+        cases = (
+            ("schema", field(("schema",), "wrong"), "schema_invalid"),
+            ("nonfinite steering", field(("pilot_output", "steering"), math.inf), "field_invalid"),
+            ("unknown mode", field(("mode",), "remote"), "field_invalid"),
+            ("boolean throttle", field(("user_input", "throttle"), False), "field_invalid"),
+            ("zero sequence", field(("host_tick", "sequence"), 0), "field_invalid"),
+        )
+        for name, mutate, reason in cases:
+            with self.subTest(name):
+                record = _record()
+                mutate(record)
+                with self.assertRaises(ValueError) as raised:
+                    normalize_host_telemetry_record(record, now_ms=NOW_MS)
+                self.assertEqual(raised.exception.reason, reason)
 
     def test_a_negative_count_reports_an_integer_not_an_epoch(self) -> None:
         for path, key in (("limits", "max_gap_ms"), ("host_tick", "source_age_ms")):

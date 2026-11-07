@@ -24,7 +24,7 @@ from pathlib import Path
 from typing import Any, Callable, Mapping
 
 from autonomy.decision_cycle.activation import (
-    DECISION_STEPS, STEPS, StepActivation, activation_generation_id, require_step,
+    STEPS, StepActivation, activation_generation_id, require_step,
     step_activation_from_payload,
 )
 from autonomy.decision_cycle.context import recorded_context
@@ -108,10 +108,10 @@ def recorded_selections(record: dict[str, Any]) -> dict[str, StepActivation | No
     }
     generation = record.get("generation_id")
     if generation is not None:
-        if not all(step in activations for step in DECISION_STEPS):
-            raise ValueError("recorded generation requires proposal, plan, and action selections")
+        if not all(step in activations for step in STEPS):
+            raise ValueError("recorded generation requires every cycle step")
         expected = activation_generation_id(
-            {step: activations[step] for step in DECISION_STEPS}, prefix="decision",
+            {step: activations[step] for step in STEPS}, prefix="decision",
         )
         if generation != expected:
             raise ValueError("recorded generation does not match its step selections")
@@ -294,39 +294,21 @@ def write_recorded_frame(
     )
 
 
-def ran_on_release(
-    steps: dict[str, Any], *, host_name: str, release: dict[str, Any] | None,
-) -> dict[str, Any]:
-    """Each step payload naming the vehicle and the release its code came from."""
-    stamped: dict[str, Any] = {}
-    for step, payload in steps.items():
-        if payload is None:
-            stamped[step] = None
-            continue
-        metadata = copy.deepcopy(dict(payload.get("metadata") or {}))
-        metadata.setdefault("host_name", host_name)
-        metadata["controller_bundle"] = {
-            **dict(metadata.get("controller_bundle") or {}), "release": copy.deepcopy(release),
-        }
-        stamped[step] = {**payload, "metadata": metadata}
-    return stamped
-
-
 def cycle_frame(
     result: DecisionCycleResult, *, host_name: str, run_id: str,
     status: str = "ok", error: str | None = None,
 ) -> dict[str, Any]:
-    """The same completed frame, selections and application on either host."""
+    """The same completed frame, selections and application on either host.
+
+    The generation and step payloads are the ones the host applied. Recording
+    does not add provenance after that identity was computed.
+    """
+
     context = result.context
-    raw_steps = context.metadata.get("step_activations")
-    raw_steps = raw_steps if isinstance(raw_steps, dict) else {}
-    steps = ran_on_release(
-        {step: raw_steps.get(step) for step in STEPS},
-        host_name=host_name, release=INSTALLED_RELEASE,
-    )
-    generation = activation_generation_id(
-        {step: steps[step] for step in DECISION_STEPS}, prefix="decision",
-    )
+    steps = copy.deepcopy(context.metadata["step_activations"])
+    generation = context.metadata["generation_id"]
+    if not isinstance(generation, str) or not generation:
+        raise ValueError("cycle frame requires the applied generation_id")
     cycle = result.export_cycle()
     application = None
     if result.application is not None and result.application.control is not None:

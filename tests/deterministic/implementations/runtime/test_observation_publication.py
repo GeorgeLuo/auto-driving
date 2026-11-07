@@ -387,7 +387,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(values["source_id"], "donkeycar:piracer")
         self.assertEqual(published["run_id"], "donkey-run-fixture")
         expected_generation = activation_generation_id(
-            {step: packaged_activation(step) for step in DECISION_STEPS}, prefix="decision"
+            {step: values["activation"]["steps"][step] for step in STEPS}, prefix="decision"
         )
         self.assertEqual(published["generation_id"], expected_generation)
         self.assertEqual(values["activation"]["generation_id"], expected_generation)
@@ -420,11 +420,16 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(expired["report"]["frame_id"], published["frame_id"])
         self.assertEqual(expired["report"]["status"], "ok")
 
-        # A completed frame stays published when a later selection changes.
-        part.host.set_step("action", decision_steps().action)
+        # A request leaves the completed frame alone until the next cycle adopts it.
+        replacement = "hold" if part.host.step("action").plugin_ids != ("hold",) else "selected"
+        self.assertTrue(part.host.arm({"action": [replacement]})["ok"])
         kept = part.publish_latest(now_ms=completed_at_ms)
         self.assertEqual(kept["report"]["frame_id"], published["frame_id"])
         self.assertEqual(kept["report"]["cycle"]["action"]["frame_id"], published["frame_id"])
+        part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
+        part.wait_for_cycle()
+        self.assertNotEqual(part.host.applied_decision()["generation_id"], expected_generation)
+        self.assertNotEqual(part.latest_state.frame_id, published["frame_id"])
 
     def test_both_publications_carry_the_cycles_timing(self) -> None:
         """Timing rides in the report's values: a required report key rejected hosts without it."""

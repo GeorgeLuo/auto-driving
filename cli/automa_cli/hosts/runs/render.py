@@ -69,7 +69,11 @@ def _run_lines(item: dict[str, Any] | None) -> list[str]:
     ]
     arming = state.get("arming")
     if isinstance(arming, dict) and arming.get("request_id"):
-        lines.append(f"  arming: {arming['status']} (request {arming['request_id']})")
+        request = f"request {arming['request_id']}"
+        generation = arming.get("generation_id")
+        if isinstance(generation, str) and generation:
+            request = f"{request}, generation {generation}"
+        lines.append(f"  arming: {arming['status']} ({request})")
         if arming.get("error"):
             lines.append(f"  problem: {arming['error']}")
     problems = item.get("activation_problems")

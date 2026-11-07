@@ -50,13 +50,21 @@ def read_staged_activations(runtime_root: Path) -> dict[str, StepActivation]:
 def staged_runtime(
     runtime_root: Path,
     create_host: Callable[[DecisionSteps], AutonomyCycleHost],
+    *,
+    host_name: str | None = None,
 ) -> tuple[AutonomyCycleHost, dict[str, Any]]:
-    """The host for the staged steps and the ``FrameLoop`` options they imply."""
+    """The host for the staged steps and the ``FrameLoop`` options they imply.
+
+    ``host_name`` is stamped before the generation is read, so live reporting
+    and a later recording name the same pipeline.
+    """
 
     runtime_root = Path(runtime_root)
     activations = read_staged_activations(runtime_root)
     host = create_host(decision_steps(activations, source=INSTALLED_PACKAGE))
     host.follow_activations(activations, runtime_root)
+    if isinstance(host_name, str) and host_name:
+        host.note_host_name(host_name)
     applied = host.applied_decision()
     return host, {
         "decision_activations": applied["steps"],

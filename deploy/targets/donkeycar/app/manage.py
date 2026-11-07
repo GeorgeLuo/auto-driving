@@ -471,14 +471,9 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 HostTelemetryStore,
             )
 
-            host, loop_options = staged_runtime(
-                runtime_root, lambda steps: create_host(steps=steps)
-            )
-
             telemetry_store = None
             host_name = None
             source_id = None
-            generation_id = loop_options["generation_id"]
             run_id = None
             try:
                 identity = (
@@ -496,13 +491,6 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                     f"donkey-run-{os.getpid()}-{int(time.time() * 1000)}-"
                     f"{secrets.token_hex(8)}"
                 )
-                telemetry_store = HostTelemetryStore(
-                    host_name=host_name,
-                    source_id=source_id,
-                    run_id=run_id,
-                    generation_id=generation_id,
-                )
-                host_telemetry_publisher = DriveModeTelemetryAdapter(telemetry_store)
             except (OSError, TypeError, ValueError, OverflowError) as exc:
                 # Observation and DriveMode behavior remain available when the
                 # runtime identity required by telemetry is missing.
@@ -510,6 +498,20 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                     "Host telemetry unavailable; runtime identity is incomplete: %s",
                     exc,
                 )
+                host_name = None
+
+            host, loop_options = staged_runtime(
+                runtime_root, lambda steps: create_host(steps=steps), host_name=host_name,
+            )
+            generation_id = loop_options["generation_id"]
+            if host_name is not None:
+                telemetry_store = HostTelemetryStore(
+                    host_name=host_name,
+                    source_id=source_id,
+                    run_id=run_id,
+                    generation_id=generation_id,
+                )
+                host_telemetry_publisher = DriveModeTelemetryAdapter(telemetry_store)
             # Capture runs when the decision worker is free, independently of
             # run_pilot. Shared execution owns movement authority in every
             # drive mode.

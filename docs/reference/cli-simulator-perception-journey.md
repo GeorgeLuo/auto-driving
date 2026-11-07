@@ -202,8 +202,10 @@ construction error fails the arm with exit 2 and the error, keeps the previous
 selection, and `plugins list` prints the arming error and exits 2 until an arm
 succeeds. `plugins list` shows what is armed as soon as the arm answers; the
 viewer's **Plugins** page also shows when the host's cycle has applied it. New
-IDs append in command order. An existing ID updates in place; other plugins
-retain their definitions and configurations. Uploading a newer revision does not
+IDs append in command order. An existing ID replaces its definition; other plugins
+retain their definitions and configurations. Every executable selection change rebuilds all
+step runners and starts an empty shared-memory map at the next frame.
+Uploading a newer revision does not
 change what is armed until another arm request names that ID; `plugins list
 --long` then lists the armed revision beside the newer one. Re-arming an unchanged definition preserves its instance
 and history.

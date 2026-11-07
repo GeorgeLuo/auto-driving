@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from autonomy.decision_cycle.activation import (
@@ -12,6 +13,7 @@ from autonomy.decision_cycle.activation import (
     STEPS,
     activation_generation_id,
     read_step_activation,
+    selected_definitions,
     step_activation,
     step_activation_path,
     write_step_activation,
@@ -48,10 +50,9 @@ class StepActivationTests(unittest.TestCase):
                 self.assertEqual(activation.plugins, ("first",))
                 self.assertEqual(activation.source_path, path)
                 self.assertEqual(activation.metadata, {"preset": "preset"})
-                manager = activation.plugin_manager()
-                self.assertEqual(manager.step, step)
-                self.assertEqual(manager.available_ids, ("first", "second"))
-                self.assertEqual(manager.selected_ids, ("first",))
+                definitions = selected_definitions(activation)
+                self.assertEqual(definitions[0].step, step)
+                self.assertEqual(tuple(item.plugin_id for item in definitions), ("first",))
 
     def test_repeated_plugin_id_in_a_document_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -103,6 +104,42 @@ class StepActivationTests(unittest.TestCase):
             activation_generation_id({"proposal": first.to_payload()}, prefix="decision"),
         )
         self.assertNotEqual(generation, activation_generation_id({"proposal": other}, prefix="decision"))
+
+    def test_executable_identity_ignores_display_paths_and_unselected_definitions(self):
+        activation = step_activation("proposal", ["first"], {"first": SPEC, "unused": "other:Plugin"},
+                                     metadata={"host_name": "fixture", "preset": "one", "controller_bundle": {
+                                         "root_dir": "/first/install", "release": {"tree_sha256": "a" * 64},
+                                     }})
+        relocated = replace(activation, plugin_specs={"first": SPEC, "unused": "new:Plugin"},
+                            plugin_configs={"unused": {"value": 1}}, metadata={
+                                "host_name": "fixture", "preset": "two", "plugin_revisions": {"unused": "changed"},
+                                "controller_bundle": {"root_dir": "/another/install", "release": {
+                                    "tree_sha256": "a" * 64, "created_at_ms": 200,
+                                }},
+                            })
+        self.assertEqual(activation_generation_id({"proposal": activation}),
+                         activation_generation_id({"proposal": relocated}))
+
+    def test_every_executable_revision_and_selected_config_changes_the_identity(self):
+        activation = step_activation("proposal", ["first"], {"first": SPEC}, metadata={
+            "host_name": "fixture", "controller_bundle": {"release": {"tree_sha256": "a" * 64}},
+        })
+        original = activation_generation_id({"proposal": activation})
+        for changed in (
+            replace(activation, plugin_configs={"first": {"value": 1}}),
+            replace(activation, plugin_specs={"first": "other:Plugin"}),
+            replace(activation, metadata={**activation.metadata, "host_name": "another-host"}),
+            replace(activation, metadata={**activation.metadata, "controller_bundle": {"release": {"tree_sha256": "b" * 64}}}),
+        ):
+            with self.subTest(activation=changed):
+                self.assertNotEqual(original, activation_generation_id({"proposal": changed}))
+
+    def test_upload_identity_uses_the_source_hash_and_not_the_install_directory(self):
+        first = step_activation("proposal", ["first"], {"first": f"/first/{'a' * 64}.py:Plugin"})
+        moved = replace(first, plugin_specs={"first": f"/another/{'a' * 64}.py:Plugin"})
+        changed = replace(first, plugin_specs={"first": f"/another/{'b' * 64}.py:Plugin"})
+        self.assertEqual(activation_generation_id({"proposal": first}), activation_generation_id({"proposal": moved}))
+        self.assertNotEqual(activation_generation_id({"proposal": first}), activation_generation_id({"proposal": changed}))
 
 
 if __name__ == "__main__":

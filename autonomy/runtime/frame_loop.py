@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import (
-    DECISION_STEPS,
+    STEPS,
     activation_generation_id,
     activation_presets,
 )
@@ -849,19 +849,19 @@ class FrameLoop:
                 if isinstance(applied_steps, dict):
                     self.presets = activation_presets(applied_steps)
                     # A loop started without an identity still publishes the
-                    # decision steps this frame applied.
+                    # pipeline this frame applied, under the host's generation.
                     if not self.decision_activations:
-                        decision_identity = {
-                            step: applied_steps.get(step) for step in DECISION_STEPS
-                        }
+                        identity = {step: applied_steps.get(step) for step in STEPS}
+                        stored = metadata.get("generation_id")
                         try:
-                            self.generation_id = activation_generation_id(
-                                decision_identity, prefix="decision",
+                            self.generation_id = (
+                                stored if isinstance(stored, str) and stored
+                                else activation_generation_id(identity, prefix="decision")
                             )
                         except (TypeError, ValueError):
                             pass
                         else:
-                            self.decision_activations = deepcopy(decision_identity)
+                            self.decision_activations = deepcopy(identity)
                 try:
                     report = self._capture_frame_report(
                         cycle_result,

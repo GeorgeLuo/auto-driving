@@ -11,7 +11,12 @@ function element() {
       return {
         add(name) { owner.className = name; },
         remove(name) { owner.className = owner.className.split(' ').filter(item => item !== name).join(' '); },
-        contains(name) { return owner.className.split(' ').includes(name); }
+        contains(name) { return owner.className.split(' ').includes(name); },
+        toggle(name, on) {
+          const names = new Set(owner.className.split(' ').filter(Boolean));
+          if (on) names.add(name); else names.delete(name);
+          owner.className = [...names].join(' ');
+        }
       };
     },
     appendChild(child) { this.children.push(child); },
@@ -55,6 +60,10 @@ function cells(plugin) {
   await settle();
   assert.strictEqual(nodes.get('status').hidden, true);
   assert.strictEqual(nodes.get('status').textContent, '');
+  payload.arming.generation_id = 'decision-applied';
+  await poll();
+  assert.strictEqual(nodes.get('status').hidden, false);
+  assert(nodes.get('status').textContent.includes('decision-applied'));
   for (const plugin of definitions) {
     assert.strictEqual(cells(plugin)[2], 'Enabled');
     assert.strictEqual(cells(plugin)[3], 'packaged');
@@ -88,6 +97,8 @@ function cells(plugin) {
     assert.strictEqual(cells(next)[2], 'Enabled', 'failed requests leave applied indicators intact');
     assert.strictEqual(nodes.get('status').hidden, false);
     assert(nodes.get('status').textContent.includes('load refused'));
+    assert(nodes.get('status').textContent.includes('decision-applied'));
+    assert(nodes.get('status').classList.contains('error'));
     payload.arming.status = 'requested';
     payload.arming.error = null;
     payload.arming.requested[step] = [];
@@ -114,8 +125,9 @@ function cells(plugin) {
   httpOk = true;
   await poll();
   assert(!nodes.get('catalog').classList.contains('stale'));
-  assert.strictEqual(nodes.get('status').hidden, true);
-  assert.strictEqual(nodes.get('status').textContent, '');
+  assert.strictEqual(nodes.get('status').hidden, false);
+  assert(nodes.get('status').textContent.includes('decision-applied'));
+  assert(!nodes.get('status').classList.contains('error'));
   assert.strictEqual(cells(definitions[0])[2], 'Disabled');
   console.log('plugin catalog state ok');
 })().catch(error => { console.error(error); process.exitCode = 1; });

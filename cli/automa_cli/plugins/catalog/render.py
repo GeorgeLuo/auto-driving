@@ -187,6 +187,8 @@ def _arming_lines(arming: Arming | None) -> list[str]:
     if arming is None:
         return []
     lines = [] if arming.request_id is None else [f"Request: {arming.request_id}"]
+    if arming.generation_id:
+        lines.append(f"Decision generation: {arming.generation_id}")
     for label, by_step in (("Requested", arming.requested), ("Applied", arming.applied)):
         for step, definitions in by_step.items():
             selected = ", ".join(f"{item['id']} ({_metadata(item).get('revision', 'packaged')})" for item in definitions)

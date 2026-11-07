@@ -16,7 +16,8 @@ from dataclasses import dataclass, replace
 from typing import Any, Sequence
 
 from autonomy.decision_cycle.activation import StepActivation
-from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS, step_runner
+from autonomy.decision_cycle.steps import ONE_PLUGIN_STEPS
+from autonomy.runtime.plugin_loader import load_runner
 from autonomy.plugins import LocalPluginCatalog
 from implementations.decision_cycle.catalog import (
     DEFAULT_STEP_PLUGINS,
@@ -153,7 +154,7 @@ class PluginCatalog:
     def build(self, activation: StepActivation) -> Any:
         """Construct exactly the activation's plugins and configs, as the step's runner."""
 
-        return step_runner(activation)
+        return load_runner(activation)
 
 
 def packaged_plugin_catalog(step: str) -> PluginCatalog:

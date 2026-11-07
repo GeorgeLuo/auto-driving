@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from autonomy.plugins import PluginManager
+
 
 import json
 import tempfile
@@ -271,125 +271,17 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual([run.status for run in perception.plugin_runs], ["ok", "unavailable"])
         self.assertEqual(mapper.plugins["unavailable"].invocations, 0)
 
-    def test_report_uses_full_manager_catalog_without_constructing_unselected_plugins(self) -> None:
-        manager = PluginManager.from_specs("perception", {
-            "working": f"{__name__}:WorkingPlugin",
-            "broken": f"{__name__}:ConstructionFailurePlugin",
-        })
-        mapper = PerceptionRunner(plugin_manager=manager)
-        self.assertEqual(mapper.plugin_report()["available_plugin_ids"], ["broken", "working"])
-        self.assertEqual(mapper.plugins, {})
-        manager.add("working")
-        mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
-        self.assertEqual(mapper.plugin_report()["available_plugin_ids"], ["broken", "working"])
-        self.assertEqual(set(mapper.plugin_specs), {"broken", "working"})
-        manager.remove("working")
-        mapper.perceive(build_perception_request(_sensor_frame(_array_reading())))
-        self.assertEqual(mapper.plugin_report()["available_plugin_ids"], ["broken", "working"])
-        self.assertEqual(mapper.plugins, {})
-
-    def test_manager_selection_is_applied_by_apply_selection(self) -> None:
-        manager = PluginManager.from_specs(
-            "perception",
-            {
-                "working": f"{__name__}:WorkingPlugin",
-                "unavailable": f"{__name__}:UnavailablePlugin",
-            }
+    def test_repeated_calls_keep_the_constructed_instances(self) -> None:
+        mapper = PerceptionRunner.from_selection(
+            plugins=["working"],
+            plugin_specs={"working": f"{__name__}:WorkingPlugin"},
         )
-        manager.select(["working"])
-        mapper = PerceptionRunner(plugin_manager=manager)
         working = mapper.plugins["working"]
-
-        first = mapper.perceive(
-            build_perception_request(_sensor_frame(_array_reading(), "frame-1"))
-        )
-        self.assertEqual([run.plugin_id for run in first.plugin_runs], ["working"])
-
-        manager.add("unavailable")
-        self.assertEqual(mapper.plugin_ids, ("working",))
-        mapper.apply_selection()
-        second = mapper.perceive(
-            build_perception_request(_sensor_frame(_array_reading(), "frame-2"))
-        )
-        self.assertEqual(
-            [run.plugin_id for run in second.plugin_runs],
-            ["working", "unavailable"],
-        )
+        frame = _sensor_frame(_array_reading(), "frame-1")
+        mapper.perceive(build_perception_request(frame))
+        mapper.perceive(build_perception_request(_sensor_frame(_array_reading(), "frame-2")))
         self.assertIs(mapper.plugins["working"], working)
-
-        manager.remove("working")
-        mapper.apply_selection()
-        third = mapper.perceive(
-            build_perception_request(_sensor_frame(_array_reading(), "frame-3"))
-        )
-        self.assertEqual(
-            [run.plugin_id for run in third.plugin_runs], ["unavailable"]
-        )
-        self.assertNotIn("test_ready", [signal.name for signal in third.signals])
-        self.assertEqual(working.reset_count, 1)
-
-
-    def test_selection_change_during_perceive_waits_for_apply_selection(self) -> None:
-        manager = PluginManager.from_specs(
-            "perception",
-            {
-                "selection_changing": f"{__name__}:SelectionChangingPlugin",
-                "working": f"{__name__}:WorkingPlugin",
-            }
-        )
-        manager.select(["selection_changing", "working"])
-        SelectionChangingPlugin.manager = manager
-        try:
-            mapper = PerceptionRunner(plugin_manager=manager)
-            first = mapper.perceive(
-                build_perception_request(_sensor_frame(_array_reading(), "frame-1"))
-            )
-            # The plugin deselected itself; frames run the applied plugins
-            # until the selection is applied.
-            second = mapper.perceive(
-                build_perception_request(_sensor_frame(_array_reading(), "frame-2"))
-            )
-            mapper.apply_selection()
-            third = mapper.perceive(
-                build_perception_request(_sensor_frame(_array_reading(), "frame-3"))
-            )
-
-            self.assertEqual(
-                [run.plugin_id for run in first.plugin_runs],
-                ["selection_changing", "working"],
-            )
-            self.assertEqual(
-                [run.plugin_id for run in second.plugin_runs],
-                ["selection_changing", "working"],
-            )
-            self.assertEqual(
-                [run.plugin_id for run in third.plugin_runs], ["working"]
-            )
-        finally:
-            SelectionChangingPlugin.manager = None
-
-    def test_prepare_selection_publishes_the_same_instances_on_commit(self) -> None:
-        manager = PluginManager.from_specs(
-            "perception",
-            {
-                "working": f"{__name__}:WorkingPlugin",
-                "unavailable": f"{__name__}:UnavailablePlugin",
-            }
-        )
-        manager.select(["working"])
-        mapper = PerceptionRunner(plugin_manager=manager)
-        working = mapper.plugins["working"]
-        manager.select(["unavailable"])
-
-        mapper.prepare_selection()
-
-        self.assertEqual(mapper.plugins, {"working": working})
-        self.assertEqual(working.reset_count, 0)
-        mapper.commit_selection()
-        self.assertEqual(mapper.plugin_ids, ("unavailable",))
-        self.assertIsNot(mapper.plugins["unavailable"], working)
-        self.assertEqual(working.reset_count, 1)
-
+        self.assertEqual(mapper.plugin_report()["applied_plugin_ids"], ["working"])
 
     def test_step_status_reports_applied_runs_with_catalog_identity(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -412,7 +304,7 @@ class PluginRunnerTests(unittest.TestCase):
             step = PerceptionRunner.from_activation(read_step_activation(path, "perception"))
 
         pending = step.status()
-        self.assertEqual(pending["plugin_report"]["selected_plugin_ids"], ["working"])
+        self.assertEqual(pending["selected_plugin_ids"], ["working"])
         self.assertEqual(pending["plugin_report"]["applied_plugin_ids"], ["working"])
         self.assertIsNone(pending["plugin_report"]["plugins"][0]["duration_ms"])
         self.assertEqual(pending["last_plugin_runs"], [])
@@ -440,20 +332,13 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(step.plugin_report(), executed["plugin_report"])
         self.assertEqual(result.plugin_runs[0].plugin_id, "working")
         self.assertEqual(list(step.plugins), ["working"])
+        self.assertEqual(step.status()["plugin_report"]["applied_plugin_ids"], ["working"])
 
-        step.plugin_manager.select(["exploding"])
-        waiting = step.status()
-        self.assertEqual(waiting["plugin_report"]["selected_plugin_ids"], ["exploding"])
-        self.assertEqual(waiting["plugin_report"]["applied_plugin_ids"], ["working"])
-        self.assertEqual(waiting["plugin_report"]["plugins"][0]["plugin_id"], "working")
-        self.assertEqual(
-            waiting["plugin_report"]["plugins"][0]["duration_ms"],
-            record["duration_ms"],
+        failed_step = PerceptionRunner.from_selection(
+            plugins=["exploding"],
+            plugin_specs={"exploding": f"{__name__}:ExplodingPlugin"},
         )
-        self.assertEqual(waiting["last_plugin_runs"][0]["plugin_id"], "working")
-
-        step.apply_selection()
-        failed = step(
+        failed = failed_step(
             DecisionFrameContext(
                 frame_id="frame-2",
                 frame_index=4,
@@ -461,10 +346,10 @@ class PluginRunnerTests(unittest.TestCase):
                 sensor_frame=_sensor_frame(_array_reading()),
             )
         )
-        reported = step.status()
+        reported = failed_step.status()
         failed_record = reported["plugin_report"]["plugins"][0]
+        self.assertEqual(reported["selected_plugin_ids"], ["exploding"])
         self.assertEqual(reported["plugin_report"]["applied_plugin_ids"], ["exploding"])
-        self.assertEqual(reported["plugin_report"]["selected_plugin_ids"], ["exploding"])
         self.assertEqual(failed_record["plugin_id"], "exploding")
         self.assertEqual(failed_record["plugin_id"], "exploding")
         self.assertGreaterEqual(failed_record["duration_ms"], 0)
@@ -473,15 +358,16 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(reported["last_plugin_runs"][0]["status"], "error")
         self.assertEqual(reported["last_plugin_runs"][0]["plugin_id"], "exploding")
         self.assertEqual(failed.plugin_runs[0].plugin_id, "exploding")
-        self.assertEqual(list(step.plugins), ["exploding"])
-        self.assertEqual(step.plugin_report(), reported["plugin_report"])
+        self.assertEqual(list(failed_step.plugins), ["exploding"])
+        self.assertEqual(failed_step.plugin_report(), reported["plugin_report"])
+        self.assertEqual(step.plugin_ids, ("working",))
 
-        step.reset()
-        cleared = step.status()
+        failed_step.reset()
+        cleared = failed_step.status()
         self.assertEqual(cleared["last_plugin_runs"], [])
         self.assertIsNone(cleared["plugin_report"]["plugins"][0]["duration_ms"])
         self.assertIsNone(cleared["plugin_report"]["plugins"][0]["error"])
-        self.assertEqual(step.plugin_report(), cleared["plugin_report"])
+        self.assertEqual(failed_step.plugin_report(), cleared["plugin_report"])
 
 
 if __name__ == "__main__":

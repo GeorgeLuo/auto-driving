@@ -153,7 +153,7 @@ def run_host_automation(
     if problems:
         return RunResult(2, problems=problems)
     selections = staged_selections(bundle)
-    identity = decision_identity(bundle)
+    identity = decision_identity(bundle, host_name=host_name)
     if host_url is None:
         try:
             base_url = (

@@ -101,8 +101,7 @@ def _activation(plugins, count: int = 6):
 class ProposalRunnerTests(unittest.TestCase):
     def test_runner_is_scoped_to_the_proposal_step(self) -> None:
         runner = ProposalRunner.from_activation(_activation(["p0"], count=1))
-        self.assertEqual(runner.plugin_manager.step, "proposal")
-        self.assertEqual(runner.plugin_manager.available_ids, ("p0",))
+        self.assertEqual(runner.step, "proposal")
         self.assertEqual(runner.plugin_ids, ("p0",))
 
     def test_selection_has_no_count_limit_and_keeps_order(self) -> None:
@@ -211,11 +210,13 @@ class ProposalRunnerTests(unittest.TestCase):
         self.assertEqual(unmapped.reset_count, 1)
 
         second_map = {"epoch": 2}
-        runner.plugin_manager.select([])
-        runner.apply_selection(second_map)
+        runner.reset(second_map)
         self.assertIs(mapped.reset_map, second_map)
         self.assertEqual(unmapped.reset_count, 2)
-        self.assertEqual(runner.plugin_report()["plugins"], [])
+        self.assertEqual(
+            [item["plugin_id"] for item in runner.plugin_report()["plugins"]],
+            ["mapped", "unmapped"],
+        )
 
 
 if __name__ == "__main__":

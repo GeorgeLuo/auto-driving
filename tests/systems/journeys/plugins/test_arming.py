@@ -67,7 +67,7 @@ class PluginArmingFlows(unittest.TestCase):
                 human = invoke_automa("plugins", "list", "--url", base).stdout
                 self.assertIn("Armed:", human)
                 armed = selected(applied, "applied", "proposal")[0]["metadata"]
-                self.assertIn(f"- proposal/prototype-proposal: revision {armed['revision']} ({armed['filename']})", human)
+                self.assertIn(f"- proposal/prototype-proposal: revision {armed['revision']} (uploaded)", human)
 
     def test_cli_worker_view_and_stream_adopt_new_proposals_without_restarting(self):
         with tempfile.TemporaryDirectory() as directory, fake_metrics_ui_server() as ws_url:
@@ -111,10 +111,13 @@ class PluginArmingFlows(unittest.TestCase):
                             break
                         self.assertLess(time.monotonic(), deadline, shown)
                         time.sleep(0.05)
-                    self.assertEqual(selected(shown, "applied", "proposal")[0], receipt["plugin"])
+                    applied = selected(shown, "applied", "proposal")[0]
+                    self.assertEqual(applied["id"], receipt["plugin"]["id"])
+                    self.assertEqual(applied["metadata"]["revision"], receipt["plugin"]["metadata"]["revision"])
+                    self.assertEqual(applied["entrypoint"], applied["metadata"]["source_file"] + ":Prototype")
                     armed = json.loads(run_automa("plugins", "list", "--host-name", "chase-sim-chaser", "--step", "proposal",
                                                   "--json", runtime_root=runtime, extra_env=env).stdout)["armed"]
-                    self.assertEqual(armed, [receipt["plugin"]])
+                    self.assertEqual(armed, [applied])
                     streamed = json.loads(run_automa("plugins", "stream", "--step", "proposal", "--host-name", "chase-sim-chaser",
                                                      "--once", "--json", runtime_root=runtime, extra_env=env).stdout)
                     self.assertEqual(streamed["plugins"], ["prototype"])

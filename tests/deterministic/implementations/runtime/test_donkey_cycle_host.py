@@ -92,6 +92,7 @@ class RuntimeCycleHostTests(unittest.TestCase):
         self.assertEqual(steering, 0.0)
         self.assertEqual(throttle, 0.0)
         self.assertEqual(control["reason"], "action_plan_invariant_violated")
+        self.assertEqual(generation, part.host.applied_decision()["generation_id"])
         self.assertEqual(generation, part.publish_latest()["report"]["generation_id"])
         self.assertEqual(cycle["schema"], "host_report")
         self.assertEqual(cycle["frame_id"], "donkey_frame_000000")

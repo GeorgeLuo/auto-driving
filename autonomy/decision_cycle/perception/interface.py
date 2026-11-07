@@ -22,8 +22,8 @@ PLUGIN_RESULT_STATUSES = ("ok", "empty", "warming_up", "unavailable", "error")
 PluginResultStatus = Literal["ok", "empty", "warming_up", "unavailable", "error"]
 
 # A perception plugin error is isolated, an explicit reset error propagates,
-# and a missing feed skips that plugin. ``reset`` governs explicit reset and
-# selection removal. A stateful plugin is also reset on a missing feed, inside
+# and a missing feed skips that plugin. A selection change constructs new runners.
+# A stateful plugin is also reset on a missing feed, inside
 # frame execution, so an exception there follows ``update`` and becomes that
 # plugin's error result.
 FAILURE_POLICY = FailurePolicy(

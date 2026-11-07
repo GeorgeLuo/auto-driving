@@ -281,14 +281,15 @@ class CycleHostMemoryTests(unittest.TestCase):
             step = _memory_step(Path(tmp), extra_specs={"missing": "no_such_module:Nope"})
             host, proposal = _host(memory=step)
             applied = step.plugin_ids
-            step.plugin_manager.select(["missing"])
+            failed = host.arm({"memory": ["missing"]})
+            self.assertFalse(failed["ok"])
             host.run(DecisionFrameContext("frame_x", 0, 1))
-            self.assertEqual(step.plugin_ids, applied)
+            self.assertEqual(host.step("memory").plugin_ids, applied)
             self.assertIsNotNone(proposal.last_shared_memory)
             self.assertEqual(host.status()["error_count"], 0)
             selection = host.selection_status()
             self.assertEqual(selection["status"], "failed")
-            self.assertIn("no_such_module", selection["error"])
+            self.assertIn("cannot be reconstructed", selection["error"])
 
     def test_default_steps_idle_while_memory_updates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -379,7 +380,7 @@ class CycleHostStepTests(unittest.TestCase):
     def test_action_failure_holds_with_an_error_record_and_recovers(self) -> None:
         action = _FailOnceAction()
         host, _ = _host()
-        host.set_step("action", action_runner(action))
+        host = AutonomyCycleHost(steps=replace(host.steps, action=action_runner(action)))
 
         failed = host.run(DecisionFrameContext("frame_1", 1, 1))
         self.assertEqual(failed.action.status, "error")
@@ -487,7 +488,7 @@ class CycleHostArmingTests(unittest.TestCase):
         failed = host.arm({"proposal": ["broken"]})
 
         self.assertEqual((failed["ok"], failed["status"]), (False, "failed"))
-        self.assertRegex(failed["error"], r"^proposal: .*cannot construct")
+        self.assertRegex(failed["error"], r"proposal: .*cannot construct")
         result = host.run(DecisionFrameContext("frame_1", 0, 1_000))
         self.assertEqual([item.plugin_id for item in result.proposal.candidates], ["working"])
 
@@ -500,13 +501,18 @@ class CycleHostArmingTests(unittest.TestCase):
             return host.arm({"perception": preset_activation("perception", preset).to_payload()})
 
         def perception():
-            report = host.status()["steps"]["perception"]
-            return report["preset"], report["selected_plugin_ids"], report["plugin_ids"]
+            status = host.status()
+            report = status["steps"]["perception"]
+            requested = [item["id"] for item in status["arming"]["requested"]["perception"]]
+            return report["preset"], requested, report["plugin_ids"]
 
-        # The host already runs these plugins, so the step names the preset at once.
+        # The host already runs these plugins, so the step names the preset at
+        # once, without a rebuild or a new generation.
+        generation = host.applied_decision()["generation_id"]
         self.assertTrue(arm("lightweight_observer")["ok"])
         self.assertEqual(perception(), ("lightweight_observer", ["frame", "floor_plane"], ["frame", "floor_plane"]))
-        # Another preset replaces the selection, and names the step once it applies.
+        self.assertEqual(host.applied_decision()["generation_id"], generation)
+        # Another preset is requested as a whole pipeline, and names the step once it applies.
         self.assertTrue(arm("visual_observer")["ok"])
         visual = ["frame", "floor_plane", "motion_tracks"]
         self.assertEqual(perception(), ("lightweight_observer", visual, ["frame", "floor_plane"]))
@@ -521,9 +527,9 @@ class CycleHostArmingTests(unittest.TestCase):
         loaded = packaged_activation("proposal")
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "active.json"
-            self.assertIsNone(sync_live_selection(None, path, loaded))
+            self.assertIsNone(sync_live_selection(path, loaded))
             path.write_text('{"schema": ', encoding="utf-8")
-            self.assertIsNone(sync_live_selection(None, path, loaded))
+            self.assertIsNone(sync_live_selection(path, loaded))
 
 
 if __name__ == "__main__":

@@ -35,7 +35,8 @@
   h1 { margin: 0; font-size: 13px; font-weight: 500; }
   .revision-toggle { display: flex; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; cursor: pointer; }
   .revision-toggle:hover { color: #ededed; }
-  #status { margin: 0; color: var(--red); font-size: 12px; }
+  #status { margin: 0; color: var(--muted); font: 12px/1.4 var(--mono); }
+  #status.error { color: var(--red); }
   .table-scroll { overflow-x: auto; }
   table { width: 100%; min-width: 790px; margin-top: 8px; text-align: left; border-collapse: collapse; table-layout: fixed; }
   table.show-revisions { min-width: 1120px; }
@@ -136,8 +137,11 @@
       if (!response.ok || !catalog.ok) throw new Error(catalog.error || `HTTP ${response.status}`);
       const arming = catalog.arming;
       const status = document.getElementById('status');
-      status.textContent = arming?.error ? 'Plugin selection failed · ' + arming.error : '';
-      status.hidden = !arming?.error;
+      const generation = arming?.generation_id ? 'Decision generation ' + arming.generation_id : '';
+      const problem = arming?.error ? 'Plugin selection failed · ' + arming.error : '';
+      status.textContent = [generation, problem].filter(Boolean).join(' · ');
+      status.hidden = status.textContent === '';
+      status.classList.toggle('error', Boolean(problem));
       function applied(step) {
         const plugins = arming?.applied?.[step];
         return Array.isArray(plugins) ? plugins : null;
@@ -181,6 +185,7 @@
       for (const cell of table.querySelectorAll('td.enabled')) cell.replaceChildren(enabledDot('Unknown'));
       const status = document.getElementById('status');
       status.hidden = false;
+      status.classList.add('error');
       status.textContent = 'Catalog unavailable · ' + error.message +
         (document.getElementById('plugins').children.length ? ' · Showing stale catalog' : '') +
         ' · Retrying automatically';

@@ -61,12 +61,13 @@ def register_catalog(commands: argparse._SubParsersAction) -> None:
     arm = commands.add_parser(
         "arm", help="Add/update a host's catalog plugins without restarting automation.",
         description=(
-            "Request the latest catalog definitions together. New IDs append; existing IDs update in place; "
+            "Request the latest catalog definitions together. New IDs append; existing IDs replace their definitions; "
             f"on a one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) the ID replaces the plugin. A --preset "
             "replaces what its step has armed with the preset's plugins, in its order, and the step then "
             "reports the preset; the host refuses it unless its catalog holds each plugin as the preset "
-            "configures it. The host loads them before answering: an import or construction error exits 2 "
-            "and keeps the previous selection. A loaded selection applies at the host's next cycle."
+            "configures it. The host builds every runner before answering: an import or construction error "
+            "exits 2 and keeps the previous pipeline. A changed pipeline applies at the next cycle with an "
+            "empty shared-memory map."
         ),
         epilog="Arming never starts automation or changes its control mode.",
     )
@@ -86,8 +87,8 @@ def register_catalog(commands: argparse._SubParsersAction) -> None:
         "disarm", help="Deselect a host's plugins without deleting them from its catalog.",
         description=(
             f"Deselect plugins on an existing runtime host. A one-plugin step ({', '.join(ONE_PLUGIN_STEPS)}) "
-            "keeps its plugin; arm a replacement instead. The host resets disarmed instances and applies "
-            "the selection at its next cycle; retained plugins keep their state. Catalog entries remain "
+            "keeps its plugin; arm a replacement instead. A changed selection replaces every step's runner "
+            "at the next cycle with an empty shared-memory map. Catalog entries remain "
             "available to arm again."
         ),
         epilog="Disarming does not start or stop automation, change control mode, or edit staged activations.",

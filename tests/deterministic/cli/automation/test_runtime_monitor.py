@@ -98,7 +98,6 @@ def _latest(index: int) -> dict:
         "captured_at_ms": 1_000 + index,
         "completed_at_ms": 1_040 + index,
         "duration_ms": 40,
-        "control": {"reason": "steer-left", "steering": -0.2, "throttle": 0.1},
     }
 
 
@@ -239,7 +238,6 @@ class RuntimeMonitorTests(unittest.TestCase):
         self.assertEqual(state["selections"]["proposal"]["status"], "absent")
         self.assertEqual(state["last_frame"]["frame_id"], "donkey_frame_000001")
         self.assertEqual(state["last_frame"]["capture_to_perception_ms"], 40)
-        self.assertEqual(state["last_frame"]["control"]["reason"], "steer-left")
         self.assertEqual(state["last_frame"]["cycle_duration_ms"], 40)
         for removed in ("published_view", "latest", "last_capture", "readiness"):
             self.assertNotIn(removed, state)

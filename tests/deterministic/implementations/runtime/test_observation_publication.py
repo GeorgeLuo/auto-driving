@@ -16,7 +16,7 @@ from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.routes import RuntimeRoutes
-from autonomy.runtime.execution import ControlExecution
+from autonomy.runtime.cycle_host import AutonomyCycleHost
 from implementations.decision_cycle.catalog import packaged_activation, selection_activation
 from autonomy.runtime.frame_loop import (
     FRAME_PUBLICATION_SCHEMA,
@@ -100,17 +100,13 @@ class ObservationPublicationTests(unittest.TestCase):
         )
 
     def test_warming_publication_before_first_result(self) -> None:
-        part = AutonomyPilotPart(
-            host=create_host(steps=decision_steps()),
-            presets={"perception": "lightweight_observer"},
-        )
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
         payload = part.publish_latest(now_ms=1_000)
         self.assertEqual(payload["schema"], FRAME_PUBLICATION_SCHEMA)
         self.assertEqual(payload["health"], "warming")
         self.assertFalse(payload["ok"])
         self.assertIsNone(payload["report"])
-        status = part.observation_status()
-        self.assertEqual(status["presets"], {"perception": "lightweight_observer"})
+        self.assertIsNone(part.observation_status()["latest"])
 
     def test_healthy_publication_includes_detached_perception_and_matching_frame(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
@@ -149,11 +145,7 @@ class ObservationPublicationTests(unittest.TestCase):
         so memory's and proposal's presets, and any restaged preset, never showed."""
 
         activations = {step: selection_activation(step) for step in DECISION_STEPS}
-        part = AutonomyPilotPart(
-            host=create_host(steps=decision_steps(activations)),
-            presets={"perception": "started-with"},
-        )
-        self.assertEqual(part.observation_status()["presets"], {"perception": "started-with"})
+        part = AutonomyPilotPart(host=create_host(steps=decision_steps(activations)))
         self.assertIsNone(part.publish_latest(now_ms=1_000)["report"])
 
         part.run(image_array=np.zeros((8, 8, 3), dtype=np.uint8), mode="user")
@@ -171,7 +163,6 @@ class ObservationPublicationTests(unittest.TestCase):
             if isinstance(steps[step], dict) and steps[step].get("metadata", {}).get("preset")
         }
         self.assertEqual(shown, applied)
-        self.assertEqual(part.observation_status()["presets"], applied)
 
     def test_publication_includes_the_memory_report_when_step_present(self) -> None:
         from autonomy.decision_cycle.cycle import DecisionSteps
@@ -284,21 +275,14 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertTrue(stale["ok"])
         self.assertGreater(stale["result_age_ms"], stale["stale_after_ms"])
 
-        class Boom:
-            execution = ControlExecution(DonkeyControlTarget())
-            last_context = None
-
-            def status(self):
-                return {"steps": {}}
-
-            def register_status_provider(self, name, provider):
-                pass
+        class Boom(AutonomyCycleHost):
+            """A host whose cycle raises before it produces any result."""
 
             def run(self, context, **inputs):
                 del context
                 raise RuntimeError("boom")
 
-        failing = AutonomyPilotPart(host=Boom())  # type: ignore[arg-type]
+        failing = AutonomyPilotPart(host=Boom(target=DonkeyControlTarget()))
         failing.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         failing.wait_for_cycle()
         errored = failing.publish_latest(now_ms=failing.latest_state.completed_at_ms)

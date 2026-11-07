@@ -142,7 +142,6 @@ def latest_frame(host_status: dict[str, Any]) -> dict[str, Any] | None:
             else None
         ),
         "cycle_duration_ms": latest.get("duration_ms"),
-        "control": latest.get("control"),
     }
 
 

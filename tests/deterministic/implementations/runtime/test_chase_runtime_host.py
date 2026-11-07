@@ -130,9 +130,10 @@ class ChaseRuntimeHostTests(unittest.TestCase):
 
         self.assertEqual((session["status"], session["processed_decisions"]), ("completed", 2))
         self.assertLessEqual(car.capture_count, captured + 1, "the host captured after its session ended")
-        self.assertEqual(observation["latest"]["mode"], "observe_only")
-        self.assertFalse(observation["latest"]["control"]["applied"])
+        self.assertEqual(observation["latest"]["frame_id"], decision["report"]["frame_id"])
         self.assertEqual(decision["report"]["status"], "ok", decision)
+        self.assertEqual(decision["report"]["application"]["mode"], "observe_only")
+        self.assertFalse(decision["report"]["application"]["applied"])
 
     def test_restart_during_recording_does_not_invert_host_and_frame_locks(self):
         from autonomy.decision_cycle.steps import decision_steps

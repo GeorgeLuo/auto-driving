@@ -29,7 +29,6 @@ class AutonomyPilotPart(FrameLoop):
         self,
         *,
         host: AutonomyCycleHost,
-        presets: dict[str, str] | None = None,
         host_name: str | None = None,
         source_id: str | None = None,
         decision_activations: dict[str, dict[str, Any] | None] | None = None,
@@ -47,7 +46,7 @@ class AutonomyPilotPart(FrameLoop):
         # observing the actual user/pilot/selected values.
         self.host_telemetry = host_telemetry
         super().__init__(
-            host=host, presets=presets,
+            host=host,
             host_name=host_name, source_id=source_id,
             decision_activations=decision_activations, generation_id=generation_id,
             run_id=run_id or f"donkey-run-{secrets.token_hex(12)}",
@@ -83,8 +82,8 @@ class AutonomyPilotPart(FrameLoop):
             user_steering=user_steering, user_throttle=user_throttle,
         )
         self._publish_host_source_frame()
-        self.last_status = self.status()
-        return self._held_outputs(mode_name)
+        output = self.host.execution.output()
+        return output.steering, output.throttle
 
     def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
         with self._lifecycle_lock:

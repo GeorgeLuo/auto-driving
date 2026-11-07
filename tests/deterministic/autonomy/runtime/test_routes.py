@@ -220,7 +220,7 @@ class RuntimeRoutesTests(unittest.TestCase):
             status, transaction = _json(routes.handle("GET", "/host/observation/transaction"))
             self.assertEqual(status, 200, transaction)
             self.assertEqual(transaction["publication"]["report"]["frame_id"], "sim_frame_000042")
-            self.assertEqual(loop.observation_status()["latest_camera_frame_id"], "sim_frame_000043")
+            self.assertEqual(loop.frames_received, 2)
         finally:
             perception.release_all()
             loop.wait_for_cycle()

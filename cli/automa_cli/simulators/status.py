@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..hosts.discovery import hosts_by_vehicle
 from ..providers.metadata import CHASE_SIM
 from ..providers.models import DEFAULT_READINESS_TIMEOUT_S, Candidate
 from ..providers.registry import probe_candidates
@@ -16,7 +17,6 @@ from ..shared.io.log_files import read_log_tail
 from ..shared.io.processes import pid_alive
 from ..shared.paths import display_path
 from .process import SIMULATOR_LOG
-from .service import hosts_by_simulator
 from .store import simulator_dir, simulator_records
 
 STATUS_SCHEMA = "automa_simulators_status"
@@ -45,8 +45,9 @@ def simulators_status(
     alive = [record for record in selected if pid_alive(record.get("pid"))]
     probes = probe_candidates([Candidate(CHASE_SIM.name, record["url"], "created") for record in alive], timeout_s)
     by_url = {record["url"]: probe for record, probe in zip(alive, probes)}
-    hosts = hosts_by_simulator()
-    simulators = [_simulator(record, by_url.get(record["url"]), hosts.get(record["url"], [])) for record in selected]
+    hosts = hosts_by_vehicle()
+    simulators = [_simulator(record, by_url.get(record["url"]), hosts.get((CHASE_SIM.name, record["url"]), []))
+                  for record in selected]
     if url is not None and not simulators:
         missing = {"url": chase_operator_url(url), "state": "not found", "hosts": []}
         simulators.append({**dict.fromkeys(_ENTRY_FIELDS), **missing})

@@ -17,6 +17,15 @@ def listed_vehicles() -> list[Candidate]:
     return _dedupe_candidates([*_created_candidates(), *_discovered_candidates()])
 
 
+def normalized_url(provider: str, url: str) -> str | None:
+    """``url`` in the form ``provider`` lists vehicles by, or ``None`` when it is not that provider's URL."""
+
+    try:
+        return PROVIDERS[provider].normalize_url(url)
+    except ValueError:
+        return None
+
+
 def _created_candidates() -> list[Candidate]:
     return [
         Candidate(CHASE_SIM.name, simulator["url"], "created")
@@ -73,15 +82,9 @@ def discover_vehicle(*, provider: str, url: str, force: bool = False) -> Vehicle
 def remove_vehicle(*, url: str) -> VehicleResult:
     """Stop listing a vehicle. A created simulator keeps running, marked unlisted on its record."""
 
-    def normalized(provider: str) -> str | None:
-        try:
-            return PROVIDERS[provider].normalize_url(url)
-        except ValueError:
-            return None
-
     discovered = discovered_vehicles()
-    removed = [vehicle for vehicle in discovered if normalized(vehicle["provider"]) == vehicle["url"]]
-    created = _created_record(normalized(CHASE_SIM.name))
+    removed = [vehicle for vehicle in discovered if normalized_url(vehicle["provider"], url) == vehicle["url"]]
+    created = _created_record(normalized_url(CHASE_SIM.name, url))
     if created is not None and not created.get("listed", True):
         created = None
     if not removed and created is None:

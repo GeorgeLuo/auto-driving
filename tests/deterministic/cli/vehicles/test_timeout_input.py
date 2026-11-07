@@ -83,7 +83,7 @@ class TimeoutInputTests(unittest.TestCase):
         ) as get_status:
             code, _, _ = _invoke("vehicles", "status", "--timeout-s", "1.25")
         self.assertEqual(code, 0)
-        get_status.assert_called_once_with(timeout_s=1.25)
+        get_status.assert_called_once_with(url=None, timeout_s=1.25)
 
         with patch(
             "cli.automa_cli.hosts.runs.commands.hosts_status", return_value=(0, {"hosts": []}),

@@ -85,12 +85,14 @@ class VehicleStatusTests(unittest.TestCase):
                 "game": "chase",
                 "pid": 42,
                 "error": None,
+                "hosts": ["chaser"],
             },
             {
                 "provider": "picar",
                 "state": "unreachable",
                 "url": "http://pi.local",
                 "error": "timed out",
+                "hosts": ["driver", "spare"],
             },
         ]})
 
@@ -98,8 +100,10 @@ class VehicleStatusTests(unittest.TestCase):
             "Simulator (chase-sim)  running at ws://localhost:5050/ws/control\n"
             "  frontend connected, game chase\n"
             "  created by simulators create, pid 42\n"
+            "  used by host chaser\n"
             "\n"
-            "PiCar (picar)  unreachable at http://pi.local: timed out"
+            "PiCar (picar)  unreachable at http://pi.local: timed out\n"
+            "  used by hosts driver, spare"
         ))
         self.assertEqual(format_vehicles_status({"vehicles": []}), "None listed.")
 

@@ -32,10 +32,14 @@ def register_vehicles(subcommands: argparse._SubParsersAction) -> None:
         "status",
         help="Show discovered vehicle environments.",
         description=(
-            "Show the default simulator (CHASE_UI_WS_URL, else http://localhost:5050), "
-            "and each vehicle that vehicles discover listed. "
-            "Exits 1 when no vehicle is reachable."
+            "Show each simulator that simulators create started and vehicles remove has not "
+            "stopped listing, then each vehicle that vehicles discover listed, with the hosts created at it. "
+            "Exits 1 when no vehicle is reachable, or the --url vehicle is not listed."
         ),
+    )
+    status.add_argument(
+        "--url",
+        help="The URL the vehicle was discovered at, in either form. Omit to list every one.",
     )
     status.add_argument(
         "--timeout-s",
@@ -104,7 +108,7 @@ def _handle_vehicles_status(args: argparse.Namespace) -> int:
     ):
         return 2
     try:
-        exit_code, status = vehicles_status(timeout_s=args.timeout_s)
+        exit_code, status = vehicles_status(url=args.url, timeout_s=args.timeout_s)
     except ValueError as exc:
         print(f"automa vehicles status: {exc}", file=sys.stderr)
         return 2

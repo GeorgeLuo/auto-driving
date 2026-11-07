@@ -135,6 +135,40 @@ class DiscoveredVehicleTests(unittest.TestCase):
         self.assertEqual((empty.returncode, empty.stdout), (0, "None listed.\n"))
         self.assertEqual(json.loads(machine.stdout), {"schema": "automa_vehicles_status", "vehicles": []})
 
+    def test_status_url_shows_one_vehicle_and_the_hosts_created_at_it(self) -> None:
+        picar = "http://piracer.local:8887"
+        self.automa("discover", "--provider", "chase-sim", "--url", self.other.url)
+        with probe_returning(ProbeResult(active=False, candidate=Candidate("picar", picar, "discovered"),
+                                         diagnostics={"runtime_state": "server_not_listening"})):
+            self.automa("discover", "--provider", "picar", "--url", picar)
+        write_host_fixture(self.runtime_root, "chaser", url=self.other.url)
+        write_host_fixture(self.runtime_root, "follower", url=self.other.url)
+        write_host_fixture(self.runtime_root, "driver", provider="picar", url=picar + "/")
+
+        # Either URL form selects the vehicle; only it is probed and shown.
+        for url in (self.other.url, self.other_http):
+            with self.subTest(url=url):
+                result = self.automa("status", "--url", url)
+                self.assertEqual((result.returncode, result.stdout), (0, "\n".join([
+                    f"Simulator (chase-sim)  running at {self.other_http}",
+                    "  frontend connected, game chase",
+                    "  used by hosts chaser, follower",
+                    "",
+                ])))
+        with probe_returning(ProbeResult(active=False, candidate=Candidate("picar", picar, "discovered"),
+                                         diagnostics={"runtime_state": "server_not_listening"})):
+            [vehicle] = json.loads(self.automa("status", "--url", picar, "--json").stdout)["vehicles"]
+        self.assertEqual((vehicle["provider"], vehicle["url"], vehicle["hosts"]), ("picar", picar, ["driver"]))
+
+    def test_status_url_of_an_unlisted_vehicle_exits_one(self) -> None:
+        result = self.automa("status", "--url", "http://localhost:1")
+        machine = self.automa("status", "--url", "http://localhost:1", "--json")
+
+        self.assertEqual((result.returncode, result.stdout), (1, "No listed vehicle at http://localhost:1.\n"))
+        self.assertEqual((machine.returncode, json.loads(machine.stdout)["vehicles"]), (1, [
+            {"provider": None, "url": "http://localhost:1", "state": "not found", "error": None, "hosts": []},
+        ]))
+
 
 class DiscoveredRecordTests(unittest.TestCase):
     def test_an_unreadable_record_lists_no_vehicles(self):

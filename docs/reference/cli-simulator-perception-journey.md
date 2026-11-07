@@ -253,8 +253,9 @@ The commands keep these layers separate:
 | `evaluator_reference` | `available`, `unavailable`, `invalid` | Optional frame-scoped scoring reference |
 
 `vehicles status --json` emits `automa_vehicles_status`, which lists vehicle
-environments in `vehicles` with provider, URL, state and error. Simulator
-entries also include frontend, game and created-process information.
+environments in `vehicles` with provider, URL, state, error, and the names of
+the hosts created at each in `hosts`. Simulator entries also include frontend,
+game and created-process information.
 `hosts status --json` reports hosts separately, with their host names, the http
 URLs of their vehicles, their runtime URLs and their simulator attachment.
 When the simulator does not answer, `simulator` is `not answering`.

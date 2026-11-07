@@ -50,6 +50,25 @@ def local_hosts() -> list[dict[str, Any]]:
     return hosts
 
 
+def hosts_by_vehicle() -> dict[tuple[str, str], list[str]]:
+    """Host names created at each vehicle, by its provider and normalized URL.
+
+    A host whose configuration cannot be read, or that names no vehicle URL,
+    is at no vehicle.
+    """
+
+    hosts: dict[tuple[str, str], list[str]] = {}
+    for host in local_hosts():
+        if host["provider"] is None or not host["vehicle_url"]:
+            continue
+        try:
+            url = PROVIDERS[host["provider"]].normalize_url(host["vehicle_url"])
+        except ValueError:
+            continue
+        hosts.setdefault((host["provider"], url), []).append(host["host_name"])
+    return hosts
+
+
 def _address(configuration: dict[str, Any]) -> tuple[str | None, dict[str, Any] | None]:
     """The URL a host answers at now, and the running Chase host's record.
 

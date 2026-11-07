@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from ..providers.metadata import PROVIDERS
-from ..simulators.render import simulator_lines
+from ..simulators.render import host_lines, simulator_lines
 from .models import VehicleResult
 
 
@@ -17,11 +17,15 @@ def format_vehicles_status(status: dict[str, Any]) -> str:
 
 
 def _vehicle_block(vehicle: dict[str, Any]) -> str:
+    if vehicle["state"] == "not found":
+        return f"No listed vehicle at {vehicle['url']}."
     # A PiCar reports only its state; a simulator also reports its frontend.
     if "frontend" not in vehicle:
         heading = f"{PROVIDERS[vehicle['provider']].heading}  {vehicle['state']} at {vehicle['url']}"
-        return heading + (f": {vehicle['error']}" if vehicle.get("error") else "")
-    return "\n".join(simulator_lines(vehicle))
+        lines = [heading + (f": {vehicle['error']}" if vehicle.get("error") else "")]
+    else:
+        lines = simulator_lines(vehicle)
+    return "\n".join([*lines, *host_lines(vehicle["hosts"])])
 
 
 def render_vehicle_result(result: VehicleResult) -> str:

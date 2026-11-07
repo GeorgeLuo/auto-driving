@@ -128,6 +128,7 @@ class LocalPluginCatalog:
         self._lock = threading.RLock()
         self.version = 0
         self._sources: str | None = None
+        self._collections: dict[str, list[str]] = {}
         for definition in definitions:
             self.register(definition)
 
@@ -187,6 +188,52 @@ class LocalPluginCatalog:
             self._definitions[(step, plugin_id)] = definition
             self.version += 1
             return definition
+
+    def upload_collection(self, name: str, plugins: list[dict[str, Any]],
+                          sources: Mapping[str, str]) -> tuple[PluginDefinition, ...]:
+        """Register the plugins using ordinary uploads, then publish their membership."""
+        from autonomy.decision_cycle.activation import require_step
+        from autonomy.plugin_collections import collection_source
+
+        if not isinstance(name, str) or not name.strip():
+            raise ValueError("collection name must be a non-empty string")
+        if not isinstance(plugins, list) or not plugins:
+            raise ValueError("collection plugins must be a non-empty list")
+        references = []
+        for item in plugins:
+            if not isinstance(item["name"], str):
+                raise ValueError("collection plugin name must be step/plugin")
+            step, separator, plugin_id = item["name"].partition("/")
+            require_step(step)
+            if not separator or not plugin_id or "/" in plugin_id:
+                raise ValueError("collection plugin name must be step/plugin")
+            PluginDefinition(step, plugin_id, item["entrypoint"], item.get("config", {}))
+            references.append(item["name"])
+        if len(references) != len(set(references)):
+            raise ValueError("collection plugin names must be unique")
+        source = collection_source(sources, [item["entrypoint"] for item in plugins])
+        with self._lock:
+            definitions = tuple(self.upload(
+                step=item["name"].partition("/")[0], plugin_id=item["name"].partition("/")[2],
+                entrypoint=f"collection:plugin_{index}", source=source,
+                filename=f"{name}.py", config=item.get("config", {}),
+            ) for index, item in enumerate(plugins))
+            self._collections[name] = references
+            return definitions
+
+    def collections(self) -> dict[str, list[str]]:
+        with self._lock:
+            return deepcopy(self._collections)
+
+    def collection_selections(self, name: str) -> dict[str, list[str]]:
+        with self._lock:
+            if name not in self._collections:
+                raise ValueError(f"unknown plugin collection {name!r}")
+            selections: dict[str, list[str]] = {}
+            for reference in self._collections[name]:
+                step, _, plugin_id = reference.partition("/")
+                selections.setdefault(step, []).append(plugin_id)
+            return selections
 
     def list(self, step: str) -> tuple[PluginDefinition, ...]:
         with self._lock:

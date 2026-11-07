@@ -39,6 +39,19 @@ class PluginCatalogAPI:
 
         try:
             if payload is not None:
+                if payload.get("operation") == "upload_collection":
+                    name = _field(payload, "name")
+                    definitions = self.catalog.upload_collection(
+                        name, _field(payload, "plugins"), _field(payload, "sources"))
+                    return {"ok": True, "status": "uploaded", "collection": name,
+                            "plugins": [describe_plugin(item) for item in definitions],
+                            "catalog_version": self.catalog.version}
+                if payload.get("operation") == "arm_collection":
+                    if self.arm is None:
+                        raise ValueError("arming requires a vehicle runtime host; this catalog supports upload only")
+                    name = _field(payload, "name")
+                    result = self.arm(self.catalog.collection_selections(name))
+                    return {**result, "collection": name}
                 if payload.get("operation") == "arm":
                     if self.arm is None:
                         raise ValueError("arming requires a vehicle runtime host; this catalog supports upload only")
@@ -60,6 +73,7 @@ class PluginCatalogAPI:
                 "ok": True, "schema": "automa_plugin_catalog",
                 "catalog_version": version,
                 "plugins": [describe_plugin(item) for item in definitions],
+                "collections": self.catalog.collections(),
             }
             if self.selection_status is not None:
                 result["arming"] = self.selection_status()

@@ -30,7 +30,7 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
     print("\n".join([
         "automa plugins commands", "",
         "- list     show the packaged catalog or what a host has armed",
-        "- upload   register a plugin file in a host's or workbench's catalog",
+        "- upload   register a plugin file or a manifest's named collection",
         "- arm      arm catalog plugins on a host by step/plugin, or a step's preset",
         "- disarm   deselect a host's plugins by step/plugin, or clear a step or every step",
         "- save     make what a host has armed the plugins it starts with",
@@ -43,6 +43,8 @@ def _handle_plugins_help(args: argparse.Namespace) -> int:
         "Upload to a host: ./cli/automa plugins upload --host-name <host> --file <file> --name <step>/<plugin> --entrypoint <module>:<Class>",
         "Arm on a host: ./cli/automa plugins arm --host-name <host> --name <step>/<plugin>",
         "Arm a preset on a host: ./cli/automa plugins arm --host-name <host> --preset <step>/<preset>",
+        "Upload a collection: ./cli/automa plugins upload --host-name <host> --manifest <manifest.json>",
+        "Arm a collection: ./cli/automa plugins arm --host-name <host> --collection <name>",
         "Disarm on a host: ./cli/automa plugins disarm --host-name <host> --name <step>/<plugin>",
         "Start a host with what it has armed: ./cli/automa plugins save --host-name <host>",
         "Stream on a host: ./cli/automa plugins stream --host-name <host> --step <step>",

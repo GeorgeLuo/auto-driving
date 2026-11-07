@@ -28,6 +28,7 @@ from ...hosts.step_activations import (
 from ...hosts.step_formatting import format_activation_problems
 from ...shared.paths import display_path
 from ...shared.plugin_catalog import packaged_plugin_definitions
+from .manifest import read_manifest
 from .models import (
     Arming,
     CatalogListing,
@@ -79,6 +80,29 @@ def upload_plugin(*, url: str | None, host_name: str | None, file: Path, step: s
     armed = _send(endpoint, None, _arm_request({step: [plugin_id]}), timeout_s=ARM_TIMEOUT_S)[1] if arm else None
     return result(uploaded, Recovery(kind="list", url=url, host_name=host_name, step=step, long=True),
                   armed, endpoint)
+
+
+def upload_collection(*, url: str | None, host_name: str | None, manifest: Path,
+                      arm: bool = False) -> UploadResult:
+    name = None
+    endpoint = url
+    armed = None
+    try:
+        payload = read_manifest(manifest)
+        name = payload["name"]
+        endpoint, uploaded = _send(url, host_name, payload)
+        if uploaded.ok and arm:
+            armed = _send(endpoint, None, {"operation": "arm_collection", "name": name},
+                          timeout_s=ARM_TIMEOUT_S)[1]
+    except (OSError, ValueError, TypeError, KeyError) as exc:
+        uploaded = _failure(exc)
+    return UploadResult(host_name, endpoint, None, name or "", uploaded, armed,
+                        Recovery(kind="rejected", file=manifest), collection=name)
+
+
+def arm_collection(*, url: str | None, host_name: str | None, name: str) -> SelectionResult:
+    return _change_selection("arm", url, host_name, None,
+                             {"operation": "arm_collection", "name": name})
 
 
 def arm_plugins(*, url: str | None, host_name: str | None,
@@ -145,7 +169,7 @@ def list_plugins(*, host_name: str | None = None, url: str | None = None, step: 
                 raise ValueError("Host did not report its catalog version.")
             listing = CatalogListing(endpoint, [plugin for name in steps for plugin in receipt.body["plugins"]
                                                 if plugin["step"] == name],
-                                     receipt.catalog_version, receipt.host_run_id)
+                                     receipt.catalog_version, receipt.host_run_id, receipt.body.get("collections", {}))
     except _REQUEST_ERRORS as exc:
         return ListingResult(host_name, endpoint, step, ok=False, error=str(exc))
     return ListingResult(host_name, endpoint, step, ok=True, catalog=listing, armed=armed,

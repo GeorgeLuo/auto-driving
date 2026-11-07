@@ -188,13 +188,27 @@ class HelpCommandTests(unittest.TestCase):
             ["plugins", "upload", "--host-name", "one", *file, "--step", "perception", "--plugin-id", "prototype"],
             ["plugins", "upload", "--host-name", "one", *file, "--name", "prototype"],
             ["plugins", "upload", "--host-name", "one", "--entrypoint", "prototype:Prototype", "--name", "perception/x"],
-            ["plugins", "upload", "--host-name", "one", "--file", "p.py", "--name", "perception/x"],
             ["plugins", "upload", *file, "--name", "perception/x"],
         ):
             with self.subTest(args=args), contextlib.redirect_stderr(io.StringIO()):
                 with self.assertRaises(SystemExit) as caught:
                     parser.parse_args(args)
                 self.assertEqual(caught.exception.code, 2)
+
+    def test_collection_upload_and_arm_inputs(self) -> None:
+        from cli.automa_cli.app import main
+
+        parser = build_parser()
+        args = parser.parse_args(["plugins", "upload", "--url", "http://localhost:1", "--manifest", "collection.json"])
+        self.assertEqual(str(args.manifest), "collection.json")
+        args = parser.parse_args(["plugins", "arm", "--host-name", "one", "--collection", "experiment"])
+        self.assertEqual(args.collection, "experiment")
+        for options in (
+            ["--file", "p.py", "--name", "perception/x"],
+            ["--manifest", "m.json", "--entrypoint", "x:X"],
+        ):
+            with self.subTest(options=options), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(main(["plugins", "upload", "--host-name", "one", *options]), 2)
 
     def test_plugin_arm_parses_step_plugin_names(self) -> None:
         parser = build_parser()

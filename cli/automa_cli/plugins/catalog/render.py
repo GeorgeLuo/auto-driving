@@ -31,27 +31,39 @@ def render_upload(result: UploadResult, *, json_output: bool) -> str:
 
     upload, armed = result.upload, result.arm
     last = armed or upload
+    noun = "Collection" if result.collection is not None else "Plugin"
     if armed is not None:
         label, state = "Arming", armed.status
-        message = "Plugin uploaded and loaded; the host applies it at its next cycle."
+        message = f"{noun} uploaded and loaded; the host applies it at its next cycle."
         answer = {**upload.body, **armed.body, "upload": upload.body}
     else:
         label, state = "Upload", "uploaded" if upload.ok else "failed"
-        message = "Plugin uploaded and available; selection unchanged."
+        message = f"{noun} uploaded and available; selection unchanged."
         answer = upload.body
     message = message if last.ok else _reason(last)
     recovery = _recovery_text(result.recovery)
+    if result.collection is not None and upload.ok:
+        recovery = automa_command("plugins", "arm", *_target_args(None if result.host_name else result.url, result.host_name),
+                                  "--collection", result.collection)
     if json_output:
         status = state if armed is not None or not upload.ok else "ok"
         return _json(_receipt_document(answer, "automa_plugin_upload", result.host_name, result.url, result.step,
                                        status, message, recovery))
     lines = [*_target_lines(result.host_name, result.url, result.step), f"{label}: {state}"]
+    if result.collection is not None:
+        lines.append(f"Collection: {result.collection}")
     if armed is not None:
-        lines.extend([f"Upload: {upload.status}", *_uploaded_lines(result.plugin_id, upload)])
+        lines.append(f"Upload: {upload.status}")
+        if result.collection is None:
+            lines.extend(_uploaded_lines(result.plugin_id, upload))
     if not last.ok:
         lines.append(f"Reason: {message}")
     elif armed is None:
-        lines.extend([*_uploaded_lines(result.plugin_id, upload), "Selection: unchanged"])
+        if result.collection is None:
+            lines.extend(_uploaded_lines(result.plugin_id, upload))
+        else:
+            lines.extend(f"- {item['step']}/{item['id']}" for item in upload.body["plugins"])
+        lines.append("Selection: unchanged")
     return "\n".join([*lines, *_arming_lines(last.arming), *_next_lines(recovery)])
 
 
@@ -129,7 +141,8 @@ def _listing_document(result: ListingResult) -> dict[str, Any]:
     if result.catalog is not None:
         catalog: dict[str, Any] = {"source": result.catalog.source, "plugins": result.catalog.plugins}
         if not result.packaged:
-            catalog.update(version=result.catalog.version, host_run_id=result.catalog.host_run_id)
+            catalog.update(version=result.catalog.version, host_run_id=result.catalog.host_run_id,
+                           collections=result.catalog.collections)
         document["catalog"] = catalog
     if result.error is not None:
         document["error"] = result.error
@@ -156,6 +169,9 @@ def _listing_lines(result: ListingResult) -> list[str]:
                                     {_plugin_key(plugin) for plugin in armed}, "armed")])
     else:
         lines.extend([*([] if host_name else [f"Catalog: {result.url}"]), "Armed:", *_plugin_rows(armed)])
+    if result.catalog is not None and result.catalog.collections:
+        lines.extend(["Collections:", *(f"- {name}: {', '.join(plugins)}"
+                       for name, plugins in result.catalog.collections.items())])
     if result.arming_error:
         lines.append(f"Arming error: {result.arming_error}")
     return lines

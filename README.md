@@ -156,6 +156,53 @@ each listing its applied plugins top to bottom in the order they run. It
 refreshes with the table, dims with it on a polling failure, and shows
 **Unknown** for a step without selection data.
 
+Upload an external **collection** once, then refer to it by name:
+
+```sh
+./cli/automa plugins upload --host-name chase-sim-chaser --manifest /path/to/experiment/manifest.json
+# Collection: chase-experiment
+# Next: ./cli/automa plugins arm --host-name chase-sim-chaser --collection chase-experiment
+./cli/automa plugins list --host-name chase-sim-chaser --long
+./cli/automa plugins arm --host-name chase-sim-chaser --collection chase-experiment
+```
+
+A starting manifest format is:
+
+```json
+{
+  "name": "chase-experiment",
+  "source_directory": "src",
+  "plugins": [
+    {
+      "name": "proposal/drive_forward",
+      "file": "src/chase/drive.py",
+      "entrypoint": "chase.drive:DriveForward",
+      "config": {"throttle": 0.6}
+    }
+  ]
+}
+```
+
+Paths are relative to the manifest. `source_directory` defaults to its directory;
+all Python files under it are included, so point it at the experiment's source
+rather than a whole checkout. Use relative imports between collection modules
+and installed imports for framework interfaces (including camera feed types).
+Package modules and shared code travel together as one uploaded source revision,
+which recordings retain for replay. Upload validates Python syntax without
+importing or constructing plugins; those checks happen when armed.
+
+The ordered `plugins` array determines collection membership and arm order.
+Arming a collection uses the same add/update semantics as repeating `--name`:
+existing plugins remain selected, and observation, plan and action replace their
+single plugin. Use `plugins disarm --all` first when replacing the existing
+perception, memory and proposal selections. Collection references resolve to the
+catalog's available plugin revisions when armed. Re-uploading alone leaves the
+running pipeline unchanged. Membership is published only after all uploads
+succeed; a failed upload may leave individual revisions available. Collections
+last with their live catalog, just like uploaded plugins, and cannot be saved
+as staged defaults. `--arm` also works with `--manifest`; `--json` reports the
+collection name and each registered definition.
+
 Uploaded plugins stay in the host's catalog until that host restarts; `plugins upload`
 and `plugins list --long` print the host run beside the catalog version. A
 restart onto a new release clears them: `hosts update --restart` on a PiCar,

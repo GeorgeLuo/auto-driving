@@ -77,11 +77,12 @@ class UploadResult:
 
     host_name: str | None
     url: str | None
-    step: str
+    step: str | None
     plugin_id: str
     upload: Receipt
     arm: Receipt | None
     recovery: Recovery
+    collection: str | None = None
 
     @property
     def exit_code(self) -> int:
@@ -113,6 +114,7 @@ class CatalogListing:
     plugins: list[Definition]
     version: int | None = None
     host_run_id: str | None = None
+    collections: dict[str, list[str]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

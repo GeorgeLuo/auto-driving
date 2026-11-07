@@ -145,6 +145,9 @@ def _listing_lines(result: ListingResult) -> list[str]:
     lines = [f"Host: {host_name}"] if host_name else []
     if not result.ok:
         lines.extend(["Catalog: unavailable", f"Reason: {result.error}"])
+        if result.url is None:
+            # The packaged catalog has no endpoint to retry.
+            return lines
         return [*lines, *_next_lines(_recovery_text(Recovery(kind="endpoint", url=result.url, host_name=host_name)))]
     armed = result.armed or []
     if result.catalog is not None:

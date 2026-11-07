@@ -164,7 +164,10 @@ def packaged_plugin_catalog(step: str) -> PluginCatalog:
         raise PluginCatalogError(
             f"plugins can be selected for {', '.join(WORKBENCH_SELECTABLE_STEPS)}, not {step!r}"
         )
-    resolver = LocalPluginCatalog(packaged_plugin_definitions(step))
+    try:
+        resolver = LocalPluginCatalog(packaged_plugin_definitions(step))
+    except ValueError as exc:
+        raise PluginCatalogError(str(exc)) from exc
     return PluginCatalog(step=step, resolver=resolver, defaults=tuple(DEFAULT_STEP_PLUGINS[step]))
 
 

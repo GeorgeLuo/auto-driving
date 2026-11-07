@@ -119,12 +119,15 @@ def list_plugins(*, host_name: str | None = None, url: str | None = None, step: 
     if host_name is None and url is None:
         # The listed step's file, or for every step the pattern matching each one's file.
         source = catalog_path(step or "*")
+        try:
+            plugins = [describe_plugin(plugin) for name in steps for plugin in packaged_plugin_definitions(name)]
+        except ValueError as exc:
+            return ListingResult(host_name, url, step, ok=False, error=str(exc))
         return ListingResult(
             host_name, url, step, ok=True,
             defaults={name: list(DEFAULT_STEP_PLUGINS[name]) for name in steps},
             step_presets={name: _listed_presets(name) for name in steps},
-            catalog=CatalogListing(display_path(source), [describe_plugin(plugin) for name in steps
-                                                          for plugin in packaged_plugin_definitions(name)]),
+            catalog=CatalogListing(display_path(source), plugins),
         )
 
     endpoint, receipt = _send(url, host_name)

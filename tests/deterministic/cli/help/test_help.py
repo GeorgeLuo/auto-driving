@@ -203,6 +203,10 @@ class HelpCommandTests(unittest.TestCase):
         self.assertEqual(str(args.manifest), "collection.json")
         args = parser.parse_args(["plugins", "arm", "--host-name", "one", "--collection", "experiment"])
         self.assertEqual(args.collection, "experiment")
+        args = parser.parse_args(["plugins", "disarm", "--host-name", "one", "--collection", "experiment"])
+        self.assertEqual((args.collection, args.plugins, args.step, args.all_plugins), ("experiment", None, None, False))
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            parser.parse_args(["plugins", "disarm", "--host-name", "one", "--collection", "experiment", "--all"])
         for options in (
             ["--file", "p.py", "--name", "perception/x"],
             ["--manifest", "m.json", "--entrypoint", "x:X"],

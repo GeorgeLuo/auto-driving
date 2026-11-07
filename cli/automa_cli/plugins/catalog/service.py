@@ -101,8 +101,17 @@ def upload_collection(*, url: str | None, host_name: str | None, manifest: Path,
 
 
 def arm_collection(*, url: str | None, host_name: str | None, name: str) -> SelectionResult:
+    """Arm every plugin of collection ``name`` as one request, in its manifest's order."""
+
     return _change_selection("arm", url, host_name, None,
                              {"operation": "arm_collection", "name": name})
+
+
+def disarm_collection(*, url: str | None, host_name: str | None, name: str) -> SelectionResult:
+    """Disarm collection ``name``'s plugins as one request; a one-plugin step keeps its plugin."""
+
+    return _change_selection("disarm", url, host_name, None,
+                             {"operation": "disarm_collection", "name": name})
 
 
 def arm_plugins(*, url: str | None, host_name: str | None,

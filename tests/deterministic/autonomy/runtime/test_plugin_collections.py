@@ -24,6 +24,26 @@ class CollectionTests(unittest.TestCase):
         self.assertEqual(instantiate_plugin(prior).value, 9)
         self.assertFalse(api(dict(operation='arm_collection', name='missing'))['ok'])
 
+    def test_disarming_a_collection_leaves_one_plugin_steps_their_plugin(self):
+        catalog = LocalPluginCatalog()
+        requests = []
+        api = PluginCatalogAPI(catalog, disarm=lambda selection: requests.append(selection) or {'ok': True})
+        payload = request()
+        payload['plugins'].append(dict(name='plan/choose', entrypoint='pkg.plugin:Propose'))
+        self.assertTrue(api(payload)['ok'])
+        only_plan = request()
+        only_plan.update(name='only-plan', plugins=[dict(name='plan/choose', entrypoint='pkg.plugin:Propose')])
+        self.assertTrue(api(only_plan)['ok'])
+
+        self.assertEqual(api(dict(operation='disarm_collection', name='experiment')),
+                         {'ok': True, 'collection': 'experiment'})
+        self.assertEqual(requests, [{'memory': ['remember'], 'proposal': ['propose']}])
+        refused = api(dict(operation='disarm_collection', name='only-plan'))
+        self.assertFalse(refused['ok'])
+        self.assertIn('only arms one-plugin steps', refused['error'])
+        self.assertFalse(api(dict(operation='disarm_collection', name='missing'))['ok'])
+        self.assertEqual(len(requests), 1)
+
     def test_invalid_package_or_membership_does_not_publish_a_collection(self):
         for change in ('syntax', 'path', 'duplicate', 'step', 'entrypoint', 'config'):
             with self.subTest(change=change):

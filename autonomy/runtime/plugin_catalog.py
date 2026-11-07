@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 from typing import Any, Callable, Mapping
 
+from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 from autonomy.plugins import LocalPluginCatalog, PluginDefinition
 from autonomy.runtime.http_errors import error_payload
 
@@ -52,6 +53,17 @@ class PluginCatalogAPI:
                     name = _field(payload, "name")
                     result = self.arm(self.catalog.collection_selections(name))
                     return {**result, "collection": name}
+                if payload.get("operation") == "disarm_collection":
+                    if self.disarm is None:
+                        raise ValueError("disarming requires a vehicle runtime host; this catalog supports upload only")
+                    name = _field(payload, "name")
+                    # A one-plugin step keeps its plugin until another is armed; emptying it refuses the request.
+                    selections = {step: ids for step, ids in self.catalog.collection_selections(name).items()
+                                  if step in CLEARABLE_STEPS}
+                    if not selections:
+                        raise ValueError(f"plugin collection {name!r} only arms one-plugin steps, which keep "
+                                         "their plugin; arm a replacement instead")
+                    return {**self.disarm(selections), "collection": name}
                 if payload.get("operation") == "arm":
                     if self.arm is None:
                         raise ValueError("arming requires a vehicle runtime host; this catalog supports upload only")

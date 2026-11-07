@@ -10,7 +10,10 @@ from autonomy.decision_cycle.steps import CLEARABLE_STEPS, ONE_PLUGIN_STEPS
 from implementations.decision_cycle.catalog import STEP_PRESETS
 
 from .render import render_listing, render_save, render_selection, render_upload
-from .service import arm_collection, upload_collection, arm_plugins, arm_preset, disarm_plugins, list_plugins, save_plugins, upload_plugin
+from .service import (
+    arm_collection, arm_plugins, arm_preset, disarm_collection, disarm_plugins, list_plugins, save_plugins,
+    upload_collection, upload_plugin,
+)
 
 
 def register_catalog(commands: argparse._SubParsersAction) -> None:
@@ -104,6 +107,7 @@ def register_catalog(commands: argparse._SubParsersAction) -> None:
     disarm_input = disarm.add_mutually_exclusive_group(required=True)
     disarm_input.add_argument("--name", dest="plugins", action="append", type=_step_plugin, metavar="STEP/PLUGIN",
                               help="Plugin to disarm, named as plugins list --host-name <host> lists it; repeat to disarm several together.")
+    disarm_input.add_argument("--collection", help="Name printed by plugins upload --manifest; disarm all its plugins together.")
     disarm_input.add_argument("--step", choices=CLEARABLE_STEPS, help="Disarm every plugin in this step.")
     disarm_input.add_argument("--all", dest="all_plugins", action="store_true",
                               help="Disarm every plugin in every step that can run without plugins.")
@@ -174,7 +178,10 @@ def _handle_arm(args: argparse.Namespace) -> int:
 
 
 def _handle_disarm(args: argparse.Namespace) -> int:
-    result = disarm_plugins(url=args.url, host_name=args.host_name, plugins=args.plugins, step=args.step)
+    if args.collection is not None:
+        result = disarm_collection(url=args.url, host_name=args.host_name, name=args.collection)
+    else:
+        result = disarm_plugins(url=args.url, host_name=args.host_name, plugins=args.plugins, step=args.step)
     print(render_selection(result, json_output=args.json))
     return result.exit_code
 

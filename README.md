@@ -194,8 +194,11 @@ importing or constructing plugins; those checks happen when armed.
 The ordered `plugins` array determines collection membership and arm order.
 Arming a collection uses the same add/update semantics as repeating `--name`:
 existing plugins remain selected, and observation, plan and action replace their
-single plugin. Use `plugins disarm --all` first when replacing the existing
-perception, memory and proposal selections. Collection references resolve to the
+single plugin. A step whose plugins change no longer reports its preset.
+`plugins disarm --collection <name>` takes the collection's plugins back off;
+observation, plan and action keep theirs until you arm a replacement. Use
+`plugins disarm --all` first when replacing the existing perception, memory and
+proposal selections. Collection references resolve to the
 catalog's available plugin revisions when armed. Re-uploading alone leaves the
 running pipeline unchanged. Membership is published only after all uploads
 succeed; a failed upload may leave individual revisions available. Collections

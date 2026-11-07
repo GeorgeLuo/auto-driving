@@ -523,6 +523,27 @@ class CycleHostArmingTests(unittest.TestCase):
             arm("obstruction_observer")
         self.assertEqual(perception(), ("visual_observer", visual, visual))
 
+    def test_a_step_names_its_preset_only_while_it_runs_the_presets_plugins(self) -> None:
+        host = AutonomyCycleHost(steps=decision_steps({
+            "perception": preset_activation("perception", "lightweight_observer"),
+        }))
+
+        def perception(change):
+            self.assertTrue(change()["ok"])
+            host.run(DecisionFrameContext("frame_1", 0, 1_000))
+            report = host.status()["steps"]["perception"]
+            return report["preset"], report["plugin_ids"]
+
+        # Arming a plugin the preset already runs changes nothing.
+        self.assertEqual(perception(lambda: host.arm({"perception": ["frame"]})),
+                         ("lightweight_observer", ["frame", "floor_plane"]))
+        self.assertEqual(perception(lambda: host.arm({"perception": ["motion_tracks"]})),
+                         (None, ["frame", "floor_plane", "motion_tracks"]))
+        self.assertEqual(perception(lambda: host.arm({
+            "perception": preset_activation("perception", "lightweight_observer").to_payload(),
+        })), ("lightweight_observer", ["frame", "floor_plane"]))
+        self.assertEqual(perception(lambda: host.disarm({"perception": ["floor_plane"]})), (None, ["frame"]))
+
     def test_an_unreadable_staged_activation_keeps_the_current_selection(self) -> None:
         loaded = packaged_activation("proposal")
         with tempfile.TemporaryDirectory() as tmp:

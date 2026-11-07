@@ -59,6 +59,12 @@ class CollectionJourneys(unittest.TestCase):
             self.assertTrue(receipt['ok'])
             result = host.run(frame(root, 1))
             self.assertEqual(result.proposal.candidates[0].metadata['memory']['perception'], 3)
+            prototypes = lambda: [item['id'] for items in catalog(base)['arming']['requested'].values()
+                                  for item in items if item['id'].startswith('prototype-')]
+            self.assertEqual(prototypes(), ['prototype-memory', 'prototype-perception', 'prototype-proposal'])
+            disarmed = invoke_automa('plugins', 'disarm', '--url', base, '--collection', 'experiment', '--json')
+            self.assertTrue(json.loads(disarmed.stdout)['ok'])
+            self.assertEqual(prototypes(), [])
             armed = invoke_automa('plugins', 'upload', '--url', base, '--manifest', str(manifest), '--arm', '--json')
             self.assertEqual(json.loads(armed.stdout)['collection'], 'experiment')
 

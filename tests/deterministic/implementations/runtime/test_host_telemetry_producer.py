@@ -49,7 +49,6 @@ def _store(clock: _Clock | None = None) -> HostTelemetryStore:
         host_name="piracer",
         source_id="donkeycar:piracer",
         run_id="donkey-run-test",
-        generation_id="decision-test",
         clock=active_clock,
     )
 
@@ -69,6 +68,7 @@ def _observe(
         pilot_output={"steering": 0.4, "throttle": 0.2},
         host_selected_output={"steering": 0.0, "throttle": 0.0},
         source_frame=_frame(index, captured_at_ms=completed_at_ms),
+        generation_id="decision-test",
         observed_at_ms=observed_at_ms,
         published_at_ms=published_at_ms,
         sequence=sequence,
@@ -141,12 +141,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
             },
         )
         with self.assertRaises(ValueError):
-            HostTelemetryStore(
-                host_name="piracer",
-                source_id="donkeycar:piracer",
-                run_id="donkey-run-test",
-                generation_id="",
-            )
+            HostTelemetryStore(host_name="piracer", source_id="donkeycar:piracer", run_id="")
 
         mismatch = _store()
         _observe(mismatch, 1)
@@ -175,6 +170,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
                     pilot_output={"steering": 0.0, "throttle": 0.0},
                     host_selected_output={"steering": 0.0, "throttle": 0.0},
                     source_frame=_frame(1),
+                    generation_id="decision-test",
                     observed_at_ms=10_000,
                     published_at_ms=10_000,
                 )
@@ -189,6 +185,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
             pilot_output={"steering": 0.0, "throttle": 0.0},
             host_selected_output={"steering": 0.0, "throttle": 0.0},
             source_frame=_frame(1),
+            generation_id="decision-test",
             observed_at_ms=10_000,
             published_at_ms=10_000,
         )
@@ -200,6 +197,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
             pilot_output={"steering": 0.0, "throttle": 0.0},
             host_selected_output={"steering": 0.0, "throttle": 0.0},
             source_frame=_frame(1),
+            generation_id="decision-test",
             observed_at_ms=10_251,
             published_at_ms=10_251,
         )
@@ -340,6 +338,7 @@ class HostTelemetryStoreTests(unittest.TestCase):
             pilot_output={"steering": 0.0, "throttle": 0.0},
             host_selected_output={"steering": 0.0, "throttle": 0.0},
             source_frame=_frame(1),
+            generation_id="decision-test",
             observed_at_ms=10_000,
         )
         self.assertEqual(result["record"]["host_tick"]["published_at_ms"], 10_001)
@@ -382,7 +381,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
                 host=create_host(steps=decision_steps()),
                 host_telemetry=adapter,
             )
-            part.run(image_array=object(), mode="user")
+            part.run(image_array=None, mode="user")
             part.wait_for_cycle()
             selected = _drive_mode_class()(host_telemetry=adapter).run(
                 "user",
@@ -423,14 +422,14 @@ class DriveModeBoundaryTests(unittest.TestCase):
                 patch.object(module, "timestamp_ms", return_value=10_000),
                 patch("autonomy.decision_cycle.cycle.timestamp_ms", return_value=10_000),
             ):
-                part.run(image_array=object(), mode="user")
+                part.run(image_array=None, mode="user")
                 part.wait_for_cycle()
-                part.run(image_array=object(), mode="user")
+                part.run(image_array=None, mode="user")
                 perception.wait_started(1)
                 drive_mode = _drive_mode_class()(host_telemetry=adapter)
                 drive_mode.run("user", 0.1, 0.2, 0.0, 0.0)
                 first = adapter.latest(now_ms=10_000)["record"]
-                part.run(image_array=object(), mode="user")
+                part.run(image_array=None, mode="user")
                 drive_mode.run("user", 0.3, 0.4, 0.0, 0.0)
                 latest = adapter.latest(now_ms=10_000)
                 self.assertTrue(latest["ok"])
@@ -441,7 +440,7 @@ class DriveModeBoundaryTests(unittest.TestCase):
                 self.assertEqual(second["host_tick"]["skipped_since_previous"], 0)
                 perception.release[1].set()
                 part.wait_for_cycle()
-                part.run(image_array=object(), mode="user")
+                part.run(image_array=None, mode="user")
                 part.wait_for_cycle()
                 self.assertEqual(part.latest_state.frame_index, 3)
                 self.assertEqual(part.frames_received, 4)

@@ -10,7 +10,7 @@ from unittest.mock import patch
 from autonomy.decision_cycle.activation import STEPS, step_activation_path, write_step_activation
 from autonomy.runtime.assembly import staged_runtime
 from autonomy.runtime import recording as recording_module
-from autonomy.runtime.recording import RunRecording
+from autonomy.runtime.recording import RunRecording, host_runs_dir
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs.monitor import _sync_recording
 from implementations.decision_cycle.catalog import packaged_activation
@@ -30,7 +30,7 @@ class RecordingTransferTests(unittest.TestCase):
                 write_step_activation(step_activation_path(runtime_root, step), activation)
             host = staged_runtime(runtime_root, lambda steps: create_host(steps=steps))
             self.addCleanup(host.close)
-            recording = RunRecording(runtime_root / "automation" / "host-runs", host_name=HOST_NAME)
+            recording = RunRecording(host_runs_dir(runtime_root), host_name=HOST_NAME)
             host.start(RunConfiguration(mode="observe_only", num_decisions=2), recording=recording)
             first = host.run(frame(root, 1))
             timings = {first.context.frame_id: first.timing}

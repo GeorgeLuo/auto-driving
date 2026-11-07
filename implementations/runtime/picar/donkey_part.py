@@ -13,11 +13,15 @@ import secrets
 from pathlib import Path
 from typing import Any
 
+from typing import TYPE_CHECKING
+
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from autonomy.runtime.frame_loop import FrameLoop, detach_image
+from autonomy.runtime.frame_loop import FrameLoop
 from autonomy.runtime.session import RunConfiguration
 from .control import drive_mode, execution_mode
-from .host_telemetry import DriveModeTelemetryAdapter
+
+if TYPE_CHECKING:
+    from .host_telemetry import DriveModeTelemetryAdapter
 
 
 class AutonomyPilotPart(FrameLoop):
@@ -76,8 +80,9 @@ class AutonomyPilotPart(FrameLoop):
             elif execution_mode(self._drive_mode) == "autonomy" and self.host.run_state != "running":
                 # The host ended the run: bounded decisions completed or a cycle failed.
                 self._hand_back()
+        # Donkey reuses camera memory; the copy keeps later writes out of this frame.
         self.submit(
-            detach_image(image_array), mode=mode_name,
+            None if image_array is None else image_array.copy(), mode=mode_name,
             user_steering=user_steering, user_throttle=user_throttle,
         )
         self._publish_host_source_frame()
@@ -125,24 +130,18 @@ class AutonomyPilotPart(FrameLoop):
         telemetry = self.host_telemetry
         if telemetry is None:
             return
-        with self._lock:
-            latest = self.latest_state
-            source_frame = (
-                None
-                if latest is None
-                else {
+        # A completed frame is replaced, never updated, so it is read without the lock.
+        latest = self.latest_state
+        try:
+            if latest is None:
+                telemetry.set_source_frame(None, None)
+            else:
+                telemetry.set_source_frame({
                     "frame_id": latest.frame_id,
                     "frame_index": latest.frame_index,
                     "captured_at_ms": latest.captured_at_ms,
                     "completed_at_ms": latest.completed_at_ms,
-                }
-            )
-            generation_id = None if latest is None else latest.report["generation_id"]
-        try:
-            if generation_id is not None:
-                # Telemetry names the generation of the frame it reports.
-                telemetry.store.generation_id = generation_id
-            telemetry.set_source_frame(source_frame)
+                }, latest.report["generation_id"])
         except Exception:
             # Telemetry is diagnostic only and must never change host outputs.
             return

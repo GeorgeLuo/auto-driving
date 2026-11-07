@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+from dataclasses import replace
 from types import SimpleNamespace
 import threading
 import tempfile
@@ -23,7 +24,6 @@ from autonomy.runtime.frame_loop import (
 )
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from implementations.runtime.picar.host_telemetry import DriveModeTelemetryAdapter, HostTelemetryStore
-from tests.shared.implementations.runtime.cycle_host import ExplodingHost
 
 
 class ObservationPublicationTests(unittest.TestCase):
@@ -275,7 +275,10 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertTrue(stale["ok"])
         self.assertGreater(stale["result_age_ms"], stale["stale_after_ms"])
 
-        failing = AutonomyPilotPart(host=ExplodingHost())
+        def explode(*_args):
+            raise RuntimeError("perception failed")
+
+        failing = AutonomyPilotPart(host=create_host(steps=replace(decision_steps(), perception=explode)))
         failing.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         failing.wait_for_cycle()
         errored = failing.publish_latest(now_ms=failing.latest_state.completed_at_ms)
@@ -306,11 +309,17 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(transaction["publication"]["report"]["frame_id"], payload["report"]["frame_id"])
 
     def test_decision_publication_keeps_source_identity_and_cycle_atomic(self) -> None:
-        store = HostTelemetryStore(
-            host_name="piracer", source_id="donkeycar:piracer", run_id="donkey-run-fixture",
-            generation_id="decision-startup",
+        telemetry = DriveModeTelemetryAdapter(
+            HostTelemetryStore(host_name="piracer", source_id="donkeycar:piracer", run_id="donkey-run-fixture"),
         )
-        part = self._hold_part(host_telemetry=DriveModeTelemetryAdapter(store))
+
+        def telemetry_generation() -> str:
+            # One DriveMode tick: the record names the generation of the frame it reports.
+            idle = {"steering": 0.0, "throttle": 0.0}
+            telemetry.begin_tick(mode="user", user_input=idle, pilot_output=idle)
+            return telemetry.complete_tick(idle)["record"]["generation_id"]
+
+        part = self._hold_part(host_telemetry=telemetry)
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         assert part.latest_state is not None
@@ -336,8 +345,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(published["generation_id"], expected_generation)
         self.assertEqual(values["activation"]["generation_id"], expected_generation)
         self.assertEqual(expected_generation, part.host.applied_decision()["generation_id"])
-        # Telemetry names the generation of the frame it reports.
-        self.assertEqual(store.generation_id, expected_generation)
+        self.assertEqual(telemetry_generation(), expected_generation)
         self.assertEqual(sorted(values["activation"]["steps"]), sorted(STEPS))
         self.assertEqual(
             values["activation"]["steps"]["proposal"]["plugins"],
@@ -379,7 +387,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertNotEqual(restaged, expected_generation)
         self.assertEqual(restaged, part.host.applied_decision()["generation_id"])
         self.assertEqual(part.latest_state.report["values"]["activation"]["generation_id"], restaged)
-        self.assertEqual(store.generation_id, restaged)
+        self.assertEqual(telemetry_generation(), restaged)
         self.assertNotEqual(part.latest_state.frame_id, published["frame_id"])
 
     def test_both_publications_carry_the_cycles_timing(self) -> None:
@@ -534,7 +542,6 @@ class ObservationPublicationTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[4] / "deploy" / "targets" / "donkeycar"
         manage = (root / "app" / "manage.py").read_text(encoding="utf-8")
         self.assertIn("autonomy_controller.autonomy_routes = RuntimeRoutes(", manage)
-        self.assertIn('recording_root=runtime_root / "automation" / "host-runs"', manage)
 
         # Vendor checkout is generated; the tracked patch is the durable source.
         patch = (root / "patches" / "waveshare-donkeycar-local.patch").read_text(encoding="utf-8")

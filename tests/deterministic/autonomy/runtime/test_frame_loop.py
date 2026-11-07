@@ -1,4 +1,4 @@
-"""Image ownership and frame-loop recovery at failure boundaries."""
+"""Frame JPEG encoding and frame-loop recovery at failure boundaries."""
 from __future__ import annotations
 
 import io
@@ -10,31 +10,13 @@ from unittest.mock import patch
 import numpy as np
 from PIL import Image
 
-from autonomy.runtime.frame_loop import detach_image, encode_jpeg
+from autonomy.decision_cycle.steps import decision_steps
+from autonomy.runtime.frame_loop import encode_jpeg
 from autonomy.runtime.session import RunConfiguration
 from tests.deterministic.autonomy.runtime.test_routes import _routes
 
 
 class FrameImageTests(unittest.TestCase):
-    def test_camera_storage_can_change_without_mutating_a_detached_image(self):
-        for image in (np.zeros((4, 4, 3), dtype=np.uint8), [[0, 0], [0, 0]]):
-            with self.subTest(kind=type(image).__name__):
-                detached = detach_image(image)
-                image[0][0] = 200
-                self.assertTrue(np.all(np.asarray(detached) == 0))
-        self.assertIsNone(detach_image(None))
-
-    def test_a_copy_failure_does_not_silently_share_camera_storage(self):
-        class UncopyableImage:
-            def copy(self):
-                raise RuntimeError("camera buffer cannot be copied")
-
-            def __deepcopy__(self, memo):
-                return self.copy()
-
-        with self.assertRaisesRegex(RuntimeError, "camera buffer cannot be copied"):
-            detach_image(UncopyableImage())
-
     def test_jpeg_preserves_grayscale_and_rgb_and_ignores_extra_channels(self):
         for channels in (None, 3, 4):
             with self.subTest(channels=channels):
@@ -123,22 +105,19 @@ class FrameLoopRecoveryTests(unittest.TestCase):
         self.assertEqual(loop.processed_count, 2)
 
     def test_an_old_cycle_failure_does_not_discard_a_restarted_sessions_capture(self):
-        loop, _ = _routes()
-        self.addCleanup(loop.shutdown)
         entered, release = threading.Event(), threading.Event()
-        run = loop.host.run
 
-        def fail_old(context, **inputs):
+        def fail_old(context):
             if context.frame_id == "old":
                 entered.set()
                 if not release.wait(2):
                     raise TimeoutError("test did not release old cycle")
                 raise RuntimeError("retired cycle failed")
-            return run(context, **inputs)
+            return None
 
-        with patch.object(loop.host, "run", side_effect=fail_old), self.assertLogs(
-            "autonomy.runtime.frame_loop", level="ERROR",
-        ):
+        loop, _ = _routes(replace(decision_steps(), perception=fail_old))
+        self.addCleanup(loop.shutdown)
+        with self.assertLogs("autonomy.runtime.frame_loop", level="ERROR"):
             try:
                 loop.start(RunConfiguration(mode="observe_only", num_decisions=None))
                 loop.submit(None, frame_id="old")

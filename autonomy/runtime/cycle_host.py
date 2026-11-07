@@ -501,29 +501,28 @@ class AutonomyCycleHost:
                     self._refresh_session_view()
                 self.cycle_count += 1
             except Exception as exc:
-                partial = cycle_result_of(exc) or completed
-                if partial is None:
-                    partial = DecisionCycleResult(
-                        context=context, perception=None, observation=None, memory=None,
-                        proposal=None, plan=None, action=None,
-                        control=AutonomyControl(reason="observation-cycle-error"),
-                        started_at_ms=self._cycle_in_progress["started_at_ms"],
-                        completed_at_ms=timestamp_ms(),
-                    )
-                self._cycle_in_progress = None
-                partial = replace(partial, context=self._record_frame_context(partial.context))
                 self.error_count += 1
                 self.last_error = "".join(
                     traceback.format_exception_only(type(exc), exc)
                 ).strip()
                 idle_write = None
                 try:
+                    # Idle the vehicle before anything else this failure does can raise.
                     if self.execution is not None:
                         before = self.execution.last_application
                         self.execution.cycle_failed(ticket)
                         if self.execution.last_application is not before:
                             idle_write = self.execution.last_application
                 finally:
+                    partial = cycle_result_of(exc) or completed or DecisionCycleResult(
+                        context=context, perception=None, observation=None, memory=None,
+                        proposal=None, plan=None, action=None,
+                        control=AutonomyControl(reason="observation-cycle-error"),
+                        started_at_ms=self._cycle_in_progress["started_at_ms"],
+                        completed_at_ms=timestamp_ms(),
+                    )
+                    self._cycle_in_progress = None
+                    partial = replace(partial, context=self._record_frame_context(partial.context))
                     if partial.application is None:
                         # The idle write this failure made, or none when execution
                         # no longer owned the target.

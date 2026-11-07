@@ -125,65 +125,56 @@ class FrozenJsonObject(Mapping[str, Any]):
         return {key: frozen_mapping_to_dict(value) for key, value in self._data.items()}
 
 
-def _is_json_primitive(value: object) -> bool:
-    if value is None or isinstance(value, str):
-        return True
-    if type(value) is bool:
-        return True
-    if type(value) is int:
-        return True
-    if type(value) is float:
-        return math.isfinite(value)
-    return False
-
-
-def _require_string_object_keys(value: object, *, field_name: str) -> None:
-    """Reject non-string mapping keys on the original input (before JSON dumps)."""
-
-    if isinstance(value, Mapping):
-        for key, item in value.items():
-            if type(key) is not str:
-                raise ValueError(
-                    f"{field_name} JSON object keys must be strings; "
-                    f"got {type(key).__name__}"
-                )
-            _require_string_object_keys(item, field_name=f"{field_name}.{key}")
-        return
-    if isinstance(value, (list, tuple)):
-        for index, item in enumerate(value):
-            _require_string_object_keys(item, field_name=f"{field_name}[{index}]")
-
-
 def deep_freeze(value: object, *, field_name: str = "value") -> object:
-    """Validate strict JSON, then freeze objects as FrozenJsonObject and arrays as tuples.
+    """Validate and freeze JSON objects as FrozenJsonObject and arrays as tuples.
 
     Preserves object vs array identity exactly (empty {} stays mapping; empty []
     stays empty sequence). Rejects sets, non-string keys, and non-JSON types.
     """
 
-    _require_string_object_keys(value, field_name=field_name)
-    try:
-        plain = ensure_strict_json_value(value)
-    except ValueError as exc:
-        raise ValueError(f"{field_name} is not strict JSON: {exc}") from exc
-    return _freeze_plain_json(plain, field_name=field_name)
-
-
-def _freeze_plain_json(value: object, *, field_name: str) -> object:
     if isinstance(value, dict):
         frozen_items: dict[str, object] = {}
         for key, item in value.items():
             if type(key) is not str:
-                raise ValueError(f"{field_name} JSON object keys must be strings")
-            frozen_items[key] = _freeze_plain_json(item, field_name=f"{field_name}.{key}")
-        return FrozenJsonObject(frozen_items)
-    if isinstance(value, list):
+                raise ValueError(
+                    f"{field_name} JSON object keys must be strings; got {type(key).__name__}"
+                )
+            frozen_items[key] = deep_freeze(item, field_name=f"{field_name}.{key}")
+        return FrozenJsonObject({
+            _freeze_string(key): item for key, item in sorted(frozen_items.items())
+        })
+    if isinstance(value, (list, tuple)):
         return tuple(
-            _freeze_plain_json(item, field_name=f"{field_name}[]") for item in value
+            deep_freeze(item, field_name=f"{field_name}[{index}]")
+            for index, item in enumerate(value)
         )
-    if _is_json_primitive(value):
+    if value is None or type(value) is bool:
         return value
-    raise ValueError(f"{field_name} is not a JSON value: {type(value).__name__}")
+    if isinstance(value, str):
+        return _freeze_string(value)
+    if isinstance(value, int):
+        return _freeze_integer(value, field_name=field_name)
+    if isinstance(value, float):
+        number = float.__float__(value)
+        if math.isfinite(number):
+            return number
+        raise ValueError(f"{field_name} is not strict JSON: non-finite float")
+    raise ValueError(f"{field_name} is not strict JSON: {type(value).__name__}")
+
+
+def _freeze_string(value: str) -> str:
+    # JSON decoding combines escaped surrogate pairs, including in object keys.
+    plain = str.__str__(value)
+    return plain.encode("utf-16", "surrogatepass").decode("utf-16", "surrogatepass")
+
+
+def _freeze_integer(value: int, *, field_name: str) -> int:
+    # JSON encoding checks Python's integer-to-string digit limit.
+    try:
+        int.__repr__(value)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} is not strict JSON: {exc}") from exc
+    return int.__int__(value)
 
 
 def frozen_mapping_to_dict(value: object) -> object:

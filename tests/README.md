@@ -36,7 +36,17 @@ Run the tests your change reaches, not every suite. `commands` and `journeys` to
 
 1. While you work, run the deterministic tests beside the code you changed, for example `python3 tests/run.py -k decision_cycle`.
 2. Before pushing, run the whole deterministic suite once. It takes three to four minutes, and CI runs the same command.
-3. CI does not run `systems/`. Run the systems tests that drive the code you changed, chosen with a group and `-k`:
+3. For Python changes, run `python3 -m scripts.validation.check` before pushing.
+   It runs Ruff and basedpyright; repair new diagnostics and report the result.
+4. For Python changes and reviews, inspect QCA for the final committed revision.
+   Use the PR's QCA inspection summary or run the local command in
+   [Python quality checks](#python-quality-checks). For uncommitted work without
+   a PR, inspect the changed paths with `python3 -m qca analyze <paths> --python`
+   and report that a revision diff was unavailable. Investigate material
+   candidates and report their locations and dispositions: fixed, retained with a
+   code-based reason, or unresolved. If inspection cannot run, report why. QCA is
+   informational, and a successful job does not mean its candidates were reviewed.
+5. CI does not run `systems/`. Run the systems tests that drive the code you changed, chosen with a group and `-k`:
 
 | Change touches | Run |
 |---|---|

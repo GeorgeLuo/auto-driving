@@ -23,6 +23,7 @@ from autonomy.runtime.frame_loop import (
     OBSERVATION_TRANSACTION_PATH,
 )
 from implementations.runtime.picar import AutonomyPilotPart, DonkeyControlTarget, create_host
+from implementations.runtime.picar.host_telemetry import DriveModeTelemetryAdapter, HostTelemetryStore
 
 
 class ObservationPublicationTests(unittest.TestCase):
@@ -87,16 +88,14 @@ class ObservationPublicationTests(unittest.TestCase):
             self.assertEqual(len(files), 1)
             self.assertEqual(files[0].read_bytes(), decision)
 
-    def _hold_part(self) -> AutonomyPilotPart:
+    def _hold_part(self, **options) -> AutonomyPilotPart:
         activations = {step: packaged_activation(step) for step in DECISION_STEPS}
         return AutonomyPilotPart(
             host=create_host(steps=decision_steps(activations)),
             host_name="piracer",
             source_id="donkeycar:piracer",
-            decision_activations={
-                step: activation.to_payload() for step, activation in activations.items()
-            },
             run_id="donkey-run-fixture",
+            **options,
         )
 
     def test_warming_publication_before_first_result(self) -> None:
@@ -313,7 +312,11 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(transaction["publication"]["report"]["frame_id"], payload["report"]["frame_id"])
 
     def test_decision_publication_keeps_source_identity_and_cycle_atomic(self) -> None:
-        part = self._hold_part()
+        store = HostTelemetryStore(
+            host_name="piracer", source_id="donkeycar:piracer", run_id="donkey-run-fixture",
+            generation_id="decision-startup",
+        )
+        part = self._hold_part(host_telemetry=DriveModeTelemetryAdapter(store))
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         assert part.latest_state is not None
@@ -338,6 +341,9 @@ class ObservationPublicationTests(unittest.TestCase):
         )
         self.assertEqual(published["generation_id"], expected_generation)
         self.assertEqual(values["activation"]["generation_id"], expected_generation)
+        self.assertEqual(expected_generation, part.host.applied_decision()["generation_id"])
+        # Telemetry names the generation of the frame it reports.
+        self.assertEqual(store.generation_id, expected_generation)
         self.assertEqual(sorted(values["activation"]["steps"]), sorted(STEPS))
         self.assertEqual(
             values["activation"]["steps"]["proposal"]["plugins"],
@@ -375,7 +381,11 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(kept["report"]["cycle"]["action"]["frame_id"], published["frame_id"])
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
-        self.assertNotEqual(part.host.applied_decision()["generation_id"], expected_generation)
+        restaged = part.latest_state.report["generation_id"]
+        self.assertNotEqual(restaged, expected_generation)
+        self.assertEqual(restaged, part.host.applied_decision()["generation_id"])
+        self.assertEqual(part.latest_state.report["values"]["activation"]["generation_id"], restaged)
+        self.assertEqual(store.generation_id, restaged)
         self.assertNotEqual(part.latest_state.frame_id, published["frame_id"])
 
     def test_both_publications_carry_the_cycles_timing(self) -> None:

@@ -128,8 +128,6 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             host=create_host(steps=decision_steps(activations_from_payloads(steps))),
             host_name=host_name,
             source_id=f"donkeycar:{host_name}",
-            decision_activations=steps,
-            generation_id=packaged_identity()["generation_id"],
             run_id="donkey-run-http-fixture",
         )
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")

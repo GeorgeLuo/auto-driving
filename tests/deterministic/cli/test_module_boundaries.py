@@ -128,6 +128,7 @@ _MODULE_ROLES = {
     "hosts.views.view_discovery": "operation",
     "hosts.views.view_feed": "operation",
     "hosts.views.viewer": "operation",
+    "plugins.catalog.manifest": "operation",
     "plugins.inspect.replay": "operation",
     "plugins.step_formatting": "pure",
     "plugins.stream.decision": "operation",

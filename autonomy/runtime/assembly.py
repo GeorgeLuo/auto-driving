@@ -1,20 +1,19 @@
 """Assemble a vehicle host's runtime from its staged activations.
 
 Every vehicle host runs the same startup: read ``runtime/<step>/active.json``,
-load the steps from the installed controller release, follow restaged
-selections, and hand the frame loop the identity the host applied. Only the
-control target differs, so the caller passes ``create_host``.
+load the steps from the installed controller release, and follow restaged
+selections. Only the control target differs, so the caller passes
+``create_host``.
 """
 from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 from autonomy.decision_cycle.activation import (
     STEPS,
     StepActivation,
-    activation_presets,
     read_step_activation,
     step_activation_path,
 )
@@ -52,11 +51,11 @@ def staged_runtime(
     create_host: Callable[[DecisionSteps], AutonomyCycleHost],
     *,
     host_name: str | None = None,
-) -> tuple[AutonomyCycleHost, dict[str, Any]]:
-    """The host for the staged steps and the ``FrameLoop`` options they imply.
+) -> AutonomyCycleHost:
+    """The host for the staged steps.
 
-    ``host_name`` is stamped before the generation is read, so live reporting
-    and a later recording name the same pipeline.
+    ``host_name`` is stamped before the first cycle, so live reporting and a
+    later recording name the same pipeline.
     """
 
     runtime_root = Path(runtime_root)
@@ -65,12 +64,4 @@ def staged_runtime(
     host.follow_activations(activations, runtime_root)
     if isinstance(host_name, str) and host_name:
         host.note_host_name(host_name)
-    applied = host.applied_decision()
-    return host, {
-        "decision_activations": applied["steps"],
-        "generation_id": applied["generation_id"],
-        "presets": activation_presets(activations),
-        # The CLI exports recordings under automation/runs. Keep the host's
-        # authoritative history separate, even when both processes are local.
-        "recording_root": runtime_root / "automation" / "host-runs",
-    }
+    return host

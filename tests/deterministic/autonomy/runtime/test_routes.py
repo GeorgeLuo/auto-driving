@@ -31,13 +31,9 @@ class _Target:
 
 
 def _routes(steps=None, **kwargs) -> tuple[FrameLoop, RuntimeRoutes]:
-    loop_options = {}
-    if "decision_activations" in kwargs:
-        loop_options["decision_activations"] = kwargs.pop("decision_activations")
     loop = FrameLoop(
         host=AutonomyCycleHost(steps=steps or decision_steps(), target=_Target()),
         host_name="test-car", runtime="test", run_id="test-run",
-        **loop_options,
     )
     return loop, RuntimeRoutes(loop, **kwargs)
 
@@ -192,12 +188,7 @@ class RuntimeRoutesTests(unittest.TestCase):
 
         activations = {step: packaged_activation(step) for step in DECISION_STEPS}
         perception = GatedPerception(2, blocked=(1,))
-        loop, routes = _routes(
-            replace(decision_steps(activations), perception=perception),
-            decision_activations={
-                step: activation.to_payload() for step, activation in activations.items()
-            },
-        )
+        loop, routes = _routes(replace(decision_steps(activations), perception=perception))
         loop.submit(
             np.zeros((4, 6, 3), dtype=np.uint8),
             frame_id="sim_frame_000042",
@@ -220,7 +211,7 @@ class RuntimeRoutesTests(unittest.TestCase):
             status, transaction = _json(routes.handle("GET", "/host/observation/transaction"))
             self.assertEqual(status, 200, transaction)
             self.assertEqual(transaction["publication"]["report"]["frame_id"], "sim_frame_000042")
-            self.assertEqual(loop.observation_status()["latest_camera_frame_id"], "sim_frame_000043")
+            self.assertEqual(loop.frames_received, 2)
         finally:
             perception.release_all()
             loop.wait_for_cycle()

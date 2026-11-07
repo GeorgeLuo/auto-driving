@@ -152,7 +152,6 @@ class HostTelemetryStore:
         host_name: str,
         source_id: str,
         run_id: str,
-        generation_id: str,
         clock: Callable[[], int] | None = None,
         limits: Mapping[str, int] | None = None,
     ) -> None:
@@ -160,7 +159,6 @@ class HostTelemetryStore:
             ("host_name", host_name),
             ("source_id", source_id),
             ("run_id", run_id),
-            ("generation_id", generation_id),
         ):
             _require_identity(value, field=field)
         if limits is not None and dict(limits) != HOST_TELEMETRY_LIMITS:
@@ -171,7 +169,6 @@ class HostTelemetryStore:
         self.host_name = host_name
         self.source_id = source_id
         self.run_id = run_id
-        self.generation_id = generation_id
         self.limits = dict(HOST_TELEMETRY_LIMITS)
         self._clock = clock or epoch_ms
         self._latest: dict[str, Any] | None = None
@@ -181,16 +178,6 @@ class HostTelemetryStore:
         self._last_error_status: str | None = None
         self._last_sequence = 0
         self._last_clock_ms: int | None = None
-
-    @property
-    def identity(self) -> tuple[Any, ...]:
-        return (
-            self.host_name,
-            self.source_id,
-            self.run_id,
-            self.generation_id,
-            self.generation_id,
-        )
 
     def stop(self) -> None:
         """Make this producer terminal; subsequent latest reads are stopped."""
@@ -259,11 +246,15 @@ class HostTelemetryStore:
         pilot_output: Mapping[str, Any],
         host_selected_output: Mapping[str, Any],
         source_frame: Mapping[str, Any],
+        generation_id: str,
         observed_at_ms: int | None = None,
         published_at_ms: int | None = None,
         sequence: int | None = None,
     ) -> dict[str, Any]:
         """Record one post-``DriveMode`` observation or fail closed.
+
+        ``generation_id`` names the decision generation that produced
+        ``source_frame``.
 
         ``sequence`` is optional for the normal path, where the store assigns
         the next host tick.  Tests and adapters that reserve host ticks may
@@ -281,6 +272,7 @@ class HostTelemetryStore:
                 pilot = _pair(pilot_output, field="pilot_output")
                 selected = _pair(host_selected_output, field="host_selected_output")
                 frame = _source_frame(source_frame)
+                _require_identity(generation_id, field="generation_id")
                 observed = (
                     self._clock_now_locked()
                     if observed_at_ms is None
@@ -395,9 +387,9 @@ class HostTelemetryStore:
                 "host_name": self.host_name,
                 "source_id": self.source_id,
                 "run_id": self.run_id,
-                "generation_id": self.generation_id,
+                "generation_id": generation_id,
                 "activation": {
-                    "generation_id": self.generation_id,
+                    "generation_id": generation_id,
                 },
                 "source_frame": frame,
                 "host_tick": {
@@ -618,16 +610,17 @@ class DriveModeTelemetryAdapter:
         self._clock = getattr(store, "_clock", epoch_ms)
         self._pending: dict[str, Any] | None = None
         self._source_frame: dict[str, Any] | None = None
+        self._generation_id: str | None = None
         self._lock = threading.RLock()
 
-    def set_source_frame(self, source_frame: Mapping[str, Any] | None) -> None:
-        """Hand off the latest completed runtime-owned source-frame identity."""
+    def set_source_frame(
+        self, source_frame: Mapping[str, Any] | None, generation_id: str | None,
+    ) -> None:
+        """Hand off the latest completed source frame and the generation that decided it."""
 
         with self._lock:
-            if source_frame is None:
-                self._source_frame = None
-                return
-            self._source_frame = deepcopy(dict(source_frame))
+            self._source_frame = None if source_frame is None else deepcopy(dict(source_frame))
+            self._generation_id = generation_id
 
     def latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
         return self.store.latest(now_ms=now_ms)
@@ -644,14 +637,12 @@ class DriveModeTelemetryAdapter:
         mode: str,
         user_input: Mapping[str, Any],
         pilot_output: Mapping[str, Any],
-        source_frame: Mapping[str, Any] | None = None,
         observed_at_ms: int | None = None,
     ) -> None:
         """Capture inputs after ``DriveMode`` has computed its selection."""
 
         with self._lock:
-            if source_frame is None:
-                source_frame = self._source_frame
+            source_frame = self._source_frame
             if observed_at_ms is None:
                 try:
                     observed_at_ms = self._clock()
@@ -661,9 +652,8 @@ class DriveModeTelemetryAdapter:
                 "mode": mode,
                 "user_input": deepcopy(dict(user_input)),
                 "pilot_output": deepcopy(dict(pilot_output)),
-                "source_frame": (
-                    None if source_frame is None else deepcopy(dict(source_frame))
-                ),
+                "source_frame": None if source_frame is None else deepcopy(source_frame),
+                "generation_id": self._generation_id,
                 "observed_at_ms": observed_at_ms,
             }
 
@@ -679,22 +669,15 @@ class DriveModeTelemetryAdapter:
         with self._lock:
             pending = self._pending
             self._pending = None
-        if pending is None:
-            marker = getattr(self.store, "mark_unavailable", None)
-            if callable(marker):
-                return marker("publisher_missing")
-            raise RuntimeError("host telemetry completion has no pending tick")
-        if pending["source_frame"] is None:
-            marker = getattr(self.store, "mark_unavailable", None)
-            if callable(marker):
-                return marker("publisher_missing")
-            raise RuntimeError("host telemetry source frame is unavailable")
+        if pending is None or pending["source_frame"] is None:
+            return self.store.mark_unavailable("publisher_missing")
         return self.store.observe(
             mode=pending["mode"],
             user_input=pending["user_input"],
             pilot_output=pending["pilot_output"],
             host_selected_output=host_selected_output,
             source_frame=pending["source_frame"],
+            generation_id=pending["generation_id"],
             observed_at_ms=pending["observed_at_ms"],
             published_at_ms=published_at_ms,
             sequence=sequence,

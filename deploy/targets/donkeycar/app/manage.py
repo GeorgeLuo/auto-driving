@@ -465,6 +465,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             runtime_root = RuntimeLayout(Path(__file__).resolve().parent).runtime
             identity_path = runtime_root / "identity.json"
             from autonomy.runtime.assembly import staged_runtime
+            from autonomy.runtime.recording import host_runs_dir
             from implementations.runtime.picar import AutonomyPilotPart, create_host
             from implementations.runtime.picar.host_telemetry import (
                 DriveModeTelemetryAdapter,
@@ -500,16 +501,14 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 )
                 host_name = None
 
-            host, loop_options = staged_runtime(
+            host = staged_runtime(
                 runtime_root, lambda steps: create_host(steps=steps), host_name=host_name,
             )
-            generation_id = loop_options["generation_id"]
             if host_name is not None:
                 telemetry_store = HostTelemetryStore(
                     host_name=host_name,
                     source_id=source_id,
                     run_id=run_id,
-                    generation_id=generation_id,
                 )
                 host_telemetry_publisher = DriveModeTelemetryAdapter(telemetry_store)
             # Capture runs when the decision worker is free, independently of
@@ -522,7 +521,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
                 run_id=run_id if telemetry_store is not None else None,
                 host_telemetry=host_telemetry_publisher,
                 controller=autonomy_controller,
-                **loop_options,
+                recording_root=host_runs_dir(runtime_root),
             )
             autonomy_execution = host.execution
             if telemetry_store is not None:
@@ -546,10 +545,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             V.add(
                 autonomy_part,
                 inputs=['cam/image_array', 'user/mode', 'user/angle', 'user/throttle'],
-                outputs=[
-                    'pilot/angle', 'pilot/throttle', 'autonomy/control',
-                    'autonomy/generation'
-                ])
+                outputs=['pilot/angle', 'pilot/throttle'])
         except Exception:
             logger.exception("Unable to start the decision cycle from %s", runtime_root)
 
@@ -762,19 +758,16 @@ class DriveMode:
             selected = (0.0, 0.0)
 
         observer = self.host_telemetry
-        begin_tick = getattr(observer, "begin_tick", None)
-        complete_tick = getattr(observer, "complete_tick", None)
-        if callable(begin_tick) and callable(complete_tick):
+        if observer is not None:
             try:
                 # DriveMode has already selected the values. The observer is
                 # handed copies and cannot alter this returned tuple.
-                begin_tick(
+                observer.begin_tick(
                     mode=mode,
                     user_input={"steering": user_steering, "throttle": user_throttle},
                     pilot_output={"steering": pilot_steering, "throttle": pilot_throttle},
-                    source_frame=None,
                 )
-                complete_tick(
+                observer.complete_tick(
                     {"steering": selected[0], "throttle": selected[1]}
                 )
             except Exception:
@@ -786,10 +779,9 @@ class DriveMode:
     def shutdown(self):
         """Stop the diagnostic publisher when the Donkey part is shut down."""
 
-        stop = getattr(self.host_telemetry, "stop", None)
-        if callable(stop):
+        if self.host_telemetry is not None:
             try:
-                stop()
+                self.host_telemetry.stop()
             except Exception:
                 logger.exception("Unable to stop host telemetry publisher")
 

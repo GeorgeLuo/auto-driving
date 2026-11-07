@@ -43,10 +43,11 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 self.assertIn("simulator_capability_missing", host.loop.host.last_error)
                 self.assertNotIn("Camera stream is not ready", host.loop.host.last_error)
                 self.assertEqual(host.loop.frames_received, 0)
-                self.assertIsNone(host.loop.host.last_context)
+                self.assertIsNone(host.loop.latest_state)
 
     def test_stream_captures_during_a_slow_cycle_and_decides_only_newest_pending_frame(self) -> None:
         release_first_cycle = threading.Event()
+        context_metadata = []
 
         class Stream:
             count = 0
@@ -80,6 +81,10 @@ class ChaseRuntimeHostTests(unittest.TestCase):
         car = _FakeCar()
         car.camera_stream = lambda: stream
         class Mapper(_SlowMapper):
+            def __call__(self, context):
+                context_metadata.append(context.metadata)
+                return super().__call__(context)
+
             def perceive(self, request):
                 if not self.frame_ids and not release_first_cycle.wait(timeout=2.0):
                     raise AssertionError("capture waited for the blocked decision")
@@ -97,10 +102,11 @@ class ChaseRuntimeHostTests(unittest.TestCase):
                 session = _wait(lambda: (s := client.status()["session"])["status"] == "completed" and s,
                                 message="stream session did not complete")
                 _wait(lambda: stream.closed, message="terminal run did not unsubscribe")
-                context_metadata = host.loop.host.last_context.metadata
-                self.assertNotIn("frames_received", context_metadata)
-                self.assertNotIn("capture_duration_ms", context_metadata)
-                self.assertNotIn("source_timestamp_us", context_metadata)
+                self.assertEqual(len(context_metadata), 2)
+                for metadata in context_metadata:
+                    self.assertNotIn("frames_received", metadata)
+                    self.assertNotIn("capture_duration_ms", metadata)
+                    self.assertNotIn("source_timestamp_us", metadata)
         self.assertEqual(session["processed_decisions"], 2)
         self.assertGreater(stream.count, 2)
         self.assertEqual(car.capture_count, 0, "stream path used file-based capture")
@@ -130,9 +136,10 @@ class ChaseRuntimeHostTests(unittest.TestCase):
 
         self.assertEqual((session["status"], session["processed_decisions"]), ("completed", 2))
         self.assertLessEqual(car.capture_count, captured + 1, "the host captured after its session ended")
-        self.assertEqual(observation["latest"]["mode"], "observe_only")
-        self.assertFalse(observation["latest"]["control"]["applied"])
+        self.assertEqual(observation["latest"]["frame_id"], decision["report"]["frame_id"])
         self.assertEqual(decision["report"]["status"], "ok", decision)
+        self.assertEqual(decision["report"]["application"]["mode"], "observe_only")
+        self.assertFalse(decision["report"]["application"]["applied"])
 
     def test_restart_during_recording_does_not_invert_host_and_frame_locks(self):
         from autonomy.decision_cycle.steps import decision_steps

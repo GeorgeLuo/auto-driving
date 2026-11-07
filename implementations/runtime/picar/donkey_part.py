@@ -2,9 +2,10 @@
 
 Each drive tick submits camera memory. The loop
 (``autonomy.runtime.frame_loop``) owns the latest waiting frame, the decision
-worker, publications, and the applied identity. This part translates
-Donkey's drive-mode vocabulary, hands the car back to the operator when a run
-ends, and passes completed source frames to the DriveMode telemetry observer.
+worker, and publications. This part translates Donkey's drive-mode
+vocabulary, hands the car back to the operator when a run ends, and passes
+completed source frames and their generation to the DriveMode telemetry
+observer.
 """
 from __future__ import annotations
 
@@ -12,10 +13,15 @@ import secrets
 from pathlib import Path
 from typing import Any
 
+from typing import TYPE_CHECKING
+
 from autonomy.runtime.cycle_host import AutonomyCycleHost
-from autonomy.runtime.frame_loop import FrameLoop, detach_image
+from autonomy.runtime.frame_loop import FrameLoop
 from autonomy.runtime.session import RunConfiguration
 from .control import drive_mode, execution_mode
+
+if TYPE_CHECKING:
+    from .host_telemetry import DriveModeTelemetryAdapter
 
 
 class AutonomyPilotPart(FrameLoop):
@@ -29,13 +35,10 @@ class AutonomyPilotPart(FrameLoop):
         self,
         *,
         host: AutonomyCycleHost,
-        presets: dict[str, str] | None = None,
         host_name: str | None = None,
         source_id: str | None = None,
-        decision_activations: dict[str, dict[str, Any] | None] | None = None,
-        generation_id: str | None = None,
         run_id: str | None = None,
-        host_telemetry: Any | None = None,
+        host_telemetry: DriveModeTelemetryAdapter | None = None,
         controller: Any | None = None,
         recording_root: Path | None = None,
     ) -> None:
@@ -47,9 +50,8 @@ class AutonomyPilotPart(FrameLoop):
         # observing the actual user/pilot/selected values.
         self.host_telemetry = host_telemetry
         super().__init__(
-            host=host, presets=presets,
+            host=host,
             host_name=host_name, source_id=source_id,
-            decision_activations=decision_activations, generation_id=generation_id,
             run_id=run_id or f"donkey-run-{secrets.token_hex(12)}",
             recording_root=recording_root,
             runtime="donkeycar", camera_source="donkeycar_vehicle_memory", frame_prefix="donkey",
@@ -78,13 +80,14 @@ class AutonomyPilotPart(FrameLoop):
             elif execution_mode(self._drive_mode) == "autonomy" and self.host.run_state != "running":
                 # The host ended the run: bounded decisions completed or a cycle failed.
                 self._hand_back()
+        # Donkey reuses camera memory; the copy keeps later writes out of this frame.
         self.submit(
-            detach_image(image_array), mode=mode_name,
+            None if image_array is None else image_array.copy(), mode=mode_name,
             user_steering=user_steering, user_throttle=user_throttle,
         )
         self._publish_host_source_frame()
-        self.last_status = self.status()
-        return self._held_outputs(mode_name)
+        output = self.host.execution.output()
+        return output.steering, output.throttle
 
     def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
         with self._lifecycle_lock:
@@ -100,11 +103,6 @@ class AutonomyPilotPart(FrameLoop):
 
     def _frame_completed(self) -> None:
         self._publish_host_source_frame()
-
-    def _identity_applied(self, generation_id: str) -> None:
-        store = getattr(self.host_telemetry, "store", None)
-        if store is not None:
-            store.generation_id = generation_id
 
     def _hand_back(self) -> None:
         """Return Donkey to the operator from rest."""
@@ -129,23 +127,21 @@ class AutonomyPilotPart(FrameLoop):
         repeat the completed source identity while camera capture advances.
         """
 
-        setter = getattr(self.host_telemetry, "set_source_frame", None)
-        if not callable(setter):
+        telemetry = self.host_telemetry
+        if telemetry is None:
             return
-        with self._lock:
-            latest = self.latest_state
-            source_frame = (
-                None
-                if latest is None
-                else {
+        # A completed frame is replaced, never updated, so it is read without the lock.
+        latest = self.latest_state
+        try:
+            if latest is None:
+                telemetry.set_source_frame(None, None)
+            else:
+                telemetry.set_source_frame({
                     "frame_id": latest.frame_id,
                     "frame_index": latest.frame_index,
                     "captured_at_ms": latest.captured_at_ms,
                     "completed_at_ms": latest.completed_at_ms,
-                }
-            )
-        try:
-            setter(source_frame)
+                }, latest.report["generation_id"])
         except Exception:
             # Telemetry is diagnostic only and must never change host outputs.
             return

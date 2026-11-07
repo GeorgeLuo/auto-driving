@@ -339,6 +339,15 @@ def cycle_frame(
     }
 
 
+def host_runs_dir(runtime_root: Path) -> Path:
+    """Where a vehicle host records its runs.
+
+    The CLI exports recordings under ``automation/runs``. The host's own
+    history stays separate, even when both processes are local.
+    """
+    return Path(runtime_root) / "automation" / "host-runs"
+
+
 class RunRecording:
     """Durable ordered cycles for exactly one run; bounded batches for transport."""
 

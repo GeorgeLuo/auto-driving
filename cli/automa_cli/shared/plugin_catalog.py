@@ -4,8 +4,18 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 
+from autonomy.decision_cycle.activation import STEPS
 from autonomy.plugins import PluginDefinition
 from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, step_plugins
+
+
+def step_plugin(value: str) -> tuple[str, str]:
+    """``step/plugin``, as ``plugins list --long`` names a plugin, as ``(step, plugin)``."""
+
+    step, _, plugin_id = str(value).partition("/")
+    if not isinstance(value, str) or step not in STEPS or not plugin_id:
+        raise ValueError(f"expected <step>/<plugin> with a step from {', '.join(STEPS)}: {value!r}")
+    return step, plugin_id
 
 
 def ordered_plugin_definitions(

@@ -20,9 +20,7 @@ from tests.shared.cli.automation_pipeline.pipeline_fixtures import _FakeCar
 
 def _active_routes():
     activations = {step: packaged_activation(step) for step in DECISION_STEPS}
-    return _routes(decision_steps(activations), decision_activations={
-        step: activation.to_payload() for step, activation in activations.items()
-    })
+    return _routes(decision_steps(activations))
 
 
 class CaptureCloseoutTests(unittest.TestCase):
@@ -147,7 +145,7 @@ class CaptureCloseoutTests(unittest.TestCase):
         loop.submit(np.zeros((4, 4, 3), dtype=np.uint8))
         loop.wait_for_cycle()
         loop.shutdown()
-        self.assertIsNone(loop.submit(np.zeros((4, 4, 3), dtype=np.uint8)))
+        loop.submit(np.zeros((4, 4, 3), dtype=np.uint8))
         self.assertEqual((loop.frames_received, loop.frames_dropped), (1, 0))
 
     def test_status_and_publications_do_not_wait_for_simulator_acquisition(self):

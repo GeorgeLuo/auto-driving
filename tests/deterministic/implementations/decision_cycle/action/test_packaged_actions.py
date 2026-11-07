@@ -193,14 +193,15 @@ class ModeActionTests(unittest.TestCase):
         part = AutonomyPilotPart(
             host=create_host(steps=replace(_steps("mode"), memory=remember)),
         )
-        part.run(image_array=object(), mode="local")
+        part.run(image_array=None, mode="local")
         part.wait_for_cycle()
-        steering, throttle, control, _generation = part.completed_outputs("local")
+        output = part.host.execution.output()
         cycle = part.latest_state.report
 
-        self.assertGreater(steering, 0.0)
-        self.assertAlmostEqual(throttle, 0.60)
-        self.assertEqual(control["reason"], "steer_away_left_obstruction")
+        self.assertGreater(output.steering, 0.0)
+        self.assertAlmostEqual(output.throttle, 0.60)
+        self.assertEqual(cycle["cycle"]["action"]["authority"]["authorized_output"]["reason"],
+                         "steer_away_left_obstruction")
         self.assertTrue(cycle["cycle"]["action"]["authority"]["proposed_applied"])
         self.assertEqual(cycle["cycle"]["action"]["authority"]["gate_id"], "mode")
 

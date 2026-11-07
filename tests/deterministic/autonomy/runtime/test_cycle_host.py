@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import gc
 import json
 import tempfile
 import threading
 import time
 import unittest
+import weakref
 from dataclasses import replace
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -264,7 +266,6 @@ class CycleHostMemoryTests(unittest.TestCase):
             )
             self.assertEqual(status["steps"]["action"]["plugin_ids"], ["pushy"])
             self.assertEqual(status["cycle_count"], 1)
-            self.assertEqual(status["last_control"]["reason"], "pushy-test-action")
 
     def test_memory_failure_stops_before_later_steps(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -272,7 +273,6 @@ class CycleHostMemoryTests(unittest.TestCase):
             with self.assertRaisesRegex(MemoryUpdateError, "forced-update-failure"):
                 host.run(DecisionFrameContext("frame_x", 0, 1))
             self.assertIsNone(proposal.last_shared_memory)
-            self.assertIsNone(host.last_result)
             self.assertEqual(host.status()["error_count"], 1)
             self.assertIn("forced-update-failure", host.status()["last_error"])
 
@@ -326,6 +326,17 @@ class CycleHostMemoryTests(unittest.TestCase):
 
 
 class CycleHostStepTests(unittest.TestCase):
+    def test_completed_results_and_contexts_are_released_when_the_caller_drops_them(self):
+        host = AutonomyCycleHost(steps=DecisionSteps())
+        context = DecisionFrameContext("frame-1", 0, 1000)
+        result = host.run(context)
+        result_ref = weakref.ref(result)
+        context_ref = weakref.ref(result.context)
+        del result, context
+        gc.collect()
+        self.assertIsNone(result_ref())
+        self.assertIsNone(context_ref())
+
     def test_an_inflight_success_cannot_clear_an_external_stop_error(self):
         from unittest import mock
         from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
@@ -522,6 +533,40 @@ class CycleHostArmingTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "perception/multi_obstruction_tracks with another entrypoint, config"):
             arm("obstruction_observer")
         self.assertEqual(perception(), ("visual_observer", visual, visual))
+
+    def test_a_step_names_its_preset_only_while_it_runs_the_presets_plugins(self) -> None:
+        host = AutonomyCycleHost(steps=decision_steps({
+            "perception": preset_activation("perception", "lightweight_observer"),
+        }))
+
+        def perception(change):
+            self.assertTrue(change()["ok"])
+            host.run(DecisionFrameContext("frame_1", 0, 1_000))
+            report = host.status()["steps"]["perception"]
+            return report["preset"], report["plugin_ids"]
+
+        # Arming a plugin the preset already runs changes nothing.
+        self.assertEqual(perception(lambda: host.arm({"perception": ["frame"]})),
+                         ("lightweight_observer", ["frame", "floor_plane"]))
+        self.assertEqual(perception(lambda: host.arm({"perception": ["motion_tracks"]})),
+                         (None, ["frame", "floor_plane", "motion_tracks"]))
+        self.assertEqual(perception(lambda: host.arm({
+            "perception": preset_activation("perception", "lightweight_observer").to_payload(),
+        })), ("lightweight_observer", ["frame", "floor_plane"]))
+        self.assertEqual(perception(lambda: host.disarm({"perception": ["floor_plane"]})), (None, ["frame"]))
+
+    def test_a_watched_file_whose_ids_change_ends_the_preset_it_was_loaded_with(self) -> None:
+        loaded = preset_activation("perception", "lightweight_observer")
+        host = AutonomyCycleHost(steps=decision_steps({"perception": loaded}))
+        with tempfile.TemporaryDirectory() as tmp:
+            path = step_activation_path(Path(tmp), "perception")
+            write_step_activation(path, loaded)
+            host.watch_selection("perception", path, loaded)
+            write_step_activation(path, replace(loaded, plugins=("frame",)))
+            host.sync_selection()
+        host.run(DecisionFrameContext("frame_1", 0, 1_000))
+        report = host.status()["steps"]["perception"]
+        self.assertEqual((report["preset"], report["plugin_ids"]), (None, ["frame"]))
 
     def test_an_unreadable_staged_activation_keeps_the_current_selection(self) -> None:
         loaded = packaged_activation("proposal")

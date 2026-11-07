@@ -6,7 +6,7 @@ import base64
 import json
 from copy import deepcopy
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
@@ -28,6 +28,7 @@ from ...hosts.step_activations import (
 from ...hosts.step_formatting import format_activation_problems
 from ...shared.paths import display_path
 from ...shared.plugin_catalog import packaged_plugin_definitions
+from .manifest import read_manifest
 from .models import (
     Arming,
     CatalogListing,
@@ -52,13 +53,15 @@ def catalog_url(host_name: str) -> str:
     return runtime_base_url(host_name)
 
 
-def upload_plugin(*, url: str | None, host_name: str | None, file: Path, step: str,
-                  plugin_id: str, entrypoint: str, config: str | None = None,
+def upload_plugin(*, url: str | None, host_name: str | None, file: Path, step: str | None,
+                  plugin_id: str | None, entrypoint: str | None, config: str | None = None,
                   arm: bool = False) -> UploadResult:
     def result(upload: Receipt, recovery: Recovery, armed: Receipt | None = None,
                endpoint: str | None = url) -> UploadResult:
         return UploadResult(host_name, endpoint, step, plugin_id, upload, armed, recovery)
 
+    if plugin_id is None or entrypoint is None:
+        return result(_failure(ValueError("--file requires --name and --entrypoint")), Recovery(kind="usage"))
     payload: dict[str, Any] = {"step": step, "plugin_id": plugin_id, "entrypoint": entrypoint,
                                "filename": file.name}
     try:
@@ -71,14 +74,46 @@ def upload_plugin(*, url: str | None, host_name: str | None, file: Path, step: s
         payload["source_base64"] = base64.b64encode(file.read_bytes()).decode()
     except OSError as exc:
         return result(_failure(exc), Recovery(kind="file", file=file))
-    endpoint, uploaded = _send(url, host_name, payload, uploaded=True)
-    if not uploaded.answered:
-        return result(uploaded, Recovery(kind="endpoint", url=url, host_name=host_name), endpoint=endpoint)
-    if not uploaded.ok:
-        return result(uploaded, Recovery(kind="rejected", file=file), endpoint=endpoint)
-    armed = _send(endpoint, None, _arm_request({step: [plugin_id]}), timeout_s=ARM_TIMEOUT_S)[1] if arm else None
-    return result(uploaded, Recovery(kind="list", url=url, host_name=host_name, step=step, long=True),
-                  armed, endpoint)
+    return _upload(result, url, host_name, payload, file, _arm_request({step: [plugin_id]}) if arm else None,
+                   Recovery(kind="list", url=url, host_name=host_name, step=step, long=True))
+
+
+def upload_collection(*, url: str | None, host_name: str | None, manifest: Path, arm: bool = False,
+                      plugin_id: str | None = None, entrypoint: str | None = None,
+                      config: str | None = None) -> UploadResult:
+    """Upload the collection ``manifest`` names; ``--name``, ``--entrypoint`` and ``--config`` are refused with it."""
+
+    name: str | None = None
+
+    def result(upload: Receipt, recovery: Recovery, armed: Receipt | None = None,
+               endpoint: str | None = url) -> UploadResult:
+        return UploadResult(host_name, endpoint, None, None, upload, armed, recovery, collection=name)
+
+    if any(value is not None for value in (plugin_id, entrypoint, config)):
+        return result(_failure(ValueError("--manifest names each plugin, entrypoint and config; "
+                                          "use --name, --entrypoint and --config with --file")), Recovery(kind="usage"))
+    try:
+        payload = read_manifest(manifest)
+    except OSError as exc:
+        return result(_failure(exc), Recovery(kind="file", file=Path(exc.filename or manifest)))
+    except (ValueError, TypeError) as exc:
+        return result(_failure(exc), Recovery(kind="rejected", file=manifest))
+    name = payload["name"]
+    after = (Recovery(kind="list", url=url, host_name=host_name, long=True) if arm
+             else Recovery(kind="arm", url=url, host_name=host_name, collection=name))
+    return _upload(result, url, host_name, payload, manifest, _collection_request("arm", name) if arm else None, after)
+
+
+def arm_collection(*, url: str | None, host_name: str | None, name: str) -> SelectionResult:
+    """Arm every plugin of the host's collection ``name`` as one request, in its manifest's order."""
+
+    return _change_selection("arm", url, host_name, None, _collection_request("arm", name), collection=name)
+
+
+def disarm_collection(*, url: str | None, host_name: str | None, name: str) -> SelectionResult:
+    """Disarm the host's collection ``name`` as one request; a one-plugin step keeps its plugin."""
+
+    return _change_selection("disarm", url, host_name, None, _collection_request("disarm", name), collection=name)
 
 
 def arm_plugins(*, url: str | None, host_name: str | None,
@@ -145,7 +180,8 @@ def list_plugins(*, host_name: str | None = None, url: str | None = None, step: 
                 raise ValueError("Host did not report its catalog version.")
             listing = CatalogListing(endpoint, [plugin for name in steps for plugin in receipt.body["plugins"]
                                                 if plugin["step"] == name],
-                                     receipt.catalog_version, receipt.host_run_id)
+                                     receipt.catalog_version, receipt.host_run_id,
+                                     _collections_in(receipt.body.get("collections") or {}, steps))
     except _REQUEST_ERRORS as exc:
         return ListingResult(host_name, endpoint, step, ok=False, error=str(exc))
     return ListingResult(host_name, endpoint, step, ok=True, catalog=listing, armed=armed,
@@ -210,11 +246,26 @@ def _listed_presets(step: str) -> dict[str, dict[str, Any]]:
 
 
 def _change_selection(operation: str, url: str | None, host_name: str | None, step: str | None,
-                      payload: dict[str, Any], *, preset: str | None = None) -> SelectionResult:
+                      payload: dict[str, Any], *, preset: str | None = None,
+                      collection: str | None = None) -> SelectionResult:
     endpoint, receipt = _send(url, host_name, payload, timeout_s=ARM_TIMEOUT_S)
-    recovery = (Recovery(kind="list", url=url, host_name=host_name) if receipt.answered
+    # Only the whole catalog lists collections.
+    recovery = (Recovery(kind="list", url=url, host_name=host_name, long=collection is not None) if receipt.answered
                 else Recovery(kind="endpoint", url=url, host_name=host_name))
-    return SelectionResult(operation, host_name, endpoint, step, receipt, recovery, preset)
+    return SelectionResult(operation, host_name, endpoint, step, receipt, recovery, preset, collection)
+
+
+def _upload(result: Callable[..., UploadResult], url: str | None, host_name: str | None, payload: dict[str, Any],
+            source: Path, arm: dict[str, Any] | None, after: Recovery) -> UploadResult:
+    """Send an upload and, once it is accepted, the ``arm`` request; ``after`` follows an accepted upload."""
+
+    endpoint, uploaded = _send(url, host_name, payload, uploaded=True)
+    if not uploaded.answered:
+        return result(uploaded, Recovery(kind="endpoint", url=url, host_name=host_name), endpoint=endpoint)
+    if not uploaded.ok:
+        return result(uploaded, Recovery(kind="rejected", file=source), endpoint=endpoint)
+    armed = _send(endpoint, None, arm, timeout_s=ARM_TIMEOUT_S)[1] if arm is not None else None
+    return result(uploaded, after, armed, endpoint)
 
 
 def _send(url: str | None, host_name: str | None, payload: dict[str, Any] | None = None, *,
@@ -239,7 +290,8 @@ def _receipt(body: dict[str, Any], *, uploaded: bool) -> Receipt:
     ok = bool(body.get("ok"))
     revision = None
     if uploaded and ok:
-        plugin = body.get("plugin")
+        # A collection's plugins share the one revision its upload stored.
+        plugin = body.get("plugin") or next(iter(body.get("plugins") or ()), None)
         metadata = plugin.get("metadata") if isinstance(plugin, dict) else None
         revision = metadata.get("revision") if isinstance(metadata, dict) else None
         if revision is None or body.get("catalog_version") is None:
@@ -304,6 +356,21 @@ def _arm_request(selections: dict[str, Any]) -> dict[str, Any]:
     """Each step's ordered plugin IDs, or the whole activation it runs instead."""
 
     return {"operation": "arm", "selections": selections}
+
+
+def _collection_request(operation: str, name: str) -> dict[str, Any]:
+    """Arm or disarm the plugins of the host's collection ``name``."""
+
+    return {"operation": operation, "collection": name}
+
+
+def _collections_in(collections: dict[str, dict[str, list[str]]],
+                    steps: tuple[str, ...]) -> dict[str, dict[str, list[str]]]:
+    """Each collection's plugin IDs in ``steps``; a collection with none there is left out."""
+
+    listed = {name: {step: ids for step, ids in members.items() if step in steps}
+              for name, members in collections.items()}
+    return {name: members for name, members in listed.items() if members}
 
 
 def _selections(plugins: list[tuple[str, str]]) -> dict[str, list[str]]:

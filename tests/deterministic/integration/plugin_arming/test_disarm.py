@@ -71,10 +71,10 @@ class PluginDisarmingFlows(unittest.TestCase):
             self.assertEqual(host.shared_memory["prototype.memory"]["count"], 1)
             instance = host.step("memory").applied[0][1]
             self.disarm(base, "--name", "proposal/first")
-            host.run(frame(root, 2))
+            result = host.run(frame(root, 2))
             self.assertIsNot(host.step("memory").applied[0][1], instance)
             self.assertEqual(host.shared_memory["prototype.memory"]["count"], 1)
-            self.assertEqual([candidate.plugin_id for candidate in host.last_result.proposal.candidates], ["second"])
+            self.assertEqual([candidate.plugin_id for candidate in result.proposal.candidates], ["second"])
 
     def test_clear_step_and_all_steps_without_changing_session_or_catalog(self):
         for vehicle in ("chase", "picar"):
@@ -246,7 +246,7 @@ class PluginDisarmingFlows(unittest.TestCase):
                 "memory": packaged_activation("memory", ["bounded_evidence"]),
         }) as (host, base):
             host.start(RunConfiguration(mode="observe_only", num_decisions=10))
-            last = host.run(frame(root, 1))
+            host.run(frame(root, 1))
             steps, memory, identity = host.steps, host.shared_memory, host.applied_decision()
             with patch.object(STEP_RUNNERS["memory"], "validate_selection", side_effect=RuntimeError("build refused")):
                 result = self.disarm(base, "--all", "--json", check=False)
@@ -255,7 +255,6 @@ class PluginDisarmingFlows(unittest.TestCase):
             self.assertIn("build refused", receipt["error"])
             self.assertEqual(receipt["arming"]["requested"], receipt["arming"]["applied"])
             self.assertIs(host.steps, steps)
-            self.assertIs(host.last_result, last)
             self.assertIs(host.shared_memory, memory)
             host.run(frame(root, 2))
             self.assertIs(host.steps, steps)

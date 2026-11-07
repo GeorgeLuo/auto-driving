@@ -1,10 +1,7 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from typing import Any
-
-from autonomy.plugins import DuplicatePluginIdError
 
 from .hosts.commands import register_hosts
 from .hosts.views.runtime_view import runtime_view_server, serve_viewer
@@ -102,9 +99,4 @@ def main(argv: list[str] | None = None) -> int:
     if handler is None:
         parser.print_help()
         return 2
-    try:
-        return int(handler(args))
-    except DuplicatePluginIdError as exc:
-        # Plugins declare their own IDs; the implementations owner must resolve a clash.
-        print(f"error: {exc}", file=sys.stderr)
-        return 2
+    return int(handler(args))

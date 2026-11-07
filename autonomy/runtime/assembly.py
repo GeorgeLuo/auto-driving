@@ -14,7 +14,6 @@ from typing import Any, Callable
 from autonomy.decision_cycle.activation import (
     STEPS,
     StepActivation,
-    activation_presets,
     read_step_activation,
     step_activation_path,
 )
@@ -69,7 +68,6 @@ def staged_runtime(
     return host, {
         "decision_activations": applied["steps"],
         "generation_id": applied["generation_id"],
-        "presets": activation_presets(activations),
         # The CLI exports recordings under automation/runs. Keep the host's
         # authoritative history separate, even when both processes are local.
         "recording_root": runtime_root / "automation" / "host-runs",

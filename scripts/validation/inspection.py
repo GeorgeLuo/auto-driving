@@ -74,14 +74,17 @@ def unused_symbols(sources: dict[str, str]) -> dict[tuple[str, str, str], Unused
     indexed = {path: symbols(path, source) for path, source in sources.items()}
     for path, source in sorted(sources.items()):
         scanner.scan(source, filename=path)
+    # Apply Vulture's bundled allowances for imported libraries (e.g. AST visitors).
+    scanner.scavenge([])
     grouped: dict[tuple[str, str, str], UnusedDefinition] = {}
     for item in scanner.get_unused_code():
-        if item.typ not in UNUSED_KINDS:
+        if item.typ not in UNUSED_KINDS or str(item.filename) not in indexed:
             continue
         path = str(item.filename)
-        owners = [symbol for symbol in indexed[path]
-                  if symbol.line <= item.first_lineno <= symbol.end_line
-                  and (item.typ != "attribute" or symbol.kind == "class")]
+        scopes = indexed[path]
+        if item.typ == "attribute":
+            scopes = [symbol for symbol in scopes if symbol.kind == "class"]
+        owners = [symbol for symbol in scopes if symbol.line <= item.first_lineno <= symbol.end_line]
         owner = owners[-1].name if owners else ""
         name = f"{owner}.{item.name}" if item.typ == "attribute" and owner else owner or item.name
         definition = grouped.setdefault((path, name, item.typ), UnusedDefinition([], item.confidence, item.name, []))
@@ -141,7 +144,8 @@ def related_candidates(before: dict[str, str], after: dict[str, str]) -> list[Co
             by_call[call].add(index)
     findings = []
     for changed in current:
-        if changed.key in old and changed.shape == old[changed.key].shape:
+        previous = old.get(changed.key)
+        if previous is not None and previous.shape == changed.shape:
             continue
         candidates = set().union(*(by_call[call] for call in changed.calls))
         findings.extend(rank_comparisons(changed, [current[index] for index in sorted(candidates)], neighbors, weights))
@@ -177,7 +181,7 @@ def revision_sources(ref: str, paths: tuple[str, ...] = PATHS) -> tuple[str, dic
         for entry in entries:
             if not entry.isfile() or not entry.name.endswith(".py"):
                 continue
-            if not any(root == "." or entry.name == root or entry.name.startswith(root + "/") for root in paths):
+            if not any(Path(entry.name).is_relative_to(root) for root in paths):
                 continue
             stream = entries.extractfile(entry)
             assert stream is not None

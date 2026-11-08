@@ -35,9 +35,23 @@ class UsageInspectionTests(unittest.TestCase):
         after = {**before, "pkg/caller.py": "from .helper import helper\nanswer = helper()\n"}
         self.assertEqual(unused_candidates(before, after), [])
 
+    def test_decorated_members_keep_their_own_identity_and_source(self) -> None:
+        source = ("class Host:\n    @property\n    def server_identity(self):\n        return 'host'\n"
+                  "    @staticmethod\n    def unused_static():\n        return 1\nHost()\n")
+        candidates = unused_candidates({}, {"pkg/host.py": source})
+        self.assertEqual({item.symbol for item in candidates}, {"Host.server_identity", "Host.unused_static"})
+        property_candidate = next(item for item in candidates if item.kind == "property")
+        self.assertIn("@property", property_candidate.code[0])
+
     def test_syntax_errors_fail_inspection_instead_of_reporting_an_empty_success(self) -> None:
         with self.assertRaises(SyntaxError):
             inspect_sources({}, {"pkg/broken.py": "def broken(:\n"})
+
+    def test_standard_library_callback_allowances_are_applied(self) -> None:
+        source = ("import ast\nclass Visitor(ast.NodeVisitor):\n"
+                  "    def visit_ClassDef(self, node):\n        return None\n"
+                  "Visitor().visit(ast.parse(''))\n")
+        self.assertEqual(unused_candidates({}, {"pkg/visitor.py": source}), [])
 
 
 class RelatedImplementationTests(unittest.TestCase):

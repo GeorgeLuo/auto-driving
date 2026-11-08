@@ -60,11 +60,12 @@ def symbols(path: str, source: str) -> list[Symbol]:
     def visit(node: ast.AST, owner: str = "") -> None:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             owner = f"{owner}.{node.name}" if owner else node.name
+            start = min([node.lineno, *(decorator.lineno for decorator in node.decorator_list)])
             end = node.end_lineno or node.lineno
             kind = "class" if isinstance(node, ast.ClassDef) else "callable"
             found.append(Symbol(
-                path, owner, kind, node.lineno, end,
-                "\n".join(lines[node.lineno - 1:end]),
+                path, owner, kind, start, end,
+                "\n".join(lines[start - 1:end]),
                 ast.dump(node, include_attributes=False),
                 frozenset() if isinstance(node, ast.ClassDef) else direct_calls(node),
             ))

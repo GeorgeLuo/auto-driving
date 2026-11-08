@@ -270,15 +270,18 @@ def _output_violations(path: Path, role: str | None, source: str) -> list[str]:
     if role in {"commands", "entrypoint", "cli"}:
         return []
     violations = []
+    pure = role in {"render", "models", "pure"}
+    file_methods = {"open", "read_text", "read_bytes", "write", "write_text", "write_bytes", "flush"}
     for node in ast.walk(ast.parse(source)):
-        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print":
-            violations.append(f"{path}:{node.lineno} prints")
-        if role in {"render", "models", "pure"} and isinstance(node, ast.Call):
-            name = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
-            if name in {"open", "read_text", "read_bytes", "write", "write_text", "write_bytes", "flush"}:
+        match node:
+            case ast.Call(func=ast.Name(id="print")):
+                violations.append(f"{path}:{node.lineno} prints")
+            case ast.Call(func=ast.Name(id="open")) if pure:
+                violations.append(f"{path}:{node.lineno} performs I/O with open")
+            case ast.Call(func=ast.Attribute(attr=name)) if pure and name in file_methods:
                 violations.append(f"{path}:{node.lineno} performs I/O with {name}")
-        if isinstance(node, ast.arg) and isinstance(node.annotation, ast.AST) and "TextIO" in ast.unparse(node.annotation):
-            violations.append(f"{path}:{node.lineno} takes an output stream")
+            case ast.arg(annotation=annotation) if annotation is not None and "TextIO" in ast.unparse(annotation):
+                violations.append(f"{path}:{node.lineno} takes an output stream")
     return violations
 
 

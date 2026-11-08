@@ -116,7 +116,8 @@ python3 -m scripts.validation.qca_summary --base <merge-base> --head <head> --ou
 
 The summary also runs the experimental production-usage and related-function
 inspection. It uses pinned Vulture on production sources, retaining test
-references separately. Newly unused symbols are included even in unchanged
+references separately and applying Vulture's bundled callback allowances.
+Newly unused symbols are included even in unchanged
 files; existing unused candidates are included only in changed files. It ranks
 up to three comparisons per changed function by shared call spellings in the
 same module, sibling directory, or one import edge in either direction.

@@ -80,6 +80,13 @@ bundles, experiments, and vendored code are outside the check scope.
 The initial type gate enables explicit `Any`, redundant instance/comparison
 checks, unreachable code, missing imports, and invalid type forms. General
 argument/return checking and `Any` propagation are left for a separate rollout.
+Ruff also rejects new unused arguments (`ARG`), identical conditional arms
+(`SIM114`), needless Boolean returns (`SIM103`), and assignments immediately
+returned (`RET504`). Necessary callback signatures still need their parameters;
+use an explicit override, an allowed unused-parameter name, or a justified
+suppression instead of removing a parameter required by a caller.
+The CLI architecture tests also reject file reads in modules declared pure,
+models, or rendering, using the same convention as their existing write checks.
 
 Existing debt is recorded explicitly. Ruff matches each diagnostic by file,
 owning symbol, message, and source text, independent of line numbers. Its metric
@@ -106,6 +113,31 @@ artifact. To reproduce it locally against committed revisions:
 ```sh
 python3 -m scripts.validation.qca_summary --base <merge-base> --head <head> --output /tmp/qca-review
 ```
+
+The summary also runs the experimental production-usage and related-function
+inspection. It uses pinned Vulture on production sources, retaining test
+references separately. Newly unused symbols are included even in unchanged
+files; existing unused candidates are included only in changed files. It ranks
+up to three comparisons per changed function by shared call spellings in the
+same module, sibling directory, or one import edge in either direction.
+`inspection.json` retains source snippets, locations, scores, and limitations.
+Neither absence of a static reference nor similarity proves a defect. Dynamic
+entrypoints, public APIs, and deliberate shared behavior require review.
+
+Run just this inspection, or replay the selected recent review fixes:
+
+```sh
+python3 -m scripts.validation.inspection --base <merge-base> --head <head> --output /tmp/change-inspection
+python3 -m scripts.validation.review_examples --output /tmp/review-examples.json
+```
+
+The historical examples require full Git history. They report findings before
+and after accepted fixes, candidate counts, and comparison ranks. They are
+selected known examples, not an estimate of precision or 80% coverage. Related
+functions can remain similar after a correct consolidation. Label irrelevant
+prompts and add representative negative examples before promoting these
+heuristics to gates. Block-clone tools and broader formatter/type-check adoption
+remain separate experiments; this inspection does not replace QCA's clone scan.
 
 Changes to the quality runner also need
 `python3 tests/run.py --systems packaging -k test_quality`; changes to the QCA

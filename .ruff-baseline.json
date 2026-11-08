@@ -3,6 +3,42 @@
   "entries": [
     {
       "key": [
+        "autonomy/decision_cycle/action/hold.py",
+        "ARG002",
+        "HoldAction.decide",
+        "Unused method argument: `context`",
+        "context: DecisionFrameContext,"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/decision_cycle/action/hold.py",
+        "ARG002",
+        "HoldAction.decide",
+        "Unused method argument: `error_reason`",
+        "error_reason: str | None = None,"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/decision_cycle/action/hold.py",
+        "ARG002",
+        "HoldAction.decide",
+        "Unused method argument: `plan`",
+        "plan: ActionPlan | None,"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
         "autonomy/decision_cycle/action/publication.py",
         "B905",
         "control_applications_over",
@@ -23,6 +59,18 @@
       ],
       "limits": [
         12
+      ]
+    },
+    {
+      "key": [
+        "autonomy/decision_cycle/action/selected.py",
+        "ARG002",
+        "SelectedAction.decide",
+        "Unused method argument: `context`",
+        "def decide(self, context: DecisionFrameContext, plan: ActionPlan | None, *,"
+      ],
+      "limits": [
+        0
       ]
     },
     {
@@ -135,6 +183,306 @@
     },
     {
       "key": [
+        "autonomy/runtime/cycle_host.py",
+        "C901",
+        "AutonomyCycleHost.arm",
+        "`arm` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        12
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/cycle_host.py",
+        "C901",
+        "AutonomyCycleHost.run",
+        "`run` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/cycle_host.py",
+        "PLR0912",
+        "AutonomyCycleHost.arm",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        13
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/cycle_host.py",
+        "PLR0912",
+        "AutonomyCycleHost.run",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        19
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/cycle_host.py",
+        "PLR0915",
+        "AutonomyCycleHost.run",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        74
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/cycle_host.py",
+        "PLR1702",
+        "AutonomyCycleHost.run",
+        "Too many nested blocks (count > 5)",
+        ""
+      ],
+      "limits": [
+        6
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/execution.py",
+        "C901",
+        "ControlApplication.from_dict",
+        "`from_dict` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        13
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/plugin_catalog.py",
+        "C901",
+        "PluginCatalogAPI.__call__",
+        "`__call__` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        11
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/plugin_loader.py",
+        "RET504",
+        "load_runner",
+        "Unnecessary assignment to `runner` before `return` statement",
+        "return runner"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/recording.py",
+        "C901",
+        "append_recording_frame",
+        "`append_recording_frame` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        12
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._catalog",
+        "Unused method argument: `headers`",
+        "def _catalog(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._catalog",
+        "Unused method argument: `query`",
+        "def _catalog(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._observation",
+        "Unused method argument: `body`",
+        "def _observation(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._observation",
+        "Unused method argument: `headers`",
+        "def _observation(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._observation",
+        "Unused method argument: `query`",
+        "def _observation(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._runtime",
+        "Unused method argument: `body`",
+        "def _runtime(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._runtime",
+        "Unused method argument: `headers`",
+        "def _runtime(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._runtime",
+        "Unused method argument: `query`",
+        "def _runtime(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._status",
+        "Unused method argument: `body`",
+        "def _status(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._status",
+        "Unused method argument: `headers`",
+        "def _status(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._status",
+        "Unused method argument: `query`",
+        "def _status(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._telemetry_latest",
+        "Unused method argument: `body`",
+        "def _telemetry_latest(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._telemetry_latest",
+        "Unused method argument: `headers`",
+        "def _telemetry_latest(self, query: dict[str, list[str]], body: bytes, headers: Mapping[str, str]) -> Response:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._transaction",
+        "Unused method argument: `body`",
+        "def _transaction(self, query: dict[str, list[str]], body: bytes,"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "autonomy/runtime/routes.py",
+        "ARG002",
+        "RuntimeRoutes._transaction",
+        "Unused method argument: `query`",
+        "def _transaction(self, query: dict[str, list[str]], body: bytes,"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
         "autonomy/shared_memory.py",
         "PLR0916",
         "_load_record_class",
@@ -143,6 +491,42 @@
       ],
       "limits": [
         6
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/app.py",
+        "ARG001",
+        "_handle_open_viewer",
+        "Unused function argument: `args`",
+        "def _handle_open_viewer(args: argparse.Namespace) -> int:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/app.py",
+        "ARG001",
+        "_handle_status",
+        "Unused function argument: `args`",
+        "def _handle_status(args: argparse.Namespace) -> int:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/app.py",
+        "ARG001",
+        "_handle_top_level_help",
+        "Unused function argument: `args`",
+        "def _handle_top_level_help(args: argparse.Namespace) -> int:"
+      ],
+      "limits": [
+        0
       ]
     },
     {
@@ -179,6 +563,30 @@
       ],
       "limits": [
         55
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/frontend/loopback_http.py",
+        "ARG002",
+        "LoopbackHTTPRequestHandler.log_message",
+        "Unused method argument: `args`",
+        "def log_message(self, format: str, *args: Any) -> None:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/frontend/loopback_http.py",
+        "ARG002",
+        "LoopbackHTTPRequestHandler.log_message",
+        "Unused method argument: `format`",
+        "def log_message(self, format: str, *args: Any) -> None:"
+      ],
+      "limits": [
+        0
       ]
     },
     {
@@ -227,6 +635,18 @@
       ],
       "limits": [
         13
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/commands.py",
+        "ARG001",
+        "_handle_hosts_help",
+        "Unused function argument: `args`",
+        "def _handle_hosts_help(args: argparse.Namespace) -> int:"
+      ],
+      "limits": [
+        0
       ]
     },
     {
@@ -411,6 +831,30 @@
     },
     {
       "key": [
+        "cli/automa_cli/plugins/commands.py",
+        "ARG001",
+        "_handle_plugins_help",
+        "Unused function argument: `args`",
+        "def _handle_plugins_help(args: argparse.Namespace) -> int:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/plugins/inspect/commands.py",
+        "ARG001",
+        "_handle_plugins_inspect_help",
+        "Unused function argument: `args`",
+        "def _handle_plugins_inspect_help(args: argparse.Namespace) -> int:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
         "cli/automa_cli/plugins/inspect/service.py",
         "C901",
         "inspect_step",
@@ -431,6 +875,18 @@
       ],
       "limits": [
         16
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/replay/selections.py",
+        "ARG005",
+        "replace_replay_pipeline",
+        "Unused lambda argument: `step`",
+        "construct = build or (lambda step, activation: recorded_runner(activation))"
+      ],
+      "limits": [
+        0
       ]
     },
     {
@@ -495,6 +951,30 @@
     },
     {
       "key": [
+        "cli/automa_cli/simulators/commands.py",
+        "ARG001",
+        "_handle_simulators_create",
+        "Unused function argument: `args`",
+        "def _handle_simulators_create(args: argparse.Namespace) -> int:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/simulators/commands.py",
+        "ARG001",
+        "_handle_simulators_help",
+        "Unused function argument: `args`",
+        "def _handle_simulators_help(args: argparse.Namespace) -> int:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
         "cli/automa_cli/simulators/status.py",
         "B905",
         "simulators_status",
@@ -507,11 +987,35 @@
     },
     {
       "key": [
+        "cli/automa_cli/vehicles/commands.py",
+        "ARG001",
+        "_handle_vehicles_help",
+        "Unused function argument: `args`",
+        "def _handle_vehicles_help(args: argparse.Namespace) -> int:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
         "cli/automa_cli/vehicles/status.py",
         "B905",
         "vehicles_status",
         "`zip()` without an explicit `strict=` parameter",
         "for candidate, vehicle in zip(candidates, vehicles):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/viewer_commands.py",
+        "ARG001",
+        "_create",
+        "Unused function argument: `body`",
+        "def _create(body: dict[str, Any]) -> dict[str, Any]:"
       ],
       "limits": [
         0
@@ -716,6 +1220,42 @@
         "_corner_junctions",
         "Loop control variable `index` not used within loop body",
         "for index, (px, py) in enumerate(points_xy):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/plugin.py",
+        "ARG002",
+        "CompositeBoxFusionPlugin._enumerate_geometry",
+        "Unused method argument: `candidates`",
+        "candidates: list[PerceivedThing],"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/plugin.py",
+        "ARG002",
+        "CompositeBoxFusionPlugin._enumerate_geometry",
+        "Unused method argument: `fallback_candidates`",
+        "fallback_candidates: list[PerceivedThing],"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/plugin.py",
+        "ARG002",
+        "CompositeBoxFusionPlugin._floor_candidate",
+        "Unused method argument: `analysis`",
+        "def _floor_candidate(self, index: int, boundary: dict[str, Any], analysis: Any) -> PerceivedThing:"
       ],
       "limits": [
         0
@@ -1095,6 +1635,54 @@
     },
     {
       "key": [
+        "implementations/runtime/picar/control.py",
+        "ARG002",
+        "DonkeyControlTarget.write",
+        "Unused method argument: `control`",
+        "def write(self, control: AutonomyControl) -> dict[str, Any]:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "implementations/runtime/picar/host_telemetry.py",
+        "C901",
+        "HostTelemetryStore.observe",
+        "`observe` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        36
+      ]
+    },
+    {
+      "key": [
+        "implementations/runtime/picar/host_telemetry.py",
+        "PLR0912",
+        "HostTelemetryStore.observe",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        36
+      ]
+    },
+    {
+      "key": [
+        "implementations/runtime/picar/host_telemetry.py",
+        "PLR0915",
+        "HostTelemetryStore.observe",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        84
+      ]
+    },
+    {
+      "key": [
         "implementations/vehicle/chase_sim/camera_stream.py",
         "PLR0916",
         "ChaseCameraStream._accept_frame",
@@ -1419,6 +2007,30 @@
     },
     {
       "key": [
+        "qca/factors/verification.py",
+        "RET504",
+        "analyze_verification_context",
+        "Unnecessary assignment to `factors` before `return` statement",
+        "return factors"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/factors/verification.py",
+        "SIM114",
+        "_nonempty_items",
+        "Combine `if` branches using logical `or` operator",
+        "if isinstance(value, str):"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
         "qca/indicators/__init__.py",
         "B009",
         "_module_entries",
@@ -1511,6 +2123,30 @@
       ],
       "limits": [
         12
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/context.py",
+        "SIM114",
+        "AnalysisContext.nodes_at",
+        "Combine `if` branches using logical `or` operator",
+        "elif line == location.start_line and column < location.start_col:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/contracts.py",
+        "ARG002",
+        "_Returns.visit_FunctionDef",
+        "Unused method argument: `node`",
+        "def visit_FunctionDef(self, node: ast.FunctionDef) -> None:"
+      ],
+      "limits": [
+        0
       ]
     },
     {
@@ -1623,6 +2259,18 @@
     },
     {
       "key": [
+        "qca/indicators/functional_style.py",
+        "SIM114",
+        "_analyze_trees",
+        "Combine `if` branches using logical `or` operator",
+        "elif isinstance(node, ast.AnnAssign) and node.value is not None:"
+      ],
+      "limits": [
+        0
+      ]
+    },
+    {
+      "key": [
         "qca/indicators/opaque_conditionals.py",
         "B905",
         "inspect_condition",
@@ -1667,6 +2315,18 @@
       ],
       "limits": [
         14
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/redundancy.py",
+        "SIM103",
+        "is_trivial_callable",
+        "Return the condition directly",
+        "if isinstance(stmt, ast.Return) and isinstance(stmt.value, ast.Constant):"
+      ],
+      "limits": [
+        0
       ]
     },
     {
@@ -1727,6 +2387,18 @@
       ],
       "limits": [
         62
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/test_effectiveness.py",
+        "SIM114",
+        "_test_effectiveness_factor",
+        "Combine `if` branches using logical `or` operator",
+        "if isinstance(node, ast.Assert):"
+      ],
+      "limits": [
+        0
       ]
     },
     {

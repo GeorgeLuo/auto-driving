@@ -27,7 +27,7 @@ from typing import Any, Iterable, Mapping, Protocol, Sequence
 from .factors import FACTOR_VERSION, compare_factors, measure_factors
 
 
-ANALYZER_VERSION = "0.3.12"
+ANALYZER_VERSION = "0.3.13"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -925,7 +925,7 @@ def classify_source(path: str, text: str, config: AnalyzerConfig | None = None) 
     lower = normalized.lower()
     segments = set(PurePosixPath(lower).parts)
     first_lines = "\n".join(text.splitlines()[:12]).lower()
-    if "__pycache__" in segments or "runtime" in segments:
+    if "__pycache__" in segments or lower.startswith("runtime/"):
         return "generated/runtime"
     if any(marker.lower() in lower for marker in policy.vendor_markers):
         return "vendored/minified"

@@ -8,6 +8,23 @@ from qca import AnalysisError, AnalyzerConfig, analyze_sources, analyze_tree, re
 
 
 class QuantitativeChangeAnalysisTests(unittest.TestCase):
+    def test_runtime_packages_are_measured_but_root_runtime_artifacts_are_not(self) -> None:
+        source = "def choose(a, b, c):\n    return a if a and b and c else b\n"
+        report = analyze_sources({path: source for path in (
+            "autonomy/runtime/cycle_host.py",
+            "implementations/runtime/picar/host.py",
+            "tests/deterministic/autonomy/runtime/test_host.py",
+            "runtime/host/bundle/generated.py",
+        )})
+        included = {item.path for item in report.source_inventory if item.included}
+        self.assertEqual(included, {
+            "autonomy/runtime/cycle_host.py",
+            "implementations/runtime/picar/host.py",
+            "tests/deterministic/autonomy/runtime/test_host.py",
+        })
+        self.assertEqual({item.path for item in report.head.callables}, included)
+        self.assertEqual(report.factors["patterns"]["metrics"]["opaque_conditional_count"], 3)
+
     def test_tree_classifies_and_excludes_non_code_from_core_measurements(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

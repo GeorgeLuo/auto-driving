@@ -42,6 +42,9 @@ class QcaQualitySummaryTests(unittest.TestCase):
             self.assertEqual(report["factors"]["patterns"]["metrics"]["opaque_conditional_count"], 1)
             self.assertIn("autonomy/module.py:2", (output / "summary.md").read_text())
             self.assertIn("<!doctype html>", (output / "report.html").read_text().lower())
+            inspection = json.loads((output / "inspection.json").read_text())
+            self.assertEqual((inspection["base_sha"], inspection["head_sha"]), (base, head))
+            self.assertIn("Production usage and related implementations", (output / "summary.md").read_text())
 
 
 if __name__ == "__main__":

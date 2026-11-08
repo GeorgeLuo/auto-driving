@@ -5,11 +5,21 @@ It is intentionally Python-first and standard-library-only.  It does not
 assign a quality score, change proposal workflow state, or create a blocking
 check.
 
+Analyzer `0.3.13` includes nested source packages named `runtime`, such as
+`autonomy/runtime`, in structural measurements. Only a top-level `runtime/`
+artifact directory is excluded by that path convention. Earlier reports
+omitted these packages; rerun both revisions before comparing their measurements.
+
 PRs automatically run the informational QCA inspection job. It publishes a
 filtered summary and retains the full JSON/HTML evidence as an Actions artifact.
 `python3 -m scripts.validation.qca_summary --base <merge-base> --head <head> --output /tmp/qca-review`
 reproduces that report locally. The summary distinguishes measured growth from
 inspection candidates involving changed functions, which may predate the PR.
+The PR wrapper requires `requirements-quality.txt` and additionally writes
+`inspection.json` with Vulture production-usage candidates and comparisons
+ranked by shared call identifiers. QCA itself remains standard-library-only.
+See [the validation commands](../tests/README.md#python-quality-checks) for the
+inspection scope, limitations, and historical review examples.
 
 From the repository root:
 

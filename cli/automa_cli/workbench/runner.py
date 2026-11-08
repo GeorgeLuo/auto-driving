@@ -612,7 +612,7 @@ class ImageReplayRunner:
                 self._history.pop(frame.frame_id, None)
                 self._state["position"] = frame.position
         if refresh:
-            self._process_one(run_id, generation, frame, allow_paused=True, refresh=True)
+            self._process_one(run_id, generation, frame, allow_paused=True)
         return self.state()
 
     def _viewing_latest(self) -> bool:
@@ -947,7 +947,6 @@ class ImageReplayRunner:
         frame: ReplayFrame,
         *,
         allow_paused: bool = False,
-        refresh: bool = False,
     ) -> bool:
         with self._action_lock:
             with self._condition:

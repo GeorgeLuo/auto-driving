@@ -266,6 +266,22 @@ def _cycles(graph: dict[str, set[str]]) -> list[list[str]]:
     return cycles
 
 
+def _output_violations(path: Path, role: str | None, source: str) -> list[str]:
+    if role in {"commands", "entrypoint", "cli"}:
+        return []
+    violations = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print":
+            violations.append(f"{path}:{node.lineno} prints")
+        if role in {"render", "models", "pure"} and isinstance(node, ast.Call):
+            name = node.func.id if isinstance(node.func, ast.Name) else getattr(node.func, "attr", "")
+            if name in {"open", "read_text", "read_bytes", "write", "write_text", "write_bytes", "flush"}:
+                violations.append(f"{path}:{node.lineno} performs I/O with {name}")
+        if isinstance(node, ast.arg) and isinstance(node.annotation, ast.AST) and "TextIO" in ast.unparse(node.annotation):
+            violations.append(f"{path}:{node.lineno} takes an output stream")
+    return violations
+
+
 class ModuleBoundaryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -382,16 +398,18 @@ class ModuleBoundaryTests(unittest.TestCase):
         violations = []
         for path in (ROOT / "cli" / "automa_cli").rglob("*.py"):
             role = _role(_module_name(path))
-            if role in {"commands", "entrypoint", "cli"}:
-                continue
-            for node in ast.walk(ast.parse(path.read_text())):
-                if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) and node.func.id == "print":
-                    violations.append(f"{path}:{node.lineno} prints")
-                if role in {"render", "models", "pure"} and isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and node.func.attr in {"write", "write_text", "write_bytes", "flush"}:
-                    violations.append(f"{path}:{node.lineno} writes")
-                if isinstance(node, ast.arg) and isinstance(node.annotation, ast.AST) and "TextIO" in ast.unparse(node.annotation):
-                    violations.append(f"{path}:{node.lineno} takes an output stream")
+            violations.extend(_output_violations(path, role, path.read_text()))
         self.assertEqual(violations, [])
+
+    def test_file_reads_belong_to_operations_not_pure_helpers_or_renderers(self) -> None:
+        path = Path("shared/text.py")
+        source = "from pathlib import Path as File\ndef read_log_tail(path):\n    return File(path).read_text()\n"
+        for role in ("pure", "models", "render"):
+            with self.subTest(role=role):
+                self.assertEqual(_output_violations(path, role, source), [f"{path}:3 performs I/O with read_text"])
+                self.assertTrue(_output_violations(path, role, "value = open('log').read()"))
+        self.assertEqual(_output_violations(path, "operation", source), [])
+        self.assertEqual(_output_violations(path, "pure", "def format_tail(lines):\n    return '\\n'.join(lines)\n"), [])
 
     def test_concrete_operation_imports_and_unknown_modules_are_rejected(self) -> None:
         for target in ("providers.registry", "providers.probes", "hosts.bundles", "workbench.runner",

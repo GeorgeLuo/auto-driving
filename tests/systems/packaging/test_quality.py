@@ -25,6 +25,23 @@ def branching_function(branches: int) -> str:
 
 
 class QualityCommandTests(unittest.TestCase):
+    def test_runtime_package_is_linted_while_root_runtime_artifacts_are_excluded(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
+            root = Path(directory)
+            (root / "pyproject.toml").write_text((ROOT / "pyproject.toml").read_text())
+            production = root / "autonomy/runtime"
+            generated = root / "runtime/bundle"
+            production.mkdir(parents=True)
+            generated.mkdir(parents=True)
+            (generated / "artifact.py").write_text("missing_generated_name\n")
+            source = production / "host.py"
+            source.write_text("def run(value):\n    return value\n")
+            with patch.multiple(check, ROOT=root, RUFF_BASELINE=root / "baseline.json", PATHS=(".",)):
+                self.assertEqual(check.main(["--write-ruff-baseline"]), 0)
+                self.assertEqual(json.loads((root / "baseline.json").read_text())["entries"], [])
+                source.write_text("def run(value):\n    return 1\n")
+                self.assertEqual(check.main(["--ruff-only"]), 1)
+
     def test_ruff_passes_existing_and_improved_code_but_fails_regressions(self) -> None:
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
             root = Path(directory)

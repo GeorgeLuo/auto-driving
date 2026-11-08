@@ -50,6 +50,9 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements-quality.txt
+      - run: python3 -m pip install -r requirements-quality.txt
       - name: Inspect the PR change
         run: |
           base=$(git merge-base "$PR_BASE" "$PR_HEAD")

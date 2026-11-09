@@ -273,6 +273,18 @@ def helper():
         with self.assertRaises(ValueError):
             attach_verification(base, common, "base-ref", "head-ref")
 
+    def test_factor_revision_fields_must_match_the_evidence_envelope(self) -> None:
+        factors = analyze_verification({})
+        record = {"status": "not_measured", "reason": "not run", "base_sha": "base-ref", "head_sha": "head-ref"}
+        evidence = {"schema": VERIFICATION_SCHEMA, "base_sha": "base-ref", "head_sha": "head-ref",
+                    "factors": {"end_to_end": record}}
+        self.assertEqual(attach_verification(factors, evidence, "base-ref", "head-ref")["end_to_end"]["status"], "not_measured")
+        for key, bad_value in (("base_sha", "other"), ("head_sha", "other"), ("base_sha", 7), ("head_sha", 7)):
+            with self.subTest(key=key, bad_value=bad_value):
+                invalid = {**evidence, "factors": {"end_to_end": {**record, key: bad_value}}}
+                with self.assertRaisesRegex(ValueError, key):
+                    attach_verification(factors, invalid, "base-ref", "head-ref")
+
     def test_attach_rejects_contradictory_pass_and_api_only_ui_evidence(self) -> None:
         base = analyze_verification({})
         contradictory = {

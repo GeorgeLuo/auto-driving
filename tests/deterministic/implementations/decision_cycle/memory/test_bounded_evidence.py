@@ -9,6 +9,7 @@ from copy import deepcopy
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.evidence.values import ViewLocation
+from autonomy.plugins import PluginDefinition, instantiate_plugin
 from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import serialized_ledger_bytes
 from implementations.decision_cycle.memory.shared.evidence_ledger.reduction import (
     CONFLICT_POLICY,
@@ -91,6 +92,19 @@ def _two_sightings(first: dict, second: dict):
 
 
 class BoundedEvidenceLedgerTests(unittest.TestCase):
+    def test_unknown_configuration_fails_instead_of_silently_using_defaults(self) -> None:
+        for name in ("max_recordz", "retian_signals"):
+            with self.subTest(option=name):
+                with self.assertRaisesRegex(TypeError, name):
+                    BoundedEvidenceReducer(**{name: 1})
+                definition = PluginDefinition(
+                    "memory", "bounded_evidence",
+                    "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger",
+                    {name: 1},
+                )
+                with self.assertRaisesRegex(TypeError, name):
+                    instantiate_plugin(definition)
+
     def test_retains_things_and_signals_with_origin(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
         context = DecisionFrameContext("frame_1", 1, 1_000)

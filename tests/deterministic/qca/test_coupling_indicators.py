@@ -171,8 +171,9 @@ async def execute(value, /, fallback=None, *, limit=3):
         self.assertEqual(result["metrics"]["module_count"], 2)
         self.assertEqual(result["metrics"]["edge_count"], 1)
         self.assertEqual(result["metrics"]["external_import_count"], 0)
-        self.assertEqual(coupling._module("__init__.py"), "")
-        self.assertEqual(coupling._package("__init__.py"), "")
+        edge = result["graph"]["edges"][0]
+        self.assertEqual((edge["source"], edge["target"]), ("__init__.py", "analyzer.py"))
+        self.assertEqual((edge["requested_name"], edge["resolution"]), ("analyzer.analyze_tree", "symbol_owner"))
         json.dumps(result)
 
 

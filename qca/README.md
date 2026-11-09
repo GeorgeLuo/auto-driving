@@ -5,11 +5,54 @@ It is intentionally Python-first and standard-library-only.  It does not
 assign a quality score, change proposal workflow state, or create a blocking
 check.
 
-PRs automatically run the informational QCA inspection job. It publishes a
+Analyzer `0.3.19` measures an `if`/`elif` ladder at one nesting level; an
+`if` nested under `else` still increases depth. Rerun both revisions before
+comparing nesting measurements to earlier analyzer versions.
+
+Analyzer `0.3.18` distinguishes string equality, membership, regular-expression,
+identity and ordering comparisons in finding evidence. Formatting candidates
+require a structured marker or a long literal, not an isolated angle or pipe.
+
+Analyzer `0.3.17` counts only Python sources as test files in verification metrics,
+including test files that could not be parsed.
+
+Analyzer `0.3.16` uses matching source paths to distinguish private imports from
+test-named production modules and test modules. Unmatched, conflicting and
+relative imports retain the previous conservative behavior.
+
+Analyzer `0.3.15` gives test assertions, private imports, and private helper calls
+distinct review questions. Private call and import targets are not resolved.
+
+Analyzer `0.3.14` uses test declarations or test-framework imports to distinguish
+standalone test files from production modules whose names start with `test_`.
+Files in test directories remain tests, and an unparseable conventionally named
+test remains visible as a test parse failure. Protocol and abstract method
+declarations are excluded from stub candidates when their imports are explicit.
+Rerun both revisions before comparing these findings to earlier analyzer versions.
+
+Analyzer `0.3.13` includes nested source packages named `runtime`, such as
+`autonomy/runtime`, in structural measurements. Only a top-level `runtime/`
+artifact directory is excluded by that path convention. Earlier reports
+omitted these packages; rerun both revisions before comparing their measurements.
+
+PRs automatically run the quality job, including informational QCA inspection. It publishes a
 filtered summary and retains the full JSON/HTML evidence as an Actions artifact.
 `python3 -m scripts.validation.qca_summary --base <merge-base> --head <head> --output /tmp/qca-review`
 reproduces that report locally. The summary distinguishes measured growth from
 inspection candidates involving changed functions, which may predate the PR.
+The PR wrapper requires `requirements-quality.txt` and additionally writes
+`inspection.json` with Vulture production-usage candidates and comparisons
+ranked by shared call identifiers. QCA itself remains standard-library-only.
+See [the validation commands](../tests/README.md#python-quality-checks) for the
+inspection scope, limitations, and historical review examples.
+
+The evaluation entry point accepts evaluator and context pairs. Each context can
+be text, a set of files, a repository, or a change; evaluators use the format
+they need. The quality command passes its repository context to QCA, which runs
+the Ruff, type, import, vocabulary and change-inspection evaluators and collects
+their findings in one flat list. Each finding has a type, review question, source,
+location, evidence, and optional related locations. A finding is an inspection
+question, not a judgment that a real problem exists.
 
 From the repository root:
 

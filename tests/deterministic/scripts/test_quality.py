@@ -1,43 +1,11 @@
 from __future__ import annotations
 
-import tempfile
 import unittest
 from dataclasses import asdict
-from pathlib import Path
 
-from scripts.validation.check import baseline_entries, findings, new_findings
 from scripts.validation.qca_summary import render_summary, section
 from qca import analyze_sources
 from qca.analyzer import DiffMetrics
-
-
-class RuffBaselineTests(unittest.TestCase):
-    def test_same_error_in_another_function_is_not_baselined(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            path = root / "module.py"
-            path.write_text("def old():\n    return missing\n\ndef new():\n    return missing\n")
-            diagnostics = [
-                {"filename": str(path), "code": "F821", "message": "Undefined name `missing`",
-                 "location": {"row": line, "column": 12}}
-                for line in (2, 5)
-            ]
-            items = findings(diagnostics, root)
-            added = new_findings(items, baseline_entries(items[:1]))
-            self.assertEqual([item.key[2] for item in added], ["new"])
-
-    def test_duplicate_diagnostic_needs_its_own_baseline_entry(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            path = root / "module.py"
-            path.write_text("missing\nmissing\n")
-            diagnostics = [
-                {"filename": str(path), "code": "F821", "message": "Undefined name `missing`",
-                 "location": {"row": line, "column": 1}}
-                for line in (1, 2)
-            ]
-            items = findings(diagnostics, root)
-            self.assertEqual(len(new_findings(items, baseline_entries(items[:1]))), 1)
 
 
 class QcaSummaryTests(unittest.TestCase):

@@ -11,7 +11,8 @@ from __future__ import annotations
 
 import ast
 import re
-from collections.abc import Mapping, Sequence
+from collections import Counter
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 from .context import AnalysisContext
@@ -21,11 +22,12 @@ from .report import (
     source_expression as _source_expression,
     verification_inputs as _verification_inputs,
 )
+from .source_classification import is_test_source
 
 
 FACTOR = "test_effectiveness"
 INDICATOR_ID = "verification.test_effectiveness"
-INDICATOR_VERSION = "1"
+INDICATOR_VERSION = "6"
 
 DETECTOR_IDS = {
     "literal_assertion": f"{INDICATOR_ID}.literal_assertion",
@@ -37,9 +39,6 @@ DETECTOR_IDS = {
     "private_helper_call": f"{INDICATOR_ID}.private_helper_call",
 }
 
-_TEST_FILE_RE = re.compile(
-    r"(?:^|/)(?:tests?|spec)(?:/|$)|(?:^|/)(?:test_[^/]+|[^/]+_test)\.py$"
-)
 _ASSERT_EQUAL_METHODS = {
     "assertEqual",
     "assertAlmostEqual",
@@ -57,17 +56,19 @@ _ASSERT_LITERAL_METHODS = {
     "assertIsNone",
     "assertIsNotNone",
 }
-_STRING_EXPECTED_METHODS = {
-    "assertEqual",
-    "assertNotEqual",
-    "assertMultiLineEqual",
-    "assertIn",
-    "assertNotIn",
-    "assertRegex",
-    "assertNotRegex",
-}
-_FORMATTED_LITERAL_RE = re.compile(r"[|<>\n`]|\d+(?:\.\d+)?%")
+_FORMATTED_LITERAL_RE = re.compile(r"\n|`|\|[^|\n]+\||</?[A-Za-z][^>]*>|\d+(?:\.\d+)?%")
 _FORMATTED_LITERAL_MIN_LENGTH = 40
+_STRING_ASSERTION_METHODS = {
+    "assertEqual": "equality", "assertNotEqual": "equality", "assertMultiLineEqual": "equality",
+    "assertIn": "membership", "assertNotIn": "membership",
+    "assertRegex": "regex", "assertNotRegex": "regex",
+}
+_STRING_COMPARISON_OPERATORS = {
+    ast.Eq: "equality", ast.NotEq: "equality",
+    ast.In: "membership", ast.NotIn: "membership",
+    ast.Is: "identity", ast.IsNot: "identity",
+    ast.Lt: "ordering", ast.LtE: "ordering", ast.Gt: "ordering", ast.GtE: "ordering",
+}
 
 
 def analyze(context: AnalysisContext) -> dict[str, Any]:
@@ -139,11 +140,15 @@ def formatted_literal_assertion(node: ast.AST) -> bool:
     """Return whether a supported assertion compares against a formatted literal."""
 
     constants = _string_constants_in_assertion(node)
-    return bool(constants and _is_formatted_literal(max(constants, key=len)))
+    return any(_is_formatted_literal(text) for text in constants)
 
 
 def private_import(node: ast.AST) -> bool:
-    """Return whether an import contains a private production name."""
+    """Return whether an import contains a private name using module-name conventions.
+
+    The aggregate also uses supplied sources to distinguish test-named
+    production modules from test modules.
+    """
 
     return isinstance(node, (ast.Import, ast.ImportFrom)) and bool(_private_imported_names(node))
 
@@ -211,20 +216,11 @@ def assignment_readbacks(tree: ast.AST) -> dict[ast.AST, ast.AST]:
             continue
         assigned: dict[str, tuple[ast.AST, ast.AST]] = {}
         for statement in function.body:
-            target = value = None
-            if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
-                target, value = statement.targets[0], statement.value
-            elif isinstance(statement, ast.AnnAssign):
-                target, value = statement.target, statement.value
-            if target is not None:
+            assignment = _assignment_parts(statement)
+            if assignment is not None:
+                target, value = assignment
                 key = _readback_target(target)
-                literal = isinstance(value, ast.Constant) or (
-                    isinstance(value, ast.UnaryOp)
-                    and isinstance(value.op, (ast.UAdd, ast.USub))
-                    and isinstance(value.operand, ast.Constant)
-                    and type(value.operand.value) in (int, float, complex)
-                )
-                if key is None or not literal or any(isinstance(n, ast.Call) for n in ast.walk(statement)):
+                if key is None or not _readback_literal(value) or any(isinstance(n, ast.Call) for n in ast.walk(statement)):
                     assigned.clear()
                     continue
                 if isinstance(target, ast.Attribute):
@@ -234,29 +230,8 @@ def assignment_readbacks(tree: ast.AST) -> dict[ast.AST, ast.AST]:
                 assigned[key] = (value, statement)
                 continue
 
-            assertion = statement.value if isinstance(statement, ast.Expr) else statement
-            operands = None
-            if isinstance(assertion, ast.Assert):
-                comparison = assertion.test
-                if (
-                    isinstance(comparison, ast.Compare)
-                    and len(comparison.ops) == 1
-                    and isinstance(comparison.ops[0], (ast.Eq, ast.Is))
-                ):
-                    operands = (comparison.left, comparison.comparators[0])
-            elif (
-                isinstance(assertion, ast.Call)
-                and _call_name(assertion.func) in {"assertEqual", "assertIs"}
-                and len(assertion.args) == 2
-                and not assertion.keywords
-            ):
-                operands = tuple(assertion.args)
-            nested_calls = any(
-                isinstance(n, (ast.Call, ast.Await, ast.Yield, ast.NamedExpr))
-                and n is not assertion
-                for n in ast.walk(statement)
-            )
-            if operands is not None and not nested_calls:
+            assertion, operands = _readback_assertion(statement)
+            if operands is not None and not _nested_readback_effect(statement, assertion):
                 for actual, expected in (operands, operands[::-1]):
                     prior = assigned.get(_readback_target(actual))
                     if prior is not None and _ast_equal(prior[0], expected):
@@ -264,6 +239,41 @@ def assignment_readbacks(tree: ast.AST) -> dict[ast.AST, ast.AST]:
                         break
             assigned.clear()
     return matches
+
+
+def _assignment_parts(statement: ast.stmt) -> tuple[ast.AST, ast.AST | None] | None:
+    if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+        return statement.targets[0], statement.value
+    if isinstance(statement, ast.AnnAssign):
+        return statement.target, statement.value
+    return None
+
+
+def _readback_literal(value: ast.AST | None) -> bool:
+    return isinstance(value, ast.Constant) or (
+        isinstance(value, ast.UnaryOp)
+        and isinstance(value.op, (ast.UAdd, ast.USub))
+        and isinstance(value.operand, ast.Constant)
+        and type(value.operand.value) in (int, float, complex)
+    )
+
+
+def _readback_assertion(statement: ast.stmt) -> tuple[ast.AST, tuple[ast.expr, ast.expr] | None]:
+    assertion = statement.value if isinstance(statement, ast.Expr) else statement
+    if isinstance(assertion, ast.Assert):
+        comparison = assertion.test
+        if (isinstance(comparison, ast.Compare) and len(comparison.ops) == 1
+                and isinstance(comparison.ops[0], (ast.Eq, ast.Is))):
+            return assertion, (comparison.left, comparison.comparators[0])
+    elif (isinstance(assertion, ast.Call) and _call_name(assertion.func) in {"assertEqual", "assertIs"}
+          and len(assertion.args) == 2 and not assertion.keywords):
+        return assertion, (assertion.args[0], assertion.args[1])
+    return assertion, None
+
+
+def _nested_readback_effect(statement: ast.stmt, assertion: ast.AST) -> bool:
+    return any(isinstance(node, (ast.Call, ast.Await, ast.Yield, ast.NamedExpr)) and node is not assertion
+               for node in ast.walk(statement))
 
 
 def _test_effectiveness_factor(
@@ -274,14 +284,12 @@ def _test_effectiveness_factor(
     *,
     context: AnalysisContext | None = None,
 ) -> dict[str, Any]:
-    test_paths = {path for path, _ in ordered_sources if _is_test_source(path)}
+    python_paths = {path for path, _, _ in parsed} | {error["path"] for error in parse_errors}
+    test_paths = {path for path, text in ordered_sources if path in python_paths and is_test_source(path, text)}
+    source_paths = {path for path, _ in ordered_sources}
     candidate_sites: list[dict[str, Any]] = []
+    assertion_candidates: Counter[str] = Counter()
     assertion_count = 0
-    literal_count = 0
-    tautological_count = 0
-    readback_count = 0
-    string_expected_count = 0
-    formatted_literal_count = 0
     private_import_count = 0
     private_helper_call_count = 0
     private_import_files: set[str] = set()
@@ -297,7 +305,7 @@ def _test_effectiveness_factor(
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
                 test_case_count += 1
             if module_is_test and isinstance(node, (ast.Import, ast.ImportFrom)):
-                imported = _private_imported_names(node)
+                imported = _private_imported_names(node, source_paths=source_paths, test_paths=test_paths)
                 if imported:
                     private_import_count += len(imported)
                     private_import_files.add(path)
@@ -309,7 +317,7 @@ def _test_effectiveness_factor(
                         node=node,
                         text=text,
                         reason=(
-                            "Private production import in a test; inspect whether the test can use a public entrypoint."
+                            "Private import in a test; inspect its target and whether a public entrypoint would be more appropriate."
                         ),
                     )
                 continue
@@ -327,7 +335,7 @@ def _test_effectiveness_factor(
                     node=node,
                     text=text,
                     reason=(
-                        "Private production helper called from a test; inspect whether a public entrypoint covers the behavior."
+                        "Private helper called from a test; inspect its target and whether a public entrypoint covers the behavior."
                     ),
                 )
             candidate_kind = assertion_candidate_kind(node, readbacks)
@@ -337,17 +345,7 @@ def _test_effectiveness_factor(
                 assertion_count += 1
             if candidate_kind is None:
                 continue
-            if candidate_kind == "literal_assertion":
-                literal_count += 1
-            elif candidate_kind == "tautological_assertion":
-                tautological_count += 1
-            elif candidate_kind == "assignment_readback":
-                readback_count += 1
-            elif candidate_kind == "formatted_literal_assertion":
-                formatted_literal_count += 1
-                string_expected_count += 1
-            else:
-                string_expected_count += 1
+            assertion_candidates[candidate_kind] += 1
             _append_test_candidate(
                 candidate_sites,
                 context=context,
@@ -383,10 +381,11 @@ def _test_effectiveness_factor(
                     candidate_kind=candidate_kind,
                 )
 
-    candidate_count = literal_count + tautological_count + readback_count + string_expected_count
+    formatted_literal_count = assertion_candidates["formatted_literal_assertion"]
+    string_expected_count = assertion_candidates["string_expected_assertion"] + formatted_literal_count
     limitations = [
         "Literal, same-operand, string-expected, and formatted-literal assertions are candidates for review, not a judgment that a test is ineffective.",
-        "Private production imports and helper calls are candidates; same-module test helpers are omitted; numeric expected values alone are not candidates.",
+        "Private production imports and helper calls are candidates; module paths can identify test-named production sources, but import and call targets are not resolved. Relative imports and same-module test helpers are omitted; numeric expected values alone are not candidates.",
         "Assignment readbacks track scalar literals in straight-line test function bodies only; calls, control flow, and uncertain mutations end tracking. No alias, constructor, subscript, or interprocedural inference is performed; attribute access may exercise meaningful descriptors.",
         "Static inspection does not infer input variation, mocks, explicit state setup, or the behavior under test.",
     ]
@@ -400,15 +399,15 @@ def _test_effectiveness_factor(
         "test_file_count": len(test_paths),
         "test_case_count": test_case_count,
         "assertion_count": assertion_count,
-        "literal_assertion_candidates": literal_count,
-        "tautological_assertion_candidates": tautological_count,
-        "assignment_readback_candidates": readback_count,
+        "literal_assertion_candidates": assertion_candidates["literal_assertion"],
+        "tautological_assertion_candidates": assertion_candidates["tautological_assertion"],
+        "assignment_readback_candidates": assertion_candidates["assignment_readback"],
         "string_expected_assertion_count": string_expected_count,
         "formatted_literal_assertion_count": formatted_literal_count,
         "private_import_count": private_import_count,
         "private_import_test_file_count": len(private_import_files),
         "private_helper_call_count": private_helper_call_count,
-        "candidate_assertion_count": candidate_count,
+        "candidate_assertion_count": sum(assertion_candidates.values()),
         "candidate_site_count": len(candidate_sites),
         "parse_error_count": test_parse_error_count,
     }
@@ -449,11 +448,6 @@ def _append_test_candidate(
             candidate_kind=kind,
         )
     )
-
-
-def _is_test_source(path: str) -> bool:
-    normalized = path.replace("\\", "/").strip("/")
-    return bool(_TEST_FILE_RE.search(normalized))
 
 
 def _parent_map(tree: ast.AST) -> dict[ast.AST, ast.AST]:
@@ -497,11 +491,24 @@ def _is_test_module_name(module: str | None) -> bool:
     return any(part in {"tests", "test", "testing"} or part.startswith("test_") for part in module.split("."))
 
 
-def _private_imported_names(node: ast.Import | ast.ImportFrom) -> tuple[str, ...]:
+def _private_imported_names(
+    node: ast.Import | ast.ImportFrom,
+    *,
+    source_paths: Collection[str] = (),
+    test_paths: Collection[str] = (),
+) -> tuple[str, ...]:
     if isinstance(node, ast.Import):
         return tuple(alias.name.split(".")[-1] for alias in node.names if _is_private_identifier(alias.name.split(".")[-1]))
-    if node.module == "__future__" or (node.level or 0) > 0 or _is_test_module_name(node.module):
+    module = node.module or ""
+    if module == "__future__" or (node.level or 0) > 0:
         return ()
+    if _is_test_module_name(module):
+        module_path = module.replace(".", "/")
+        candidates = (module_path + ".py", module_path + ".pyi",
+                      module_path + "/__init__.py", module_path + "/__init__.pyi")
+        matches = [path for path in candidates if path in source_paths]
+        if not matches or any(path in test_paths for path in matches):
+            return ()
     return tuple(alias.name for alias in node.names if _is_private_identifier(alias.name))
 
 
@@ -533,13 +540,30 @@ def _string_constants_in_assertion(node: ast.AST) -> list[str]:
     if not isinstance(node, ast.Call):
         return values
     name = _call_name(node.func)
-    if name not in _STRING_EXPECTED_METHODS:
+    if name not in _STRING_ASSERTION_METHODS:
         return values
     for arg in node.args[:2]:
         text = _constant_text(arg)
         if text is not None:
             values.append(text)
     return values
+
+
+def _string_comparison_kinds(node: ast.AST) -> list[str]:
+    """Describe comparisons involving a literal, without inferring operand types."""
+
+    if isinstance(node, ast.Call):
+        kind = _STRING_ASSERTION_METHODS.get(_call_name(node.func) or "")
+        return [kind] if kind else []
+    if not isinstance(node, ast.Assert) or not isinstance(node.test, ast.Compare):
+        return []
+    operands = [node.test.left, *node.test.comparators]
+    return sorted({
+        _STRING_COMPARISON_OPERATORS[type(operator)]
+        for left, operator, right in zip(operands[:-1], node.test.ops, operands[1:], strict=True)
+        if (_constant_text(left) is not None or _constant_text(right) is not None)
+        and type(operator) in _STRING_COMPARISON_OPERATORS
+    })
 
 
 def _readback_target(node: ast.AST) -> str | None:
@@ -588,6 +612,31 @@ def _enrich_finding(
     finding = dict(finding)
     if not isinstance(context, AnalysisContext):
         return finding
+    pattern: dict[str, str | list[str]] = {"candidate_kind": candidate_kind}
+    question = {
+        "private_import": "Does this import expose a production private API that the test should exercise through a public entrypoint?",
+        "private_helper_call": "Does this call exercise a production private helper where a public entrypoint would be more appropriate?",
+        "assignment_readback": "Does this assertion verify behavior beyond reading back an assigned value?",
+        "string_expected_assertion": "Does this string assertion check a meaningful contract without unnecessary coupling to exact text?",
+        "formatted_literal_assertion": "Does this formatted string assertion check a meaningful output contract without unnecessary coupling to presentation?",
+    }.get(candidate_kind, "Does this assertion meaningfully verify behavior across relevant inputs?")
+    if candidate_kind in {"string_expected_assertion", "formatted_literal_assertion"}:
+        comparisons = _string_comparison_kinds(node)
+        pattern["comparison_kinds"] = comparisons
+        if comparisons == ["membership"]:
+            question = (
+                "Does checking for this formatted text as a member or substring verify the intended behavior without unnecessary coupling to presentation?"
+                if candidate_kind == "formatted_literal_assertion"
+                else "Does checking for this string as a member or substring meaningfully verify the intended behavior?"
+            )
+        elif comparisons == ["regex"]:
+            question = "Does this pattern assertion meaningfully verify the intended behavior?"
+        elif comparisons == ["identity"]:
+            question = "Does this identity comparison with a string literal express the intended behavior?"
+        elif comparisons == ["ordering"]:
+            question = "Does this ordering comparison with a string literal verify the intended behavior?"
+        elif len(comparisons) > 1:
+            question = "Do these string comparisons together verify the intended behavior?"
     return enrich_finding(
         finding,
         context=context,
@@ -597,11 +646,9 @@ def _enrich_finding(
         node=node,
         family="verification",
         related_nodes=related_nodes,
-        pattern={"candidate_kind": candidate_kind},
+        pattern=pattern,
         uncertainty=["static_candidate"],
-        inspection_question=(
-            "Inspect assertion intent and input variation before drawing a conclusion."
-        ),
+        inspection_question=question,
     )
 
 

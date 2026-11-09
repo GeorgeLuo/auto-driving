@@ -11,9 +11,9 @@ from pathlib import Path
 from qca import AnalyzerConfig, Report, analyze_diff, report_to_dict
 from qca.analyzer import DiffMetrics
 from qca.render import render_html
+from scripts.validation.inspection import PATHS, Inspection, inspect_revisions
 
 
-PATHS = ("autonomy", "cli", "implementations", "qca", "scripts/validation", "tests")
 LIMIT = 20
 
 
@@ -94,6 +94,30 @@ def render_summary(report: Report) -> str:
     return "\n".join(lines)
 
 
+def render_inspection(inspection: Inspection) -> str:
+    lines = ["## Production usage and related implementations", "",
+             "Inspection candidates, not proven defects. Newly unused symbols can be in unchanged files. "
+             "Existing candidates are included when their file changed. Test-only references do not "
+             "establish production use; callbacks, public interfaces and dynamic lookup need review.", ""]
+    unused = [
+        f"`{text(item.path)}:{item.lines[0]}` `{text(item.symbol)}` — {item.reason}; "
+        f"{len(item.test_references)} test reference locations (name-based)."
+        for item in inspection.unused
+    ]
+    lines += section("Unused production code candidates", unused)
+    comparisons = [
+        f"`{text(item.changed.path)}:{item.changed.line}` `{text(item.changed.name)}` ↔ "
+        f"`{text(item.related.path)}:{item.related.line}` `{text(item.related.name)}` "
+        f"({item.relationship}); shared calls: {', '.join(f'`{text(call)}`' for call in item.shared_calls)}."
+        for item in inspection.comparisons
+    ]
+    lines += section("Related functions to compare", comparisons)
+    lines += ["Ranked by shared call spellings within a module, sibling directory or import neighbor; "
+              "this does not establish equivalent behavior. Up to three comparisons per changed function. "
+              "`inspection.json` retains source snippets, test references, rankings and limitations.", ""]
+    return "\n".join(lines)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base", required=True, help="PR merge-base commit.")
@@ -105,7 +129,8 @@ def main(argv: list[str] | None = None) -> int:
     payload = report_to_dict(report)
     (args.output / "report.json").write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
     (args.output / "report.html").write_text(render_html(payload), encoding="utf-8")
-    summary = render_summary(report)
+    inspection = inspect_revisions(report.identity.base_sha, report.identity.head_sha, args.output, PATHS)
+    summary = render_summary(report) + "\n" + render_inspection(inspection)
     (args.output / "summary.md").write_text(summary, encoding="utf-8")
     print(summary)
     return 0

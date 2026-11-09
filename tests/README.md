@@ -28,7 +28,7 @@ The browser install is only for the systems test that opens Chromium. CI does no
 
 Either suite takes `-k PATTERN` to run only the tests whose ID (`module.Class.method`) matches, as unittest's `-k` does: a substring, or a glob when it contains `*`. Repeat it to widen the match, for example `python3 tests/run.py --systems journeys -k upload -k arming`. A pattern that matches no test fails the run.
 
-The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. CI also fails when `python3 -m pyflakes tests` reports an undefined name, which catches a broken systems import without running the suite, and when a tracked file outside `docs/deprecated/` uses a word the workflow's retired-vocabulary step lists. Run that step's `git grep` line before pushing to check locally.
+The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. The quality command checks tests for undefined names and rejects retired vocabulary in tracked files outside `docs/deprecated/`.
 
 ## Validating a change
 
@@ -37,7 +37,7 @@ Run the tests your change reaches, not every suite. `commands` and `journeys` to
 1. While you work, run the deterministic tests beside the code you changed, for example `python3 tests/run.py -k decision_cycle`.
 2. Before pushing, run the whole deterministic suite once. It takes about a minute and a half, and CI runs the same command.
 3. For Python changes, run `python3 -m scripts.validation.check` before pushing.
-   It runs Ruff and basedpyright; repair new diagnostics and report the result.
+   It runs Ruff, import contracts, and basedpyright; repair new diagnostics and report the result.
 4. For Python changes and reviews, inspect QCA for the final committed revision.
    Use the PR's QCA inspection summary or run the local command in
    [Python quality checks](#python-quality-checks). For uncommitted work without
@@ -69,43 +69,115 @@ List each command you ran and its result under Validation in the pull request. D
 Install `requirements-test.txt` (which includes the quality tools), or install
 `requirements-quality.txt` for checks alone, then run
 `python3 -m scripts.validation.check`. CI runs this command in the Python quality
-job on PRs and main. `--ruff-only` skips type checking for a faster editing loop.
+job on PRs and main. `--ruff-only` skips type and import-contract checking for a faster editing loop;
+the full command is required before pushing.
 The configuration in `pyproject.toml` also works with Ruff and basedpyright editor
-integrations; an editor's Ruff diagnostics include existing baselined findings.
+integrations; an editor's Ruff diagnostics may include unchanged findings.
 
 The checks cover `autonomy/`, `cli/`, `implementations/`, `qca/`, and
-`scripts/validation/`. Ruff additionally checks `tests/` for name/import errors;
+`scripts/validation/`. Ruff also covers maintained Python under `deploy/` (excluding
+the generated DonkeyCar vendor checkout) and checks `tests/` for name/import errors;
 test complexity and typing are outside this initial rollout. Generated runtime
 bundles, experiments, and vendored code are outside the check scope.
 The initial type gate enables explicit `Any`, redundant instance/comparison
 checks, unreachable code, missing imports, and invalid type forms. General
 argument/return checking and `Any` propagation are left for a separate rollout.
+Ruff also rejects new unused arguments (`ARG`), identical conditional arms
+(`SIM114`), needless Boolean returns (`SIM103`), and assignments immediately
+returned (`RET504`). Necessary callback signatures still need their parameters;
+use an explicit override, an allowed unused-parameter name, or a justified
+suppression instead of removing a parameter required by a caller.
+The broader readability guard uses standard Ruff rules:
 
-Existing debt is recorded explicitly. Ruff matches each diagnostic by file,
-owning symbol, message, and source text, independent of line numbers. Its metric
-limits allow an existing large function to improve while still above a threshold;
-an increase fails. Moving code to another symbol may require review of the baseline.
-basedpyright uses its native baseline and removes resolved entries automatically.
-Commit those reductions with the repair.
+| Pressure | Rule and limit | Preferred repair |
+| --- | --- | --- |
+| Too many intermediate values | [`PLR0914`](https://docs.astral.sh/ruff/rules/too-many-locals/), 15 locals | Separate meaningful stages or responsibilities; keep useful names |
+| Ambiguous argument order | [`PLR0917`](https://docs.astral.sh/ruff/rules/too-many-positional-arguments/), 5 positional parameters | Name optional settings with keyword-only parameters |
+| Unnecessary nesting after an exit | `RET505`–`RET508`, `PLR5501` | Use guard clauses or `elif` |
+| Repeated dispatch or prefix checks | `SIM116`, `PIE810` | Use a lookup for literal alternatives or a tuple of prefixes |
+| Parameters reused as loop/handler targets | `PLR1704` | Give the second value its own name |
+| Bare exception catches | `E722` | Catch expected failures explicitly; let process-exit signals propagate |
 
-To intentionally accept existing debt when changing rules, run
-`python3 -m scripts.validation.check --write-ruff-baseline` and
-`python3 -m basedpyright --writebaseline`, then review the baseline diffs. These
-are maintenance commands, not steps in the normal check. Do not refresh a baseline
-to silence a new defect. Keep necessary validation at external boundaries; a
-targeted rule suppression should explain why the runtime check is still needed.
+These complement the existing branch, statement, Boolean-expression and nesting
+limits. Do not replace named intermediates with dense expressions or split a
+single operation into arbitrary helpers to satisfy a count. Many named keyword
+parameters and necessary boundary validation can be clearer than a generic
+configuration object or hidden dispatch. The engineer role's abstraction and
+readability preferences still require review.
 
-QCA runs automatically on each PR using its merge base and head. Its summary
+The same quality command runs [Import Linter](https://import-linter.readthedocs.io/en/stable/)
+against the contracts in `pyproject.toml`. Autonomy cannot depend on implementations
+or CLI, implementations cannot depend on CLI, shared step code cannot depend on
+concrete plugins or hosts, and plugin packages cannot form dependency cycles.
+Forbidden dependencies include indirect paths, relative imports, and type-only
+imports. Deliberate one-way plugin
+specialization remains allowed; general reusable behavior belongs in shared code.
+The graph checks static imports, not dynamic imports or semantic ownership.
+Use `lint-imports --no-cache --no-logo` to run only these checks.
+
+The CLI architecture tests also reject file reads in modules declared pure,
+models, or rendering, using the same convention as their existing write checks.
+
+Ruff and basedpyright report diagnostics on added or edited lines relative to the
+merge base. On `main`, CI uses the previous push revision; local runs default to
+`origin/main`. This avoids emitting existing debt without retaining scan records.
+A diagnostic attached to an unchanged line can be missed even if a change causes
+it; QCA's change inspection provides additional review leads, not a guarantee.
+Keep necessary validation at external boundaries; a targeted rule suppression
+should explain why the runtime check is still needed.
+
+The quality command also runs QCA on each PR using its merge base and head. Its summary
 highlights growing functions, conditional/clone candidates involving changed
 functions, and added import edges outside the standard library. Candidates can
 predate the PR and require inspection; the full report retains file-level evidence.
-The job is informational, including when analysis fails; its log and summary make
-failure visible. Full JSON and HTML evidence is retained in the `qca-inspection`
-artifact. To reproduce it locally against committed revisions:
+QCA is informational, including when analysis fails; the quality job log and
+artifact record failures. The `quality-findings` artifact includes full JSON and
+HTML evidence and `findings.json`, whose records share a type, location,
+question, source, status, related locations, and evidence. The artifact includes
+the revision once at the top level. Status distinguishes blocking diagnostics
+from informational review candidates; execution failures are recorded separately.
+Test-effectiveness findings enter that flat list when their primary or related
+source evidence overlaps an added or edited line in the inspected revisions.
+String findings carry comparison categories in their evidence; the scan does
+not establish that an assertion is defective.
+Findings are questions for review, not labels that establish real problems. To reproduce the
+full CI quality process locally against committed revisions:
+
+```sh
+PR_BASE=main PR_HEAD=HEAD python3 -m scripts.validation.check --output /tmp/quality-review
+```
+
+To run just QCA:
 
 ```sh
 python3 -m scripts.validation.qca_summary --base <merge-base> --head <head> --output /tmp/qca-review
 ```
+
+The summary also runs the experimental production-usage and related-function
+inspection. It uses pinned Vulture on production sources, retaining test
+references separately and applying Vulture's bundled callback allowances.
+Newly unused symbols are included even in unchanged
+files; existing unused candidates are included only in changed files. It ranks
+up to three comparisons per changed function by shared call spellings in the
+same module, sibling directory, or one import edge in either direction.
+`inspection.json` retains source snippets, locations, scores, and limitations.
+Neither absence of a static reference nor similarity proves a defect. Dynamic
+entrypoints, public APIs, and deliberate shared behavior require review.
+
+Run just this inspection, or replay the selected recent review fixes:
+
+```sh
+python3 -m scripts.validation.inspection --base <merge-base> --head <head> --output /tmp/change-inspection
+python3 -m scripts.validation.review_examples --output /tmp/review-examples.json
+```
+
+The historical examples require full Git history. They report findings before
+and after accepted fixes, candidate counts, and comparison ranks. They are
+selected known examples, not an estimate of precision or 80% coverage. Related
+functions can remain similar after a correct consolidation. Label irrelevant
+prompts and add representative negative examples before promoting these
+heuristics to gates. Block-clone tools and broader formatter/type-check adoption
+remain separate experiments; this inspection does not replace QCA's clone scan.
 
 Changes to the quality runner also need
 `python3 tests/run.py --systems packaging -k test_quality`; changes to the QCA

@@ -56,7 +56,7 @@ PLUGINS_PAGE_PATH = PAGES_DIR / "plugins" / "index.html"
 
 
 # A read route: the request's query parameters to a document, or to an image's bytes and content type.
-Read = Callable[[Mapping[str, str]], "dict[str, Any] | tuple[bytes, str]"]
+Read = Callable[[Mapping[str, str]], "dict[str, object] | tuple[bytes, str]"]
 
 
 class RuntimeViewServer:
@@ -318,9 +318,8 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             return
         if self._serve_workbench(route, include_body=include_body):
             return
-        if self._serve_shared_file(route, include_body=include_body):
-            return
-        if serve_v2_file(self, route, include_body=include_body):
+        # Static files: the pages' shared files, and the v2 page's own.
+        if self._serve_shared_file(route, include_body=include_body) or serve_v2_file(self, route, include_body=include_body):
             return
         if route == PLUGIN_CATALOG_PATH:
             serve_plugin_catalog(self, self.server.publisher.plugin_catalog, include_body=include_body)

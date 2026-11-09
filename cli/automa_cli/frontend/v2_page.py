@@ -10,9 +10,8 @@ from __future__ import annotations
 
 import re
 from pathlib import PurePosixPath
-from typing import Any
 
-from .loopback_http import PAGES_DIR, STATIC_CONTENT_TYPES
+from .loopback_http import PAGES_DIR, STATIC_CONTENT_TYPES, LoopbackHTTPRequestHandler
 from .workbench_view import WORKBENCH_CONTENT_SECURITY_POLICY
 
 V2_PAGE_PATH = "/v2/"
@@ -23,7 +22,7 @@ V2_FILE_PATTERN = re.compile(
 CONTENT_TYPES = {**STATIC_CONTENT_TYPES, ".html": "text/html; charset=utf-8", ".png": "image/png"}
 
 
-def serve_v2_file(handler: Any, route: str, *, include_body: bool) -> bool:
+def serve_v2_file(handler: LoopbackHTTPRequestHandler, route: str, *, include_body: bool) -> bool:
     """Serve the v2 page or a file it loads; False leaves the route to the caller.
 
     Like the workbench, the page runs no inline script, so it is served under the same policy.

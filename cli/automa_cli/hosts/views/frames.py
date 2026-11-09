@@ -12,7 +12,6 @@ from __future__ import annotations
 import json
 import threading
 from dataclasses import dataclass, field
-from typing import Any
 from urllib.parse import parse_qs, urlencode, urlparse
 
 from autonomy.runtime.http_errors import error_payload
@@ -48,7 +47,7 @@ class HostFrames:
         self._hosts: dict[str, _HostFrames] = {}
         self._lock = threading.Lock()
 
-    def latest(self, host_name: str) -> dict[str, Any]:
+    def latest(self, host_name: str) -> dict[str, object]:
         """The host's latest frame, read from it now; a refusal names why there is none."""
 
         frames = self._frames(host_name)
@@ -72,7 +71,7 @@ class HostFrames:
             image["url"] = f"{self.frame_route}?{urlencode({'host_name': host_name, 'v': frame_id})}"
         return document
 
-    def image(self, host_name: str, frame_id: str) -> tuple[bytes, str] | dict[str, Any]:
+    def image(self, host_name: str, frame_id: str) -> tuple[bytes, str] | dict[str, object]:
         """A frame's image while the host's view still buffers it."""
 
         with self._lock:

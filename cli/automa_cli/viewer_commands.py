@@ -20,7 +20,6 @@ import json
 import tempfile
 from dataclasses import asdict
 from pathlib import Path
-from typing import Any
 
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
@@ -48,21 +47,21 @@ from .vehicles.render import render_vehicle_result
 from .vehicles.status import vehicles_status
 
 
-def _text(body: dict[str, Any], key: str) -> str:
+def _text(body: dict[str, object], key: str) -> str:
     value = body.get(key)
     if not isinstance(value, str) or not value:
         raise ValueError(f"{key} must be a non-empty string")
     return value
 
 
-def _flag(body: dict[str, Any], key: str) -> bool:
+def _flag(body: dict[str, object], key: str) -> bool:
     value = body.get(key, False)
     if not isinstance(value, bool):
         raise ValueError(f"{key} must be true or false")
     return value
 
 
-def _answer(result: Any, text: str) -> dict[str, Any]:
+def _answer(result: object, text: str) -> dict[str, object]:
     # A host command's result can carry paths; they answer as the strings the CLI prints.
     fields = json.loads(json.dumps(asdict(result), default=str))
     return {"ok": result.exit_code == 0, **fields, "text": text}
@@ -81,7 +80,7 @@ class _Printed:
         return "\n".join([*self.lines, result] if result else self.lines)
 
 
-def _discover(body: dict[str, Any]) -> dict[str, Any]:
+def _discover(body: dict[str, object]) -> dict[str, object]:
     provider, force = body.get("provider"), body.get("force", False)
     if provider not in PROVIDERS:
         raise ValueError(f"provider must be one of {', '.join(PROVIDERS)}")
@@ -91,40 +90,40 @@ def _discover(body: dict[str, Any]) -> dict[str, Any]:
     return _answer(result, render_vehicle_result(result))
 
 
-def _remove(body: dict[str, Any]) -> dict[str, Any]:
+def _remove(body: dict[str, object]) -> dict[str, object]:
     result = remove_vehicle(url=_text(body, "url"))
     return _answer(result, render_vehicle_result(result))
 
 
-def _create(body: dict[str, Any]) -> dict[str, Any]:
+def _create(_body: dict[str, object]) -> dict[str, object]:
     result = create_simulator()
     return _answer(result, render_simulator_result(result))
 
 
-def _delete(body: dict[str, Any]) -> dict[str, Any]:
+def _delete(body: dict[str, object]) -> dict[str, object]:
     result = delete_simulator(url=_text(body, "url"))
     return _answer(result, render_simulator_result(result))
 
 
-def _create_host(body: dict[str, Any]) -> dict[str, Any]:
+def _create_host(body: dict[str, object]) -> dict[str, object]:
     printed = _Printed()
     result = create_host(host_name=_text(body, "name"), provider=body.get("provider"), url=_text(body, "url"), emit=printed)
     return _answer(result, printed.text(render_create(result, json_output=False)))
 
 
-def _update_host(body: dict[str, Any]) -> dict[str, Any]:
+def _update_host(body: dict[str, object]) -> dict[str, object]:
     printed = _Printed()
     result = update_host(host_name=_text(body, "name"), emit=printed)
     return _answer(result, printed.text(render_update(result, json_output=False)))
 
 
-def _delete_host(body: dict[str, Any]) -> dict[str, Any]:
+def _delete_host(body: dict[str, object]) -> dict[str, object]:
     printed = _Printed()
     result = delete_host(host_name=_text(body, "name"), emit=printed)
     return _answer(result, printed.text(render_delete(result)))
 
 
-def _run_flags(body: dict[str, Any]) -> dict[str, Any]:
+def _run_flags(body: dict[str, object]) -> dict[str, object]:
     """hosts run's and restart's flags: --observe-only, --num-decisions N or --unbounded, --record."""
 
     count = body.get("num_decisions")
@@ -134,22 +133,22 @@ def _run_flags(body: dict[str, Any]) -> dict[str, Any]:
             "take_control": not _flag(body, "observe_only"), "record": _flag(body, "record")}
 
 
-def _run_host(body: dict[str, Any]) -> dict[str, Any]:
+def _run_host(body: dict[str, object]) -> dict[str, object]:
     result = start_host_automation_background(host_name=_text(body, "name"), **_run_flags(body))
     return _answer(result, render_lifecycle_result(result))
 
 
-def _stop_host(body: dict[str, Any]) -> dict[str, Any]:
+def _stop_host(body: dict[str, object]) -> dict[str, object]:
     result = stop_host_automation(host_name=_text(body, "name"))
     return _answer(result, render_lifecycle_result(result))
 
 
-def _restart_host(body: dict[str, Any]) -> dict[str, Any]:
+def _restart_host(body: dict[str, object]) -> dict[str, object]:
     result = restart_host_automation(host_name=_text(body, "name"), **_run_flags(body))
     return _answer(result, render_lifecycle_result(result))
 
 
-def _step_item(value: Any, key: str) -> tuple[str, str]:
+def _step_item(value: object, key: str) -> tuple[str, str]:
     """``<step>/<plugin>`` or ``<step>/<preset>``, as plugins' ``--name`` and ``--preset`` take them."""
 
     step, _, item = value.partition("/") if isinstance(value, str) else ("", "", "")
@@ -158,14 +157,14 @@ def _step_item(value: Any, key: str) -> tuple[str, str]:
     return step, item
 
 
-def _step_items(body: dict[str, Any]) -> list[tuple[str, str]]:
+def _step_items(body: dict[str, object]) -> list[tuple[str, str]]:
     names = body.get("name")
     if not isinstance(names, list) or not names:
         raise ValueError("name must be a non-empty list of <step>/<plugin>")
     return [_step_item(name, "name") for name in names]
 
 
-def _plugins_list(query: dict[str, str]) -> dict[str, Any]:
+def _plugins_list(query: dict[str, str]) -> dict[str, object]:
     """plugins list --json: the packaged catalog, or with a host_name its whole catalog (--long)."""
 
     host_name = query.get("host_name")
@@ -173,7 +172,7 @@ def _plugins_list(query: dict[str, str]) -> dict[str, Any]:
                                      json_output=True))
 
 
-def _plugins_stream(query: dict[str, str]) -> dict[str, Any]:
+def _plugins_stream(query: dict[str, str]) -> dict[str, object]:
     """plugins stream --once --step: the probe, and as ``text`` the screen it prints."""
 
     step = query.get("step")
@@ -188,7 +187,7 @@ def _plugins_stream(query: dict[str, str]) -> dict[str, Any]:
             "text": render_stream(events[-1], json_output=False)}
 
 
-def _arm(body: dict[str, Any]) -> dict[str, Any]:
+def _arm(body: dict[str, object]) -> dict[str, object]:
     """plugins arm --name ..., --preset <step>/<preset> or --collection."""
 
     host_name = _text(body, "host_name")
@@ -202,7 +201,7 @@ def _arm(body: dict[str, Any]) -> dict[str, Any]:
     return _answer(result, render_selection(result, json_output=False))
 
 
-def _disarm(body: dict[str, Any]) -> dict[str, Any]:
+def _disarm(body: dict[str, object]) -> dict[str, object]:
     """plugins disarm --name ..., --collection, --step or --all."""
 
     host_name, step = _text(body, "host_name"), body.get("step")
@@ -221,7 +220,7 @@ def _disarm(body: dict[str, Any]) -> dict[str, Any]:
     return _answer(result, render_selection(result, json_output=False))
 
 
-def _upload(body: dict[str, Any]) -> dict[str, Any]:
+def _upload(body: dict[str, object]) -> dict[str, object]:
     """plugins upload --name --entrypoint [--config] [--arm], the file sent as filename and source_base64;
     or --manifest [--arm], the manifest a path on this machine, as the CLI reads it with its source directory."""
 
@@ -248,7 +247,7 @@ def _upload(body: dict[str, Any]) -> dict[str, Any]:
         return _answer(result, render_upload(result, json_output=False).replace(str(file), filename))
 
 
-def _save(body: dict[str, Any]) -> dict[str, Any]:
+def _save(body: dict[str, object]) -> dict[str, object]:
     """plugins save [--step]."""
 
     step = body.get("step")
@@ -262,9 +261,9 @@ HOST_FRAMES = HostFrames(frame_route="/api/hosts/frame")
 
 # /api/hosts is the v1 home page's host list, so hosts status reads at /api/hosts/status.
 VIEWER_READS = {
-    "/api/vehicles": lambda query: vehicles_status()[1],
-    "/api/simulators": lambda query: simulators_status()[1],
-    "/api/hosts/status": lambda query: hosts_status(include_runs=True)[1],
+    "/api/vehicles": lambda _query: vehicles_status()[1],
+    "/api/simulators": lambda _query: simulators_status()[1],
+    "/api/hosts/status": lambda _query: hosts_status(include_runs=True)[1],
     "/api/hosts/latest": lambda query: HOST_FRAMES.latest(_text(query, "host_name")),
     "/api/hosts/frame": lambda query: HOST_FRAMES.image(_text(query, "host_name"), _text(query, "v")),
     "/api/plugins/list": _plugins_list,

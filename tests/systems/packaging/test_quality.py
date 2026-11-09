@@ -10,15 +10,27 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.validation import check
-from scripts.validation.text_evaluators import ruff_python
-from qca import evaluate
-from qca.text_evaluators import python_patterns
+from qca.evaluation import finding
 
 
 ROOT = Path(__file__).resolve().parents[3]
 
 
 class QualityCommandTests(unittest.TestCase):
+    def test_failed_evaluator_preserves_prior_findings_and_records_failure(self) -> None:
+        def first(_context):
+            return [finding("example", {"path": "module.py", "line": 1}, "Question?", "test", "rule", evidence={})]
+        def fail(_context):
+            raise ValueError("tool failed")
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stderr(io.StringIO()):
+            output = Path(directory)
+            with patch.object(check, "changed_lines", return_value={}), \
+                 patch.object(check, "evaluate_ruff", first), patch.object(check, "evaluate_imports", fail):
+                self.assertEqual(check.main(["--output", str(output)]), 2)
+            artifact = json.loads((output / "findings.json").read_text())
+            self.assertEqual([item["type"] for item in artifact["findings"]], ["example"])
+            self.assertEqual(artifact["errors"], ["tool failed"])
+
     def test_changed_lines_uses_git_diff_and_includes_untracked_files(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -37,18 +49,6 @@ class QualityCommandTests(unittest.TestCase):
                 changes = check.changed_lines()
             self.assertEqual(changes["module.py"], {2})
             self.assertIsNone(changes["new.py"])
-
-    def test_external_engine_evaluates_text_without_a_repository(self) -> None:
-        text = "def run(a, b, c):\n    if a and b and c:\n        return missing\n"
-        with tempfile.TemporaryDirectory() as directory, contextlib.chdir(directory):
-            results = evaluate(text, [ruff_python, python_patterns])
-        result = next(item for item in results if item["type"] == "ruff.F821")
-        span = result["location"]
-        self.assertEqual(text[span["start"]:span["end"]], "missing")
-        conditional = next(item for item in results if item["type"] == "qca.opaque_conditional")
-        span = conditional["location"]
-        self.assertEqual(text[span["start"]:span["end"]], "a and b and c")
-        self.assertEqual(set(conditional), set(result))
 
     def test_default_scope_includes_deployment_source_but_excludes_generated_vendor(self) -> None:
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()) as output:
@@ -158,6 +158,9 @@ class QualityCommandTests(unittest.TestCase):
             self.assertEqual(len(records), 1)
             self.assertEqual(records[0]["location"], {"path": "module.py", "line": 6})
             self.assertEqual(records[0]["type"], "type.reportExplicitAny")
+            with contextlib.redirect_stdout(io.StringIO()):
+                via_dispatch = check.evaluate_types(check.QualityContext({"module.py": {6}}, None, root=root))
+            self.assertEqual(via_dispatch, records)
 
 
 if __name__ == "__main__":

@@ -21,26 +21,13 @@ ranked by shared call identifiers. QCA itself remains standard-library-only.
 See [the validation commands](../tests/README.md#python-quality-checks) for the
 inspection scope, limitations, and historical review examples.
 
-The evaluation entry point accepts a text body and explicit evaluators. It does
-not interpret the text as a file, diff, or repository; an evaluator determines
-the meaning of its input. Findings have a type, review question, source,
-location, evidence, and optional related locations. Text evaluators locate
-findings with zero-based, half-open character offsets into the original text.
-For example, QCA's existing Python pattern indicators can evaluate text directly:
-
-```python
-from qca import evaluate
-from qca.text_evaluators import python_patterns
-
-findings = evaluate("if a and b and c:\n    pass\n", [python_patterns])
-```
-
-`scripts.validation.text_evaluators.ruff_python` is an external-engine adapter
-that evaluates supplied Python text with a fixed Ruff rule selection; it can be
-passed to the same entry point. Project-wide type, import and diff
-checks need their own repository-aware inputs; the quality command runs those
-adapters and normalizes their findings into the same record shape. A finding is
-an inspection question, not a judgment that a real problem exists.
+The evaluation entry point accepts evaluator and context pairs. Each context can
+be text, a set of files, a repository, or a change; evaluators use the format
+they need. The quality command passes its repository context to QCA, which runs
+the Ruff, type, import, vocabulary and change-inspection evaluators and collects
+their findings in one flat list. Each finding has a type, review question, source,
+location, evidence, and optional related locations. A finding is an inspection
+question, not a judgment that a real problem exists.
 
 From the repository root:
 

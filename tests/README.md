@@ -134,9 +134,9 @@ QCA is informational, including when analysis fails; the quality job log and
 artifact record failures. The `quality-findings` artifact includes full JSON and
 HTML evidence and `findings.json`, whose records share a type, location,
 question, source, status, related locations, and evidence. The artifact includes
-the revision once at the top level. Status distinguishes blocking diagnostics,
-and informational review candidates. Findings are
-questions for review, not labels that establish real problems. To reproduce the
+the revision once at the top level. Status distinguishes blocking diagnostics
+from informational review candidates; execution failures are recorded separately.
+Findings are questions for review, not labels that establish real problems. To reproduce the
 full CI quality process locally against committed revisions:
 
 ```sh

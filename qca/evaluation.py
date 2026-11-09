@@ -1,11 +1,8 @@
-"""Evaluate caller-supplied text and return reviewable findings.
-
-The context is exactly the supplied string. Evaluators decide what that text
-means; this interface has no repository, file, diff, or language assumptions.
-Text ranges use zero-based, half-open character offsets into the input.
-"""
+"""Run evaluators against their natural context and collect flat findings."""
 
 from collections.abc import Callable, Iterable
+
+FIELDS = {"type", "location", "question", "source", "status", "related", "evidence"}
 
 
 def finding(kind: str, location: dict, question: str, tool: str, rule: str,
@@ -15,6 +12,28 @@ def finding(kind: str, location: dict, question: str, tool: str, rule: str,
             "related": related or [], "evidence": evidence}
 
 
-def evaluate(text: str, evaluators: Iterable[Callable[[str], list[dict]]]) -> list[dict]:
-    """Run each evaluator on the same text; never treat a candidate as a verdict."""
-    return [item for evaluator in evaluators for item in evaluator(text)]
+def validate_finding(item: object) -> None:
+    if not isinstance(item, dict) or set(item) != FIELDS:
+        raise ValueError("Evaluator returned a finding with an invalid shape")
+    types = {"location": dict, "source": dict, "related": list, "evidence": dict,
+             "type": str, "question": str}
+    if any(not isinstance(item[key], expected) for key, expected in types.items()):
+        raise ValueError("Evaluator returned an invalid finding")
+    if not item["type"] or not item["question"] or item["status"] not in {"blocking", "review"}:
+        raise ValueError("Evaluator returned an invalid finding")
+    location, source = item["location"], item["source"]
+    if not (location.get("path") or {"start", "end"} <= location.keys()):
+        raise ValueError("Finding is missing a location")
+    if not source.get("tool") or not source.get("rule"):
+        raise ValueError("Finding is missing a source")
+
+
+def evaluate(evaluations: Iterable[tuple[Callable[..., list[dict]], object]],
+             *, findings: list[dict] | None = None) -> list[dict]:
+    """Run each evaluator on its own context; a finding is not a verdict."""
+    results = findings if findings is not None else []
+    for evaluator, context in evaluations:
+        for item in evaluator(context):
+            validate_finding(item)
+            results.append(item)
+    return results

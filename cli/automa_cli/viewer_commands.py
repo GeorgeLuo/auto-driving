@@ -24,6 +24,7 @@ from pathlib import Path
 from autonomy.decision_cycle.activation import STEPS
 from autonomy.decision_cycle.steps import CLEARABLE_STEPS
 
+from .frontend.server import Write
 from .hosts.deployment.render import render_create, render_delete, render_progress, render_update
 from .hosts.deployment.service import create_host, delete_host, update_host
 from .hosts.progress import ProgressEvent
@@ -62,10 +63,19 @@ def _flag(body: dict[str, object], key: str) -> bool:
 
 
 def _optional_text(body: dict[str, object], key: str) -> str | None:
+    """An optional flag's text; empty or null leaves it unset, as a blank form field means."""
+
     value = body.get(key)
     if value is not None and not isinstance(value, str):
         raise ValueError(f"{key} must be a string or null")
-    return value
+    return value or None
+
+
+def _provider(body: dict[str, object]) -> str:
+    provider = body.get("provider")
+    if not isinstance(provider, str) or provider not in PROVIDERS:
+        raise ValueError(f"provider must be one of {', '.join(PROVIDERS)}")
+    return provider
 
 
 def _fields(body: dict[str, object], allowed: set[str]) -> None:
@@ -74,12 +84,23 @@ def _fields(body: dict[str, object], allowed: set[str]) -> None:
         raise ValueError(f"unsupported fields: {', '.join(unexpected)}")
 
 
-def _exclusive(body: dict[str, object], names: tuple[str, ...]) -> None:
-    selected = [key for key in names if key in body]
-    if "all" in selected and body["all"] is False:
-        selected.remove("all")
-    if len(selected) > 1:
+def _choice(body: dict[str, object], names: tuple[str, ...]) -> str | None:
+    """Which one of a command's mutually exclusive flags the body gives; null or false gives none."""
+
+    chosen = [key for key in names if body.get(key) not in (None, False)]
+    if len(chosen) > 1:
         raise ValueError(f"choose only one of {', '.join(names)}")
+    return chosen[0] if chosen else None
+
+
+def _accepting(command: Write, *fields: str) -> Write:
+    """The write route for ``command``, refusing a body with fields it does not take before it runs."""
+
+    def write(body: dict[str, object]) -> dict[str, object]:
+        _fields(body, set(fields))
+        return command(body)
+
+    return write
 
 
 def _answer(result: object, text: str) -> dict[str, object]:
@@ -102,12 +123,7 @@ class _Printed:
 
 
 def _discover(body: dict[str, object]) -> dict[str, object]:
-    provider, force = body.get("provider"), body.get("force", False)
-    if provider not in PROVIDERS:
-        raise ValueError(f"provider must be one of {', '.join(PROVIDERS)}")
-    if not isinstance(force, bool):
-        raise ValueError("force must be true or false")
-    result = discover_vehicle(provider=provider, url=_text(body, "url"), force=force)
+    result = discover_vehicle(provider=_provider(body), url=_text(body, "url"), force=_flag(body, "force"))
     return _answer(result, render_vehicle_result(result))
 
 
@@ -127,10 +143,9 @@ def _delete(body: dict[str, object]) -> dict[str, object]:
 
 
 def _create_host(body: dict[str, object]) -> dict[str, object]:
-    _fields(body, {"name", "provider", "url", "ssh_target", "pi_home", "drive_args", "dry_run", "verbose"})
     printed = _Printed()
     dry_run = _flag(body, "dry_run")
-    result = create_host(host_name=_text(body, "name"), provider=_text(body, "provider"), url=_text(body, "url"),
+    result = create_host(host_name=_text(body, "name"), provider=_provider(body), url=_text(body, "url"),
                          ssh_target=_optional_text(body, "ssh_target"), pi_home=_optional_text(body, "pi_home"),
                          drive_args=_optional_text(body, "drive_args"), dry_run=dry_run, verbose=_flag(body, "verbose"),
                          emit=None if dry_run else printed)
@@ -138,7 +153,6 @@ def _create_host(body: dict[str, object]) -> dict[str, object]:
 
 
 def _update_host(body: dict[str, object]) -> dict[str, object]:
-    _fields(body, {"name", "dry_run", "restart", "drive_args", "verbose"})
     printed = _Printed()
     dry_run = _flag(body, "dry_run")
     result = update_host(host_name=_text(body, "name"), dry_run=dry_run, restart=_flag(body, "restart"),
@@ -221,12 +235,10 @@ def _plugins_stream(query: dict[str, str]) -> dict[str, object]:
 def _arm(body: dict[str, object]) -> dict[str, object]:
     """plugins arm --name ..., --preset <step>/<preset> or --collection."""
 
-    _fields(body, {"host_name", "name", "preset", "collection"})
-    _exclusive(body, ("name", "preset", "collection"))
-    host_name = _text(body, "host_name")
-    if "collection" in body:
+    host_name, chosen = _text(body, "host_name"), _choice(body, ("name", "preset", "collection"))
+    if chosen == "collection":
         result = arm_collection(url=None, host_name=host_name, name=_text(body, "collection"))
-    elif "preset" in body:
+    elif chosen == "preset":
         step, preset = _step_item(body["preset"], "preset")
         result = arm_preset(url=None, host_name=host_name, step=step, preset=preset)
     else:
@@ -237,19 +249,17 @@ def _arm(body: dict[str, object]) -> dict[str, object]:
 def _disarm(body: dict[str, object]) -> dict[str, object]:
     """plugins disarm --name ..., --collection, --step or --all."""
 
-    _fields(body, {"host_name", "name", "collection", "step", "all"})
-    all_plugins = _flag(body, "all")
-    _exclusive(body, ("name", "collection", "step", "all"))
-    host_name, step = _text(body, "host_name"), body.get("step")
-    if "collection" in body:
+    host_name, chosen = _text(body, "host_name"), _choice(body, ("name", "collection", "step", "all"))
+    if chosen == "collection":
         result = disarm_collection(url=None, host_name=host_name, name=_text(body, "collection"))
-    elif "name" in body:
+    elif chosen == "name":
         result = disarm_plugins(url=None, host_name=host_name, plugins=_step_items(body))
-    elif step is not None:
+    elif chosen == "step":
+        step = body["step"]
         if step not in CLEARABLE_STEPS:
             raise ValueError(f"step must be one of {', '.join(CLEARABLE_STEPS)}")
         result = disarm_plugins(url=None, host_name=host_name, step=step)
-    elif all_plugins:
+    elif chosen == "all" and _flag(body, "all"):
         result = disarm_plugins(url=None, host_name=host_name)
     else:
         raise ValueError("disarm needs name, collection, step or all")
@@ -260,12 +270,11 @@ def _upload(body: dict[str, object]) -> dict[str, object]:
     """plugins upload --name --entrypoint [--config] [--arm], the file sent as filename and source_base64;
     or --manifest [--arm], the manifest a path on this machine, as the CLI reads it with its source directory."""
 
-    if "manifest" in body:
+    if body.get("manifest") is not None:
         _fields(body, {"host_name", "manifest", "arm"})
         result = upload_collection(url=None, host_name=_text(body, "host_name"),
                                    manifest=Path(_text(body, "manifest")).expanduser(), arm=_flag(body, "arm"))
         return _answer(result, render_upload(result, json_output=False))
-    _fields(body, {"host_name", "name", "entrypoint", "filename", "source_base64", "config", "arm"})
     step, plugin_id = _step_item(body.get("name"), "name")
     filename = Path(_text(body, "filename")).name
     config = body.get("config")
@@ -307,19 +316,25 @@ VIEWER_READS = {
     "/api/plugins/list": _plugins_list,
     "/api/plugins/stream": _plugins_stream,
 }
+_RUN_FIELDS = ("name", "observe_only", "num_decisions", "unbounded", "record")
+_UPLOAD_FIELDS = ("host_name", "arm", "manifest", "name", "entrypoint", "filename", "source_base64", "config")
 VIEWER_WRITES = {
-    "/api/vehicles/discover": _discover,
-    "/api/vehicles/remove": _remove,
-    "/api/simulators/create": _create,
-    "/api/simulators/delete": _delete,
-    "/api/hosts/create": _create_host,
-    "/api/hosts/update": _update_host,
-    "/api/hosts/delete": _delete_host,
-    "/api/hosts/run": _run_host,
-    "/api/hosts/stop": _stop_host,
-    "/api/hosts/restart": _restart_host,
-    "/api/plugins/arm": _arm,
-    "/api/plugins/disarm": _disarm,
-    "/api/plugins/upload": _upload,
-    "/api/plugins/save": _save,
+    route: _accepting(command, *fields)
+    for route, command, fields in [
+        ("/api/vehicles/discover", _discover, ("provider", "url", "force")),
+        ("/api/vehicles/remove", _remove, ("url",)),
+        ("/api/simulators/create", _create, ()),
+        ("/api/simulators/delete", _delete, ("url",)),
+        ("/api/hosts/create", _create_host,
+         ("name", "provider", "url", "ssh_target", "pi_home", "drive_args", "dry_run", "verbose")),
+        ("/api/hosts/update", _update_host, ("name", "dry_run", "restart", "drive_args", "verbose")),
+        ("/api/hosts/delete", _delete_host, ("name",)),
+        ("/api/hosts/run", _run_host, _RUN_FIELDS),
+        ("/api/hosts/stop", _stop_host, ("name",)),
+        ("/api/hosts/restart", _restart_host, _RUN_FIELDS),
+        ("/api/plugins/arm", _arm, ("host_name", "name", "preset", "collection")),
+        ("/api/plugins/disarm", _disarm, ("host_name", "name", "collection", "step", "all")),
+        ("/api/plugins/upload", _upload, _UPLOAD_FIELDS),
+        ("/api/plugins/save", _save, ("host_name", "step")),
+    ]
 }

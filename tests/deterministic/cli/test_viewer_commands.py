@@ -57,9 +57,10 @@ class HostFrameCacheTests(unittest.TestCase):
             self.assertFalse(cache.image("second", second_id)["ok"])
             self.assertEqual(cache.image("first", first_id), (buffer.getvalue(), "image/jpeg"))
             self.assertEqual(len(cache._hosts), 2)
-            resolve.side_effect = RuntimeHostError("host deleted")
-            self.assertFalse(cache.latest("first")["ok"])
-            self.assertFalse(cache.image("first", first_id)["ok"])
+            resolve.side_effect = RuntimeHostError("Host 'first' is not running.")
+            self.assertEqual(cache.latest("first"), {"ok": False, "error": "Host 'first' is not running."})
+            # A stopped host's page still shows its last frame, so the image stays served.
+            self.assertEqual(cache.image("first", first_id), (buffer.getvalue(), "image/jpeg"))
 
 
 class ViewerCommandTests(unittest.TestCase):
@@ -264,10 +265,32 @@ class ViewerCommandTests(unittest.TestCase):
                               upload_collection, upload_plugin):
                 operation.assert_not_called()
 
-    def test_false_all_does_not_conflict_with_another_disarm_selector(self) -> None:
-        with mock.patch.object(viewer_commands, "disarm_collection", wraps=viewer_commands.disarm_collection) as disarm:
+    def test_a_null_or_false_selector_does_not_conflict_with_the_one_given(self) -> None:
+        with (mock.patch.object(viewer_commands, "disarm_collection", wraps=viewer_commands.disarm_collection) as disarm,
+              mock.patch.object(viewer_commands, "arm_preset", wraps=viewer_commands.arm_preset) as arm):
             self.post("/api/plugins/disarm", {"host_name": "missing", "collection": "pack", "all": False})
-        disarm.assert_called_once_with(url=None, host_name="missing", name="pack")
+            self.post("/api/plugins/disarm", {"host_name": "missing", "collection": "pack", "step": None, "name": None})
+            self.post("/api/plugins/arm", {"host_name": "missing", "preset": "perception/p", "name": None, "collection": None})
+        self.assertEqual(disarm.call_count, 2)
+        disarm.assert_called_with(url=None, host_name="missing", name="pack")
+        arm.assert_called_once_with(url=None, host_name="missing", step="perception", preset="p")
+
+    def test_every_write_refuses_a_field_it_does_not_take_before_it_runs(self) -> None:
+        for route in VIEWER_WRITES:
+            with self.subTest(route=route):
+                self.assertEqual(self.post(route, {"unexpected": 1}),
+                                 (400, {"ok": False, "error": "unsupported fields: unexpected"}))
+        with mock.patch.object(viewer_commands, "restart_host_automation") as restart:
+            code, refused = self.post("/api/hosts/restart", {"name": "car", "observe-only": True, "num_decisions": 5})
+        self.assertEqual((code, refused["error"]), (400, "unsupported fields: observe-only"))
+        restart.assert_not_called()
+
+    def test_a_host_create_names_the_providers_and_blank_options_are_unset(self) -> None:
+        self.assertEqual(self.post("/api/hosts/create", {"name": "car", "url": "http://car"}),
+                         (400, {"ok": False, "error": "provider must be one of chase-sim, picar"}))
+        with mock.patch.object(viewer_commands, "update_host", wraps=viewer_commands.update_host) as update:
+            self.post("/api/hosts/update", {"name": "car", "drive_args": ""})
+        self.assertIsNone(update.call_args.kwargs["drive_args"])
 
     def test_writes_come_only_from_the_viewer_itself(self) -> None:
         self.assertEqual(self.post("/api/vehicles/remove", {"url": "x"}, Origin="http://example.com")[0], 403)

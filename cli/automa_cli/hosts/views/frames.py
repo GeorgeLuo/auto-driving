@@ -55,8 +55,13 @@ class HostFrames:
         try:
             base_url = runtime_base_url(host_name)
         except _READ_ERRORS as exc:
+            # A host that stops keeps its buffered images for the frames a page still shows;
+            # a name never read gets no entry.
             with self._lock:
-                self._hosts.pop(host_name, None)
+                frames = self._hosts.get(host_name)
+            if frames is not None:
+                with frames.lock:
+                    frames.publisher.invalidate(str(exc))
             return error_payload(str(exc))
         frames = self._frames(host_name)
         with frames.lock:

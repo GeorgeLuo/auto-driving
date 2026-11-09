@@ -5,11 +5,10 @@ It is intentionally Python-first and standard-library-only.  It does not
 assign a quality score, change proposal workflow state, or create a blocking
 check.
 
-PRs automatically run the informational QCA inspection job. It publishes a
-filtered summary and retains the full JSON/HTML evidence as an Actions artifact.
-`python3 -m scripts.validation.qca_summary --base <merge-base> --head <head> --output /tmp/qca-review`
-reproduces that report locally. The summary distinguishes measured growth from
-inspection candidates involving changed functions, which may predate the PR.
+`python3 -m scripts.validation.check` runs QCA beside Ruff and basedpyright on
+every PR through `qca.evaluation`, described in
+[Findings for any context](#findings-for-any-context). QCA's findings there are
+review questions and do not fail the check.
 
 From the repository root:
 
@@ -44,6 +43,44 @@ keeps a compact list, while HTML presents the same code.  Diff
 not findings that should be accepted without review.  Rename detection is
 deliberately disabled in v0: a move is represented as an old-file deletion and
 a new-file addition until a stable callable-matching rule is justified.
+
+## Findings for any context
+
+`qca.evaluation` runs evaluators (QCA, or any tool wrapped as one) on code in
+three context forms and reports every finding in one shape:
+
+* `text_context`: text evaluated as if it were the named file;
+* `files_context`: whole files, with a directory standing for its tracked and
+  unignored files;
+* `change_context`: a pull request or commit, as the merge base of a base
+  revision against a head revision or the working tree.
+
+An evaluator is a name and a function from a directory and paths to findings, so
+one evaluator serves every form. For a change, each evaluator runs on both sides
+and only findings the base lacks are reported. Findings match by tool, rule,
+file, enclosing symbol, and the location's source text, so moved code still
+matches; a finding with a `measure` matches a base finding of at least its value.
+An evaluator whose `reach` is `project` compares its whole roots, which reports
+a change's effect on files it did not touch.
+
+Each finding has exactly these fields:
+
+| Field | Meaning |
+| --- | --- |
+| `tool`, `rule` | What found it. |
+| `status` | `blocking` when the check should fail, otherwise `review`. |
+| `location` | `path`, 1-based `line` and `end_line`, and the enclosing `symbol` when known. |
+| `related` | Other locations the finding involves, such as a clone's copies. |
+| `question` | What a reviewer should decide about the location. |
+| `measure` | `value` and `limit` for size and complexity findings, otherwise null. |
+| `evidence` | Tool-specific detail. |
+
+`evaluate` returns a `qca/findings/v1` document: the `context` evaluated, one
+`evaluations` record per evaluator (`completed`, `skipped` with a reason, or
+`failed` with an error), and the flat `findings` list. `qca.evaluators.structure`
+is QCA's evaluator: opaque conditionals, redundant `Any` guards, swallowed
+exceptions, and clones as review questions, plus callables above its complexity,
+size, and nesting limits with their measures.
 
 ## Factor reports (analyzer 0.3)
 

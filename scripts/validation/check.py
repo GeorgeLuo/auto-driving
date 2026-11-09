@@ -1,155 +1,140 @@
-"""Check maintained Python code without requiring existing debt to be repaired."""
+"""Check Python quality for a change, whole files, or text, and report one findings list.
+
+  python3 -m scripts.validation.check                           working tree against origin/main
+  python3 -m scripts.validation.check --base main --head HEAD   a pull request
+  python3 -m scripts.validation.check --base C~1 --head C       one commit
+  python3 -m scripts.validation.check qca cli/automa_cli        whole files
+  python3 -m scripts.validation.check --text cli/x.py < x.py    text evaluated as cli/x.py
+
+A change reports only findings its base lacks, including ones outside the
+changed lines.  Exit status: 0 clean, 1 blocking findings, 2 a required check
+could not run.
+"""
 
 from __future__ import annotations
 
 import argparse
-import ast
 import json
-import re
-import subprocess
 import sys
-from collections import defaultdict
-from dataclasses import dataclass
+import tomllib
+from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import TypedDict
 
+from qca import AnalysisError
+from qca.evaluation import (
+    Context,
+    ContextRecord,
+    Document,
+    EvaluationRecord,
+    Evaluator,
+    Finding,
+    change_context,
+    evaluate,
+    files_context,
+    text_context,
+)
+from qca.evaluators import structure
+from scripts.validation import evaluators
 
 ROOT = Path(__file__).resolve().parents[2]
-RUFF_BASELINE = ROOT / ".ruff-baseline.json"
 PATHS = ("autonomy", "cli", "implementations", "qca", "scripts/validation", "tests")
-METRIC = re.compile(r"\((\d+) > (\d+)\)")
-METRIC_RULES = {"C901", "PLR0912", "PLR0915", "PLR0916", "PLR1702"}
+# Both sides of a change are judged by the head's tool configuration.
+SHARED = ("pyproject.toml", ".basedpyright")
+DEFAULT_BASE = "origin/main"
+LIMIT = 50
 
 
-class Location(TypedDict):
-    row: int
-    column: int
+def build_evaluators(*, ruff_only: bool = False) -> list[Evaluator]:
+    ruff = Evaluator("ruff", evaluators.ruff, roots=PATHS)
+    if ruff_only:
+        return [ruff]
+    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    return [
+        ruff,
+        Evaluator(
+            "basedpyright", evaluators.basedpyright, roots=tuple(config["tool"]["basedpyright"]["include"]),
+            forms=frozenset({"files", "change"}), reach="project",
+        ),
+        Evaluator("vocabulary", evaluators.vocabulary),
+        Evaluator("qca", structure, roots=PATHS, required=False),
+    ]
 
 
-class RuffDiagnostic(TypedDict):
-    filename: str
-    code: str
-    message: str
-    location: Location
+def open_context(args: argparse.Namespace) -> AbstractContextManager[Context]:
+    if args.text:
+        return text_context(args.text, sys.stdin.read(), root=ROOT, shared=SHARED)
+    if args.paths:
+        return files_context(ROOT, [Path(path).resolve().relative_to(ROOT.resolve()).as_posix() for path in args.paths])
+    return change_context(ROOT, args.base or DEFAULT_BASE, args.head, shared=SHARED)
 
 
-class BaselineEntry(TypedDict):
-    key: list[str]
-    limits: list[int]
-
-
-@dataclass(frozen=True)
-class Finding:
-    key: tuple[str, ...]
-    magnitude: int
-    diagnostic: RuffDiagnostic
-
-
-def scopes(source: str) -> list[tuple[int, int, str]]:
-    """Locate diagnostics by their owning symbol, independent of line shifts."""
-    found: list[tuple[int, int, str]] = []
-
-    def visit(node: ast.AST, parent: str) -> None:
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-            parent = f"{parent}.{node.name}" if parent else node.name
-            found.append((node.lineno, node.end_lineno or node.lineno, parent))
-        for child in ast.iter_child_nodes(node):
-            visit(child, parent)
-
-    try:
-        visit(ast.parse(source), "")
-    except SyntaxError:
-        pass  # Ruff's syntax diagnostic still fails the check.
-    return found
-
-
-def findings(diagnostics: list[RuffDiagnostic], root: Path) -> list[Finding]:
-    sources = {item["filename"]: Path(item["filename"]).read_text(encoding="utf-8") for item in diagnostics}
-    owners = {path: scopes(source) for path, source in sources.items()}
-    result = []
-    for item in diagnostics:
-        path, line = item["filename"], item["location"]["row"]
-        containing = [name for start, end, name in owners[path] if start <= line <= end]
-        owner = containing[-1] if containing else "<module>"
-        message = item["message"]
-        metric = METRIC.search(message) if item["code"] in METRIC_RULES else None
-        magnitude = int(metric[1]) if metric else 0
-        # A smaller still-over-limit function is an improvement, not a new error.
-        message = METRIC.sub(r"(count > \2)", message) if metric else message
-        source = "" if metric else "".join(sources[path].splitlines()[line - 1:line]).strip()
-        key = (Path(path).resolve().relative_to(root.resolve()).as_posix(), item["code"], owner, message, source)
-        result.append(Finding(key, magnitude, item))
-    return result
-
-
-def baseline_entries(items: list[Finding]) -> list[BaselineEntry]:
-    grouped: dict[tuple[str, ...], list[int]] = defaultdict(list)
-    for item in items:
-        grouped[item.key].append(item.magnitude)
-    return [{"key": list(key), "limits": sorted(values)} for key, values in sorted(grouped.items())]
-
-
-def new_findings(items: list[Finding], entries: list[BaselineEntry]) -> list[Finding]:
-    remaining = {tuple(entry["key"]): sorted(entry["limits"]) for entry in entries}
-    added = []
-    for item in sorted(items, key=lambda item: item.magnitude):
-        limits = remaining.get(item.key, [])
-        index = next((i for i, limit in enumerate(limits) if limit >= item.magnitude), None)
-        if index is None:
-            added.append(item)
-        else:
-            limits.pop(index)
-    return added
-
-
-def check_ruff(*, write_baseline: bool = False) -> int:
-    completed = subprocess.run(
-        [sys.executable, "-m", "ruff", "check", "--no-cache", "--output-format", "json", *PATHS],
-        cwd=ROOT, capture_output=True, text=True, check=False,
-    )
-    if completed.returncode not in (0, 1):
-        print(completed.stderr, file=sys.stderr)
+def exit_status(document: Document) -> int:
+    if any(record["status"] == "failed" and record["required"] for record in document["evaluations"]):
         return 2
-    diagnostics: list[RuffDiagnostic] = json.loads(completed.stdout)
-    items = findings(diagnostics, ROOT)
-    if write_baseline:
-        if any(item["code"] == "invalid-syntax" for item in diagnostics):
-            raise ValueError("Repair syntax errors before recording a baseline")
-        RUFF_BASELINE.write_text(
-            json.dumps({"version": 1, "entries": baseline_entries(items)}, indent=2) + "\n",
-            encoding="utf-8",
-        )
-        print(f"Recorded {len(items)} Ruff diagnostics in {RUFF_BASELINE.name}.")
-        return 0
-    baseline = json.loads(RUFF_BASELINE.read_text(encoding="utf-8"))
-    if baseline["version"] != 1:
-        raise ValueError("Unsupported Ruff baseline version")
-    entries: list[BaselineEntry] = baseline["entries"]
-    added = new_findings(items, entries)
-    for item in added:
-        location = item.diagnostic["location"]
-        print(f"{item.key[0]}:{location['row']}:{location['column']}: {item.key[1]} {item.diagnostic['message']}")
-    print(f"Ruff: {len(added)} new or worsened diagnostics; {len(items) - len(added)} baselined.", flush=True)
-    return int(bool(added))
+    return int(any(item["status"] == "blocking" for item in document["findings"]))
+
+
+def render_summary(document: Document) -> str:
+    lines = ["## Python quality", "", _describe(document["context"]), "", "| Check | Result |", "| --- | --- |"]
+    lines += [f"| {record['evaluator']} | {_outcome(record)} |" for record in document["evaluations"]]
+    for status, title in (("blocking", "Blocking"), ("review", "Review questions")):
+        rows = [_row(item) for item in document["findings"] if item["status"] == status]
+        lines += ["", f"### {title} ({len(rows)})", "", *(rows[:LIMIT] or ["None."])]
+        if len(rows) > LIMIT:
+            lines += ["", f"Showing {LIMIT}; findings.json has all {len(rows)}."]
+    return "\n".join(lines)
+
+
+def _describe(context: ContextRecord) -> str:
+    if context["form"] == "text":
+        return f"Text evaluated as `{context['paths'][0]}`."
+    if context["form"] == "files":
+        return f"{len(context['paths'])} whole files."
+    head = f"`{context['head'][:12]}`" if context["head"] else "the working tree"
+    return (f"Change from `{str(context['base'])[:12]}` to {head}, {len(context['paths'])} changed files. "
+            "Findings are new relative to the base.")
+
+
+def _outcome(record: EvaluationRecord) -> str:
+    if record["status"] == "completed":
+        return f"{record.get('findings', 0)} findings"
+    detail = _plain(record.get("error", record.get("reason", ""))).replace("|", "\\|")
+    return f"{record['status']}{'' if record['required'] else ' (informational)'}: {detail}"
+
+
+def _row(item: Finding) -> str:
+    place = item["location"]
+    return f"- `{place['path']}:{place['line']}` {item['tool']} `{item['rule']}`: {_plain(item['question'])}"
+
+
+def _plain(text: str) -> str:
+    return " ".join(text.split())
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--ruff-only", action="store_true", help="Run the fast lint checks only.")
-    parser.add_argument("--write-ruff-baseline", action="store_true", help="Explicitly accept current Ruff debt; review the resulting diff.")
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("paths", nargs="*", help="Evaluate these whole files or directories instead of a change.")
+    parser.add_argument("--base", help=f"Base of the change; its merge base with the head is used (default: {DEFAULT_BASE}).")
+    parser.add_argument("--head", help="Head revision of the change (default: the working tree).")
+    parser.add_argument("--text", metavar="NAME", help="Evaluate standard input as the file NAME.")
+    parser.add_argument("--ruff-only", action="store_true", help="Run only Ruff, for a fast editing loop.")
+    parser.add_argument("--output", type=Path, help="Write findings.json and summary.md to this directory.")
     args = parser.parse_args(argv)
+    if sum(map(bool, (args.paths, args.text, args.base or args.head))) > 1:
+        parser.error("evaluate one context: paths, --text, or a change (--base/--head)")
     try:
-        lint_status = check_ruff(write_baseline=args.write_ruff_baseline)
-        if args.ruff_only or args.write_ruff_baseline:
-            return lint_status
-        type_status = subprocess.run(
-            [sys.executable, "-m", "basedpyright", "--pythonpath", sys.executable],
-            cwd=ROOT, check=False,
-        ).returncode
-        return max(lint_status, type_status)
-    except (OSError, ValueError, KeyError) as exc:
-        print(f"Quality check failed: {exc}", file=sys.stderr)
+        with open_context(args) as context:
+            document = evaluate(context, build_evaluators(ruff_only=args.ruff_only))
+    except (AnalysisError, OSError, ValueError) as exc:
+        print(f"Quality check could not start: {exc}", file=sys.stderr)
         return 2
+    summary = render_summary(document)
+    print(summary)
+    if args.output:
+        args.output.mkdir(parents=True, exist_ok=True)
+        (args.output / "findings.json").write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+        (args.output / "summary.md").write_text(summary + "\n", encoding="utf-8")
+    return exit_status(document)
 
 
 if __name__ == "__main__":

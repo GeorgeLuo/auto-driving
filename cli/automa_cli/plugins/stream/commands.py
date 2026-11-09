@@ -71,14 +71,15 @@ def stream_host_step(
     stream clears the terminal, and only unless ``--no-clear``.
     """
 
+    continuous_text = not json_output and not once
     return _present(
         lambda emit: stream_host(
             step, host_name=host_name, refresh_s=refresh_s, once=once, timeout_s=timeout_s,
-            serve_view=not json_output and not once,
+            serve_view=continuous_text,
             include_publication=not json_output,
             emit=emit,
         ),
-        output=output, json_output=json_output, clear=not (no_clear or once or json_output),
+        output=output, json_output=json_output, clear=continuous_text and not no_clear,
     )
 
 

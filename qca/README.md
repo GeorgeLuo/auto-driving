@@ -56,16 +56,17 @@ three context forms and reports every finding in one shape:
   revision against a head revision or the working tree.
 
 An evaluator is a name and a function from a directory and paths to findings, so
-one evaluator serves every form. For a change, each evaluator runs on both sides
-and only findings the base lacks are reported. Findings match by tool, rule,
-file, enclosing symbol, and the location's source text, so moved code still
-matches; a finding with a `measure` matches a base finding of at least its value.
+one evaluator serves every form. For a change, each evaluator reports findings
+throughout changed files. It also compares both sides to identify new findings
+elsewhere. Findings match by tool, rule, file, enclosing symbol, and the
+location's source text, so moved code still matches; a finding with a `measure`
+matches a base finding of at least its value.
 An evaluator's `roots` bound what it maintains, less any `excluded` paths under
 them: excluded files are never requested, and their findings are never reported.
 An evaluator whose `reach` is `project`, such as a type checker, reads its whole
 roots in every form. For files or text it reports only findings in those files;
-for a change it reports every finding the change introduces, including in files
-the change did not touch.
+for a change it reports findings in changed files and findings the change
+introduces in files it did not touch.
 
 Each finding has exactly these fields:
 

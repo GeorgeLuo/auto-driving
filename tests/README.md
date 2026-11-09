@@ -77,14 +77,11 @@ python3 -m scripts.validation.check cli autonomy/runtime/client.py   # whole fil
 python3 -m scripts.validation.check --text cli/draft.py < draft.py   # text, as if it were cli/draft.py
 ```
 
-A change is compared with its merge base: each check runs on both sides, and only
-findings the base lacks are reported. Findings match by tool, rule, file,
-enclosing function, and source text, so moved code still matches. Size and
-complexity findings match by value instead, so a large function may shrink while
-above a limit but fails if it grows. Existing debt therefore needs no baseline.
-Type checking compares the whole project, so a change also answers for callers it
-breaks in files it did not touch. Whole files and text report all their findings;
-type checking needs the project and skips text.
+A change reports findings throughout its changed files, not just on changed
+lines. Project-wide checks also report findings introduced in other files, such
+as callers broken by a signature change. Each check compares the head with its
+merge base to identify those findings elsewhere. Whole files and text report all
+their findings; type checking needs the project and skips text.
 
 Ruff, basedpyright, import-linter, and the retired-vocabulary check report
 blocking findings. The command exits 0 when clean, 1 for blocking findings, and 2
@@ -102,11 +99,10 @@ summary without failing the command:
 - Vulture: production classes, functions, methods, properties, and attributes no
   production code refers to, with the tests that still use them. It matches names,
   not bindings, so a name used anywhere counts as used, and code reached only by
-  reflection or configuration is reported. Findings sit at the definition, so a
-  change answers for code it leaves unused, not for editing code that already was.
+  reflection or configuration is reported. Findings sit at the definition.
 - Related functions: for each function, up to three in the same module, an
   importing module, or the same directory that make the same calls, weighted by how
-  rare each call is. A change that edits a function is asked whether the similar
+  rare each call is. For functions in changed files, it asks whether similar
   ones need the same edit, or whether they should share code.
 
 Vulture, related functions, basedpyright, and import-linter read the whole project

@@ -110,10 +110,11 @@ class QualityCommandTests(unittest.TestCase):
             ("ruff", "PLR0912", "cli/choose.py"),
         ])
 
-    def test_a_change_that_shrinks_existing_debt_passes(self) -> None:
+    def test_a_changed_file_reports_a_smaller_function_still_above_the_limit(self) -> None:
         head = self.commit({"cli/choose.py": branches(11)})
         status, document = self.check("--base", self.base, "--head", head)
-        self.assertEqual(status, 0, document["findings"])
+        self.assertEqual(status, 1, document["findings"])
+        self.assertEqual(self.blocking(document), [("ruff", "C901", "cli/choose.py")])
         self.assertTrue(all(record["status"] == "completed" for record in document["evaluations"]))
 
     def test_a_change_answers_for_an_import_that_breaks_a_contract(self) -> None:

@@ -114,7 +114,7 @@ class VerificationIndicatorTests(unittest.TestCase):
         self.assertEqual(factor["metrics"]["parse_error_count"], 0)
         self.assertEqual(candidate["indicator"], {
             "id": "verification.test_effectiveness.assignment_readback",
-            "version": "1",
+            "version": "2",
         })
         self.assertEqual(candidate["evidence"]["revision"], "head-ref")
         self.assertEqual(candidate["evidence"]["primary"]["code"], "assert value == 3")

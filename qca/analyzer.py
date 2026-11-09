@@ -25,9 +25,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Protocol, Sequence
 
 from .factors import FACTOR_VERSION, compare_factors, measure_factors
+from .indicators.source_classification import is_test_source
 
 
-ANALYZER_VERSION = "0.3.13"
+ANALYZER_VERSION = "0.3.14"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -933,7 +934,7 @@ def classify_source(path: str, text: str, config: AnalyzerConfig | None = None) 
         return "vendored/minified"
     if any(marker.lower() in first_lines for marker in policy.generated_markers):
         return "generated/runtime"
-    if "tests" in segments or PurePosixPath(lower).name.startswith("test_"):
+    if is_test_source(normalized, text):
         return "tests"
     if any(root.lower() in segments for root in policy.lab_roots) or lower.startswith("lab/"):
         return "experimental/lab"

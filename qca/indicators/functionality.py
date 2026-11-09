@@ -12,7 +12,7 @@ from .report import kind_finding, measured_factor as _factor
 
 FACTOR = "functionality"
 INDICATOR_ID = "structure.functionality"
-INDICATOR_VERSION = "1"
+INDICATOR_VERSION = "2"
 DETECTOR_IDS = {
     "stub": f"{INDICATOR_ID}.stub",
     "unreachable": f"{INDICATOR_ID}.unreachable",
@@ -39,8 +39,9 @@ def _analyze_trees(
 
     for path in sorted(trees):
         tree = trees[path]
+        declarations = _contract_declarations(tree)
         for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and stub(node):
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node not in declarations and stub(node):
                 stub_count += 1
                 findings.append(
                     _finding(
@@ -75,8 +76,69 @@ def _analyze_trees(
             "unreachable_count": unreachable_count,
         },
         findings,
-        ["Inspect intentional hooks and protocols before removing code."],
+        ["Only module-level classes with direct protocol bases or explicit abstract decorators from unshadowed imports are recognized; inspect other intentional hooks before removing code."],
     )
+
+
+def _contract_declarations(tree: ast.Module) -> set[ast.AST]:
+    """Identify directly declared protocol methods and explicitly abstract methods."""
+    protocols, typing_modules = _imported_names(tree, {"typing", "typing_extensions"}, "Protocol")
+    abstracts, abc_modules = _imported_names(tree, {"abc"}, "abstractmethod")
+    declarations: set[ast.AST] = set()
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        methods = [child for child in node.body if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        if any(
+            _imported_symbol(base.value if isinstance(base, ast.Subscript) else base,
+                            protocols, typing_modules, "Protocol") for base in node.bases
+        ):
+            declarations.update(methods)
+        for method in methods:
+            if any(_imported_symbol(decorator, abstracts, abc_modules, "abstractmethod")
+                   for decorator in method.decorator_list):
+                declarations.add(method)
+    return declarations
+
+
+def _imported_names(tree: ast.Module, modules: set[str], name: str) -> tuple[set[str], set[str]]:
+    direct, qualified, shadowed = set(), set(), set()
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            bindings = _import_bindings(node, modules, name)
+            if bindings is None:
+                return set(), set()
+            imported, module_names, other_names = bindings
+            direct.update(imported)
+            qualified.update(module_names)
+            shadowed.update(other_names)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            shadowed.add(node.name)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            shadowed.update(child.id for child in ast.walk(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store))
+    return direct - shadowed, qualified - shadowed
+
+
+def _import_bindings(node: ast.Import | ast.ImportFrom, modules: set[str], name: str) -> tuple[set[str], set[str], set[str]] | None:
+    direct, qualified, other = set(), set(), set()
+    for alias in node.names:
+        if alias.name == "*":
+            return None
+        if isinstance(node, ast.ImportFrom):
+            binding = alias.asname or alias.name
+            target = direct if node.module in modules and node.level == 0 and alias.name == name else other
+        else:
+            binding = alias.asname or alias.name.split(".")[0]
+            target = qualified if alias.name in modules else other
+        target.add(binding)
+    return direct, qualified, other
+
+
+def _imported_symbol(node: ast.AST, direct: set[str], qualified: set[str], name: str) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id in direct
+    return (isinstance(node, ast.Attribute) and node.attr == name
+            and isinstance(node.value, ast.Name) and node.value.id in qualified)
 
 
 def stub(node: ast.AST) -> bool:

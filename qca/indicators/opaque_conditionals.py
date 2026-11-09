@@ -14,7 +14,7 @@ from .report import kind_finding, measured_factor, source_code
 
 FACTOR = "patterns"
 INDICATOR_ID = "structure.opaque_conditionals"
-INDICATOR_VERSION = "1"
+INDICATOR_VERSION = "2"
 DETECTOR_IDS = {"opaque_conditional": f"{INDICATOR_ID}.opaque_conditional"}
 REASONS = (
     "too_many_predicates",
@@ -60,7 +60,7 @@ def analyze(context: AnalysisContext) -> dict[str, Any]:
             ))
     return measured_factor(metrics, findings, [
         "Opaque conditionals are syntax-based inspection candidates, not proof of unreadability or side effects.",
-        "Subject matching uses spellings, not aliases or bindings. Two-part safety guards are exempt from reuse only; helper purity and custom truthiness are not inferred.",
+        "Subject matching uses spellings, not aliases or bindings. Two-part safety guards and direct input fallbacks are exempt from reuse only; helper return types, purity and custom truthiness are not inferred, so some redundant fallbacks may be missed.",
         "Effect recognition uses assignment/await/yield syntax, known mutator names, and discarded short-circuit calls; deferred lambda and generator bodies are excluded.",
     ])
 
@@ -75,6 +75,9 @@ def inspect_condition(expression: ast.expr, *, discarded: bool = False) -> dict[
     repeated = sorted(subject for subject, count in subjects.items() if count > 1)
     if _safety_guard(expression):
         repeated = []
+    fallback = _fallback_subject(expression)
+    if fallback is not None:
+        repeated = [subject for subject in repeated if subject != fallback]
     operators = {type(node.op) for node in parts if isinstance(node, ast.BoolOp)}
     effects = set()
     for node in _evaluated_nodes(expression):
@@ -210,6 +213,22 @@ def _guard_subject(node: ast.expr, *, accepting: bool) -> str | None:
             return _guard_subject(node.args[0], accepting=accepting)
     if accepting:
         return _subject(node)
+    return None
+
+
+def _fallback_subject(expression: ast.expr) -> str | None:
+    """Recognize ``transform(value) or value`` without suppressing other reasons."""
+    if not isinstance(expression, ast.BoolOp) or not isinstance(expression.op, ast.Or) or len(expression.values) != 2:
+        return None
+    transformed, fallback = expression.values
+    if not isinstance(transformed, ast.Call) or not isinstance(fallback, ast.Name):
+        return None
+    if isinstance(transformed.func, ast.Name) and transformed.func.id in {
+        "all", "any", "bool", "callable", "hasattr", "isinstance", "issubclass", "type",
+    }:
+        return None
+    if any(isinstance(argument, ast.Name) and argument.id == fallback.id for argument in transformed.args):
+        return fallback.id
     return None
 
 

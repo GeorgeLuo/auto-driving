@@ -8,6 +8,24 @@ from qca import AnalysisError, AnalyzerConfig, analyze_sources, analyze_tree, re
 
 
 class QuantitativeChangeAnalysisTests(unittest.TestCase):
+    def test_test_named_production_modules_are_not_misclassified(self) -> None:
+        sources = {
+            "qca/indicators/test_effectiveness.py": "def analyze():\n    return external._helper()\n",
+            "test_standalone.py": "def test_one():\n    assert True\n",
+            "feature_test.py": "def test_two():\n    assert True\n",
+            "test_assertion.py": "assert True\n",
+            "test_fixture.py": "import pytest\nfixture_value = 1\n",
+            "tests/fixture.py": "value = 1\n",
+            "test_broken.py": "def broken(\n",
+        }
+        report = analyze_sources(sources)
+        inventory = {item.path: item.source_class for item in report.source_inventory}
+        self.assertEqual(inventory["qca/indicators/test_effectiveness.py"], "production")
+        for path in ("test_standalone.py", "feature_test.py", "test_assertion.py", "test_fixture.py", "tests/fixture.py", "test_broken.py"):
+            self.assertEqual(inventory[path], "tests")
+        self.assertFalse(any(item["path"] == "qca/indicators/test_effectiveness.py"
+                             for item in report.factors["test_effectiveness"]["findings"]))
+
     def test_runtime_packages_are_measured_but_root_runtime_artifacts_are_not(self) -> None:
         source = "def choose(a, b, c):\n    return a if a and b and c else b\n"
         report = analyze_sources({path: source for path in (

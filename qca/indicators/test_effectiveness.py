@@ -21,11 +21,12 @@ from .report import (
     source_expression as _source_expression,
     verification_inputs as _verification_inputs,
 )
+from .source_classification import is_test_source
 
 
 FACTOR = "test_effectiveness"
 INDICATOR_ID = "verification.test_effectiveness"
-INDICATOR_VERSION = "1"
+INDICATOR_VERSION = "2"
 
 DETECTOR_IDS = {
     "literal_assertion": f"{INDICATOR_ID}.literal_assertion",
@@ -37,9 +38,6 @@ DETECTOR_IDS = {
     "private_helper_call": f"{INDICATOR_ID}.private_helper_call",
 }
 
-_TEST_FILE_RE = re.compile(
-    r"(?:^|/)(?:tests?|spec)(?:/|$)|(?:^|/)(?:test_[^/]+|[^/]+_test)\.py$"
-)
 _ASSERT_EQUAL_METHODS = {
     "assertEqual",
     "assertAlmostEqual",
@@ -211,20 +209,11 @@ def assignment_readbacks(tree: ast.AST) -> dict[ast.AST, ast.AST]:
             continue
         assigned: dict[str, tuple[ast.AST, ast.AST]] = {}
         for statement in function.body:
-            target = value = None
-            if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
-                target, value = statement.targets[0], statement.value
-            elif isinstance(statement, ast.AnnAssign):
-                target, value = statement.target, statement.value
-            if target is not None:
+            assignment = _assignment_parts(statement)
+            if assignment is not None:
+                target, value = assignment
                 key = _readback_target(target)
-                literal = isinstance(value, ast.Constant) or (
-                    isinstance(value, ast.UnaryOp)
-                    and isinstance(value.op, (ast.UAdd, ast.USub))
-                    and isinstance(value.operand, ast.Constant)
-                    and type(value.operand.value) in (int, float, complex)
-                )
-                if key is None or not literal or any(isinstance(n, ast.Call) for n in ast.walk(statement)):
+                if key is None or not _readback_literal(value) or any(isinstance(n, ast.Call) for n in ast.walk(statement)):
                     assigned.clear()
                     continue
                 if isinstance(target, ast.Attribute):
@@ -234,29 +223,8 @@ def assignment_readbacks(tree: ast.AST) -> dict[ast.AST, ast.AST]:
                 assigned[key] = (value, statement)
                 continue
 
-            assertion = statement.value if isinstance(statement, ast.Expr) else statement
-            operands = None
-            if isinstance(assertion, ast.Assert):
-                comparison = assertion.test
-                if (
-                    isinstance(comparison, ast.Compare)
-                    and len(comparison.ops) == 1
-                    and isinstance(comparison.ops[0], (ast.Eq, ast.Is))
-                ):
-                    operands = (comparison.left, comparison.comparators[0])
-            elif (
-                isinstance(assertion, ast.Call)
-                and _call_name(assertion.func) in {"assertEqual", "assertIs"}
-                and len(assertion.args) == 2
-                and not assertion.keywords
-            ):
-                operands = tuple(assertion.args)
-            nested_calls = any(
-                isinstance(n, (ast.Call, ast.Await, ast.Yield, ast.NamedExpr))
-                and n is not assertion
-                for n in ast.walk(statement)
-            )
-            if operands is not None and not nested_calls:
+            assertion, operands = _readback_assertion(statement)
+            if operands is not None and not _nested_readback_effect(statement, assertion):
                 for actual, expected in (operands, operands[::-1]):
                     prior = assigned.get(_readback_target(actual))
                     if prior is not None and _ast_equal(prior[0], expected):
@@ -264,6 +232,41 @@ def assignment_readbacks(tree: ast.AST) -> dict[ast.AST, ast.AST]:
                         break
             assigned.clear()
     return matches
+
+
+def _assignment_parts(statement: ast.stmt) -> tuple[ast.AST, ast.AST | None] | None:
+    if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+        return statement.targets[0], statement.value
+    if isinstance(statement, ast.AnnAssign):
+        return statement.target, statement.value
+    return None
+
+
+def _readback_literal(value: ast.AST | None) -> bool:
+    return isinstance(value, ast.Constant) or (
+        isinstance(value, ast.UnaryOp)
+        and isinstance(value.op, (ast.UAdd, ast.USub))
+        and isinstance(value.operand, ast.Constant)
+        and type(value.operand.value) in (int, float, complex)
+    )
+
+
+def _readback_assertion(statement: ast.stmt) -> tuple[ast.AST, tuple[ast.expr, ast.expr] | None]:
+    assertion = statement.value if isinstance(statement, ast.Expr) else statement
+    if isinstance(assertion, ast.Assert):
+        comparison = assertion.test
+        if (isinstance(comparison, ast.Compare) and len(comparison.ops) == 1
+                and isinstance(comparison.ops[0], (ast.Eq, ast.Is))):
+            return assertion, (comparison.left, comparison.comparators[0])
+    elif (isinstance(assertion, ast.Call) and _call_name(assertion.func) in {"assertEqual", "assertIs"}
+          and len(assertion.args) == 2 and not assertion.keywords):
+        return assertion, (assertion.args[0], assertion.args[1])
+    return assertion, None
+
+
+def _nested_readback_effect(statement: ast.stmt, assertion: ast.AST) -> bool:
+    return any(isinstance(node, (ast.Call, ast.Await, ast.Yield, ast.NamedExpr)) and node is not assertion
+               for node in ast.walk(statement))
 
 
 def _test_effectiveness_factor(
@@ -274,7 +277,7 @@ def _test_effectiveness_factor(
     *,
     context: AnalysisContext | None = None,
 ) -> dict[str, Any]:
-    test_paths = {path for path, _ in ordered_sources if _is_test_source(path)}
+    test_paths = {path for path, text in ordered_sources if is_test_source(path, text)}
     candidate_sites: list[dict[str, Any]] = []
     assertion_count = 0
     literal_count = 0
@@ -449,11 +452,6 @@ def _append_test_candidate(
             candidate_kind=kind,
         )
     )
-
-
-def _is_test_source(path: str) -> bool:
-    normalized = path.replace("\\", "/").strip("/")
-    return bool(_TEST_FILE_RE.search(normalized))
 
 
 def _parent_map(tree: ast.AST) -> dict[ast.AST, ast.AST]:

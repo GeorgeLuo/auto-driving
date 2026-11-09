@@ -8,7 +8,7 @@ import threading
 import time
 import zlib
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Callable, Mapping
 from urllib.parse import parse_qs, urlparse
 
 from .perception_view import (
@@ -52,10 +52,18 @@ PERCEPTION_PAGE_PATH = PAGES_DIR / "perception" / "index.html"
 MEMORY_PAGE_PATH = PAGES_DIR / "memory" / "index.html"
 DECISION_PAGE_PATH = PAGES_DIR / "decision" / "index.html"
 PLUGINS_PAGE_PATH = PAGES_DIR / "plugins" / "index.html"
+# The decision-step pages, each with the decision navigation.
+STEP_PAGES = {
+    route: path
+    for path, name in [(DECISION_PAGE_PATH, "decision"), (PERCEPTION_PAGE_PATH, "perception"), (MEMORY_PAGE_PATH, "memory")]
+    for route in (f"/{name}", f"/{name}.html")
+}
 
 
 # A read route: the request's query parameters to a document, or to an image's bytes and content type.
 Read = Callable[[Mapping[str, str]], "dict[str, object] | tuple[bytes, str]"]
+# A write route: the request's JSON object to the command's result.
+Write = Callable[[dict[str, object]], dict[str, object]]
 
 
 class RuntimeViewServer:
@@ -80,9 +88,9 @@ class RuntimeViewServer:
         port: int | None = None,
         plugin_catalog: Callable | None = None,
         connected: bool = True,
-        hosts: Callable[[], list[dict[str, Any]]] | None = None,
+        hosts: Callable[[], list[dict[str, object]]] | None = None,
         reads: Mapping[str, Read] | None = None,
-        writes: Mapping[str, Callable[[dict[str, Any]], dict[str, Any]]] | None = None,
+        writes: Mapping[str, Write] | None = None,
         replay_runner: ReplayRunner | None = None,
         replay_runner_factory: Callable[[], ReplayRunner] | None = None,
     ) -> None:
@@ -153,7 +161,7 @@ class RuntimeViewServer:
         view = get_perception_view_status(self.automation_dir)
         return view.get("url") != self.url and view["status"] in {"running", "warming"}
 
-    def describe(self) -> dict[str, Any]:
+    def describe(self) -> dict[str, object]:
         # Keep the established discovery record/schema for existing CLI readers.
         return {
             "schema": VIEW_SCHEMA,
@@ -168,7 +176,7 @@ class RuntimeViewServer:
             "record_path": None if self.record_path is None else str(self.record_path),
         }
 
-    def health_payload(self) -> dict[str, Any]:
+    def health_payload(self) -> dict[str, object]:
         return {
             **self.describe(),
             **self.perception.health_payload(),
@@ -242,7 +250,7 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
             return
         self._reject_write_method()
 
-    def _serve_write(self, command: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
+    def _serve_write(self, command: Write) -> None:
         """Run a write route's command with the request's JSON object, as the plugin catalog route does."""
 
         error = local_write_error(self)
@@ -313,116 +321,77 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
     def _handle_request(self, *, include_body: bool) -> None:
         request = urlparse(self.path)
         route = request.path
-        if self._refuse_when_not_connected(route, include_body=include_body):
-            return
-        if self._serve_workbench(route, include_body=include_body):
-            return
-        if self._serve_shared_file(route, include_body=include_body):
-            return
-        if route == PLUGIN_CATALOG_PATH:
-            serve_plugin_catalog(self, self.server.publisher.plugin_catalog, include_body=include_body)
-            return
-        if route == "/plugins":
-            html = PLUGINS_PAGE_PATH.read_text(encoding="utf-8")
-            self._send(200, html.replace("__PLUGIN_STEPS__", json.dumps(list(STEPS))).encode("utf-8"),
-                       "text/html; charset=utf-8", include_body=include_body)
-            return
+        answered = (
+            self._refuse_when_not_connected(route, include_body=include_body)
+            or self._serve_workbench(route, include_body=include_body)
+            or self._serve_shared_file(route, include_body=include_body)
+            or self._serve_page(route, include_body=include_body)
+            or self._serve_api(route, request.query, include_body=include_body)
+        )
+        if not answered:
+            self._send_json(404, error_payload("not found"), include_body=include_body)
+
+    def _serve_page(self, route: str, *, include_body: bool) -> bool:
+        """Answer a page route with its HTML, its placeholders filled; True if answered."""
+
+        publisher = self.server.publisher
         if route == "/favicon.ico":
             self._send(204, b"", "image/x-icon", include_body=False)
-            return
-        pages = {
-            "/decision": DECISION_PAGE_PATH,
-            "/decision.html": DECISION_PAGE_PATH,
-            "/perception": PERCEPTION_PAGE_PATH,
-            "/perception.html": PERCEPTION_PAGE_PATH,
-            "/memory": MEMORY_PAGE_PATH,
-            "/memory.html": MEMORY_PAGE_PATH,
-        }
-        if route in {"/", "/index.html"}:
-            try:
-                html = HOME_PAGE_PATH.read_text(encoding="utf-8")
-            except OSError as exc:
-                self._send_json(500, error_payload(str(exc)), include_body=include_body)
-                return
-            publisher = self.server.publisher
-            html = html.replace("__CONNECTION_DOT__", publisher.connection_dot_html())
-            html = html.replace("__RUNTIME_NAV__", publisher.splash_navigation_html())
-            self._send(
-                200,
-                html.encode("utf-8"),
-                "text/html; charset=utf-8",
-                include_body=include_body,
-            )
-            return
-        if route in pages:
-            try:
-                html = pages[route].read_text(encoding="utf-8")
-                html = html.replace(
-                    "__DECISION_NAV__",
-                    self.server.publisher.decision_navigation_html(),
-                )
-            except OSError as exc:
-                self._send_json(500, error_payload(str(exc)), include_body=include_body)
-                return
-            self._send(
-                200,
-                html.encode("utf-8"),
-                "text/html; charset=utf-8",
-                include_body=include_body,
-            )
-            return
-        if route == "/api/health":
-            self._send_json(
-                200,
-                self.server.publisher.health_payload(),
-                include_body=include_body,
-            )
-            return
-        if route == "/api/hosts":
-            hosts = self.server.publisher.hosts
-            self._send_json(200, {"hosts": [] if hosts is None else hosts()}, include_body=include_body)
-            return
-        if route in self.server.publisher.reads:
-            self._serve_read(self.server.publisher.reads[route], request.query, include_body=include_body)
-            return
-        if route == "/api/latest":
-            body = self.server.publisher.perception.latest_json()
-            if body is None:
-                self._send_json(
-                    503,
-                    error_payload(self.server.publisher.perception.unavailable_reason),
-                    include_body=include_body,
-                )
-                return
-            self._send(
-                200,
-                body,
-                "application/json; charset=utf-8",
-                include_body=include_body,
-            )
-            return
-        if route == "/frame":
-            requested_frame_id = parse_qs(request.query).get("v", [None])[0]
-            frame = self.server.publisher.perception.frame(requested_frame_id)
-            if frame is None:
-                if requested_frame_id is not None:
-                    self._send_json(
-                        404,
-                        error_payload("requested perception frame is no longer available"),
-                        include_body=include_body,
-                    )
-                    return
-                self._send_json(
-                    503,
-                    error_payload(self.server.publisher.perception.unavailable_reason),
-                    include_body=include_body,
-                )
-                return
-            body, content_type = frame
-            self._send(200, body, content_type, include_body=include_body)
-            return
-        self._send_json(404, error_payload("not found"), include_body=include_body)
+            return True
+        if route == "/plugins":
+            page, placeholders = PLUGINS_PAGE_PATH, {"__PLUGIN_STEPS__": lambda: json.dumps(list(STEPS))}
+        elif route in {"/", "/index.html"}:
+            page, placeholders = HOME_PAGE_PATH, {"__CONNECTION_DOT__": publisher.connection_dot_html,
+                                                  "__RUNTIME_NAV__": publisher.splash_navigation_html}
+        elif route in STEP_PAGES:
+            page, placeholders = STEP_PAGES[route], {"__DECISION_NAV__": publisher.decision_navigation_html}
+        else:
+            return False
+        try:
+            html = page.read_text(encoding="utf-8")
+        except OSError as exc:
+            self._send_json(500, error_payload(str(exc)), include_body=include_body)
+            return True
+        for placeholder, fill in placeholders.items():
+            html = html.replace(placeholder, fill())
+        self._send(200, html.encode("utf-8"), "text/html; charset=utf-8", include_body=include_body)
+        return True
 
+    def _serve_api(self, route: str, query: str, *, include_body: bool) -> bool:
+        """Answer an API route: the plugin catalog, health, the host list, a read route, or perception; True if answered."""
+
+        publisher = self.server.publisher
+        if route == PLUGIN_CATALOG_PATH:
+            serve_plugin_catalog(self, publisher.plugin_catalog, include_body=include_body)
+        elif route == "/api/health":
+            self._send_json(200, publisher.health_payload(), include_body=include_body)
+        elif route == "/api/hosts":
+            self._send_json(200, {"hosts": [] if publisher.hosts is None else publisher.hosts()}, include_body=include_body)
+        elif route in publisher.reads:
+            self._serve_read(publisher.reads[route], query, include_body=include_body)
+        elif route == "/api/latest":
+            body = publisher.perception.latest_json()
+            if body is None:
+                self._send_json(503, error_payload(publisher.perception.unavailable_reason), include_body=include_body)
+            else:
+                self._send(200, body, "application/json; charset=utf-8", include_body=include_body)
+        elif route == "/frame":
+            self._serve_perception_frame(parse_qs(query).get("v", [None])[0], include_body=include_body)
+        else:
+            return False
+        return True
+
+    def _serve_perception_frame(self, frame_id: str | None, *, include_body: bool) -> None:
+        """The perception page's frame: the one it names, or the latest."""
+
+        perception = self.server.publisher.perception
+        frame = perception.frame(frame_id)
+        if frame is not None:
+            self._send(200, *frame, include_body=include_body)
+        elif frame_id is not None:
+            self._send_json(404, error_payload("requested perception frame is no longer available"), include_body=include_body)
+        else:
+            self._send_json(503, error_payload(perception.unavailable_reason), include_body=include_body)
 
 def _nav_link(label: str, href: str) -> str:
     return f'<a class="nav" href="{href}">{label}</a>'
@@ -440,7 +409,7 @@ def _timestamp_ms() -> int:
     return int(time.time() * 1000)
 
 
-def _write_json(path: Path, payload: dict[str, Any]) -> None:
+def _write_json(path: Path, payload: dict[str, object]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     temporary.write_text(json.dumps(payload, indent=2, sort_keys=True), encoding="utf-8")

@@ -9,7 +9,7 @@ def is_test_source(path: str, text: str) -> bool:
     if {"test", "tests", "spec"}.intersection(parts[:-1]):
         return True
     name = parts[-1] if parts else ""
-    if not name.endswith(".py") or not (name.startswith("test_") or name.endswith("_test.py")):
+    if not name.endswith((".py", ".pyi")) or not (name.startswith("test_") or name.endswith(("_test.py", "_test.pyi"))):
         return False
     return _has_test_evidence(text)
 

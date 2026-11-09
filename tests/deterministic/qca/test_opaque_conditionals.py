@@ -62,10 +62,10 @@ class OpaqueConditionalTests(unittest.TestCase):
         self.assertIn("too_many_predicates", inspect("isinstance(x, str) and x and x != 'manual'")["reasons"])
         self.assertIn("execution_in_evaluation", inspect("x and x.pop()")["reasons"])
 
-    def test_simple_input_fallback_does_not_claim_repeated_logic(self):
+    def test_input_fallback_remains_a_review_candidate(self):
         for expression in ("resolve(base, root) or base", "normalize(name) or name"):
             with self.subTest(expression=expression):
-                self.assertEqual(inspect(expression)["reasons"], [])
+                self.assertIn("repeated_subjects", inspect(expression)["reasons"])
         self.assertIn("repeated_subjects", inspect("x or x")["reasons"])
         self.assertIn("repeated_subjects", inspect("isinstance(x, str) or x")["reasons"])
         self.assertIn("repeated_subjects", inspect("type(x) or x")["reasons"])

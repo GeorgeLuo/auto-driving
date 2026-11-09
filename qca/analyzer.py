@@ -201,38 +201,23 @@ class _MappingReader:
 
 @dataclass(frozen=True)
 class _ResolvedTree:
-    root: Path
-    repo_root: Path | None
+    repo_root: Path
     scope_rel: str
     scope_is_file: bool
-    ref: str | None
-    sha: str | None
+    sha: str
 
 
 class _TreeReader:
-    """Read either the working tree or an immutable Git revision."""
+    """Read an immutable Git revision."""
 
     def __init__(self, tree: _ResolvedTree) -> None:
         self.tree = tree
         self._ref_contents: dict[str, str] | None = None
 
     def files(self) -> list[str]:
-        if self.tree.ref is None:
-            root = self.tree.root
-            if self.tree.scope_is_file:
-                return [root.name]
-            paths: list[str] = []
-            for path in root.rglob("*"):
-                if not path.is_file():
-                    continue
-                if ".git" in path.parts or "__pycache__" in path.parts:
-                    continue
-                paths.append(path.relative_to(root).as_posix())
-            return sorted(paths)
-
         prefix = [] if self.tree.scope_rel in {"", "."} else [self.tree.scope_rel]
         output = _git_bytes(
-            ["ls-tree", "-r", "--name-only", "-z", self.tree.ref, "--", *prefix],
+            ["ls-tree", "-r", "--name-only", "-z", self.tree.sha, "--", *prefix],
             cwd=self.tree.repo_root,
         )
         paths = []
@@ -256,13 +241,6 @@ class _TreeReader:
         return sorted(paths)
 
     def read_text(self, relative_path: str) -> str:
-        if self.tree.ref is None:
-            path = self.tree.root if self.tree.scope_is_file else self.tree.root / relative_path
-            try:
-                return path.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                return path.read_bytes().decode("utf-8", errors="replace")
-
         repo_path = PurePosixPath(relative_path)
         if self.tree.scope_rel not in {"", "."}:
             repo_path = PurePosixPath(self.tree.scope_rel) / repo_path
@@ -273,7 +251,7 @@ class _TreeReader:
             if relative in self._ref_contents:
                 return self._ref_contents[relative]
             return _git_bytes(
-                ["show", f"{self.tree.ref}:{repo_path.as_posix()}"],
+                ["show", f"{self.tree.sha}:{repo_path.as_posix()}"],
                 cwd=self.tree.repo_root,
             ).decode("utf-8", errors="replace")
         except AnalysisError:
@@ -284,7 +262,7 @@ class _TreeReader:
 
         scope = [] if self.tree.scope_rel in {"", "."} else [self.tree.scope_rel]
         archive = _git_bytes(
-            ["archive", "--format=tar", self.tree.ref, "--", *scope],
+            ["archive", "--format=tar", self.tree.sha, "--", *scope],
             cwd=self.tree.repo_root,
         )
         contents: dict[str, str] = {}
@@ -367,8 +345,6 @@ def _analyze_revision(
     if repo_root is None:
         raise AnalysisError(f"revision mode requires a Git repository: {paths[0]}")
     sha = _resolve_ref(ref, repo_root)
-    if sha is None:
-        raise AnalysisError(f"cannot resolve revision: {ref}")
     pathspecs = tuple(_repo_relative(item, repo_root) for item in paths)
     strip = _common_scope_prefix(pathspecs)
     sources = _git_scoped_sources(repo_root, sha, pathspecs, strip)
@@ -451,8 +427,8 @@ def analyze_diff(
         scope_is_file = base_tree.scope_is_file or head_tree.scope_is_file
         pathspecs = (head_tree.scope_rel,)
         repo_for_identity = head_tree.repo_root
-        base_sha = base_tree.sha or base
-        head_sha = head_tree.sha or head
+        base_sha = base_tree.sha
+        head_sha = head_tree.sha
     else:
         repo_root = _find_repo_root(_existing_search_path(paths))
         if repo_root is None:
@@ -460,8 +436,8 @@ def analyze_diff(
         pathspecs = tuple(_repo_relative(item, repo_root) for item in paths)
         strip = _common_scope_prefix(pathspecs)
         scope_is_file = False
-        base_sha = _resolve_ref(base, repo_root) or base
-        head_sha = _resolve_ref(head, repo_root) or head
+        base_sha = _resolve_ref(base, repo_root)
+        head_sha = _resolve_ref(head, repo_root)
         base_reader = _MappingReader(_git_scoped_sources(repo_root, base_sha, pathspecs, strip))
         head_reader = _MappingReader(_git_scoped_sources(repo_root, head_sha, pathspecs, strip))
         analyzed_path = " ".join(pathspecs)
@@ -775,38 +751,22 @@ def render_markdown(report: Report) -> str:
 def _resolve_tree(
     path: Path,
     *,
-    ref: str | None,
+    ref: str,
     repo_root: Path | None = None,
 ) -> _ResolvedTree:
     absolute = path.resolve()
-    if absolute.is_file():
-        scope_path = absolute
-        working_root = absolute.parent
-    else:
-        scope_path = absolute
-        working_root = absolute
+    scope_path = absolute
+    working_root = absolute.parent if absolute.is_file() else absolute
     discovered = repo_root or _find_repo_root(working_root)
-    if ref is None:
-        scope_rel = _scope_relative(scope_path, discovered) if discovered else "."
-        return _ResolvedTree(
-            root=scope_path,
-            repo_root=discovered,
-            scope_rel=scope_rel,
-            scope_is_file=scope_path.is_file(),
-            ref=None,
-            sha=None,
-        )
     if discovered is None:
         raise AnalysisError(f"revision mode requires a Git repository: {path}")
     scope_rel = _scope_relative(scope_path, discovered)
     sha = _resolve_ref(ref, discovered)
     scope_is_file = scope_path.is_file() or _git_scope_is_file(discovered, sha, scope_rel)
     return _ResolvedTree(
-        root=scope_path,
         repo_root=discovered,
         scope_rel=scope_rel,
         scope_is_file=scope_is_file,
-        ref=sha,
         sha=sha,
     )
 
@@ -830,16 +790,14 @@ def _find_repo_root(path: Path) -> Path | None:
     return Path(output.strip()).resolve()
 
 
-def _resolve_ref(ref: str, repo_root: Path | None) -> str | None:
-    if repo_root is None:
-        return None
+def _resolve_ref(ref: str, repo_root: Path) -> str:
     return _git(["rev-parse", f"{ref}^{{commit}}"], cwd=repo_root).strip()
 
 
-def _git_scope_is_file(repo_root: Path, sha: str | None, scope_rel: str) -> bool:
+def _git_scope_is_file(repo_root: Path, sha: str, scope_rel: str) -> bool:
     """Identify a file scope that may no longer exist in the working tree."""
 
-    if sha is None or scope_rel in {"", "."}:
+    if scope_rel in {"", "."}:
         return False
     try:
         object_type = _git(["cat-file", "-t", f"{sha}:{scope_rel}"], cwd=repo_root).strip()
@@ -1870,7 +1828,7 @@ def _iter_input_files(root: Path) -> list[Path]:
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        if ".git" in path.parts or "__pycache__" in path.parts:
+        if {".git", "__pycache__"}.intersection(path.parts):
             continue
         files.append(path)
     return files

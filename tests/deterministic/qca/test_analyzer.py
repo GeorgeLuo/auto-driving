@@ -28,6 +28,7 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
             "qca/indicators/test_effectiveness.py": "def analyze():\n    return external._helper()\n",
             "test_standalone.py": "def test_one():\n    assert True\n",
             "feature_test.py": "def test_two():\n    assert True\n",
+            "test_interface.pyi": "def test_stub() -> None: ...\n",
             "test_assertion.py": "assert True\n",
             "test_fixture.py": "import pytest\nfixture_value = 1\n",
             "tests/fixture.py": "value = 1\n",
@@ -36,7 +37,7 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
         report = analyze_sources(sources)
         inventory = {item.path: item.source_class for item in report.source_inventory}
         self.assertEqual(inventory["qca/indicators/test_effectiveness.py"], "production")
-        for path in ("test_standalone.py", "feature_test.py", "test_assertion.py", "test_fixture.py", "tests/fixture.py", "test_broken.py"):
+        for path in ("test_standalone.py", "feature_test.py", "test_interface.pyi", "test_assertion.py", "test_fixture.py", "tests/fixture.py", "test_broken.py"):
             self.assertEqual(inventory[path], "tests")
         self.assertFalse(any(item["path"] == "qca/indicators/test_effectiveness.py"
                              for item in report.factors["test_effectiveness"]["findings"]))

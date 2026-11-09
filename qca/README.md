@@ -9,9 +9,8 @@ Analyzer `0.3.14` uses test declarations or test-framework imports to distinguis
 standalone test files from production modules whose names start with `test_`.
 Files in test directories remain tests, and an unparseable conventionally named
 test remains visible as a test parse failure. Protocol and abstract method
-declarations are excluded from stub candidates when their imports are explicit;
-direct input fallbacks are excluded from repeated-subject candidates. Rerun both
-revisions before comparing these findings to earlier analyzer versions.
+declarations are excluded from stub candidates when their imports are explicit.
+Rerun both revisions before comparing these findings to earlier analyzer versions.
 
 Analyzer `0.3.13` includes nested source packages named `runtime`, such as
 `autonomy/runtime`, in structural measurements. Only a top-level `runtime/`

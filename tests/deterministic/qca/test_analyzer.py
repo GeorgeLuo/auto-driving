@@ -8,6 +8,21 @@ from qca import AnalysisError, AnalyzerConfig, analyze_sources, analyze_tree, re
 
 
 class QuantitativeChangeAnalysisTests(unittest.TestCase):
+    def test_minified_assets_are_classified_without_matching_similar_names(self) -> None:
+        report = analyze_sources({path: "content" for path in (
+            "assets/app.min.js", "assets/app.MIN.CSS", "assets/minimal.js",
+        )})
+        classes = {item.path: item.source_class for item in report.source_inventory}
+        self.assertEqual(classes["assets/app.min.js"], "vendored/minified")
+        self.assertEqual(classes["assets/app.MIN.CSS"], "vendored/minified")
+        self.assertEqual(classes["assets/minimal.js"], "production")
+
+    def test_tool_directories_are_classified_at_any_depth(self) -> None:
+        paths = ("scripts/worker.py", "nested/tools/lint.py", "project/.github/workflow.py")
+        report = analyze_sources({path: "value = 1\n" for path in paths})
+        self.assertEqual({item.path: item.source_class for item in report.source_inventory},
+                         dict.fromkeys(paths, "tooling/scripts"))
+
     def test_tree_classifies_and_excludes_non_code_from_core_measurements(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

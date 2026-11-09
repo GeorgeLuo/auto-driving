@@ -327,20 +327,10 @@ def _validate_factor_record(
         raise ValueError(
             f"evidence record for {factor_name!r} must use status passed, failed, or not_measured"
         )
-    record_base = normalized.get("base_sha")
-    record_head = normalized.get("head_sha")
-    if record_base is not None and (
-        not isinstance(record_base, str) or record_base != base_sha
-    ):
-        raise ValueError(
-            f"evidence record for {factor_name!r} has a base_sha that does not match the envelope"
-        )
-    if record_head is not None and (
-        not isinstance(record_head, str) or record_head != head_sha
-    ):
-        raise ValueError(
-            f"evidence record for {factor_name!r} has a head_sha that does not match the envelope"
-        )
+    for key, expected in (("base_sha", base_sha), ("head_sha", head_sha)):
+        revision = normalized.get(key)
+        if revision is not None and revision != expected:
+            raise ValueError(f"evidence record for {factor_name!r} has a {key} that does not match the envelope")
     if status == "not_measured":
         reason = normalized.get("reason")
         limitation = normalized.get("limitation")

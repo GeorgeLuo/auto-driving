@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import ast
 import re
+from collections import Counter
 from collections.abc import Mapping, Sequence
 from typing import Any
 
@@ -211,20 +212,11 @@ def assignment_readbacks(tree: ast.AST) -> dict[ast.AST, ast.AST]:
             continue
         assigned: dict[str, tuple[ast.AST, ast.AST]] = {}
         for statement in function.body:
-            target = value = None
-            if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
-                target, value = statement.targets[0], statement.value
-            elif isinstance(statement, ast.AnnAssign):
-                target, value = statement.target, statement.value
-            if target is not None:
+            assignment = _assignment_parts(statement)
+            if assignment is not None:
+                target, value = assignment
                 key = _readback_target(target)
-                literal = isinstance(value, ast.Constant) or (
-                    isinstance(value, ast.UnaryOp)
-                    and isinstance(value.op, (ast.UAdd, ast.USub))
-                    and isinstance(value.operand, ast.Constant)
-                    and type(value.operand.value) in (int, float, complex)
-                )
-                if key is None or not literal or any(isinstance(n, ast.Call) for n in ast.walk(statement)):
+                if key is None or not _readback_literal(value) or any(isinstance(n, ast.Call) for n in ast.walk(statement)):
                     assigned.clear()
                     continue
                 if isinstance(target, ast.Attribute):
@@ -234,29 +226,8 @@ def assignment_readbacks(tree: ast.AST) -> dict[ast.AST, ast.AST]:
                 assigned[key] = (value, statement)
                 continue
 
-            assertion = statement.value if isinstance(statement, ast.Expr) else statement
-            operands = None
-            if isinstance(assertion, ast.Assert):
-                comparison = assertion.test
-                if (
-                    isinstance(comparison, ast.Compare)
-                    and len(comparison.ops) == 1
-                    and isinstance(comparison.ops[0], (ast.Eq, ast.Is))
-                ):
-                    operands = (comparison.left, comparison.comparators[0])
-            elif (
-                isinstance(assertion, ast.Call)
-                and _call_name(assertion.func) in {"assertEqual", "assertIs"}
-                and len(assertion.args) == 2
-                and not assertion.keywords
-            ):
-                operands = tuple(assertion.args)
-            nested_calls = any(
-                isinstance(n, (ast.Call, ast.Await, ast.Yield, ast.NamedExpr))
-                and n is not assertion
-                for n in ast.walk(statement)
-            )
-            if operands is not None and not nested_calls:
+            assertion, operands = _readback_assertion(statement)
+            if operands is not None and not _nested_readback_effect(statement, assertion):
                 for actual, expected in (operands, operands[::-1]):
                     prior = assigned.get(_readback_target(actual))
                     if prior is not None and _ast_equal(prior[0], expected):
@@ -264,6 +235,41 @@ def assignment_readbacks(tree: ast.AST) -> dict[ast.AST, ast.AST]:
                         break
             assigned.clear()
     return matches
+
+
+def _assignment_parts(statement: ast.stmt) -> tuple[ast.AST, ast.AST | None] | None:
+    if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+        return statement.targets[0], statement.value
+    if isinstance(statement, ast.AnnAssign):
+        return statement.target, statement.value
+    return None
+
+
+def _readback_literal(value: ast.AST | None) -> bool:
+    return isinstance(value, ast.Constant) or (
+        isinstance(value, ast.UnaryOp)
+        and isinstance(value.op, (ast.UAdd, ast.USub))
+        and isinstance(value.operand, ast.Constant)
+        and type(value.operand.value) in (int, float, complex)
+    )
+
+
+def _readback_assertion(statement: ast.stmt) -> tuple[ast.AST, tuple[ast.expr, ast.expr] | None]:
+    assertion = statement.value if isinstance(statement, ast.Expr) else statement
+    if isinstance(assertion, ast.Assert):
+        comparison = assertion.test
+        if (isinstance(comparison, ast.Compare) and len(comparison.ops) == 1
+                and isinstance(comparison.ops[0], (ast.Eq, ast.Is))):
+            return assertion, (comparison.left, comparison.comparators[0])
+    elif (isinstance(assertion, ast.Call) and _call_name(assertion.func) in {"assertEqual", "assertIs"}
+          and len(assertion.args) == 2 and not assertion.keywords):
+        return assertion, (assertion.args[0], assertion.args[1])
+    return assertion, None
+
+
+def _nested_readback_effect(statement: ast.stmt, assertion: ast.AST) -> bool:
+    return any(isinstance(node, (ast.Call, ast.Await, ast.Yield, ast.NamedExpr)) and node is not assertion
+               for node in ast.walk(statement))
 
 
 def _test_effectiveness_factor(
@@ -276,12 +282,8 @@ def _test_effectiveness_factor(
 ) -> dict[str, Any]:
     test_paths = {path for path, _ in ordered_sources if _is_test_source(path)}
     candidate_sites: list[dict[str, Any]] = []
+    assertion_candidates: Counter[str] = Counter()
     assertion_count = 0
-    literal_count = 0
-    tautological_count = 0
-    readback_count = 0
-    string_expected_count = 0
-    formatted_literal_count = 0
     private_import_count = 0
     private_helper_call_count = 0
     private_import_files: set[str] = set()
@@ -337,17 +339,7 @@ def _test_effectiveness_factor(
                 assertion_count += 1
             if candidate_kind is None:
                 continue
-            if candidate_kind == "literal_assertion":
-                literal_count += 1
-            elif candidate_kind == "tautological_assertion":
-                tautological_count += 1
-            elif candidate_kind == "assignment_readback":
-                readback_count += 1
-            elif candidate_kind == "formatted_literal_assertion":
-                formatted_literal_count += 1
-                string_expected_count += 1
-            else:
-                string_expected_count += 1
+            assertion_candidates[candidate_kind] += 1
             _append_test_candidate(
                 candidate_sites,
                 context=context,
@@ -383,7 +375,8 @@ def _test_effectiveness_factor(
                     candidate_kind=candidate_kind,
                 )
 
-    candidate_count = literal_count + tautological_count + readback_count + string_expected_count
+    formatted_literal_count = assertion_candidates["formatted_literal_assertion"]
+    string_expected_count = assertion_candidates["string_expected_assertion"] + formatted_literal_count
     limitations = [
         "Literal, same-operand, string-expected, and formatted-literal assertions are candidates for review, not a judgment that a test is ineffective.",
         "Private production imports and helper calls are candidates; same-module test helpers are omitted; numeric expected values alone are not candidates.",
@@ -400,15 +393,15 @@ def _test_effectiveness_factor(
         "test_file_count": len(test_paths),
         "test_case_count": test_case_count,
         "assertion_count": assertion_count,
-        "literal_assertion_candidates": literal_count,
-        "tautological_assertion_candidates": tautological_count,
-        "assignment_readback_candidates": readback_count,
+        "literal_assertion_candidates": assertion_candidates["literal_assertion"],
+        "tautological_assertion_candidates": assertion_candidates["tautological_assertion"],
+        "assignment_readback_candidates": assertion_candidates["assignment_readback"],
         "string_expected_assertion_count": string_expected_count,
         "formatted_literal_assertion_count": formatted_literal_count,
         "private_import_count": private_import_count,
         "private_import_test_file_count": len(private_import_files),
         "private_helper_call_count": private_helper_call_count,
-        "candidate_assertion_count": candidate_count,
+        "candidate_assertion_count": sum(assertion_candidates.values()),
         "candidate_site_count": len(candidate_sites),
         "parse_error_count": test_parse_error_count,
     }

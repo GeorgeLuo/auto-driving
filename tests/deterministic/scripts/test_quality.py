@@ -33,7 +33,7 @@ class ToolFindingTests(unittest.TestCase):
         self.assertEqual((findings[1]["rule"], findings[1]["measure"]), ("invalid-syntax", None))
         self.assertTrue(all(item["status"] == "blocking" for item in findings))
 
-    def test_type_errors_block_warnings_ask_and_paths_outside_scope_are_dropped(self) -> None:
+    def test_type_errors_block_and_warnings_ask(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
 
@@ -41,10 +41,7 @@ class ToolFindingTests(unittest.TestCase):
                 return {"file": str(root / path), "severity": severity, "message": "Type `Any` is not allowed",
                         "rule": "reportExplicitAny", "range": {"start": {"line": 0}, "end": {"line": 1}}}
 
-            findings = basedpyright_findings(
-                [diagnostic("cli/a.py", "error"), diagnostic("cli/b.py", "warning"), diagnostic("qca/c.py", "error")],
-                root, ["cli"],
-            )
+            findings = basedpyright_findings([diagnostic("cli/a.py", "error"), diagnostic("cli/b.py", "warning")], root)
         self.assertEqual(
             [(item["location"]["path"], item["location"]["line"], item["status"]) for item in findings],
             [("cli/a.py", 1, "blocking"), ("cli/b.py", 1, "review")],

@@ -24,7 +24,6 @@ import ast
 import io
 import os
 import shutil
-import subprocess
 import tarfile
 import tempfile
 from collections import defaultdict
@@ -34,7 +33,7 @@ from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import NotRequired, TypedDict
 
-from .analyzer import AnalysisError
+from .analyzer import _git_bytes, _resolve_ref
 
 SCHEMA = "qca/findings/v1"
 FORMS = frozenset({"text", "files", "change"})
@@ -193,10 +192,12 @@ class Context:
 class Evaluator:
     """A check that turns paths in a directory into findings.
 
-    ``roots`` bound what the check maintains.  ``reach`` is ``project`` when a
-    change can produce findings outside its own files, so the whole project is
-    compared for a change.  A failure of an evaluator that is not ``required``
-    is reported without failing the evaluation.
+    ``roots`` bound what the check maintains.  ``reach`` is ``project`` for a
+    tool that must read the whole project to judge any file, such as a type
+    checker: it runs on all its roots, and reports the findings in the files
+    asked about or, for a change, every finding the change introduces.  A
+    failure of an evaluator that is not ``required`` is reported without
+    failing the evaluation.
     """
 
     name: str
@@ -232,25 +233,21 @@ def evaluate(context: Context, evaluators: Sequence[Evaluator]) -> Document:
 
 
 def _evaluate(evaluator: Evaluator, context: Context) -> list[Finding] | None:
-    trees = [context.head] if context.base is None else [context.base, context.head]
-    scopes = [_scope(evaluator, context, tree) for tree in trees]
-    if not any(scopes):
+    requested = [path for path in context.paths if in_scope(path, evaluator.roots)]
+    if not requested:
         return None
-    results = [_run(evaluator, tree, paths) for tree, paths in zip(trees, scopes, strict=True)]
+    scope = list(evaluator.roots) if evaluator.reach == "project" else requested
     if context.base is None:
-        return results[0]
-    return introduced(results[0], results[1], base_tree=context.base, head_tree=context.head)
+        found = _run(evaluator, context.head, scope)
+        return [item for item in found if in_scope(item["location"]["path"], requested)]
+    base, head = (_run(evaluator, tree, scope) for tree in (context.base, context.head))
+    return introduced(base, head, base_tree=context.base, head_tree=context.head)
 
 
-def _scope(evaluator: Evaluator, context: Context, tree: Path) -> list[str]:
-    whole_project = evaluator.reach == "project" and context.base is not None
-    requested = evaluator.roots if whole_project else context.paths
-    return [path for path in _within(requested, evaluator.roots) if (tree / path).exists()]
-
-
-def _run(evaluator: Evaluator, tree: Path, paths: list[str]) -> list[Finding]:
+def _run(evaluator: Evaluator, tree: Path, scope: list[str]) -> list[Finding]:
+    paths = [path for path in scope if (tree / path).exists()]
     if not paths:
-        return []
+        return []  # Nothing to judge on this side, such as files a change adds.
     found = evaluator.run(tree, paths)
     for item in found:
         validate_finding(item)
@@ -261,14 +258,6 @@ def in_scope(path: str, scopes: Sequence[str]) -> bool:
     """Whether ``path`` is one of ``scopes`` or lies beneath one."""
 
     return any(PurePosixPath(path).is_relative_to(scope) for scope in scopes)
-
-
-def _within(paths: Sequence[str], roots: Sequence[str]) -> list[str]:
-    """The parts of ``paths`` under ``roots``: paths inside a root, and roots inside a path."""
-
-    selected = {path for path in paths if in_scope(path, roots)}
-    selected.update(root for root in roots if in_scope(root, paths))
-    return sorted(selected)
 
 
 def introduced(base: list[Finding], head: list[Finding], *, base_tree: Path, head_tree: Path) -> list[Finding]:
@@ -370,7 +359,7 @@ def files_context(root: Path, paths: Sequence[str]) -> Iterator[Context]:
     files: set[str] = set()
     for path in map(_relative_name, paths):
         if (root / path).is_dir():
-            listed = _git(root, "ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", path)
+            listed = _git_bytes(["ls-files", "--cached", "--others", "--exclude-standard", "-z", "--", path], cwd=root)
             files.update(name for name in _names(listed) if (root / name).is_file())
         elif (root / path).is_file():
             files.add(path)
@@ -389,8 +378,8 @@ def change_context(root: Path, base: str, head: str | None = None, *, shared: Se
     judged by the same rules.
     """
 
-    head_sha = _resolve(root, head) if head else None
-    base_sha = _git(root, "merge-base", base, head_sha or "HEAD").decode().strip()
+    head_sha = _resolve_ref(head, root) if head else None
+    base_sha = _git_bytes(["merge-base", base, head_sha or "HEAD"], cwd=root).decode().strip()
     with tempfile.TemporaryDirectory(prefix="qca-change-") as directory:
         base_tree = _extract(root, base_sha, Path(directory) / "base")
         head_tree = _extract(root, head_sha, Path(directory) / "head") if head_sha else root
@@ -406,14 +395,14 @@ def change_context(root: Path, base: str, head: str | None = None, *, shared: Se
 
 
 def _changed(root: Path, base: str, head: str | None) -> tuple[str, ...]:
-    names = _names(_git(root, "diff", "--name-only", "--no-renames", "-z", base, *([head] if head else []), "--"))
+    names = _names(_git_bytes(["diff", "--name-only", "--no-renames", "-z", base, *([head] if head else []), "--"], cwd=root))
     if head is None:
-        names += _names(_git(root, "ls-files", "--others", "--exclude-standard", "-z"))
+        names += _names(_git_bytes(["ls-files", "--others", "--exclude-standard", "-z"], cwd=root))
     return tuple(sorted(set(names)))
 
 
 def _extract(root: Path, revision: str, target: Path) -> Path:
-    archive = _git(root, "archive", "--format=tar", revision)
+    archive = _git_bytes(["archive", "--format=tar", revision], cwd=root)
     target.mkdir(parents=True)
     with tarfile.open(fileobj=io.BytesIO(archive)) as tar:
         tar.extractall(target, filter="data")
@@ -437,10 +426,6 @@ def _mirror(source: Path, target: Path, paths: Sequence[str]) -> None:
             shutil.copy2(origin, destination)
 
 
-def _resolve(root: Path, revision: str) -> str:
-    return _git(root, "rev-parse", "--verify", f"{revision}^{{commit}}").decode().strip()
-
-
 def _relative_name(path: str) -> str:
     normalized = PurePosixPath(path.replace("\\", "/"))
     if normalized.is_absolute() or ".." in normalized.parts:
@@ -450,11 +435,3 @@ def _relative_name(path: str) -> str:
 
 def _names(output: bytes) -> list[str]:
     return [os.fsdecode(name) for name in output.split(b"\0") if name]
-
-
-def _git(root: Path, *args: str) -> bytes:
-    completed = subprocess.run(["git", *args], cwd=root, capture_output=True, check=False)
-    if completed.returncode:
-        message = completed.stderr.decode(errors="replace").strip()
-        raise AnalysisError(f"git {' '.join(args[:2])} failed: {message}")
-    return completed.stdout

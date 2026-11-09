@@ -145,6 +145,22 @@ class EvaluateTests(unittest.TestCase):
         self.assertEqual(document["evaluations"][0]["status"], "failed")
         self.assertEqual(document["findings"], [])
 
+    def test_project_reach_reads_its_roots_but_reports_only_the_requested_files(self) -> None:
+        seen: list[list[str]] = []
+
+        def project(root: Path, paths: list[str]) -> list[dict]:
+            seen.append(paths)
+            return lines_with("missing", "types")(root, paths)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = tree(Path(directory), {"cli/a.py": "missing\n", "cli/b.py": "missing\n", "docs/c.md": "missing\n"})
+            types = Evaluator("types", project, roots=("cli",), reach="project")
+            document = evaluate(Context("files", root, ("cli/a.py",)), [types])
+            outside = evaluate(Context("files", root, ("docs/c.md",)), [types])
+        self.assertEqual(seen, [["cli"]])
+        self.assertEqual([item["location"]["path"] for item in document["findings"]], ["cli/a.py"])
+        self.assertEqual(outside["evaluations"][0]["status"], "skipped")
+
     def test_a_change_reports_only_new_findings_and_project_reach_sees_unchanged_files(self) -> None:
         with tempfile.TemporaryDirectory() as before, tempfile.TemporaryDirectory() as after:
             base = tree(Path(before), {"cli/old.py": "missing\n", "cli/caller.py": "ok\n"})

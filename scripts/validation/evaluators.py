@@ -43,26 +43,23 @@ def ruff_findings(diagnostics: list[dict], tree: Path) -> list[Finding]:
     return findings
 
 
-def basedpyright(tree: Path, paths: list[str]) -> list[Finding]:
-    """Type-check the configured project, reporting diagnostics within ``paths``."""
+def basedpyright(tree: Path, _paths: list[str]) -> list[Finding]:
+    """Type-check the project its configuration includes."""
 
     completed = _run(tree, "basedpyright", "--pythonpath", sys.executable, "--outputjson")
-    return basedpyright_findings(json.loads(completed.stdout)["generalDiagnostics"], tree, paths)
+    return basedpyright_findings(json.loads(completed.stdout)["generalDiagnostics"], tree)
 
 
-def basedpyright_findings(diagnostics: list[dict], tree: Path, paths: list[str]) -> list[Finding]:
+def basedpyright_findings(diagnostics: list[dict], tree: Path) -> list[Finding]:
     """Errors block; warnings and information are review questions."""
 
     findings = []
     for item in diagnostics:
-        path = _relative(item["file"], tree)
-        if not in_scope(path, paths):
-            continue
         span = item["range"]
         findings.append(finding(
             "basedpyright",
             item.get("rule", "diagnostic"),
-            location(path, span["start"]["line"] + 1, span["end"]["line"] + 1),
+            location(_relative(item["file"], tree), span["start"]["line"] + 1, span["end"]["line"] + 1),
             f"Does this indicate a problem: {item['message']}?",
             status="blocking" if item["severity"] == "error" else "review",
             evidence={"message": item["message"], "severity": item["severity"]},

@@ -60,8 +60,10 @@ one evaluator serves every form. For a change, each evaluator runs on both sides
 and only findings the base lacks are reported. Findings match by tool, rule,
 file, enclosing symbol, and the location's source text, so moved code still
 matches; a finding with a `measure` matches a base finding of at least its value.
-An evaluator whose `reach` is `project` compares its whole roots, which reports
-a change's effect on files it did not touch.
+An evaluator whose `reach` is `project`, such as a type checker, reads its whole
+roots in every form. For files or text it reports only findings in those files;
+for a change it reports every finding the change introduces, including in files
+the change did not touch.
 
 Each finding has exactly these fields:
 

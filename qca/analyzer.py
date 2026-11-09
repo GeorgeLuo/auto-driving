@@ -28,7 +28,7 @@ from .factors import FACTOR_VERSION, compare_factors, measure_factors
 from .indicators.source_classification import is_test_source
 
 
-ANALYZER_VERSION = "0.3.18"
+ANALYZER_VERSION = "0.3.19"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -1206,8 +1206,13 @@ def _callable_shape(root: ast.AST) -> tuple[int, int, int]:
             decisions += max(0, len(node.values) - 1)
         if isinstance(node, ast.Match):
             decisions += max(0, len(node.cases) - 1)
+        elif_branch = None
+        if isinstance(node, ast.If) and len(node.orelse) == 1:
+            alternative = node.orelse[0]
+            if isinstance(alternative, ast.If) and alternative.col_offset == node.col_offset:
+                elif_branch = alternative
         for child in ast.iter_child_nodes(node):
-            visit(child, next_depth)
+            visit(child, depth if child is elif_branch else next_depth)
 
     visit(root, 0, is_root=True)
     return decisions, max_depth, statement_count

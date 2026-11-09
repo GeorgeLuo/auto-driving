@@ -5,6 +5,10 @@ It is intentionally Python-first and standard-library-only.  It does not
 assign a quality score, change proposal workflow state, or create a blocking
 check.
 
+Analyzer `0.3.19` measures an `if`/`elif` ladder at one nesting level; an
+`if` nested under `else` still increases depth. Rerun both revisions before
+comparing nesting measurements to earlier analyzer versions.
+
 Analyzer `0.3.18` distinguishes string equality, membership, regular-expression,
 identity and ordering comparisons in finding evidence. Formatting candidates
 require a structured marker or a long literal, not an isolated angle or pipe.

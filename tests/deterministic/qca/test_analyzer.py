@@ -8,6 +8,27 @@ from qca import AnalysisError, AnalyzerConfig, analyze_sources, analyze_tree, re
 
 
 class QuantitativeChangeAnalysisTests(unittest.TestCase):
+    def test_elif_ladders_are_not_nested_but_else_blocks_are(self) -> None:
+        source = (
+            "def flat(value):\n"
+            "    if value == 1: return 1\n"
+            "    elif value == 2: return 2\n"
+            "    elif value == 3: return 3\n"
+            "    elif value == 4: return 4\n"
+            "    elif value == 5: return 5\n"
+            "    return 0\n"
+            "def nested(value):\n"
+            "    if value == 1: return 1\n"
+            "    else:\n"
+            "        if value == 2: return 2\n"
+            "        elif value == 3:\n"
+            "            if value > 0: return 3\n"
+            "    return 0\n"
+        )
+        callables = {item.qualified_name: item for item in analyze_sources({"app.py": source}).head.callables}
+        self.assertEqual((callables["flat"].max_nesting, callables["flat"].decision_count), (1, 5))
+        self.assertEqual((callables["nested"].max_nesting, callables["nested"].decision_count), (3, 4))
+
     def test_minified_assets_are_classified_without_matching_similar_names(self) -> None:
         report = analyze_sources({path: "content" for path in (
             "assets/app.min.js", "assets/app.MIN.CSS", "assets/minimal.js",

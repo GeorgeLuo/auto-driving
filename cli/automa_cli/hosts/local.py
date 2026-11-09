@@ -8,12 +8,13 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
 
 from autonomy.runtime.client import RuntimeClient
 from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA
@@ -24,14 +25,18 @@ from ..shared.io.log_files import read_log_tail
 from ..shared.io.processes import pid_alive, reap_on_exit
 from ..shared.paths import ROOT, display_path
 from ..shared.text import automa_command, format_log_tail
+from .runs.process import process_command
 from .staging import automation_dir
 
 HOST_RECORD = "host.json"
 HOST_LOG = "host.log"
 HOST_START_TIMEOUT_S = 20.0
+LOCAL_WORKER_MODULE = "cli.automa_cli.hosts.local_worker"
+# The supervisor's ``-c`` boot imports this; ``ps`` leaves it in the child command.
+_CHASE_SERVICE = "implementations.runtime.chase_sim.service"
 
 
-def host_record(host_name: str) -> dict[str, Any] | None:
+def host_record(host_name: str) -> dict[str, object] | None:
     """The running Chase host's record; ``None`` once its process is gone."""
 
     try:
@@ -51,7 +56,7 @@ def host_log_tail(host_name: str) -> str:
     return log_tail(automation_dir(host_name) / HOST_LOG, "Host")
 
 
-def _wait_for_host(host_name: str, process: subprocess.Popen[Any] | None, timeout_s: float) -> dict[str, Any]:
+def _wait_for_host(host_name: str, process: subprocess.Popen[bytes] | None, timeout_s: float) -> dict[str, object]:
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         record = host_record(host_name)
@@ -112,7 +117,7 @@ def ensure_chase_host(host_name: str, *, timeout_s: float = HOST_START_TIMEOUT_S
     (directory / HOST_RECORD).unlink(missing_ok=True)
     with (directory / HOST_LOG).open("a", encoding="utf-8") as log:
         process = subprocess.Popen(
-            [sys.executable, "-m", "cli.automa_cli.hosts.local_worker", host_name],
+            [sys.executable, "-m", LOCAL_WORKER_MODULE, host_name],
             cwd=ROOT, stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT,
             start_new_session=True, env={**os.environ, "PYTHONUNBUFFERED": "1"},
         )
@@ -131,25 +136,106 @@ def ensure_chase_host(host_name: str, *, timeout_s: float = HOST_START_TIMEOUT_S
         raise
 
 
-def stop_chase_host(host_name: str, *, wait_s: float = 3.0) -> bool:
-    """End the Chase host process; ``True`` when it had to be killed.
+def _command_tokens(command: str) -> list[str] | None:
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return None
+    return tokens or None
 
-    A terminated host releases control on its way out; a killed one cannot.
+
+def _option_is(tokens: list[str], flag: str, value: str) -> bool:
+    prefix = f"{flag}="
+    for index, token in enumerate(tokens):
+        if token == flag and index + 1 < len(tokens) and tokens[index + 1] == value:
+            return True
+        if token.startswith(prefix) and token.removeprefix(prefix) == value:
+            return True
+    return False
+
+
+def supervisor_command_matches(command: str, host_name: str) -> bool:
+    """Pure check: command is the local Chase supervisor for exactly ``host_name``.
+
+    The supervisor is ``python -m cli.automa_cli.hosts.local_worker <host_name>``.
+    The host name is the next token, matched exactly.
+    """
+
+    tokens = _command_tokens(command)
+    if tokens is None or not host_name:
+        return False
+    return any(
+        tokens[index] == "-m"
+        and tokens[index + 1] == LOCAL_WORKER_MODULE
+        and tokens[index + 2] == host_name
+        for index in range(len(tokens) - 2)
+    )
+
+
+def chase_host_command_matches(command: str, host_name: str) -> bool:
+    """Pure check: command is the Chase host service for exactly ``host_name``.
+
+    The service is the supervisor's ``-c`` boot plus an exact ``--host-name``.
+    """
+
+    tokens = _command_tokens(command)
+    if tokens is None or not host_name:
+        return False
+    return any(_CHASE_SERVICE in token for token in tokens) and _option_is(tokens, "--host-name", host_name)
+
+
+def _command_allows(pid: int, matches: Callable[[str, str], bool], host_name: str) -> bool:
+    """True when the command is this host's, or it cannot be read."""
+
+    command = process_command(pid)
+    if command is None:
+        return True
+    return matches(command, host_name)
+
+
+def _signal_pid(pid: int, sig: signal.Signals) -> bool:
+    try:
+        os.kill(pid, sig)
+    except ProcessLookupError:
+        return False
+    return True
+
+
+def _matching_pids(
+    record: dict[str, object], host_name: str,
+) -> list[tuple[int, Callable[[str, str], bool]]]:
+    candidates = (
+        (record.get("supervisor_pid"), supervisor_command_matches),
+        (record.get("pid"), chase_host_command_matches),
+    )
+    matched: list[tuple[int, Callable[[str, str], bool]]] = []
+    for pid, matches in candidates:
+        if type(pid) is int and pid_alive(pid) and _command_allows(pid, matches, host_name):
+            matched.append((pid, matches))
+    return matched
+
+
+def stop_chase_host(host_name: str, *, wait_s: float = 3.0) -> bool:
+    """End this host's processes; ``True`` when one had to be killed.
+
+    A pid is signalled only when its command is this host's supervisor or
+    Chase service, or the command cannot be read. Any other live pid is left
+    alone. The record is removed either way. A process that disappears before
+    the signal counts as already stopped, not killed.
     """
 
     record = host_record(host_name)
     if record is None:
         return False
-    pids = [pid for pid in (record.get("supervisor_pid"), record["pid"]) if pid_alive(pid)]
-    for pid in pids:
-        os.kill(pid, signal.SIGTERM)
+    matched = _matching_pids(record, host_name)
+    for pid, _matches in matched:
+        _signal_pid(pid, signal.SIGTERM)
     deadline = time.monotonic() + wait_s
-    while time.monotonic() < deadline and any(pid_alive(pid) for pid in pids):
+    while time.monotonic() < deadline and any(pid_alive(pid) for pid, _matches in matched):
         time.sleep(0.05)
     killed = False
-    for pid in pids:
-        if pid_alive(pid):
-            os.kill(pid, signal.SIGKILL)
+    for pid, matches in matched:
+        if pid_alive(pid) and _command_allows(pid, matches, host_name) and _signal_pid(pid, signal.SIGKILL):
             killed = True
     (automation_dir(host_name) / HOST_RECORD).unlink(missing_ok=True)
     return killed

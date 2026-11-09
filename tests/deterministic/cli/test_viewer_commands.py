@@ -7,7 +7,7 @@ import json
 import os
 import tempfile
 import unittest
-from itertools import combinations
+from itertools import combinations, permutations, product
 from pathlib import Path
 from unittest import mock
 from urllib.error import HTTPError
@@ -274,6 +274,27 @@ class ViewerCommandTests(unittest.TestCase):
         self.assertEqual(disarm.call_count, 2)
         disarm.assert_called_with(url=None, host_name="missing", name="pack")
         arm.assert_called_once_with(url=None, host_name="missing", step="perception", preset="p")
+
+    def test_numeric_zero_is_not_an_absent_plugin_selector(self) -> None:
+        selectors = {
+            "arm": {"name": ["perception/p"], "preset": "perception/p", "collection": "pack"},
+            "disarm": {"name": ["perception/p"], "collection": "pack", "step": "perception", "all": True},
+        }
+        with (mock.patch.object(viewer_commands, "arm_collection") as arm_collection,
+              mock.patch.object(viewer_commands, "arm_preset") as arm_preset,
+              mock.patch.object(viewer_commands, "arm_plugins") as arm_plugins,
+              mock.patch.object(viewer_commands, "disarm_collection") as disarm_collection,
+              mock.patch.object(viewer_commands, "disarm_plugins") as disarm_plugins):
+            for route, fields in selectors.items():
+                for field, zero in product(fields, (0, 0.0)):
+                    with self.subTest(route=route, field=field, value=zero):
+                        self.assertEqual(self.post(f"/api/plugins/{route}", {"host_name": "car", field: zero})[0], 400)
+                for (first, second), zero in product(permutations(fields, 2), (0, 0.0)):
+                    body = {"host_name": "car", first: fields[first], second: zero}
+                    with self.subTest(route=route, body=body):
+                        self.assertEqual(self.post(f"/api/plugins/{route}", body)[0], 400)
+            for operation in (arm_collection, arm_preset, arm_plugins, disarm_collection, disarm_plugins):
+                operation.assert_not_called()
 
     def test_every_write_refuses_a_field_it_does_not_take_before_it_runs(self) -> None:
         for route in VIEWER_WRITES:

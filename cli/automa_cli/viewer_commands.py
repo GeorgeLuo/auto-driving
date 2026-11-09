@@ -87,7 +87,7 @@ def _fields(body: dict[str, object], allowed: set[str]) -> None:
 def _choice(body: dict[str, object], names: tuple[str, ...]) -> str | None:
     """Which one of a command's mutually exclusive flags the body gives; null or false gives none."""
 
-    chosen = [key for key in names if body.get(key) not in (None, False)]
+    chosen = [key for key in names if (value := body.get(key)) is not None and value is not False]
     if len(chosen) > 1:
         raise ValueError(f"choose only one of {', '.join(names)}")
     return chosen[0] if chosen else None

@@ -12,7 +12,7 @@ from __future__ import annotations
 import ast
 import re
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 from .context import AnalysisContext
@@ -22,11 +22,12 @@ from .report import (
     source_expression as _source_expression,
     verification_inputs as _verification_inputs,
 )
+from .source_classification import is_test_source
 
 
 FACTOR = "test_effectiveness"
 INDICATOR_ID = "verification.test_effectiveness"
-INDICATOR_VERSION = "1"
+INDICATOR_VERSION = "2"
 
 DETECTOR_IDS = {
     "literal_assertion": f"{INDICATOR_ID}.literal_assertion",
@@ -38,9 +39,6 @@ DETECTOR_IDS = {
     "private_helper_call": f"{INDICATOR_ID}.private_helper_call",
 }
 
-_TEST_FILE_RE = re.compile(
-    r"(?:^|/)(?:tests?|spec)(?:/|$)|(?:^|/)(?:test_[^/]+|[^/]+_test)\.py$"
-)
 _ASSERT_EQUAL_METHODS = {
     "assertEqual",
     "assertAlmostEqual",
@@ -58,17 +56,39 @@ _ASSERT_LITERAL_METHODS = {
     "assertIsNone",
     "assertIsNotNone",
 }
-_STRING_EXPECTED_METHODS = {
-    "assertEqual",
-    "assertNotEqual",
-    "assertMultiLineEqual",
-    "assertIn",
-    "assertNotIn",
-    "assertRegex",
-    "assertNotRegex",
-}
-_FORMATTED_LITERAL_RE = re.compile(r"[|<>\n`]|\d+(?:\.\d+)?%")
+_FORMATTED_LITERAL_RE = re.compile(r"\n|`|\|[^|\n]+\||</?[A-Za-z][^>]*>|\d+(?:\.\d+)?%")
 _FORMATTED_LITERAL_MIN_LENGTH = 40
+_STRING_ASSERTION_METHODS = {
+    "assertEqual": "equality", "assertNotEqual": "equality", "assertMultiLineEqual": "equality",
+    "assertIn": "membership", "assertNotIn": "membership",
+    "assertRegex": "regex", "assertNotRegex": "regex",
+}
+_QUESTIONS = {
+    "private_import": "Does this import expose a production private API that the test should exercise through a public entrypoint?",
+    "private_helper_call": "Does this call exercise a production private helper where a public entrypoint would be more appropriate?",
+    "assignment_readback": "Does this assertion verify behavior beyond reading back an assigned value?",
+    "string_expected_assertion": "Does this string assertion check a meaningful contract without unnecessary coupling to exact text?",
+    "formatted_literal_assertion": "Does this formatted string assertion check a meaningful output contract without unnecessary coupling to presentation?",
+}
+_ASSERTION_QUESTION = "Does this assertion meaningfully verify behavior across relevant inputs?"
+# A string assertion making one kind of comparison other than equality is asked about that comparison.
+_STRING_COMPARISON_QUESTIONS = {
+    "membership": "Does checking for this string as a member or substring meaningfully verify the intended behavior?",
+    "regex": "Does this pattern assertion meaningfully verify the intended behavior?",
+    "identity": "Does this identity comparison with a string literal express the intended behavior?",
+    "ordering": "Does this ordering comparison with a string literal verify the intended behavior?",
+}
+_FORMATTED_MEMBERSHIP_QUESTION = (
+    "Does checking for this formatted text as a member or substring verify the intended behavior "
+    "without unnecessary coupling to presentation?"
+)
+_MIXED_STRING_COMPARISONS_QUESTION = "Do these string comparisons together verify the intended behavior?"
+_STRING_COMPARISON_OPERATORS = {
+    ast.Eq: "equality", ast.NotEq: "equality",
+    ast.In: "membership", ast.NotIn: "membership",
+    ast.Is: "identity", ast.IsNot: "identity",
+    ast.Lt: "ordering", ast.LtE: "ordering", ast.Gt: "ordering", ast.GtE: "ordering",
+}
 
 
 def analyze(context: AnalysisContext) -> dict[str, Any]:
@@ -140,11 +160,15 @@ def formatted_literal_assertion(node: ast.AST) -> bool:
     """Return whether a supported assertion compares against a formatted literal."""
 
     constants = _string_constants_in_assertion(node)
-    return bool(constants and _is_formatted_literal(max(constants, key=len)))
+    return any(_is_formatted_literal(text) for text in constants)
 
 
 def private_import(node: ast.AST) -> bool:
-    """Return whether an import contains a private production name."""
+    """Return whether an import contains a private name using module-name conventions.
+
+    The aggregate also uses supplied sources to distinguish test-named
+    production modules from test modules.
+    """
 
     return isinstance(node, (ast.Import, ast.ImportFrom)) and bool(_private_imported_names(node))
 
@@ -280,14 +304,13 @@ def _test_effectiveness_factor(
     *,
     context: AnalysisContext | None = None,
 ) -> dict[str, Any]:
-    test_paths = {path for path, _ in ordered_sources if _is_test_source(path)}
+    texts = dict(ordered_sources)
+    python_paths = {path for path, _, _ in parsed} | {error["path"] for error in parse_errors}
+    test_paths = {path for path in python_paths if is_test_source(path, texts[path])}
     candidate_sites: list[dict[str, Any]] = []
     assertion_candidates: Counter[str] = Counter()
-    assertion_count = 0
-    private_import_count = 0
-    private_helper_call_count = 0
+    counts: Counter[str] = Counter()  # Test cases, assertions, private imports and private helper calls.
     private_import_files: set[str] = set()
-    test_case_count = 0
     test_parse_error_count = sum(1 for error in parse_errors if error["path"] in test_paths)
 
     for path, text, tree in parsed:
@@ -297,11 +320,11 @@ def _test_effectiveness_factor(
         readbacks = assignment_readbacks(tree)
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
-                test_case_count += 1
+                counts["test_case"] += 1
             if module_is_test and isinstance(node, (ast.Import, ast.ImportFrom)):
-                imported = _private_imported_names(node)
+                imported = _private_imported_names(node, source_paths=texts.keys(), test_paths=test_paths)
                 if imported:
-                    private_import_count += len(imported)
+                    counts["private_import"] += len(imported)
                     private_import_files.add(path)
                     _append_test_candidate(
                         candidate_sites,
@@ -311,7 +334,7 @@ def _test_effectiveness_factor(
                         node=node,
                         text=text,
                         reason=(
-                            "Private production import in a test; inspect whether the test can use a public entrypoint."
+                            "Private import in a test; inspect its target and whether a public entrypoint would be more appropriate."
                         ),
                     )
                 continue
@@ -320,7 +343,7 @@ def _test_effectiveness_factor(
             if not module_is_test and not _inside_test_callable(node, parents):
                 continue
             if isinstance(node, ast.Call) and private_helper_call(node, local_private):
-                private_helper_call_count += 1
+                counts["private_helper_call"] += 1
                 _append_test_candidate(
                     candidate_sites,
                     context=context,
@@ -329,14 +352,12 @@ def _test_effectiveness_factor(
                     node=node,
                     text=text,
                     reason=(
-                        "Private production helper called from a test; inspect whether a public entrypoint covers the behavior."
+                        "Private helper called from a test; inspect its target and whether a public entrypoint covers the behavior."
                     ),
                 )
             candidate_kind = assertion_candidate_kind(node, readbacks)
-            if isinstance(node, ast.Assert):
-                assertion_count += 1
-            elif _is_assertion_call(node):
-                assertion_count += 1
+            if _is_assertion(node):
+                counts["assertion"] += 1
             if candidate_kind is None:
                 continue
             assertion_candidates[candidate_kind] += 1
@@ -379,7 +400,7 @@ def _test_effectiveness_factor(
     string_expected_count = assertion_candidates["string_expected_assertion"] + formatted_literal_count
     limitations = [
         "Literal, same-operand, string-expected, and formatted-literal assertions are candidates for review, not a judgment that a test is ineffective.",
-        "Private production imports and helper calls are candidates; same-module test helpers are omitted; numeric expected values alone are not candidates.",
+        "Private production imports and helper calls are candidates; module paths can identify test-named production sources, but import and call targets are not resolved. Relative imports and same-module test helpers are omitted; numeric expected values alone are not candidates.",
         "Assignment readbacks track scalar literals in straight-line test function bodies only; calls, control flow, and uncertain mutations end tracking. No alias, constructor, subscript, or interprocedural inference is performed; attribute access may exercise meaningful descriptors.",
         "Static inspection does not infer input variation, mocks, explicit state setup, or the behavior under test.",
     ]
@@ -391,16 +412,16 @@ def _test_effectiveness_factor(
         "source_file_count": len(ordered_sources),
         "python_file_count": python_file_count,
         "test_file_count": len(test_paths),
-        "test_case_count": test_case_count,
-        "assertion_count": assertion_count,
+        "test_case_count": counts["test_case"],
+        "assertion_count": counts["assertion"],
         "literal_assertion_candidates": assertion_candidates["literal_assertion"],
         "tautological_assertion_candidates": assertion_candidates["tautological_assertion"],
         "assignment_readback_candidates": assertion_candidates["assignment_readback"],
         "string_expected_assertion_count": string_expected_count,
         "formatted_literal_assertion_count": formatted_literal_count,
-        "private_import_count": private_import_count,
+        "private_import_count": counts["private_import"],
         "private_import_test_file_count": len(private_import_files),
-        "private_helper_call_count": private_helper_call_count,
+        "private_helper_call_count": counts["private_helper_call"],
         "candidate_assertion_count": sum(assertion_candidates.values()),
         "candidate_site_count": len(candidate_sites),
         "parse_error_count": test_parse_error_count,
@@ -444,11 +465,6 @@ def _append_test_candidate(
     )
 
 
-def _is_test_source(path: str) -> bool:
-    normalized = path.replace("\\", "/").strip("/")
-    return bool(_TEST_FILE_RE.search(normalized))
-
-
 def _parent_map(tree: ast.AST) -> dict[ast.AST, ast.AST]:
     parents: dict[ast.AST, ast.AST] = {}
     for parent in ast.walk(tree):
@@ -466,7 +482,11 @@ def _inside_test_callable(node: ast.AST, parents: Mapping[ast.AST, ast.AST]) -> 
     return False
 
 
-def _is_assertion_call(node: ast.Call) -> bool:
+def _is_assertion(node: ast.Assert | ast.Call) -> bool:
+    """An ``assert`` statement, or a call to an assertion method such as ``assertEqual`` or ``fail``."""
+
+    if isinstance(node, ast.Assert):
+        return True
     name = _call_name(node.func)
     return bool(name and (name.startswith("assert") or name in {"fail", "failUnless", "failIf"}))
 
@@ -490,12 +510,29 @@ def _is_test_module_name(module: str | None) -> bool:
     return any(part in {"tests", "test", "testing"} or part.startswith("test_") for part in module.split("."))
 
 
-def _private_imported_names(node: ast.Import | ast.ImportFrom) -> tuple[str, ...]:
+def _private_imported_names(
+    node: ast.Import | ast.ImportFrom,
+    *,
+    source_paths: Collection[str] = (),
+    test_paths: Collection[str] = (),
+) -> tuple[str, ...]:
     if isinstance(node, ast.Import):
         return tuple(alias.name.split(".")[-1] for alias in node.names if _is_private_identifier(alias.name.split(".")[-1]))
-    if node.module == "__future__" or (node.level or 0) > 0 or _is_test_module_name(node.module):
+    module = node.module or ""
+    if module == "__future__" or (node.level or 0) > 0:
+        return ()
+    if _is_test_module_name(module) and not _is_production_module(module, source_paths, test_paths):
         return ()
     return tuple(alias.name for alias in node.names if _is_private_identifier(alias.name))
+
+
+def _is_production_module(module: str, source_paths: Collection[str], test_paths: Collection[str]) -> bool:
+    """Whether ``module`` is an analyzed source that is not a test, such as a production ``test_*.py``."""
+
+    base = module.replace(".", "/")
+    files = (f"{base}.py", f"{base}.pyi", f"{base}/__init__.py", f"{base}/__init__.pyi")
+    matches = [path for path in files if path in source_paths]
+    return bool(matches) and not any(path in test_paths for path in matches)
 
 
 def _is_private_helper_call(node: ast.Call, local_private: set[str]) -> bool:
@@ -526,13 +563,33 @@ def _string_constants_in_assertion(node: ast.AST) -> list[str]:
     if not isinstance(node, ast.Call):
         return values
     name = _call_name(node.func)
-    if name not in _STRING_EXPECTED_METHODS:
+    if name not in _STRING_ASSERTION_METHODS:
         return values
     for arg in node.args[:2]:
         text = _constant_text(arg)
         if text is not None:
             values.append(text)
     return values
+
+
+def _string_comparison_kinds(node: ast.AST) -> list[str]:
+    """Describe comparisons involving a literal, without inferring operand types."""
+
+    if isinstance(node, ast.Call):
+        kind = _STRING_ASSERTION_METHODS.get(_call_name(node.func) or "")
+        return [kind] if kind else []
+    if not isinstance(node, ast.Assert) or not isinstance(node.test, ast.Compare):
+        return []
+    operands = [node.test.left, *node.test.comparators]
+    return sorted({
+        _STRING_COMPARISON_OPERATORS[type(operator)]
+        for left, operator, right in zip(operands[:-1], node.test.ops, operands[1:], strict=True)
+        if type(operator) in _STRING_COMPARISON_OPERATORS and _has_literal(left, right)
+    })
+
+
+def _has_literal(*operands: ast.AST) -> bool:
+    return any(_constant_text(operand) is not None for operand in operands)
 
 
 def _readback_target(node: ast.AST) -> str | None:
@@ -581,6 +638,17 @@ def _enrich_finding(
     finding = dict(finding)
     if not isinstance(context, AnalysisContext):
         return finding
+    pattern: dict[str, str | list[str]] = {"candidate_kind": candidate_kind}
+    question = _QUESTIONS.get(candidate_kind, _ASSERTION_QUESTION)
+    if candidate_kind in {"string_expected_assertion", "formatted_literal_assertion"}:
+        comparisons = _string_comparison_kinds(node)
+        pattern["comparison_kinds"] = comparisons
+        if len(comparisons) > 1:
+            question = _MIXED_STRING_COMPARISONS_QUESTION
+        elif comparisons == ["membership"] and candidate_kind == "formatted_literal_assertion":
+            question = _FORMATTED_MEMBERSHIP_QUESTION
+        elif comparisons:
+            question = _STRING_COMPARISON_QUESTIONS.get(comparisons[0], question)
     return enrich_finding(
         finding,
         context=context,
@@ -590,11 +658,9 @@ def _enrich_finding(
         node=node,
         family="verification",
         related_nodes=related_nodes,
-        pattern={"candidate_kind": candidate_kind},
+        pattern=pattern,
         uncertainty=["static_candidate"],
-        inspection_question=(
-            "Inspect assertion intent and input variation before drawing a conclusion."
-        ),
+        inspection_question=question,
     )
 
 

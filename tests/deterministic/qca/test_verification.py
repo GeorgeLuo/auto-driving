@@ -14,6 +14,23 @@ from qca.factors.verification import (
 
 
 class VerificationFactorTests(unittest.TestCase):
+    def test_test_file_count_excludes_non_python_and_keeps_parse_failures(self) -> None:
+        factor = analyze_verification({
+            "tests/README.md": "# Test guide\n",
+            "tests/data.json": "{}\n",
+            "tests/support.py": "value = 1\n",
+            "tests/broken.py": "def broken(:\n",
+            "test_feature.PY": "def test_feature():\n    assert True\n",
+            "test_api.PYI": "def test_api() -> None: ...\n",
+            "app.py": "value = 1\n",
+            "broken.py": "def broken(:\n",
+        })["test_effectiveness"]
+        self.assertEqual(factor["metrics"]["source_file_count"], 8)
+        self.assertEqual(factor["metrics"]["python_file_count"], 6)
+        self.assertEqual(factor["metrics"]["test_file_count"], 4)
+        self.assertEqual(factor["metrics"]["parse_error_count"], 1)
+        self.assertEqual(factor["metrics"]["test_case_count"], 2)
+
     def test_reports_string_expected_and_private_surface_candidates(self) -> None:
         factors = analyze_verification(
             {

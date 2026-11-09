@@ -34,10 +34,10 @@ from qca.evaluation import (
     text_context,
 )
 from qca.evaluators import structure
-from scripts.validation import evaluators
+from scripts.validation import evaluators, inspection
 
 ROOT = Path(__file__).resolve().parents[2]
-PATHS = ("autonomy", "cli", "implementations", "qca", "scripts/validation", "tests")
+PATHS = ("autonomy", "cli", "implementations", "deploy", "qca", "scripts/validation", "tests")
 # Both sides of a change are judged by the head's tool configuration.
 SHARED = ("pyproject.toml", ".basedpyright")
 DEFAULT_BASE = "origin/main"
@@ -48,15 +48,22 @@ def build_evaluators(*, ruff_only: bool = False) -> list[Evaluator]:
     ruff = Evaluator("ruff", evaluators.ruff, roots=PATHS)
     if ruff_only:
         return [ruff]
-    config = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    tools = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["tool"]
+    # QCA and the inspections leave out what Ruff's configuration excludes; type and import checks have their own.
+    excluded = tuple(path.removeprefix("./") for path in tools["ruff"]["extend-exclude"])
+    projects = frozenset({"files", "change"})  # Text has no project around it to read.
     return [
         ruff,
-        Evaluator(
-            "basedpyright", evaluators.basedpyright, roots=tuple(config["tool"]["basedpyright"]["include"]),
-            forms=frozenset({"files", "change"}), reach="project",
-        ),
+        Evaluator("basedpyright", evaluators.basedpyright, roots=tuple(tools["basedpyright"]["include"]),
+                  forms=projects, reach="project"),
+        Evaluator("import-linter", evaluators.import_contracts, roots=tuple(tools["importlinter"]["root_packages"]),
+                  forms=projects, reach="project"),
         Evaluator("vocabulary", evaluators.vocabulary),
-        Evaluator("qca", structure, roots=PATHS, required=False),
+        Evaluator("qca", structure, roots=PATHS, excluded=excluded, required=False),
+        Evaluator("vulture", inspection.unused, roots=PATHS, excluded=excluded, forms=projects, reach="project",
+                  required=False),
+        Evaluator("related-functions", inspection.related, roots=PATHS, excluded=excluded, forms=projects,
+                  reach="project", required=False),
     ]
 
 

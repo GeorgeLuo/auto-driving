@@ -161,6 +161,24 @@ class EvaluateTests(unittest.TestCase):
         self.assertEqual([item["location"]["path"] for item in document["findings"]], ["cli/a.py"])
         self.assertEqual(outside["evaluations"][0]["status"], "skipped")
 
+    def test_excluded_paths_are_neither_judged_nor_reported(self) -> None:
+        with tempfile.TemporaryDirectory() as before, tempfile.TemporaryDirectory() as after:
+            files = {"cli/a.py": "missing\n", "cli/vendor/b.py": "missing\n"}
+            base = tree(Path(before), {"cli/a.py": "ok\n", "cli/vendor/b.py": "ok\n"})
+            head = tree(Path(after), files)
+            project = Evaluator("types", lines_with("missing", "types"), roots=("cli",), excluded=("cli/vendor",),
+                                reach="project")
+            local = Evaluator("lint", lines_with("missing"), excluded=("cli/vendor",))
+            requested = evaluate(Context("files", head, tuple(files)), [project, local])
+            changed = evaluate(Context("change", head, tuple(files), base=base), [project, local])
+            vendored = evaluate(Context("files", head, ("cli/vendor/b.py",)), [project, local])
+        for document in (requested, changed):
+            self.assertEqual(
+                [(item["tool"], item["location"]["path"]) for item in document["findings"]],
+                [("types", "cli/a.py"), ("lint", "cli/a.py")],
+            )
+        self.assertEqual([item["status"] for item in vendored["evaluations"]], ["skipped", "skipped"])
+
     def test_a_change_reports_only_new_findings_and_project_reach_sees_unchanged_files(self) -> None:
         with tempfile.TemporaryDirectory() as before, tempfile.TemporaryDirectory() as after:
             base = tree(Path(before), {"cli/old.py": "missing\n", "cli/caller.py": "ok\n"})

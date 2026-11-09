@@ -42,8 +42,8 @@ Confirm changes adhere to the priorities defined in this document.
    locally or in the PR's Python quality summary
    ([tests/README.md](../../tests/README.md#python-quality-checks)). Investigate
    material candidates and report their locations and dispositions: fixed,
-   retained with a code-based reason, or unresolved. If QCA cannot run, report
-   why. Review questions are observations, not a merge gate; a passing check
+   retained with a code-based reason, or unresolved. If a review check cannot
+   run, report why. Review questions are observations, not a merge gate; a passing check
    does not mean they were reviewed.
 
 Do not create extra planning documents, alternate implementations, or process

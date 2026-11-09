@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from ..runs.models import StopResult
 
@@ -23,7 +23,7 @@ class CoreResult:
     exit_code: int
     kind: Literal["plan", "synced", "error"]
     message: str = ""
-    receipt: dict[str, Any] | None = None
+    receipt: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -38,7 +38,7 @@ class UpdateResult:
     exit_code: int
     kind: Literal["local", "remote", "receipt", "error"]
     message: str = ""
-    receipt: dict[str, Any] | None = None
+    receipt: dict[str, object] | None = None
     host_present: bool | None = None
 
 
@@ -55,10 +55,10 @@ class CreateResult:
     exit_code: int
     kind: Literal["plan", "created", "error"]
     message: str = ""
-    configuration: dict[str, Any] | None = None
+    configuration: dict[str, object] | None = None
     core: CoreResult | None = None
     release: UpdateResult | None = None
-    host_state: dict[str, Any] | None = None
+    host_state: dict[str, object] | None = None
 
 
 @dataclass(frozen=True)
@@ -66,6 +66,8 @@ class DeleteResult:
     """Deleting a host: ``deleted``, a remote stop that failed, a run that would not stop, or an ``error``.
 
     ``harness_dir`` is set for a PiCar, whose harness files stay on the Pi.
+    ``remote_stop_failed`` is set when ``--force`` removed that record after the
+    Pi could not be stopped.
     """
 
     exit_code: int
@@ -76,3 +78,4 @@ class DeleteResult:
     deleted_path: Path | None = None
     stopped_run: bool = False
     harness_dir: str | None = None
+    remote_stop_failed: bool = False

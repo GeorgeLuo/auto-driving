@@ -113,12 +113,39 @@ class HostLifecycleTests(unittest.TestCase):
         with patch.object(service, "run_step", return_value=1) as run:
             result = service.delete_host(host_name="car")
         self.assertEqual(result.exit_code, 1)
+        self.assertEqual(render_delete(result), "Could not stop the PiCar host; its local record was kept.")
         self.assertTrue((self.root / "car" / "host-configuration.json").exists())
-        self.assertIn("control.sh /home/piracer stop", run.call_args.args[1][-1])
+        argv = run.call_args.args[1]
+        self.assertEqual(argv[:3], ["ssh", "-o", "ConnectTimeout=10"])
+        self.assertIn("control.sh /home/piracer stop", argv[-1])
         with patch.object(service, "run_step", return_value=0):
             result = service.delete_host(host_name="car")
         self.assertEqual(result.exit_code, 0)
         self.assertIn("Harness files stay in /home/piracer/mycar on the PiCar.", render_delete(result))
+        self.assertFalse(result.remote_stop_failed)
+        self.assertFalse((self.root / "car").exists())
+
+    def test_delete_picar_force_removes_the_record_when_the_pi_cannot_be_stopped(self):
+        write_host_fixture(self.root, "car", provider="picar")
+        with patch.object(service, "run_step", return_value=255) as run:
+            failed = invoke_automa(
+                "hosts", "delete", "--name", "car", "--force", runtime_root=self.root, check=False,
+            )
+        self.assertEqual(failed.returncode, 0, failed.stdout + failed.stderr)
+        self.assertEqual(run.call_args.args[1][:3], ["ssh", "-o", "ConnectTimeout=10"])
+        self.assertIn("Could not stop the PiCar host.", failed.stdout)
+        self.assertIn("The Donkey service may still be running on the Pi.", failed.stdout)
+        self.assertIn("Harness files stay in /home/piracer/mycar on the PiCar.", failed.stdout)
+        self.assertFalse((self.root / "car").exists())
+
+        write_host_fixture(self.root, "car", provider="picar")
+        with patch.object(service, "run_step", return_value=0):
+            stopped = invoke_automa(
+                "hosts", "delete", "--name", "car", "--force", runtime_root=self.root, check=False,
+            )
+        self.assertEqual(stopped.returncode, 0, stopped.stdout + stopped.stderr)
+        self.assertIn("Stopped host car.", stopped.stdout)
+        self.assertNotIn("may still be running", stopped.stdout)
         self.assertFalse((self.root / "car").exists())
 
     def test_created_picar_receipt_carries_the_synced_core(self):
@@ -142,9 +169,11 @@ class HostLifecycleTests(unittest.TestCase):
              patch("cli.automa_cli.hosts.deployment.service.stop_host_automation",
                    return_value=StopResult(2, "release_failed", "car", error="could not release control")), \
              patch.object(service, "run_step") as remote:
-            result = service.delete_host(host_name="car")
-        self.assertEqual(result.exit_code, 2)
-        self.assertTrue((self.root / "car" / "host-configuration.json").exists())
+            for force in (False, True):
+                with self.subTest(force=force):
+                    result = service.delete_host(host_name="car", force=force)
+                    self.assertEqual(result.exit_code, 2)
+                    self.assertTrue((self.root / "car" / "host-configuration.json").exists())
         remote.assert_not_called()
 
     def test_renderer_formats_a_supplied_receipt(self):

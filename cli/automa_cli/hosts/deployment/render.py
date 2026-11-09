@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import shlex
-from typing import Any
 
 from ...providers.metadata import PROVIDERS
 from ...shared.paths import display_path
@@ -66,8 +65,14 @@ def render_delete(result: DeleteResult) -> str:
         return "Could not stop the PiCar host; its local record was kept."
     if result.kind == "deleted":
         stopped = "Stopped the run. " if result.stopped_run else ""
-        suffix = f" Harness files stay in {result.harness_dir} on the PiCar." if result.harness_dir else ""
-        return f"{stopped}Stopped host {result.host_name}. Removed {display_path(result.deleted_path)}.{suffix}"
+        removed = f"Removed {display_path(result.deleted_path)}."
+        harness = f" Harness files stay in {result.harness_dir} on the PiCar." if result.harness_dir else ""
+        if result.remote_stop_failed:
+            return (
+                f"{stopped}Could not stop the PiCar host. {removed} "
+                f"The Donkey service may still be running on the Pi.{harness}"
+            )
+        return f"{stopped}Stopped host {result.host_name}. {removed}{harness}"
     raise ValueError(f"Unknown delete outcome: {result.kind}")
 
 
@@ -82,7 +87,7 @@ def _update_text(result: UpdateResult) -> str:
     raise ValueError(f"Unknown update outcome: {result.kind}")
 
 
-def _format_local_autonomy(body: dict[str, Any], *, host_present: bool | None) -> str:
+def _format_local_autonomy(body: dict[str, object], *, host_present: bool | None) -> str:
     if body.get("dry_run"):
         source = body["source"]
         return "\n".join([
@@ -128,7 +133,7 @@ def _format_created_host(result: CreateResult) -> str:
     return "\n".join(lines)
 
 
-def _format_core_dry_run(payload: dict[str, Any]) -> str:
+def _format_core_dry_run(payload: dict[str, object]) -> str:
     source = payload["source"]
     vendor = source["vendor"]
     return "\n".join(
@@ -154,7 +159,7 @@ def _format_core_dry_run(payload: dict[str, Any]) -> str:
     )
 
 
-def _format_autonomy_dry_run(payload: dict[str, Any]) -> str:
+def _format_autonomy_dry_run(payload: dict[str, object]) -> str:
     return "\n".join(
         [
             f"Autonomy update dry run for {payload['host_name']}",
@@ -177,7 +182,7 @@ def _format_autonomy_dry_run(payload: dict[str, Any]) -> str:
     )
 
 
-def _format_autonomy_update(payload: dict[str, Any]) -> str:
+def _format_autonomy_update(payload: dict[str, object]) -> str:
     restart = payload["restart_requested"]
     verified_lines: list[str] = []
     if payload["runtime_verification"] is not None:
@@ -230,6 +235,11 @@ def render_progress(event: ProgressEvent) -> str:
         return f"HTTP readiness failed: {data['error']}"
     if event.kind == "ready":
         return f"Donkey runtime ready: {data['url']}"
+    return _render_artifact_progress(event)
+
+
+def _render_artifact_progress(event: ProgressEvent) -> str:
+    data = event.data
     if event.kind == "archive":
         return f"Archive: {display_path(data['path'])}"
     if event.kind == "tree_hash":

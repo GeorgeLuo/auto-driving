@@ -61,6 +61,27 @@ def _flag(body: dict[str, object], key: str) -> bool:
     return value
 
 
+def _optional_text(body: dict[str, object], key: str) -> str | None:
+    value = body.get(key)
+    if value is not None and not isinstance(value, str):
+        raise ValueError(f"{key} must be a string or null")
+    return value
+
+
+def _fields(body: dict[str, object], allowed: set[str]) -> None:
+    unexpected = sorted(body.keys() - allowed)
+    if unexpected:
+        raise ValueError(f"unsupported fields: {', '.join(unexpected)}")
+
+
+def _exclusive(body: dict[str, object], names: tuple[str, ...]) -> None:
+    selected = [key for key in names if key in body]
+    if "all" in selected and body["all"] is False:
+        selected.remove("all")
+    if len(selected) > 1:
+        raise ValueError(f"choose only one of {', '.join(names)}")
+
+
 def _answer(result: object, text: str) -> dict[str, object]:
     # A host command's result can carry paths; they answer as the strings the CLI prints.
     fields = json.loads(json.dumps(asdict(result), default=str))
@@ -106,14 +127,23 @@ def _delete(body: dict[str, object]) -> dict[str, object]:
 
 
 def _create_host(body: dict[str, object]) -> dict[str, object]:
+    _fields(body, {"name", "provider", "url", "ssh_target", "pi_home", "drive_args", "dry_run", "verbose"})
     printed = _Printed()
-    result = create_host(host_name=_text(body, "name"), provider=body.get("provider"), url=_text(body, "url"), emit=printed)
+    dry_run = _flag(body, "dry_run")
+    result = create_host(host_name=_text(body, "name"), provider=_text(body, "provider"), url=_text(body, "url"),
+                         ssh_target=_optional_text(body, "ssh_target"), pi_home=_optional_text(body, "pi_home"),
+                         drive_args=_optional_text(body, "drive_args"), dry_run=dry_run, verbose=_flag(body, "verbose"),
+                         emit=None if dry_run else printed)
     return _answer(result, printed.text(render_create(result, json_output=False)))
 
 
 def _update_host(body: dict[str, object]) -> dict[str, object]:
+    _fields(body, {"name", "dry_run", "restart", "drive_args", "verbose"})
     printed = _Printed()
-    result = update_host(host_name=_text(body, "name"), emit=printed)
+    dry_run = _flag(body, "dry_run")
+    result = update_host(host_name=_text(body, "name"), dry_run=dry_run, restart=_flag(body, "restart"),
+                         drive_args=_optional_text(body, "drive_args"), verbose=_flag(body, "verbose"),
+                         emit=None if dry_run else printed)
     return _answer(result, printed.text(render_update(result, json_output=False)))
 
 
@@ -191,6 +221,8 @@ def _plugins_stream(query: dict[str, str]) -> dict[str, object]:
 def _arm(body: dict[str, object]) -> dict[str, object]:
     """plugins arm --name ..., --preset <step>/<preset> or --collection."""
 
+    _fields(body, {"host_name", "name", "preset", "collection"})
+    _exclusive(body, ("name", "preset", "collection"))
     host_name = _text(body, "host_name")
     if "collection" in body:
         result = arm_collection(url=None, host_name=host_name, name=_text(body, "collection"))
@@ -205,6 +237,9 @@ def _arm(body: dict[str, object]) -> dict[str, object]:
 def _disarm(body: dict[str, object]) -> dict[str, object]:
     """plugins disarm --name ..., --collection, --step or --all."""
 
+    _fields(body, {"host_name", "name", "collection", "step", "all"})
+    all_plugins = _flag(body, "all")
+    _exclusive(body, ("name", "collection", "step", "all"))
     host_name, step = _text(body, "host_name"), body.get("step")
     if "collection" in body:
         result = disarm_collection(url=None, host_name=host_name, name=_text(body, "collection"))
@@ -214,7 +249,7 @@ def _disarm(body: dict[str, object]) -> dict[str, object]:
         if step not in CLEARABLE_STEPS:
             raise ValueError(f"step must be one of {', '.join(CLEARABLE_STEPS)}")
         result = disarm_plugins(url=None, host_name=host_name, step=step)
-    elif _flag(body, "all"):
+    elif all_plugins:
         result = disarm_plugins(url=None, host_name=host_name)
     else:
         raise ValueError("disarm needs name, collection, step or all")
@@ -226,9 +261,11 @@ def _upload(body: dict[str, object]) -> dict[str, object]:
     or --manifest [--arm], the manifest a path on this machine, as the CLI reads it with its source directory."""
 
     if "manifest" in body:
+        _fields(body, {"host_name", "manifest", "arm"})
         result = upload_collection(url=None, host_name=_text(body, "host_name"),
                                    manifest=Path(_text(body, "manifest")).expanduser(), arm=_flag(body, "arm"))
         return _answer(result, render_upload(result, json_output=False))
+    _fields(body, {"host_name", "name", "entrypoint", "filename", "source_base64", "config", "arm"})
     step, plugin_id = _step_item(body.get("name"), "name")
     filename = Path(_text(body, "filename")).name
     config = body.get("config")

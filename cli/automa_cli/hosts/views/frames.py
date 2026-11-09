@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import json
 import threading
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from urllib.parse import parse_qs, urlencode, urlparse
 
@@ -24,6 +25,7 @@ from ..publications.host_publications import TransactionCache, fetch_frame_sampl
 from .observation import ObservationPublisher
 
 _READ_ERRORS = (RuntimeHostError, ConnectionError, OSError, TypeError, ValueError)
+MAX_HOSTS = 32
 
 
 @dataclass
@@ -44,17 +46,22 @@ class HostFrames:
     def __init__(self, *, frame_route: str, timeout_s: float = 3.0) -> None:
         self.frame_route = frame_route
         self.timeout_s = timeout_s
-        self._hosts: dict[str, _HostFrames] = {}
+        self._hosts: OrderedDict[str, _HostFrames] = OrderedDict()
         self._lock = threading.Lock()
 
     def latest(self, host_name: str) -> dict[str, object]:
         """The host's latest frame, read from it now; a refusal names why there is none."""
 
+        try:
+            base_url = runtime_base_url(host_name)
+        except _READ_ERRORS as exc:
+            with self._lock:
+                self._hosts.pop(host_name, None)
+            return error_payload(str(exc))
         frames = self._frames(host_name)
         with frames.lock:
             try:
-                publication, jpeg = fetch_frame_sample(runtime_base_url(host_name), timeout_s=self.timeout_s,
-                                                       cache=frames.cache)
+                publication, jpeg = fetch_frame_sample(base_url, timeout_s=self.timeout_s, cache=frames.cache)
                 if publication.get("report") is None:
                     frames.publisher.invalidate(health_error(publication))
                 else:
@@ -76,6 +83,8 @@ class HostFrames:
 
         with self._lock:
             frames = self._hosts.get(host_name)
+            if frames is not None:
+                self._hosts.move_to_end(host_name)
         image = None if frames is None else frames.view.frame(frame_id)
         return image if image is not None else error_payload("That frame's image is no longer available.")
 
@@ -84,4 +93,7 @@ class HostFrames:
             if host_name not in self._hosts:
                 view = PerceptionView(host_name=host_name)
                 self._hosts[host_name] = _HostFrames(view, ObservationPublisher(view))
+                if len(self._hosts) > MAX_HOSTS:
+                    self._hosts.popitem(last=False)
+            self._hosts.move_to_end(host_name)
             return self._hosts[host_name]

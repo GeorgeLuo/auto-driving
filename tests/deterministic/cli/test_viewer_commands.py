@@ -7,14 +7,19 @@ import json
 import os
 import tempfile
 import unittest
+from itertools import combinations
 from pathlib import Path
 from unittest import mock
 from urllib.error import HTTPError
+from urllib.parse import parse_qs, urlparse
 from urllib.request import Request, urlopen
 
 from PIL import Image
 
+from cli.automa_cli import viewer_commands
 from cli.automa_cli.frontend.server import RuntimeViewServer
+from cli.automa_cli.hosts.deployment.models import CreateResult, UpdateResult
+from cli.automa_cli.hosts.errors import RuntimeHostError
 from cli.automa_cli.hosts.views import frames
 from cli.automa_cli.providers.urls import chase_operator_url
 from cli.automa_cli.viewer_commands import VIEWER_READS, VIEWER_WRITES
@@ -23,9 +28,44 @@ from tests.support.fake_metrics_ui import fake_metrics_ui
 from tests.support.runtime_fixtures import runtime_root_env
 
 
+class HostFrameCacheTests(unittest.TestCase):
+    def test_unknown_hosts_are_not_cached(self) -> None:
+        cache = frames.HostFrames(frame_route="/api/hosts/frame")
+        with (mock.patch.object(frames, "runtime_base_url", side_effect=RuntimeHostError("unknown host")),
+              mock.patch.object(frames, "fetch_frame_sample") as fetch):
+            for index in range(100):
+                self.assertFalse(cache.latest(f"missing-{index}")["ok"])
+            fetch.assert_not_called()
+        self.assertEqual(len(cache._hosts), 0)
+
+    def test_host_images_are_bounded_and_the_least_recently_used_host_is_evicted(self) -> None:
+        cache = frames.HostFrames(frame_route="/api/hosts/frame")
+        buffer = io.BytesIO()
+        Image.new("RGB", (2, 2)).save(buffer, format="JPEG")
+        report = {"frame_id": "one", "frame_index": 1, "run_id": "run", "generation_id": "decision",
+                  "status": "ok", "timestamp_ms": 5, "cycle": {}}
+        publication = {"schema": "host_frame_publication", "health": "healthy", "ok": True, "report": report}
+        with (mock.patch.object(frames, "MAX_HOSTS", 2),
+              mock.patch.object(frames, "runtime_base_url", return_value="http://host.invalid") as resolve,
+              mock.patch.object(frames, "fetch_frame_sample", return_value=(publication, buffer.getvalue()))):
+            first = cache.latest("first")
+            second = cache.latest("second")
+            first_id = parse_qs(urlparse(first["image"]["url"]).query)["v"][0]
+            second_id = parse_qs(urlparse(second["image"]["url"]).query)["v"][0]
+            self.assertEqual(cache.image("first", first_id), (buffer.getvalue(), "image/jpeg"))
+            cache.latest("third")
+            self.assertFalse(cache.image("second", second_id)["ok"])
+            self.assertEqual(cache.image("first", first_id), (buffer.getvalue(), "image/jpeg"))
+            self.assertEqual(len(cache._hosts), 2)
+            resolve.side_effect = RuntimeHostError("host deleted")
+            self.assertFalse(cache.latest("first")["ok"])
+            self.assertFalse(cache.image("first", first_id)["ok"])
+
+
 class ViewerCommandTests(unittest.TestCase):
     def setUp(self) -> None:
         root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        self.root = root
         self.enterContext(runtime_root_env(root))
         self.server = RuntimeViewServer(
             host_name="viewer", automation_dir=None, port=0, connected=False,
@@ -89,6 +129,41 @@ class ViewerCommandTests(unittest.TestCase):
 
     def test_hosts_status_reads_as_its_json_prints(self) -> None:
         self.assertEqual(self.get("/api/hosts/status"), {"schema": "automa_hosts_status", "host_name": None, "hosts": []})
+
+    def test_host_deployment_forwards_options_and_rejects_unrecognized_fields(self) -> None:
+        create = {"name": "car", "provider": "picar", "url": "http://car", "dry_run": True,
+                  "ssh_target": "pi@car", "pi_home": "/home/pi", "drive_args": "--manual", "verbose": True}
+        update = {"name": "car", "dry_run": True, "restart": True, "drive_args": "--manual", "verbose": True}
+        with (mock.patch("cli.automa_cli.viewer_commands.create_host", return_value=CreateResult(2, "error", "test")) as create_host,
+              mock.patch("cli.automa_cli.viewer_commands.update_host", return_value=UpdateResult(2, "error", "test")) as update_host):
+            self.post("/api/hosts/create", create)
+            self.post("/api/hosts/update", update)
+            self.assertEqual(create_host.call_args.kwargs, {
+                "host_name": "car", "provider": "picar", "url": "http://car", "dry_run": True,
+                "ssh_target": "pi@car", "pi_home": "/home/pi", "drive_args": "--manual", "verbose": True, "emit": None,
+            })
+            self.assertEqual(update_host.call_args.kwargs, {
+                "host_name": "car", "dry_run": True, "restart": True, "drive_args": "--manual", "verbose": True, "emit": None,
+            })
+            create_host.reset_mock()
+            update_host.reset_mock()
+            for route, body in [("create", {**create, "restart": True}),
+                                ("update", {**update, "ssh_target": "other"}),
+                                ("create", {**create, "dry_run": "true"}),
+                                ("update", {**update, "restart": 1})]:
+                with self.subTest(route=route, body=body):
+                    self.assertEqual(self.post(f"/api/hosts/{route}", body)[0], 400)
+            create_host.assert_not_called()
+            update_host.assert_not_called()
+
+    def test_create_dry_run_plans_without_creating_a_host(self) -> None:
+        code, result = self.post("/api/hosts/create", {
+            "name": "car", "provider": "picar", "url": "http://example.local:8887", "dry_run": True,
+            "ssh_target": "pi@example.local", "pi_home": "/home/pi",
+        })
+        self.assertEqual((code, result["ok"], result["kind"]), (200, True, "plan"))
+        self.assertEqual(result["configuration"]["connection"]["ssh_target"], "pi@example.local")
+        self.assertFalse((self.root / "car").exists())
 
     def test_a_restart_takes_run_flags_and_movement_without_a_count_is_refused(self) -> None:
         code, restart = self.post("/api/hosts/restart", {"name": "chaser", "observe_only": False})
@@ -164,6 +239,35 @@ class ViewerCommandTests(unittest.TestCase):
         ]:
             with self.subTest(route=route, body=body):
                 self.assertEqual(self.post(route, body), (400, {"ok": False, "error": error}))
+
+    def test_conflicting_plugin_selectors_are_refused_before_any_operation(self) -> None:
+        arm = {"name": ["perception/p"], "preset": "perception/p", "collection": "pack"}
+        disarm = {"name": ["perception/p"], "collection": "pack", "step": "perception", "all": True}
+        with (mock.patch("cli.automa_cli.viewer_commands.arm_collection") as arm_collection,
+              mock.patch("cli.automa_cli.viewer_commands.arm_preset") as arm_preset,
+              mock.patch("cli.automa_cli.viewer_commands.arm_plugins") as arm_plugins,
+              mock.patch("cli.automa_cli.viewer_commands.disarm_collection") as disarm_collection,
+              mock.patch("cli.automa_cli.viewer_commands.disarm_plugins") as disarm_plugins,
+              mock.patch("cli.automa_cli.viewer_commands.upload_collection") as upload_collection,
+              mock.patch("cli.automa_cli.viewer_commands.upload_plugin") as upload_plugin):
+            for route, selectors in (("arm", arm), ("disarm", disarm)):
+                for first, second in combinations(selectors, 2):
+                    body = {"host_name": "car", first: selectors[first], second: selectors[second]}
+                    with self.subTest(route=route, body=body):
+                        self.assertEqual(self.post(f"/api/plugins/{route}", body)[0], 400)
+            for field in ("name", "entrypoint", "filename", "source_base64", "config"):
+                body = {"host_name": "car", "manifest": "pack.json", field: "unexpected"}
+                with self.subTest(field=field):
+                    self.assertEqual(self.post("/api/plugins/upload", body)[0], 400)
+            self.assertEqual(self.post("/api/plugins/disarm", {"host_name": "car", "collection": "pack", "all": "yes"})[0], 400)
+            for operation in (arm_collection, arm_preset, arm_plugins, disarm_collection, disarm_plugins,
+                              upload_collection, upload_plugin):
+                operation.assert_not_called()
+
+    def test_false_all_does_not_conflict_with_another_disarm_selector(self) -> None:
+        with mock.patch.object(viewer_commands, "disarm_collection", wraps=viewer_commands.disarm_collection) as disarm:
+            self.post("/api/plugins/disarm", {"host_name": "missing", "collection": "pack", "all": False})
+        disarm.assert_called_once_with(url=None, host_name="missing", name="pack")
 
     def test_writes_come_only_from_the_viewer_itself(self) -> None:
         self.assertEqual(self.post("/api/vehicles/remove", {"url": "x"}, Origin="http://example.com")[0], 403)

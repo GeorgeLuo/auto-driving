@@ -16,7 +16,7 @@ from typing import Literal, TypedDict
 
 ROOT = Path(__file__).resolve().parents[2]
 RUFF_BASELINE = ROOT / ".ruff-baseline.json"
-PATHS = ("autonomy", "cli", "implementations", "qca", "scripts/validation", "tests")
+PATHS = ("autonomy", "cli", "implementations", "deploy", "qca", "scripts/validation", "tests")
 METRIC = re.compile(r"\((\d+) > (\d+)\)")
 METRIC_RULES = {"C901", "PLR0912", "PLR0914", "PLR0915", "PLR0916", "PLR0917", "PLR1702"}
 

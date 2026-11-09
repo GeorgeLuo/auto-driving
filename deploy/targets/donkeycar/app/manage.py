@@ -21,12 +21,13 @@ from docopt import docopt
 # see https://github.com/opencv/opencv/issues/14884#issuecomment-599852128
 #
 try:
-    import cv2
-except:
+    import cv2  # noqa: F401 - initialize OpenCV before TensorFlow
+except ImportError:
     pass
 
 
 import json
+import logging
 import os
 import secrets
 import signal
@@ -52,21 +53,16 @@ from donkeycar.parts.controller import LocalWebController, WebFpv, JoystickContr
 from donkeycar.parts.throttle_filter import ThrottleFilter
 from donkeycar.parts.behavior import BehaviorPart
 from donkeycar.parts.file_watcher import FileWatcher
-from donkeycar.parts.launch import AiLaunch
-from donkeycar.parts.kinematics import NormalizeSteeringAngle, UnnormalizeSteeringAngle, TwoWheelSteeringThrottle
-from donkeycar.parts.kinematics import Unicycle, InverseUnicycle, UnicycleUnnormalizeAngularVelocity
-from donkeycar.parts.kinematics import Bicycle, InverseBicycle, BicycleUnnormalizeAngularVelocity
 from donkeycar.parts.explode import ExplodeDict
 from donkeycar.parts.transform import Lambda
 from donkeycar.parts.pipe import Pipe
-from donkeycar.utils import *
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
 
 def drive(cfg, model_path=None, use_joystick=False, model_type=None,
-          camera_type='single', meta=[]):
+          camera_type='single', meta=()):
     """
     Construct a working robotic vehicle from many parts. Each part runs as a
     job in the Vehicle loop, calling either it's run or run_threaded method
@@ -164,11 +160,11 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     # For example: adding a button handler is just adding a part with a run_condition
     # set to the button's name, so it runs when button is pressed.
     #
-    V.add(Lambda(lambda v: print(f"web/w1 clicked")), inputs=["web/w1"], run_condition="web/w1")
-    V.add(Lambda(lambda v: print(f"web/w2 clicked")), inputs=["web/w2"], run_condition="web/w2")
-    V.add(Lambda(lambda v: print(f"web/w3 clicked")), inputs=["web/w3"], run_condition="web/w3")
-    V.add(Lambda(lambda v: print(f"web/w4 clicked")), inputs=["web/w4"], run_condition="web/w4")
-    V.add(Lambda(lambda v: print(f"web/w5 clicked")), inputs=["web/w5"], run_condition="web/w5")
+    V.add(Lambda(lambda _pressed: print("web/w1 clicked")), inputs=["web/w1"], run_condition="web/w1")
+    V.add(Lambda(lambda _pressed: print("web/w2 clicked")), inputs=["web/w2"], run_condition="web/w2")
+    V.add(Lambda(lambda _pressed: print("web/w3 clicked")), inputs=["web/w3"], run_condition="web/w3")
+    V.add(Lambda(lambda _pressed: print("web/w4 clicked")), inputs=["web/w4"], run_condition="web/w4")
+    V.add(Lambda(lambda _pressed: print("web/w5 clicked")), inputs=["web/w5"], run_condition="web/w5")
 
     #this throttle filter will allow one tap back for esc reverse
     th_filter = ThrottleFilter()
@@ -195,14 +191,12 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             if model_file_changed:
                 led.set_rgb(self.cfg.MODEL_RELOADED_LED_R, self.cfg.MODEL_RELOADED_LED_G, self.cfg.MODEL_RELOADED_LED_B)
                 return 0.1
-            else:
-                led.set_rgb(self.cfg.LED_R, self.cfg.LED_G, self.cfg.LED_B)
+            led.set_rgb(self.cfg.LED_R, self.cfg.LED_G, self.cfg.LED_B)
 
             if recording_alert:
                 led.set_rgb(*recording_alert)
                 return self.cfg.REC_COUNT_ALERT_BLINK_RATE
-            else:
-                led.set_rgb(self.cfg.LED_R, self.cfg.LED_G, self.cfg.LED_B)
+            led.set_rgb(self.cfg.LED_R, self.cfg.LED_G, self.cfg.LED_B)
 
             if behavior_state is not None and model_type == 'behavior':
                 r, g, b = self.cfg.BEHAVIOR_LED_COLORS[behavior_state]
@@ -211,11 +205,11 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
 
             if recording:
                 return -1 #solid on
-            elif mode == 'user':
+            if mode == 'user':
                 return 1
-            elif mode == 'local_angle':
+            if mode == 'local_angle':
                 return 0.5
-            elif mode == 'local':
+            if mode == 'local':
                 return 0.1
             return 0
 
@@ -281,7 +275,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     #Sombrero
     if cfg.HAVE_SOMBRERO:
         from donkeycar.parts.sombrero import Sombrero
-        s = Sombrero()
+        _sombrero = Sombrero()
 
     #IMU
     add_imu(V, cfg)
@@ -381,7 +375,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             V.add(bh, outputs=['behavior/state', 'behavior/label', "behavior/one_hot_state_array"])
             try:
                 ctr.set_button_down_trigger('L1', bh.increment_state)
-            except:
+            except AttributeError:
                 pass
 
             inputs = ['cam/image_array', "behavior/one_hot_state_array"]
@@ -424,7 +418,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
             #
             # add the complete set of pre and post augmentation transformations
             #
-            logger.info(f"Adding inference transformations")
+            logger.info("Adding inference transformations")
             V.add(ImageTransformations(cfg, 'TRANSFORMATIONS',
                                        'POST_TRANSFORMATIONS'),
                   inputs=['cam/image_array'], outputs=['cam/image_array_trans'])
@@ -642,7 +636,7 @@ def drive(cfg, model_path=None, use_joystick=False, model_type=None,
     #
     tub_path = TubHandler(path=cfg.DATA_PATH).create_tub_path() if \
         cfg.AUTO_CREATE_NEW_TUB else cfg.DATA_PATH
-    meta += getattr(cfg, 'METADATA', [])
+    meta = [*meta, *getattr(cfg, 'METADATA', [])]
     tub_writer = TubWriter(tub_path, inputs=inputs, types=types, metadata=meta)
     V.add(tub_writer, inputs=inputs, outputs=["tub/num_records"], run_condition='recording')
 
@@ -804,8 +798,7 @@ class UserPilotCondition:
         """
         if mode == 'user':
             return True, False, user_image
-        else:
-            return False, True, pilot_image if self.show_pilot_image else user_image
+        return False, True, pilot_image if self.show_pilot_image else user_image
 
 
 def add_user_controller(V, cfg, use_joystick, input_image='ui/image_array', camera=None):

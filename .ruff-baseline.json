@@ -1203,6 +1203,114 @@
     },
     {
       "key": [
+        "deploy/targets/donkeycar/app/manage.py",
+        "C901",
+        "add_drivetrain",
+        "`add_drivetrain` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        15
+      ]
+    },
+    {
+      "key": [
+        "deploy/targets/donkeycar/app/manage.py",
+        "C901",
+        "drive",
+        "`drive` is too complex (count > 10)",
+        ""
+      ],
+      "limits": [
+        87
+      ]
+    },
+    {
+      "key": [
+        "deploy/targets/donkeycar/app/manage.py",
+        "PLR0912",
+        "add_drivetrain",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        14
+      ]
+    },
+    {
+      "key": [
+        "deploy/targets/donkeycar/app/manage.py",
+        "PLR0912",
+        "drive",
+        "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        62
+      ]
+    },
+    {
+      "key": [
+        "deploy/targets/donkeycar/app/manage.py",
+        "PLR0914",
+        "drive",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        42
+      ]
+    },
+    {
+      "key": [
+        "deploy/targets/donkeycar/app/manage.py",
+        "PLR0915",
+        "add_drivetrain",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        92
+      ]
+    },
+    {
+      "key": [
+        "deploy/targets/donkeycar/app/manage.py",
+        "PLR0915",
+        "drive",
+        "Too many statements (count > 50)",
+        ""
+      ],
+      "limits": [
+        283
+      ]
+    },
+    {
+      "key": [
+        "deploy/targets/donkeycar/app/manage.py",
+        "PLR0917",
+        "drive",
+        "Too many positional arguments (count > 5)",
+        ""
+      ],
+      "limits": [
+        6
+      ]
+    },
+    {
+      "key": [
+        "deploy/targets/donkeycar/app/manage.py",
+        "PLR0917",
+        "drive.LedConditionLogic.run",
+        "Too many positional arguments (count > 5)",
+        ""
+      ],
+      "limits": [
+        6
+      ]
+    },
+    {
+      "key": [
         "implementations/decision_cycle/memory/shared/evidence_ledger/reduction.py",
         "B905",
         "json_values_equal",

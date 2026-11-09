@@ -4,7 +4,7 @@ target-version = "py311"
 extend-exclude = [".claude", "./runtime", "./lab", "deploy/targets/donkeycar/vendor"]
 
 [tool.ruff.lint]
-select = ["F", "B", "C901", "PLR0912", "PLR0914", "PLR0915", "PLR0916", "PLR0917", "PLR1702",
+select = ["F", "E722", "B", "C901", "PLR0912", "PLR0914", "PLR0915", "PLR0916", "PLR0917", "PLR1702",
           "ARG", "SIM103", "SIM114", "SIM116", "RET504", "RET505", "RET506", "RET507", "RET508",
           "PLR1704", "PLR5501", "PIE810"]
 preview = true

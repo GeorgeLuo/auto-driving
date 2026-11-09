@@ -54,7 +54,6 @@ class BoundedEvidenceReducer:
         retain_signals: bool = True,
         max_property_bytes: int | None = DEFAULT_MAX_PROPERTY_BYTES,
         max_serialized_bytes: int | None = DEFAULT_MAX_SERIALIZED_BYTES,
-        **_ignored: Any,
     ) -> None:
         if eviction_policy != "oldest_first":
             raise ValueError(

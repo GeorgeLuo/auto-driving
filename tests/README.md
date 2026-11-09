@@ -37,7 +37,7 @@ Run the tests your change reaches, not every suite. `commands` and `journeys` to
 1. While you work, run the deterministic tests beside the code you changed, for example `python3 tests/run.py -k decision_cycle`.
 2. Before pushing, run the whole deterministic suite once. It takes about a minute and a half, and CI runs the same command.
 3. For Python changes, run `python3 -m scripts.validation.check` before pushing.
-   It runs Ruff and basedpyright; repair new diagnostics and report the result.
+   It runs Ruff, import contracts, and basedpyright; repair new diagnostics and report the result.
 4. For Python changes and reviews, inspect QCA for the final committed revision.
    Use the PR's QCA inspection summary or run the local command in
    [Python quality checks](#python-quality-checks). For uncommitted work without
@@ -75,7 +75,8 @@ The configuration in `pyproject.toml` also works with Ruff and basedpyright edit
 integrations; an editor's Ruff diagnostics include existing baselined findings.
 
 The checks cover `autonomy/`, `cli/`, `implementations/`, `qca/`, and
-`scripts/validation/`. Ruff additionally checks `tests/` for name/import errors;
+`scripts/validation/`. Ruff also covers maintained Python under `deploy/` (excluding
+the generated DonkeyCar vendor checkout) and checks `tests/` for name/import errors;
 test complexity and typing are outside this initial rollout. Generated runtime
 bundles, experiments, and vendored code are outside the check scope.
 The initial type gate enables explicit `Any`, redundant instance/comparison
@@ -95,6 +96,7 @@ The broader readability guard uses standard Ruff rules:
 | Unnecessary nesting after an exit | `RET505`–`RET508`, `PLR5501` | Use guard clauses or `elif` |
 | Repeated dispatch or prefix checks | `SIM116`, `PIE810` | Use a lookup for literal alternatives or a tuple of prefixes |
 | Parameters reused as loop/handler targets | `PLR1704` | Give the second value its own name |
+| Bare exception catches | `E722` | Catch expected failures explicitly; let process-exit signals propagate |
 
 These complement the existing branch, statement, Boolean-expression and nesting
 limits. Do not replace named intermediates with dense expressions or split a

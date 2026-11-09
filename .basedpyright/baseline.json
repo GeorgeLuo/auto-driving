@@ -8482,14 +8482,6 @@
             {
                 "code": "reportExplicitAny",
                 "range": {
-                    "startColumn": 20,
-                    "endColumn": 23,
-                    "lineCount": 1
-                }
-            },
-            {
-                "code": "reportExplicitAny",
-                "range": {
                     "startColumn": 68,
                     "endColumn": 71,
                     "lineCount": 1

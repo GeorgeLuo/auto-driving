@@ -25,6 +25,27 @@ def branching_function(branches: int) -> str:
 
 
 class QualityCommandTests(unittest.TestCase):
+    def test_default_scope_includes_deployment_source_but_excludes_generated_vendor(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()) as output:
+            root = Path(directory)
+            (root / "pyproject.toml").write_text((ROOT / "pyproject.toml").read_text())
+            (root / "baseline.json").write_text('{"version": 1, "entries": []}')
+            for name in check.PATHS:
+                (root / name).mkdir(parents=True, exist_ok=True)
+            app = root / "deploy/targets/donkeycar/app"
+            vendor = root / "deploy/targets/donkeycar/vendor/donkeycar"
+            app.mkdir(parents=True)
+            vendor.mkdir(parents=True)
+            (app / "manage.py").write_text("def drive():\n    return 0\n")
+            (vendor / "generated.py").write_text("invalid python(\n")
+            # Keep the actual configured roots: overriding PATHS would hide a scope regression.
+            with patch.multiple(check, ROOT=root, RUFF_BASELINE=root / "baseline.json"):
+                self.assertEqual(check.main(["--ruff-only"]), 0)
+                (app / "manage.py").write_text("def drive():\n    return undefined_name\n")
+                self.assertEqual(check.main(["--ruff-only"]), 1)
+                self.assertIn("deploy/targets/donkeycar/app/manage.py", output.getvalue())
+                self.assertIn("F821", output.getvalue())
+
     def test_runtime_package_is_linted_while_root_runtime_artifacts_are_excluded(self) -> None:
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
             root = Path(directory)
@@ -76,6 +97,8 @@ class QualityCommandTests(unittest.TestCase):
             + "    return (" + ", ".join(f"v{i}" for i in range(16)) + ")\n"
         )
         cases = {
+            "E722": "def choose(value):\n    try:\n        return int(value)\n    except:\n        return None\n",
+            "B006": "def collect(values=[]):\n    values.append(1)\n    return values\n",
             "PLR0914": many_locals,
             "PLR0917": "def wide(a, b, c, d, e, f):\n    return a + b + c + d + e + f\n",
             "RET505": "def choose(x):\n    if x:\n        return 1\n    else:\n        return 2\n",

@@ -10,6 +10,42 @@ from qca.indicators.context import AnalysisContext
 
 
 class StructureIndicatorTests(unittest.TestCase):
+    def test_protocol_and_abstract_declarations_are_not_stub_candidates(self) -> None:
+        source = (
+            "from typing import Protocol as P\n"
+            "import typing as t\n"
+            "from abc import abstractmethod as abstract\n"
+            "class Reader(P):\n"
+            "    def read(self): ...\n"
+            "    async def close(self): pass\n"
+            "class GenericReader(t.Protocol[int]):\n"
+            "    def get(self): ...\n"
+            "class Interface:\n"
+            "    @abstract\n"
+            "    def implement(self): raise NotImplementedError\n"
+            "class Protocol: pass\n"
+            "class Concrete(Protocol):\n"
+            "    def missing(self): pass\n"
+            "def unfinished(): raise NotImplementedError\n"
+        )
+        findings = functionality.analyze(AnalysisContext.from_sources({"app.py": source}))["findings"]
+        self.assertEqual({item["name"] for item in findings if item["kind"] == "stub"}, {"missing", "unfinished"})
+
+    def test_shadowed_protocol_import_does_not_hide_a_real_stub(self) -> None:
+        for shadow in ("class Protocol: pass", "from unrelated import Protocol", "from unrelated import *", "Protocol = other"):
+            with self.subTest(shadow=shadow):
+                source = f"from typing import Protocol\n{shadow}\nclass Concrete(Protocol):\n    def missing(self): pass\n"
+                findings = functionality.analyze(AnalysisContext.from_sources({"app.py": source}))["findings"]
+                self.assertEqual([item["name"] for item in findings if item["kind"] == "stub"], ["missing"])
+
+    def test_nested_protocol_name_can_be_shadowed(self) -> None:
+        source = ("from typing import Protocol\n"
+                  "def outer(Protocol):\n"
+                  "    class Concrete(Protocol):\n"
+                  "        def missing(self): pass\n")
+        findings = functionality.analyze(AnalysisContext.from_sources({"app.py": source}))["findings"]
+        self.assertEqual([item["name"] for item in findings if item["kind"] == "stub"], ["missing"])
+
     def test_any_guard_is_a_direct_positive_and_negative_predicate(self) -> None:
         positive = ast.parse("bool(items) and any(check(x) for x in items)", mode="eval").body
         negative = ast.parse("bool(items) and all(items)", mode="eval").body
@@ -76,7 +112,8 @@ class StructureIndicatorTests(unittest.TestCase):
         self.assertTrue(expected <= observed)
         for factor in factors.values():
             for finding in factor["findings"]:
-                self.assertEqual(finding["indicator"]["version"], "1")
+                version = "2" if finding["indicator"]["id"].startswith("structure.functionality.") else "1"
+                self.assertEqual(finding["indicator"]["version"], version)
                 self.assertEqual(finding["evidence"]["revision"], "head")
                 self.assertIsNotNone(finding["evidence"]["primary"])
         json.dumps(factors)

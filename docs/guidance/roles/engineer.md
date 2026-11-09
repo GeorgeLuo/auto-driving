@@ -35,18 +35,16 @@ Confirm changes adhere to the priorities defined in this document.
    most of its tests use. CI runs the deterministic suite, so list each systems
    run under Validation. For Python changes, also run
    `python3 -m scripts.validation.check` (install `requirements-quality.txt`
-   first). Repair new diagnostics; baseline refreshes are deliberate debt
-   acceptance, not a normal validation step.
+   first). It compares the branch with `origin/main`; repair blocking findings.
 6. Review the final diff for accidental files, generated artifacts, secrets,
    unrelated cleanup, and missing validation. For Python changes and reviews,
-   inspect the QCA summary for the final committed revision: use the PR's QCA
-   inspection job or the local command in [tests/README.md](../../tests/README.md#python-quality-checks).
-   For uncommitted work without a PR, inspect the changed paths with
-   `python3 -m qca analyze <paths> --python` and report that a revision diff was
-   unavailable. Investigate material candidates and report their locations and
-   dispositions: fixed, retained with a code-based reason, or unresolved. If
-   inspection cannot run, report why. QCA findings are observations, not a
-   merge gate; a successful job does not mean its candidates were reviewed.
+   inspect the review questions the quality check lists for the final revision,
+   locally or in the PR's Python quality summary
+   ([tests/README.md](../../tests/README.md#python-quality-checks)). Investigate
+   material candidates and report their locations and dispositions: fixed,
+   retained with a code-based reason, or unresolved. If a review check cannot
+   run, report why. Review questions are observations, not a merge gate; a passing check
+   does not mean they were reviewed.
 
 Do not create extra planning documents, alternate implementations, or process
 artifacts unless the user explicitly asks for them or the repository requires

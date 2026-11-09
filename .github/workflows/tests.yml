@@ -23,6 +23,8 @@ jobs:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
@@ -31,38 +33,19 @@ jobs:
             requirements.txt
             requirements-quality.txt
       - run: python3 -m pip install -r requirements-quality.txt
-      - run: python3 -m scripts.validation.check
-
-  qca:
-    name: QCA inspection (informational)
-    if: github.event_name == 'pull_request'
-    continue-on-error: true
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    env:
-      PYTHONDONTWRITEBYTECODE: "1"
-      PR_BASE: ${{ github.event.pull_request.base.sha }}
-      PR_HEAD: ${{ github.event.pull_request.head.sha }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.11"
-      - name: Inspect the PR change
-        run: |
-          base=$(git merge-base "$PR_BASE" "$PR_HEAD")
-          python3 -m scripts.validation.qca_summary --base "$base" --head "$PR_HEAD" --output "$RUNNER_TEMP/qca"
-          cat "$RUNNER_TEMP/qca/summary.md" >> "$GITHUB_STEP_SUMMARY"
-      - name: Report an inspection failure
-        if: failure()
-        run: echo 'QCA inspection failed; see the job log. This is informational.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Check the change
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: python3 -m scripts.validation.check --base "$BASE" --head "$HEAD" --output "$RUNNER_TEMP/quality"
+      - name: Publish the summary
+        if: always()
+        run: cat "$RUNNER_TEMP/quality/summary.md" >> "$GITHUB_STEP_SUMMARY" || true
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: qca-inspection
-          path: ${{ runner.temp }}/qca/
+          name: quality-findings
+          path: ${{ runner.temp }}/quality/
           retention-days: 14
 
   test:
@@ -88,14 +71,6 @@ jobs:
 
       - name: Install test dependencies
         run: python3 -m pip install -r requirements-test.txt
-
-      - name: Check tests for undefined names
-        run: |
-          if python3 -m pyflakes tests | grep "undefined name"; then exit 1; fi
-
-      - name: Check for retired vocabulary
-        run: |
-          if git grep -n -i snapshot -- ':!docs/deprecated' ':!.github/workflows/tests.yml'; then exit 1; fi
 
       - name: Run deterministic tests with coverage
         run: |

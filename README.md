@@ -57,13 +57,14 @@ python3 -m pip install -r requirements-quality.txt
 python3 -m scripts.validation.check
 ```
 
-Use `--ruff-only` for the fast lint pass while editing. Ruff checks maintained
-Python code and tests; basedpyright checks production code and analysis tooling.
-Existing findings are recorded in `.ruff-baseline.json` and
-`.basedpyright/baseline.json`; new findings fail the check. Ruff also rejects
-increased complexity at a baselined function. See [the validation guide](tests/README.md#python-quality-checks)
-for baseline maintenance. Every PR also receives a non-blocking QCA inspection
-summary and a downloadable report in GitHub Actions.
+The command compares your branch, working tree included, with `origin/main` and
+fails only on findings the branch introduces, so existing debt needs no baseline.
+Ruff checks maintained Python code and tests; basedpyright checks production code
+and analysis tooling; import-linter checks the dependency contracts between
+`autonomy`, `implementations`, and `cli`. QCA, Vulture, and a related-functions
+comparison add review questions about the change, which do not fail the check. Use `--ruff-only` for the fast lint pass while editing. See
+[the validation guide](tests/README.md#python-quality-checks) for checking a
+commit, whole files, or text, and for the findings file each run can write.
 
 Include the live smoke test against the Chase simulator at `CHASE_UI_WS_URL`, or check a powered-on Pi without moving it. Both commands run the systems suite:
 

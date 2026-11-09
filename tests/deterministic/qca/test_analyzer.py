@@ -8,6 +8,78 @@ from qca import AnalysisError, AnalyzerConfig, analyze_sources, analyze_tree, re
 
 
 class QuantitativeChangeAnalysisTests(unittest.TestCase):
+    def test_elif_ladders_are_not_nested_but_else_blocks_are(self) -> None:
+        source = (
+            "def flat(value):\n"
+            "    if value == 1: return 1\n"
+            "    elif value == 2: return 2\n"
+            "    elif value == 3: return 3\n"
+            "    elif value == 4: return 4\n"
+            "    elif value == 5: return 5\n"
+            "    return 0\n"
+            "def nested(value):\n"
+            "    if value == 1: return 1\n"
+            "    else:\n"
+            "        if value == 2: return 2\n"
+            "        elif value == 3:\n"
+            "            if value > 0: return 3\n"
+            "    return 0\n"
+        )
+        callables = {item.qualified_name: item for item in analyze_sources({"app.py": source}).head.callables}
+        self.assertEqual((callables["flat"].max_nesting, callables["flat"].decision_count), (1, 5))
+        self.assertEqual((callables["nested"].max_nesting, callables["nested"].decision_count), (3, 4))
+
+    def test_minified_assets_are_classified_without_matching_similar_names(self) -> None:
+        report = analyze_sources({path: "content" for path in (
+            "assets/app.min.js", "assets/app.MIN.CSS", "assets/minimal.js",
+        )})
+        classes = {item.path: item.source_class for item in report.source_inventory}
+        self.assertEqual(classes["assets/app.min.js"], "vendored/minified")
+        self.assertEqual(classes["assets/app.MIN.CSS"], "vendored/minified")
+        self.assertEqual(classes["assets/minimal.js"], "production")
+
+    def test_tool_directories_are_classified_at_any_depth(self) -> None:
+        paths = ("scripts/worker.py", "nested/tools/lint.py", "project/.github/workflow.py")
+        report = analyze_sources({path: "value = 1\n" for path in paths})
+        self.assertEqual({item.path: item.source_class for item in report.source_inventory},
+                         dict.fromkeys(paths, "tooling/scripts"))
+
+    def test_test_named_production_modules_are_not_misclassified(self) -> None:
+        sources = {
+            "qca/indicators/test_effectiveness.py": "def analyze():\n    return external._helper()\n",
+            "test_standalone.py": "def test_one():\n    assert True\n",
+            "feature_test.py": "def test_two():\n    assert True\n",
+            "test_interface.pyi": "def test_stub() -> None: ...\n",
+            "test_assertion.py": "assert True\n",
+            "test_fixture.py": "import pytest\nfixture_value = 1\n",
+            "tests/fixture.py": "value = 1\n",
+            "test_broken.py": "def broken(\n",
+        }
+        report = analyze_sources(sources)
+        inventory = {item.path: item.source_class for item in report.source_inventory}
+        self.assertEqual(inventory["qca/indicators/test_effectiveness.py"], "production")
+        for path in ("test_standalone.py", "feature_test.py", "test_interface.pyi", "test_assertion.py", "test_fixture.py", "tests/fixture.py", "test_broken.py"):
+            self.assertEqual(inventory[path], "tests")
+        self.assertFalse(any(item["path"] == "qca/indicators/test_effectiveness.py"
+                             for item in report.factors["test_effectiveness"]["findings"]))
+
+    def test_runtime_packages_are_measured_but_root_runtime_artifacts_are_not(self) -> None:
+        source = "def choose(a, b, c):\n    return a if a and b and c else b\n"
+        report = analyze_sources({path: source for path in (
+            "autonomy/runtime/cycle_host.py",
+            "implementations/runtime/picar/host.py",
+            "tests/deterministic/autonomy/runtime/test_host.py",
+            "runtime/host/bundle/generated.py",
+        )})
+        included = {item.path for item in report.source_inventory if item.included}
+        self.assertEqual(included, {
+            "autonomy/runtime/cycle_host.py",
+            "implementations/runtime/picar/host.py",
+            "tests/deterministic/autonomy/runtime/test_host.py",
+        })
+        self.assertEqual({item.path for item in report.head.callables}, included)
+        self.assertEqual(report.factors["patterns"]["metrics"]["opaque_conditional_count"], 3)
+
     def test_tree_classifies_and_excludes_non_code_from_core_measurements(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)

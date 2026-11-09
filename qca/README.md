@@ -5,11 +5,10 @@ It is intentionally Python-first and standard-library-only.  It does not
 assign a quality score, change proposal workflow state, or create a blocking
 check.
 
-PRs automatically run the informational QCA inspection job. It publishes a
-filtered summary and retains the full JSON/HTML evidence as an Actions artifact.
-`python3 -m scripts.validation.qca_summary --base <merge-base> --head <head> --output /tmp/qca-review`
-reproduces that report locally. The summary distinguishes measured growth from
-inspection candidates involving changed functions, which may predate the PR.
+`python3 -m scripts.validation.check` runs QCA beside Ruff and basedpyright on
+every PR through `qca.evaluation`, described in
+[Findings for any context](#findings-for-any-context). QCA's findings there are
+review questions and do not fail the check.
 
 From the repository root:
 
@@ -44,6 +43,50 @@ keeps a compact list, while HTML presents the same code.  Diff
 not findings that should be accepted without review.  Rename detection is
 deliberately disabled in v0: a move is represented as an old-file deletion and
 a new-file addition until a stable callable-matching rule is justified.
+
+## Findings for any context
+
+`qca.evaluation` runs evaluators (QCA, or any tool wrapped as one) on code in
+three context forms and reports every finding in one shape:
+
+* `text_context`: text evaluated as if it were the named file;
+* `files_context`: whole files, with a directory standing for its tracked and
+  unignored files;
+* `change_context`: a pull request or commit, as the merge base of a base
+  revision against a head revision or the working tree.
+
+An evaluator is a name and a function from a directory and paths to findings, so
+one evaluator serves every form. For a change, each evaluator runs on both sides
+and only findings the base lacks are reported. Findings match by tool, rule,
+file, enclosing symbol, and the location's source text, so moved code still
+matches; a finding with a `measure` matches a base finding of at least its value.
+An evaluator's `roots` bound what it maintains, less any `excluded` paths under
+them: excluded files are never requested, and their findings are never reported.
+An evaluator whose `reach` is `project`, such as a type checker, reads its whole
+roots in every form. For files or text it reports only findings in those files;
+for a change it reports every finding the change introduces, including in files
+the change did not touch.
+
+Each finding has exactly these fields:
+
+| Field | Meaning |
+| --- | --- |
+| `tool`, `rule` | What found it. |
+| `status` | `blocking` when the check should fail, otherwise `review`. |
+| `location` | `path`, 1-based `line` and `end_line`, and the enclosing `symbol` when known. |
+| `related` | Other locations the finding involves, such as a clone's copies. |
+| `question` | What a reviewer should decide about the location. |
+| `measure` | `value` and `limit` for size and complexity findings, otherwise null. |
+| `evidence` | Tool-specific detail. |
+
+`evaluate` returns a `qca/findings/v1` document: the `context` evaluated, one
+`evaluations` record per evaluator (`completed`, `skipped` with a reason, or
+`failed` with an error), and the flat `findings` list. `qca.evaluators.structure`
+is QCA's evaluator: opaque conditionals, redundant `Any` guards, swallowed
+exceptions, clones, and weak tests as review questions, plus callables above its
+complexity, size, and nesting limits with their measures. Its weak tests are the
+test-effectiveness candidates in `TEST_CANDIDATES`; plain string equality is
+left out because about one test assertion in four makes one.
 
 ## Factor reports (analyzer 0.3)
 
@@ -209,3 +252,33 @@ functional-style mutator names, and discarded short-circuit calls such as
 bindings, custom truthiness, and deferred lambda/generator bodies are not inferred.
 These are inspection candidates, with the usual changed-file diff scope, not
 proof of unreadability or newly introduced problems.
+
+### Source classification and test review (analyzer 0.3.13)
+
+Rerun both revisions before comparing these measurements or findings with
+earlier analyzer versions.
+
+* Only a top-level `runtime/` directory, which holds artifacts copied from the
+  vehicle, is classified as generated. Source packages named `runtime`, such as
+  `autonomy/runtime`, are now measured.
+* A file in a `test`, `tests`, or `spec` directory is a test. Outside those, a
+  file named like a test (`test_*.py`, `*_test.py`) is a test only when it
+  asserts, imports `pytest` or `unittest`, or defines a `test_` function, so a
+  production module named `test_*` is measured as production. An unparseable file
+  named like a test stays a test, so its parse failure stays visible.
+* An `if`/`elif` ladder is measured at one nesting level; an `if` nested under
+  `else` still adds depth.
+* Methods of a `Protocol` class and `@abstractmethod` methods are not stub
+  candidates when `Protocol` or `abstractmethod` is imported explicitly.
+  Indicator `structure.functionality` is version 2.
+* Test effectiveness (indicator version 2):
+  * A private import counts only when its module matches a production source in
+    the analysis. Imports from test modules, and unmatched or relative imports,
+    are not counted.
+  * Only Python sources count as test files, including ones that do not parse.
+  * Each candidate kind asks its own question. String findings record their
+    `comparison_kinds` (equality, membership, regex, identity, ordering), and a
+    single kind other than equality gets a question about that comparison.
+  * A formatted literal needs a structural marker, such as a table pipe pair, a
+    tag, a line break, a percentage, or backticks, or a long literal. An
+    isolated arrow, angle bracket, or pipe is not enough.

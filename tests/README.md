@@ -28,7 +28,7 @@ The browser install is only for the systems test that opens Chromium. CI does no
 
 Either suite takes `-k PATTERN` to run only the tests whose ID (`module.Class.method`) matches, as unittest's `-k` does: a substring, or a glob when it contains `*`. Repeat it to widen the match, for example `python3 tests/run.py --systems journeys -k upload -k arming`. A pattern that matches no test fails the run.
 
-The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. CI also fails when `python3 -m pyflakes tests` reports an undefined name, which catches a broken systems import without running the suite, and when a tracked file outside `docs/deprecated/` uses a word the workflow's retired-vocabulary step lists. Run that step's `git grep` line before pushing to check locally.
+The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. The [Python quality check](#python-quality-checks) lints `tests/`, including `systems/`, so a change that adds an undefined name there fails without running the suite. It also fails when a change adds a retired word outside `docs/deprecated/`.
 
 ## Validating a change
 
@@ -37,15 +37,14 @@ Run the tests your change reaches, not every suite. `commands` and `journeys` to
 1. While you work, run the deterministic tests beside the code you changed, for example `python3 tests/run.py -k decision_cycle`.
 2. Before pushing, run the whole deterministic suite once. It takes about a minute and a half, and CI runs the same command.
 3. For Python changes, run `python3 -m scripts.validation.check` before pushing.
-   It runs Ruff and basedpyright; repair new diagnostics and report the result.
-4. For Python changes and reviews, inspect QCA for the final committed revision.
-   Use the PR's QCA inspection summary or run the local command in
-   [Python quality checks](#python-quality-checks). For uncommitted work without
-   a PR, inspect the changed paths with `python3 -m qca analyze <paths> --python`
-   and report that a revision diff was unavailable. Investigate material
-   candidates and report their locations and dispositions: fixed, retained with a
-   code-based reason, or unresolved. If inspection cannot run, report why. QCA is
-   informational, and a successful job does not mean its candidates were reviewed.
+   It compares your branch, working tree included, with `origin/main`. Repair
+   blocking findings and report the result.
+4. For Python changes and reviews, inspect the review questions the same command
+   lists for the final revision; the PR's Python quality summary lists them for
+   the committed head. Investigate material candidates and report their locations
+   and dispositions: fixed, retained with a code-based reason, or unresolved. If
+   a review check cannot run, the summary says why; report it. Review questions do not fail
+   the check, and a passing check does not mean they were reviewed.
 5. CI does not run `systems/`. Run the systems tests that drive the code you changed, chosen with a group and `-k`:
 
 | Change touches | Run |
@@ -67,49 +66,80 @@ List each command you ran and its result under Validation in the pull request. D
 ## Python quality checks
 
 Install `requirements-test.txt` (which includes the quality tools), or install
-`requirements-quality.txt` for checks alone, then run
-`python3 -m scripts.validation.check`. CI runs this command in the Python quality
-job on PRs and main. `--ruff-only` skips type checking for a faster editing loop.
-The configuration in `pyproject.toml` also works with Ruff and basedpyright editor
-integrations; an editor's Ruff diagnostics include existing baselined findings.
+`requirements-quality.txt` for checks alone. One command checks a change, whole
+files, or text, and reports every finding in the same shape:
 
-The checks cover `autonomy/`, `cli/`, `implementations/`, `qca/`, and
-`scripts/validation/`. Ruff additionally checks `tests/` for name/import errors;
-test complexity and typing are outside this initial rollout. Generated runtime
-bundles, experiments, and vendored code are outside the check scope.
+```sh
+python3 -m scripts.validation.check                                # this branch and working tree against origin/main
+python3 -m scripts.validation.check --base origin/main --head HEAD   # a pull request's committed head
+python3 -m scripts.validation.check --base <commit>~1 --head <commit>  # one commit
+python3 -m scripts.validation.check cli autonomy/runtime/client.py   # whole files
+python3 -m scripts.validation.check --text cli/draft.py < draft.py   # text, as if it were cli/draft.py
+```
+
+A change is compared with its merge base: each check runs on both sides, and only
+findings the base lacks are reported. Findings match by tool, rule, file,
+enclosing function, and source text, so moved code still matches. Size and
+complexity findings match by value instead, so a large function may shrink while
+above a limit but fails if it grows. Existing debt therefore needs no baseline.
+Type checking compares the whole project, so a change also answers for callers it
+breaks in files it did not touch. Whole files and text report all their findings;
+type checking needs the project and skips text.
+
+Ruff, basedpyright, import-linter, and the retired-vocabulary check report
+blocking findings. The command exits 0 when clean, 1 for blocking findings, and 2
+when a required check cannot run. `--ruff-only` skips the slower checks while
+editing.
+
+Three checks only ask review questions, and a failure of one is reported in the
+summary without failing the command:
+
+- QCA: opaque conditionals, duplicated functions, functions above its size,
+  complexity, and nesting limits, and weak tests (assertions that read back an
+  assigned value or match formatted output, and tests that reach production
+  private names). Plain string equality is not asked about; about one test
+  assertion in four compares a string.
+- Vulture: production classes, functions, methods, properties, and attributes no
+  production code refers to, with the tests that still use them. It matches names,
+  not bindings, so a name used anywhere counts as used, and code reached only by
+  reflection or configuration is reported. Findings sit at the definition, so a
+  change answers for code it leaves unused, not for editing code that already was.
+- Related functions: for each function, up to three in the same module, an
+  importing module, or the same directory that make the same calls, weighted by how
+  rare each call is. A change that edits a function is asked whether the similar
+  ones need the same edit, or whether they should share code.
+
+Vulture, related functions, basedpyright, and import-linter read the whole project
+on both sides of a change, so a change answers for what it does to files it did
+not touch.
+
+`--output DIR` writes `summary.md` and `findings.json`, whose findings share the
+fields described in [QCA's findings](../qca/README.md#findings-for-any-context).
+CI runs the command on each PR's merge base and head and on each push to `main`,
+publishes the summary, and keeps both files in the `quality-findings` artifact.
+The configuration in `pyproject.toml` also works with Ruff and basedpyright editor
+integrations, which show existing findings as well as new ones.
+
+Ruff, QCA, Vulture, and related functions cover `autonomy/`, `cli/`,
+`deploy/`, `implementations/`, `qca/`, `scripts/validation/`, and `tests/`, less
+Ruff's `extend-exclude`: the vehicle artifacts in the top-level `runtime/` and
+`lab/`, the vehicle host code in `implementations/runtime/`, and vendored code.
+Vulture and related functions read tests only to report where they use production
+code. In `tests/`, Ruff checks only names, imports, and bare `except`s; QCA's
+limits still ask about long or complex tests. basedpyright covers the paths its own
+`include` lists, and import-linter the root packages of the contracts in
+`[tool.importlinter]`: `autonomy` depends on neither `implementations` nor `cli`,
+`implementations` does not depend on `cli`, shared decision-cycle code depends on
+no plugin or host, and plugin packages import each other without cycles.
 The initial type gate enables explicit `Any`, redundant instance/comparison
 checks, unreachable code, missing imports, and invalid type forms. General
 argument/return checking and `Any` propagation are left for a separate rollout.
+Keep necessary validation at external boundaries; a targeted rule suppression
+should explain why the runtime check is still needed.
 
-Existing debt is recorded explicitly. Ruff matches each diagnostic by file,
-owning symbol, message, and source text, independent of line numbers. Its metric
-limits allow an existing large function to improve while still above a threshold;
-an increase fails. Moving code to another symbol may require review of the baseline.
-basedpyright uses its native baseline and removes resolved entries automatically.
-Commit those reductions with the repair.
-
-To intentionally accept existing debt when changing rules, run
-`python3 -m scripts.validation.check --write-ruff-baseline` and
-`python3 -m basedpyright --writebaseline`, then review the baseline diffs. These
-are maintenance commands, not steps in the normal check. Do not refresh a baseline
-to silence a new defect. Keep necessary validation at external boundaries; a
-targeted rule suppression should explain why the runtime check is still needed.
-
-QCA runs automatically on each PR using its merge base and head. Its summary
-highlights growing functions, conditional/clone candidates involving changed
-functions, and added import edges outside the standard library. Candidates can
-predate the PR and require inspection; the full report retains file-level evidence.
-The job is informational, including when analysis fails; its log and summary make
-failure visible. Full JSON and HTML evidence is retained in the `qca-inspection`
-artifact. To reproduce it locally against committed revisions:
-
-```sh
-python3 -m scripts.validation.qca_summary --base <merge-base> --head <head> --output /tmp/qca-review
-```
-
-Changes to the quality runner also need
-`python3 tests/run.py --systems packaging -k test_quality`; changes to the QCA
-summary need `python3 tests/run.py --systems qca -k test_quality_summary`.
+Changes to the quality command also need
+`python3 tests/run.py --systems packaging -k test_quality`; changes to
+`qca/evaluation.py` need `python3 tests/run.py --systems qca -k test_evaluation`.
 
 ## Where a test goes
 

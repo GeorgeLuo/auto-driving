@@ -14,6 +14,23 @@ from qca.factors.verification import (
 
 
 class VerificationFactorTests(unittest.TestCase):
+    def test_test_file_count_excludes_non_python_and_keeps_parse_failures(self) -> None:
+        factor = analyze_verification({
+            "tests/README.md": "# Test guide\n",
+            "tests/data.json": "{}\n",
+            "tests/support.py": "value = 1\n",
+            "tests/broken.py": "def broken(:\n",
+            "test_feature.PY": "def test_feature():\n    assert True\n",
+            "test_api.PYI": "def test_api() -> None: ...\n",
+            "app.py": "value = 1\n",
+            "broken.py": "def broken(:\n",
+        })["test_effectiveness"]
+        self.assertEqual(factor["metrics"]["source_file_count"], 8)
+        self.assertEqual(factor["metrics"]["python_file_count"], 6)
+        self.assertEqual(factor["metrics"]["test_file_count"], 4)
+        self.assertEqual(factor["metrics"]["parse_error_count"], 1)
+        self.assertEqual(factor["metrics"]["test_case_count"], 2)
+
     def test_reports_string_expected_and_private_surface_candidates(self) -> None:
         factors = analyze_verification(
             {
@@ -57,6 +74,28 @@ class Suite:
         self.assertTrue(
             any("private production" in limitation.lower() for limitation in factors["test_effectiveness"]["limitations"])
         )
+
+    def test_assertion_candidate_metrics_cover_distinct_and_overlapping_kinds(self) -> None:
+        factor = analyze_verification({
+            "tests/test_examples.py": (
+                "def test_examples(self, value, output):\n"
+                "    assert True\n"
+                "    assert value == value\n"
+                "    assigned = 1\n"
+                "    assert assigned == 1\n"
+                "    self.assertEqual(fetch(), 'ready')\n"
+                "    self.assertIn('| report |', output)\n"
+            ),
+        })["test_effectiveness"]
+        metrics = factor["metrics"]
+        self.assertEqual(metrics["assertion_count"], 5)
+        self.assertEqual(metrics["candidate_assertion_count"], 5)
+        self.assertEqual(metrics["literal_assertion_candidates"], 1)
+        self.assertEqual(metrics["tautological_assertion_candidates"], 1)
+        self.assertEqual(metrics["assignment_readback_candidates"], 1)
+        self.assertEqual(metrics["string_expected_assertion_count"], 2)
+        self.assertEqual(metrics["formatted_literal_assertion_count"], 1)
+        self.assertEqual(len(factor["findings"]), 5)
 
     def test_consumer_report_locates_assignment_and_readback(self) -> None:
         """Consumer: the serialized report identifies both ends of a readback."""
@@ -272,6 +311,18 @@ def helper():
             attach_verification(base, common, "other-base", "head-ref")
         with self.assertRaises(ValueError):
             attach_verification(base, common, "base-ref", "head-ref")
+
+    def test_factor_revision_fields_must_match_the_evidence_envelope(self) -> None:
+        factors = analyze_verification({})
+        record = {"status": "not_measured", "reason": "not run", "base_sha": "base-ref", "head_sha": "head-ref"}
+        evidence = {"schema": VERIFICATION_SCHEMA, "base_sha": "base-ref", "head_sha": "head-ref",
+                    "factors": {"end_to_end": record}}
+        self.assertEqual(attach_verification(factors, evidence, "base-ref", "head-ref")["end_to_end"]["status"], "not_measured")
+        for key, bad_value in (("base_sha", "other"), ("head_sha", "other"), ("base_sha", 7), ("head_sha", 7)):
+            with self.subTest(key=key, bad_value=bad_value):
+                invalid = {**evidence, "factors": {"end_to_end": {**record, key: bad_value}}}
+                with self.assertRaisesRegex(ValueError, key):
+                    attach_verification(factors, invalid, "base-ref", "head-ref")
 
     def test_attach_rejects_contradictory_pass_and_api_only_ui_evidence(self) -> None:
         base = analyze_verification({})

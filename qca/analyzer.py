@@ -25,9 +25,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Protocol, Sequence
 
 from .factors import FACTOR_VERSION, compare_factors, measure_factors
+from .indicators.source_classification import is_test_source
 
 
-ANALYZER_VERSION = "0.3.12"
+ANALYZER_VERSION = "0.3.13"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -200,38 +201,23 @@ class _MappingReader:
 
 @dataclass(frozen=True)
 class _ResolvedTree:
-    root: Path
-    repo_root: Path | None
+    repo_root: Path
     scope_rel: str
     scope_is_file: bool
-    ref: str | None
-    sha: str | None
+    sha: str
 
 
 class _TreeReader:
-    """Read either the working tree or an immutable Git revision."""
+    """Read an immutable Git revision."""
 
     def __init__(self, tree: _ResolvedTree) -> None:
         self.tree = tree
         self._ref_contents: dict[str, str] | None = None
 
     def files(self) -> list[str]:
-        if self.tree.ref is None:
-            root = self.tree.root
-            if self.tree.scope_is_file:
-                return [root.name]
-            paths: list[str] = []
-            for path in root.rglob("*"):
-                if not path.is_file():
-                    continue
-                if ".git" in path.parts or "__pycache__" in path.parts:
-                    continue
-                paths.append(path.relative_to(root).as_posix())
-            return sorted(paths)
-
         prefix = [] if self.tree.scope_rel in {"", "."} else [self.tree.scope_rel]
         output = _git_bytes(
-            ["ls-tree", "-r", "--name-only", "-z", self.tree.ref, "--", *prefix],
+            ["ls-tree", "-r", "--name-only", "-z", self.tree.sha, "--", *prefix],
             cwd=self.tree.repo_root,
         )
         paths = []
@@ -255,13 +241,6 @@ class _TreeReader:
         return sorted(paths)
 
     def read_text(self, relative_path: str) -> str:
-        if self.tree.ref is None:
-            path = self.tree.root if self.tree.scope_is_file else self.tree.root / relative_path
-            try:
-                return path.read_text(encoding="utf-8")
-            except UnicodeDecodeError:
-                return path.read_bytes().decode("utf-8", errors="replace")
-
         repo_path = PurePosixPath(relative_path)
         if self.tree.scope_rel not in {"", "."}:
             repo_path = PurePosixPath(self.tree.scope_rel) / repo_path
@@ -272,7 +251,7 @@ class _TreeReader:
             if relative in self._ref_contents:
                 return self._ref_contents[relative]
             return _git_bytes(
-                ["show", f"{self.tree.ref}:{repo_path.as_posix()}"],
+                ["show", f"{self.tree.sha}:{repo_path.as_posix()}"],
                 cwd=self.tree.repo_root,
             ).decode("utf-8", errors="replace")
         except AnalysisError:
@@ -280,34 +259,9 @@ class _TreeReader:
 
     def _load_ref_contents(self) -> dict[str, str]:
         """Batch-read one revision so Git diffs avoid one process per file."""
-
-        scope = [] if self.tree.scope_rel in {"", "."} else [self.tree.scope_rel]
-        archive = _git_bytes(
-            ["archive", "--format=tar", self.tree.ref, "--", *scope],
-            cwd=self.tree.repo_root,
+        return _git_scoped_sources(
+            self.tree.repo_root, self.tree.sha, [self.tree.scope_rel], self.tree.scope_rel
         )
-        contents: dict[str, str] = {}
-        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
-            scope_path = PurePosixPath(self.tree.scope_rel)
-            for member in tar.getmembers():
-                if not member.isfile():
-                    continue
-                name = PurePosixPath(member.name)
-                if self.tree.scope_is_file:
-                    if name.name != scope_path.name:
-                        continue
-                    relative = name.name
-                elif self.tree.scope_rel in {"", "."}:
-                    relative = name.as_posix()
-                else:
-                    try:
-                        relative = name.relative_to(scope_path).as_posix()
-                    except ValueError:
-                        continue
-                extracted = tar.extractfile(member)
-                if extracted is not None:
-                    contents[relative] = extracted.read().decode("utf-8", errors="replace")
-        return contents
 
 
 def analyze_tree(
@@ -366,8 +320,6 @@ def _analyze_revision(
     if repo_root is None:
         raise AnalysisError(f"revision mode requires a Git repository: {paths[0]}")
     sha = _resolve_ref(ref, repo_root)
-    if sha is None:
-        raise AnalysisError(f"cannot resolve revision: {ref}")
     pathspecs = tuple(_repo_relative(item, repo_root) for item in paths)
     strip = _common_scope_prefix(pathspecs)
     sources = _git_scoped_sources(repo_root, sha, pathspecs, strip)
@@ -450,8 +402,8 @@ def analyze_diff(
         scope_is_file = base_tree.scope_is_file or head_tree.scope_is_file
         pathspecs = (head_tree.scope_rel,)
         repo_for_identity = head_tree.repo_root
-        base_sha = base_tree.sha or base
-        head_sha = head_tree.sha or head
+        base_sha = base_tree.sha
+        head_sha = head_tree.sha
     else:
         repo_root = _find_repo_root(_existing_search_path(paths))
         if repo_root is None:
@@ -459,8 +411,8 @@ def analyze_diff(
         pathspecs = tuple(_repo_relative(item, repo_root) for item in paths)
         strip = _common_scope_prefix(pathspecs)
         scope_is_file = False
-        base_sha = _resolve_ref(base, repo_root) or base
-        head_sha = _resolve_ref(head, repo_root) or head
+        base_sha = _resolve_ref(base, repo_root)
+        head_sha = _resolve_ref(head, repo_root)
         base_reader = _MappingReader(_git_scoped_sources(repo_root, base_sha, pathspecs, strip))
         head_reader = _MappingReader(_git_scoped_sources(repo_root, head_sha, pathspecs, strip))
         analyzed_path = " ".join(pathspecs)
@@ -774,38 +726,22 @@ def render_markdown(report: Report) -> str:
 def _resolve_tree(
     path: Path,
     *,
-    ref: str | None,
+    ref: str,
     repo_root: Path | None = None,
 ) -> _ResolvedTree:
     absolute = path.resolve()
-    if absolute.is_file():
-        scope_path = absolute
-        working_root = absolute.parent
-    else:
-        scope_path = absolute
-        working_root = absolute
+    scope_path = absolute
+    working_root = absolute.parent if absolute.is_file() else absolute
     discovered = repo_root or _find_repo_root(working_root)
-    if ref is None:
-        scope_rel = _scope_relative(scope_path, discovered) if discovered else "."
-        return _ResolvedTree(
-            root=scope_path,
-            repo_root=discovered,
-            scope_rel=scope_rel,
-            scope_is_file=scope_path.is_file(),
-            ref=None,
-            sha=None,
-        )
     if discovered is None:
         raise AnalysisError(f"revision mode requires a Git repository: {path}")
     scope_rel = _scope_relative(scope_path, discovered)
     sha = _resolve_ref(ref, discovered)
     scope_is_file = scope_path.is_file() or _git_scope_is_file(discovered, sha, scope_rel)
     return _ResolvedTree(
-        root=scope_path,
         repo_root=discovered,
         scope_rel=scope_rel,
         scope_is_file=scope_is_file,
-        ref=sha,
         sha=sha,
     )
 
@@ -829,16 +765,14 @@ def _find_repo_root(path: Path) -> Path | None:
     return Path(output.strip()).resolve()
 
 
-def _resolve_ref(ref: str, repo_root: Path | None) -> str | None:
-    if repo_root is None:
-        return None
+def _resolve_ref(ref: str, repo_root: Path) -> str:
     return _git(["rev-parse", f"{ref}^{{commit}}"], cwd=repo_root).strip()
 
 
-def _git_scope_is_file(repo_root: Path, sha: str | None, scope_rel: str) -> bool:
+def _git_scope_is_file(repo_root: Path, sha: str, scope_rel: str) -> bool:
     """Identify a file scope that may no longer exist in the working tree."""
 
-    if sha is None or scope_rel in {"", "."}:
+    if scope_rel in {"", "."}:
         return False
     try:
         object_type = _git(["cat-file", "-t", f"{sha}:{scope_rel}"], cwd=repo_root).strip()
@@ -848,24 +782,11 @@ def _git_scope_is_file(repo_root: Path, sha: str | None, scope_rel: str) -> bool
 
 
 def _git(args: Sequence[str], *, cwd: Path | None) -> str:
-    if cwd is None:
-        raise AnalysisError("Git command has no repository working directory")
-    completed = subprocess.run(
-        ["git", *args],
-        cwd=str(cwd),
-        check=False,
-        text=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-    )
-    if completed.returncode != 0:
-        detail = completed.stderr.strip() or "unknown Git error"
-        raise AnalysisError(f"git {' '.join(args)} failed: {detail}")
-    return completed.stdout
+    return _git_bytes(args, cwd=cwd).decode("utf-8", errors="replace")
 
 
 def _git_bytes(args: Sequence[str], *, cwd: Path | None) -> bytes:
-    """Run Git without decoding file contents as UTF-8 first."""
+    """Run Git, keeping its output as bytes; file contents may not be UTF-8."""
 
     if cwd is None:
         raise AnalysisError("Git command has no repository working directory")
@@ -925,25 +846,25 @@ def classify_source(path: str, text: str, config: AnalyzerConfig | None = None) 
     lower = normalized.lower()
     segments = set(PurePosixPath(lower).parts)
     first_lines = "\n".join(text.splitlines()[:12]).lower()
-    if "__pycache__" in segments or "runtime" in segments:
+    if "__pycache__" in segments or lower.startswith("runtime/"):
         return "generated/runtime"
     if any(marker.lower() in lower for marker in policy.vendor_markers):
         return "vendored/minified"
-    if ".min." in lower or lower.endswith(".min.js"):
+    if ".min." in lower:
         return "vendored/minified"
     if any(marker.lower() in first_lines for marker in policy.generated_markers):
         return "generated/runtime"
-    if "tests" in segments or PurePosixPath(lower).name.startswith("test_"):
+    if is_test_source(normalized, text):
         return "tests"
     if any(root.lower() in segments for root in policy.lab_roots) or lower.startswith("lab/"):
         return "experimental/lab"
-    if "scripts" in segments or "tools" in segments or ".github" in segments:
+    if segments.intersection({"scripts", "tools", ".github"}):
         return "tooling/scripts"
     if "evidence" in segments:
         if PurePosixPath(lower).suffix in {".py", ".sh", ".ps1"}:
             return "tooling/scripts"
         return "generated/runtime"
-    if lower.startswith("docs/") or lower.startswith("documentation/"):
+    if lower.startswith(("docs/", "documentation/")):
         return "docs/configuration"
     if PurePosixPath(lower).suffix in {
         ".md",
@@ -1266,17 +1187,32 @@ def _callable_shape(root: ast.AST) -> tuple[int, int, int]:
             statement_count += 1
         next_depth = depth + 1 if isinstance(node, control_types) else depth
         max_depth = max(max_depth, next_depth)
-        if isinstance(node, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler, ast.IfExp, ast.Match)):
-            decisions += 1
-        if isinstance(node, ast.BoolOp):
-            decisions += max(0, len(node.values) - 1)
-        if isinstance(node, ast.Match):
-            decisions += max(0, len(node.cases) - 1)
+        decisions += _decisions(node)
+        elif_branch = _elif_branch(node)
         for child in ast.iter_child_nodes(node):
-            visit(child, next_depth)
+            visit(child, depth if child is elif_branch else next_depth)
 
     visit(root, 0, is_root=True)
     return decisions, max_depth, statement_count
+
+
+def _decisions(node: ast.AST) -> int:
+    """Decision points ``node`` adds to cyclomatic complexity."""
+
+    if isinstance(node, ast.BoolOp):
+        return len(node.values) - 1  # Each operator after the first operand.
+    if isinstance(node, ast.Match):
+        return len(node.cases)
+    return int(isinstance(node, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler, ast.IfExp)))
+
+
+def _elif_branch(node: ast.AST) -> ast.If | None:
+    """The ``elif`` of an ``if``: the only statement of its ``orelse``, an ``If`` at the same column."""
+
+    if not isinstance(node, ast.If) or len(node.orelse) != 1:
+        return None
+    alternative = node.orelse[0]
+    return alternative if isinstance(alternative, ast.If) and alternative.col_offset == node.col_offset else None
 
 
 def _assigned_names(node: ast.AST) -> list[str]:
@@ -1432,26 +1368,24 @@ def _derive_diff(
     head_inventory: list[SourceFile],
     file_diffs: list[DiffFile],
 ) -> DiffMetrics:
-    base_by_path = {item.path: item for item in base_inventory}
-    head_by_path = {item.path: item for item in head_inventory}
-    base_classes = {path: item.source_class for path, item in base_by_path.items()}
-    head_classes = {path: item.source_class for path, item in head_by_path.items()}
+    source_by_path = {item.path: item for item in (*base_inventory, *head_inventory)}
     by_class = {source_class: {"added_lines": 0, "deleted_lines": 0, "files": 0} for source_class in SOURCE_CLASSES}
     included_changed_files: list[str] = []
     included_added_lines = 0
     included_deleted_lines = 0
     file_changes: list[dict[str, Any]] = []
+    changed_non_python: list[dict[str, str]] = []
     for file_diff in file_diffs:
-        source_class = head_classes.get(file_diff.path, base_classes.get(file_diff.path, "unknown"))
+        source_file = source_by_path.get(file_diff.path)
+        source_class = source_file.source_class if source_file is not None else "unknown"
         bucket = by_class.setdefault(source_class, {"added_lines": 0, "deleted_lines": 0, "files": 0})
         bucket["added_lines"] += file_diff.added_lines
         bucket["deleted_lines"] += file_diff.deleted_lines
         bucket["files"] += 1
-        source_file = head_by_path.get(file_diff.path) or base_by_path.get(file_diff.path)
         file_changes.append(
             {
                 "path": file_diff.path,
-                "source_class": source_file.source_class if source_file is not None else "unknown",
+                "source_class": source_class,
                 "language": source_file.language if source_file is not None else "other",
                 "included": source_file.included if source_file is not None else False,
                 "added_lines": file_diff.added_lines,
@@ -1462,6 +1396,12 @@ def _derive_diff(
             included_changed_files.append(file_diff.path)
             included_added_lines += file_diff.added_lines
             included_deleted_lines += file_diff.deleted_lines
+        if source_file is not None and source_file.language != "python":
+            changed_non_python.append({
+                "path": file_diff.path,
+                "language": source_file.language,
+                "source_class": source_class,
+            })
     changed_callables = _changed_callables(base.callables, head.callables, file_diffs)
     base_edges = set(base.import_edges)
     head_edges = set(head.import_edges)
@@ -1477,20 +1417,8 @@ def _derive_diff(
         public_symbols_added=public_symbols_added,
         public_symbols_removed=public_symbols_removed,
         syntax_errors=head.syntax_errors,
-        source_by_path={
-            path: item.source_class
-            for path, item in {**base_by_path, **head_by_path}.items()
-        },
-        changed_non_python=[
-            {
-                "path": file_diff.path,
-                "language": source_file.language,
-                "source_class": source_file.source_class,
-            }
-            for file_diff in file_diffs
-            if (source_file := (head_by_path.get(file_diff.path) or base_by_path.get(file_diff.path)))
-            and source_file.language != "python"
-        ],
+        source_by_path={path: item.source_class for path, item in source_by_path.items()},
+        changed_non_python=changed_non_python,
     )
     added = sum(item.added_lines for item in file_diffs)
     deleted = sum(item.deleted_lines for item in file_diffs)
@@ -1786,7 +1714,7 @@ def _git_version(repo_root: Path | None) -> str:
 def _as_paths(path: str | Path | Sequence[str | Path]) -> tuple[Path, ...]:
     if isinstance(path, (str, Path)):
         return (Path(path),)
-    paths = tuple(Path(item) for item in path)
+    paths = tuple(dict.fromkeys(Path(item) for item in path))
     if not paths:
         raise AnalysisError("at least one file or directory is required")
     return paths
@@ -1839,18 +1767,21 @@ def _git_scoped_sources(
             for member in tar.getmembers():
                 if not member.isfile():
                     continue
-                name = PurePosixPath(member.name)
-                if strip_path is None:
-                    relative = name.as_posix()
-                else:
-                    try:
-                        relative = name.relative_to(strip_path).as_posix()
-                    except ValueError:
-                        relative = name.name if name == strip_path else name.as_posix()
+                relative = _strip_scope(PurePosixPath(member.name), strip_path)
                 extracted = tar.extractfile(member)
                 if extracted is not None:
                     sources[relative] = extracted.read().decode("utf-8", errors="replace")
     return sources
+
+
+def _strip_scope(name: PurePosixPath, scope: PurePosixPath | None) -> str:
+    """Name an archived file relative to the scope it was read for."""
+
+    if name == scope:
+        return name.name  # A file scope is named by the file itself.
+    if scope is None or not name.is_relative_to(scope):
+        return name.as_posix()
+    return name.relative_to(scope).as_posix()
 
 
 def _read_input_text(path: Path) -> str:
@@ -1869,7 +1800,7 @@ def _iter_input_files(root: Path) -> list[Path]:
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        if ".git" in path.parts or "__pycache__" in path.parts:
+        if {".git", "__pycache__"}.intersection(path.parts):
             continue
         files.append(path)
     return files

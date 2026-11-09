@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 from collections.abc import Mapping
+from dataclasses import dataclass
 from typing import Any
 
 from .context import AnalysisContext
@@ -12,7 +13,7 @@ from .report import kind_finding, measured_factor as _factor
 
 FACTOR = "functionality"
 INDICATOR_ID = "structure.functionality"
-INDICATOR_VERSION = "1"
+INDICATOR_VERSION = "2"
 DETECTOR_IDS = {
     "stub": f"{INDICATOR_ID}.stub",
     "unreachable": f"{INDICATOR_ID}.unreachable",
@@ -39,8 +40,8 @@ def _analyze_trees(
 
     for path in sorted(trees):
         tree = trees[path]
-        for node in ast.walk(tree):
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and stub(node):
+        for node in _stub_candidates(tree):
+            if stub(node):
                 stub_count += 1
                 findings.append(
                     _finding(
@@ -75,8 +76,89 @@ def _analyze_trees(
             "unreachable_count": unreachable_count,
         },
         findings,
-        ["Inspect intentional hooks and protocols before removing code."],
+        ["Only module-level classes with direct protocol bases or explicit abstract decorators from unshadowed imports are recognized; inspect other intentional hooks before removing code."],
     )
+
+
+def _stub_candidates(tree: ast.Module) -> list[ast.FunctionDef | ast.AsyncFunctionDef]:
+    """Functions and methods expected to have a body: all but protocol and abstract declarations."""
+
+    declarations = _contract_declarations(tree)
+    callables = (node for node in ast.walk(tree) if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)))
+    return [node for node in callables if node not in declarations]
+
+
+def _contract_declarations(tree: ast.Module) -> set[ast.AST]:
+    """Methods of module-level protocol classes, and methods marked abstract."""
+
+    protocol = _imported_name(tree, {"typing", "typing_extensions"}, "Protocol")
+    abstract = _imported_name(tree, {"abc"}, "abstractmethod")
+    declarations: set[ast.AST] = set()
+    for node in tree.body:
+        if not isinstance(node, ast.ClassDef):
+            continue
+        methods = [child for child in node.body if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef))]
+        if any(protocol.matches(base) for base in node.bases):
+            declarations.update(methods)
+        declarations.update(
+            method for method in methods if any(abstract.matches(decorator) for decorator in method.decorator_list)
+        )
+    return declarations
+
+
+@dataclass(frozen=True)
+class _ImportedName:
+    """The local spellings of ``module.name``: bound directly, or through its module."""
+
+    name: str
+    direct: frozenset[str] = frozenset()
+    modules: frozenset[str] = frozenset()
+
+    def matches(self, node: ast.AST) -> bool:
+        if isinstance(node, ast.Subscript):
+            node = node.value  # A generic base such as Protocol[T].
+        if isinstance(node, ast.Name):
+            return node.id in self.direct
+        if not isinstance(node, ast.Attribute) or node.attr != self.name:
+            return False
+        return isinstance(node.value, ast.Name) and node.value.id in self.modules
+
+
+def _imported_name(tree: ast.Module, modules: set[str], name: str) -> _ImportedName:
+    """How module-level code refers to ``name`` from ``modules``, ignoring shadowed bindings.
+
+    A star import could rebind anything, so it leaves the name unrecognized.
+    """
+
+    direct, qualified, shadowed = set(), set(), set()
+    for node in tree.body:
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            bindings = _import_bindings(node, modules, name)
+            if bindings is None:
+                return _ImportedName(name)
+            imported, module_names, other_names = bindings
+            direct.update(imported)
+            qualified.update(module_names)
+            shadowed.update(other_names)
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            shadowed.add(node.name)
+        elif isinstance(node, (ast.Assign, ast.AnnAssign, ast.AugAssign)):
+            shadowed.update(child.id for child in ast.walk(node) if isinstance(child, ast.Name) and isinstance(child.ctx, ast.Store))
+    return _ImportedName(name, frozenset(direct - shadowed), frozenset(qualified - shadowed))
+
+
+def _import_bindings(node: ast.Import | ast.ImportFrom, modules: set[str], name: str) -> tuple[set[str], set[str], set[str]] | None:
+    """Split an import's bindings into ``name`` itself, the modules, and anything else; None for a star import."""
+
+    if any(alias.name == "*" for alias in node.names):
+        return None
+    if isinstance(node, ast.Import):
+        bound = [(alias.asname or alias.name.split(".")[0], alias.name in modules) for alias in node.names]
+        return set(), {binding for binding, module in bound if module}, {binding for binding, module in bound if not module}
+    # Only an absolute import from one of ``modules`` binds ``name`` itself.
+    from_modules = node.level == 0 and node.module in modules
+    bound = [(alias.asname or alias.name, from_modules and alias.name == name) for alias in node.names]
+    return {binding for binding, own in bound if own}, set(), {binding for binding, own in bound if not own}
 
 
 def stub(node: ast.AST) -> bool:

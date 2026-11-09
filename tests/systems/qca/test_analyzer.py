@@ -8,11 +8,81 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from qca import AnalyzerConfig, analyze_diff, analyze_tree, render_markdown, report_to_dict
+from qca import AnalysisError, AnalyzerConfig, analyze_diff, analyze_tree, render_markdown, report_to_dict
 from qca.render import render_html
 
 
 class QuantitativeChangeAnalysisTests(unittest.TestCase):
+    def test_working_tree_and_revision_use_their_own_source_contents(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._git(root, "init", "-q")
+            self._git(root, "config", "user.email", "qca@example.test")
+            self._git(root, "config", "user.name", "QCA Tests")
+            source = root / "app.py"
+            source.write_text("def recorded():\n    return 1\n")
+            self._git(root, "add", ".")
+            self._git(root, "commit", "-qm", "base")
+            source.write_text("def live():\n    return 2\n")
+            (root / "__pycache__").mkdir()
+            (root / "__pycache__" / "ignored.py").write_text("def ignored():\n    pass\n")
+            for scope in (root, source):
+                with self.subTest(scope=scope):
+                    working = analyze_tree(scope)
+                    committed = analyze_tree(scope, ref="HEAD")
+                    self.assertEqual([item.qualified_name for item in working.head.callables], ["live"])
+                    self.assertEqual([item.qualified_name for item in committed.head.callables], ["recorded"])
+
+            repeated = analyze_tree([source, source], ref="HEAD")
+            self.assertEqual([item.path for item in repeated.source_inventory], ["app.py"])
+            self.assertEqual([item.qualified_name for item in repeated.head.callables], ["recorded"])
+
+    def test_invalid_revisions_fail_instead_of_falling_back(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._git(root, "init", "-q")
+            self._git(root, "config", "user.email", "qca@example.test")
+            self._git(root, "config", "user.name", "QCA Tests")
+            for name in ("first.py", "second.py"):
+                (root / name).write_text("value = 1\n")
+            self._git(root, "add", ".")
+            self._git(root, "commit", "-qm", "base")
+            paths = [root / "first.py", root / "second.py"]
+            with self.assertRaises(AnalysisError):
+                analyze_tree(paths, ref="missing-revision")
+            with self.assertRaises(AnalysisError):
+                analyze_diff("missing-revision", "HEAD", path=paths)
+            with self.assertRaises(AnalysisError):
+                analyze_diff("HEAD", "missing-revision", path=paths)
+
+    def test_diff_uses_head_file_classification_and_base_for_deleted_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            self._git(root, "init", "-q")
+            self._git(root, "config", "user.email", "qca@example.test")
+            self._git(root, "config", "user.name", "QCA Tests")
+            (root / "test_module.py").write_text("def helper():\n    return 1\n")
+            (root / "removed.md").write_text("old notes\n")
+            self._git(root, "add", ".")
+            self._git(root, "commit", "-qm", "base")
+            base = self._git(root, "rev-parse", "HEAD").strip()
+            (root / "test_module.py").write_text("def test_helper():\n    assert True\n")
+            (root / "removed.md").unlink()
+            (root / "added.md").write_text("new notes\n")
+            self._git(root, "add", "-A")
+            self._git(root, "commit", "-qm", "head")
+
+            diff = report_to_dict(analyze_diff(base, "HEAD", path=root))["diff"]
+            changes = {item["path"]: item for item in diff["file_changes"]}
+            self.assertEqual(changes["test_module.py"]["source_class"], "tests")
+            self.assertTrue(changes["test_module.py"]["included"])
+            for path in ("added.md", "removed.md"):
+                self.assertEqual(changes[path]["source_class"], "docs/configuration")
+                self.assertFalse(changes[path]["included"])
+            self.assertEqual(
+                {item["path"] for item in diff["review_targets"] if item["kind"] == "file"},
+                {"added.md", "removed.md"},
+            )
 
 
     def test_python_language_filter_drops_non_python_files(self) -> None:
@@ -130,6 +200,8 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
                     for target in single_file_diff["review_targets"]
                 )
             )
+            repeated = report_to_dict(analyze_diff(base, head, path=[root / "app.py"] * 2))
+            self.assertEqual(repeated["diff"], single_file_diff)
 
     def test_report_json_is_reproducible_for_same_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

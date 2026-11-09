@@ -259,34 +259,9 @@ class _TreeReader:
 
     def _load_ref_contents(self) -> dict[str, str]:
         """Batch-read one revision so Git diffs avoid one process per file."""
-
-        scope = [] if self.tree.scope_rel in {"", "."} else [self.tree.scope_rel]
-        archive = _git_bytes(
-            ["archive", "--format=tar", self.tree.sha, "--", *scope],
-            cwd=self.tree.repo_root,
+        return _git_scoped_sources(
+            self.tree.repo_root, self.tree.sha, [self.tree.scope_rel], self.tree.scope_rel
         )
-        contents: dict[str, str] = {}
-        with tarfile.open(fileobj=io.BytesIO(archive), mode="r:") as tar:
-            scope_path = PurePosixPath(self.tree.scope_rel)
-            for member in tar.getmembers():
-                if not member.isfile():
-                    continue
-                name = PurePosixPath(member.name)
-                if self.tree.scope_is_file:
-                    if name.name != scope_path.name:
-                        continue
-                    relative = name.name
-                elif self.tree.scope_rel in {"", "."}:
-                    relative = name.as_posix()
-                else:
-                    try:
-                        relative = name.relative_to(scope_path).as_posix()
-                    except ValueError:
-                        continue
-                extracted = tar.extractfile(member)
-                if extracted is not None:
-                    contents[relative] = extracted.read().decode("utf-8", errors="replace")
-        return contents
 
 
 def analyze_tree(
@@ -1745,7 +1720,7 @@ def _git_version(repo_root: Path | None) -> str:
 def _as_paths(path: str | Path | Sequence[str | Path]) -> tuple[Path, ...]:
     if isinstance(path, (str, Path)):
         return (Path(path),)
-    paths = tuple(Path(item) for item in path)
+    paths = tuple(dict.fromkeys(Path(item) for item in path))
     if not paths:
         raise AnalysisError("at least one file or directory is required")
     return paths
@@ -1799,13 +1774,15 @@ def _git_scoped_sources(
                 if not member.isfile():
                     continue
                 name = PurePosixPath(member.name)
-                if strip_path is None:
+                if name == strip_path:
+                    relative = name.name
+                elif strip_path is None:
                     relative = name.as_posix()
                 else:
                     try:
                         relative = name.relative_to(strip_path).as_posix()
                     except ValueError:
-                        relative = name.name if name == strip_path else name.as_posix()
+                        relative = name.as_posix()
                 extracted = tar.extractfile(member)
                 if extracted is not None:
                     sources[relative] = extracted.read().decode("utf-8", errors="replace")

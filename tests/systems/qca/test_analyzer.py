@@ -33,6 +33,10 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
                     self.assertEqual([item.qualified_name for item in working.head.callables], ["live"])
                     self.assertEqual([item.qualified_name for item in committed.head.callables], ["recorded"])
 
+            repeated = analyze_tree([source, source], ref="HEAD")
+            self.assertEqual([item.path for item in repeated.source_inventory], ["app.py"])
+            self.assertEqual([item.qualified_name for item in repeated.head.callables], ["recorded"])
+
     def test_invalid_revisions_fail_instead_of_falling_back(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -167,6 +171,8 @@ class QuantitativeChangeAnalysisTests(unittest.TestCase):
                     for target in single_file_diff["review_targets"]
                 )
             )
+            repeated = report_to_dict(analyze_diff(base, head, path=[root / "app.py"] * 2))
+            self.assertEqual(repeated["diff"], single_file_diff)
 
     def test_report_json_is_reproducible_for_same_tree(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

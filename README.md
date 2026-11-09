@@ -150,7 +150,7 @@ viewer or stream leaves the run going. Perception owns its image buffer, while
 | `plugins stream` | With `--host-name`, polls the `--step` (perception, memory, proposal, plan or action) on a running host, redrawing the terminal as it updates. Perception shows the latest perception from the host's `/host/observation/latest`; memory shows each applied plugin's health and counts; proposal, plan and action print that step's record from the latest cycle the host published, with its age, generation, plugins, and the step's and each plugin's time, and action also shows how the host applied control. A running terminal stream serves the local runtime view: a frame-matched `/perception` page, a `/memory` map whose keys are `record_id`s (click a key to see the retained value), and the action view below. |
 | `plugins inspect <step>` | Offline: replays an image, image directory, or recorded run through the whole cycle and reports perception, memory, proposal, plan, or action. Restores recorded selections; `--preset` or `--plugin` overrides the inspected step. `--frame N` reports one frame after replaying its history. `--record` saves `report.json` and copied frames under `runtime/<step>-inspections/`. See [Plugin inspection](#plugin-inspection). |
 | `hosts create` | Creates a named host for the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url`, installs its release, and starts it. `vehicles status` names each vehicle's provider and URL. |
-| `hosts delete` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. |
+| `hosts delete` | Stops the run and host, then removes its local files. PiCar harness files remain onboard. `--force` removes a PiCar's local record when the Pi cannot be stopped. |
 | `hosts update` | Packages a versioned release for the vehicle's host and stages each step's `plugins save` selection with it, else the step's default (`plugins list` marks the defaults), replacing whatever else each step had staged: a PiCar receives it over SSH, a simulator vehicle keeps it locally. With `--restart`, the host restarts onto it and verifies every step runs its staged plugins. |
 | `hosts run\|stop\|restart\|status` | Starts, stops, restarts or inspects a run on the host. Status includes the vehicle endpoint, host URL and simulator attachment. `stop` ends the run; the host stays attached until `hosts delete`. |
 | `simulators create` | Starts a headless Chase simulator from the Metrics UI checkout at `AUTOMA_METRICS_UI_DIR`, with its launcher's default configuration, on the first free port from 5051, and prints its URL. It runs until `simulators delete --url` ends it, which refuses while a host was created at it and removes only the record of one that has exited. `vehicles remove` stops listing it without ending it. |
@@ -741,8 +741,9 @@ creation with `--drive-args=--js`, or on a later update:
 Pass `--drive-args=` with `--restart` to restore controller-free startup.
 `hosts delete --name piracer` stops and disables the service and removes the
 local host directory. Harness files stay in `mycar` under the Pi home, and the
-command prints that path. A failed SSH stop keeps the local record so deletion
-can be retried.
+command prints that path. The stop gives up when the Pi does not accept SSH.
+A failed stop keeps the local record so deletion can be retried; `--force`
+removes it and says the service may still be running on the Pi.
 
 ### Physical Activation State
 

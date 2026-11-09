@@ -33,6 +33,10 @@ def register_host_deployment(host_commands: argparse._SubParsersAction) -> None:
     host_update.add_argument("--restart", action="store_true", help="Restart the host onto this release.")
     host_create.set_defaults(handler=_handle_hosts_create)
     host_update.set_defaults(handler=_handle_hosts_update)
+    host_delete.add_argument(
+        "--force", action="store_true",
+        help="Remove a PiCar host's local record when the Pi cannot be stopped.",
+    )
     host_delete.set_defaults(handler=_handle_hosts_delete)
 
 
@@ -58,7 +62,9 @@ def _handle_hosts_update(args: argparse.Namespace) -> int:
 
 
 def _handle_hosts_delete(args: argparse.Namespace) -> int:
-    result = delete_host(host_name=args.host_name, verbose=args.verbose, emit=_progress_writer(sys.stdout))
+    result = delete_host(
+        host_name=args.host_name, force=args.force, verbose=args.verbose, emit=_progress_writer(sys.stdout),
+    )
     print(render_delete(result))
     return result.exit_code
 

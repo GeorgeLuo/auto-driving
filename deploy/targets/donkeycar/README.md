@@ -21,6 +21,7 @@ Creation installs the core harness and boot service, deploys the controller
 release, restarts it and verifies every step in manual mode. Later updates use
 the recorded SSH connection. `hosts delete --name piracer` disables and
 stops the service and removes local host data; the harness stays on the Pi.
+`--force` removes the local record when the Pi cannot be stopped.
 
 Movement uses the same commands as Chase after deployment:
 

@@ -5,14 +5,19 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypedDict
 
+from qca.evaluation import evaluate
+from scripts.validation import findings as output_findings
+from scripts.validation.text_evaluators import retired_vocabulary
 
 ROOT = Path(__file__).resolve().parents[2]
 RUFF_BASELINE = ROOT / ".ruff-baseline.json"
@@ -112,7 +117,10 @@ def ruff_findings() -> list[Finding]:
     )
     if completed.returncode not in (0, 1):
         raise ValueError(completed.stderr or "Ruff failed without diagnostics")
-    diagnostics: list[RuffDiagnostic] = json.loads(completed.stdout)
+    diagnostics = json.loads(completed.stdout)
+    for diagnostic in diagnostics:
+        if diagnostic["code"] is None:
+            diagnostic["code"] = "invalid-syntax"
     return findings(diagnostics, ROOT)
 
 
@@ -122,7 +130,8 @@ def write_entries(entries: list[BaselineEntry]) -> None:
     )
 
 
-def check_ruff(*, baseline_action: Literal["check", "write", "prune"] = "check") -> int:
+def check_ruff(*, baseline_action: Literal["check", "write", "prune"] = "check",
+               records: list | None = None) -> int:
     items = ruff_findings()
     if baseline_action != "check":
         if any(item.diagnostic["code"] == "invalid-syntax" for item in items):
@@ -136,6 +145,8 @@ def check_ruff(*, baseline_action: Literal["check", "write", "prune"] = "check")
         raise ValueError("Unsupported Ruff baseline version")
     entries: list[BaselineEntry] = baseline["entries"]
     added, retained = compare_baseline(items, entries)
+    if records is not None:
+        records.extend(output_findings.ruff_records(items, added))
     stale = retained != entries
     if baseline_action == "prune":
         write_entries(retained)
@@ -151,13 +162,73 @@ def check_ruff(*, baseline_action: Literal["check", "write", "prune"] = "check")
     return int(bool(added) or stale)
 
 
-def check_imports() -> int:
-    # Use this interpreter's installed CLI entrypoint, independent of shell PATH.
-    return subprocess.run(
-        [sys.executable, "-c", "from importlinter.cli import lint_imports_command\nlint_imports_command()",
-         "--config", "pyproject.toml", "--no-cache", "--no-logo"],
-        cwd=ROOT, check=False,
-    ).returncode
+def check_imports(records: list | None = None) -> int:
+    # Isolate import discovery from the calling process's already-imported modules.
+    with tempfile.TemporaryDirectory() as directory:
+        output = Path(directory) / "imports.json"
+        env = {**os.environ, "PYTHONPATH": str(Path(__file__).resolve().parents[2])}
+        result = subprocess.run([sys.executable, "-m", "scripts.validation.import_check", str(output)],
+                                cwd=ROOT, env=env, check=False)
+        if not output.is_file():
+            raise ValueError("Import contract inspection failed without a report")
+        if records is not None:
+            records.extend(json.loads(output.read_text()))
+        return result.returncode
+
+
+def check_types(records: list) -> int:
+    completed = subprocess.run(
+        [sys.executable, "-m", "basedpyright", "--pythonpath", sys.executable, "--outputjson"],
+        cwd=ROOT, capture_output=True, text=True, check=False,
+    )
+    if completed.returncode not in (0, 1):
+        raise ValueError(completed.stderr or completed.stdout or "Type check failed")
+    payload = json.loads(completed.stdout)
+    records.extend(output_findings.type_records(payload["generalDiagnostics"], ROOT))
+    for item in payload["generalDiagnostics"]:
+        print(f"{item['file']}:{item['range']['start']['line'] + 1}: {item['message']}")
+    print(f"Type check: {payload['summary']['errorCount']} errors.")
+    return completed.returncode
+
+
+def check_vocabulary(records: list) -> int:
+    word = "snap" + "shot"
+    result = subprocess.run(["git", "grep", "-n", "-i", word, "--", ":!docs/deprecated", ":!.github/workflows/tests.yml"],
+                            cwd=ROOT, capture_output=True, text=True, check=False)
+    if result.returncode not in (0, 1):
+        raise ValueError(result.stderr or "Vocabulary check failed")
+    for match in result.stdout.splitlines():
+        path, line, content = match.split(":", 2)
+        for record in evaluate(content, [retired_vocabulary]):
+            record["location"].update({"path": path, "line": int(line)})
+            records.append(record)
+        print(match)
+    return int(bool(result.stdout))
+
+
+def inspect_changes(output: Path, records: list) -> list[str]:
+    base, head = os.environ.get("PR_BASE"), os.environ.get("PR_HEAD")
+    if not base or not head:
+        return []
+    try:
+        merge_base = subprocess.check_output(["git", "merge-base", base, head], cwd=ROOT, text=True).strip()
+        inspected = subprocess.run(
+            [sys.executable, "-m", "scripts.validation.qca_summary", "--base", merge_base,
+             "--head", head, "--output", str(output)], cwd=ROOT, check=False,
+        )
+        if inspected.returncode:
+            raise ValueError("QCA inspection failed; see the quality job log.")
+        report = json.loads((output / "report.json").read_text())
+        inspection = json.loads((output / "inspection.json").read_text())
+        records.extend(output_findings.qca_records(report, inspection))
+        if summary_path := os.environ.get("GITHUB_STEP_SUMMARY"):
+            with open(summary_path, "a", encoding="utf-8") as summary:
+                summary.write((output / "summary.md").read_text())
+        return []
+    except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as exc:
+        message = f"Informational inspection failed: {exc}"
+        print(message, file=sys.stderr)
+        return [message]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -168,21 +239,32 @@ def main(argv: list[str] | None = None) -> int:
                           help="Explicitly accept current Ruff debt; review the resulting diff.")
     baseline.add_argument("--prune-ruff-baseline", dest="baseline_action", action="store_const", const="prune",
                           help="Remove resolved debt and lower limits without accepting new findings.")
+    parser.add_argument("--output", type=Path, help="Write quality findings and PR inspection evidence here.")
     parser.set_defaults(baseline_action="check")
     args = parser.parse_args(argv)
+    records: list = []
+    errors = []
     try:
-        lint_status = check_ruff(baseline_action=args.baseline_action)
+        lint_status = check_ruff(baseline_action=args.baseline_action, records=records)
         if args.ruff_only or args.baseline_action != "check":
             return lint_status
-        import_status = check_imports()
-        type_status = subprocess.run(
-            [sys.executable, "-m", "basedpyright", "--pythonpath", sys.executable],
-            cwd=ROOT, check=False,
-        ).returncode
-        return max(lint_status, import_status, type_status)
+        import_status = check_imports(records)
+        type_status = check_types(records)
+        vocabulary_status = check_vocabulary(records)
+        if args.output:
+            errors.extend(inspect_changes(args.output, records))
+        return max(lint_status, import_status, type_status, vocabulary_status)
     except (OSError, ValueError, KeyError) as exc:
         print(f"Quality check failed: {exc}", file=sys.stderr)
         return 2
+    finally:
+        if args.output:
+            args.output.mkdir(parents=True, exist_ok=True)
+            revision = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT, capture_output=True, text=True, check=False)
+            (args.output / "findings.json").write_text(json.dumps({
+                "schema": "quality_findings_v1", "revision": revision.stdout.strip(),
+                "findings": records, "inspection_errors": errors,
+            }, indent=2) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

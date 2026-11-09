@@ -10,7 +10,7 @@ Analyzer `0.3.13` includes nested source packages named `runtime`, such as
 artifact directory is excluded by that path convention. Earlier reports
 omitted these packages; rerun both revisions before comparing their measurements.
 
-PRs automatically run the informational QCA inspection job. It publishes a
+PRs automatically run the quality job, including informational QCA inspection. It publishes a
 filtered summary and retains the full JSON/HTML evidence as an Actions artifact.
 `python3 -m scripts.validation.qca_summary --base <merge-base> --head <head> --output /tmp/qca-review`
 reproduces that report locally. The summary distinguishes measured growth from
@@ -20,6 +20,27 @@ The PR wrapper requires `requirements-quality.txt` and additionally writes
 ranked by shared call identifiers. QCA itself remains standard-library-only.
 See [the validation commands](../tests/README.md#python-quality-checks) for the
 inspection scope, limitations, and historical review examples.
+
+The evaluation entry point accepts a text body and explicit evaluators. It does
+not interpret the text as a file, diff, or repository; an evaluator determines
+the meaning of its input. Findings have a type, review question, source,
+location, evidence, and optional related locations. Text evaluators locate
+findings with zero-based, half-open character offsets into the original text.
+For example, QCA's existing Python pattern indicators can evaluate text directly:
+
+```python
+from qca import evaluate
+from qca.text_evaluators import python_patterns
+
+findings = evaluate("if a and b and c:\n    pass\n", [python_patterns])
+```
+
+`scripts.validation.text_evaluators.ruff_python` is an external-engine adapter
+that evaluates supplied Python text with a fixed Ruff rule selection; it can be
+passed to the same entry point. Project-wide type, import, baseline and diff
+checks need their own repository-aware inputs; the quality command runs those
+adapters and normalizes their findings into the same record shape. A finding is
+an inspection question, not a judgment that a real problem exists.
 
 From the repository root:
 

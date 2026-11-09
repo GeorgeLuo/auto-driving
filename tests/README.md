@@ -28,7 +28,7 @@ The browser install is only for the systems test that opens Chromium. CI does no
 
 Either suite takes `-k PATTERN` to run only the tests whose ID (`module.Class.method`) matches, as unittest's `-k` does: a substring, or a glob when it contains `*`. Repeat it to widen the match, for example `python3 tests/run.py --systems journeys -k upload -k arming`. A pattern that matches no test fails the run.
 
-The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. CI also fails when `python3 -m pyflakes tests` reports an undefined name, which catches a broken systems import without running the suite, and when a tracked file outside `docs/deprecated/` uses a word the workflow's retired-vocabulary step lists. Run that step's `git grep` line before pushing to check locally.
+The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. The quality command checks tests for undefined names and rejects retired vocabulary in tracked files outside `docs/deprecated/`.
 
 ## Validating a change
 
@@ -142,13 +142,24 @@ are maintenance commands, not steps in the normal check. Do not refresh a baseli
 to silence a new defect. Keep necessary validation at external boundaries; a
 targeted rule suppression should explain why the runtime check is still needed.
 
-QCA runs automatically on each PR using its merge base and head. Its summary
+The quality command also runs QCA on each PR using its merge base and head. Its summary
 highlights growing functions, conditional/clone candidates involving changed
 functions, and added import edges outside the standard library. Candidates can
 predate the PR and require inspection; the full report retains file-level evidence.
-The job is informational, including when analysis fails; its log and summary make
-failure visible. Full JSON and HTML evidence is retained in the `qca-inspection`
-artifact. To reproduce it locally against committed revisions:
+QCA is informational, including when analysis fails; the quality job log and
+artifact record failures. The `quality-findings` artifact includes full JSON and
+HTML evidence and `findings.json`, whose records share a type, location,
+question, source, status, related locations, and evidence. The artifact includes
+the revision once at the top level. Status distinguishes blocking diagnostics,
+accepted baseline entries, and informational review candidates. Findings are
+questions for review, not labels that establish real problems. To reproduce the
+full CI quality process locally against committed revisions:
+
+```sh
+PR_BASE=main PR_HEAD=HEAD python3 -m scripts.validation.check --output /tmp/quality-review
+```
+
+To run just QCA:
 
 ```sh
 python3 -m scripts.validation.qca_summary --base <merge-base> --head <head> --output /tmp/qca-review

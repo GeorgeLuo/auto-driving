@@ -12,6 +12,7 @@ from .analyzer import (
     render_markdown,
     report_to_dict,
 )
+from .evaluation import evaluate
 
 __all__ = [
     "ANALYZER_VERSION",
@@ -24,4 +25,5 @@ __all__ = [
     "analyze_tree",
     "render_markdown",
     "report_to_dict",
+    "evaluate",
 ]

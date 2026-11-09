@@ -11,6 +11,9 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.validation import check
+from scripts.validation.text_evaluators import ruff_python
+from qca import evaluate
+from qca.text_evaluators import python_patterns
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -25,6 +28,18 @@ def branching_function(branches: int) -> str:
 
 
 class QualityCommandTests(unittest.TestCase):
+    def test_external_engine_evaluates_text_without_a_repository(self) -> None:
+        text = "def run(a, b, c):\n    if a and b and c:\n        return missing\n"
+        with tempfile.TemporaryDirectory() as directory, contextlib.chdir(directory):
+            results = evaluate(text, [ruff_python, python_patterns])
+        result = next(item for item in results if item["type"] == "ruff.F821")
+        span = result["location"]
+        self.assertEqual(text[span["start"]:span["end"]], "missing")
+        conditional = next(item for item in results if item["type"] == "qca.opaque_conditional")
+        span = conditional["location"]
+        self.assertEqual(text[span["start"]:span["end"]], "a and b and c")
+        self.assertEqual(set(conditional), set(result))
+
     def test_default_scope_includes_deployment_source_but_excludes_generated_vendor(self) -> None:
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()) as output:
             root = Path(directory)
@@ -125,6 +140,24 @@ class QualityCommandTests(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(check.main(["--ruff-only"]), 0)
 
+    def test_quality_artifact_records_blocking_and_baselined_findings(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
+            root = Path(directory)
+            (root / "pyproject.toml").write_text((ROOT / "pyproject.toml").read_text())
+            source = root / "module.py"
+            source.write_text("def old():\n    return missing\n")
+            with patch.multiple(check, ROOT=root, RUFF_BASELINE=root / "baseline.json", PATHS=(".",)):
+                self.assertEqual(check.main(["--write-ruff-baseline"]), 0)
+                source.write_text("def old():\n    return missing\n\ndef new():\n    return other\n")
+                self.assertEqual(check.main(["--ruff-only", "--output", str(root / "out")]), 1)
+            artifact = json.loads((root / "out/findings.json").read_text())
+            found = {item["location"]["symbol"]: item for item in artifact["findings"]}
+            self.assertEqual(found["old"]["status"], "baselined")
+            self.assertEqual(found["new"]["status"], "blocking")
+            self.assertEqual(found["new"]["type"], "ruff.F821")
+            self.assertEqual(found["new"]["location"]["line"], 5)
+            self.assertTrue(found["new"]["question"])
+
     def test_type_baseline_does_not_hide_new_any_or_redundant_checks(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -146,6 +179,13 @@ class QualityCommandTests(unittest.TestCase):
             self.assertEqual(changed.returncode, 1, changed.stdout + changed.stderr)
             self.assertIn("reportExplicitAny", changed.stdout)
             self.assertIn("reportUnnecessaryIsInstance", changed.stdout)
+            records = []
+            with patch.object(check, "ROOT", root), contextlib.redirect_stdout(io.StringIO()):
+                self.assertEqual(check.check_types(records), 1)
+            any_finding = next(item for item in records if item["type"] == "type.reportExplicitAny")
+            self.assertEqual(any_finding["location"]["path"], "module.py")
+            self.assertEqual(any_finding["location"]["line"], 6)
+            self.assertEqual(any_finding["status"], "blocking")
 
 
 if __name__ == "__main__":

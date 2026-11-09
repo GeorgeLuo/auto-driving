@@ -55,7 +55,14 @@ class ImportContractTests(unittest.TestCase):
     def test_shared_cannot_reach_plugin_through_an_intermediate_module(self) -> None:
         write_module(self.root, f"{PERCEPTION}.shared.math", "from .. import bridge\n")
         write_module(self.root, f"{PERCEPTION}.bridge", "from .plugins.first import plugin\n")
-        self.assertEqual(self.status(), 1)
+        records = []
+        with patch.object(check, "ROOT", self.root):
+            self.assertEqual(check.check_imports(records), 1)
+        self.assertEqual(len(records), 1)
+        self.assertEqual(records[0]["type"], "architecture.forbidden_dependency")
+        self.assertEqual(records[0]["location"]["path"], "implementations/decision_cycle/perception/shared/math.py")
+        self.assertEqual(records[0]["location"]["line"], 1)
+        self.assertEqual(records[0]["related"][0]["path"], "implementations/decision_cycle/perception/bridge.py")
 
     def test_relative_aliased_plugin_import_from_shared_is_rejected(self) -> None:
         write_module(self.root, f"{PERCEPTION}.shared.math", "from ..plugins.first import plugin as reusable\n")
@@ -68,7 +75,11 @@ class ImportContractTests(unittest.TestCase):
     def test_plugin_package_cycles_are_rejected(self) -> None:
         write_module(self.root, f"{PERCEPTION}.plugins.first.plugin", "from ..second import plugin\n")
         write_module(self.root, f"{PERCEPTION}.plugins.second.plugin", "from ..first import plugin\n")
-        self.assertEqual(self.status(), 1)
+        records = []
+        with patch.object(check, "ROOT", self.root):
+            self.assertEqual(check.check_imports(records), 1)
+        self.assertEqual(records[0]["type"], "architecture.dependency_cycle")
+        self.assertEqual(records[0]["location"]["line"], 1)
 
 
 if __name__ == "__main__":

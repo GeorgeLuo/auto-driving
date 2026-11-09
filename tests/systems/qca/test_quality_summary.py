@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from scripts.validation import qca_summary
+from scripts.validation.findings import qca_records
 
 
 class QcaQualitySummaryTests(unittest.TestCase):
@@ -45,6 +46,11 @@ class QcaQualitySummaryTests(unittest.TestCase):
             inspection = json.loads((output / "inspection.json").read_text())
             self.assertEqual((inspection["base_sha"], inspection["head_sha"]), (base, head))
             self.assertIn("Production usage and related implementations", (output / "summary.md").read_text())
+            findings = qca_records(report, inspection)
+            conditional = next(item for item in findings if item["type"] == "qca.opaque_conditional")
+            self.assertEqual(conditional["location"], {"path": "autonomy/module.py", "line": 2})
+            self.assertTrue(conditional["question"])
+            self.assertEqual(conditional["status"], "review")
 
 
 if __name__ == "__main__":

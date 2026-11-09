@@ -6,9 +6,9 @@
   python3 -m scripts.validation.check qca cli/automa_cli        whole files
   python3 -m scripts.validation.check --text cli/x.py < x.py    text evaluated as cli/x.py
 
-A change reports only findings its base lacks, including ones outside the
-changed lines.  Exit status: 0 clean, 1 blocking findings, 2 a required check
-could not run.
+A change reports findings throughout changed files and findings introduced
+elsewhere. Exit status: 0 clean, 1 blocking findings, 2 a required check could
+not run.
 """
 
 from __future__ import annotations
@@ -99,7 +99,7 @@ def _describe(context: ContextRecord) -> str:
         return f"{len(context['paths'])} whole files."
     head = f"`{context['head'][:12]}`" if context["head"] else "the working tree"
     return (f"Change from `{str(context['base'])[:12]}` to {head}, {len(context['paths'])} changed files. "
-            "Findings are new relative to the base.")
+            "Findings cover changed files and new findings elsewhere.")
 
 
 def _outcome(record: EvaluationRecord) -> str:

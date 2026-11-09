@@ -156,7 +156,7 @@ class IndicatorRegistryTests(unittest.TestCase):
             self.assertIsInstance(spec, IndicatorSpec)
             self.assertEqual(spec.id, indicator_id)
             if indicator_id.startswith("verification.test_effectiveness"):
-                self.assertEqual(spec.version, "5")
+                self.assertEqual(spec.version, "6")
             else:
                 self.assertEqual(spec.version, "2" if indicator_id.startswith("structure.functionality") else "1")
 

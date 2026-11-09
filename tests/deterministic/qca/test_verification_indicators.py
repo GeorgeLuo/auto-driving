@@ -140,7 +140,7 @@ class VerificationIndicatorTests(unittest.TestCase):
         self.assertEqual(factor["metrics"]["parse_error_count"], 0)
         self.assertEqual(candidate["indicator"], {
             "id": "verification.test_effectiveness.assignment_readback",
-            "version": "5",
+            "version": "6",
         })
         self.assertEqual(candidate["evidence"]["revision"], "head-ref")
         self.assertEqual(candidate["evidence"]["primary"]["code"], "assert value == 3")
@@ -165,10 +165,48 @@ class VerificationIndicatorTests(unittest.TestCase):
         self.assertIn("call", questions["private_helper_call"].lower())
         self.assertIn("assertion", questions["assignment_readback"].lower())
         self.assertIn("exact text", questions["string_expected_assertion"])
-        self.assertIn("presentation", questions["formatted_literal_assertion"])
+        self.assertIn("member or substring", questions["formatted_literal_assertion"])
         for item in findings:
             if item["kind"] in {"private_import", "private_helper_call"}:
                 self.assertIn("inspect its target", item["reason"])
+
+    def test_string_findings_report_comparison_kinds(self) -> None:
+        expressions = {
+            'self.assertEqual(value, "ready")': ["equality"],
+            'self.assertIn("key", value)': ["membership"],
+            'self.assertRegex(value, "ok.*")': ["regex"],
+            'assert value is "ok"': ["identity"],
+            'assert value < "m"': ["ordering"],
+            'assert 0 < count == "ready"': ["equality"],
+            'assert value == "ready" in allowed': ["equality", "membership"],
+        }
+        source = "def test_value(self, value, count, allowed):\n" + "".join(
+            f"    {expression}\n" for expression in expressions
+        )
+        factor = test_effectiveness.analyze(AnalysisContext.from_sources({"tests/test_value.py": source}))
+        actual = {
+            item["expression"]: item["evidence"]["pattern"]["comparison_kinds"]
+            for item in factor["findings"] if item["kind"] == "string_expected_assertion"
+        }
+        self.assertEqual(actual, expressions)
+        questions = {item["expression"]: item["evidence"]["inspection_question"] for item in factor["findings"]}
+        self.assertIn("member or substring", questions['self.assertIn("key", value)'])
+        self.assertIn("pattern", questions['self.assertRegex(value, "ok.*")'])
+        self.assertIn("identity", questions['assert value is "ok"'])
+        self.assertIn("ordering", questions['assert value < "m"'])
+        self.assertIn("comparisons together", questions['assert value == "ready" in allowed'])
+
+    def test_formatted_literal_requires_structure_beyond_isolated_symbols(self) -> None:
+        for value, expected in (
+            (" -> ", False), ("x < y", False), ("x > y", False), ("a|b", False), ("a||b", False),
+            ("| row |", True), ("<script>", True), ("first\nsecond", True),
+            ("80%", True), ("`code`", True), ("x" * 40, True),
+        ):
+            with self.subTest(value=value):
+                node = ast.parse(f"self.assertIn({value!r}, output)").body[0].value
+                self.assertEqual(test_effectiveness.formatted_literal_assertion(node), expected)
+        comparison = ast.parse('self.assertEqual("<b>", "plain text")').body[0].value
+        self.assertTrue(test_effectiveness.formatted_literal_assertion(comparison))
 
     def test_lifecycle_sites_use_exact_nodes_and_bounded_details(self) -> None:
         source = "def start():\n    pass\nstart()\n"

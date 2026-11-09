@@ -27,7 +27,7 @@ from .source_classification import is_test_source
 
 FACTOR = "test_effectiveness"
 INDICATOR_ID = "verification.test_effectiveness"
-INDICATOR_VERSION = "5"
+INDICATOR_VERSION = "6"
 
 DETECTOR_IDS = {
     "literal_assertion": f"{INDICATOR_ID}.literal_assertion",
@@ -56,17 +56,19 @@ _ASSERT_LITERAL_METHODS = {
     "assertIsNone",
     "assertIsNotNone",
 }
-_STRING_EXPECTED_METHODS = {
-    "assertEqual",
-    "assertNotEqual",
-    "assertMultiLineEqual",
-    "assertIn",
-    "assertNotIn",
-    "assertRegex",
-    "assertNotRegex",
-}
-_FORMATTED_LITERAL_RE = re.compile(r"[|<>\n`]|\d+(?:\.\d+)?%")
+_FORMATTED_LITERAL_RE = re.compile(r"\n|`|\|[^|\n]+\||</?[A-Za-z][^>]*>|\d+(?:\.\d+)?%")
 _FORMATTED_LITERAL_MIN_LENGTH = 40
+_STRING_ASSERTION_METHODS = {
+    "assertEqual": "equality", "assertNotEqual": "equality", "assertMultiLineEqual": "equality",
+    "assertIn": "membership", "assertNotIn": "membership",
+    "assertRegex": "regex", "assertNotRegex": "regex",
+}
+_STRING_COMPARISON_OPERATORS = {
+    ast.Eq: "equality", ast.NotEq: "equality",
+    ast.In: "membership", ast.NotIn: "membership",
+    ast.Is: "identity", ast.IsNot: "identity",
+    ast.Lt: "ordering", ast.LtE: "ordering", ast.Gt: "ordering", ast.GtE: "ordering",
+}
 
 
 def analyze(context: AnalysisContext) -> dict[str, Any]:
@@ -138,7 +140,7 @@ def formatted_literal_assertion(node: ast.AST) -> bool:
     """Return whether a supported assertion compares against a formatted literal."""
 
     constants = _string_constants_in_assertion(node)
-    return bool(constants and _is_formatted_literal(max(constants, key=len)))
+    return any(_is_formatted_literal(text) for text in constants)
 
 
 def private_import(node: ast.AST) -> bool:
@@ -538,13 +540,30 @@ def _string_constants_in_assertion(node: ast.AST) -> list[str]:
     if not isinstance(node, ast.Call):
         return values
     name = _call_name(node.func)
-    if name not in _STRING_EXPECTED_METHODS:
+    if name not in _STRING_ASSERTION_METHODS:
         return values
     for arg in node.args[:2]:
         text = _constant_text(arg)
         if text is not None:
             values.append(text)
     return values
+
+
+def _string_comparison_kinds(node: ast.AST) -> list[str]:
+    """Describe comparisons involving a literal, without inferring operand types."""
+
+    if isinstance(node, ast.Call):
+        kind = _STRING_ASSERTION_METHODS.get(_call_name(node.func) or "")
+        return [kind] if kind else []
+    if not isinstance(node, ast.Assert) or not isinstance(node.test, ast.Compare):
+        return []
+    operands = [node.test.left, *node.test.comparators]
+    return sorted({
+        _STRING_COMPARISON_OPERATORS[type(operator)]
+        for left, operator, right in zip(operands[:-1], node.test.ops, operands[1:], strict=True)
+        if (_constant_text(left) is not None or _constant_text(right) is not None)
+        and type(operator) in _STRING_COMPARISON_OPERATORS
+    })
 
 
 def _readback_target(node: ast.AST) -> str | None:
@@ -593,6 +612,31 @@ def _enrich_finding(
     finding = dict(finding)
     if not isinstance(context, AnalysisContext):
         return finding
+    pattern: dict[str, str | list[str]] = {"candidate_kind": candidate_kind}
+    question = {
+        "private_import": "Does this import expose a production private API that the test should exercise through a public entrypoint?",
+        "private_helper_call": "Does this call exercise a production private helper where a public entrypoint would be more appropriate?",
+        "assignment_readback": "Does this assertion verify behavior beyond reading back an assigned value?",
+        "string_expected_assertion": "Does this string assertion check a meaningful contract without unnecessary coupling to exact text?",
+        "formatted_literal_assertion": "Does this formatted string assertion check a meaningful output contract without unnecessary coupling to presentation?",
+    }.get(candidate_kind, "Does this assertion meaningfully verify behavior across relevant inputs?")
+    if candidate_kind in {"string_expected_assertion", "formatted_literal_assertion"}:
+        comparisons = _string_comparison_kinds(node)
+        pattern["comparison_kinds"] = comparisons
+        if comparisons == ["membership"]:
+            question = (
+                "Does checking for this formatted text as a member or substring verify the intended behavior without unnecessary coupling to presentation?"
+                if candidate_kind == "formatted_literal_assertion"
+                else "Does checking for this string as a member or substring meaningfully verify the intended behavior?"
+            )
+        elif comparisons == ["regex"]:
+            question = "Does this pattern assertion meaningfully verify the intended behavior?"
+        elif comparisons == ["identity"]:
+            question = "Does this identity comparison with a string literal express the intended behavior?"
+        elif comparisons == ["ordering"]:
+            question = "Does this ordering comparison with a string literal verify the intended behavior?"
+        elif len(comparisons) > 1:
+            question = "Do these string comparisons together verify the intended behavior?"
     return enrich_finding(
         finding,
         context=context,
@@ -602,15 +646,9 @@ def _enrich_finding(
         node=node,
         family="verification",
         related_nodes=related_nodes,
-        pattern={"candidate_kind": candidate_kind},
+        pattern=pattern,
         uncertainty=["static_candidate"],
-        inspection_question={
-            "private_import": "Does this import expose a production private API that the test should exercise through a public entrypoint?",
-            "private_helper_call": "Does this call exercise a production private helper where a public entrypoint would be more appropriate?",
-            "assignment_readback": "Does this assertion verify behavior beyond reading back an assigned value?",
-            "string_expected_assertion": "Does this string assertion check a meaningful contract without unnecessary coupling to exact text?",
-            "formatted_literal_assertion": "Does this formatted string assertion check a meaningful output contract without unnecessary coupling to presentation?",
-        }.get(candidate_kind, "Does this assertion meaningfully verify behavior across relevant inputs?"),
+        inspection_question=question,
     )
 
 

@@ -11,7 +11,7 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TypedDict
+from typing import Literal, TypedDict
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -122,12 +122,12 @@ def write_entries(entries: list[BaselineEntry]) -> None:
     )
 
 
-def check_ruff(*, write_baseline: bool = False, prune_baseline: bool = False) -> int:
+def check_ruff(*, baseline_action: Literal["check", "write", "prune"] = "check") -> int:
     items = ruff_findings()
-    if write_baseline or prune_baseline:
+    if baseline_action != "check":
         if any(item.diagnostic["code"] == "invalid-syntax" for item in items):
             raise ValueError("Repair syntax errors before recording a baseline")
-    if write_baseline:
+    if baseline_action == "write":
         write_entries(baseline_entries(items))
         print(f"Recorded {len(items)} Ruff diagnostics in {RUFF_BASELINE.name}.")
         return 0
@@ -137,8 +137,9 @@ def check_ruff(*, write_baseline: bool = False, prune_baseline: bool = False) ->
     entries: list[BaselineEntry] = baseline["entries"]
     added, retained = compare_baseline(items, entries)
     stale = retained != entries
-    if prune_baseline:
+    if baseline_action == "prune":
         write_entries(retained)
+        stale = False
         print("Pruned resolved Ruff debt and lowered improved metric limits; no new debt accepted.")
     elif stale:
         print("Ruff baseline has resolved debt or improved limits. Run "
@@ -147,7 +148,7 @@ def check_ruff(*, write_baseline: bool = False, prune_baseline: bool = False) ->
         location = item.diagnostic["location"]
         print(f"{item.key[0]}:{location['row']}:{location['column']}: {item.key[1]} {item.diagnostic['message']}")
     print(f"Ruff: {len(added)} new or worsened diagnostics; {len(items) - len(added)} baselined.", flush=True)
-    return int(bool(added) or (stale and not prune_baseline))
+    return int(bool(added) or stale)
 
 
 def check_imports() -> int:
@@ -163,12 +164,15 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ruff-only", action="store_true", help="Run the fast lint checks only.")
     baseline = parser.add_mutually_exclusive_group()
-    baseline.add_argument("--write-ruff-baseline", action="store_true", help="Explicitly accept current Ruff debt; review the resulting diff.")
-    baseline.add_argument("--prune-ruff-baseline", action="store_true", help="Remove resolved debt and lower limits without accepting new findings.")
+    baseline.add_argument("--write-ruff-baseline", dest="baseline_action", action="store_const", const="write",
+                          help="Explicitly accept current Ruff debt; review the resulting diff.")
+    baseline.add_argument("--prune-ruff-baseline", dest="baseline_action", action="store_const", const="prune",
+                          help="Remove resolved debt and lower limits without accepting new findings.")
+    parser.set_defaults(baseline_action="check")
     args = parser.parse_args(argv)
     try:
-        lint_status = check_ruff(write_baseline=args.write_ruff_baseline, prune_baseline=args.prune_ruff_baseline)
-        if args.ruff_only or args.write_ruff_baseline or args.prune_ruff_baseline:
+        lint_status = check_ruff(baseline_action=args.baseline_action)
+        if args.ruff_only or args.baseline_action != "check":
             return lint_status
         import_status = check_imports()
         type_status = subprocess.run(

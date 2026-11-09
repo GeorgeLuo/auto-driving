@@ -74,8 +74,11 @@ def upload_plugin(*, url: str | None, host_name: str | None, file: Path, step: s
         payload["source_base64"] = base64.b64encode(file.read_bytes()).decode()
     except OSError as exc:
         return result(_failure(exc), Recovery(kind="file", file=file))
-    return _upload(result, url, host_name, payload, file, _arm_request({step: [plugin_id]}) if arm else None,
-                   Recovery(kind="list", url=url, host_name=host_name, step=step, long=True))
+    return _upload(
+        result, url=url, host_name=host_name, payload=payload, source=file,
+        arm=_arm_request({step: [plugin_id]}) if arm else None,
+        after=Recovery(kind="list", url=url, host_name=host_name, step=step, long=True),
+    )
 
 
 def upload_collection(*, url: str | None, host_name: str | None, manifest: Path, arm: bool = False,
@@ -101,7 +104,10 @@ def upload_collection(*, url: str | None, host_name: str | None, manifest: Path,
     name = payload["name"]
     after = (Recovery(kind="list", url=url, host_name=host_name, long=True) if arm
              else Recovery(kind="arm", url=url, host_name=host_name, collection=name))
-    return _upload(result, url, host_name, payload, manifest, _collection_request("arm", name) if arm else None, after)
+    return _upload(
+        result, url=url, host_name=host_name, payload=payload, source=manifest,
+        arm=_collection_request("arm", name) if arm else None, after=after,
+    )
 
 
 def arm_collection(*, url: str | None, host_name: str | None, name: str) -> SelectionResult:
@@ -255,7 +261,7 @@ def _change_selection(operation: str, url: str | None, host_name: str | None, st
     return SelectionResult(operation, host_name, endpoint, step, receipt, recovery, preset, collection)
 
 
-def _upload(result: Callable[..., UploadResult], url: str | None, host_name: str | None, payload: dict[str, Any],
+def _upload(result: Callable[..., UploadResult], *, url: str | None, host_name: str | None, payload: dict[str, object],
             source: Path, arm: dict[str, Any] | None, after: Recovery) -> UploadResult:
     """Send an upload and, once it is accepted, the ``arm`` request; ``after`` follows an accepted upload."""
 

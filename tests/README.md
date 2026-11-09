@@ -69,7 +69,8 @@ List each command you ran and its result under Validation in the pull request. D
 Install `requirements-test.txt` (which includes the quality tools), or install
 `requirements-quality.txt` for checks alone, then run
 `python3 -m scripts.validation.check`. CI runs this command in the Python quality
-job on PRs and main. `--ruff-only` skips type checking for a faster editing loop.
+job on PRs and main. `--ruff-only` skips type and import-contract checking for a faster editing loop;
+the full command is required before pushing.
 The configuration in `pyproject.toml` also works with Ruff and basedpyright editor
 integrations; an editor's Ruff diagnostics include existing baselined findings.
 
@@ -85,13 +86,50 @@ Ruff also rejects new unused arguments (`ARG`), identical conditional arms
 returned (`RET504`). Necessary callback signatures still need their parameters;
 use an explicit override, an allowed unused-parameter name, or a justified
 suppression instead of removing a parameter required by a caller.
+The broader readability guard uses standard Ruff rules:
+
+| Pressure | Rule and limit | Preferred repair |
+| --- | --- | --- |
+| Too many intermediate values | [`PLR0914`](https://docs.astral.sh/ruff/rules/too-many-locals/), 15 locals | Separate meaningful stages or responsibilities; keep useful names |
+| Ambiguous argument order | [`PLR0917`](https://docs.astral.sh/ruff/rules/too-many-positional-arguments/), 5 positional parameters | Name optional settings with keyword-only parameters |
+| Unnecessary nesting after an exit | `RET505`–`RET508`, `PLR5501` | Use guard clauses or `elif` |
+| Repeated dispatch or prefix checks | `SIM116`, `PIE810` | Use a lookup for literal alternatives or a tuple of prefixes |
+| Parameters reused as loop/handler targets | `PLR1704` | Give the second value its own name |
+
+These complement the existing branch, statement, Boolean-expression and nesting
+limits. Do not replace named intermediates with dense expressions or split a
+single operation into arbitrary helpers to satisfy a count. Many named keyword
+parameters and necessary boundary validation can be clearer than a generic
+configuration object or hidden dispatch. The engineer role's abstraction and
+readability preferences still require review.
+
+The same quality command runs [Import Linter](https://import-linter.readthedocs.io/en/stable/)
+against the contracts in `pyproject.toml`. Autonomy cannot depend on implementations
+or CLI, implementations cannot depend on CLI, shared step code cannot depend on
+concrete plugins or hosts, and plugin packages cannot form dependency cycles.
+Forbidden dependencies include indirect paths, relative imports, and type-only
+imports. These contracts have no baseline exceptions. Deliberate one-way plugin
+specialization remains allowed; general reusable behavior belongs in shared code.
+The graph checks static imports, not dynamic imports or semantic ownership.
+Use `lint-imports --no-cache --no-logo` to run only these checks.
+
 The CLI architecture tests also reject file reads in modules declared pure,
 models, or rendering, using the same convention as their existing write checks.
 
 Existing debt is recorded explicitly. Ruff matches each diagnostic by file,
 owning symbol, message, and source text, independent of line numbers. Its metric
 limits allow an existing large function to improve while still above a threshold;
-an increase fails. Moving code to another symbol may require review of the baseline.
+an increase fails. Resolved entries and lowered limits must be committed with
+the improvement, so old allowances cannot be reused later. The gate reports a
+stale baseline and fails until these reductions are recorded:
+
+```sh
+python3 -m scripts.validation.check --prune-ruff-baseline
+```
+
+Pruning can only remove debt or lower limits; it still fails on new findings and
+refuses to change the baseline when syntax is invalid. Normal Ruff checks do not
+write files. Moving code to another symbol may require review of the baseline.
 basedpyright uses its native baseline and removes resolved entries automatically.
 Commit those reductions with the repair.
 

@@ -249,11 +249,10 @@ class ActionProposal:
                 raise ValueError(
                     f"lifecycle {self.lifecycle} requires a ProposedVehicleCommand"
                 )
-        else:
-            if self.command is not None:
-                raise ValueError(
-                    f"lifecycle {self.lifecycle} requires command=null"
-                )
+        elif self.command is not None:
+            raise ValueError(
+                f"lifecycle {self.lifecycle} requires command=null"
+            )
 
         if type(self.assumptions) not in (list, tuple):
             raise TypeError("assumptions must be a list or tuple of strings")

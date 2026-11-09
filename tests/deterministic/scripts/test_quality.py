@@ -5,7 +5,7 @@ import unittest
 from dataclasses import asdict
 from pathlib import Path
 
-from scripts.validation.check import baseline_entries, findings, new_findings
+from scripts.validation.check import METRIC_RULES, baseline_entries, compare_baseline, findings
 from scripts.validation.qca_summary import render_summary, section
 from qca import analyze_sources
 from qca.analyzer import DiffMetrics
@@ -23,7 +23,7 @@ class RuffBaselineTests(unittest.TestCase):
                 for line in (2, 5)
             ]
             items = findings(diagnostics, root)
-            added = new_findings(items, baseline_entries(items[:1]))
+            added, _ = compare_baseline(items, baseline_entries(items[:1]))
             self.assertEqual([item.key[2] for item in added], ["new"])
 
     def test_duplicate_diagnostic_needs_its_own_baseline_entry(self) -> None:
@@ -37,7 +37,42 @@ class RuffBaselineTests(unittest.TestCase):
                 for line in (1, 2)
             ]
             items = findings(diagnostics, root)
-            self.assertEqual(len(new_findings(items, baseline_entries(items[:1]))), 1)
+            added, retained = compare_baseline(items, baseline_entries(items[:1]))
+            self.assertEqual(len(added), 1)
+            self.assertEqual(retained, baseline_entries(items[:1]))
+
+    def test_metric_improvements_retire_old_limits_and_cannot_reaccept_growth(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "module.py"
+            path.write_text("def process():\n    pass\n")
+            for rule in sorted(METRIC_RULES):
+                with self.subTest(rule=rule):
+                    def measured(count):
+                        return findings([{
+                            "filename": str(path), "code": rule, "message": f"Too much ({count} > 10)",
+                            "location": {"row": 1, "column": 1},
+                        }], root)
+
+                    added, retained = compare_baseline(measured(11), baseline_entries(measured(12)))
+                    self.assertEqual(added, [])
+                    self.assertEqual(retained[0]["limits"], [11])
+                    self.assertEqual(len(compare_baseline(measured(12), retained)[0]), 1)
+                    self.assertEqual(compare_baseline([], retained), ([], []))
+
+    def test_pruning_keeps_only_matched_diagnostics_without_accepting_new_debt(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            path = root / "module.py"
+            path.write_text("missing\nother_missing\n")
+            items = findings([
+                {"filename": str(path), "code": "F821", "message": f"Undefined name `{name}`",
+                 "location": {"row": line, "column": 1}}
+                for line, name in enumerate(("missing", "other_missing"), 1)
+            ], root)
+            added, retained = compare_baseline(items[1:], baseline_entries(items[:1]))
+            self.assertEqual(added, items[1:])
+            self.assertEqual(retained, [])
 
 
 class QcaSummaryTests(unittest.TestCase):

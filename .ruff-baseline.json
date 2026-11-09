@@ -154,7 +154,7 @@
         ""
       ],
       "limits": [
-        23
+        22
       ]
     },
     {
@@ -166,7 +166,7 @@
         ""
       ],
       "limits": [
-        56
+        55
       ]
     },
     {
@@ -651,6 +651,18 @@
     },
     {
       "key": [
+        "cli/automa_cli/hosts/deployment/picar_deploy.py",
+        "PLR0914",
+        "deploy_picar_release",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
         "cli/automa_cli/hosts/deployment/render.py",
         "C901",
         "render_progress",
@@ -735,6 +747,18 @@
     },
     {
       "key": [
+        "cli/automa_cli/hosts/publications/host_publications.py",
+        "PLR0917",
+        "_RejectTelemetryRedirect.redirect_request",
+        "Too many positional arguments (count > 5)",
+        ""
+      ],
+      "limits": [
+        6
+      ]
+    },
+    {
+      "key": [
         "cli/automa_cli/hosts/publications/host_telemetry.py",
         "C901",
         "normalize_host_telemetry_record",
@@ -755,6 +779,18 @@
       ],
       "limits": [
         26
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/publications/host_telemetry.py",
+        "PLR0914",
+        "normalize_host_telemetry_record",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        41
       ]
     },
     {
@@ -784,6 +820,18 @@
     {
       "key": [
         "cli/automa_cli/hosts/runs/monitor.py",
+        "PLR0914",
+        "monitor_runtime",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        19
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/runs/monitor.py",
         "PLR0915",
         "monitor_runtime",
         "Too many statements (count > 50)",
@@ -803,6 +851,18 @@
       ],
       "limits": [
         12
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/hosts/runs/service.py",
+        "PLR0914",
+        "start_host_automation_background",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        21
       ]
     },
     {
@@ -827,6 +887,18 @@
       ],
       "limits": [
         0
+      ]
+    },
+    {
+      "key": [
+        "cli/automa_cli/plugins/catalog/render.py",
+        "PLR0917",
+        "_receipt_document",
+        "Too many positional arguments (count > 5)",
+        ""
+      ],
+      "limits": [
+        8
       ]
     },
     {
@@ -1227,6 +1299,78 @@
     },
     {
       "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/issue219_cues.py",
+        "PLR0914",
+        "_corner_junctions",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        28
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/issue219_cues.py",
+        "PLR0914",
+        "_hough_fragments",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        28
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/issue219_cues.py",
+        "PLR0914",
+        "_partial_contour",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        20
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/issue219_cues.py",
+        "PLR0914",
+        "_photometric_windows",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        29
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/issue219_cues.py",
+        "PLR0914",
+        "_quad_rectangularity",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        18
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/issue219_cues.py",
+        "PLR0917",
+        "_normalized_xywh",
+        "Too many positional arguments (count > 5)",
+        ""
+      ],
+      "limits": [
+        6
+      ]
+    },
+    {
+      "key": [
         "implementations/decision_cycle/perception/plugins/composite_box_fusion/plugin.py",
         "ARG002",
         "CompositeBoxFusionPlugin._enumerate_geometry",
@@ -1300,6 +1444,30 @@
     {
       "key": [
         "implementations/decision_cycle/perception/plugins/composite_box_fusion/plugin.py",
+        "PLR0914",
+        "CompositeBoxFusionPlugin._detect_candidates",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        23
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/plugin.py",
+        "PLR0914",
+        "CompositeBoxFusionPlugin._enumerate_geometry",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        23
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/composite_box_fusion/plugin.py",
         "PLR0915",
         "CompositeBoxFusionPlugin._detect_candidates",
         "Too many statements (count > 50)",
@@ -1343,6 +1511,54 @@
       ],
       "limits": [
         0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/floor_continuity/model.py",
+        "PLR0914",
+        "_boundary_components",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        31
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/floor_continuity/model.py",
+        "PLR0914",
+        "_floor_model",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        16
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/floor_continuity/model.py",
+        "PLR0914",
+        "analyze_floor_continuity",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        26
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/floor_continuity/model.py",
+        "PLR0917",
+        "_normalized_bbox",
+        "Too many positional arguments (count > 5)",
+        ""
+      ],
+      "limits": [
+        6
       ]
     },
     {
@@ -1395,6 +1611,42 @@
     },
     {
       "key": [
+        "implementations/decision_cycle/perception/plugins/floor_plane/model.py",
+        "PLR0914",
+        "estimate_floor_mask",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        18
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/floor_plane/model.py",
+        "PLR0914",
+        "process_still",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/floor_plane/model.py",
+        "PLR0914",
+        "project_topdown",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        20
+      ]
+    },
+    {
+      "key": [
         "implementations/decision_cycle/perception/plugins/motion_tracks/plugin.py",
         "C901",
         "MotionTracksPlugin._update_tracks",
@@ -1431,6 +1683,18 @@
     },
     {
       "key": [
+        "implementations/decision_cycle/perception/plugins/multi_obstruction_tracks/plugin.py",
+        "PLR0914",
+        "MultiObstructionTracksPlugin._detect_candidates",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        27
+      ]
+    },
+    {
+      "key": [
         "implementations/decision_cycle/perception/plugins/sim_cardboard_obstacle/plugin.py",
         "B905",
         "_visible_regions",
@@ -1439,6 +1703,18 @@
       ],
       "limits": [
         0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/plugins/sim_cardboard_obstacle/plugin.py",
+        "PLR0914",
+        "_detect",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        24
       ]
     },
     {
@@ -1491,6 +1767,54 @@
     },
     {
       "key": [
+        "implementations/decision_cycle/perception/shared/features/feature_tracking.py",
+        "PLR0914",
+        "detect_keypoints",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        19
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/features/feature_tracking.py",
+        "PLR0914",
+        "mark_inliers",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        18
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/features/feature_tracking.py",
+        "PLR0914",
+        "match_keypoints",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        16
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/features/feature_tracking.py",
+        "PLR0917",
+        "make_result",
+        "Too many positional arguments (count > 5)",
+        ""
+      ],
+      "limits": [
+        7
+      ]
+    },
+    {
+      "key": [
         "implementations/decision_cycle/perception/shared/landmarks/distance.py",
         "F401",
         "<module>",
@@ -1523,6 +1847,54 @@
       ],
       "limits": [
         0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/motion/scene_motion.py",
+        "PLR0914",
+        "analyze_scene_motion_images",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        16
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/motion/scene_motion.py",
+        "PLR0914",
+        "find_best_similarity_group",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        16
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/motion/scene_motion.py",
+        "PLR0914",
+        "render_scene_motion",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/motion/scene_motion.py",
+        "PLR0917",
+        "render_scene_motion",
+        "Too many positional arguments (count > 5)",
+        ""
+      ],
+      "limits": [
+        7
       ]
     },
     {
@@ -1588,6 +1960,30 @@
     {
       "key": [
         "implementations/decision_cycle/perception/shared/obstructions/tracker.py",
+        "PLR0914",
+        "ObstructionTrackState._associate",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        24
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/obstructions/tracker.py",
+        "PLR0914",
+        "_predict_track",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        18
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/obstructions/tracker.py",
         "PLR0915",
         "ObstructionTrackState._associate",
         "Too many statements (count > 50)",
@@ -1607,6 +2003,18 @@
       ],
       "limits": [
         0
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/perception/shared/regions/detection.py",
+        "PLR0914",
+        "detect_regions",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        41
       ]
     },
     {
@@ -1631,6 +2039,18 @@
       ],
       "limits": [
         14
+      ]
+    },
+    {
+      "key": [
+        "implementations/decision_cycle/proposal/plugins/avoid_recent_obstruction/plugin.py",
+        "PLR0914",
+        "propose",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        21
       ]
     },
     {
@@ -1667,6 +2087,18 @@
       ],
       "limits": [
         36
+      ]
+    },
+    {
+      "key": [
+        "implementations/runtime/picar/host_telemetry.py",
+        "PLR0914",
+        "HostTelemetryStore.observe",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        19
       ]
     },
     {
@@ -1744,6 +2176,18 @@
     {
       "key": [
         "implementations/vehicle/chase_sim/car.py",
+        "PLR0914",
+        "ChaseSimCar._passive_receipt_result",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        33
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/car.py",
         "PLR0915",
         "ChaseSimCar._passive_receipt_result",
         "Too many statements (count > 50)",
@@ -1811,6 +2255,30 @@
       ],
       "limits": [
         17
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/frame_identity.py",
+        "PLR0914",
+        "score_reference_alignment_batch",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        20
+      ]
+    },
+    {
+      "key": [
+        "implementations/vehicle/chase_sim/frame_identity.py",
+        "PLR0914",
+        "validate_chase_sensor_capture",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        16
       ]
     },
     {
@@ -1948,6 +2416,42 @@
     {
       "key": [
         "qca/analyzer.py",
+        "PLR0914",
+        "_derive_diff",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        23
+      ]
+    },
+    {
+      "key": [
+        "qca/analyzer.py",
+        "PLR0914",
+        "_read_git_diff",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        16
+      ]
+    },
+    {
+      "key": [
+        "qca/analyzer.py",
+        "PLR0914",
+        "analyze_diff",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        22
+      ]
+    },
+    {
+      "key": [
+        "qca/analyzer.py",
         "PLR0915",
         "render_markdown",
         "Too many statements (count > 50)",
@@ -2003,6 +2507,18 @@
       ],
       "limits": [
         15
+      ]
+    },
+    {
+      "key": [
+        "qca/factors/verification.py",
+        "PLR0914",
+        "_validate_factor_record",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        16
       ]
     },
     {
@@ -2187,6 +2703,18 @@
     },
     {
       "key": [
+        "qca/indicators/contracts.py",
+        "PLR0914",
+        "_contracts",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        18
+      ]
+    },
+    {
+      "key": [
         "qca/indicators/coupling.py",
         "C901",
         "_coupling",
@@ -2219,6 +2747,30 @@
       ],
       "limits": [
         14
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/coupling.py",
+        "PLR0914",
+        "_coupling",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        21
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/coupling.py",
+        "PLR0917",
+        "_edge",
+        "Too many positional arguments (count > 5)",
+        ""
+      ],
+      "limits": [
+        7
       ]
     },
     {
@@ -2380,6 +2932,18 @@
     {
       "key": [
         "qca/indicators/test_effectiveness.py",
+        "PLR0914",
+        "_test_effectiveness_factor",
+        "Too many local variables (count > 15)",
+        ""
+      ],
+      "limits": [
+        23
+      ]
+    },
+    {
+      "key": [
+        "qca/indicators/test_effectiveness.py",
         "PLR0915",
         "_test_effectiveness_factor",
         "Too many statements (count > 50)",
@@ -2431,6 +2995,18 @@
         "PLR0912",
         "check_parity",
         "Too many branches (count > 12)",
+        ""
+      ],
+      "limits": [
+        17
+      ]
+    },
+    {
+      "key": [
+        "scripts/validation/workbench_e2e.py",
+        "PLR0914",
+        "check_parity",
+        "Too many local variables (count > 15)",
         ""
       ],
       "limits": [

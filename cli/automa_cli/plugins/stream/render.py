@@ -141,9 +141,8 @@ def _live_memory_screen(*, host_name: str, live: dict[str, Any]) -> str:
         lines.append(f"Evidence publisher: {live.get('evidence_publisher') or 'none'}")
         if live.get("last_duration_ms") is not None:
             lines.append(f"Last duration: {live.get('last_duration_ms')} ms")
-    else:
-        if live.get("error"):
-            lines.append(f"Detail: {live.get('error')}")
+    elif live.get("error"):
+        lines.append(f"Detail: {live.get('error')}")
     return "\n".join(lines)
 
 

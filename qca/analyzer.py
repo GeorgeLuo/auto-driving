@@ -943,7 +943,7 @@ def classify_source(path: str, text: str, config: AnalyzerConfig | None = None) 
         if PurePosixPath(lower).suffix in {".py", ".sh", ".ps1"}:
             return "tooling/scripts"
         return "generated/runtime"
-    if lower.startswith("docs/") or lower.startswith("documentation/"):
+    if lower.startswith(("docs/", "documentation/")):
         return "docs/configuration"
     if PurePosixPath(lower).suffix in {
         ".md",

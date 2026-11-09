@@ -224,7 +224,7 @@ def _safety_guard(expression: ast.expr) -> bool:
     if ast.dump(guard) == ast.dump(check):
         return False
     return subject is not None and any(
-        value == subject or value.startswith(subject + ".") or value.startswith(subject + "[")
+        value == subject or value.startswith((subject + ".", subject + "["))
         for value in _subjects(check)
     )
 

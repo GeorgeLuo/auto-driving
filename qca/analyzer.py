@@ -28,7 +28,7 @@ from .factors import FACTOR_VERSION, compare_factors, measure_factors
 from .indicators.source_classification import is_test_source
 
 
-ANALYZER_VERSION = "0.3.14"
+ANALYZER_VERSION = "0.3.15"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -1366,26 +1366,24 @@ def _derive_diff(
     head_inventory: list[SourceFile],
     file_diffs: list[DiffFile],
 ) -> DiffMetrics:
-    base_by_path = {item.path: item for item in base_inventory}
-    head_by_path = {item.path: item for item in head_inventory}
-    base_classes = {path: item.source_class for path, item in base_by_path.items()}
-    head_classes = {path: item.source_class for path, item in head_by_path.items()}
+    source_by_path = {item.path: item for item in (*base_inventory, *head_inventory)}
     by_class = {source_class: {"added_lines": 0, "deleted_lines": 0, "files": 0} for source_class in SOURCE_CLASSES}
     included_changed_files: list[str] = []
     included_added_lines = 0
     included_deleted_lines = 0
     file_changes: list[dict[str, Any]] = []
+    changed_non_python: list[dict[str, str]] = []
     for file_diff in file_diffs:
-        source_class = head_classes.get(file_diff.path, base_classes.get(file_diff.path, "unknown"))
+        source_file = source_by_path.get(file_diff.path)
+        source_class = source_file.source_class if source_file is not None else "unknown"
         bucket = by_class.setdefault(source_class, {"added_lines": 0, "deleted_lines": 0, "files": 0})
         bucket["added_lines"] += file_diff.added_lines
         bucket["deleted_lines"] += file_diff.deleted_lines
         bucket["files"] += 1
-        source_file = head_by_path.get(file_diff.path) or base_by_path.get(file_diff.path)
         file_changes.append(
             {
                 "path": file_diff.path,
-                "source_class": source_file.source_class if source_file is not None else "unknown",
+                "source_class": source_class,
                 "language": source_file.language if source_file is not None else "other",
                 "included": source_file.included if source_file is not None else False,
                 "added_lines": file_diff.added_lines,
@@ -1396,6 +1394,12 @@ def _derive_diff(
             included_changed_files.append(file_diff.path)
             included_added_lines += file_diff.added_lines
             included_deleted_lines += file_diff.deleted_lines
+        if source_file is not None and source_file.language != "python":
+            changed_non_python.append({
+                "path": file_diff.path,
+                "language": source_file.language,
+                "source_class": source_class,
+            })
     changed_callables = _changed_callables(base.callables, head.callables, file_diffs)
     base_edges = set(base.import_edges)
     head_edges = set(head.import_edges)
@@ -1411,20 +1415,8 @@ def _derive_diff(
         public_symbols_added=public_symbols_added,
         public_symbols_removed=public_symbols_removed,
         syntax_errors=head.syntax_errors,
-        source_by_path={
-            path: item.source_class
-            for path, item in {**base_by_path, **head_by_path}.items()
-        },
-        changed_non_python=[
-            {
-                "path": file_diff.path,
-                "language": source_file.language,
-                "source_class": source_file.source_class,
-            }
-            for file_diff in file_diffs
-            if (source_file := (head_by_path.get(file_diff.path) or base_by_path.get(file_diff.path)))
-            and source_file.language != "python"
-        ],
+        source_by_path={path: item.source_class for path, item in source_by_path.items()},
+        changed_non_python=changed_non_python,
     )
     added = sum(item.added_lines for item in file_diffs)
     deleted = sum(item.deleted_lines for item in file_diffs)

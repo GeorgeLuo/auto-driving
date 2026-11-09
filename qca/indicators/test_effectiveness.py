@@ -26,7 +26,7 @@ from .source_classification import is_test_source
 
 FACTOR = "test_effectiveness"
 INDICATOR_ID = "verification.test_effectiveness"
-INDICATOR_VERSION = "2"
+INDICATOR_VERSION = "3"
 
 DETECTOR_IDS = {
     "literal_assertion": f"{INDICATOR_ID}.literal_assertion",
@@ -312,7 +312,7 @@ def _test_effectiveness_factor(
                         node=node,
                         text=text,
                         reason=(
-                            "Private production import in a test; inspect whether the test can use a public entrypoint."
+                            "Private import in a test; inspect its target and whether a public entrypoint would be more appropriate."
                         ),
                     )
                 continue
@@ -330,7 +330,7 @@ def _test_effectiveness_factor(
                     node=node,
                     text=text,
                     reason=(
-                        "Private production helper called from a test; inspect whether a public entrypoint covers the behavior."
+                        "Private helper called from a test; inspect its target and whether a public entrypoint covers the behavior."
                     ),
                 )
             candidate_kind = assertion_candidate_kind(node, readbacks)
@@ -389,7 +389,7 @@ def _test_effectiveness_factor(
     candidate_count = literal_count + tautological_count + readback_count + string_expected_count
     limitations = [
         "Literal, same-operand, string-expected, and formatted-literal assertions are candidates for review, not a judgment that a test is ineffective.",
-        "Private production imports and helper calls are candidates; same-module test helpers are omitted; numeric expected values alone are not candidates.",
+        "Private production imports and helper calls are candidates, but import and call targets are not resolved; same-module test helpers are omitted; numeric expected values alone are not candidates.",
         "Assignment readbacks track scalar literals in straight-line test function bodies only; calls, control flow, and uncertain mutations end tracking. No alias, constructor, subscript, or interprocedural inference is performed; attribute access may exercise meaningful descriptors.",
         "Static inspection does not infer input variation, mocks, explicit state setup, or the behavior under test.",
     ]
@@ -597,9 +597,13 @@ def _enrich_finding(
         related_nodes=related_nodes,
         pattern={"candidate_kind": candidate_kind},
         uncertainty=["static_candidate"],
-        inspection_question=(
-            "Inspect assertion intent and input variation before drawing a conclusion."
-        ),
+        inspection_question={
+            "private_import": "Does this import expose a production private API that the test should exercise through a public entrypoint?",
+            "private_helper_call": "Does this call exercise a production private helper where a public entrypoint would be more appropriate?",
+            "assignment_readback": "Does this assertion verify behavior beyond reading back an assigned value?",
+            "string_expected_assertion": "Does this string assertion check a meaningful contract without unnecessary coupling to exact text?",
+            "formatted_literal_assertion": "Does this formatted string assertion check a meaningful output contract without unnecessary coupling to presentation?",
+        }.get(candidate_kind, "Does this assertion meaningfully verify behavior across relevant inputs?"),
     )
 
 

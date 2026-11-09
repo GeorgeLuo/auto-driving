@@ -155,8 +155,10 @@ class IndicatorRegistryTests(unittest.TestCase):
         for indicator_id, spec in INDICATOR_REGISTRY.items():
             self.assertIsInstance(spec, IndicatorSpec)
             self.assertEqual(spec.id, indicator_id)
-            tuned = ("structure.functionality", "verification.test_effectiveness")
-            self.assertEqual(spec.version, "2" if indicator_id.startswith(tuned) else "1")
+            if indicator_id.startswith("verification.test_effectiveness"):
+                self.assertEqual(spec.version, "3")
+            else:
+                self.assertEqual(spec.version, "2" if indicator_id.startswith("structure.functionality") else "1")
 
 
 if __name__ == "__main__":

@@ -5,6 +5,9 @@ It is intentionally Python-first and standard-library-only.  It does not
 assign a quality score, change proposal workflow state, or create a blocking
 check.
 
+Analyzer `0.3.15` gives test assertions, private imports, and private helper calls
+distinct review questions. Private call and import targets are not resolved.
+
 Analyzer `0.3.14` uses test declarations or test-framework imports to distinguish
 standalone test files from production modules whose names start with `test_`.
 Files in test directories remain tests, and an unparseable conventionally named

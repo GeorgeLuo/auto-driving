@@ -114,12 +114,35 @@ class VerificationIndicatorTests(unittest.TestCase):
         self.assertEqual(factor["metrics"]["parse_error_count"], 0)
         self.assertEqual(candidate["indicator"], {
             "id": "verification.test_effectiveness.assignment_readback",
-            "version": "2",
+            "version": "3",
         })
         self.assertEqual(candidate["evidence"]["revision"], "head-ref")
         self.assertEqual(candidate["evidence"]["primary"]["code"], "assert value == 3")
         self.assertEqual(candidate["evidence"]["related"][0]["code"], "value: int = 3")
         self.assertEqual(lifecycle.analyze(context)["metrics"]["parse_error_count"], 1)
+
+    def test_review_questions_match_private_calls_imports_and_assertions(self) -> None:
+        context = AnalysisContext.from_sources({
+            "tests/test_sample.py": (
+                "from package import _private\n"
+                "def test_sample(fixture):\n"
+                "    fixture._prepare()\n"
+                "    value = 1\n"
+                "    assert value == 1\n"
+                "    self.assertEqual(result, 'ready')\n"
+                "    self.assertIn('| report |', output)\n"
+            ),
+        })
+        findings = test_effectiveness.analyze(context)["findings"]
+        questions = {item["kind"]: item["evidence"]["inspection_question"] for item in findings}
+        self.assertIn("import", questions["private_import"].lower())
+        self.assertIn("call", questions["private_helper_call"].lower())
+        self.assertIn("assertion", questions["assignment_readback"].lower())
+        self.assertIn("exact text", questions["string_expected_assertion"])
+        self.assertIn("presentation", questions["formatted_literal_assertion"])
+        for item in findings:
+            if item["kind"] in {"private_import", "private_helper_call"}:
+                self.assertIn("inspect its target", item["reason"])
 
     def test_lifecycle_sites_use_exact_nodes_and_bounded_details(self) -> None:
         source = "def start():\n    pass\nstart()\n"

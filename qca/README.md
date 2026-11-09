@@ -37,7 +37,7 @@ findings = evaluate("if a and b and c:\n    pass\n", [python_patterns])
 
 `scripts.validation.text_evaluators.ruff_python` is an external-engine adapter
 that evaluates supplied Python text with a fixed Ruff rule selection; it can be
-passed to the same entry point. Project-wide type, import, baseline and diff
+passed to the same entry point. Project-wide type, import and diff
 checks need their own repository-aware inputs; the quality command runs those
 adapters and normalizes their findings into the same record shape. A finding is
 an inspection question, not a judgment that a real problem exists.

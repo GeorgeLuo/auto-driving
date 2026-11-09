@@ -3,114 +3,48 @@
 from __future__ import annotations
 
 import argparse
-import ast
 import json
 import os
 import re
 import subprocess
 import sys
 import tempfile
-from collections import defaultdict
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, TypedDict
 
 from qca.evaluation import evaluate
 from scripts.validation import findings as output_findings
 from scripts.validation.text_evaluators import retired_vocabulary
 
 ROOT = Path(__file__).resolve().parents[2]
-RUFF_BASELINE = ROOT / ".ruff-baseline.json"
 PATHS = ("autonomy", "cli", "implementations", "deploy", "qca", "scripts/validation", "tests")
-METRIC = re.compile(r"\((\d+) > (\d+)\)")
-METRIC_RULES = {"C901", "PLR0912", "PLR0914", "PLR0915", "PLR0916", "PLR0917", "PLR1702"}
+
+def changed_lines() -> dict[str, set[int] | None]:
+    """Find added/edited lines in the current tree relative to the PR base."""
+    base = os.environ.get("PR_BASE") or os.environ.get("QUALITY_BASE") or "origin/main"
+    head = os.environ.get("PR_HEAD") or "HEAD"
+    merge_base = subprocess.check_output(["git", "merge-base", base, head], cwd=ROOT, text=True).strip()
+    names = subprocess.check_output(["git", "diff", "--name-only", "-z", "--no-renames", merge_base, "--"], cwd=ROOT)
+    untracked = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard", "-z"], cwd=ROOT)
+    changed = {path.decode(): None for path in untracked.split(b"\0") if path}
+    for raw in names.split(b"\0"):
+        if not raw:
+            continue
+        path = raw.decode()
+        diff = subprocess.check_output(["git", "diff", "--no-ext-diff", "--unified=0", merge_base, "--", path],
+                                       cwd=ROOT, text=True)
+        lines = set()
+        for match in re.finditer(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@", diff, re.MULTILINE):
+            start, count = int(match[1]), int(match[2] or "1")
+            lines.update(range(start, start + count))
+        changed[path] = lines
+    return changed
 
 
-class Location(TypedDict):
-    row: int
-    column: int
+def is_changed(path: str, line: int, changed: dict[str, set[int] | None]) -> bool:
+    return path in changed and (changed[path] is None or line in changed[path])
 
 
-class RuffDiagnostic(TypedDict):
-    filename: str
-    code: str
-    message: str
-    location: Location
-
-
-class BaselineEntry(TypedDict):
-    key: list[str]
-    limits: list[int]
-
-
-@dataclass(frozen=True)
-class Finding:
-    key: tuple[str, ...]
-    magnitude: int
-    diagnostic: RuffDiagnostic
-
-
-def scopes(source: str) -> list[tuple[int, int, str]]:
-    """Locate diagnostics by their owning symbol, independent of line shifts."""
-    found: list[tuple[int, int, str]] = []
-
-    def visit(node: ast.AST, parent: str) -> None:
-        if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-            parent = f"{parent}.{node.name}" if parent else node.name
-            found.append((node.lineno, node.end_lineno or node.lineno, parent))
-        for child in ast.iter_child_nodes(node):
-            visit(child, parent)
-
-    try:
-        visit(ast.parse(source), "")
-    except SyntaxError:
-        pass  # Ruff's syntax diagnostic still fails the check.
-    return found
-
-
-def findings(diagnostics: list[RuffDiagnostic], root: Path) -> list[Finding]:
-    sources = {item["filename"]: Path(item["filename"]).read_text(encoding="utf-8") for item in diagnostics}
-    owners = {path: scopes(source) for path, source in sources.items()}
-    result = []
-    for item in diagnostics:
-        path, line = item["filename"], item["location"]["row"]
-        containing = [name for start, end, name in owners[path] if start <= line <= end]
-        owner = containing[-1] if containing else "<module>"
-        message = item["message"]
-        metric = METRIC.search(message) if item["code"] in METRIC_RULES else None
-        magnitude = int(metric[1]) if metric else 0
-        # A smaller still-over-limit function is an improvement, not a new error.
-        message = METRIC.sub(r"(count > \2)", message) if metric else message
-        source = "" if metric else "".join(sources[path].splitlines()[line - 1:line]).strip()
-        key = (Path(path).resolve().relative_to(root.resolve()).as_posix(), item["code"], owner, message, source)
-        result.append(Finding(key, magnitude, item))
-    return result
-
-
-def baseline_entries(items: list[Finding]) -> list[BaselineEntry]:
-    grouped: dict[tuple[str, ...], list[int]] = defaultdict(list)
-    for item in items:
-        grouped[item.key].append(item.magnitude)
-    return [{"key": list(key), "limits": sorted(values)} for key, values in sorted(grouped.items())]
-
-
-def compare_baseline(items: list[Finding], entries: list[BaselineEntry]) -> tuple[list[Finding], list[BaselineEntry]]:
-    """Return new findings and only the debt still present, at its current size."""
-    remaining = {tuple(entry["key"]): sorted(entry["limits"]) for entry in entries}
-    added = []
-    retained = []
-    for item in sorted(items, key=lambda item: item.magnitude):
-        limits = remaining.get(item.key, [])
-        index = next((i for i, limit in enumerate(limits) if limit >= item.magnitude), None)
-        if index is None:
-            added.append(item)
-        else:
-            limits.pop(index)
-            retained.append(item)
-    return added, baseline_entries(retained)
-
-
-def ruff_findings() -> list[Finding]:
+def ruff_findings() -> list[dict]:
     completed = subprocess.run(
         [sys.executable, "-m", "ruff", "check", "--no-cache", "--output-format", "json", *PATHS],
         cwd=ROOT, capture_output=True, text=True, check=False,
@@ -121,45 +55,19 @@ def ruff_findings() -> list[Finding]:
     for diagnostic in diagnostics:
         if diagnostic["code"] is None:
             diagnostic["code"] = "invalid-syntax"
-    return findings(diagnostics, ROOT)
+    return diagnostics
 
 
-def write_entries(entries: list[BaselineEntry]) -> None:
-    RUFF_BASELINE.write_text(
-        json.dumps({"version": 1, "entries": entries}, indent=2) + "\n", encoding="utf-8",
-    )
-
-
-def check_ruff(*, baseline_action: Literal["check", "write", "prune"] = "check",
-               records: list | None = None) -> int:
-    items = ruff_findings()
-    if baseline_action != "check":
-        if any(item.diagnostic["code"] == "invalid-syntax" for item in items):
-            raise ValueError("Repair syntax errors before recording a baseline")
-    if baseline_action == "write":
-        write_entries(baseline_entries(items))
-        print(f"Recorded {len(items)} Ruff diagnostics in {RUFF_BASELINE.name}.")
-        return 0
-    baseline = json.loads(RUFF_BASELINE.read_text(encoding="utf-8"))
-    if baseline["version"] != 1:
-        raise ValueError("Unsupported Ruff baseline version")
-    entries: list[BaselineEntry] = baseline["entries"]
-    added, retained = compare_baseline(items, entries)
-    if records is not None:
-        records.extend(output_findings.ruff_records(items, added))
-    stale = retained != entries
-    if baseline_action == "prune":
-        write_entries(retained)
-        stale = False
-        print("Pruned resolved Ruff debt and lowered improved metric limits; no new debt accepted.")
-    elif stale:
-        print("Ruff baseline has resolved debt or improved limits. Run "
-              "python3 -m scripts.validation.check --prune-ruff-baseline and commit the reductions.")
-    for item in added:
-        location = item.diagnostic["location"]
-        print(f"{item.key[0]}:{location['row']}:{location['column']}: {item.key[1]} {item.diagnostic['message']}")
-    print(f"Ruff: {len(added)} new or worsened diagnostics; {len(items) - len(added)} baselined.", flush=True)
-    return int(bool(added) or stale)
+def check_ruff(changed: dict[str, set[int] | None], records: list) -> int:
+    items = []
+    for item in ruff_findings():
+        path = Path(item["filename"]).resolve().relative_to(ROOT.resolve()).as_posix()
+        if is_changed(path, item["location"]["row"], changed) or (item["code"] == "invalid-syntax" and path in changed):
+            items.append(item)
+            print(f"{path}:{item['location']['row']}:{item['location']['column']}: {item['code']} {item['message']}")
+    records.extend(output_findings.ruff_records(items, ROOT))
+    print(f"Ruff: {len(items)} diagnostics on changed lines.", flush=True)
+    return int(bool(items))
 
 
 def check_imports(records: list | None = None) -> int:
@@ -176,7 +84,7 @@ def check_imports(records: list | None = None) -> int:
         return result.returncode
 
 
-def check_types(records: list) -> int:
+def check_types(changed: dict[str, set[int] | None], records: list) -> int:
     completed = subprocess.run(
         [sys.executable, "-m", "basedpyright", "--pythonpath", sys.executable, "--outputjson"],
         cwd=ROOT, capture_output=True, text=True, check=False,
@@ -184,11 +92,15 @@ def check_types(records: list) -> int:
     if completed.returncode not in (0, 1):
         raise ValueError(completed.stderr or completed.stdout or "Type check failed")
     payload = json.loads(completed.stdout)
-    records.extend(output_findings.type_records(payload["generalDiagnostics"], ROOT))
-    for item in payload["generalDiagnostics"]:
+    items = [item for item in payload["generalDiagnostics"]
+             if is_changed(Path(item["file"]).resolve().relative_to(ROOT.resolve()).as_posix(),
+                           item["range"]["start"]["line"] + 1, changed)]
+    records.extend(output_findings.type_records(items, ROOT))
+    for item in items:
         print(f"{item['file']}:{item['range']['start']['line'] + 1}: {item['message']}")
-    print(f"Type check: {payload['summary']['errorCount']} errors.")
-    return completed.returncode
+    errors = sum(item["severity"] == "error" for item in items)
+    print(f"Type check: {errors} errors on changed lines.")
+    return int(bool(errors))
 
 
 def check_vocabulary(records: list) -> int:
@@ -234,27 +146,22 @@ def inspect_changes(output: Path, records: list) -> list[str]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--ruff-only", action="store_true", help="Run the fast lint checks only.")
-    baseline = parser.add_mutually_exclusive_group()
-    baseline.add_argument("--write-ruff-baseline", dest="baseline_action", action="store_const", const="write",
-                          help="Explicitly accept current Ruff debt; review the resulting diff.")
-    baseline.add_argument("--prune-ruff-baseline", dest="baseline_action", action="store_const", const="prune",
-                          help="Remove resolved debt and lower limits without accepting new findings.")
     parser.add_argument("--output", type=Path, help="Write quality findings and PR inspection evidence here.")
-    parser.set_defaults(baseline_action="check")
     args = parser.parse_args(argv)
     records: list = []
     errors = []
     try:
-        lint_status = check_ruff(baseline_action=args.baseline_action, records=records)
-        if args.ruff_only or args.baseline_action != "check":
+        changed = changed_lines()
+        lint_status = check_ruff(changed, records)
+        if args.ruff_only:
             return lint_status
         import_status = check_imports(records)
-        type_status = check_types(records)
+        type_status = check_types(changed, records)
         vocabulary_status = check_vocabulary(records)
         if args.output:
             errors.extend(inspect_changes(args.output, records))
         return max(lint_status, import_status, type_status, vocabulary_status)
-    except (OSError, ValueError, KeyError) as exc:
+    except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as exc:
         print(f"Quality check failed: {exc}", file=sys.stderr)
         return 2
     finally:

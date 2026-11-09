@@ -23,6 +23,7 @@ jobs:
       PYTHONDONTWRITEBYTECODE: "1"
       PR_BASE: ${{ github.event.pull_request.base.sha }}
       PR_HEAD: ${{ github.event.pull_request.head.sha }}
+      QUALITY_BASE: ${{ github.event.before }}
     steps:
       - uses: actions/checkout@v7
         with:

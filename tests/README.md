@@ -72,7 +72,7 @@ Install `requirements-test.txt` (which includes the quality tools), or install
 job on PRs and main. `--ruff-only` skips type and import-contract checking for a faster editing loop;
 the full command is required before pushing.
 The configuration in `pyproject.toml` also works with Ruff and basedpyright editor
-integrations; an editor's Ruff diagnostics include existing baselined findings.
+integrations; an editor's Ruff diagnostics may include unchanged findings.
 
 The checks cover `autonomy/`, `cli/`, `implementations/`, `qca/`, and
 `scripts/validation/`. Ruff also covers maintained Python under `deploy/` (excluding
@@ -110,7 +110,7 @@ against the contracts in `pyproject.toml`. Autonomy cannot depend on implementat
 or CLI, implementations cannot depend on CLI, shared step code cannot depend on
 concrete plugins or hosts, and plugin packages cannot form dependency cycles.
 Forbidden dependencies include indirect paths, relative imports, and type-only
-imports. These contracts have no baseline exceptions. Deliberate one-way plugin
+imports. Deliberate one-way plugin
 specialization remains allowed; general reusable behavior belongs in shared code.
 The graph checks static imports, not dynamic imports or semantic ownership.
 Use `lint-imports --no-cache --no-logo` to run only these checks.
@@ -118,29 +118,13 @@ Use `lint-imports --no-cache --no-logo` to run only these checks.
 The CLI architecture tests also reject file reads in modules declared pure,
 models, or rendering, using the same convention as their existing write checks.
 
-Existing debt is recorded explicitly. Ruff matches each diagnostic by file,
-owning symbol, message, and source text, independent of line numbers. Its metric
-limits allow an existing large function to improve while still above a threshold;
-an increase fails. Resolved entries and lowered limits must be committed with
-the improvement, so old allowances cannot be reused later. The gate reports a
-stale baseline and fails until these reductions are recorded:
-
-```sh
-python3 -m scripts.validation.check --prune-ruff-baseline
-```
-
-Pruning can only remove debt or lower limits; it still fails on new findings and
-refuses to change the baseline when syntax is invalid. Normal Ruff checks do not
-write files. Moving code to another symbol may require review of the baseline.
-basedpyright uses its native baseline and removes resolved entries automatically.
-Commit those reductions with the repair.
-
-To intentionally accept existing debt when changing rules, run
-`python3 -m scripts.validation.check --write-ruff-baseline` and
-`python3 -m basedpyright --writebaseline`, then review the baseline diffs. These
-are maintenance commands, not steps in the normal check. Do not refresh a baseline
-to silence a new defect. Keep necessary validation at external boundaries; a
-targeted rule suppression should explain why the runtime check is still needed.
+Ruff and basedpyright report diagnostics on added or edited lines relative to the
+merge base. On `main`, CI uses the previous push revision; local runs default to
+`origin/main`. This avoids emitting existing debt without retaining scan records.
+A diagnostic attached to an unchanged line can be missed even if a change causes
+it; QCA's change inspection provides additional review leads, not a guarantee.
+Keep necessary validation at external boundaries; a targeted rule suppression
+should explain why the runtime check is still needed.
 
 The quality command also runs QCA on each PR using its merge base and head. Its summary
 highlights growing functions, conditional/clone candidates involving changed
@@ -151,7 +135,7 @@ artifact record failures. The `quality-findings` artifact includes full JSON and
 HTML evidence and `findings.json`, whose records share a type, location,
 question, source, status, related locations, and evidence. The artifact includes
 the revision once at the top level. Status distinguishes blocking diagnostics,
-accepted baseline entries, and informational review candidates. Findings are
+and informational review candidates. Findings are
 questions for review, not labels that establish real problems. To reproduce the
 full CI quality process locally against committed revisions:
 

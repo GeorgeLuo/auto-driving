@@ -59,11 +59,10 @@ python3 -m scripts.validation.check
 
 Use `--ruff-only` for the fast lint pass while editing. Ruff checks maintained
 Python code and tests; basedpyright checks production code and analysis tooling.
-Existing findings are recorded in `.ruff-baseline.json` and
-`.basedpyright/baseline.json`; new findings fail the check. Ruff also rejects
-increased complexity at a baselined function. See [the validation guide](tests/README.md#python-quality-checks)
-for baseline maintenance. Every PR also receives a non-blocking QCA inspection
-summary and a downloadable report in GitHub Actions.
+Ruff and basedpyright report diagnostics on changed lines. See [the validation
+guide](tests/README.md#python-quality-checks) for the scope and limitations.
+Every PR also receives a non-blocking QCA inspection summary and a downloadable
+report in GitHub Actions.
 
 Include the live smoke test against the Chase simulator at `CHASE_UI_WS_URL`, or check a powered-on Pi without moving it. Both commands run the systems suite:
 

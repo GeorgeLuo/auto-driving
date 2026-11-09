@@ -4,7 +4,6 @@ import contextlib
 import io
 import json
 import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,15 +18,26 @@ from qca.text_evaluators import python_patterns
 ROOT = Path(__file__).resolve().parents[3]
 
 
-def branching_function(branches: int) -> str:
-    return (
-        "def choose(value: int) -> int:\n"
-        + "".join(f"    if value == {i}:\n        return {i}\n" for i in range(branches))
-        + "    return -1\n"
-    )
-
-
 class QualityCommandTests(unittest.TestCase):
+    def test_changed_lines_uses_git_diff_and_includes_untracked_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            def git(*args):
+                return subprocess.check_output(["git", "-C", str(root), *args], text=True).strip()
+            git("init", "-q")
+            git("config", "user.name", "Quality Test")
+            git("config", "user.email", "quality@example.test")
+            source = root / "module.py"
+            source.write_text("first\nsecond\nthird\n")
+            git("add", "module.py")
+            git("commit", "-qm", "base")
+            source.write_text("first\nchanged\nthird\n")
+            (root / "new.py").write_text("new\n")
+            with patch.object(check, "ROOT", root), patch.dict("os.environ", {"PR_BASE": "HEAD", "PR_HEAD": "HEAD"}):
+                changes = check.changed_lines()
+            self.assertEqual(changes["module.py"], {2})
+            self.assertIsNone(changes["new.py"])
+
     def test_external_engine_evaluates_text_without_a_repository(self) -> None:
         text = "def run(a, b, c):\n    if a and b and c:\n        return missing\n"
         with tempfile.TemporaryDirectory() as directory, contextlib.chdir(directory):
@@ -44,7 +54,6 @@ class QualityCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()) as output:
             root = Path(directory)
             (root / "pyproject.toml").write_text((ROOT / "pyproject.toml").read_text())
-            (root / "baseline.json").write_text('{"version": 1, "entries": []}')
             for name in check.PATHS:
                 (root / name).mkdir(parents=True, exist_ok=True)
             app = root / "deploy/targets/donkeycar/app"
@@ -54,7 +63,7 @@ class QualityCommandTests(unittest.TestCase):
             (app / "manage.py").write_text("def drive():\n    return 0\n")
             (vendor / "generated.py").write_text("invalid python(\n")
             # Keep the actual configured roots: overriding PATHS would hide a scope regression.
-            with patch.multiple(check, ROOT=root, RUFF_BASELINE=root / "baseline.json"):
+            with patch.multiple(check, ROOT=root), patch.object(check, "changed_lines", return_value={"deploy/targets/donkeycar/app/manage.py": None}):
                 self.assertEqual(check.main(["--ruff-only"]), 0)
                 (app / "manage.py").write_text("def drive():\n    return undefined_name\n")
                 self.assertEqual(check.main(["--ruff-only"]), 1)
@@ -72,38 +81,10 @@ class QualityCommandTests(unittest.TestCase):
             (generated / "artifact.py").write_text("missing_generated_name\n")
             source = production / "host.py"
             source.write_text("def run(value):\n    return value\n")
-            with patch.multiple(check, ROOT=root, RUFF_BASELINE=root / "baseline.json", PATHS=(".",)):
-                self.assertEqual(check.main(["--write-ruff-baseline"]), 0)
-                self.assertEqual(json.loads((root / "baseline.json").read_text())["entries"], [])
+            with patch.multiple(check, ROOT=root, PATHS=(".",)), patch.object(check, "changed_lines", return_value={"module.py": None, "autonomy/runtime/host.py": None}):
+                self.assertEqual(check.main(["--ruff-only"]), 0)
                 source.write_text("def run(value):\n    return 1\n")
                 self.assertEqual(check.main(["--ruff-only"]), 1)
-
-    def test_ruff_requires_preserving_improvements_and_fails_regressions(self) -> None:
-        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
-            root = Path(directory)
-            (root / "pyproject.toml").write_text((ROOT / "pyproject.toml").read_text())
-            source = root / "module.py"
-            source.write_text(branching_function(12))
-            with patch.multiple(check, ROOT=root, RUFF_BASELINE=root / "baseline.json", PATHS=(".",)):
-                self.assertEqual(check.main(["--write-ruff-baseline"]), 0)
-                self.assertEqual(check.main(["--ruff-only"]), 0)
-                source.write_text("\n\n" + branching_function(11))
-                self.assertEqual(check.main(["--ruff-only"]), 1)
-                self.assertEqual(check.main(["--prune-ruff-baseline"]), 0)
-                self.assertEqual(check.main(["--ruff-only"]), 0)
-                source.write_text(branching_function(12))
-                self.assertEqual(check.main(["--ruff-only"]), 1)
-                source.write_text(branching_function(13))
-                self.assertEqual(check.main(["--ruff-only"]), 1)
-                source.write_text(branching_function(12) + "\ndef broken():\n    return missing\n")
-                self.assertEqual(check.main(["--ruff-only"]), 1)
-                self.assertEqual(check.main(["--prune-ruff-baseline"]), 1)
-                self.assertEqual(check.main(["--ruff-only"]), 1)
-                baseline = (root / "baseline.json").read_bytes()
-                source.write_text("def broken(\n")
-                self.assertNotEqual(check.main(["--ruff-only"]), 0)
-                self.assertNotEqual(check.main(["--prune-ruff-baseline"]), 0)
-                self.assertEqual((root / "baseline.json").read_bytes(), baseline)
 
     def test_readability_rules_fail_new_code_and_allow_named_parameters_and_flat_flow(self) -> None:
         many_locals = (
@@ -125,9 +106,8 @@ class QualityCommandTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "pyproject.toml").write_text((ROOT / "pyproject.toml").read_text())
-            (root / "baseline.json").write_text('{"version": 1, "entries": []}')
             source = root / "module.py"
-            with patch.multiple(check, ROOT=root, RUFF_BASELINE=root / "baseline.json", PATHS=(".",)):
+            with patch.multiple(check, ROOT=root, PATHS=(".",)), patch.object(check, "changed_lines", return_value={"module.py": None, "autonomy/runtime/host.py": None}):
                 for rule, code in cases.items():
                     with self.subTest(rule=rule), contextlib.redirect_stdout(io.StringIO()) as output:
                         source.write_text(code)
@@ -140,52 +120,44 @@ class QualityCommandTests(unittest.TestCase):
                 with contextlib.redirect_stdout(io.StringIO()):
                     self.assertEqual(check.main(["--ruff-only"]), 0)
 
-    def test_quality_artifact_records_blocking_and_baselined_findings(self) -> None:
+    def test_artifact_includes_only_findings_on_changed_lines(self) -> None:
         with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
             root = Path(directory)
             (root / "pyproject.toml").write_text((ROOT / "pyproject.toml").read_text())
-            source = root / "module.py"
-            source.write_text("def old():\n    return missing\n")
-            with patch.multiple(check, ROOT=root, RUFF_BASELINE=root / "baseline.json", PATHS=(".",)):
-                self.assertEqual(check.main(["--write-ruff-baseline"]), 0)
-                source.write_text("def old():\n    return missing\n\ndef new():\n    return other\n")
+            (root / "module.py").write_text("def old():\n    return missing\n\ndef new():\n    return other\n")
+            with patch.multiple(check, ROOT=root, PATHS=(".",)), patch.object(check, "changed_lines", return_value={"module.py": {5}}):
                 self.assertEqual(check.main(["--ruff-only", "--output", str(root / "out")]), 1)
             artifact = json.loads((root / "out/findings.json").read_text())
-            found = {item["location"]["symbol"]: item for item in artifact["findings"]}
-            self.assertEqual(found["old"]["status"], "baselined")
-            self.assertEqual(found["new"]["status"], "blocking")
-            self.assertEqual(found["new"]["type"], "ruff.F821")
-            self.assertEqual(found["new"]["location"]["line"], 5)
-            self.assertTrue(found["new"]["question"])
+            self.assertEqual(len(artifact["findings"]), 1)
+            item = artifact["findings"][0]
+            self.assertEqual((item["type"], item["location"]["line"]), ("ruff.F821", 5))
+            self.assertEqual(item["status"], "blocking")
 
-    def test_type_baseline_does_not_hide_new_any_or_redundant_checks(self) -> None:
+    def test_syntax_error_at_eof_is_reported_for_changed_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory, contextlib.redirect_stdout(io.StringIO()):
+            root = Path(directory)
+            (root / "pyproject.toml").write_text((ROOT / "pyproject.toml").read_text())
+            (root / "module.py").write_text("def broken(\n")
+            records = []
+            with patch.multiple(check, ROOT=root, PATHS=(".",)):
+                self.assertEqual(check.check_ruff({"module.py": {1}}, records), 1)
+            self.assertEqual(records[0]["type"], "ruff.invalid-syntax")
+
+    def test_type_findings_are_filtered_to_changed_lines(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "pyrightconfig.json").write_text(json.dumps({
-                "include": ["module.py"], "typeCheckingMode": "basic",
-                "reportExplicitAny": "error", "reportUnnecessaryIsInstance": "error",
+                "include": ["module.py"], "typeCheckingMode": "basic", "reportExplicitAny": "error",
             }))
-            source = root / "module.py"
-            original = "from typing import Any\n\ndef old(value: Any) -> None:\n    pass\n"
-            source.write_text(original)
-            command = [sys.executable, "-m", "basedpyright", "--pythonpath", sys.executable]
-            accepted = subprocess.run([*command, "--writebaseline"], cwd=root, capture_output=True, text=True)
-            self.assertEqual(accepted.returncode, 1, accepted.stdout + accepted.stderr)
-            self.assertTrue((root / ".basedpyright/baseline.json").is_file())
-            clean = subprocess.run(command, cwd=root, capture_output=True, text=True)
-            self.assertEqual(clean.returncode, 0, clean.stdout + clean.stderr)
-            source.write_text(original + "\ndef new(value: Any, count: int) -> bool:\n    return isinstance(count, int)\n")
-            changed = subprocess.run(command, cwd=root, capture_output=True, text=True)
-            self.assertEqual(changed.returncode, 1, changed.stdout + changed.stderr)
-            self.assertIn("reportExplicitAny", changed.stdout)
-            self.assertIn("reportUnnecessaryIsInstance", changed.stdout)
+            (root / "module.py").write_text(
+                "from typing import Any\n\ndef old(value: Any) -> None:\n    pass\n\ndef new(value: Any) -> None:\n    pass\n"
+            )
             records = []
             with patch.object(check, "ROOT", root), contextlib.redirect_stdout(io.StringIO()):
-                self.assertEqual(check.check_types(records), 1)
-            any_finding = next(item for item in records if item["type"] == "type.reportExplicitAny")
-            self.assertEqual(any_finding["location"]["path"], "module.py")
-            self.assertEqual(any_finding["location"]["line"], 6)
-            self.assertEqual(any_finding["status"], "blocking")
+                self.assertEqual(check.check_types({"module.py": {6}}, records), 1)
+            self.assertEqual(len(records), 1)
+            self.assertEqual(records[0]["location"], {"path": "module.py", "line": 6})
+            self.assertEqual(records[0]["type"], "type.reportExplicitAny")
 
 
 if __name__ == "__main__":

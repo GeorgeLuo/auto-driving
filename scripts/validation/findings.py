@@ -7,14 +7,13 @@ from pathlib import Path
 from qca.evaluation import finding
 
 
-def ruff_records(items: list, added: list) -> list[dict]:
-    new_ids = {id(item) for item in added}
+def ruff_records(items: list, root: Path) -> list[dict]:
     return [finding(
-        "ruff." + item.diagnostic["code"],
-        {"path": item.key[0], "line": item.diagnostic["location"]["row"], "symbol": item.key[2]},
-        "Does this indicate a problem: " + item.diagnostic["message"] + "?", "ruff", item.diagnostic["code"],
-        evidence={"message": item.diagnostic["message"]},
-        status="blocking" if id(item) in new_ids else "baselined",
+        "ruff." + item["code"],
+        {"path": Path(item["filename"]).resolve().relative_to(root.resolve()).as_posix(),
+         "line": item["location"]["row"]},
+        "Does this indicate a problem: " + item["message"] + "?", "ruff", item["code"],
+        evidence={"message": item["message"]}, status="blocking",
     ) for item in items]
 
 

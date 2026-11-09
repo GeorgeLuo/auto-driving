@@ -75,6 +75,28 @@ class Suite:
             any("private production" in limitation.lower() for limitation in factors["test_effectiveness"]["limitations"])
         )
 
+    def test_assertion_candidate_metrics_cover_distinct_and_overlapping_kinds(self) -> None:
+        factor = analyze_verification({
+            "tests/test_examples.py": (
+                "def test_examples(self, value, output):\n"
+                "    assert True\n"
+                "    assert value == value\n"
+                "    assigned = 1\n"
+                "    assert assigned == 1\n"
+                "    self.assertEqual(fetch(), 'ready')\n"
+                "    self.assertIn('| report |', output)\n"
+            ),
+        })["test_effectiveness"]
+        metrics = factor["metrics"]
+        self.assertEqual(metrics["assertion_count"], 5)
+        self.assertEqual(metrics["candidate_assertion_count"], 5)
+        self.assertEqual(metrics["literal_assertion_candidates"], 1)
+        self.assertEqual(metrics["tautological_assertion_candidates"], 1)
+        self.assertEqual(metrics["assignment_readback_candidates"], 1)
+        self.assertEqual(metrics["string_expected_assertion_count"], 2)
+        self.assertEqual(metrics["formatted_literal_assertion_count"], 1)
+        self.assertEqual(len(factor["findings"]), 5)
+
     def test_consumer_report_locates_assignment_and_readback(self) -> None:
         """Consumer: the serialized report identifies both ends of a readback."""
         cases = [

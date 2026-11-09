@@ -127,7 +127,8 @@ def _run_flags(body: dict[str, object]) -> dict[str, object]:
     """hosts run's and restart's flags: --observe-only, --num-decisions N or --unbounded, --record."""
 
     count = body.get("num_decisions")
-    if count is not None and (isinstance(count, bool) or not isinstance(count, int)):
+    whole_number = isinstance(count, int) and not isinstance(count, bool)  # JSON true is a Python int
+    if count is not None and not whole_number:
         raise ValueError("num_decisions must be a whole number or null")
     return {"num_decisions": count, "unbounded": _flag(body, "unbounded"),
             "take_control": not _flag(body, "observe_only"), "record": _flag(body, "record")}

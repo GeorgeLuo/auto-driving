@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from typing import Any, Mapping
+from typing import Mapping
 
-from ...frontend.server import VIEWER_PORT, RuntimeViewServer
+from ...frontend.server import VIEWER_PORT, Read, RuntimeViewServer, Write
 from ...shared.browser_result import BrowserOpenResult
 from ...shared.open_view import launch_browser
 from ...workbench.runner import ImageReplayRunner
@@ -14,7 +14,7 @@ from ..host_formatting import host_state_text
 from ..host_status import host_statuses
 
 
-def runtime_view_server(**options: Any) -> RuntimeViewServer:
+def runtime_view_server(**options: object) -> RuntimeViewServer:
     """Build the viewer with automa's host list and on-demand workbench runner."""
 
     options.setdefault("replay_runner_factory", ImageReplayRunner)
@@ -23,8 +23,8 @@ def runtime_view_server(**options: Any) -> RuntimeViewServer:
 
 def serve_viewer(
     *,
-    reads: Mapping[str, Callable[[], dict[str, Any]]] | None = None,
-    writes: Mapping[str, Callable[[dict[str, Any]], dict[str, Any]]] | None = None,
+    reads: Mapping[str, Read] | None = None,
+    writes: Mapping[str, Write] | None = None,
     emit: Callable[[BrowserOpenResult], None] | None = None,
 ) -> int:
     """Serve the runtime pages with no runtime host until interrupted.
@@ -54,7 +54,7 @@ def serve_viewer(
         server.stop()
 
 
-def _host_list() -> list[dict[str, Any]]:
+def _host_list() -> list[dict[str, object]]:
     return [
         {"host_name": host["host_name"], "state": host_state_text(host)}
         for host in host_statuses()

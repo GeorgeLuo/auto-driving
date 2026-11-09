@@ -4,10 +4,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
+from autonomy.decision_cycle.activation import DECISION_STEPS
+
 from .decision import stream_decision
 from .memory import stream_memory
 from .models import StreamEvent, StreamResult
 from .perception import stream_perception
+
+# The steps stream_host reads: perception, memory, then each decision step.
+STREAM_STEPS = ("perception", "memory", *DECISION_STEPS)
 
 
 def stream_host(

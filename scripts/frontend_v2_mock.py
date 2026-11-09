@@ -107,7 +107,7 @@ with sync_playwright() as p:
     page.on("console", lambda msg: msg.type == "error" and errors.append(msg.text))
     page.goto((HERE / "index.html").as_uri() + "?fast")
     labels = page.locator("main nav .nav").evaluate_all("els => els.map(el => el.firstChild.textContent.trim())")
-    assert labels == ["Stream", "Vehicles", "Hosts", "Plugins", "Simulators", "Workbench"], labels
+    assert labels == ["Stream", "Learning", "Vehicles", "Hosts", "Plugins", "Simulators", "Workbench"], labels
     for readout, text in [("vehicles", "0/0 up"), ("hosts", "0 hosts"), ("plugins", "packaged"), ("simulators", "none")]:
         expect(page.locator(f"#{readout}Readout")).to_have_text(text)
     shot = lambda name: page.screenshot(path=str(SHOTS / f"{name}.png"))
@@ -487,8 +487,51 @@ with sync_playwright() as p:
     shot("5-plugins-gaps")
     page.locator("#gapsToggle").click()
 
+    # Learning: upload chase-413 (its learning plugins arm on memory), then chart what they learn.
+    verb(page, "pluginsFrame", "UPLD").click()
+    upload.locator("[data-field=source]").select_option("manifest")
+    upload.locator("[data-field=manifest]").fill("/tmp/automa-collections-validation/pr413/manifest.json")
+    upload.locator("[data-field=arm]").select_option("on")
+    key(page, "pluginsFrame", "UPLD").click()
+    expect(status(page, "pluginsFrame")).to_contain_text("Collection: chase-413\nArming: requested")
+    learning = frame(page, "learningFrame")
+    button(page, "Learning").click()
+    expect(status(page, "learningFrame")).to_have_text("Choose a host to chart what its memory learns.")
+    row(page, "learningFrame", "chaser").click()
+    expect(page.locator("#learningReadout")).to_have_text("chaser")
+    expect(status(page, "learningFrame")).to_contain_text("Live | 2 beliefs · 3 plugins")
+    expect(status(page, "learningFrame")).to_contain_text("stop_row.row\n  value ")
+    rows = lambda: [r.inner_text() for r in learning.locator("[data-rows] .row:not([hidden])").all()]
+    assert rows() == ["chaser", "approach_model.run_ms", "stop_row.row", "plugin stop_row", "plugin turn_model", "plugin approach_model"], rows()
+    assert [b.inner_text() for b in learning.locator("[data-keys] .key:not([hidden])").all()] == ["PAUSE"]
+    shot("5c-learning-board")
+    # A belief: its value with the p25–p75 band, confidence, checks and trials, charted over the run.
+    row(page, "learningFrame", "stop_row.row").click()
+    expect(mode("learningFrame")).to_have_text("chaser · stop_row.row")
+    expect(learning.locator("[data-metrics] dd").first).to_have_text("stop_row")
+    expect(learning.locator(".chart-title", has_text="/value · /properties p25–p75")).to_be_visible()
+    expect(learning.locator(".chart-title", has_text="confidence · 90% interval")).to_be_visible()
+    expect(learning.locator(".chart-title", has_text="checks by method")).to_be_visible()
+    expect(status(page, "learningFrame")).to_be_hidden()
+    expect(key(page, "learningFrame", "SINCE RESET")).to_be_disabled()
+    key(page, "learningFrame", "ALL").click()
+    expect(key(page, "learningFrame", "ALL")).to_be_disabled()
+    learning.screenshot(path=str(SHOTS / "5d-learning-belief.png"))
+    # A plugin: every leaf of its record by shape; twelve rows of one number are a profile.
+    row(page, "learningFrame", "plugin approach_model").click()
+    expect(learning.locator(".chart-title", has_text="/state/ms_per_row/*")).to_be_visible()
+    learning.screenshot(path=str(SHOTS / "5e-learning-plugin.png"))
+    key(page, "learningFrame", "PAUSE").click()
+    expect(mode("learningFrame")).to_have_text("chaser · approach_model · paused")
+    key(page, "learningFrame", "RESUME").click()
+    clear_of_column(page)
+
     key(page, "hostsFrame", "STOP").click()
     expect(status(page, "hostsFrame")).to_contain_text("Stopped the run on host chaser.")
+    # A stopped host keeps what it learned; the board says it is not live.
+    row(page, "learningFrame", "chaser").click()
+    expect(status(page, "learningFrame")).to_contain_text("Not live: Host 'chaser' is not running. | 2 beliefs")
+    button(page, "Learning").click()
     # Deselecting in Hosts changes nothing elsewhere; Plugins goes back to packaged through HOSTS.
     row(page, "hostsFrame", "chaser").click()
     expect(row(page, "hostsFrame", "chaser")).to_have_class("row")

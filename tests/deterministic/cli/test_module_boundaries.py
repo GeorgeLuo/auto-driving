@@ -122,6 +122,8 @@ _MODULE_ROLES = {
     "hosts.vehicle_access": "operation",
     "hosts.views.decision_live": "operation",
     "hosts.views.frames": "operation",
+    "hosts.views.learning": "operation",
+    "hosts.views.learning_history": "pure",
     "hosts.views.observation": "operation",
     "hosts.views.polling": "pure",
     "hosts.views.runtime_view": "operation",

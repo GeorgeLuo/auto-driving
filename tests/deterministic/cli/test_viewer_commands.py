@@ -20,7 +20,7 @@ from cli.automa_cli import viewer_commands
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.hosts.deployment.models import CreateResult, UpdateResult
 from cli.automa_cli.hosts.errors import RuntimeHostError
-from cli.automa_cli.hosts.views import frames
+from cli.automa_cli.hosts.views import frames, learning
 from cli.automa_cli.providers.urls import chase_operator_url
 from cli.automa_cli.viewer_commands import VIEWER_READS, VIEWER_WRITES
 from tests.shared.cli.workbench_fixtures import ImageReplayRunner
@@ -198,6 +198,41 @@ class ViewerCommandTests(unittest.TestCase):
                          (400, {"ok": False, "error": "step must be one of perception, memory, proposal, plan, action"}))
         self.assertEqual(self.refused("/api/plugins/stream?step=plan"),
                          (400, {"ok": False, "error": "host_name must be a non-empty string"}))
+
+    def test_a_hosts_learning_reads_after_the_cursor_and_outlasts_the_host(self) -> None:
+        def status(t, value, session="running"):
+            belief = {"belief_id": "stop_row.row", "value": value, "source_plugin_id": "stop_row", "updated_at_ms": t,
+                      "confidence": 0.5, "checks": [], "trials": []}
+            return {"http_status": 200, "session": {"status": session}, "host": {"components": {"observation": {"latest": {"captured_at_ms": t}}}, "steps": {"memory": {
+                "reset_count": 0, "beliefs": {"stop_row.row": belief},
+                "plugins": [{"plugin_id": "stop_row", "state": {"phase": "probing"}, "failure_count": 0}]}}}}
+
+        def series(doc):
+            return {path: [row[1:] for row in rows] for path, rows in doc["beliefs"]["stop_row.row"]["series"].items()}
+
+        with (mock.patch.object(learning, "runtime_base_url", return_value="http://host.invalid") as resolve,
+              mock.patch.object(learning, "fetch_autonomy_status",
+                                side_effect=[status(100, 3.0), status(200, 4.0), status(200, 4.0, "stopped")])):
+            first = self.get("/api/hosts/learning?host_name=learner")
+            later = self.get(f"/api/hosts/learning?host_name=learner&since={first['seq']}")
+            finished = self.get(f"/api/hosts/learning?host_name=learner&since={later['seq']}")
+            resolve.side_effect = RuntimeHostError("Host 'learner' is not running.")
+            stopped = self.get("/api/hosts/learning?host_name=learner")
+
+        self.assertEqual((first["host_name"], first["live"], first["available"]), ("learner", True, True))
+        self.assertEqual(series(first)["/value"], [[100, 3.0]])
+        self.assertEqual(first["plugins"]["stop_row"]["series"]["/state/phase"][0][1:], [100, "probing"])
+        # After the cursor: only what changed.
+        self.assertEqual(series(later), {"/value": [[200, 4.0]]})
+        # A host whose run ended still answers: not live, and nothing new.
+        self.assertEqual((finished["live"], finished["error"], series(finished)), (False, "Host 'learner' is stopped.", {}))
+        # A host that stops keeps what it learned.
+        self.assertEqual((stopped["live"], stopped["error"], stopped["now_ms"]), (False, "Host 'learner' is not running.", 200))
+        self.assertEqual(series(stopped)["/value"], [[100, 3.0], [200, 4.0]])
+        code, missing = self.refused("/api/hosts/learning?host_name=chaser")
+        self.assertEqual((code, missing["ok"]), (400, False))
+        self.assertEqual(self.refused("/api/hosts/learning?host_name=learner&since=-1"),
+                         (400, {"ok": False, "error": "since must be a non-negative integer"}))
 
     def test_a_hosts_latest_frame_names_its_image_at_the_frame_route(self) -> None:
         buffer = io.BytesIO()

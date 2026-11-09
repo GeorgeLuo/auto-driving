@@ -485,6 +485,128 @@ const mock = (() => {
       `Startup: ${h.name} starts with these plugins; hosts update keeps the saved steps.`], onLine);
   }
 
+  // ---- Learning: the history the viewer keeps of a host's memory step (LearningHistory). ----
+  // Beliefs come from the learning plugins armed on memory (chase-413's stop_row and approach_model),
+  // each a function of the decision count: a check every few decisions, a trial open before it, the
+  // value converging as checks come in. Every memory plugin armed reports a record.
+  const FRAME_MS = 100;  // the host's frame clock: one decision per frame
+  const noise = (j) => (((j * 9301 + 49297) % 233280) / 233280) - 0.5;
+  const round = (x, digits = 2) => Number(x.toFixed(digits));
+  // A learner: its belief id, the decisions between checks, the value after k checks, the check method,
+  // a prediction (a number or [lo, hi]) and the observation it is checked against.
+  const LEARNERS = {
+    stop_row: { belief: "stop_row.row", every: 15, method: "stop",
+      value: (k) => round(7 + 3 * Math.exp(-k / 6) * Math.cos(k)),
+      spread: (k) => round(0.3 + 1.6 * Math.exp(-k / 8)),
+      predicted: (v) => v, observed: (v, j) => round(v + noise(j) * 2.2) },
+    approach_model: { belief: "approach_model.run_ms", every: 20, method: "run_duration",
+      value: (k) => Math.round(1200 + 300 * Math.exp(-k / 5)),
+      spread: (k) => Math.round(80 + 220 * Math.exp(-k / 6)),
+      predicted: (v, spread) => [v - spread, v + spread], observed: (v, j) => Math.round(v + noise(j) * 500) },
+  };
+  // The belief a learner publishes after d decisions, as Belief.to_dict, and every check it has made.
+  function learned(id, d) {
+    const L = LEARNERS[id], k = Math.floor(d / L.every);
+    const checks = Array.from({ length: k }, (_, j) => {
+      const v = L.value(j), predicted = L.predicted(v, L.spread(j)), observed = L.observed(v, j);
+      const [lo, hi] = Array.isArray(predicted) ? predicted : [predicted - 0.8, predicted + 0.8];
+      return { at_ms: (j + 1) * L.every * FRAME_MS, method: L.method, outcome: observed >= lo && observed <= hi ? "support" : "contradict",
+               predicted, observed };
+    });
+    const kept = checks.slice(-12), support = kept.filter((c) => c.outcome === "support").length;
+    const all = checks.filter((c) => c.outcome === "support").length;
+    const v = L.value(k), open = d % L.every >= L.every / 3;
+    return { checks, belief: { belief_id: L.belief, source_plugin_id: id, value: v, updated_at_ms: d * FRAME_MS,
+      properties: { p25: round(v - L.spread(k) / 2), p75: round(v + L.spread(k) / 2) },
+      confidence: kept.length ? round((support + 1) / (kept.length + 2), 3) : null,
+      by_method: k ? { [L.method]: { support: all, contradict: k - all } } : {}, corroborated: kept.length >= 3 && support > kept.length / 2,
+      checks: kept, trials: open ? [{ trial_id: `${L.method}_${k}`, method: L.method, started_at_ms: (k * L.every + L.every / 3) * FRAME_MS,
+                                      predicted: L.predicted(v, L.spread(k)), properties: {} }] : [] } };
+  }
+  // A memory plugin's record, as MemoryPluginRuntime.status: approach_model's state has a profile by row.
+  function memoryRecord(id, d) {
+    const k = Math.floor(d / 15);
+    const state = id === "stop_row" ? { phase: k < 3 ? "probing" : k < 8 ? "bracketing" : "settled", bracket_width: round(4 * Math.exp(-k / 5), 3), samples: k }
+      : id === "approach_model" ? { samples: k, ms_per_row: Object.fromEntries(Array.from({ length: 12 }, (_, row) =>
+          [row, Math.round(100 + row * 12 + noise(row + k) * 60 * Math.exp(-k / 8))])) }
+      : { record_count: Math.min(d, 64) };
+    return { plugin_id: id, plugin_spec: `${id}:Plugin`, activation: null, update_count: d, reset_count: 0, failure_count: 0,
+             last_duration_ms: round(1 + Math.abs(noise(d)) * 2), last_error: null, state };
+  }
+  // Leaves by JSON Pointer path, as LearningHistory flattens them.
+  function leaves(value, path = "", out = {}) {
+    if (typeof value === "boolean") out[path] = Number(value);
+    else if (typeof value === "number" || typeof value === "string") out[path] = value;
+    else if (Array.isArray(value)) out[`${path}#len`] = value.length;
+    else if (value && typeof value === "object") {
+      for (const [key, item] of Object.entries(value)) if (item !== null && !key.endsWith("at_ms")) leaves(item, `${path}/${key}`, out);
+    }
+    return out;
+  }
+  const BELIEF_FIELDS = ["value", "properties", "confidence", "by_method", "corroborated", "checks", "trials"];
+  const PLUGIN_FIELDS = ["state", "failure_count", "last_duration_ms", "last_error"];
+  const pick = (record, fields) => Object.fromEntries(fields.map((name) => [name, record[name]]));
+  // What changed since the last read: series appended on change, new checks, trials opened and ended.
+  function ingestLearning(h) {
+    if (!h.learning || h.learning.runId !== h.runId) {
+      h.learning = { id: hex(32), runId: h.runId, seq: 0, t: null, beliefs: {}, plugins: {}, events: [], checked: {} };
+    }
+    const H = h.learning, t = h.decisions * FRAME_MS, next = () => ++H.seq;
+    if (t === H.t) return;
+    H.t = t;
+    const trackOf = (map, id) => (map[id] ||= { current: null, last: {}, series: {}, checks: [], trials: {} });
+    const record = (tr, now) => {
+      for (const path of Object.keys(tr.last)) if (!(path in now)) { delete tr.last[path]; tr.series[path].push([next(), t, null]); }
+      for (const [path, value] of Object.entries(now)) {
+        if (tr.last[path] === value) continue;
+        tr.last[path] = value;
+        (tr.series[path] ||= []).push([next(), t, value]);
+      }
+    };
+    for (const id of h.armed.memory.filter((x) => LEARNERS[x])) {
+      const { belief, checks } = learned(id, h.decisions), tr = trackOf(H.beliefs, belief.belief_id);
+      if (!tr.current) H.events.push({ seq: next(), t, kind: "belief_added", belief_id: belief.belief_id });
+      const fresh = checks.slice(H.checked[id] || 0);
+      H.checked[id] = checks.length;
+      for (const check of fresh) tr.checks.push({ seq: next(), t, ...check });
+      const open = new Set(belief.trials.map((x) => x.trial_id));
+      for (const row of Object.values(tr.trials)) {
+        if (row.end !== "open" || open.has(row.trial_id)) continue;
+        const check = fresh.find((c) => JSON.stringify(c.predicted) === JSON.stringify(row.predicted));
+        Object.assign(row, { seq: next(), ended_t: t, end: "resolved", outcome: check ? check.outcome : null });
+      }
+      for (const x of belief.trials) {
+        if (!tr.trials[x.trial_id]) tr.trials[x.trial_id] = { seq: next(), trial_id: x.trial_id, method: x.method, started_at_ms: x.started_at_ms,
+          predicted: x.predicted, opened_t: t, ended_t: null, end: "open", reason: null, outcome: null };
+      }
+      tr.current = belief;
+      record(tr, leaves(pick(belief, BELIEF_FIELDS)));
+    }
+    for (const id of h.armed.memory) {
+      const r = memoryRecord(id, h.decisions), tr = trackOf(H.plugins, id);
+      tr.current = r;
+      record(tr, leaves(pick(r, PLUGIN_FIELDS)));
+    }
+  }
+  const afterSeq = (rows, since) => rows.filter((row) => (Array.isArray(row) ? row[0] : row.seq) > since);
+  // The host's history after the cursor; a stopped host keeps the one it has, not live.
+  function learningHistory({ host_name: name, since = "0" }) {
+    const h = findHost(name);
+    if (!h) return noHost(name);
+    const running = h.state === "running";
+    if (!running && !h.learning) return refused(`Host '${name}' is not running.`);
+    if (running) ingestLearning(h);
+    const H = h.learning, cursor = Number(since);
+    const trackPayload = (tr) => ({ current: tr.current, checks: afterSeq(tr.checks, cursor), dropped_paths: 0,
+      trials: afterSeq(Object.values(tr.trials), cursor).sort((a, b) => a.seq - b.seq),
+      series: Object.fromEntries(Object.entries(tr.series).map(([path, rows]) => [path, afterSeq(rows, cursor)]).filter(([, rows]) => rows.length)) });
+    return { schema: "automa_learning_history_v1", history_id: H.id, seq: H.seq, now_ms: H.t, available: true, host_name: name,
+             live: running, error: running ? null : `Host '${name}' is not running.`,
+             beliefs: Object.fromEntries(Object.entries(H.beliefs).map(([id, tr]) => [id, trackPayload(tr)])),
+             plugins: Object.fromEntries(Object.entries(H.plugins).map(([id, tr]) => [id, trackPayload(tr)])),
+             events: afterSeq(H.events, cursor) };
+  }
+
   // Each route: viewer says the viewer answers it; wait is a read's latency (a status read probes).
   const ROUTES = {
     "GET /api/vehicles": { viewer: true, wait: 300, read: vehicles },
@@ -507,6 +629,7 @@ const mock = (() => {
     "POST /api/plugins/save": { viewer: true, write: save },
     "GET /api/plugins/stream": { viewer: true, wait: 0, read: stream },
     "GET /api/hosts/latest": { viewer: true, wait: 0, read: latest },
+    "GET /api/hosts/learning": { viewer: true, wait: 0, read: learningHistory },
   };
   const routeOf = (method, route) => ROUTES[`${method} ${route.split("?")[0]}`];
   const answers = (method, route) => { const r = routeOf(method, route); return !!r && !(SERVED && r.viewer); };

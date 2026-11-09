@@ -10,6 +10,8 @@ the command's flags: ``name`` is hosts' ``--name`` and plugins' ``--name``,
 A plugins stream read is ``plugins stream --once`` for one step, answering the
 probe with the screen it prints as ``text``. A host's latest frame reads as
 the perception page reads it, with its image at ``/api/hosts/frame``.
+A host's learning history is the memory step's beliefs and plugins over the
+run, the rows after the page's ``since`` cursor.
 """
 
 from __future__ import annotations
@@ -32,6 +34,7 @@ from .hosts.runs.render import render_lifecycle_result
 from .hosts.runs.service import restart_host_automation, start_host_automation_background, stop_host_automation
 from .hosts.runs.status import hosts_status
 from .hosts.views.frames import HostFrames
+from .hosts.views.learning import HostLearning
 from .plugins.catalog.render import render_listing, render_save, render_selection, render_upload
 from .plugins.catalog.service import (
     arm_collection, arm_plugins, arm_preset, disarm_collection, disarm_plugins, list_plugins, save_plugins,
@@ -304,7 +307,17 @@ def _save(body: dict[str, object]) -> dict[str, object]:
     return _answer(result, render_save(result, json_output=False))
 
 
+def _since(query: dict[str, str]) -> int:
+    """A learning read's cursor: the last row's seq the page has, 0 for all of them."""
+
+    since = query.get("since", "0")
+    if not since.isascii() or not since.isdigit():
+        raise ValueError("since must be a non-negative integer")
+    return int(since)
+
+
 HOST_FRAMES = HostFrames(frame_route="/api/hosts/frame")
+HOST_LEARNING = HostLearning()
 
 # /api/hosts is the v1 home page's host list, so hosts status reads at /api/hosts/status.
 VIEWER_READS = {
@@ -313,6 +326,7 @@ VIEWER_READS = {
     "/api/hosts/status": lambda _query: hosts_status(include_runs=True)[1],
     "/api/hosts/latest": lambda query: HOST_FRAMES.latest(_text(query, "host_name")),
     "/api/hosts/frame": lambda query: HOST_FRAMES.image(_text(query, "host_name"), _text(query, "v")),
+    "/api/hosts/learning": lambda query: HOST_LEARNING.history(_text(query, "host_name"), _since(query)),
     "/api/plugins/list": _plugins_list,
     "/api/plugins/stream": _plugins_stream,
 }

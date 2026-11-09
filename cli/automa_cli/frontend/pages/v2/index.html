@@ -15,6 +15,7 @@
     <h1>Automa</h1>
     <nav aria-label="Stream">
       <button type="button" class="nav" id="streamOpen">Stream <small id="streamReadout"></small></button>
+      <button type="button" class="nav" data-recall="learningFrame">Learning <small id="learningReadout"></small></button>
     </nav>
     <nav aria-label="Commands">
       <button type="button" class="nav" data-recall="vehiclesFrame">Vehicles <small id="vehiclesReadout"></small></button>
@@ -172,6 +173,23 @@
       </article>
     </template>
 
+    <!-- Learning: hosts, the chosen host's beliefs and memory plugins under it. The pane shows the host's
+         beliefs as a board, or one belief's or plugin's charts over the run (js/learning.js). -->
+    <article class="float-frame learning-frame" id="learningFrame" data-title="Learning" data-frame-start="closed" hidden>
+      <div class="float-frame-body split" data-frame-body>
+        <div class="list"><div class="list-verbs" data-verbs></div><div class="list-rows" data-rows></div></div>
+        <section class="float-frame-status">
+          <div class="learning" data-learning hidden>
+            <dl class="kv learning-metrics" data-metrics></dl>
+            <div data-charts></div>
+            <details><summary>Published data</summary><pre data-raw></pre></details>
+          </div>
+          <p class="float-frame-status-text" role="status"></p>
+          <div class="pane-keys" data-keys></div>
+        </section>
+      </div>
+    </article>
+
     <!-- Mock only: what the CLI cannot back yet, numbered where the page needs it. -->
     <article class="float-frame" id="gapsFrame" data-title="Gaps" data-frame-start="closed" hidden>
       <div class="float-frame-body" data-frame-body id="gapList"></div>
@@ -196,6 +214,7 @@
   <script src="js/hosts.js"></script>
   <script src="js/plugins.js"></script>
   <script src="js/stream.js"></script>
+  <script src="js/learning.js"></script>
   <script src="js/main.js"></script>
   <script src="../shared/float.js"></script>
 </body>

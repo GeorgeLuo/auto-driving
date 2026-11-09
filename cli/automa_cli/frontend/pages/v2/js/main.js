@@ -1,12 +1,12 @@
 // The page: every window's paint, the column's readouts, and the reads that keep them current.
 // Nothing tells the page what changed (gap noNotify), so it reads every list again after each
 // command and polls: what each stream shows (a host's latest frame, or a step's probe) every tick,
-// hosts status every HOSTS_EVERY ticks.
+// hosts status every HOSTS_EVERY ticks. Learning reads its host's history on its own, once a second.
 "use strict";
 
 const TICK_MS = typeof mock !== "undefined" ? mock.ms(250) || 25 : 250;
 const HOSTS_EVERY = 8;
-const WINDOWS = [Vehicles, Hosts, Plugins, Simulators];
+const WINDOWS = [Vehicles, Hosts, Plugins, Simulators, Learning];
 
 function paintColumn() {
   const hosts = Hosts.listing().length, created = Simulators.listing().length, streams = Stream.count();
@@ -14,6 +14,7 @@ function paintColumn() {
   setText($("hostsReadout"), `${hosts} host${hosts === 1 ? "" : "s"}`);
   setText($("pluginsReadout"), Plugins.state.host || "packaged");
   setText($("streamReadout"), streams ? `${streams} open` : "");
+  setText($("learningReadout"), Learning.state.host || "");
   setText($("simulatorsReadout"), created ? `${created} created` : "none");
 }
 function render() {
@@ -32,6 +33,7 @@ async function refresh() {
 let ticks = 0;
 async function poll() {
   ticks += 1;
+  Learning.poll();
   const streamed = new Set([...Stream.streamed(), ...Plugins.streamed()]);
   await Promise.all([...[...streamed].map(api.read),
                      ...(ticks % HOSTS_EVERY === 0 ? [api.read("/api/hosts/status")] : [])]);
@@ -41,7 +43,7 @@ async function poll() {
 
 // Every load: all windows closed, a third of the page tall and twice as wide as tall. Two stacks
 // beside the column: left, in its order, Simulators, Vehicles, Hosts; right, Plugins, with
-// Stream windows opening below it. Seeded before float.js binds the windows.
+// Learning (twice as tall) and Stream windows opening below it. Seeded before float.js binds the windows.
 (function seedLayout() {
   const column = document.querySelector("main").getBoundingClientRect();
   const gap = 16, h = Math.round(innerHeight / 3), w = 2 * h;
@@ -50,9 +52,10 @@ async function poll() {
   const layout = {
     simulatorsFrame: [left, 0], vehiclesFrame: [left, h], hostsFrame: [left, 2 * h], pluginsFrame: [right, 0],
     gapsFrame: [Math.max(8, (innerWidth - w) / 2), innerHeight - h - 44],  // above the mock controls
+    learningFrame: [right, h, 2 * h],  // below Plugins, twice as tall: its charts stack
   };
-  for (const [id, [x, y]] of Object.entries(layout)) {
-    localStorage.setItem(`automa-float-${id}`, JSON.stringify({ position: { x, y }, size: { width: w, height: h }, minimized: false, closed: true }));
+  for (const [id, [x, y, height = h]] of Object.entries(layout)) {
+    localStorage.setItem(`automa-float-${id}`, JSON.stringify({ position: { x, y }, size: { width: w, height }, minimized: false, closed: true }));
   }
 })();
 

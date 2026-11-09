@@ -930,7 +930,7 @@ def classify_source(path: str, text: str, config: AnalyzerConfig | None = None) 
         return "generated/runtime"
     if any(marker.lower() in lower for marker in policy.vendor_markers):
         return "vendored/minified"
-    if ".min." in lower or lower.endswith(".min.js"):
+    if ".min." in lower:
         return "vendored/minified"
     if any(marker.lower() in first_lines for marker in policy.generated_markers):
         return "generated/runtime"
@@ -938,7 +938,7 @@ def classify_source(path: str, text: str, config: AnalyzerConfig | None = None) 
         return "tests"
     if any(root.lower() in segments for root in policy.lab_roots) or lower.startswith("lab/"):
         return "experimental/lab"
-    if "scripts" in segments or "tools" in segments or ".github" in segments:
+    if segments.intersection({"scripts", "tools", ".github"}):
         return "tooling/scripts"
     if "evidence" in segments:
         if PurePosixPath(lower).suffix in {".py", ".sh", ".ps1"}:

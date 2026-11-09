@@ -13,17 +13,21 @@ from pathlib import Path
 
 import numpy as np
 
-from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id
+from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, activation_generation_id, step_activation
 from autonomy.decision_cycle.steps import decision_steps
+from autonomy.plugins import PluginDefinition
 from autonomy.runtime.session import RunConfiguration
 from autonomy.runtime.routes import RuntimeRoutes
-from implementations.decision_cycle.catalog import packaged_activation, selection_activation
+from implementations.decision_cycle.catalog import selection_activation
 from autonomy.runtime.frame_loop import (
     FRAME_PUBLICATION_SCHEMA,
     OBSERVATION_TRANSACTION_PATH,
 )
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from implementations.runtime.picar.host_telemetry import DriveModeTelemetryAdapter, HostTelemetryStore
+from tests.support.action_fixtures import FIRST_ACTIVE_PLAN_SPEC, INACTIVE_PROPOSAL_SPEC
+
+HOLD_SPEC = "autonomy.decision_cycle.action.hold:HoldAction"
 
 
 class ObservationPublicationTests(unittest.TestCase):
@@ -34,30 +38,36 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(payload["image_frame_id"], payload["publication"]["report"]["frame_id"])
         return base64.b64decode(payload["image_base64"], validate=True)
 
-    def test_repeated_image_reads_encode_each_processed_frame_once(self) -> None:
+    def test_each_processed_frame_is_encoded_once_for_its_reads_and_its_recording(self) -> None:
         from autonomy.runtime.frame_loop import encode_jpeg
 
-        part = self._hold_part()
+        part = self._part()
         self.addCleanup(part.shutdown)
-        part.run(image_array=np.zeros((8, 12, 3), dtype=np.uint8), mode="user")
-        part.wait_for_cycle()
-        with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", wraps=encode_jpeg) as encode:
-            first = self._transaction_image(part)
-            first_id = part.publish_latest()["report"]["frame_id"]
-            self.assertEqual(self._transaction_image(part), first)
-            self.assertEqual(encode.call_count, 1)
-            part.run(image_array=np.full((8, 12, 3), 200, dtype=np.uint8), mode="user")
-            part.wait_for_cycle()
-            second = self._transaction_image(part)
-            self.assertNotEqual(first, second)
-            self.assertNotEqual(first_id, part.publish_latest()["report"]["frame_id"])
-            self.assertEqual(encode.call_count, 2)
+        with tempfile.TemporaryDirectory() as tmp:
+            part.recording_root = Path(tmp)
+            part.start(RunConfiguration(mode="observe_only", num_decisions=None), record=True)
+            with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", wraps=encode_jpeg) as encode:
+                part.run(image_array=np.zeros((8, 12, 3), dtype=np.uint8), mode="user")
+                part.wait_for_cycle()
+                first = self._transaction_image(part)
+                first_id = part.publish_latest()["report"]["frame_id"]
+                self.assertEqual(self._transaction_image(part), first)
+                self.assertEqual(encode.call_count, 1)
+                [recorded] = Path(tmp).glob("*/frames/*.jpg")
+                self.assertEqual(recorded.read_bytes(), first)
+
+                part.run(image_array=np.full((8, 12, 3), 200, dtype=np.uint8), mode="user")
+                part.wait_for_cycle()
+                second = self._transaction_image(part)
+                self.assertNotEqual(first, second)
+                self.assertNotEqual(first_id, part.publish_latest()["report"]["frame_id"])
+                self.assertEqual(encode.call_count, 2)
 
     def test_wire_jpeg_is_reused_by_decision_and_recording(self):
         from autonomy.runtime.frame_loop import encode_jpeg
         image = np.full((8, 12, 3), 70, dtype=np.uint8)
         wire = encode_jpeg(image)
-        part = self._hold_part()
+        part = self._part()
         self.addCleanup(part.shutdown)
         with tempfile.TemporaryDirectory() as tmp:
             part.recording_root = Path(tmp)
@@ -73,24 +83,13 @@ class ObservationPublicationTests(unittest.TestCase):
             recorded = part.host.recording.read(run_id=part.host.recording.run_id, after=0)["frames"][0]["frame"]
             self.assertNotIn("jpeg_bytes", recorded["context"]["sensor_frame"]["readings"]["front_camera"])
 
-    def test_recording_and_transaction_share_one_encode(self):
-        from autonomy.runtime.frame_loop import encode_jpeg
-        part = self._hold_part()
-        self.addCleanup(part.shutdown)
-        with tempfile.TemporaryDirectory() as tmp:
-            part.recording_root = Path(tmp)
-            part.start(RunConfiguration(mode="observe_only", num_decisions=None), record=True)
-            with mock.patch("autonomy.runtime.frame_loop.encode_jpeg", wraps=encode_jpeg) as encoder:
-                part.run(image_array=np.zeros((8, 12, 3), dtype=np.uint8), mode="user")
-                part.wait_for_cycle()
-                decision = self._transaction_image(part)
-                self.assertEqual(encoder.call_count, 1)
-            files = list(Path(tmp).glob("*/frames/*.jpg"))
-            self.assertEqual(len(files), 1)
-            self.assertEqual(files[0].read_bytes(), decision)
+    def _part(self, **options) -> AutonomyPilotPart:
+        """A part whose cycle proposes, plans and acts, with test plugins and the built-in action."""
 
-    def _hold_part(self, **options) -> AutonomyPilotPart:
-        activations = {step: packaged_activation(step) for step in DECISION_STEPS}
+        activations = {
+            "proposal": step_activation("proposal", ["inactive"], {"inactive": INACTIVE_PROPOSAL_SPEC}),
+            "plan": step_activation("plan", ["first_active"], {"first_active": FIRST_ACTIVE_PLAN_SPEC}),
+        }
         return AutonomyPilotPart(
             host=create_host(steps=decision_steps(activations)),
             host_name="piracer",
@@ -98,47 +97,6 @@ class ObservationPublicationTests(unittest.TestCase):
             run_id="donkey-run-fixture",
             **options,
         )
-
-    def test_warming_publication_before_first_result(self) -> None:
-        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
-        payload = part.publish_latest(now_ms=1_000)
-        self.assertEqual(payload["schema"], FRAME_PUBLICATION_SCHEMA)
-        self.assertEqual(payload["health"], "warming")
-        self.assertFalse(payload["ok"])
-        self.assertIsNone(payload["report"])
-        self.assertIsNone(part.observation_status()["latest"])
-
-    def test_healthy_publication_includes_detached_perception_and_matching_frame(self) -> None:
-        part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
-        image = np.zeros((8, 12, 3), dtype=np.uint8)
-        image[:, :] = (10, 20, 30)
-        part.run(image_array=image, mode="user")
-        part.wait_for_cycle()
-
-        payload = part.publish_latest(now_ms=part.latest_state.completed_at_ms + 10)
-        report = payload["report"]
-        self.assertEqual(payload["health"], "healthy")
-        self.assertTrue(payload["ok"])
-        self.assertEqual(report["status"], "ok")
-        self.assertIsNone(report["error"])
-        self.assertEqual(report["application"]["mode"], "manual")
-        self.assertEqual(report["application"]["steering"], 0.0)
-        self.assertEqual(report["application"]["throttle"], 0.0)
-        self.assertEqual(report["frame_id"], "donkey_frame_000000")
-        self.assertEqual(
-            sorted(report["cycle"]),
-            ["action", "memory", "observation", "perception", "plan", "proposal"],
-        )
-        # Idle host has no perception step, so that record stays null.
-        self.assertIsNone(report["cycle"]["perception"])
-        self.assertIsNone(report["cycle"]["memory"])
-        self.assertEqual(report["application"]["reason"], "manual")
-        self.assertFalse(report["application"]["applied"])
-        self.assertEqual(
-            report["cycle"]["action"]["authority"]["authorized_output"]["reason"],
-            "action_plan_invariant_violated",
-        )
-        self.assertTrue(self._transaction_image(part).startswith(b"\xff\xd8"))
 
     def test_presets_follow_the_activations_each_frame_applied(self) -> None:
         """Regression: the runtime reported only perception's preset, fixed at start,
@@ -193,7 +151,7 @@ class ObservationPublicationTests(unittest.TestCase):
                 "schema": "memory_report",
                 "plugins": [
                     {
-                        "plugin_id": "bounded_evidence",
+                        "plugin_id": "test_memory",
                         "state": {
                             "health": "healthy",
                             "record_count": 1,
@@ -201,7 +159,7 @@ class ObservationPublicationTests(unittest.TestCase):
                         },
                     }
                 ],
-                "evidence_publisher": "bounded_evidence",
+                "evidence_publisher": "test_memory",
             }
 
         host = create_host(steps=DecisionSteps(memory=remember))
@@ -215,7 +173,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(state["health"], "healthy")
         self.assertEqual(state["record_count"], 1)
         self.assertEqual(state["records"][0]["kind"], "floor_boundary")
-        self.assertEqual(report["evidence_publisher"], "bounded_evidence")
+        self.assertEqual(report["evidence_publisher"], "test_memory")
 
         self.assertTrue(self._transaction_image(part).startswith(b"\xff\xd8"))
 
@@ -223,11 +181,7 @@ class ObservationPublicationTests(unittest.TestCase):
         from autonomy.decision_cycle.cycle import DecisionSteps
         from autonomy.decision_cycle.memory.runner import MemoryRunner
         from autonomy.decision_cycle.observation.values import Observation
-        from implementations.decision_cycle.catalog import step_plugins
-        from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import (
-            BoundedEvidenceLedger,
-        )
-        from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
+        from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _EvidenceMemory, _RecordingMemory
 
         def observe(context, perception):
             return Observation(
@@ -243,10 +197,9 @@ class ObservationPublicationTests(unittest.TestCase):
                 },),
             )
 
-        config = step_plugins("memory")["bounded_evidence"]["default_config"]
         memory = MemoryRunner.from_plugins({
             "recording_test": _RecordingMemory(),
-            "bounded_evidence": BoundedEvidenceLedger(**config),
+            "evidence_test": _EvidenceMemory(plugin_id="evidence_test"),
         })
         part = AutonomyPilotPart(
             host=create_host(steps=DecisionSteps(observation=observe, memory=memory)),
@@ -257,13 +210,11 @@ class ObservationPublicationTests(unittest.TestCase):
         report = part.publish_latest(now_ms=part.latest_state.completed_at_ms)["report"]["cycle"]["memory"]
 
         states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
-        self.assertEqual(list(states), ["recording_test", "bounded_evidence"])
+        self.assertEqual(list(states), ["recording_test", "evidence_test"])
         self.assertEqual(states["recording_test"]["record_count"], 1)
-        self.assertEqual(states["bounded_evidence"]["record_count"], 1)
-        self.assertEqual(report["evidence_publisher"], "bounded_evidence")
-        self.assertEqual(
-            part.host.status()["steps"]["memory"]["evidence_publisher"], "bounded_evidence",
-        )
+        self.assertEqual(states["evidence_test"]["record_count"], 1)
+        self.assertEqual(report["evidence_publisher"], "evidence_test")
+        self.assertEqual(part.host.status()["steps"]["memory"]["evidence_publisher"], "evidence_test")
 
     def test_stale_and_error_health_states(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()))
@@ -319,7 +270,13 @@ class ObservationPublicationTests(unittest.TestCase):
             telemetry.begin_tick(mode="user", user_input=idle, pilot_output=idle)
             return telemetry.complete_tick(idle)["record"]["generation_id"]
 
-        part = self._hold_part(host_telemetry=telemetry)
+        part = self._part(host_telemetry=telemetry)
+        warming = part.publish_latest(now_ms=1_000)
+        self.assertEqual(
+            (warming["schema"], warming["health"], warming["ok"], warming["report"]),
+            (FRAME_PUBLICATION_SCHEMA, "warming", False, None),
+        )
+        self.assertIsNone(part.observation_status()["latest"])
         part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
         part.wait_for_cycle()
         assert part.latest_state is not None
@@ -347,10 +304,7 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(expected_generation, part.host.applied_decision()["generation_id"])
         self.assertEqual(telemetry_generation(), expected_generation)
         self.assertEqual(sorted(values["activation"]["steps"]), sorted(STEPS))
-        self.assertEqual(
-            values["activation"]["steps"]["proposal"]["plugins"],
-            ["avoid_recent_obstruction"],
-        )
+        self.assertEqual(values["activation"]["steps"]["proposal"]["plugins"], ["inactive"])
         self.assertNotIn("producer_pid", published)
         self.assertEqual(published["frame_id"], part.latest_state.frame_id)
         self.assertEqual(published["frame_index"], part.latest_state.frame_index)
@@ -366,6 +320,16 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(published["cycle"]["proposal"]["frame_id"], published["frame_id"])
         self.assertNotIn("source", published["cycle"]["proposal"])
         self.assertIsNone(published["cycle"]["perception"])
+        # Manual mode applies nothing.
+        self.assertEqual(
+            {key: published["application"][key] for key in ("mode", "applied", "reason", "steering", "throttle")},
+            {"mode": "manual", "applied": False, "reason": "manual", "steering": 0.0, "throttle": 0.0},
+        )
+        # Timing rides in the report's values: a required report key rejected hosts without it.
+        self.assertEqual([entry["step"] for entry in values["timing"]["steps"]], list(STEPS))
+        self.assertNotIn("timing", decision)
+        self.assertNotIn("duration_ms", decision)
+        self.assertTrue(self._transaction_image(part).startswith(b"\xff\xd8"))
 
         expired = part.publish_latest(
             now_ms=completed_at_ms + decision["stale_after_ms"] + 1
@@ -376,8 +340,8 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(expired["report"]["status"], "ok")
 
         # A request leaves the completed frame alone until the next cycle adopts it.
-        replacement = "hold" if part.host.step("action").plugin_ids != ("hold",) else "selected"
-        self.assertTrue(part.host.arm({"action": [replacement]})["ok"])
+        part.host.catalog.include([PluginDefinition("action", "hold", HOLD_SPEC)])
+        self.assertTrue(part.host.arm({"action": ["hold"]})["ok"])
         kept = part.publish_latest(now_ms=completed_at_ms)
         self.assertEqual(kept["report"]["frame_id"], published["frame_id"])
         self.assertEqual(kept["report"]["cycle"]["action"]["frame_id"], published["frame_id"])
@@ -389,21 +353,6 @@ class ObservationPublicationTests(unittest.TestCase):
         self.assertEqual(part.latest_state.report["values"]["activation"]["generation_id"], restaged)
         self.assertEqual(telemetry_generation(), restaged)
         self.assertNotEqual(part.latest_state.frame_id, published["frame_id"])
-
-    def test_both_publications_carry_the_cycles_timing(self) -> None:
-        """Timing rides in the report's values: a required report key rejected hosts without it."""
-
-        part = self._hold_part()
-        part.run(image_array=np.zeros((4, 4, 3), dtype=np.uint8), mode="user")
-        part.wait_for_cycle()
-        assert part.latest_state is not None
-        now_ms = part.latest_state.completed_at_ms
-
-        observation = part.publish_latest(now_ms=now_ms)
-        timing = observation["report"]["values"]["timing"]
-        self.assertEqual([entry["step"] for entry in timing["steps"]], list(STEPS))
-        self.assertNotIn("timing", observation)
-        self.assertNotIn("duration_ms", observation)
 
     def test_concurrent_reads_keep_frame_identity_paired(self) -> None:
         part = AutonomyPilotPart(host=create_host(steps=decision_steps()))

@@ -3,7 +3,10 @@
 from __future__ import annotations
 
 import unittest
+from collections import UserDict
 from copy import deepcopy
+from enum import IntEnum
+from unittest.mock import patch
 
 from autonomy.serialization import (
     FrozenJsonObject,
@@ -47,4 +50,41 @@ class SerializationTests(unittest.TestCase):
             frozen._data["a"] = (1,)  # type: ignore[index]
         with self.assertRaises(AttributeError):
             frozen.extra = 1  # type: ignore[attr-defined]
+
+    def test_freeze_matches_json_normalization_without_round_trip(self) -> None:
+        class Number(IntEnum):
+            ONE = 1
+
+        class Text(str):
+            pass
+
+        class Decimal(float):
+            pass
+
+        source = {"z": (Number.ONE, Text("hi"), Decimal(1.5)), "a": {"b": []}}
+        expected = ensure_strict_json_value(source)
+        with patch("autonomy.serialization.ensure_strict_json_value", side_effect=AssertionError):
+            frozen = deep_freeze(source)
+        self.assertEqual(list(frozen), ["a", "z"])
+        self.assertEqual(frozen_mapping_to_dict(frozen), expected)
+        self.assertEqual([type(item) for item in frozen["z"]], [int, str, float])
+        source["a"]["b"].append("changed")
+        exported = frozen_mapping_to_dict(frozen)
+        exported["a"]["b"].append("changed")
+        self.assertEqual(frozen_mapping_to_dict(frozen), expected)
+        self.assertEqual(canonical_json_utf8(frozen_mapping_to_dict(frozen)), canonical_json_utf8(expected))
+
+    def test_freeze_rejects_non_json_inputs_with_field_context(self) -> None:
+        for value in (float("nan"), float("inf"), {1, 2}, UserDict({"x": 1}), object()):
+            with self.subTest(value=value), self.assertRaisesRegex(ValueError, r"metadata\.x\[0\]"):
+                deep_freeze({"x": [value]}, field_name="metadata")
+        with self.assertRaisesRegex(ValueError, r"metadata\.x\[0\].*keys must be strings"):
+            deep_freeze({"x": [{1: "bad"}]}, field_name="metadata")
+
+    def test_freeze_normalizes_surrogate_pairs_like_json_decoding(self) -> None:
+        value = {"\ud83d\ude00": "\ud83d\ude00", "😀": "\ud800"}
+        expected = ensure_strict_json_value(value)
+        frozen = deep_freeze(value)
+        self.assertEqual(frozen_mapping_to_dict(frozen), expected)
+        self.assertEqual(list(frozen), list(expected))
 

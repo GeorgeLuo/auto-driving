@@ -14,67 +14,22 @@ from qca.factors.verification import (
 
 
 class VerificationFactorTests(unittest.TestCase):
-    def test_static_factors_report_assertion_candidates_and_lifecycle_sites(self) -> None:
-        factors = analyze_verification(
-            {
-                "tests/test_example.py": """
-def test_candidates(value):
-    assert True
-    assert value == value
-    self.assertEqual(value, value)
-    self.assertTrue(value)
-""",
-                "cli/runner.py": """
-class Runner:
-    def start(self):
-        self.reset()
-
-    def reset(self):
-        self.cleanup()
-
-    def cleanup(self):
-        self.stop()
-
-    def stop(self):
-        return None
-
-runner = Runner()
-runner.start()
-runner.reset()
-""",
-                "README.md": "assert True\n",
-            }
-        )
-
-        test_metrics = factors["test_effectiveness"]["metrics"]
-        self.assertEqual(factors["test_effectiveness"]["status"], "measured")
-        self.assertEqual(test_metrics["assertion_count"], 4)
-        self.assertEqual(test_metrics["literal_assertion_candidates"], 1)
-        self.assertEqual(test_metrics["tautological_assertion_candidates"], 2)
-        self.assertEqual(test_metrics["string_expected_assertion_count"], 0)
-        self.assertEqual(test_metrics["formatted_literal_assertion_count"], 0)
-        self.assertEqual(test_metrics["private_import_count"], 0)
-        self.assertEqual(test_metrics["private_helper_call_count"], 0)
-        self.assertEqual(test_metrics["candidate_assertion_count"], 3)
-        self.assertEqual(len(factors["test_effectiveness"]["findings"]), 3)
-        self.assertTrue(all(item["message"] for item in factors["test_effectiveness"]["findings"]))
-        self.assertTrue(
-            any("candidate" in limitation.lower() for limitation in factors["test_effectiveness"]["limitations"])
-        )
-
-        lifecycle_metrics = factors["lifecycle"]["metrics"]
-        lifecycle_details = factors["lifecycle"]["details"]
-        self.assertEqual(lifecycle_metrics["start_definition_count"], 1)
-        self.assertEqual(lifecycle_metrics["start_call_count"], 1)
-        self.assertEqual(lifecycle_metrics["reset_definition_count"], 1)
-        self.assertEqual(lifecycle_metrics["reset_call_count"], 2)
-        self.assertEqual(lifecycle_metrics["cleanup_definition_count"], 1)
-        self.assertEqual(lifecycle_metrics["stop_definition_count"], 1)
-        self.assertEqual(lifecycle_details["by_kind"]["start"]["definitions"], 1)
-        self.assertTrue(all(item["message"] for item in factors["lifecycle"]["findings"]))
-        self.assertTrue(
-            any("symmetry" in limitation.lower() for limitation in factors["lifecycle"]["limitations"])
-        )
+    def test_test_file_count_excludes_non_python_and_keeps_parse_failures(self) -> None:
+        factor = analyze_verification({
+            "tests/README.md": "# Test guide\n",
+            "tests/data.json": "{}\n",
+            "tests/support.py": "value = 1\n",
+            "tests/broken.py": "def broken(:\n",
+            "test_feature.PY": "def test_feature():\n    assert True\n",
+            "test_api.PYI": "def test_api() -> None: ...\n",
+            "app.py": "value = 1\n",
+            "broken.py": "def broken(:\n",
+        })["test_effectiveness"]
+        self.assertEqual(factor["metrics"]["source_file_count"], 8)
+        self.assertEqual(factor["metrics"]["python_file_count"], 6)
+        self.assertEqual(factor["metrics"]["test_file_count"], 4)
+        self.assertEqual(factor["metrics"]["parse_error_count"], 1)
+        self.assertEqual(factor["metrics"]["test_case_count"], 2)
 
     def test_reports_string_expected_and_private_surface_candidates(self) -> None:
         factors = analyze_verification(
@@ -119,6 +74,28 @@ class Suite:
         self.assertTrue(
             any("private production" in limitation.lower() for limitation in factors["test_effectiveness"]["limitations"])
         )
+
+    def test_assertion_candidate_metrics_cover_distinct_and_overlapping_kinds(self) -> None:
+        factor = analyze_verification({
+            "tests/test_examples.py": (
+                "def test_examples(self, value, output):\n"
+                "    assert True\n"
+                "    assert value == value\n"
+                "    assigned = 1\n"
+                "    assert assigned == 1\n"
+                "    self.assertEqual(fetch(), 'ready')\n"
+                "    self.assertIn('| report |', output)\n"
+            ),
+        })["test_effectiveness"]
+        metrics = factor["metrics"]
+        self.assertEqual(metrics["assertion_count"], 5)
+        self.assertEqual(metrics["candidate_assertion_count"], 5)
+        self.assertEqual(metrics["literal_assertion_candidates"], 1)
+        self.assertEqual(metrics["tautological_assertion_candidates"], 1)
+        self.assertEqual(metrics["assignment_readback_candidates"], 1)
+        self.assertEqual(metrics["string_expected_assertion_count"], 2)
+        self.assertEqual(metrics["formatted_literal_assertion_count"], 1)
+        self.assertEqual(len(factor["findings"]), 5)
 
     def test_consumer_report_locates_assignment_and_readback(self) -> None:
         """Consumer: the serialized report identifies both ends of a readback."""
@@ -190,26 +167,6 @@ def helper():
         candidates = [f for f in factor["findings"] if f["kind"] == "assignment_readback"]
         self.assertEqual(len(candidates), 1)
         self.assertEqual((candidates[0]["assignment"]["line"], candidates[0]["line"]), (4, 5))
-
-    def test_dynamic_factors_are_explicitly_unmeasured_without_evidence(self) -> None:
-        factors = analyze_verification({})
-        for name in ("end_to_end", "ui_behavior"):
-            self.assertEqual(factors[name]["status"], "not_measured")
-            self.assertEqual(factors[name]["metrics"], {})
-            self.assertEqual(factors[name]["findings"], [])
-            self.assertTrue(factors[name]["limitations"])
-
-    def test_candidate_site_details_are_complete_and_counts_are_retained(self) -> None:
-        source = "\n".join("assert True" for _ in range(80)) + "\n"
-        payload = report_to_dict(analyze_sources({"tests/test_many.py": source}))
-        factor = payload["factors"]["test_effectiveness"]
-        metrics = factor["metrics"]
-        self.assertEqual(metrics["literal_assertion_candidates"], 80)
-        self.assertEqual(metrics["candidate_assertion_count"], 80)
-        self.assertEqual(metrics["candidate_site_count"], 80)
-        self.assertEqual(len(factor["findings"]), 80)
-        self.assertTrue(factor["details"]["candidate_sites_are_complete"])
-        self.assertFalse(any("limited to the first" in limitation for limitation in factor["limitations"]))
 
     def test_attach_promotes_only_dynamic_factors_and_preserves_static_payload(self) -> None:
         factors = analyze_verification(
@@ -355,6 +312,18 @@ def helper():
         with self.assertRaises(ValueError):
             attach_verification(base, common, "base-ref", "head-ref")
 
+    def test_factor_revision_fields_must_match_the_evidence_envelope(self) -> None:
+        factors = analyze_verification({})
+        record = {"status": "not_measured", "reason": "not run", "base_sha": "base-ref", "head_sha": "head-ref"}
+        evidence = {"schema": VERIFICATION_SCHEMA, "base_sha": "base-ref", "head_sha": "head-ref",
+                    "factors": {"end_to_end": record}}
+        self.assertEqual(attach_verification(factors, evidence, "base-ref", "head-ref")["end_to_end"]["status"], "not_measured")
+        for key, bad_value in (("base_sha", "other"), ("head_sha", "other"), ("base_sha", 7), ("head_sha", 7)):
+            with self.subTest(key=key, bad_value=bad_value):
+                invalid = {**evidence, "factors": {"end_to_end": {**record, key: bad_value}}}
+                with self.assertRaisesRegex(ValueError, key):
+                    attach_verification(factors, invalid, "base-ref", "head-ref")
+
     def test_attach_rejects_contradictory_pass_and_api_only_ui_evidence(self) -> None:
         base = analyze_verification({})
         contradictory = {
@@ -388,26 +357,6 @@ def helper():
         }
         with self.assertRaises(ValueError):
             attach_verification(base, api_only, "base-ref", "head-ref")
-
-    def test_attach_treats_omitted_records_as_not_measured(self) -> None:
-        attached = attach_verification(
-            analyze_verification({}),
-            {
-                "schema": VERIFICATION_SCHEMA,
-                "base_sha": "base-ref",
-                "head_sha": "head-ref",
-                "factors": {},
-            },
-            "base-ref",
-            "head-ref",
-        )
-        for name in ("test_effectiveness", "end_to_end", "ui_behavior", "lifecycle"):
-            self.assertEqual(attached[name]["verification"]["status"], "not_measured")
-            self.assertEqual(
-                attached[name]["verification"]["record"]["reason"],
-                "No record was supplied for this factor.",
-            )
-        self.assertEqual(attached["end_to_end"]["status"], "not_measured")
 
     def test_attach_requires_reason_for_explicit_not_measured_records(self) -> None:
         """Consumer: explicit unmeasured evidence must explain the uncertainty."""

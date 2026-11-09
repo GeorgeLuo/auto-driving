@@ -1,30 +1,23 @@
+"""The shared evidence ledger reduction: what it retains, for how long, under which id,
+and how it resolves sightings that conflict."""
+
 from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
+from copy import deepcopy
 
-from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
-from autonomy.decision_cycle.cycle import DecisionCycle, DecisionSteps
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
-from autonomy.decision_cycle.memory.runner import MemoryRunner
-from autonomy.decision_cycle.activation import (
-    read_step_activation,
-    write_step_activation,
-)
-from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
-from implementations.decision_cycle.catalog import DEFAULT_STEP_PLUGINS, packaged_activation, step_plugins
-from implementations.decision_cycle.memory.plugins.bounded_evidence.plugin import (
-    LEDGER_KEY,
-    BoundedEvidenceLedger,
-)
+from autonomy.decision_cycle.perception.evidence.values import ViewLocation
+from implementations.decision_cycle.memory.shared.evidence_ledger.ledger import serialized_ledger_bytes
 from implementations.decision_cycle.memory.shared.evidence_ledger.reduction import (
+    CONFLICT_POLICY,
     BoundedEvidenceReducer,
+    json_values_equal,
+    location_geometry_signature,
     namespaced_record_id,
     reduce_evidence,
 )
-from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import _RecordingMemory
 
 
 def _observation(
@@ -46,94 +39,58 @@ def _observation(
 
 
 def _thing(
-    thing_id: str,
+    thing_id: str = "floor_boundary_000",
     *,
     kind: str = "floor_boundary",
+    label: str | None = None,
     zone: str = "center",
     confidence: float | None = 0.9,
+    frame: str = "image",
+    bbox: list[float] | None = None,
+    polygon: list[list[float]] | None = None,
+    properties: dict | None = None,
+    source_plugin_id: str = "floor_plane",
+    include_location: bool = True,
 ) -> dict:
-    return {
+    thing: dict = {
         "thing_id": thing_id,
         "kind": kind,
-        "label": f"{kind}:{thing_id}",
+        "label": label if label is not None else f"{kind}:{thing_id}",
         "confidence": confidence,
-        "location": {
-            "frame": "image",
-            "zone": zone,
-            "bbox_xyxy_norm": [0.4, 0.5, 0.6, 0.9],
-        },
-        "properties": {"width_fraction": 0.2},
-        "source_plugin_id": "floor_plane",
+        "properties": dict(properties if properties is not None else {"width_fraction": 0.2}),
+        "source_plugin_id": source_plugin_id,
     }
+    if include_location:
+        location: dict = {"frame": frame, "zone": zone}
+        if bbox is not None:
+            location["bbox_xyxy_norm"] = bbox
+        elif polygon is None:
+            location["bbox_xyxy_norm"] = [0.4, 0.5, 0.6, 0.9]
+        if polygon is not None:
+            location["polygon_xy_norm"] = polygon
+        thing["location"] = location
+    return thing
+
+
+def _ledger(**kwargs) -> BoundedEvidenceReducer:
+    defaults = {"max_records": 8, "max_age_ms": 10_000}
+    defaults.update(kwargs)
+    return BoundedEvidenceReducer(**defaults)
+
+
+def _ctx(frame: str, index: int, ts: int) -> DecisionFrameContext:
+    return DecisionFrameContext(frame, index, ts)
+
+
+def _two_sightings(first: dict, second: dict):
+    """The ledger after ``first`` is seen on one frame and ``second`` on the next."""
+
+    ledger = _ledger()
+    ledger.update(_ctx("f1", 1, 100), _observation("o1", created_at_ms=90, things=(first,)))
+    return ledger.update(_ctx("f2", 2, 200), _observation("o2", created_at_ms=190, things=(second,)))
 
 
 class BoundedEvidenceLedgerTests(unittest.TestCase):
-    def test_catalog_exposes_default_plugin(self) -> None:
-        self.assertEqual(DEFAULT_STEP_PLUGINS["memory"], ("bounded_evidence",))
-        entry = step_plugins("memory")["bounded_evidence"]
-        self.assertEqual(
-            entry["spec"],
-            "implementations.decision_cycle.memory.plugins.bounded_evidence.plugin:BoundedEvidenceLedger",
-        )
-
-    def test_reset_writes_a_fresh_epoch_to_the_map(self) -> None:
-        ledger = BoundedEvidenceLedger()
-        memory = {}
-        ledger.reset(memory)
-        self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-2")
-        ledger.reset(memory)
-        self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-3")
-        self.assertEqual(memory[EVIDENCE_KEY], ())
-
-    def test_ledger_lives_in_the_map_across_instances(self) -> None:
-        memory = {}
-        config = {"max_records": 8, "max_age_ms": 5_000}
-        first = BoundedEvidenceLedger(**config)
-        context = DecisionFrameContext("f1", 1, 100, shared_memory=memory)
-        context.shared_memory[OBSERVATION_KEY] = _observation("o1", created_at_ms=90, things=(_thing("a"),))
-        first.update(context)
-        self.assertFalse(hasattr(first, "_records"))
-        self.assertEqual(memory[LEDGER_KEY].record_count, 1)
-        self.assertEqual(memory[EVIDENCE_KEY], memory[LEDGER_KEY].records)
-
-        recreated = BoundedEvidenceLedger(**config)
-        context = DecisionFrameContext("f2", 2, 200, shared_memory=memory)
-        context.shared_memory[OBSERVATION_KEY] = _observation("o2", created_at_ms=190, things=(_thing("b"),))
-        recreated.update(context)
-        self.assertEqual(memory[LEDGER_KEY].record_count, 2)
-        self.assertEqual(len(memory[EVIDENCE_KEY]), 2)
-
-        recreated.reset(memory)
-        reset = memory[LEDGER_KEY]
-        self.assertEqual(reset.record_count, 0)
-        self.assertEqual(reset.epoch_id, "epoch-2")
-        self.assertIn("epoch_id=epoch-2", reset.summary)
-        self.assertEqual(memory[EVIDENCE_KEY], ())
-        self.assertEqual(recreated.status(memory), reset.to_dict())
-
-        memory.clear()
-        recreated.update(DecisionFrameContext("f3", 3, 300, shared_memory=memory))
-        self.assertEqual(memory[LEDGER_KEY].record_count, 0)
-        self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-1")
-
-    def test_foreign_value_at_the_ledger_key_is_rejected(self) -> None:
-        memory = {LEDGER_KEY: "written by another producer"}
-        ledger = BoundedEvidenceLedger(max_records=8)
-
-        with self.assertRaises(TypeError) as caught:
-            context = DecisionFrameContext("f1", 1, 100, shared_memory=memory)
-            context.shared_memory[OBSERVATION_KEY] = _observation("o1", created_at_ms=90, things=(_thing("a"),))
-            ledger.update(context)
-
-        self.assertIn(LEDGER_KEY, str(caught.exception))
-        ledger.reset(memory)
-        self.assertEqual(memory[LEDGER_KEY].epoch_id, "epoch-2")
-        self.assertEqual(memory[LEDGER_KEY].record_count, 0)
-
-    def test_a_reset_without_a_map_names_the_plugin(self) -> None:
-        with self.assertRaisesRegex(ValueError, "bounded evidence requires a shared-memory map"):
-            BoundedEvidenceLedger(max_records=8).reset(None)
-
     def test_retains_things_and_signals_with_origin(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
         context = DecisionFrameContext("frame_1", 1, 1_000)
@@ -230,79 +187,56 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
 
     def test_reset_starts_new_empty_epoch(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=4, max_age_ms=5_000)
-        ledger.update(
+        first = ledger.update(
             DecisionFrameContext("f1", 1, 100),
             _observation("o1", created_at_ms=90, things=(_thing("a"),)),
         )
-        previous_epoch = ledger.ledger().epoch_id
+        self.assertIs(ledger.ledger(), first)
         reset = ledger.reset()
         self.assertEqual(reset.health, "empty")
         self.assertEqual(reset.record_count, 0)
-        self.assertNotEqual(reset.epoch_id, previous_epoch)
+        self.assertNotEqual(reset.epoch_id, first.epoch_id)
         # prior evidence must not reappear after reset
         after = ledger.update(DecisionFrameContext("f2", 2, 200), None)
         self.assertEqual(after.health, "empty")
 
-    def test_activation_loads_through_framework_step(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "active.json"
-            write_step_activation(
-                path,
-                packaged_activation(
-                    "memory",
-                    config_overrides={"bounded_evidence": {"max_records": 4, "max_age_ms": 2_000}},
-                ),
-            )
-            step = MemoryRunner.from_activation(read_step_activation(path, "memory"))
-            shared_memory = {}
-            observation = _observation(
-                "obs_9",
-                created_at_ms=90,
-                things=(_thing("floor_boundary_001", zone="center"),),
-            )
-            result = DecisionCycle(
-                DecisionSteps(
-                    observation=lambda context, perception: observation,
-                    memory=step,
+    def test_record_ids_keep_plugins_with_one_local_id_apart(self) -> None:
+        self.assertEqual(namespaced_record_id("thing", "shared", "plugin:a"), "thing:1:8:plugin:a:6:shared")
+        for plugins in (("plugin-a", "plugin-b"), ("plugin:a", "plugin_a")):
+            with self.subTest(plugins=plugins):
+                things = []
+                for plugin, zone in zip(plugins, ("left", "right")):
+                    thing = _thing("shared", zone=zone)
+                    thing["source_plugin_id"] = plugin
+                    things.append(thing)
+                state = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000).update(
+                    DecisionFrameContext("f1", 1, 100),
+                    _observation("o1", created_at_ms=90, things=tuple(things)),
                 )
-            ).run(DecisionFrameContext("frame_9", 9, 100, shared_memory=shared_memory))
-            state = result.memory["plugins"][0]["state"]
-            self.assertEqual(state["health"], "healthy")
-            self.assertEqual(state["record_count"], 1)
-            self.assertEqual(state["plugin_id"], "bounded_evidence")
-            self.assertEqual(step.status()["plugin_ids"], ["bounded_evidence"])
-            self.assertEqual(shared_memory[LEDGER_KEY].to_dict(), state)
-            self.assertEqual(shared_memory[EVIDENCE_KEY], shared_memory[LEDGER_KEY].records)
-            self.assertEqual(result.memory["evidence_publisher"], "bounded_evidence")
-            self.assertEqual(step.status()["evidence_publisher"], "bounded_evidence")
+                self.assertEqual(
+                    {record.record_id: record.location.zone for record in state.records},
+                    {namespaced_record_id("thing", "shared", plugin): zone
+                     for plugin, zone in zip(plugins, ("left", "right"))},
+                )
 
-    def test_names_the_publisher_beside_a_plugin_that_keeps_private_state(self) -> None:
-        config = step_plugins("memory")["bounded_evidence"]["default_config"]
-        observation = _observation("obs_1", created_at_ms=90, things=(_thing("a"),))
-        for order in (("recording_test", "bounded_evidence"), ("bounded_evidence", "recording_test")):
-            with self.subTest(order=order):
-                plugins = {
-                    "recording_test": _RecordingMemory(),
-                    "bounded_evidence": BoundedEvidenceLedger(**config),
-                }
-                step = MemoryRunner.from_plugins({plugin_id: plugins[plugin_id] for plugin_id in order})
-                context = DecisionFrameContext("f1", 1, 100, shared_memory={})
-                context.shared_memory[OBSERVATION_KEY] = observation
-                report = step.update(context)
+    def test_reduce_evidence_rehydrates_prior_state_without_keeping_it(self) -> None:
+        config = {"max_records": 8, "max_age_ms": 5_000}
+        ledger = BoundedEvidenceReducer(**config)
+        first = ledger.update(
+            DecisionFrameContext("f1", 1, 100),
+            _observation("o1", created_at_ms=90, things=(_thing("a", zone="left"),)),
+        )
+        context = DecisionFrameContext("f2", 2, 200)
+        observation = _observation("o2", created_at_ms=190, things=(_thing("b", zone="right"),))
+        expected = ledger.update(context, observation).to_dict()
 
-                states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
-                self.assertEqual([entry["plugin_id"] for entry in report["plugins"]], list(order))
-                self.assertEqual(states["bounded_evidence"]["record_count"], 1)
-                self.assertEqual(states["recording_test"]["record_count"], 1)
-                self.assertEqual(report["evidence_publisher"], "bounded_evidence")
-
-                step.reset(context.shared_memory)
-                report = step.report()
-
-                states = {entry["plugin_id"]: entry["state"] for entry in report["plugins"]}
-                self.assertEqual(states["bounded_evidence"]["health"], "empty")
-                self.assertEqual(states["recording_test"]["record_count"], 0)
-                self.assertEqual(report["evidence_publisher"], "bounded_evidence")
+        # The same prior state reduces the same way on every call and is left as it was.
+        for _ in range(2):
+            actual = reduce_evidence(first, context, observation, plugin_id="bounded_evidence", **config)
+            self.assertEqual(actual.to_dict(), expected)
+        self.assertEqual((first.record_count, first.records[0].record_id), (1, "thing:1:11:floor_plane:1:a"))
+        named = reduce_evidence(first, context, observation, plugin_id="example_memory", **config)
+        self.assertEqual((named.plugin_id, named.epoch_id), ("example_memory", first.epoch_id))
 
     def test_skips_false_signals_and_low_confidence_and_keeps_unscored(self) -> None:
         ledger = BoundedEvidenceReducer(
@@ -338,18 +272,6 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
             },
         )
 
-    def test_returned_ledger_is_the_stored_ledger(self) -> None:
-        ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
-        first = ledger.update(
-            DecisionFrameContext("frame_1", 1, 1_000),
-            _observation(
-                "obs_1",
-                created_at_ms=990,
-                things=(_thing("floor_boundary_000"),),
-            ),
-        )
-        self.assertIs(ledger.ledger(), first)
-
     def test_oversized_properties_are_not_retained(self) -> None:
         ledger = BoundedEvidenceReducer(
             max_records=8,
@@ -365,44 +287,6 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         )
         ids = {record.record_id for record in state.records}
         self.assertEqual(ids, {"thing:1:11:floor_plane:5:small"})
-
-    def test_plugins_with_same_local_id_do_not_collide(self) -> None:
-        ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
-        left = _thing("shared_id", zone="left")
-        left["source_plugin_id"] = "plugin-a"
-        right = _thing("shared_id", zone="right")
-        right["source_plugin_id"] = "plugin-b"
-        state = ledger.update(
-            DecisionFrameContext("f1", 1, 100),
-            _observation("o1", created_at_ms=90, things=(left, right)),
-        )
-        ids = {record.record_id for record in state.records}
-        self.assertEqual(
-            ids,
-            {"thing:1:8:plugin-a:9:shared_id", "thing:1:8:plugin-b:9:shared_id"},
-        )
-        by_id = {record.record_id: record for record in state.records}
-        self.assertEqual(by_id["thing:1:8:plugin-a:9:shared_id"].location.zone, "left")
-        self.assertEqual(by_id["thing:1:8:plugin-b:9:shared_id"].location.zone, "right")
-
-    def test_delimiter_containing_plugin_ids_do_not_collide(self) -> None:
-        left = namespaced_record_id("thing", "shared", "plugin:a")
-        right = namespaced_record_id("thing", "shared", "plugin_a")
-        self.assertNotEqual(left, right)
-        self.assertEqual(left, "thing:1:8:plugin:a:6:shared")
-        self.assertEqual(right, "thing:1:8:plugin_a:6:shared")
-
-        ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
-        a = _thing("shared", zone="left")
-        a["source_plugin_id"] = "plugin:a"
-        b = _thing("shared", zone="right")
-        b["source_plugin_id"] = "plugin_a"
-        state = ledger.update(
-            DecisionFrameContext("f1", 1, 100),
-            _observation("o1", created_at_ms=90, things=(a, b)),
-        )
-        ids = {record.record_id for record in state.records}
-        self.assertEqual(ids, {left, right})
 
     def test_namespace_preserves_absent_vs_literal_unknown_and_whitespace(self) -> None:
         absent = namespaced_record_id("thing", "shared", None)
@@ -436,23 +320,6 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         ids = {record.record_id for record in state.records}
         self.assertEqual(ids, {absent, literal_unknown})
 
-    def test_long_sequence_stays_within_record_capacity(self) -> None:
-        ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=10_000)
-        for index in range(64):
-            state = ledger.update(
-                DecisionFrameContext(f"frame_{index}", index, 1_000 + index * 10),
-                _observation(
-                    f"obs_{index}",
-                    created_at_ms=990 + index * 10,
-                    things=(_thing(f"item_{index % 20}"),),
-                ),
-            )
-            self.assertLessEqual(state.record_count, 8)
-        final = ledger.ledger()
-        self.assertEqual(final.record_count, 8)
-        self.assertEqual(final.health, "healthy")
-        self.assertEqual(final.bounds.max_records, 8)
-
     def test_non_json_property_values_are_not_retained(self) -> None:
         ledger = BoundedEvidenceReducer(max_records=8, max_age_ms=5_000)
         bad = _thing("opaque")
@@ -465,61 +332,233 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         ids = {record.record_id for record in state.records}
         self.assertEqual(ids, {"thing:1:11:floor_plane:2:ok"})
 
-    def test_reduce_evidence_rehydrates_prior_state(self) -> None:
-        config = {"max_records": 8, "max_age_ms": 5_000}
-        ledger = BoundedEvidenceReducer(**config)
-        first = ledger.update(
-            DecisionFrameContext("f1", 1, 100),
-            _observation("o1", created_at_ms=90, things=(_thing("a", zone="left"),)),
-        )
-        context = DecisionFrameContext("f2", 2, 200)
-        observation = _observation(
-            "o2", created_at_ms=190, things=(_thing("b", zone="right"),)
-        )
 
-        expected = ledger.update(context, observation)
-        actual = reduce_evidence(
-            first,
-            context,
-            observation,
-            plugin_id="bounded_evidence",
-            **config,
+class HelperUnitTests(unittest.TestCase):
+    def test_location_geometry_signatures(self) -> None:
+        self.assertIsNone(location_geometry_signature(None))
+        bare = ViewLocation(frame="image", zone="center")
+        self.assertEqual(location_geometry_signature(bare), (False, False))
+        bbox = ViewLocation(
+            frame="image",
+            zone="center",
+            bbox_xyxy_norm=(0.1, 0.2, 0.3, 0.4),
         )
-
-        self.assertEqual(actual.to_dict(), expected.to_dict())
-        self.assertEqual(first.record_count, 1)
-        self.assertEqual(first.records[0].record_id, "thing:1:11:floor_plane:1:a")
-
-    def test_reduce_evidence_does_not_retain_state_between_calls(self) -> None:
-        config = {"max_records": 8, "max_age_ms": 5_000}
-        seed = BoundedEvidenceReducer(**config)
-        previous = seed.update(
-            DecisionFrameContext("f1", 1, 100),
-            _observation("o1", created_at_ms=90, things=(_thing("a"),)),
+        self.assertEqual(location_geometry_signature(bbox), (True, False))
+        poly = ViewLocation(
+            frame="image",
+            zone="center",
+            polygon_xy_norm=((0.0, 0.0), (1.0, 0.0), (0.5, 1.0)),
         )
-        context = DecisionFrameContext("f2", 2, 200)
-        observation = _observation("o2", created_at_ms=190, things=(_thing("b"),))
-
-        first = reduce_evidence(
-            previous,
-            context,
-            observation,
-            plugin_id="example_memory",
-            **config,
+        self.assertEqual(location_geometry_signature(poly), (False, True))
+        both = ViewLocation(
+            frame="image",
+            zone="center",
+            bbox_xyxy_norm=(0.1, 0.2, 0.3, 0.4),
+            polygon_xy_norm=((0.0, 0.0), (1.0, 0.0), (0.5, 1.0)),
         )
-        second = reduce_evidence(
-            previous,
-            context,
-            observation,
-            plugin_id="example_memory",
-            **config,
-        )
+        self.assertEqual(location_geometry_signature(both), (True, True))
 
-        self.assertEqual(first.to_dict(), second.to_dict())
-        self.assertEqual(first.epoch_id, previous.epoch_id)
-        self.assertEqual(first.plugin_id, "example_memory")
-        self.assertEqual(previous.record_count, 1)
-        self.assertEqual(previous.records[0].record_id, "thing:1:11:floor_plane:1:a")
+    def test_json_numeric_equality_boundaries(self) -> None:
+        self.assertTrue(json_values_equal(1, 1.0))
+        self.assertTrue(json_values_equal(0, -0.0))
+        self.assertFalse(json_values_equal(2**53, 2**53 + 1))
+        self.assertTrue(json_values_equal(10**400, 10**400))
+        self.assertFalse(json_values_equal(True, 1))
+        self.assertFalse(json_values_equal(False, 0))
+
+
+class ConflictMatrixTests(unittest.TestCase):
+    def test_a_second_sighting_updates_its_slot_unless_the_kind_changes(self) -> None:
+        compatible = {
+            "scalar property": ({"properties": {"score": 1}}, {"properties": {"score": 2}}),
+            "confidence, label, zone and bbox": (
+                {"confidence": 0.5, "label": "a", "zone": "left"},
+                {"confidence": 0.95, "label": "b", "zone": "right", "bbox": [0.1, 0.1, 0.2, 0.2]},
+            ),
+            "property shape": (
+                {"properties": {"tracks": []}},
+                {"properties": {"tracks": [{"id": 1}], "events": {"1": "matched"}}},
+            ),
+        }
+        for name, (first, second) in compatible.items():
+            with self.subTest(name):
+                snap = _two_sightings(_thing(**first), _thing(**second))
+                expected = _thing(**second)
+                self.assertEqual(snap.record_count, 1)
+                record = snap.records[0]
+                self.assertEqual(
+                    (record.confidence, record.label, record.location.zone, record.properties),
+                    (expected["confidence"], expected["label"], expected["location"]["zone"], expected["properties"]),
+                )
+                self.assertEqual((snap.metadata["conflict_count"], snap.metadata["last_update_conflict_count"]), (0, 0))
+                self.assertEqual(snap.metadata["conflict_policy"], CONFLICT_POLICY)
+
+        snap = _two_sightings(_thing(kind="floor_boundary"), _thing(kind="obstacle"))
+        self.assertEqual(snap.record_count, 0)
+        self.assertEqual((snap.metadata["conflict_count"], snap.metadata["last_update_conflict_count"]), (1, 1))
+        self.assertEqual(snap.metadata["last_update_drops"], [{
+            "record_id": namespaced_record_id("thing", "floor_boundary_000", "floor_plane"),
+            "reason": "kind_changed",
+            "action": "removed_prior_and_rejected_current",
+        }])
+
+    def test_location_present_absent_and_family_changes(self) -> None:
+        ledger = _ledger()
+        ledger.update(
+            _ctx("f1", 1, 100),
+            _observation("o1", created_at_ms=90, things=(_thing(),)),
+        )
+        snap = ledger.update(
+            _ctx("f2", 2, 200),
+            _observation(
+                "o2",
+                created_at_ms=190,
+                things=(_thing(include_location=False),),
+            ),
+        )
+        self.assertEqual(snap.record_count, 0)
+        self.assertEqual(snap.metadata["conflict_count"], 1)
+
+        ledger = _ledger()
+        ledger.update(
+            _ctx("f1", 1, 100),
+            _observation(
+                "o1",
+                created_at_ms=90,
+                things=(_thing(bbox=[0.1, 0.1, 0.2, 0.2], polygon=None),),
+            ),
+        )
+        # Force bbox-only by not including polygon (default has bbox).
+        snap = ledger.update(
+            _ctx("f2", 2, 200),
+            _observation(
+                "o2",
+                created_at_ms=190,
+                things=(
+                    _thing(
+                        bbox=None,
+                        polygon=[[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]],
+                    ),
+                ),
+            ),
+        )
+        self.assertEqual(snap.record_count, 0)
+        self.assertEqual(snap.metadata["last_update_conflict_count"], 1)
+
+        ledger = _ledger()
+        ledger.update(
+            _ctx("f1", 1, 100),
+            _observation("o1", created_at_ms=90, things=(_thing(bbox=[0.1, 0.1, 0.2, 0.2]),)),
+        )
+        snap = ledger.update(
+            _ctx("f2", 2, 200),
+            _observation(
+                "o2",
+                created_at_ms=190,
+                things=(
+                    _thing(
+                        bbox=[0.1, 0.1, 0.2, 0.2],
+                        polygon=[[0.0, 0.0], [1.0, 0.0], [0.5, 1.0]],
+                    ),
+                ),
+            ),
+        )
+        self.assertEqual(snap.record_count, 0)
+
+    def test_same_observation_confidence_and_bbox_contradictions(self) -> None:
+        # Both tuple orders required by the accepted matrix (not subsumed by score-only).
+        for order in ("ab", "ba"):
+            with self.subTest(field="confidence", order=order):
+                a = _thing(confidence=0.5)
+                b = _thing(confidence=0.9)
+                things = (a, b) if order == "ab" else (b, a)
+                snap = _ledger().update(
+                    _ctx("f1", 1, 100),
+                    _observation("o1", created_at_ms=90, things=things),
+                )
+                self.assertEqual(snap.record_count, 0)
+                self.assertEqual(snap.metadata["last_update_conflict_count"], 1)
+
+            with self.subTest(field="bbox", order=order):
+                a = _thing(bbox=[0.1, 0.1, 0.2, 0.2])
+                b = _thing(bbox=[0.3, 0.3, 0.4, 0.4])
+                things = (a, b) if order == "ab" else (b, a)
+                snap = _ledger().update(
+                    _ctx("f1", 1, 100),
+                    _observation("o1", created_at_ms=90, things=things),
+                )
+                self.assertEqual(snap.record_count, 0)
+                self.assertEqual(snap.metadata["last_update_conflict_count"], 1)
+
+    def test_same_observation_payload_equal_collapse(self) -> None:
+        ledger = _ledger()
+        twin = _thing(properties={"score": 1})
+        snap = ledger.update(
+            _ctx("f1", 1, 100),
+            _observation("o1", created_at_ms=90, things=(twin, deepcopy(twin))),
+        )
+        self.assertEqual(snap.record_count, 1)
+        self.assertEqual(snap.metadata["last_update_conflict_count"], 0)
+
+    def test_rejected_properties_and_bounded_drop_report(self) -> None:
+        ledger = _ledger(max_records=1, max_property_bytes=32)
+        rejected = ledger.update(
+            _ctx("f1", 1, 100),
+            _observation(
+                "o1",
+                created_at_ms=90,
+                things=(_thing("too_large", properties={"data": "x" * 100}),),
+            ),
+        )
+        self.assertEqual(rejected.record_count, 0)
+        self.assertEqual(rejected.metadata["last_update_drops"][0]["reason"], "properties_too_large")
+        self.assertEqual(rejected.metadata["last_update_drops"][0]["action"], "not_admitted")
+
+        pressure = ledger.update(
+            _ctx("f2", 2, 200),
+            _observation(
+                "o2",
+                created_at_ms=190,
+                things=tuple(
+                    _thing(str(index), properties={"ok": 1}) for index in range(20)
+                ),
+            ),
+        )
+        self.assertEqual(pressure.metadata["last_update_drop_count"], 19)
+        self.assertEqual(len(pressure.metadata["last_update_drops"]), 12)
+        self.assertEqual(pressure.metadata["last_update_drops_omitted"], 7)
+
+    def test_drop_details_fit_state_byte_limit(self) -> None:
+        ledger = _ledger(max_records=1, max_property_bytes=32, max_serialized_bytes=1024)
+        state = ledger.update(
+            _ctx("f1", 1, 100),
+            _observation(
+                "o1",
+                created_at_ms=90,
+                things=tuple(
+                    _thing(str(index), properties={"data": "x" * 100})
+                    for index in range(20)
+                ),
+            ),
+        )
+        self.assertLessEqual(serialized_ledger_bytes(state), 1024)
+        self.assertEqual(state.metadata["last_update_drop_count"], 20)
+        self.assertGreater(state.metadata["last_update_drops_omitted"], 0)
+
+    def test_reset_zeros_conflict_counters(self) -> None:
+        ledger = _ledger()
+        ledger.update(
+            _ctx("f1", 1, 100),
+            _observation("o1", created_at_ms=90, things=(_thing(kind="floor_boundary"),)),
+        )
+        ledger.update(
+            _ctx("f2", 2, 200),
+            _observation("o2", created_at_ms=190, things=(_thing(kind="obstacle"),)),
+        )
+        reset = ledger.reset()
+        self.assertEqual(reset.metadata["conflict_count"], 0)
+        self.assertEqual(reset.metadata["last_update_conflict_count"], 0)
+        self.assertEqual(reset.metadata["conflict_policy"], CONFLICT_POLICY)
 
 
 if __name__ == "__main__":

@@ -36,7 +36,7 @@ def _frame_record(*, frame_id: str, memory: dict, perception: dict | None = None
 class MemoryViewPublicationTests(unittest.TestCase):
     def test_physical_frame_record_and_view_payload_carry_memory(self) -> None:
         memory = memory_report({
-            "schema": "bounded_evidence_ledger",
+            "schema": "test_ledger",
             "health": "healthy",
             "epoch_id": "epoch-2",
             "record_count": 1,
@@ -59,8 +59,8 @@ class MemoryViewPublicationTests(unittest.TestCase):
             ],
         })
         recorded = dict(plugin_states(memory))
-        self.assertEqual(recorded["bounded_evidence"]["health"], "healthy")
-        self.assertEqual(recorded["bounded_evidence"]["records"][0]["kind"], "floor_boundary")
+        self.assertEqual(recorded["evidence_test"]["health"], "healthy")
+        self.assertEqual(recorded["evidence_test"]["records"][0]["kind"], "floor_boundary")
 
         view_payload = _publication_payload(
             host_name="piracer",
@@ -97,17 +97,16 @@ class MemoryViewPublicationTests(unittest.TestCase):
         self.assertEqual(view_payload["report"]["values"]["timing"]["duration_ms"], 12)
         self.assertNotIn("memory", view_payload)
         shown_memory = view_payload["report"]["cycle"]["memory"]
-        self.assertEqual(evidence_publisher(shown_memory), "bounded_evidence")
+        self.assertEqual(evidence_publisher(shown_memory), "evidence_test")
         shown = dict(plugin_states(shown_memory))
-        self.assertEqual(shown["bounded_evidence"]["epoch_id"], "epoch-2")
+        self.assertEqual(shown["evidence_test"]["epoch_id"], "epoch-2")
         self.assertEqual(
-            shown["bounded_evidence"]["records"][0]["origin"]["frame_id"],
+            shown["evidence_test"]["records"][0]["origin"]["frame_id"],
             "donkey_frame_0",
         )
 
     def test_view_payload_carries_every_plugin_and_the_publisher(self) -> None:
-        # bounded_evidence runs first and publishes, so the last plugin is not
-        # the publisher.
+        # The publisher runs first, so the last plugin is not the publisher.
         runner, _shared = two_plugin_runner()
         report = runner.report()
         view_payload = _publication_payload(
@@ -120,9 +119,9 @@ class MemoryViewPublicationTests(unittest.TestCase):
         self.assertEqual(shown_memory, report)
         states = dict(plugin_states(shown_memory))
         self.assertEqual(tuple(states), TWO_PLUGIN_IDS)
-        self.assertEqual(states["bounded_evidence"]["record_count"], 1)
+        self.assertEqual(states["evidence_test"]["record_count"], 1)
         self.assertEqual(len(states["recording_test"]["records"]), 1)
-        self.assertEqual(evidence_publisher(shown_memory), "bounded_evidence")
+        self.assertEqual(evidence_publisher(shown_memory), "evidence_test")
 
 
 if __name__ == "__main__":

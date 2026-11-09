@@ -7,7 +7,8 @@ from autonomy.serialization import canonical_json_size_bytes
 from tests.deterministic.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
 )
-from tests.support.action_fixtures import decision_chain, packaged_decision_chain
+from autonomy.decision_cycle.plan.runner import PlanRunner
+from tests.support.action_fixtures import DecisionChain, decision_chain, proposal_runner
 
 
 class RunnerBoundaryTests(unittest.TestCase):
@@ -67,17 +68,15 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(admitted.metadata["pad"], "x" * 5000)
 
     def test_select_action_plan_failure_is_plan_invariant(self) -> None:
-        from unittest.mock import patch
+        class BrokenPlan:
+            plugin_id = "broken"
 
-        engine = packaged_decision_chain()
-        with patch(
-            "implementations.decision_cycle.plan.plugins.highest_confidence.plugin.select_highest_confidence_plan",
-            side_effect=ValueError("plan broken"),
-        ):
-            result = engine.run(
-                frame_id="frame_001", frame_index=0, timestamp_ms=1
-            )
-            control = result.control
+            def plan(self, context, candidates):
+                raise ValueError("plan broken")
+
+        engine = DecisionChain(proposal_runner({}), plan=PlanRunner.from_plugins({"broken": BrokenPlan()}))
+        result = engine.run(frame_id="frame_001", frame_index=0, timestamp_ms=1)
+        control = result.control
         self.assertEqual(result.status, "error")
         self.assertEqual(result.reason, "action_plan_invariant_violated")
         self.assertIsNone(result.plan)

@@ -191,10 +191,11 @@ class InspectionSourceTests(unittest.TestCase):
                 self.assertEqual(result.returncode, 2, result.stdout)
                 self.assertIn("max_frames is 512", result.stdout)
                 self.assertFalse((self.root / step).exists())
-                report = self.inspect(step, self.source, "--max-frames", str(count))
-                self.assertEqual(len(report["frames"]), count)
                 help_text = invoke_automa("plugins", "inspect", step, "--help").stdout
                 self.assertIn("--max-frames", help_text)
+        # Both steps read the same override, so one full inspect shows that it lifts the limit.
+        report = self.inspect("perception", self.source, "--max-frames", str(count))
+        self.assertEqual(len(report["frames"]), count)
 
     def test_invalid_manifests_never_fall_back_to_image_discovery(self) -> None:
         cases = [

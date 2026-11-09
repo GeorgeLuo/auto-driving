@@ -16,7 +16,7 @@ from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.plan.runner import PlanRunner
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
 from autonomy.decision_cycle.proposal.values import ActionProposal
-from implementations.decision_cycle.plan.plugins.highest_confidence.plugin import HighestConfidencePlan
+from tests.support.action_fixtures import FirstActivePlan
 
 
 class SharedCycleInputsTests(unittest.TestCase):
@@ -50,7 +50,7 @@ class SharedCycleInputsTests(unittest.TestCase):
                                       lifecycle="inactive", freshness="none", confidence=None,
                                       reason="test", command=None, available=False)
 
-        class Plan(HighestConfidencePlan):
+        class Plan(FirstActivePlan):
             def plan(self, context, candidates):
                 seen.append(read_observation(context.shared_memory))
                 seen.append(context.shared_memory[EVIDENCE_KEY])
@@ -61,7 +61,7 @@ class SharedCycleInputsTests(unittest.TestCase):
             observation=ObservationRunner.from_plugins({"observe": Observe()}),
             memory=MemoryRunner.from_plugins({"remember": Remember()}),
             proposal=ProposalRunner.from_plugins({"propose": Propose()}),
-            plan=PlanRunner.from_plugins({"highest_confidence": Plan()}),
+            plan=PlanRunner.from_plugins({"first_active": Plan()}),
         )).run(DecisionFrameContext("f", 0, 100, shared_memory=shared))
         self.assertEqual(seen, [observation, observation, (), observation, (), observation])
         self.assertIs(shared[OBSERVATION_KEY], observation)

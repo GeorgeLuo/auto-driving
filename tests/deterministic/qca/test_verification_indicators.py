@@ -91,6 +91,32 @@ class VerificationIndicatorTests(unittest.TestCase):
         self.assertTrue(test_effectiveness.private_helper_call(hidden_call, {"_local_helper"}))
         self.assertFalse(test_effectiveness.private_helper_call(local_call, {"_local_helper"}))
 
+    def test_private_import_uses_available_source_classification(self) -> None:
+        context = AnalysisContext.from_sources({
+            "pkg/test_engine.py": "def _hidden():\n    pass\ndef _other():\n    pass\n",
+            "pkg/testing/support.py": "def _shared():\n    pass\n",
+            "pkg/test_helpers.py": "import pytest\ndef _fixture():\n    pass\n",
+            "tests/support.py": "def _fixture():\n    pass\n",
+            "pkg/test_mixed.py": "def _ambiguous():\n    pass\n",
+            "pkg/test_mixed.pyi": "def test_contract() -> None: ...\n",
+            "tests/test_imports.py": (
+                "from pkg.test_engine import _hidden, _other\n"
+                "from pkg.testing.support import _shared\n"
+                "from pkg.test_helpers import _fixture\n"
+                "from tests.support import _fixture\n"
+                "from pkg.test_mixed import _ambiguous\n"
+                "from external.test_missing import _unknown\n"
+                "from .support import _fixture\n"
+            ),
+        })
+        factor = test_effectiveness.analyze(context)
+        imports = [item for item in factor["findings"] if item["kind"] == "private_import"]
+        self.assertEqual(factor["metrics"]["private_import_count"], 3)
+        self.assertEqual(
+            [item["expression"] for item in imports],
+            ["from pkg.test_engine import _hidden, _other", "from pkg.testing.support import _shared"],
+        )
+
     def test_analyze_uses_verification_parse_family_and_emits_exact_blocks(self) -> None:
         context = AnalysisContext.from_sources(
             {
@@ -114,12 +140,73 @@ class VerificationIndicatorTests(unittest.TestCase):
         self.assertEqual(factor["metrics"]["parse_error_count"], 0)
         self.assertEqual(candidate["indicator"], {
             "id": "verification.test_effectiveness.assignment_readback",
-            "version": "1",
+            "version": "2",
         })
         self.assertEqual(candidate["evidence"]["revision"], "head-ref")
         self.assertEqual(candidate["evidence"]["primary"]["code"], "assert value == 3")
         self.assertEqual(candidate["evidence"]["related"][0]["code"], "value: int = 3")
         self.assertEqual(lifecycle.analyze(context)["metrics"]["parse_error_count"], 1)
+
+    def test_review_questions_match_private_calls_imports_and_assertions(self) -> None:
+        context = AnalysisContext.from_sources({
+            "tests/test_sample.py": (
+                "from package import _private\n"
+                "def test_sample(fixture):\n"
+                "    fixture._prepare()\n"
+                "    value = 1\n"
+                "    assert value == 1\n"
+                "    self.assertEqual(result, 'ready')\n"
+                "    self.assertIn('| report |', output)\n"
+            ),
+        })
+        findings = test_effectiveness.analyze(context)["findings"]
+        questions = {item["kind"]: item["evidence"]["inspection_question"] for item in findings}
+        self.assertIn("import", questions["private_import"].lower())
+        self.assertIn("call", questions["private_helper_call"].lower())
+        self.assertIn("assertion", questions["assignment_readback"].lower())
+        self.assertIn("exact text", questions["string_expected_assertion"])
+        self.assertIn("member or substring", questions["formatted_literal_assertion"])
+        for item in findings:
+            if item["kind"] in {"private_import", "private_helper_call"}:
+                self.assertIn("inspect its target", item["reason"])
+
+    def test_string_findings_report_comparison_kinds(self) -> None:
+        expressions = {
+            'self.assertEqual(value, "ready")': ["equality"],
+            'self.assertIn("key", value)': ["membership"],
+            'self.assertRegex(value, "ok.*")': ["regex"],
+            'assert value is "ok"': ["identity"],
+            'assert value < "m"': ["ordering"],
+            'assert 0 < count == "ready"': ["equality"],
+            'assert value == "ready" in allowed': ["equality", "membership"],
+        }
+        source = "def test_value(self, value, count, allowed):\n" + "".join(
+            f"    {expression}\n" for expression in expressions
+        )
+        factor = test_effectiveness.analyze(AnalysisContext.from_sources({"tests/test_value.py": source}))
+        actual = {
+            item["expression"]: item["evidence"]["pattern"]["comparison_kinds"]
+            for item in factor["findings"] if item["kind"] == "string_expected_assertion"
+        }
+        self.assertEqual(actual, expressions)
+        questions = {item["expression"]: item["evidence"]["inspection_question"] for item in factor["findings"]}
+        self.assertIn("member or substring", questions['self.assertIn("key", value)'])
+        self.assertIn("pattern", questions['self.assertRegex(value, "ok.*")'])
+        self.assertIn("identity", questions['assert value is "ok"'])
+        self.assertIn("ordering", questions['assert value < "m"'])
+        self.assertIn("comparisons together", questions['assert value == "ready" in allowed'])
+
+    def test_formatted_literal_requires_structure_beyond_isolated_symbols(self) -> None:
+        for value, expected in (
+            (" -> ", False), ("x < y", False), ("x > y", False), ("a|b", False), ("a||b", False),
+            ("| row |", True), ("<script>", True), ("first\nsecond", True),
+            ("80%", True), ("`code`", True), ("x" * 40, True),
+        ):
+            with self.subTest(value=value):
+                node = ast.parse(f"self.assertIn({value!r}, output)").body[0].value
+                self.assertEqual(test_effectiveness.formatted_literal_assertion(node), expected)
+        comparison = ast.parse('self.assertEqual("<b>", "plain text")').body[0].value
+        self.assertTrue(test_effectiveness.formatted_literal_assertion(comparison))
 
     def test_lifecycle_sites_use_exact_nodes_and_bounded_details(self) -> None:
         source = "def start():\n    pass\nstart()\n"

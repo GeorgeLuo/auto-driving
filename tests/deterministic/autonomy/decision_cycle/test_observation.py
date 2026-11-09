@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import unittest
 
-from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA
+from autonomy.decision_cycle.observation.values import OBSERVATION_SCHEMA, Observation
 from autonomy.decision_cycle.observation.perception_summary import observation_from_perception
 from autonomy.decision_cycle.perception.interface import (
     PERCEPTION_TEXT_SCHEMA,
@@ -85,6 +85,7 @@ class ObservationAdaptationTests(unittest.TestCase):
 
         serialized = observation.to_dict()
         json.dumps(serialized)
+        self.assertEqual(Observation.from_dict(serialized), observation)
         serialized["things"][0]["properties"]["appearance"]["color"] = "blue"
         serialized["sensor_frame"]["readings"][FRONT_CAMERA_SENSOR_ID]["metadata"][
             "capture"
@@ -118,6 +119,7 @@ class ObservationAdaptationTests(unittest.TestCase):
             ("observation_available=false reason=no_perception",),
         )
         self.assertEqual(observation.metadata["source"], "manual-observe-step")
+        self.assertEqual(Observation.from_dict(observation.to_dict()), observation)
 
 
 if __name__ == "__main__":

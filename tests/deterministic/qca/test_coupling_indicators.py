@@ -10,6 +10,27 @@ from qca.indicators import coupling
 
 
 class CouplingIndicatorTests(unittest.TestCase):
+    def test_resolves_relative_and_cli_imports_and_keeps_external_separate(self) -> None:
+        result = analyze_coupling(
+            {
+                "pkg/__init__.py": "from . import entry\n",
+                "pkg/entry.py": "from . import json\nfrom pkg import worker\nimport json\n",
+                "pkg/json.py": "VALUE = 1\n",
+                "pkg/worker.py": "from .json import VALUE\n",
+                "cli/automa_cli/app.py": "from automa_cli import helper\n",
+                "cli/automa_cli/helper.py": "VALUE = 2\n",
+            }
+        )
+        measured = result["coupling"]
+        edges = {(edge["source"], edge["target"]) for edge in measured["graph"]["edges"]}
+        self.assertIn(("pkg/entry.py", "pkg/json.py"), edges)
+        self.assertIn(("pkg/entry.py", "pkg/worker.py"), edges)
+        self.assertIn(("cli/automa_cli/app.py", "cli/automa_cli/helper.py"), edges)
+        self.assertNotIn("pkg/json.py", {item["name"] for item in measured["graph"]["unresolved_external"]})
+        self.assertIn("json", {item["name"] for item in measured["graph"]["unresolved_external"]})
+        self.assertEqual(measured["graph"]["fan"]["out"]["pkg/entry.py"], 2)
+        self.assertEqual(measured["metrics"]["cycle_count"], 0)
+
     def test_cycle_finding_cites_related_import_sites_without_inventing_path(self) -> None:
         context = AnalysisContext.from_sources(
             {
@@ -150,8 +171,9 @@ async def execute(value, /, fallback=None, *, limit=3):
         self.assertEqual(result["metrics"]["module_count"], 2)
         self.assertEqual(result["metrics"]["edge_count"], 1)
         self.assertEqual(result["metrics"]["external_import_count"], 0)
-        self.assertEqual(coupling._module("__init__.py"), "")
-        self.assertEqual(coupling._package("__init__.py"), "")
+        edge = result["graph"]["edges"][0]
+        self.assertEqual((edge["source"], edge["target"]), ("__init__.py", "analyzer.py"))
+        self.assertEqual((edge["requested_name"], edge["resolution"]), ("analyzer.analyze_tree", "symbol_owner"))
         json.dumps(result)
 
 

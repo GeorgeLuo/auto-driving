@@ -14,10 +14,15 @@ import tempfile
 import unittest
 from pathlib import Path
 
+import numpy as np
+
+from autonomy.decision_cycle.activation import step_activation
+from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.runtime.plugin_loader import BUNDLE_PREFIXES, StagedBundleImport, load_runner
+from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
 from cli.automa_cli.releases.paths import controller_bundle_paths
-from implementations.decision_cycle.catalog import packaged_activation
+from implementations.decision_cycle.catalog import packaged_activation, step_plugins
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -69,6 +74,15 @@ class LoadingContractTests(unittest.TestCase):
             (self.bundle_root / "bundle-manifest.json").read_text(encoding="utf-8")
         )
         self.assertEqual(manifest["tree_sha256"], self.release["tree_sha256"])
+        for recorded_release in (
+            Path(self.release["manifest"]["path"]),
+            self.bundle_root / "releases" / "latest-controller-bundle.json",
+        ):
+            recorded = json.loads(recorded_release.read_text(encoding="utf-8"))
+            self.assertEqual(
+                (recorded["tree_sha256"], recorded["archive"]["sha256"], recorded["file_count"]),
+                (self.release["tree_sha256"], self.release["archive"]["sha256"], self.release["file_count"]),
+            )
 
     def test_staged_steps_keep_host_autonomy_classes(self) -> None:
         host_contract = importlib.import_module(
@@ -105,3 +119,43 @@ class LoadingContractTests(unittest.TestCase):
         finally:
             extra.unlink(missing_ok=True)
             sys.modules.pop("autonomy.vehicle.only_in_bundle", None)
+
+    def test_staging_loads_implementations_files_present_only_in_the_bundle(self) -> None:
+        module = "implementations.decision_cycle.proposal.plugins.only_in_bundle"
+        extra = self.bundle_root / (module.replace(".", "/") + ".py")
+        extra.write_text("MARKER = 'bundle'\n", encoding="utf-8")
+        try:
+            with StagedBundleImport(self.bundle_root, BUNDLE_PREFIXES).activate():
+                self.assertEqual(importlib.import_module(module).MARKER, "bundle")
+        finally:
+            extra.unlink(missing_ok=True)
+            sys.modules.pop(module, None)
+
+    def test_staged_perception_keeps_feed_and_plugin_types_consistent(self) -> None:
+        mapper = load_runner(
+            step_activation(
+                "perception",
+                ["frame"],
+                {"frame": step_plugins("perception")["frame"]["spec"]},
+                metadata={"controller_bundle": {"root_dir": str(self.bundle_root)}},
+            )
+        )
+        sensor_frame = SensorFrame(
+            read_id="staged-frame",
+            readings={
+                FRONT_CAMERA_SENSOR_ID: SensorReading(
+                    sensor_id=FRONT_CAMERA_SENSOR_ID,
+                    sensor_kind="camera",
+                    captured_at_ms=1,
+                    value=np.zeros((24, 32, 3), dtype=np.uint8),
+                )
+            },
+            started_at_ms=1,
+            completed_at_ms=1,
+        )
+
+        result = mapper.perceive(build_perception_request(sensor_frame))
+
+        # A bundle plugin reading a host feed class (or the reverse) fails its run.
+        self.assertEqual(result.status, "ok")
+        self.assertEqual(result.plugin_runs[0].status, "ok")

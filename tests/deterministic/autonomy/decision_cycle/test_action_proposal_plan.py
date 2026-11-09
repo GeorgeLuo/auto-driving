@@ -1,6 +1,7 @@
 from __future__ import annotations
 import unittest
-from implementations.decision_cycle.plan.plugins.highest_confidence.plugin import select_highest_confidence_plan
+from dataclasses import replace
+from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.proposal.values import (
     ActionProposal,
     ProposedVehicleCommand,
@@ -8,12 +9,13 @@ from autonomy.decision_cycle.proposal.values import (
     synthetic_error_proposal,
 )
 from autonomy.serialization import canonical_json_size_bytes
-from autonomy.decision_cycle.action.hold import idle_output
+from autonomy.decision_cycle.action.hold import HOLD_IDLE_REASON, HoldAction, idle_output
 from autonomy.decision_cycle.action.values import proposed_equals_authorized
 from tests.deterministic.autonomy.decision_cycle.action_proposal_plan_fixtures import (
     _active_proposal,
 )
-from tests.support.action_fixtures import decision_chain, packaged_decision_chain
+from autonomy.decision_cycle.proposal.runner import ProposalRunner
+from tests.support.action_fixtures import DecisionChain, FirstActivePlan, InactiveProposal, decision_chain
 
 
 class ActionProposalMatrixTests(unittest.TestCase):
@@ -95,6 +97,29 @@ class RunnerBoundaryTests(unittest.TestCase):
         self.assertEqual(result.control.steering, 0.0)
         self.assertEqual(result.control.throttle, 0.0)
 
+    def test_hold_records_the_selected_command_and_authorizes_idle(self) -> None:
+        def propose(context) -> ActionProposal:
+            return _active_proposal(frame_id=context.frame_id)
+
+        # The proposed steering is the command hold recorded but did not apply.
+        cases = (({"avoid_recent_obstruction": propose}, "selected", 0.35), ({}, "idle", None))
+        for plugins, plan_status, proposed_steering in cases:
+            with self.subTest(plan_status=plan_status):
+                result = decision_chain(plugins=plugins, action=HoldAction()).run(
+                    frame_id="frame_001", frame_index=0, timestamp_ms=1
+                )
+                assert result.plan is not None and result.control is not None
+                self.assertEqual(result.plan.status, plan_status)
+                self.assertEqual((result.status, result.frame_id), ("ok", "frame_001"))
+                self.assertEqual(
+                    (result.control.steering, result.control.throttle, result.control.reason),
+                    (0.0, 0.0, HOLD_IDLE_REASON),
+                )
+                self.assertEqual(result.authority.gate_id, "hold")
+                self.assertFalse(result.authority.proposed_applied)
+                proposed = result.authority.proposed
+                self.assertEqual(None if proposed is None else proposed.steering, proposed_steering)
+
     def test_source_refs_name_an_observation_or_memory_record(self) -> None:
         for kind in ("observation", "memory_record"):
             self.assertEqual(SourceRef(kind=kind, id="r1").kind, kind)
@@ -165,13 +190,8 @@ class RunnerBoundaryTests(unittest.TestCase):
         assert plan_metadata is not None
         self.assertEqual(canonical_json_size_bytes(plan_metadata), 1024)
 
-        plan = select_highest_confidence_plan(
-            frame_id=frame,
-            timestamp_ms=9_007_199_254_740_991,
-            candidates=candidates,
-            selector_id="highest_confidence",
-            metadata=plan_metadata,
-        )
+        selected = FirstActivePlan().plan(DecisionFrameContext(frame, 0, 9_007_199_254_740_991), tuple(candidates))
+        plan = replace(selected, metadata=plan_metadata)
         self.assertEqual(len(plan.candidates), 6)
         self.assertEqual(plan.status, "selected")
         self.assertTrue(plan.selected_proposal_id.endswith(":" + frame))
@@ -220,7 +240,7 @@ class RunnerBoundaryTests(unittest.TestCase):
 
 
     def test_authority_records_decision_without_host_application(self) -> None:
-        engine = packaged_decision_chain()
+        engine = DecisionChain(ProposalRunner.from_plugins({"inactive": InactiveProposal()}))
         result = engine.run(
             frame_id="frame_001",
             frame_index=0,

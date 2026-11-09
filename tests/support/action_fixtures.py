@@ -1,4 +1,7 @@
-"""Step runners for tests: fixed-control actions and callable proposals."""
+"""Step runners for tests: fixed-control actions, callable proposals, and a plan.
+
+None of them is a packaged plugin, so a test holds whatever the catalog offers.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +13,9 @@ from autonomy.decision_cycle.action.values import ActionDecision
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionSteps
 from autonomy.decision_cycle.plan.runner import PlanRunner
+from autonomy.decision_cycle.plan.values import ActionPlan, PlanContribution
 from autonomy.decision_cycle.proposal.runner import ProposalRunner
+from autonomy.decision_cycle.proposal.values import ActionProposal
 from autonomy.decision_cycle.records import DecisionRecords
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.runtime.control import AutonomyControl
@@ -39,7 +44,7 @@ def fixed_control_steps(
 ) -> DecisionSteps:
     """Steps whose action authorizes ``control``; ``steps`` override slots.
 
-    The packaged plan is present so a missing plan does not fail the action closed.
+    A plan is present so a missing plan does not fail the action closed.
     """
 
     plan = steps.pop("plan", None) or plan_runner()
@@ -77,12 +82,50 @@ def proposal_runner(
     )
 
 
+class InactiveProposal:
+    """Proposal plugin that proposes nothing, as an inactive candidate."""
+
+    plugin_id = "inactive"
+
+    def propose(self, context) -> ActionProposal:
+        return ActionProposal(
+            plugin_id=self.plugin_id, frame_id=context.frame_id, lifecycle="inactive",
+            freshness="none", confidence=0.0, reason="test", command=None,
+        )
+
+
+class FirstActivePlan:
+    """Plan plugin that selects the first active candidate, else idles."""
+
+    plugin_id = "first_active"
+
+    def plan(self, context, candidates) -> ActionPlan:
+        selected = next((item for item in candidates if item.is_active(context.frame_id)), None)
+        return ActionPlan(
+            frame_id=context.frame_id,
+            timestamp_ms=context.timestamp_ms,
+            status="idle" if selected is None else "selected",
+            candidates=tuple(candidates),
+            selected_proposal_id=None if selected is None else selected.proposal_id,
+            contributions=() if selected is None else (PlanContribution(
+                proposal_id=selected.proposal_id, plugin_id=selected.plugin_id, weight=1.0, role="selected",
+            ),),
+            command=None if selected is None else selected.command,
+            reason="" if selected is None else selected.reason,
+            confidence=None if selected is None else selected.confidence,
+            selector_id=self.plugin_id,
+            metadata={},
+        )
+
+
+INACTIVE_PROPOSAL_SPEC = "tests.support.action_fixtures:InactiveProposal"
+FIRST_ACTIVE_PLAN_SPEC = "tests.support.action_fixtures:FirstActivePlan"
+
+
 def plan_runner() -> PlanRunner:
-    """The packaged highest-confidence plan. Plan has no framework built-in."""
+    """A plan that selects the first active candidate. Plan has no framework built-in."""
 
-    from implementations.decision_cycle.catalog import packaged_activation
-
-    return PlanRunner.from_activation(packaged_activation("plan"))
+    return PlanRunner.from_plugins({FirstActivePlan.plugin_id: FirstActivePlan()})
 
 
 def action_runner(plugin: Any | None = None) -> ActionRunner:
@@ -138,16 +181,5 @@ def decision_chain(
 
     return DecisionChain(
         proposal_runner(plugins, **attributes),
-        action=None if action is None else action_runner(action),
-    )
-
-
-def packaged_decision_chain(activation=None, *, action: Any | None = None) -> DecisionChain:
-    """A chain over the packaged proposal selection (or ``activation``)."""
-
-    from implementations.decision_cycle.catalog import packaged_activation
-
-    return DecisionChain(
-        ProposalRunner.from_activation(activation or packaged_activation("proposal")),
         action=None if action is None else action_runner(action),
     )

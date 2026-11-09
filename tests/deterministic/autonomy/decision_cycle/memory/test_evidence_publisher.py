@@ -10,23 +10,9 @@ from autonomy.decision_cycle.memory.publication import EVIDENCE_KEY
 from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.decision_cycle.observation.values import Observation
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import (
+    _EvidenceMemory,
     _RecordingMemory,
 )
-
-
-class _EvidenceMemory(_RecordingMemory):
-    """Publishes its records at ``EVIDENCE_KEY``, as a retained-evidence plugin does."""
-
-    publish = True
-
-    def update(self, context):
-        super().update(context)
-        if self.publish:
-            context.shared_memory[EVIDENCE_KEY] = self.state(context.shared_memory)["records"]
-
-    def reset(self, shared_memory):
-        super().reset(shared_memory)
-        shared_memory[EVIDENCE_KEY] = ()
 
 
 class _PassThroughMemory(_RecordingMemory):
@@ -52,7 +38,6 @@ class _FailingEvidenceMemory(_EvidenceMemory):
         raise RuntimeError("after publishing")
 
 
-EVIDENCE_SPEC = "tests.deterministic.autonomy.decision_cycle.memory.test_evidence_publisher:_EvidenceMemory"
 
 
 def _observation(frame_id: str) -> Observation:

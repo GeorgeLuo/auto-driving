@@ -32,10 +32,19 @@ Confirm changes adhere to the priorities defined in this document.
    [tests/README.md](../../tests/README.md#validating-a-change) describes:
    select systems tests with `--systems <group> -k <pattern>` by the code
    they drive, and run a whole group only when the change reaches code that
-   most of its tests use. CI runs only the deterministic suite, so list each
-   systems run under Validation.
+   most of its tests use. CI runs the deterministic suite, so list each systems
+   run under Validation. For Python changes, also run
+   `python3 -m scripts.validation.check` (install `requirements-quality.txt`
+   first). It compares the branch with `origin/main`; repair blocking findings.
 6. Review the final diff for accidental files, generated artifacts, secrets,
-   unrelated cleanup, and missing validation.
+   unrelated cleanup, and missing validation. For Python changes and reviews,
+   inspect the review questions the quality check lists for the final revision,
+   locally or in the PR's Python quality summary
+   ([tests/README.md](../../tests/README.md#python-quality-checks)). Investigate
+   material candidates and report their locations and dispositions: fixed,
+   retained with a code-based reason, or unresolved. If a review check cannot
+   run, report why. Review questions are observations, not a merge gate; a passing check
+   does not mean they were reviewed.
 
 Do not create extra planning documents, alternate implementations, or process
 artifacts unless the user explicitly asks for them or the repository requires
@@ -44,9 +53,6 @@ one for the requested deliverable.
 Preserve unrelated working-tree changes. If the request is ambiguous in a way
 that would materially change the implementation, state the assumption before
 editing; otherwise use the smallest reasonable interpretation and proceed.
-
-Optional: `python3 -m qca diff --base <base> --head <head>` can focus
-inspection. It is observations, not a required gate.
 
 ## Handoff
 

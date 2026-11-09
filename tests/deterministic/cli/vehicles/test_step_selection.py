@@ -80,6 +80,10 @@ class StepSelectionTests(unittest.TestCase):
         perception = documents["perception"]["metadata"]
         for step in STEPS:
             with self.subTest(step=step):
+                # A step holds a list of plugins; none of them stands for the step,
+                # and retention bounds belong to the plugin, not the activation.
+                self.assertNotIn("plugin_id", documents[step])
+                self.assertNotIn("bounds", documents[step])
                 metadata = documents[step]["metadata"]
                 self.assertEqual(set(metadata) - {"preset"}, set(perception) - {"preset"})
                 self.assertEqual(set(metadata["controller_bundle"]), set(CONTROLLER_BUNDLE_KEYS))
@@ -94,6 +98,29 @@ class StepSelectionTests(unittest.TestCase):
                 for key in ("source_dir", "workspace_source_dir", "preset_description"):
                     self.assertNotIn(key, metadata)
                 self.assertEqual(metadata.get("preset"), DEFAULT_STEP_PRESETS.get(step))
+
+    def test_status_names_the_release_and_presets_an_update_staged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            write_host_fixture(root, VEHICLE)
+            release = self._update(root)["release"]["tree_sha256"]
+            run = json.loads(invoke_automa("hosts", "status", "--json", runtime_root=root).stdout)["hosts"][0]["run"]
+            human = invoke_automa("hosts", "status", "--long", runtime_root=root).stdout
+
+        self.assertEqual(run["release"]["tree_sha256"], release)
+        self.assertIn(f"\n  release: {release[:12]}  archive=", human)
+        for step in PRESET_STEPS:
+            with self.subTest(step=step):
+                selection = run["steps"][step]
+                self.assertEqual(
+                    (selection["source"], selection["saved"], selection["preset"]),
+                    ("staged", False, DEFAULT_STEP_PRESETS[step]),
+                )
+                self.assertIn(
+                    f"\n    {step}: {selection['preset']} ({', '.join(selection['plugins'])})"
+                    "  source=staged (default)\n",
+                    human,
+                )
 
     def test_inspect_restores_a_recorded_selection_and_a_preset_overrides_it(self) -> None:
         """Regression: a recording whose proposal was disabled replayed the

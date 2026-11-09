@@ -77,7 +77,8 @@ def package_controller_bundle(bundle: dict[str, str]) -> dict[str, Any]:
     }
 
     try:
-        with tarfile.open(pending_archive, "w:gz") as archive:
+        # Level 1 packages in under half the time of the default 9 for a slightly larger archive.
+        with tarfile.open(pending_archive, "w:gz", compresslevel=1) as archive:
             for entry in entries:
                 source_path = ROOT / entry["workspace_relative_path"]
                 archive.add(source_path, arcname=entry["archive_path"], recursive=False)

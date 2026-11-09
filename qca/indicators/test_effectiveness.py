@@ -26,7 +26,7 @@ from .source_classification import is_test_source
 
 FACTOR = "test_effectiveness"
 INDICATOR_ID = "verification.test_effectiveness"
-INDICATOR_VERSION = "4"
+INDICATOR_VERSION = "5"
 
 DETECTOR_IDS = {
     "literal_assertion": f"{INDICATOR_ID}.literal_assertion",
@@ -281,7 +281,8 @@ def _test_effectiveness_factor(
     *,
     context: AnalysisContext | None = None,
 ) -> dict[str, Any]:
-    test_paths = {path for path, text in ordered_sources if is_test_source(path, text)}
+    python_paths = {path for path, _, _ in parsed} | {error["path"] for error in parse_errors}
+    test_paths = {path for path, text in ordered_sources if path in python_paths and is_test_source(path, text)}
     source_paths = {path for path, _ in ordered_sources}
     candidate_sites: list[dict[str, Any]] = []
     assertion_count = 0

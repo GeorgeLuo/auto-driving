@@ -5,6 +5,9 @@ It is intentionally Python-first and standard-library-only.  It does not
 assign a quality score, change proposal workflow state, or create a blocking
 check.
 
+Analyzer `0.3.17` counts only Python sources as test files in verification metrics,
+including test files that could not be parsed.
+
 Analyzer `0.3.16` uses matching source paths to distinguish private imports from
 test-named production modules and test modules. Unmatched, conflicting and
 relative imports retain the previous conservative behavior.

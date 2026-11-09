@@ -91,6 +91,32 @@ class VerificationIndicatorTests(unittest.TestCase):
         self.assertTrue(test_effectiveness.private_helper_call(hidden_call, {"_local_helper"}))
         self.assertFalse(test_effectiveness.private_helper_call(local_call, {"_local_helper"}))
 
+    def test_private_import_uses_available_source_classification(self) -> None:
+        context = AnalysisContext.from_sources({
+            "pkg/test_engine.py": "def _hidden():\n    pass\ndef _other():\n    pass\n",
+            "pkg/testing/support.py": "def _shared():\n    pass\n",
+            "pkg/test_helpers.py": "import pytest\ndef _fixture():\n    pass\n",
+            "tests/support.py": "def _fixture():\n    pass\n",
+            "pkg/test_mixed.py": "def _ambiguous():\n    pass\n",
+            "pkg/test_mixed.pyi": "def test_contract() -> None: ...\n",
+            "tests/test_imports.py": (
+                "from pkg.test_engine import _hidden, _other\n"
+                "from pkg.testing.support import _shared\n"
+                "from pkg.test_helpers import _fixture\n"
+                "from tests.support import _fixture\n"
+                "from pkg.test_mixed import _ambiguous\n"
+                "from external.test_missing import _unknown\n"
+                "from .support import _fixture\n"
+            ),
+        })
+        factor = test_effectiveness.analyze(context)
+        imports = [item for item in factor["findings"] if item["kind"] == "private_import"]
+        self.assertEqual(factor["metrics"]["private_import_count"], 3)
+        self.assertEqual(
+            [item["expression"] for item in imports],
+            ["from pkg.test_engine import _hidden, _other", "from pkg.testing.support import _shared"],
+        )
+
     def test_analyze_uses_verification_parse_family_and_emits_exact_blocks(self) -> None:
         context = AnalysisContext.from_sources(
             {
@@ -114,7 +140,7 @@ class VerificationIndicatorTests(unittest.TestCase):
         self.assertEqual(factor["metrics"]["parse_error_count"], 0)
         self.assertEqual(candidate["indicator"], {
             "id": "verification.test_effectiveness.assignment_readback",
-            "version": "3",
+            "version": "4",
         })
         self.assertEqual(candidate["evidence"]["revision"], "head-ref")
         self.assertEqual(candidate["evidence"]["primary"]["code"], "assert value == 3")

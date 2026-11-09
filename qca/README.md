@@ -5,6 +5,10 @@ It is intentionally Python-first and standard-library-only.  It does not
 assign a quality score, change proposal workflow state, or create a blocking
 check.
 
+Analyzer `0.3.16` uses matching source paths to distinguish private imports from
+test-named production modules and test modules. Unmatched, conflicting and
+relative imports retain the previous conservative behavior.
+
 Analyzer `0.3.15` gives test assertions, private imports, and private helper calls
 distinct review questions. Private call and import targets are not resolved.
 

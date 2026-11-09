@@ -28,7 +28,7 @@ from .factors import FACTOR_VERSION, compare_factors, measure_factors
 from .indicators.source_classification import is_test_source
 
 
-ANALYZER_VERSION = "0.3.15"
+ANALYZER_VERSION = "0.3.16"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",

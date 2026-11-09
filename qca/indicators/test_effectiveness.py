@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import ast
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from typing import Any
 
 from .context import AnalysisContext
@@ -26,7 +26,7 @@ from .source_classification import is_test_source
 
 FACTOR = "test_effectiveness"
 INDICATOR_ID = "verification.test_effectiveness"
-INDICATOR_VERSION = "3"
+INDICATOR_VERSION = "4"
 
 DETECTOR_IDS = {
     "literal_assertion": f"{INDICATOR_ID}.literal_assertion",
@@ -141,7 +141,11 @@ def formatted_literal_assertion(node: ast.AST) -> bool:
 
 
 def private_import(node: ast.AST) -> bool:
-    """Return whether an import contains a private production name."""
+    """Return whether an import contains a private name using module-name conventions.
+
+    The aggregate also uses supplied sources to distinguish test-named
+    production modules from test modules.
+    """
 
     return isinstance(node, (ast.Import, ast.ImportFrom)) and bool(_private_imported_names(node))
 
@@ -278,6 +282,7 @@ def _test_effectiveness_factor(
     context: AnalysisContext | None = None,
 ) -> dict[str, Any]:
     test_paths = {path for path, text in ordered_sources if is_test_source(path, text)}
+    source_paths = {path for path, _ in ordered_sources}
     candidate_sites: list[dict[str, Any]] = []
     assertion_count = 0
     literal_count = 0
@@ -300,7 +305,7 @@ def _test_effectiveness_factor(
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name.startswith("test_"):
                 test_case_count += 1
             if module_is_test and isinstance(node, (ast.Import, ast.ImportFrom)):
-                imported = _private_imported_names(node)
+                imported = _private_imported_names(node, source_paths=source_paths, test_paths=test_paths)
                 if imported:
                     private_import_count += len(imported)
                     private_import_files.add(path)
@@ -389,7 +394,7 @@ def _test_effectiveness_factor(
     candidate_count = literal_count + tautological_count + readback_count + string_expected_count
     limitations = [
         "Literal, same-operand, string-expected, and formatted-literal assertions are candidates for review, not a judgment that a test is ineffective.",
-        "Private production imports and helper calls are candidates, but import and call targets are not resolved; same-module test helpers are omitted; numeric expected values alone are not candidates.",
+        "Private production imports and helper calls are candidates; module paths can identify test-named production sources, but import and call targets are not resolved. Relative imports and same-module test helpers are omitted; numeric expected values alone are not candidates.",
         "Assignment readbacks track scalar literals in straight-line test function bodies only; calls, control flow, and uncertain mutations end tracking. No alias, constructor, subscript, or interprocedural inference is performed; attribute access may exercise meaningful descriptors.",
         "Static inspection does not infer input variation, mocks, explicit state setup, or the behavior under test.",
     ]
@@ -495,11 +500,24 @@ def _is_test_module_name(module: str | None) -> bool:
     return any(part in {"tests", "test", "testing"} or part.startswith("test_") for part in module.split("."))
 
 
-def _private_imported_names(node: ast.Import | ast.ImportFrom) -> tuple[str, ...]:
+def _private_imported_names(
+    node: ast.Import | ast.ImportFrom,
+    *,
+    source_paths: Collection[str] = (),
+    test_paths: Collection[str] = (),
+) -> tuple[str, ...]:
     if isinstance(node, ast.Import):
         return tuple(alias.name.split(".")[-1] for alias in node.names if _is_private_identifier(alias.name.split(".")[-1]))
-    if node.module == "__future__" or (node.level or 0) > 0 or _is_test_module_name(node.module):
+    module = node.module or ""
+    if module == "__future__" or (node.level or 0) > 0:
         return ()
+    if _is_test_module_name(module):
+        module_path = module.replace(".", "/")
+        candidates = (module_path + ".py", module_path + ".pyi",
+                      module_path + "/__init__.py", module_path + "/__init__.pyi")
+        matches = [path for path in candidates if path in source_paths]
+        if not matches or any(path in test_paths for path in matches):
+            return ()
     return tuple(alias.name for alias in node.names if _is_private_identifier(alias.name))
 
 

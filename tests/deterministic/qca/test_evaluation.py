@@ -179,12 +179,13 @@ class EvaluateTests(unittest.TestCase):
             )
         self.assertEqual([item["status"] for item in vendored["evaluations"]], ["skipped", "skipped"])
 
-    def test_a_change_reports_only_new_findings_and_project_reach_sees_unchanged_files(self) -> None:
+    def test_a_change_reports_whole_changed_files_and_new_findings_elsewhere(self) -> None:
         with tempfile.TemporaryDirectory() as before, tempfile.TemporaryDirectory() as after:
-            base = tree(Path(before), {"cli/old.py": "missing\n", "cli/caller.py": "ok\n"})
+            base = tree(Path(before), {"cli/old.py": "missing\n", "cli/caller.py": "ok\n", "cli/other.py": "missing\n"})
             head = tree(Path(after), {
                 "cli/old.py": "missing\nmissing here\n",
                 "cli/caller.py": "missing now\n",  # Unchanged by the change, but broken by it.
+                "cli/other.py": "missing\n",
             })
             context = Context("change", head, ("cli/old.py",), base=base)
             document = evaluate(context, [
@@ -192,7 +193,9 @@ class EvaluateTests(unittest.TestCase):
                 Evaluator("types", lines_with("missing", "types"), roots=("cli",), reach="project"),
             ])
         found = [(item["tool"], item["location"]["path"], item["location"]["line"]) for item in document["findings"]]
-        self.assertEqual(found, [("lint", "cli/old.py", 2), ("types", "cli/caller.py", 1), ("types", "cli/old.py", 2)])
+        self.assertEqual(found, [("lint", "cli/old.py", 1), ("lint", "cli/old.py", 2),
+                                 ("types", "cli/caller.py", 1), ("types", "cli/old.py", 1),
+                                 ("types", "cli/old.py", 2)])
 
 
 if __name__ == "__main__":

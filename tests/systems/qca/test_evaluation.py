@@ -74,7 +74,7 @@ class ChangeContextTests(unittest.TestCase):
             self.assertIsNone(context.describe()["head"])
             self.assertEqual(context.paths, ("cli/draft.py", "cli/gate.py"))
 
-    def test_qca_reports_new_conditionals_and_growth_on_an_unchanged_signature(self) -> None:
+    def test_qca_reports_conditionals_throughout_changed_files_and_growth(self) -> None:
         head = self.repo.commit({
             "cli/choose.py": branches(12),
             "cli/gate.py": "def ready(a, b, c):\n    return a and b and c\n\n\ndef armed(a, b, c):\n    return a or b and c\n",
@@ -83,6 +83,7 @@ class ChangeContextTests(unittest.TestCase):
             document = evaluate(context, [Evaluator("qca", structure)])
         found = [(item["rule"], item["location"].get("symbol"), item["measure"]) for item in document["findings"]]
         self.assertEqual(found, [
+            ("structure.opaque_conditionals.opaque_conditional", "ready", None),
             ("structure.opaque_conditionals.opaque_conditional", "armed", None),
             ("structure.complexity.cyclomatic_complexity", "choose", {"value": 13, "limit": 10}),
         ])

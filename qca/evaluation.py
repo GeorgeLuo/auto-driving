@@ -8,10 +8,8 @@ A context names the code in question:
   head revision or the working tree.
 
 Evaluators see only a directory and the paths to inspect, so one evaluator
-serves every form.  For a change, each evaluator runs on both sides and only
-the findings the base lacks are reported.  Existing debt therefore needs no
-stored baseline, and a change still answers for what it breaks outside its own
-lines, such as a caller of a changed signature.
+serves every form. For a change, evaluators report findings throughout changed
+files and findings introduced elsewhere, such as a caller of a changed signature.
 
 A finding is a review question about a location, not a verdict.  Every
 evaluator returns the same fields, so findings from different tools can be
@@ -195,10 +193,9 @@ class Evaluator:
     ``roots`` bound what the check maintains, less any ``excluded`` paths under
     them, whose findings are never reported.  ``reach`` is ``project`` for a
     tool that must read the whole project to judge any file, such as a type
-    checker: it runs on all its roots, and reports the findings in the files
-    asked about or, for a change, every finding the change introduces.  A
-    failure of an evaluator that is not ``required`` is reported without
-    failing the evaluation.
+    checker: it runs on all its roots, and reports findings in the files asked
+    about and, for a change, findings introduced elsewhere. A failure of an
+    evaluator that is not ``required`` is reported without failing the evaluation.
     """
 
     name: str
@@ -247,7 +244,15 @@ def _evaluate(evaluator: Evaluator, context: Context) -> list[Finding] | None:
         return [item for item in found if in_scope(item["location"]["path"], requested)]
     base, head = (_run(evaluator, tree, scope) for tree in (context.base, context.head))
     new = introduced(base, head, base_tree=context.base, head_tree=context.head)
-    return [item for item in new if evaluator.covers(item["location"]["path"])]
+    new_ids = {id(item) for item in new}
+    findings = []
+    for item in head:
+        path = item["location"]["path"]
+        if not evaluator.covers(path):
+            continue
+        if in_scope(path, requested) or id(item) in new_ids:
+            findings.append(item)
+    return findings
 
 
 def _run(evaluator: Evaluator, tree: Path, scope: list[str]) -> list[Finding]:

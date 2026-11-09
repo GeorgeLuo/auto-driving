@@ -11,11 +11,9 @@ from __future__ import annotations
 import json
 import os
 import shutil
-from typing import Any
-
 from autonomy.decision_cycle.activation import STEPS, activation_presets
 
-from ...providers.registry import PROVIDERS
+from ...providers.registry import PROVIDERS, Provider
 from ...providers.models import Candidate
 from ..errors import RuntimeHostError
 from ...releases.errors import ReleaseError
@@ -78,7 +76,7 @@ def update_host(
 
 
 def _update_chase(
-    configuration: dict[str, Any], *, dry_run: bool, restart: bool, drive_args: str | None,
+    configuration: dict[str, object], *, dry_run: bool, restart: bool, drive_args: str | None,
     verbose: bool, emit: ProgressSink | None,
 ) -> UpdateResult:
     del verbose
@@ -90,7 +88,7 @@ def _update_chase(
 
 
 def _update_picar(
-    configuration: dict[str, Any], *, dry_run: bool, restart: bool, drive_args: str | None,
+    configuration: dict[str, object], *, dry_run: bool, restart: bool, drive_args: str | None,
     verbose: bool, emit: ProgressSink | None,
 ) -> UpdateResult:
     return deploy_picar_release(
@@ -181,7 +179,7 @@ def create_host(
 
 
 def _create_chase(
-    *, host_name: str, provider: str, url: str, vehicle: Any,
+    *, host_name: str, provider: str, url: str, vehicle: Provider,
     ssh_target: str | None, pi_home: str | None, drive_args: str | None, dry_run: bool,
     verbose: bool, emit: ProgressSink | None,
 ) -> CreateResult:
@@ -209,7 +207,7 @@ def _create_chase(
 
 
 def _create_picar(
-    *, host_name: str, provider: str, url: str, vehicle: Any,
+    *, host_name: str, provider: str, url: str, vehicle: Provider,
     ssh_target: str | None, pi_home: str | None, drive_args: str | None, dry_run: bool,
     verbose: bool, emit: ProgressSink | None,
 ) -> CreateResult:
@@ -241,7 +239,7 @@ def _create_picar(
 
 
 def _install_created_host(
-    configuration: dict[str, Any], *, local: bool, drive_args: str | None,
+    configuration: dict[str, object], *, local: bool, drive_args: str | None,
     verbose: bool, emit: ProgressSink | None,
 ) -> CreateResult:
     host_name = configuration["host_name"]
@@ -278,18 +276,25 @@ def _install_created_host(
         return CreateResult(2, "error", f"Could not create host {host_name!r}: {exc}{suffix}")
 
 
-def delete_host(*, host_name: str, verbose: bool = False, emit: ProgressSink | None = None) -> DeleteResult:
+# A powered-off Pi never accepts SSH. Bound that wait so delete returns instead of
+# sitting on the TCP timeout.
+PICAR_SSH_CONNECT_TIMEOUT_S = 10
+
+
+def delete_host(
+    *, host_name: str, force: bool = False, verbose: bool = False, emit: ProgressSink | None = None,
+) -> DeleteResult:
     configuration, error = staging_host(host_name)
     if error:
         return DeleteResult(2, "error", error)
     backend = backend_for(configuration["provider"])
     if backend is None or backend.delete is None:
         return DeleteResult(2, "error", unsupported_operation(configuration["provider"], "delete"))
-    return backend.delete(configuration, verbose=verbose, emit=emit)
+    return backend.delete(configuration, force=force, verbose=verbose, emit=emit)
 
 
 def _delete_recorded_host(
-    configuration: dict[str, Any], *, verbose: bool, emit: ProgressSink | None, local: bool,
+    configuration: dict[str, object], *, force: bool, verbose: bool, emit: ProgressSink | None, local: bool,
 ) -> DeleteResult:
     host_name = configuration["host_name"]
     directory = host_dir(host_name)
@@ -297,21 +302,27 @@ def _delete_recorded_host(
     if failure is not None:
         return failure
     remote_harness = None
+    remote_stop_failed = False
     if local:
         stop_chase_host(host_name)
     else:
         target = resolve_picar_target(configuration)
         command = donkey_service_control_command(pi_home=target.pi_home, action="stop", drive_args=None)
         code = run_step(
-            "Stop Donkey runtime service", ["ssh", target.ssh_target, command],
+            "Stop Donkey runtime service",
+            ["ssh", "-o", f"ConnectTimeout={PICAR_SSH_CONNECT_TIMEOUT_S}", target.ssh_target, command],
             env=None, verbose=verbose, emit=emit,
         )
-        if code:
-            return DeleteResult(code, "delete_failed", host_name=host_name)
         remote_harness = harness_dir(target.pi_home)
+        if code:
+            if not force:
+                return DeleteResult(code, "delete_failed", host_name=host_name)
+            remote_stop_failed = True
     shutil.rmtree(directory)
-    return DeleteResult(0, "deleted", host_name=host_name, deleted_path=directory, stopped_run=stopped,
-                        harness_dir=remote_harness)
+    return DeleteResult(
+        0, "deleted", host_name=host_name, deleted_path=directory, stopped_run=stopped,
+        harness_dir=remote_harness, remote_stop_failed=remote_stop_failed,
+    )
 
 
 def _stop_active_automation(host_name: str) -> tuple[bool, DeleteResult | None]:
@@ -337,15 +348,15 @@ def _stop_active_automation(host_name: str) -> tuple[bool, DeleteResult | None]:
 
 
 def _delete_chase(
-    configuration: dict[str, Any], *, verbose: bool, emit: ProgressSink | None,
+    configuration: dict[str, object], *, force: bool, verbose: bool, emit: ProgressSink | None,
 ) -> DeleteResult:
-    return _delete_recorded_host(configuration, verbose=verbose, emit=emit, local=True)
+    return _delete_recorded_host(configuration, force=force, verbose=verbose, emit=emit, local=True)
 
 
 def _delete_picar(
-    configuration: dict[str, Any], *, verbose: bool, emit: ProgressSink | None,
+    configuration: dict[str, object], *, force: bool, verbose: bool, emit: ProgressSink | None,
 ) -> DeleteResult:
-    return _delete_recorded_host(configuration, verbose=verbose, emit=emit, local=False)
+    return _delete_recorded_host(configuration, force=force, verbose=verbose, emit=emit, local=False)
 
 
 register_backend("chase-sim", DeploymentBackend(create=_create_chase, update=_update_chase, delete=_delete_chase))

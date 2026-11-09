@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from typing import Any, Mapping
+from typing import Mapping
 
 from ...frontend.server import VIEWER_PORT, Read, RuntimeViewServer, Write
 from ...shared.browser_result import BrowserOpenResult
@@ -14,7 +14,7 @@ from ..host_formatting import host_state_text
 from ..host_status import host_statuses
 
 
-def runtime_view_server(**options: Any) -> RuntimeViewServer:
+def runtime_view_server(**options: object) -> RuntimeViewServer:
     """Build the viewer with automa's host list and on-demand workbench runner."""
 
     options.setdefault("replay_runner_factory", ImageReplayRunner)

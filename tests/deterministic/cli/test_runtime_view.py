@@ -182,7 +182,7 @@ class ConnectedSplashTests(unittest.TestCase):
         document = {"schema": "automa_simulators_status", "simulators": [{"url": "http://127.0.0.1:5050/"}]}
         served = RuntimeViewServer(
             host_name="viewer", automation_dir=None, port=0, connected=False,
-            reads={"/api/simulators": lambda: document}, replay_runner_factory=ImageReplayRunner,
+            reads={"/api/simulators": lambda query: document}, replay_runner_factory=ImageReplayRunner,
         ).start()
         self.addCleanup(served.stop)
         unserved = RuntimeViewServer(
@@ -195,6 +195,32 @@ class ConnectedSplashTests(unittest.TestCase):
         with self.assertRaises(HTTPError) as caught:
             urlopen(f"{unserved.url}api/simulators", timeout=1.0)
         self.assertEqual(caught.exception.code, 404)
+
+    def test_a_read_takes_the_query_and_answers_a_document_an_image_or_a_refusal(self) -> None:
+        def frame(query):
+            if query.get("v") == "gone":
+                return {"ok": False, "error": "That frame's image is no longer available."}
+            if query.get("v"):
+                return b"jpeg", "image/jpeg"
+            raise ValueError("v must be a non-empty string")
+
+        served = RuntimeViewServer(
+            host_name="viewer", automation_dir=None, port=0, connected=False,
+            reads={"/api/query": lambda query: {"query": dict(query)}, "/api/frame": frame},
+            replay_runner_factory=ImageReplayRunner,
+        ).start()
+        self.addCleanup(served.stop)
+
+        self.assertEqual(json.loads(_read_text(f"{served.url}api/query?host_name=probe&step=plan&step=memory")),
+                         {"query": {"host_name": "probe", "step": "plan"}})
+        with urlopen(f"{served.url}api/frame?v=chase_frame_1", timeout=1.0) as response:
+            self.assertEqual((response.status, response.headers["Content-Type"], response.read()),
+                             (200, "image/jpeg", b"jpeg"))
+        for query, error in [("v=gone", "That frame's image is no longer available."),
+                             ("", "v must be a non-empty string")]:
+            with self.subTest(query=query), self.assertRaises(HTTPError) as caught:
+                urlopen(f"{served.url}api/frame?{query}", timeout=1.0)
+            self.assertEqual((caught.exception.code, json.loads(caught.exception.read())), (400, {"ok": False, "error": error}))
 
     def test_server_refuses_to_start_without_a_workbench_runner(self) -> None:
         with self.assertRaisesRegex(TypeError, "replay_runner or replay_runner_factory"):
@@ -257,11 +283,16 @@ class OpenViewerCommandTests(unittest.TestCase):
         serve_viewer.assert_called_once()
         self.assertTrue(callable(serve_viewer.call_args.kwargs["emit"]))
 
-    def test_the_viewer_answers_the_vehicles_and_simulators_commands(self) -> None:
+    def test_the_viewer_answers_the_vehicles_simulators_hosts_and_plugins_commands(self) -> None:
         with mock.patch.object(app, "serve_viewer", return_value=130) as serve_viewer:
             app.main([])
-        self.assertEqual(sorted(serve_viewer.call_args.kwargs["reads"]), ["/api/simulators", "/api/vehicles"])
+        self.assertEqual(sorted(serve_viewer.call_args.kwargs["reads"]), [
+            "/api/hosts/frame", "/api/hosts/latest", "/api/hosts/status", "/api/plugins/list", "/api/plugins/stream",
+            "/api/simulators", "/api/vehicles",
+        ])
         self.assertEqual(sorted(serve_viewer.call_args.kwargs["writes"]), [
+            "/api/hosts/create", "/api/hosts/delete", "/api/hosts/restart", "/api/hosts/run", "/api/hosts/stop",
+            "/api/hosts/update", "/api/plugins/arm", "/api/plugins/disarm", "/api/plugins/save", "/api/plugins/upload",
             "/api/simulators/create", "/api/simulators/delete", "/api/vehicles/discover", "/api/vehicles/remove",
         ])
 

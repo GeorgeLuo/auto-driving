@@ -45,6 +45,21 @@ class StructureEvaluatorTests(unittest.TestCase):
         self.assertEqual(clone["related"], [location("cli/two.py", 1, 6, "two")])
         self.assertTrue(all(item["status"] == "review" for item in findings))
 
+    def test_weak_test_candidates_are_asked_about_but_plain_string_equality_is_not(self) -> None:
+        findings = self.evaluate({"tests/test_report.py": (
+            "def test_report(self, output):\n"
+            "    value = 3\n"
+            "    assert value == 3\n"
+            "    self.assertEqual(render(), 'ready')\n"
+            "    self.assertIn('| total |', output)\n"
+        )})
+        self.assertEqual(sorted(item["rule"] for item in findings), [
+            "verification.test_effectiveness.assignment_readback",
+            "verification.test_effectiveness.formatted_literal_assertion",
+        ])
+        readback = next(item for item in findings if item["rule"].endswith("assignment_readback"))
+        self.assertEqual(readback["related"][0]["line"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

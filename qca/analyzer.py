@@ -25,9 +25,10 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Protocol, Sequence
 
 from .factors import FACTOR_VERSION, compare_factors, measure_factors
+from .indicators.source_classification import is_test_source
 
 
-ANALYZER_VERSION = "0.3.12"
+ANALYZER_VERSION = "0.3.13"
 REPORT_SCHEMA = "qca/report/v1"
 SOURCE_CLASSES = (
     "production",
@@ -845,7 +846,7 @@ def classify_source(path: str, text: str, config: AnalyzerConfig | None = None) 
     lower = normalized.lower()
     segments = set(PurePosixPath(lower).parts)
     first_lines = "\n".join(text.splitlines()[:12]).lower()
-    if "__pycache__" in segments or "runtime" in segments:
+    if "__pycache__" in segments or lower.startswith("runtime/"):
         return "generated/runtime"
     if any(marker.lower() in lower for marker in policy.vendor_markers):
         return "vendored/minified"
@@ -853,7 +854,7 @@ def classify_source(path: str, text: str, config: AnalyzerConfig | None = None) 
         return "vendored/minified"
     if any(marker.lower() in first_lines for marker in policy.generated_markers):
         return "generated/runtime"
-    if "tests" in segments or PurePosixPath(lower).name.startswith("test_"):
+    if is_test_source(normalized, text):
         return "tests"
     if any(root.lower() in segments for root in policy.lab_roots) or lower.startswith("lab/"):
         return "experimental/lab"
@@ -1186,17 +1187,32 @@ def _callable_shape(root: ast.AST) -> tuple[int, int, int]:
             statement_count += 1
         next_depth = depth + 1 if isinstance(node, control_types) else depth
         max_depth = max(max_depth, next_depth)
-        if isinstance(node, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler, ast.IfExp, ast.Match)):
-            decisions += 1
-        if isinstance(node, ast.BoolOp):
-            decisions += max(0, len(node.values) - 1)
-        if isinstance(node, ast.Match):
-            decisions += max(0, len(node.cases) - 1)
+        decisions += _decisions(node)
+        elif_branch = _elif_branch(node)
         for child in ast.iter_child_nodes(node):
-            visit(child, next_depth)
+            visit(child, depth if child is elif_branch else next_depth)
 
     visit(root, 0, is_root=True)
     return decisions, max_depth, statement_count
+
+
+def _decisions(node: ast.AST) -> int:
+    """Decision points ``node`` adds to cyclomatic complexity."""
+
+    if isinstance(node, ast.BoolOp):
+        return len(node.values) - 1  # Each operator after the first operand.
+    if isinstance(node, ast.Match):
+        return len(node.cases)
+    return int(isinstance(node, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.ExceptHandler, ast.IfExp)))
+
+
+def _elif_branch(node: ast.AST) -> ast.If | None:
+    """The ``elif`` of an ``if``: the only statement of its ``orelse``, an ``If`` at the same column."""
+
+    if not isinstance(node, ast.If) or len(node.orelse) != 1:
+        return None
+    alternative = node.orelse[0]
+    return alternative if isinstance(alternative, ast.If) and alternative.col_offset == node.col_offset else None
 
 
 def _assigned_names(node: ast.AST) -> list[str]:

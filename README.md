@@ -60,8 +60,9 @@ python3 -m scripts.validation.check
 The command compares your branch, working tree included, with `origin/main` and
 fails only on findings the branch introduces, so existing debt needs no baseline.
 Ruff checks maintained Python code and tests; basedpyright checks production code
-and analysis tooling. QCA adds review questions about the changed code, which do
-not fail the check. Use `--ruff-only` for the fast lint pass while editing. See
+and analysis tooling; import-linter checks the dependency contracts between
+`autonomy`, `implementations`, and `cli`. QCA, Vulture, and a related-functions
+comparison add review questions about the change, which do not fail the check. Use `--ruff-only` for the fast lint pass while editing. See
 [the validation guide](tests/README.md#python-quality-checks) for checking a
 commit, whole files, or text, and for the findings file each run can write.
 

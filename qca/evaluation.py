@@ -192,7 +192,8 @@ class Context:
 class Evaluator:
     """A check that turns paths in a directory into findings.
 
-    ``roots`` bound what the check maintains.  ``reach`` is ``project`` for a
+    ``roots`` bound what the check maintains, less any ``excluded`` paths under
+    them, whose findings are never reported.  ``reach`` is ``project`` for a
     tool that must read the whole project to judge any file, such as a type
     checker: it runs on all its roots, and reports the findings in the files
     asked about or, for a change, every finding the change introduces.  A
@@ -203,9 +204,13 @@ class Evaluator:
     name: str
     run: Callable[[Path, list[str]], list[Finding]]
     roots: tuple[str, ...] = (".",)
+    excluded: tuple[str, ...] = ()
     forms: frozenset[str] = FORMS
     reach: str = "files"
     required: bool = True
+
+    def covers(self, path: str) -> bool:
+        return in_scope(path, self.roots) and not in_scope(path, self.excluded)
 
 
 def evaluate(context: Context, evaluators: Sequence[Evaluator]) -> Document:
@@ -233,7 +238,7 @@ def evaluate(context: Context, evaluators: Sequence[Evaluator]) -> Document:
 
 
 def _evaluate(evaluator: Evaluator, context: Context) -> list[Finding] | None:
-    requested = [path for path in context.paths if in_scope(path, evaluator.roots)]
+    requested = [path for path in context.paths if evaluator.covers(path)]
     if not requested:
         return None
     scope = list(evaluator.roots) if evaluator.reach == "project" else requested
@@ -241,7 +246,8 @@ def _evaluate(evaluator: Evaluator, context: Context) -> list[Finding] | None:
         found = _run(evaluator, context.head, scope)
         return [item for item in found if in_scope(item["location"]["path"], requested)]
     base, head = (_run(evaluator, tree, scope) for tree in (context.base, context.head))
-    return introduced(base, head, base_tree=context.base, head_tree=context.head)
+    new = introduced(base, head, base_tree=context.base, head_tree=context.head)
+    return [item for item in new if evaluator.covers(item["location"]["path"])]
 
 
 def _run(evaluator: Evaluator, tree: Path, scope: list[str]) -> list[Finding]:
@@ -319,23 +325,30 @@ class _Identities:
         return self._files[path]
 
 
-def _symbols(source: str) -> list[tuple[int, int, str]]:
-    """Classes and functions as (start, end, qualified name), outermost first."""
+def definitions(tree: ast.AST) -> list[tuple[ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef, str]]:
+    """Classes and functions with the qualified names a location's ``symbol`` uses, outermost first."""
 
-    found: list[tuple[int, int, str]] = []
+    found: list[tuple[ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef, str]] = []
 
     def visit(node: ast.AST, parent: str) -> None:
         if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
             parent = f"{parent}.{node.name}" if parent else node.name
-            found.append((node.lineno, node.end_lineno or node.lineno, parent))
+            found.append((node, parent))
         for child in ast.iter_child_nodes(node):
             visit(child, parent)
 
+    visit(tree, "")
+    return found
+
+
+def _symbols(source: str) -> list[tuple[int, int, str]]:
+    """Classes and functions as (start, end, qualified name), outermost first."""
+
     try:
-        visit(ast.parse(source), "")
+        tree = ast.parse(source)
     except (SyntaxError, ValueError):
         return []  # Text that is not Python has no symbols; its findings match by text.
-    return found
+    return [(node.lineno, node.end_lineno or node.lineno, name) for node, name in definitions(tree)]
 
 
 @contextmanager

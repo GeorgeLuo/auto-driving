@@ -6,7 +6,7 @@ from pathlib import Path
 
 from qca.evaluation import SCHEMA, finding, location, validate_finding
 from scripts.validation.check import exit_status, render_summary
-from scripts.validation.evaluators import basedpyright_findings, ruff_findings, vocabulary
+from scripts.validation.evaluators import basedpyright_findings, import_contract_findings, ruff_findings, vocabulary
 
 RETIRED = "snap" + "shot"
 
@@ -46,6 +46,26 @@ class ToolFindingTests(unittest.TestCase):
             [(item["location"]["path"], item["location"]["line"], item["status"]) for item in findings],
             [("cli/a.py", 1, "blocking"), ("cli/b.py", 1, "review")],
         )
+
+    def test_a_broken_import_contract_starts_where_its_chain_starts(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "pkg" / "shared").mkdir(parents=True)
+            (root / "pkg" / "shared" / "__init__.py").write_text("from pkg import bridge\n")
+            (root / "pkg" / "bridge.py").write_text("from pkg import plugin\n")
+            [item] = import_contract_findings([{
+                "contract": "shared", "name": "Shared code does not depend on plugins", "guidance": "",
+                "chain": [
+                    {"importer": "pkg.shared", "imported": "pkg.bridge", "line": 1},
+                    {"importer": "pkg.bridge", "imported": "pkg.plugin", "line": 1},
+                ],
+            }], root)
+        validate_finding(item)
+        self.assertEqual((item["tool"], item["rule"], item["status"]), ("import-linter", "shared", "blocking"))
+        self.assertEqual(item["location"], location("pkg/shared/__init__.py", 1))
+        self.assertEqual(item["related"], [location("pkg/bridge.py", 1)])
+        self.assertEqual(item["evidence"]["chain"], ["pkg.shared -> pkg.bridge", "pkg.bridge -> pkg.plugin"])
+        self.assertNotIn("guidance", item["evidence"])
 
     def test_retired_vocabulary_is_found_in_text_outside_deprecated_documents(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

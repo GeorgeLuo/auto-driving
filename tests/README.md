@@ -28,7 +28,7 @@ The browser install is only for the systems test that opens Chromium. CI does no
 
 Either suite takes `-k PATTERN` to run only the tests whose ID (`module.Class.method`) matches, as unittest's `-k` does: a substring, or a glob when it contains `*`. Repeat it to widen the match, for example `python3 tests/run.py --systems journeys -k upload -k arming`. A pattern that matches no test fails the run.
 
-The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. CI also fails when `python3 -m pyflakes tests` reports an undefined name, which catches a broken systems import without running the suite. The [Python quality check](#python-quality-checks) fails when a change adds a retired word outside `docs/deprecated/`.
+The deterministic run fails any test that starts a program. The error names the command and points at `tests/systems/`. The [Python quality check](#python-quality-checks) lints `tests/`, including `systems/`, so a change that adds an undefined name there fails without running the suite. It also fails when a change adds a retired word outside `docs/deprecated/`.
 
 ## Validating a change
 
@@ -43,7 +43,7 @@ Run the tests your change reaches, not every suite. `commands` and `journeys` to
    lists for the final revision; the PR's Python quality summary lists them for
    the committed head. Investigate material candidates and report their locations
    and dispositions: fixed, retained with a code-based reason, or unresolved. If
-   QCA cannot run, the summary says why; report it. Review questions do not fail
+   a review check cannot run, the summary says why; report it. Review questions do not fail
    the check, and a passing check does not mean they were reviewed.
 5. CI does not run `systems/`. Run the systems tests that drive the code you changed, chosen with a group and `-k`:
 
@@ -86,12 +86,32 @@ Type checking compares the whole project, so a change also answers for callers i
 breaks in files it did not touch. Whole files and text report all their findings;
 type checking needs the project and skips text.
 
-Ruff, basedpyright, and the retired-vocabulary check report blocking findings.
-QCA reports review questions: opaque conditionals, duplicated functions, and
-functions above its size, complexity, and nesting limits. The command exits 0
-when clean, 1 for blocking findings, and 2 when a required check cannot run. A
-QCA failure is reported in the summary without failing the command.
-`--ruff-only` skips the slower checks while editing.
+Ruff, basedpyright, import-linter, and the retired-vocabulary check report
+blocking findings. The command exits 0 when clean, 1 for blocking findings, and 2
+when a required check cannot run. `--ruff-only` skips the slower checks while
+editing.
+
+Three checks only ask review questions, and a failure of one is reported in the
+summary without failing the command:
+
+- QCA: opaque conditionals, duplicated functions, functions above its size,
+  complexity, and nesting limits, and weak tests (assertions that read back an
+  assigned value or match formatted output, and tests that reach production
+  private names). Plain string equality is not asked about; about one test
+  assertion in four compares a string.
+- Vulture: production classes, functions, methods, properties, and attributes no
+  production code refers to, with the tests that still use them. It matches names,
+  not bindings, so a name used anywhere counts as used, and code reached only by
+  reflection or configuration is reported. Findings sit at the definition, so a
+  change answers for code it leaves unused, not for editing code that already was.
+- Related functions: for each function, up to three in the same module, an
+  importing module, or the same directory that make the same calls, weighted by how
+  rare each call is. A change that edits a function is asked whether the similar
+  ones need the same edit, or whether they should share code.
+
+Vulture, related functions, basedpyright, and import-linter read the whole project
+on both sides of a change, so a change answers for what it does to files it did
+not touch.
 
 `--output DIR` writes `summary.md` and `findings.json`, whose findings share the
 fields described in [QCA's findings](../qca/README.md#findings-for-any-context).
@@ -100,10 +120,17 @@ publishes the summary, and keeps both files in the `quality-findings` artifact.
 The configuration in `pyproject.toml` also works with Ruff and basedpyright editor
 integrations, which show existing findings as well as new ones.
 
-The checks cover `autonomy/`, `cli/`, `implementations/`, `qca/`, and
-`scripts/validation/`. Ruff additionally checks `tests/` for name/import errors;
-test complexity and typing are outside this initial rollout. Generated runtime
-bundles, experiments, and vendored code are outside the check scope.
+Ruff, QCA, Vulture, and related functions cover `autonomy/`, `cli/`,
+`deploy/`, `implementations/`, `qca/`, `scripts/validation/`, and `tests/`, less
+Ruff's `extend-exclude`: the vehicle artifacts in the top-level `runtime/` and
+`lab/`, the vehicle host code in `implementations/runtime/`, and vendored code.
+Vulture and related functions read tests only to report where they use production
+code. In `tests/`, Ruff checks only names, imports, and bare `except`s; QCA's
+limits still ask about long or complex tests. basedpyright covers the paths its own
+`include` lists, and import-linter the root packages of the contracts in
+`[tool.importlinter]`: `autonomy` depends on neither `implementations` nor `cli`,
+`implementations` does not depend on `cli`, shared decision-cycle code depends on
+no plugin or host, and plugin packages import each other without cycles.
 The initial type gate enables explicit `Any`, redundant instance/comparison
 checks, unreachable code, missing imports, and invalid type forms. General
 argument/return checking and `Any` propagation are left for a separate rollout.

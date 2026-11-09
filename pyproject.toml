@@ -1,15 +1,19 @@
 [tool.ruff]
 required-version = "==0.17.1"
 target-version = "py311"
-extend-exclude = [".claude", "runtime", "lab", "deploy/targets/donkeycar/vendor"]
+# Paths are anchored at the repository root: `runtime/` and `lab/` hold artifacts
+# copied from the vehicle, and `implementations/runtime` is vehicle host code.
+extend-exclude = [".claude", "./runtime", "./lab", "implementations/runtime", "deploy/targets/donkeycar/vendor"]
 
 [tool.ruff.lint]
-select = ["F", "B", "C901", "PLR0912", "PLR0915", "PLR0916", "PLR1702"]
+select = ["F", "E722", "B", "C901", "PLR0912", "PLR0914", "PLR0915", "PLR0916", "PLR0917", "PLR1702",
+          "ARG", "SIM103", "SIM114", "SIM116", "RET504", "RET505", "RET506", "RET507", "RET508",
+          "PLR1704", "PLR5501", "PIE810"]
 preview = true
 explicit-preview-rules = true
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["B", "C901", "PLR"]
+"tests/**" = ["B", "C901", "PLR", "ARG", "SIM", "RET", "PIE"]
 
 [tool.ruff.lint.mccabe]
 max-complexity = 10
@@ -17,6 +21,8 @@ max-complexity = 10
 [tool.ruff.lint.pylint]
 max-branches = 12
 max-statements = 50
+max-locals = 15
+max-positional-args = 5
 max-bool-expr = 5
 max-nested-blocks = 5
 
@@ -36,3 +42,34 @@ reportUnreachable = "error"
 reportExplicitAny = "error"
 # Enable propagation checks after the explicit contracts have been narrowed.
 reportAny = "none"
+
+[tool.importlinter]
+root_packages = ["autonomy", "implementations", "cli"]
+
+[[tool.importlinter.contracts]]
+id = "harness"
+name = "The autonomy harness does not depend on implementations or CLI"
+type = "forbidden"
+source_modules = ["autonomy"]
+forbidden_modules = ["implementations", "cli"]
+
+[[tool.importlinter.contracts]]
+id = "implementations"
+name = "Implementations do not depend on CLI"
+type = "forbidden"
+source_modules = ["implementations"]
+forbidden_modules = ["cli"]
+
+[[tool.importlinter.contracts]]
+id = "shared"
+name = "Shared step code does not depend on concrete plugins or hosts"
+type = "forbidden"
+source_modules = ["implementations.decision_cycle.*.shared"]
+forbidden_modules = ["implementations.decision_cycle.*.plugins", "implementations.runtime", "implementations.vehicle"]
+broken_contract_guidance = "Move general step behavior into shared code; keep environment-specific behavior in plugins."
+
+[[tool.importlinter.contracts]]
+id = "plugin-cycles"
+name = "Plugin packages have no dependency cycles"
+type = "acyclic_siblings"
+ancestors = ["implementations.decision_cycle.*.plugins"]

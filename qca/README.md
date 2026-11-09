@@ -60,6 +60,8 @@ one evaluator serves every form. For a change, each evaluator runs on both sides
 and only findings the base lacks are reported. Findings match by tool, rule,
 file, enclosing symbol, and the location's source text, so moved code still
 matches; a finding with a `measure` matches a base finding of at least its value.
+An evaluator's `roots` bound what it maintains, less any `excluded` paths under
+them: excluded files are never requested, and their findings are never reported.
 An evaluator whose `reach` is `project`, such as a type checker, reads its whole
 roots in every form. For files or text it reports only findings in those files;
 for a change it reports every finding the change introduces, including in files
@@ -81,8 +83,10 @@ Each finding has exactly these fields:
 `evaluations` record per evaluator (`completed`, `skipped` with a reason, or
 `failed` with an error), and the flat `findings` list. `qca.evaluators.structure`
 is QCA's evaluator: opaque conditionals, redundant `Any` guards, swallowed
-exceptions, and clones as review questions, plus callables above its complexity,
-size, and nesting limits with their measures.
+exceptions, clones, and weak tests as review questions, plus callables above its
+complexity, size, and nesting limits with their measures. Its weak tests are the
+test-effectiveness candidates in `TEST_CANDIDATES`; plain string equality is
+left out because about one test assertion in four makes one.
 
 ## Factor reports (analyzer 0.3)
 
@@ -248,3 +252,33 @@ functional-style mutator names, and discarded short-circuit calls such as
 bindings, custom truthiness, and deferred lambda/generator bodies are not inferred.
 These are inspection candidates, with the usual changed-file diff scope, not
 proof of unreadability or newly introduced problems.
+
+### Source classification and test review (analyzer 0.3.13)
+
+Rerun both revisions before comparing these measurements or findings with
+earlier analyzer versions.
+
+* Only a top-level `runtime/` directory, which holds artifacts copied from the
+  vehicle, is classified as generated. Source packages named `runtime`, such as
+  `autonomy/runtime`, are now measured.
+* A file in a `test`, `tests`, or `spec` directory is a test. Outside those, a
+  file named like a test (`test_*.py`, `*_test.py`) is a test only when it
+  asserts, imports `pytest` or `unittest`, or defines a `test_` function, so a
+  production module named `test_*` is measured as production. An unparseable file
+  named like a test stays a test, so its parse failure stays visible.
+* An `if`/`elif` ladder is measured at one nesting level; an `if` nested under
+  `else` still adds depth.
+* Methods of a `Protocol` class and `@abstractmethod` methods are not stub
+  candidates when `Protocol` or `abstractmethod` is imported explicitly.
+  Indicator `structure.functionality` is version 2.
+* Test effectiveness (indicator version 2):
+  * A private import counts only when its module matches a production source in
+    the analysis. Imports from test modules, and unmatched or relative imports,
+    are not counted.
+  * Only Python sources count as test files, including ones that do not parse.
+  * Each candidate kind asks its own question. String findings record their
+    `comparison_kinds` (equality, membership, regex, identity, ordering), and a
+    single kind other than equality gets a question about that comparison.
+  * A formatted literal needs a structural marker, such as a table pipe pair, a
+    tag, a line break, a percentage, or backticks, or a long literal. An
+    isolated arrow, angle bracket, or pipe is not enough.

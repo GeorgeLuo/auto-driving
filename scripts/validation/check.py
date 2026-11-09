@@ -12,6 +12,8 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from qca import AnalysisError
+from qca.analyzer import _read_git_diff
 from qca.evaluation import evaluate, validate_finding
 from scripts.validation import findings as output_findings
 from scripts.validation.text_evaluators import retired_vocabulary
@@ -136,12 +138,16 @@ def inspect_changes(output: Path, records: list, *, root: Path | None = None,
             raise ValueError("QCA inspection failed; see the quality job log.")
         report = json.loads((output / "report.json").read_text())
         inspection = json.loads((output / "inspection.json").read_text())
-        records.extend(output_findings.qca_records(report, inspection))
+        identity = report["identity"]
+        changes = _read_git_diff(repo_root=root, base_sha=identity["base_sha"],
+                                 head_sha=identity["head_sha"], pathspecs=())
+        lines = {item.path: set(item.changed_new_lines) for item in changes}
+        records.extend(output_findings.qca_records(report, inspection, changed_lines=lines))
         if summary_path := os.environ.get("GITHUB_STEP_SUMMARY"):
             with open(summary_path, "a", encoding="utf-8") as summary:
                 summary.write((output / "summary.md").read_text())
         return []
-    except (OSError, ValueError, KeyError, subprocess.CalledProcessError) as exc:
+    except (AnalysisError, OSError, ValueError, KeyError, subprocess.CalledProcessError) as exc:
         message = f"Informational inspection failed: {exc}"
         print(message, file=sys.stderr)
         return [message]

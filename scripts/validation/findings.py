@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Set
 from pathlib import Path
 
 from qca.evaluation import finding
@@ -62,8 +63,36 @@ def import_records(report, root: Path) -> list[dict]:
     return records
 
 
-def qca_records(report: dict, inspection: dict) -> list[dict]:
-    return qca_pattern_records(report) + qca_complexity_records(report) + inspection_records(inspection)
+def qca_records(report: dict, inspection: dict, *, changed_lines: Mapping[str, Set[int]]) -> list[dict]:
+    return (qca_pattern_records(report) + qca_complexity_records(report)
+            + qca_test_records(report, changed_lines) + inspection_records(inspection))
+
+
+def qca_test_records(report: dict, changed_lines: Mapping[str, Set[int]]) -> list[dict]:
+    """Normalize test candidates whose primary or related evidence overlaps a change."""
+
+    records = []
+    for item in report["factors"]["test_effectiveness"]["findings"]:
+        evidence = item["evidence"]
+        primary = evidence["primary"]
+        related = evidence["related"]
+        blocks = ([primary] if primary else []) + related
+        changed = any(
+            any(block["range"]["start"]["line"] <= line <= block["range"]["end"]["line"]
+                for line in changed_lines.get(block["path"], ()))
+            for block in blocks
+        )
+        if not primary:
+            changed = changed or item["line"] in changed_lines.get(item["path"], ())
+        if not changed:
+            continue
+        places = [{"path": block["path"], "line": block["range"]["start"]["line"]} for block in related]
+        records.append(finding(
+            "qca." + item["kind"], {"path": item["path"], "line": item["line"]},
+            evidence["inspection_question"], "qca", item["indicator"]["id"],
+            evidence={**evidence["pattern"], "uncertainty": evidence["uncertainty"]}, related=places,
+        ))
+    return records
 
 
 def qca_pattern_records(report: dict) -> list[dict]:

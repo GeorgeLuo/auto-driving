@@ -1207,6 +1207,7 @@ def _callable_shape(root: ast.AST) -> tuple[int, int, int]:
         if isinstance(node, ast.Match):
             decisions += max(0, len(node.cases) - 1)
         elif_branch = None
+        # Python's AST represents an elif as an If in orelse at the same column.
         if isinstance(node, ast.If) and len(node.orelse) == 1:
             alternative = node.orelse[0]
             if isinstance(alternative, ast.If) and alternative.col_offset == node.col_offset:

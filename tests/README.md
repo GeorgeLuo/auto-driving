@@ -136,6 +136,10 @@ HTML evidence and `findings.json`, whose records share a type, location,
 question, source, status, related locations, and evidence. The artifact includes
 the revision once at the top level. Status distinguishes blocking diagnostics
 from informational review candidates; execution failures are recorded separately.
+Test-effectiveness findings enter that flat list when their primary or related
+source evidence overlaps an added or edited line in the inspected revisions.
+String findings carry comparison categories in their evidence; the scan does
+not establish that an assertion is defective.
 Findings are questions for review, not labels that establish real problems. To reproduce the
 full CI quality process locally against committed revisions:
 

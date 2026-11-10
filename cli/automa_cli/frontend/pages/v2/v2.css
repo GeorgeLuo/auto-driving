@@ -102,9 +102,8 @@ nav + nav { margin-top: 40px; }
   border-radius: 50%; background: var(--green); vertical-align: 1px;
 }
 
-/* The pane: float.css's status box, square, its text pinned above its keys. */
+/* The pane: float.css's status box, square. Its text fills the pane and scrolls under its keys. */
 .split > .float-frame-status { flex: 1 1 auto; min-width: 0; margin: 0; border-radius: 0; }
-.float-frame-status-text { bottom: 22px; padding-bottom: 6px; }
 .pane-keys { position: absolute; right: 6px; bottom: 6px; z-index: 1; display: flex; gap: 8px; }  /* equal gap right and below */
 /* A form fills the pane's top; what its command prints goes under it. */
 .pane-form { position: absolute; inset: 8px 10px auto; z-index: 1; display: grid; gap: 10px; }

@@ -5,7 +5,8 @@
 //   verbs    the list's top line: [{label, action, disabled, gap}]
 //   rows     the list: [{name, action, disabled, selected, marked, exited, child}]
 //   form     the data-form shown at the pane's top, or none
-//   status   the pane's text; keepScroll holds its scroll as it changes; statusGap marks it
+//   status   the pane's text, scrolled to its end as it changes (a command's output); keepScroll
+//            holds its scroll instead, fromTop shows its top (a listing); statusGap marks it
 //   keys     the pane's bottom-right keys, like verbs
 //   feed     true when the pane shows a frame instead of text (Stream)
 "use strict";
@@ -101,7 +102,7 @@ function paintWindow(w) {
   if (w.text.textContent !== v.status) {
     const top = w.text.scrollTop;
     w.text.textContent = v.status;
-    w.text.scrollTop = v.keepScroll ? top : w.text.scrollHeight;
+    w.text.scrollTop = v.keepScroll ? top : v.fromTop ? 0 : w.text.scrollHeight;
   }
   return v;
 }

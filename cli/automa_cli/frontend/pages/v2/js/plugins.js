@@ -28,34 +28,54 @@ const Plugins = (() => {
   // The host's collections, as plugins list --long --json gives them: each one's plugins by step.
   const collections = (host) => (host ? listing(host)?.catalog.collections || {} : {});
   const collectionPlugins = (by) => Object.entries(by || {}).flatMap(([step, list]) => list.map((id) => `${step}/${id}`));
-  const sourceOf = (host, step, id) => { const u = uploaded(host, step, id); return u ? `revision ${u.revision}` : "packaged"; };
+  // Where a plugin comes from: packaged, the host's collection that holds it, or its upload's short revision.
+  function sourceOf(host, step, id) {
+    const u = uploaded(host, step, id);
+    if (!u) return "packaged";
+    const holders = Object.entries(collections(host)).filter(([, by]) => (by[step] || []).includes(id)).map(([name]) => name);
+    return holders.length ? holders.join(", ") : `uploaded ${u.revision.slice(0, 8)}`;
+  }
+  // What runs in a step, in the list's order.
+  const running = (host, step) => ids(host, step).filter((id) => armed(host, step).includes(id));
+  // A step's plugins in the list's order: * marks what runs; only an uploaded plugin names its source.
+  const stepPluginLines = (host, step) => ids(host, step).map((id) =>
+    `${armed(host, step).includes(id) ? "*" : " "} ${id}${uploaded(host, step, id) ? `  (${sourceOf(host, step, id)})` : ""}`);
+  // What runs: the host's armed plugins, or the packaged defaults.
+  const runs = (host) => (host ? "armed" : "default");
 
-  // plugins list, or plugins list --long for a host: each step's armed plugins, then the rest.
+  // plugins list for the host or the packaged catalog: what runs in each step, in the list's order,
+  // then the collections; the rest are counted, and selecting a step lists them.
   function catalogLines(host) {
-    if (!host) return ["Catalog: packaged", ...STEPS.flatMap((step) => ids(null, step)
-      .map((id) => `- ${step}/${id}: packaged${defaults(step).includes(id) ? " (default)" : ""}`))];
     const catalog = listing(host)?.catalog || {};
-    return [`Host: ${host}`, `Catalog version: ${catalog.version ?? 1} (host run ${catalog.host_run_id || "none"})`,
-      ...STEPS.flatMap((step) => {
-        const on = armed(host, step);
-        return [...on, ...ids(host, step).filter((id) => !on.includes(id))].map((id) => {
-          const u = uploaded(host, step, id);
-          return `- ${step}/${id}: ${u ? `revision ${u.revision} (${u.filename})` : "packaged"}${on.includes(id) ? " (armed)" : ""}`;
-        });
-      }),
-      ...(Object.keys(collections(host)).length ? ["Collections:", ...Object.entries(collections(host))
-        .map(([name, by]) => `- ${name}: ${collectionPlugins(by).join(", ")}`)] : [])];
+    // One column for steps, one for plugins, and for a host, where each comes from.
+    const stepWidth = Math.max(...STEPS.map((step) => step.length));
+    const idWidth = Math.max(0, ...STEPS.flatMap((step) => running(host, step).map((id) => id.length)));
+    const runningRows = STEPS.flatMap((step) => {
+      const on = running(host, step);
+      return on.length ? on.map((id, i) => `  ${(i ? "" : step).padEnd(stepWidth)}  ${host ? `${id.padEnd(idWidth)}  ${sourceOf(host, step, id)}` : id}`)
+                       : [`  ${step.padEnd(stepWidth)}  (none)`];
+    });
+    const rest = STEPS.map((step) => [step, ids(host, step).length - running(host, step).length])
+      .filter(([, n]) => n).map(([step, n]) => `${n} ${step}`);
+    return [host ? `Host ${host}, catalog version ${catalog.version ?? 1}` : "Catalog: packaged",
+      "", titleCase(runs(host)), ...runningRows,
+      ...(Object.keys(collections(host)).length ? ["", "Collections", ...Object.entries(collections(host))
+        .map(([name, by]) => `  ${name}: ${collectionPlugins(by).join(", ")}`)] : []),
+      ...(rest.length ? ["", `Not ${runs(host)}: ${rest.join(", ")}. Select a step to list them.`] : [])];
   }
-  // plugins list --step: * marks what is armed; the step's default preset is named as its default.
+  // plugins list --step: the step's plugins as the list shows them; its default preset is named.
   function stepLines(step, host) {
-    const preset = defaultPreset(step), on = armed(host, step);
+    const preset = defaultPreset(step);
     return [`${titleCase(step)}${ONE_PLUGIN.has(step) ? ", one plugin" : ""}${preset ? `, default preset ${preset}` : ""}`,
-            `Catalog: ${host ? `host ${host}` : "packaged"}`,
-            ...ids(null, step).map((id) => `${on.includes(id) ? "*" : " "} ${id} (packaged)${defaults(step).includes(id) ? " default" : ""}`)];
+            `Catalog: ${host ? `host ${host}` : "packaged"} (* ${runs(host)})`, "", ...stepPluginLines(host, step)];
   }
-  const pluginLines = (host, step, id) => [`${step}/${id} (${sourceOf(host, step, id)})`,
-    `  ${armed(host, step).includes(id) ? `armed on ${host || "nothing (no host)"}` : "not armed"}`,
-    `  ${defaults(step).includes(id) ? `a default of ${step}` : "not a default"}`];
+  function pluginLines(host, step, id) {
+    const u = uploaded(host, step, id);
+    return [`${step}/${id} (${sourceOf(host, step, id)})`,
+      ...(u ? [`  revision ${u.revision}`, `  file ${u.filename}`] : []),
+      `  ${armed(host, step).includes(id) ? `armed on ${host || "nothing (no host)"}` : "not armed"}`,
+      `  ${defaults(step).includes(id) ? `a default of ${step}` : "not a default"}`];
+  }
 
   // ---- Its commands. ----
   const target = () => ({ host_name: W.host });
@@ -203,11 +223,13 @@ const Plugins = (() => {
       : id ? pluginLines(host, step, id).join("\n")
       : step ? stepLines(step, host).join("\n")
       : catalogLines(host).join("\n");
+    // The catalog, a step and a plugin are listings, read from their top; a command's output and a stream are not.
+    const listingShown = !W.ask && !W.log.length && !streaming && !["preset", "collection", "upload"].includes(W.mode);
     const doing = W.ask ? "disarm" : W.mode === "preset" ? `${step} preset` : W.mode === "upload" ? "upload" : W.mode === "collection" ? "collection" : streaming ? `${step} stream` : "catalog";
     return {
       mode: `${host || "packaged"} · ${doing}`, verbs, rows,
       form: ["preset", "upload", "collection"].includes(W.mode) ? W.mode : null,
-      status, keys, keepScroll: streaming,
+      status, keys, keepScroll: streaming, fromTop: listingShown,
     };
   }
 

@@ -30,6 +30,24 @@ class ActionProposalMatrixTests(unittest.TestCase):
         self.assertIsNone(ActionProposal.from_dict(payload).confidence)
         self.assertEqual(synthetic_error_proposal(plugin_id="p", frame_id="frame_001", reason="plugin_exception").confidence, 0.0)
 
+    def test_command_gear_is_the_throttle_direction(self) -> None:
+        self.assertEqual(ProposedVehicleCommand(steering=0.2, throttle=0.6).gear, "forward")
+        self.assertEqual(ProposedVehicleCommand(steering=-0.2, throttle=-1.0).gear, "reverse")
+        self.assertEqual(ProposedVehicleCommand(steering=1.0, throttle=0.0).gear, "hold")
+        with self.assertRaises(TypeError):
+            ProposedVehicleCommand(steering=0.0, throttle=0.5, gear="reverse")  # type: ignore[call-arg]
+
+    def test_command_round_trips_and_rejects_a_stored_gear_that_contradicts_throttle(self) -> None:
+        command = ProposedVehicleCommand(steering=0.3, throttle=-0.5)
+        payload = command.to_dict()
+        self.assertEqual(payload["gear"], "reverse")
+        self.assertEqual(ProposedVehicleCommand.from_dict(payload), command)
+        del payload["gear"]
+        self.assertEqual(ProposedVehicleCommand.from_dict(payload), command)
+        payload["gear"] = "forward"
+        with self.assertRaises(ValueError):
+            ProposedVehicleCommand.from_dict(payload)
+
     def test_runner_accepts_unrelated_proposal_without_avoidance_config(self) -> None:
         engine = decision_chain(
             plugins={
@@ -50,9 +68,9 @@ class ActionProposalMatrixTests(unittest.TestCase):
     def test_proposed_equals_authorized_table(self) -> None:
         idle = idle_output()
         self.assertTrue(proposed_equals_authorized(None, idle))
-        zero = ProposedVehicleCommand(steering=0.0, throttle=0.0, gear="hold")
+        zero = ProposedVehicleCommand(steering=0.0, throttle=0.0)
         self.assertTrue(proposed_equals_authorized(zero, idle))
-        nonzero = ProposedVehicleCommand(steering=0.35, throttle=0.0, gear="hold")
+        nonzero = ProposedVehicleCommand(steering=0.35, throttle=0.0)
         self.assertFalse(proposed_equals_authorized(nonzero, idle))
         applied = {"steering": 0.35, "throttle": 0.0, "confidence": 0.9, "reason": "x"}
         self.assertTrue(proposed_equals_authorized(nonzero, applied))
@@ -154,7 +172,7 @@ class RunnerBoundaryTests(unittest.TestCase):
                 freshness="fresh",
                 confidence=0.5,
                 reason=reason,
-                command=ProposedVehicleCommand(steering=0.1, throttle=0.0, gear="hold"),
+                command=ProposedVehicleCommand(steering=0.1, throttle=0.0),
                 assumptions=assumptions,
                 source_refs=refs,
                 available=True,

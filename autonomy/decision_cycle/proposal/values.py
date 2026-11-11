@@ -7,6 +7,7 @@ and supporting evidence.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
@@ -69,11 +70,15 @@ _MATRIX: dict[str, tuple[str, bool, bool, int]] = {
 
 @dataclass(frozen=True)
 class ProposedVehicleCommand:
-    """Canonical proposed vehicle command (not applied AutonomyControl)."""
+    """Canonical proposed vehicle command (not applied AutonomyControl).
+
+    Steering and throttle are signed and normalized to -1..1; the throttle's sign is the direction.
+    ``gear`` is derived from it (``forward``, ``reverse``, or ``hold`` near zero) for readable
+    reports, so a command cannot name a gear that contradicts its throttle.
+    """
 
     steering: float
     throttle: float
-    gear: str = "hold"
     normalized: bool = True
     schema: str = PROPOSED_VEHICLE_COMMAND_SCHEMA
 
@@ -85,26 +90,21 @@ class ProposedVehicleCommand:
             raise ValueError("steering and throttle must be numeric") from exc
         if not math.isfinite(steering) or not math.isfinite(throttle):
             raise ValueError("steering and throttle must be finite")
-        steering = clamp_unit(steering)
-        throttle = clamp_unit(throttle)
-        if abs(throttle) < COMMAND_EPS:
-            gear = "hold"
-        elif throttle > 0:
-            gear = "forward"
-        else:
-            gear = "reverse"
-        if self.gear not in {"forward", "reverse", "hold"}:
-            raise ValueError(f"invalid gear {self.gear!r}")
-        if self.gear != gear:
-            raise ValueError(f"gear {self.gear!r} contradicts throttle {throttle}")
-        object.__setattr__(self, "steering", steering)
-        object.__setattr__(self, "throttle", throttle)
-        object.__setattr__(self, "gear", gear)
+        object.__setattr__(self, "steering", clamp_unit(steering))
+        object.__setattr__(self, "throttle", clamp_unit(throttle))
         object.__setattr__(self, "normalized", True)
         if self.schema != PROPOSED_VEHICLE_COMMAND_SCHEMA:
             raise ValueError("invalid ProposedVehicleCommand schema")
 
-    def to_dict(self) -> dict[str, Any]:
+    @property
+    def gear(self) -> str:
+        """The throttle's direction: ``forward``, ``reverse``, or ``hold`` when it is near zero."""
+
+        if abs(self.throttle) < COMMAND_EPS:
+            return "hold"
+        return "forward" if self.throttle > 0 else "reverse"
+
+    def to_dict(self) -> dict[str, object]:
         return {
             "schema": self.schema,
             "steering": self.steering,
@@ -114,13 +114,19 @@ class ProposedVehicleCommand:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ProposedVehicleCommand":
-        return cls(
-            steering=float(data.get("steering") or 0.0),
-            throttle=float(data.get("throttle") or 0.0),
-            gear=str(data.get("gear") or "hold"),
+    def from_dict(cls, data: Mapping[str, object]) -> "ProposedVehicleCommand":
+        steering, throttle = data.get("steering") or 0.0, data.get("throttle") or 0.0
+        if not isinstance(steering, (int, float)) or not isinstance(throttle, (int, float)):
+            raise ValueError("steering and throttle must be numeric")
+        command = cls(
+            steering=float(steering),
+            throttle=float(throttle),
             schema=str(data.get("schema") or PROPOSED_VEHICLE_COMMAND_SCHEMA),
         )
+        gear = data.get("gear")
+        if gear is not None and gear != command.gear:
+            raise ValueError(f"gear {gear!r} contradicts throttle {command.throttle}")
+        return command
 
 
 @dataclass(frozen=True)

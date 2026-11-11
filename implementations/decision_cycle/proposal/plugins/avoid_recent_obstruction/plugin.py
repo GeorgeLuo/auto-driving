@@ -328,7 +328,6 @@ def propose(
         command = ProposedVehicleCommand(
             steering=steering,
             throttle=DEFAULT_FORWARD_THROTTLE,
-            gear="forward",
         )
         return ActionProposal(
             plugin_id=AvoidRecentObstruction.plugin_id,

@@ -205,9 +205,11 @@ const Plugins = (() => {
     else keys = [{ label: "SAVE", action: () => command(W, "/api/plugins/save", target()), disabled: !host },
                  ...(Object.keys(collections(host)).length ? [{ label: "COLL", action: openCollection }] : []),
                  { label: "DSALL", action: askDisarm, disabled: !host }];
+    // A step row selects its step (from one of its plugins too, back to the step's activations);
+    // only the selected step collapses.
     const rows = STEPS.flatMap((name) => [
       { name, selected: W.selected === name, disabled: W.busy,
-        action: () => select(W.selected === name || W.selected?.startsWith(`${name}/`) ? null : name) },
+        action: () => select(W.selected === name ? null : name) },
       ...(step === name ? ids(host, name).map((plugin) => ({
         name: plugin, child: true, marked: armed(host, name).includes(plugin), selected: W.selected === `${name}/${plugin}`, disabled: W.busy,
         action: () => select(W.selected === `${name}/${plugin}` ? name : `${name}/${plugin}`),

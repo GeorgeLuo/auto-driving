@@ -25,7 +25,7 @@ and counts the others in ``dropped_paths``.
 Trials are seen only in polls, so a trial opened and closed between two
 polls is missed; its withdrawal or check still shows in the counts. A trial
 that leaves with a new check of its method and prediction is ``resolved`` with
-that check's outcome. object other that leaves while its method's withdrawal
+that check's outcome. Any other trial that leaves while its method's withdrawal
 count rises is ``withdrawn`` under the reason that rose, and the rest are
 ``resolved`` with no known outcome.
 """

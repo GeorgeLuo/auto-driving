@@ -145,13 +145,10 @@ def _command_tokens(command: str) -> list[str] | None:
 
 
 def _option_is(tokens: list[str], flag: str, value: str) -> bool:
-    prefix = f"{flag}="
-    for index, token in enumerate(tokens):
-        if token == flag and index + 1 < len(tokens) and tokens[index + 1] == value:
-            return True
-        if token.startswith(prefix) and token.removeprefix(prefix) == value:
-            return True
-    return False
+    if f"{flag}={value}" in tokens:
+        return True
+    pair = [flag, value]
+    return any(tokens[index:index + 2] == pair for index in range(len(tokens) - 1))
 
 
 def supervisor_command_matches(command: str, host_name: str) -> bool:
@@ -165,9 +162,7 @@ def supervisor_command_matches(command: str, host_name: str) -> bool:
     if tokens is None or not host_name:
         return False
     return any(
-        tokens[index] == "-m"
-        and tokens[index + 1] == LOCAL_WORKER_MODULE
-        and tokens[index + 2] == host_name
+        tokens[index:index + 3] == ["-m", LOCAL_WORKER_MODULE, host_name]
         for index in range(len(tokens) - 2)
     )
 

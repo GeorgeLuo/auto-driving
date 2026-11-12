@@ -233,13 +233,27 @@ class RecordedProcessStopTests(unittest.TestCase):
         write_simulator_record(record)
         return record, simulator_dir(PORT) / "simulator.json"
 
-    def _patch_simulator(self, command: str | None, *, kill_error: bool = False) -> None:
+    def _patch_simulator(
+        self,
+        command: str | None,
+        *,
+        kill_error: bool = False,
+        stay_alive: bool = False,
+        replace_after_read: bool = False,
+    ) -> None:
         answers = iter((True, False))
+        seen = False
 
         def pid_alive(_pid: int) -> bool:
+            if stay_alive:
+                return True
             return next(answers, False)
 
         def process_command(_pid: int) -> str | None:
+            nonlocal seen
+            if replace_after_read and seen:
+                return f"other --port {PORT}"
+            seen = True
             return command
 
         def killpg(pid: int, sig: signal.Signals) -> None:
@@ -286,6 +300,24 @@ class RecordedProcessStopTests(unittest.TestCase):
         self.enterContext(patch.dict(os.environ, {"AUTOMA_HEADLESS_SIM_COMMAND": override}))
 
         self.assertEqual(stop_simulator(record), "stopped")
+
+        self.assertEqual(self.groups, [(SIM_PID, signal.SIGTERM)])
+        self.assertFalse(path.exists())
+
+    def test_stop_simulator_kills_a_matching_launcher_that_does_not_exit(self) -> None:
+        record, path = self._write_simulator()
+        self._patch_simulator(_node(), stay_alive=True)
+
+        self.assertEqual(stop_simulator(record, wait_s=0), "killed")
+
+        self.assertEqual(self.groups, [(SIM_PID, signal.SIGTERM), (SIM_PID, signal.SIGKILL)])
+        self.assertFalse(path.exists())
+
+    def test_stop_simulator_does_not_kill_a_pid_reused_during_the_wait(self) -> None:
+        record, path = self._write_simulator()
+        self._patch_simulator(_node(), stay_alive=True, replace_after_read=True)
+
+        self.assertEqual(stop_simulator(record, wait_s=0), "stopped")
 
         self.assertEqual(self.groups, [(SIM_PID, signal.SIGTERM)])
         self.assertFalse(path.exists())

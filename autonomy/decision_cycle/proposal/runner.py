@@ -56,10 +56,7 @@ def _admit_candidate(
             reason="plugin_invalid_return",
         )
     expected_id = proposal_id_for(invoked_plugin_id, frame_id)
-    if (
-        returned.plugin_id != invoked_plugin_id
-        or returned.proposal_id != expected_id
-    ):
+    if (returned.plugin_id, returned.proposal_id) != (invoked_plugin_id, expected_id):
         return synthetic_error_proposal(
             plugin_id=invoked_plugin_id,
             frame_id=frame_id,
@@ -76,11 +73,8 @@ def _admit_candidate(
         raise ActionProposalMatrixError(
             f"candidate fails lifecycle/bounds matrix: {exc}"
         ) from exc
-    if (
-        validated.plugin_id != invoked_plugin_id
-        or validated.proposal_id != expected_id
-        or validated.frame_id != frame_id
-    ):
+    identity = (validated.plugin_id, validated.proposal_id, validated.frame_id)
+    if identity != (invoked_plugin_id, expected_id, frame_id):
         return synthetic_error_proposal(
             plugin_id=invoked_plugin_id,
             frame_id=frame_id,

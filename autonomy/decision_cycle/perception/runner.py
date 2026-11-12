@@ -388,7 +388,7 @@ def _overall_status(plugin_runs: list[PerceptionPluginRun]) -> str:
 
 def _load_symbol(spec: str) -> object:
     module_name, separator, name = spec.partition(":")
-    if not separator or not module_name or not name:
+    if "" in (separator, module_name, name):
         raise ValueError(f"import spec must be 'module.path:name', got {spec!r}")
     module = importlib.import_module(module_name)
     return getattr(module, name)

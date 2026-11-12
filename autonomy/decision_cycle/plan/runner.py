@@ -36,11 +36,7 @@ class PlanRunner(StepRunner[PlanPlugin]):
         with self._runtime_lock:
             self._clear_plugin_records()
             # A failed proposal skips the plugin; its record stays null.
-            if (
-                proposal is not None
-                and proposal.status != "ok"
-                and FAILURE_POLICY.missing_input == "skip_plugin"
-            ):
+            if getattr(proposal, "status", "ok") != "ok" and FAILURE_POLICY.missing_input == "skip_plugin":
                 return None
             candidates = proposal.candidates if proposal is not None else ()
             self.run_count += 1

@@ -268,7 +268,7 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
             return {
                 key: value
                 for key, value in shared_memory.items()
-                if key not in before or before[key] is not value
+                if before.get(key, _ABSENT) is not value
             }
 
     def _note_evidence(self, plugin_id: str, before: object) -> None:

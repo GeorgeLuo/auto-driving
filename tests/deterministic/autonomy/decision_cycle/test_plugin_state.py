@@ -19,6 +19,14 @@ class _Plugin:
         self.pool = ThreadPoolExecutor(max_workers=1)
 
 
+class _Slotted:
+    __slots__ = ("plugin_id", "frames")
+
+    def __init__(self) -> None:
+        self.plugin_id = "slotted"
+        self.frames = 0
+
+
 class _Counting:
     plugin_id = "counting"
     contract = MemoryPluginContract(description="Test memory plugin.")
@@ -33,6 +41,11 @@ class _Counting:
         pass
 
 
+def _replace_pool(plugin: _Plugin) -> None:
+    plugin.pool = None
+    plugin.pool = ThreadPoolExecutor(max_workers=1)
+
+
 class UnchangedInstanceTests(unittest.TestCase):
     def changed(self, change) -> str:
         plugin = _Plugin()
@@ -45,6 +58,27 @@ class UnchangedInstanceTests(unittest.TestCase):
         self.assertIn("changed last", self.changed(lambda plugin: setattr(plugin, "last", None)))
         self.assertIn("changed config", self.changed(lambda plugin: delattr(plugin, "config")))
         self.assertIn("changed config", self.changed(lambda plugin: plugin.config["limits"].append(3)))
+        self.assertIn("changed config", self.changed(lambda plugin: plugin.config["limits"].reverse()))
+
+    def test_an_equal_dict_in_another_order_passes(self) -> None:
+        plugin = _Plugin()
+        plugin.labels = {"a": 1, "b": {"c": 2, "d": 3}}
+        with unchanged_instance(plugin):
+            plugin.labels["a"] = plugin.labels.pop("a")
+            plugin.labels["b"] = {"d": 3, "c": 2}
+
+    def test_replacing_a_released_object_is_seen(self) -> None:
+        for _ in range(3):
+            self.assertIn("changed pool", self.changed(_replace_pool))
+            plugin = _Plugin()
+            plugin.holders = [object()]
+            with self.assertRaisesRegex(RetainedStateError, "changed holders"), unchanged_instance(plugin):
+                plugin.holders[0] = None
+                plugin.holders[0] = object()
+
+    def test_an_instance_without_a_dict_fails(self) -> None:
+        with self.assertRaisesRegex(RetainedStateError, "no instance __dict__"), unchanged_instance(_Slotted()):
+            pass
 
     def test_work_inside_a_resource_and_state_put_back_pass(self) -> None:
         plugin = _Plugin()

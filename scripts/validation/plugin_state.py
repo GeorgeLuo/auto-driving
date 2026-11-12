@@ -138,10 +138,34 @@ def _call_writes(node: ast.Call) -> Iterator[tuple[str, int]]:
     function = node.func
     if isinstance(function, ast.Attribute) and function.attr in MUTATORS:
         name = _self_attribute(function.value)
-        if name is not None:
-            yield name, node.lineno
-    elif isinstance(function, ast.Name) and function.id in {"setattr", "delattr"} and len(node.args) == 2 and _is_self(node.args[0]):
-        yield _attribute_name(node.args[1]), node.lineno
+    else:
+        name = _assigned_attribute(node)
+    if name is not None:
+        yield name, node.lineno
+
+
+def _assigned_attribute(node: ast.Call) -> str | None:
+    """The attribute a ``setattr`` or ``delattr`` call writes on ``self``."""
+
+    function = node.func
+    args = node.args
+    if isinstance(function, ast.Name) and function.id in {"setattr", "delattr"}:
+        if len(args) >= 2 and _is_self(args[0]) and _has_value(node, function.id, 3):
+            return _attribute_name(args[1])
+    elif isinstance(function, ast.Attribute) and function.attr in {"__setattr__", "__delattr__"}:
+        if _is_self(function.value) and args and _has_value(node, function.attr, 2):
+            return _attribute_name(args[0])
+        if len(args) >= 2 and _is_self(args[0]) and _has_value(node, function.attr, 3):
+            return _attribute_name(args[1])
+    return None
+
+
+def _has_value(node: ast.Call, operation: str, needed: int) -> bool:
+    """A deletion is the write; a set also needs its value, positional or by keyword."""
+
+    if operation in {"delattr", "__delattr__"}:
+        return True
+    return len(node.args) >= needed or any(item.arg == "value" for item in node.keywords)
 
 
 def _attribute_name(node: ast.expr) -> str:
@@ -176,6 +200,11 @@ def main(argv: list[str] | None = None) -> int:
     targets = [Path(item) for item in (sys.argv[1:] if argv is None else argv)]
     if not targets:
         print(__doc__.strip().splitlines()[-1].strip(), file=sys.stderr)
+        return 2
+    missing = [target for target in targets if not target.is_file() and not target.is_dir()]
+    if missing:
+        for target in missing:
+            print(f"{target}: not a file or directory", file=sys.stderr)
         return 2
     findings = []
     for target in targets:

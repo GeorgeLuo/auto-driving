@@ -55,12 +55,8 @@ class _PushyAction:
 class _FailOnceAction:
     plugin_id = "fail_once"
 
-    def __init__(self) -> None:
-        self.calls = 0
-
     def decide(self, context, plan, *, error_reason=None) -> ActionDecision:
-        self.calls += 1
-        if self.calls == 1:
+        if context.frame_id == "frame_1":
             raise RuntimeError("transient action failure")
         return ActionDecision(AutonomyControl(steering=0.25, throttle=0.4, reason="recovered"))
 

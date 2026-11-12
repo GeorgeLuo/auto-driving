@@ -53,6 +53,9 @@ def provide_unavailable_feed(request, plugin_input):
     raise PerceptionFeedUnavailable("test feed is absent")
 
 
+PERCEIVED_VALUES: list[int] = []  # WorkingPlugin's inputs, read by the tests; the plugin keeps nothing
+
+
 class WorkingPlugin:
     plugin_id = "working"
     contract = PerceptionPluginContract(
@@ -68,7 +71,7 @@ class WorkingPlugin:
         self.reset_count += 1
 
     def perceive(self, inputs):
-        self.asserted_value = inputs.require("value", dict)["value"]
+        PERCEIVED_VALUES.append(inputs.require("value", dict)["value"])
         return PerceptionEvidenceBatch(
             signals=(PerceptionSignal("test_ready", True),),
             things=(
@@ -188,7 +191,7 @@ class PluginRunnerTests(unittest.TestCase):
         self.assertEqual(perception.plugin_runs[0].plugin_id, "working")
         self.assertEqual(perception.plugin_runs[0].plugin_id, "working")
         self.assertEqual(list(mapper.plugins), ["working", "exploding"])
-        self.assertEqual(mapper.plugins["working"].asserted_value, 42)
+        self.assertEqual(PERCEIVED_VALUES[-1], 42)
         reported = {
             item["plugin_id"]: item for item in mapper.plugin_report()["plugins"]
         }

@@ -20,6 +20,7 @@ from autonomy.decision_cycle.action.result import ActionResult
 from autonomy.decision_cycle.action.values import ActionDecision, build_authority
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.values import ActionPlan
+from autonomy.decision_cycle.plugin_state import unchanged_instance
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
 from autonomy.decision_cycle.runner import StepRunner, describe_exception
@@ -66,12 +67,12 @@ class ActionRunner(StepRunner[ActionPlugin]):
         error_reason: str | None,
     ) -> ActionResult:
         try:
-            if error_reason is None:
-                decision = plugin.decide(context, plan)
-            else:
-                decision = plugin.decide(context, None, error_reason=error_reason)
-            if not isinstance(decision, ActionDecision):
-                raise TypeError("action plugin must return an ActionDecision")
+            with unchanged_instance(plugin):
+                if error_reason is None:
+                    returned = plugin.decide(context, plan)
+                else:
+                    returned = plugin.decide(context, None, error_reason=error_reason)
+            decision = _action_decision(returned)
             proposed = _planned_command(plan)
             result = action_result(
                 frame_id=context.frame_id,
@@ -135,3 +136,11 @@ def error_action_result(context: DecisionFrameContext, *, reason: str) -> Action
         error_reason=reason,
         mode=read_mode(context.shared_memory),
     )
+
+
+def _action_decision(returned: object) -> ActionDecision:
+    """An action plugin's return, which must be an ``ActionDecision``."""
+
+    if not isinstance(returned, ActionDecision):
+        raise TypeError("action plugin must return an ActionDecision")
+    return returned

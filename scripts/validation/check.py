@@ -34,7 +34,7 @@ from qca.evaluation import (
     text_context,
 )
 from qca.evaluators import structure
-from scripts.validation import evaluators, inspection
+from scripts.validation import evaluators, inspection, plugin_state
 
 ROOT = Path(__file__).resolve().parents[2]
 PATHS = ("autonomy", "cli", "implementations", "deploy", "qca", "scripts/validation", "tests")
@@ -59,6 +59,7 @@ def build_evaluators(*, ruff_only: bool = False) -> list[Evaluator]:
         Evaluator("import-linter", evaluators.import_contracts, roots=tuple(tools["importlinter"]["root_packages"]),
                   forms=projects, reach="project"),
         Evaluator("vocabulary", evaluators.vocabulary),
+        Evaluator("plugin-state", plugin_state.retained_state, roots=("implementations",), excluded=excluded),
         Evaluator("qca", structure, roots=PATHS, excluded=excluded, required=False),
         Evaluator("vulture", inspection.unused, roots=PATHS, excluded=excluded, forms=projects, reach="project",
                   required=False),

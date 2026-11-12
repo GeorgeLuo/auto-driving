@@ -8,6 +8,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.plugin import ObservationPlugin
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
+from autonomy.decision_cycle.plugin_state import unchanged_instance
 from autonomy.decision_cycle.runner import StepRunner, describe_exception
 from autonomy.plugins import PluginDefinition
 
@@ -28,12 +29,20 @@ class ObservationRunner(StepRunner[ObservationPlugin]):
         with self._runtime_lock, self._timed_single() as plugin:
             self.run_count += 1
             try:
-                observation = plugin.observe(context, perception)
-                if observation is not None and not isinstance(observation, Observation):
-                    raise TypeError("observation plugin must return an Observation or None")
+                with unchanged_instance(plugin):
+                    returned = plugin.observe(context, perception)
+                observation = _observation(returned)
             except Exception as exc:
                 self.failure_count += 1
                 self.last_error = describe_exception(exc)
                 raise
             self.last_error = None
             return observation
+
+
+def _observation(returned: object) -> Observation | None:
+    """An observation plugin's return, which must be an ``Observation`` or None."""
+
+    if returned is not None and not isinstance(returned, Observation):
+        raise TypeError("observation plugin must return an Observation or None")
+    return returned

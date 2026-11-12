@@ -7,8 +7,9 @@ and supporting evidence.
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Literal, cast
 
 from autonomy.decision_cycle.action_identifiers import (
     proposal_id_for,
@@ -69,11 +70,15 @@ _MATRIX: dict[str, tuple[str, bool, bool, int]] = {
 
 @dataclass(frozen=True)
 class ProposedVehicleCommand:
-    """Canonical proposed vehicle command (not applied AutonomyControl)."""
+    """Canonical proposed vehicle command (not applied AutonomyControl).
+
+    Steering and throttle are signed and normalized to -1..1; the throttle's sign is the direction.
+    ``gear`` is derived from it (``forward``, ``reverse``, or ``hold`` near zero) for readable
+    reports, so a command cannot name a gear that contradicts its throttle.
+    """
 
     steering: float
     throttle: float
-    gear: str = "hold"
     normalized: bool = True
     schema: str = PROPOSED_VEHICLE_COMMAND_SCHEMA
 
@@ -85,26 +90,21 @@ class ProposedVehicleCommand:
             raise ValueError("steering and throttle must be numeric") from exc
         if not math.isfinite(steering) or not math.isfinite(throttle):
             raise ValueError("steering and throttle must be finite")
-        steering = clamp_unit(steering)
-        throttle = clamp_unit(throttle)
-        if abs(throttle) < COMMAND_EPS:
-            gear = "hold"
-        elif throttle > 0:
-            gear = "forward"
-        else:
-            gear = "reverse"
-        if self.gear not in {"forward", "reverse", "hold"}:
-            raise ValueError(f"invalid gear {self.gear!r}")
-        if self.gear != gear:
-            raise ValueError(f"gear {self.gear!r} contradicts throttle {throttle}")
-        object.__setattr__(self, "steering", steering)
-        object.__setattr__(self, "throttle", throttle)
-        object.__setattr__(self, "gear", gear)
+        object.__setattr__(self, "steering", clamp_unit(steering))
+        object.__setattr__(self, "throttle", clamp_unit(throttle))
         object.__setattr__(self, "normalized", True)
         if self.schema != PROPOSED_VEHICLE_COMMAND_SCHEMA:
             raise ValueError("invalid ProposedVehicleCommand schema")
 
-    def to_dict(self) -> dict[str, Any]:
+    @property
+    def gear(self) -> str:
+        """The throttle's direction: ``forward``, ``reverse``, or ``hold`` when it is near zero."""
+
+        if abs(self.throttle) < COMMAND_EPS:
+            return "hold"
+        return "forward" if self.throttle > 0 else "reverse"
+
+    def to_dict(self) -> dict[str, object]:
         return {
             "schema": self.schema,
             "steering": self.steering,
@@ -114,13 +114,19 @@ class ProposedVehicleCommand:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ProposedVehicleCommand":
-        return cls(
-            steering=float(data.get("steering") or 0.0),
-            throttle=float(data.get("throttle") or 0.0),
-            gear=str(data.get("gear") or "hold"),
+    def from_dict(cls, data: Mapping[str, object]) -> "ProposedVehicleCommand":
+        steering, throttle = data.get("steering") or 0.0, data.get("throttle") or 0.0
+        if not isinstance(steering, (int, float)) or not isinstance(throttle, (int, float)):
+            raise ValueError("steering and throttle must be numeric")
+        command = cls(
+            steering=float(steering),
+            throttle=float(throttle),
             schema=str(data.get("schema") or PROPOSED_VEHICLE_COMMAND_SCHEMA),
         )
+        gear = data.get("gear")
+        if gear is not None and gear != command.gear:
+            raise ValueError(f"gear {gear!r} contradicts throttle {command.throttle}")
+        return command
 
 
 @dataclass(frozen=True)
@@ -152,7 +158,7 @@ class SourceRef:
             ),
         )
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "kind": self.kind,
             "id": self.id,
@@ -163,7 +169,7 @@ class SourceRef:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SourceRef":
+    def from_dict(cls, data: Mapping[str, object]) -> "SourceRef":
         return cls(
             kind=str(data.get("kind") or ""),
             id=str(data.get("id") or ""),
@@ -196,11 +202,19 @@ class ActionProposal:
     assumptions: tuple[str, ...] = ()
     source_refs: tuple[SourceRef, ...] = ()
     available: bool = False
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: Mapping[str, object] = field(default_factory=dict)
     proposal_id: str = ""
     schema: str = ACTION_PROPOSAL_SCHEMA
 
     def __post_init__(self) -> None:
+        self._assign_identity()
+        self._assign_status()
+        self._assign_matrix()
+        self._assign_assumptions()
+        self._assign_source_refs()
+        self._assign_metadata()
+
+    def _assign_identity(self) -> None:
         plugin_id = require_ascii_id(self.plugin_id, field_name="plugin_id")
         frame_id = require_ascii_id(self.frame_id, field_name="frame_id")
         object.__setattr__(self, "plugin_id", plugin_id)
@@ -208,10 +222,10 @@ class ActionProposal:
         expected_id = proposal_id_for(plugin_id, frame_id)
         proposal_id = self.proposal_id or expected_id
         if proposal_id != expected_id:
-            raise ValueError(
-                f"proposal_id must be {expected_id!r}; got {proposal_id!r}"
-            )
+            raise ValueError(f"proposal_id must be {expected_id!r}; got {proposal_id!r}")
         object.__setattr__(self, "proposal_id", proposal_id)
+
+    def _assign_status(self) -> None:
         if self.lifecycle not in LIFECYCLES:
             raise ValueError(f"invalid lifecycle {self.lifecycle!r}")
         if self.freshness not in FRESHNESS_VALUES:
@@ -228,7 +242,8 @@ class ActionProposal:
             raise ValueError("reason must be a non-empty string")
         object.__setattr__(self, "reason", reason)
 
-        allowed_freshness, available, command_required, min_refs = _MATRIX[self.lifecycle]
+    def _assign_matrix(self) -> None:
+        allowed_freshness, available, command_required, _min_refs = _MATRIX[self.lifecycle]
         if self.freshness != allowed_freshness:
             raise ValueError(
                 f"lifecycle {self.lifecycle} requires freshness {allowed_freshness}; "
@@ -236,32 +251,22 @@ class ActionProposal:
             )
         # Exact boolean only — reject truthy/falsey coercions such as "false".
         if type(self.available) is not bool:
-            raise ValueError(
-                f"available must be a bool; got {type(self.available).__name__}"
-            )
+            raise ValueError(f"available must be a bool; got {type(self.available).__name__}")
         if self.available != available:
-            raise ValueError(
-                f"lifecycle {self.lifecycle} requires available={available}"
-            )
+            raise ValueError(f"lifecycle {self.lifecycle} requires available={available}")
         object.__setattr__(self, "available", available)
         if command_required:
             if not isinstance(self.command, ProposedVehicleCommand):
-                raise ValueError(
-                    f"lifecycle {self.lifecycle} requires a ProposedVehicleCommand"
-                )
-        else:
-            if self.command is not None:
-                raise ValueError(
-                    f"lifecycle {self.lifecycle} requires command=null"
-                )
+                raise ValueError(f"lifecycle {self.lifecycle} requires a ProposedVehicleCommand")
+        elif self.command is not None:
+            raise ValueError(f"lifecycle {self.lifecycle} requires command=null")
 
+    def _assign_assumptions(self) -> None:
         if type(self.assumptions) not in (list, tuple):
             raise TypeError("assumptions must be a list or tuple of strings")
         for item in self.assumptions:
             if type(item) is not str:
-                raise TypeError(
-                    f"assumptions items must be strings; got {type(item).__name__}"
-                )
+                raise TypeError(f"assumptions items must be strings; got {type(item).__name__}")
         assumptions = tuple(self.assumptions)
         if len(assumptions) > MAX_ASSUMPTIONS:
             raise ValueError(f"assumptions exceed {MAX_ASSUMPTIONS}")
@@ -269,9 +274,14 @@ class ActionProposal:
             require_code_point_len(item, field_name="assumption", max_len=MAX_ASSUMPTION)
         object.__setattr__(self, "assumptions", assumptions)
 
-        if type(self.source_refs) not in (list, tuple):
+    def _assign_source_refs(self) -> None:
+        _allowed_freshness, _available, _command_required, min_refs = _MATRIX[self.lifecycle]
+        # The field annotation is the stored tuple. Callers also pass a list,
+        # so the element check has to see the raw value.
+        raw_refs = cast(object, self.source_refs)
+        if type(raw_refs) not in (list, tuple):
             raise TypeError("source_refs must be a list or tuple of SourceRef")
-        refs = tuple(self.source_refs)
+        refs = cast(tuple[object, ...], tuple(raw_refs))
         if len(refs) > MAX_SOURCE_REFS:
             raise ValueError(f"source_refs exceed {MAX_SOURCE_REFS}")
         if len(refs) < min_refs:
@@ -283,13 +293,12 @@ class ActionProposal:
                 raise TypeError("source_refs must contain SourceRef")
         object.__setattr__(self, "source_refs", refs)
 
+    def _assign_metadata(self) -> None:
         if type(self.metadata) is not dict:
             raise TypeError("metadata must be a dict (JSON object)")
         object.__setattr__(self, "metadata", deep_freeze(self.metadata))
         if self.schema != ACTION_PROPOSAL_SCHEMA:
-            raise ValueError(
-                f"schema must be {ACTION_PROPOSAL_SCHEMA!r}; got {self.schema!r}"
-            )
+            raise ValueError(f"schema must be {ACTION_PROPOSAL_SCHEMA!r}; got {self.schema!r}")
 
     def is_active(self, frame_id: str) -> bool:
         """Whether a plan may act on this candidate in the cycle for ``frame_id``.
@@ -300,7 +309,7 @@ class ActionProposal:
 
         return self.lifecycle in {"fresh", "retained"} and self.frame_id == frame_id
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "schema": self.schema,
             "proposal_id": self.proposal_id,
@@ -318,7 +327,7 @@ class ActionProposal:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ActionProposal":
+    def from_dict(cls, data: Mapping[str, object]) -> "ActionProposal":
         command_data = data.get("command")
         command = (
             ProposedVehicleCommand.from_dict(command_data)
@@ -337,7 +346,7 @@ class ActionProposal:
             refs = tuple(SourceRef.from_dict(item) for item in raw_refs)
         raw_metadata = data.get("metadata")
         if raw_metadata is None:
-            metadata: dict[str, Any] = {}
+            metadata: dict[str, object] = {}
         elif type(raw_metadata) is not dict:
             raise TypeError("metadata must be a dict (JSON object)")
         else:

@@ -21,6 +21,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_safe_int,
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.plugin_state import unchanged_instance
 from autonomy.decision_cycle.proposal.plugin import ProposalPlugin
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.values import (
@@ -55,10 +56,7 @@ def _admit_candidate(
             reason="plugin_invalid_return",
         )
     expected_id = proposal_id_for(invoked_plugin_id, frame_id)
-    if (
-        returned.plugin_id != invoked_plugin_id
-        or returned.proposal_id != expected_id
-    ):
+    if (returned.plugin_id, returned.proposal_id) != (invoked_plugin_id, expected_id):
         return synthetic_error_proposal(
             plugin_id=invoked_plugin_id,
             frame_id=frame_id,
@@ -75,11 +73,8 @@ def _admit_candidate(
         raise ActionProposalMatrixError(
             f"candidate fails lifecycle/bounds matrix: {exc}"
         ) from exc
-    if (
-        validated.plugin_id != invoked_plugin_id
-        or validated.proposal_id != expected_id
-        or validated.frame_id != frame_id
-    ):
+    identity = (validated.plugin_id, validated.proposal_id, validated.frame_id)
+    if identity != (invoked_plugin_id, expected_id, frame_id):
         return synthetic_error_proposal(
             plugin_id=invoked_plugin_id,
             frame_id=frame_id,
@@ -150,7 +145,8 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         raised: BaseException | None = None
         returned: object = None
         try:
-            returned = plugin.propose(context)
+            with unchanged_instance(plugin):
+                returned = plugin.propose(context)
         except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
             raised = exc
             error = describe_exception(exc)

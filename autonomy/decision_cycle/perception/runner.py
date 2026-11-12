@@ -13,7 +13,7 @@ import importlib
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass, replace
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from autonomy.decision_cycle.activation import StepActivation, step_activation
 from autonomy.decision_cycle.perception.inputs import build_perception_request
@@ -43,6 +43,7 @@ from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginInputs,
     PerceptionPluginWarmingUp,
 )
+from autonomy.decision_cycle.plugin_state import unchanged_instance
 
 
 @dataclass(frozen=True)
@@ -53,7 +54,7 @@ class _PluginExecution:
     error: str | None = None
 
 
-class PerceptionRunner(StepRunner[Any]):
+class PerceptionRunner(StepRunner[object]):
     """Run the manager's selected perception plugins once per sensor frame.
 
     The cycle calls the runner with the frame context. ``perceive`` runs the
@@ -71,7 +72,7 @@ class PerceptionRunner(StepRunner[Any]):
         definitions: Sequence[PluginDefinition],
         *,
         activation: StepActivation | None = None,
-        provided: Mapping[str, Any] | None = None,
+        provided: Mapping[str, object] | None = None,
     ) -> None:
         self.last_output: PerceptionText | None = None
         self.last_frame_index: int | None = None
@@ -83,7 +84,7 @@ class PerceptionRunner(StepRunner[Any]):
         cls,
         plugins: list[str] | tuple[str, ...],
         plugin_specs: dict[str, str],
-        plugin_configs: dict[str, dict[str, Any]] | None = None,
+        plugin_configs: dict[str, dict[str, object]] | None = None,
     ) -> "PerceptionRunner":
         return cls.from_activation(
             step_activation(cls.step, plugins, plugin_specs, plugin_configs)
@@ -117,7 +118,7 @@ class PerceptionRunner(StepRunner[Any]):
                 self.last_frame_index = context.frame_index
             return self.last_output
 
-    def status(self) -> dict[str, Any]:
+    def status(self) -> dict[str, object]:
         with self._runtime_lock:
             output = self.last_output
             return {
@@ -139,7 +140,7 @@ class PerceptionRunner(StepRunner[Any]):
         return {definition.plugin_id: definition.entrypoint for definition, _plugin in self.applied}
 
     @property
-    def plugin_configs(self) -> dict[str, dict[str, Any]]:
+    def plugin_configs(self) -> dict[str, dict[str, object]]:
         if self.activation is not None:
             return {key: deepcopy(dict(value)) for key, value in self.activation.plugin_configs.items()}
         return {
@@ -170,7 +171,7 @@ class PerceptionRunner(StepRunner[Any]):
     def _perceive_selected(self, request: PerceptionRequest) -> PerceptionText:
         signals: list[PerceptionSignal] = []
         things: list[PerceivedThing] = []
-        measurements: dict[str, dict[str, Any]] = {}
+        measurements: dict[str, dict[str, object]] = {}
         limits: list[str] = []
         plugin_runs: list[PerceptionPluginRun] = []
 
@@ -221,7 +222,7 @@ class PerceptionRunner(StepRunner[Any]):
 
     # Selection hooks ------------------------------------------------------
 
-    def validate_plugin(self, plugin: Any, definition: PluginDefinition) -> None:
+    def validate_plugin(self, plugin: object, definition: PluginDefinition) -> None:
         if not isinstance(getattr(plugin, "contract", None), PerceptionPluginContract):
             raise TypeError(
                 f"plugin {definition.plugin_id!r} must expose PerceptionPluginContract as contract"
@@ -229,7 +230,7 @@ class PerceptionRunner(StepRunner[Any]):
         if not callable(getattr(plugin, "perceive", None)):
             raise TypeError(f"plugin {definition.plugin_id!r} must implement perceive()")
 
-    def validate_selection(self, plugins: tuple[Any, ...]) -> None:
+    def validate_selection(self, plugins: tuple[object, ...]) -> None:
         """Resolve the feed provider each plugin declares; a feed has one provider."""
 
         super().validate_selection(plugins)
@@ -257,7 +258,7 @@ class PerceptionRunner(StepRunner[Any]):
                     )
         self._feed_providers = providers
 
-    def _reset_plugin(self, plugin: Any, shared_memory=None) -> None:
+    def _reset_plugin(self, plugin: object, shared_memory=None) -> None:
         try:
             reset_plugin(plugin, shared_memory)
         except Exception:
@@ -266,7 +267,7 @@ class PerceptionRunner(StepRunner[Any]):
 
     def _execute_plugin(
         self,
-        plugin: Any,
+        plugin: object,
         request: PerceptionRequest,
         catalog_id: str,
         prior_things: tuple[PerceivedThing, ...] = (),
@@ -293,7 +294,8 @@ class PerceptionRunner(StepRunner[Any]):
                 shared_memory=request.shared_memory,
                 prior_things=prior_things,
             )
-            batch = plugin.perceive(inputs)
+            with unchanged_instance(plugin):
+                batch = plugin.perceive(inputs)
             if not isinstance(batch, PerceptionEvidenceBatch):
                 raise TypeError(
                     f"plugin {catalog_id!r} must return PerceptionEvidenceBatch"
@@ -324,8 +326,8 @@ class PerceptionRunner(StepRunner[Any]):
         self,
         contract: PerceptionPluginContract,
         request: PerceptionRequest,
-    ) -> tuple[dict[str, Any], dict[str, str]]:
-        feeds: dict[str, Any] = {}
+    ) -> tuple[dict[str, object], dict[str, str]]:
+        feeds: dict[str, object] = {}
         missing: dict[str, str] = {}
         for item in contract.inputs:
             provider = self._feed_provider(item.provider_spec)
@@ -384,9 +386,9 @@ def _overall_status(plugin_runs: list[PerceptionPluginRun]) -> str:
     return "empty"
 
 
-def _load_symbol(spec: str) -> Any:
+def _load_symbol(spec: str) -> object:
     module_name, separator, name = spec.partition(":")
-    if not separator or not module_name or not name:
+    if "" in (separator, module_name, name):
         raise ValueError(f"import spec must be 'module.path:name', got {spec!r}")
     module = importlib.import_module(module_name)
     return getattr(module, name)

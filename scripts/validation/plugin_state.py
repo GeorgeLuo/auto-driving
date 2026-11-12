@@ -28,6 +28,8 @@ from qca.evaluation import Finding, finding, location
 
 STEP_METHODS = frozenset({"perceive", "observe", "update", "propose", "plan", "decide"})
 ENTRY_METHODS = STEP_METHODS | {"status"}
+SETTERS = frozenset({"setattr", "__setattr__"})
+DELETERS = frozenset({"delattr", "__delattr__"})
 MUTATORS = frozenset({
     "append", "appendleft", "extend", "extendleft", "insert", "pop", "popleft", "popitem", "remove", "clear",
     "update", "setdefault", "add", "discard", "sort", "reverse", "rotate",
@@ -86,7 +88,12 @@ def _is_plugin(node: ast.ClassDef) -> bool:
 def _class_names(item: ast.stmt) -> Iterator[str]:
     """Names a class-body statement assigns, such as ``plugin_id = ...`` or ``plugin_id: str``."""
 
-    targets = item.targets if isinstance(item, ast.Assign) else [item.target] if isinstance(item, ast.AnnAssign) else []
+    if isinstance(item, ast.Assign):
+        targets = item.targets
+    elif isinstance(item, ast.AnnAssign):
+        targets = [item.target]
+    else:
+        return
     yield from (target.id for target in targets if isinstance(target, ast.Name))
 
 
@@ -153,49 +160,28 @@ def _call_writes(node: ast.Call) -> Iterator[tuple[str, int]]:
 
 
 def _assigned_attribute(node: ast.Call) -> str | None:
-    """The attribute a ``setattr`` or ``delattr`` call writes on ``self``."""
+    """The attribute a ``setattr`` or ``delattr`` call writes on ``self``.
 
-    call = _attribute_call(node)
-    if call is None:
-        return None
-    operation, receiver, arguments = call
-    if _is_self(receiver) and _written(node, operation, arguments):
-        return _attribute_name(arguments[0])
-    return None
+    A bound call is ``self.__setattr__(name, value)``. Putting ``self`` in
+    front makes it the same shape as ``setattr(self, name, value)``: object,
+    name, then the value.
+    """
 
-
-def _attribute_call(node: ast.Call) -> tuple[str, ast.expr, list[ast.expr]] | None:
     function = node.func
-    if isinstance(function, ast.Name):
-        return _builtin_call(node, function.id)
-    if isinstance(function, ast.Attribute):
-        return _method_call(node, function)
-    return None
-
-
-def _builtin_call(node: ast.Call, operation: str) -> tuple[str, ast.expr, list[ast.expr]] | None:
-    if operation not in {"setattr", "delattr"} or len(node.args) < 2:
+    if isinstance(function, ast.Name) and function.id in SETTERS | DELETERS:
+        arguments = node.args
+        operation = function.id
+    elif isinstance(function, ast.Attribute) and function.attr in SETTERS | DELETERS:
+        arguments = [function.value, *node.args] if _is_self(function.value) else node.args
+        operation = function.attr
+    else:
         return None
-    return operation, node.args[0], node.args[1:]
-
-
-def _method_call(node: ast.Call, function: ast.Attribute) -> tuple[str, ast.expr, list[ast.expr]] | None:
-    operation = function.attr
-    if operation not in {"__setattr__", "__delattr__"}:
+    if len(arguments) < 2 or not _is_self(arguments[0]):
         return None
-    if _is_self(function.value):
-        return operation, function.value, node.args
-    if len(node.args) >= 2:
-        return operation, node.args[0], node.args[1:]
-    return None
-
-
-def _written(node: ast.Call, operation: str, arguments: list[ast.expr]) -> bool:
-    """A deletion names the attribute; a set also supplies a value."""
-
-    if operation in {"delattr", "__delattr__"}:
-        return bool(arguments)
-    return len(arguments) >= 2 or any(item.arg == "value" for item in node.keywords)
+    has_value = len(arguments) >= 3 or any(item.arg == "value" for item in node.keywords)
+    if operation in SETTERS and not has_value:
+        return None
+    return _attribute_name(arguments[1])
 
 
 def _attribute_name(node: ast.expr) -> str:
@@ -227,16 +213,10 @@ def _is_self(node: ast.expr) -> bool:
 
 
 def _report_missing(targets: list[Path]) -> bool:
-    missing = [target for target in targets if not _present(target)]
+    missing = [target for target in targets if not target.is_file() and not target.is_dir()]
     for target in missing:
         print(f"{target}: not a file or directory", file=sys.stderr)
     return bool(missing)
-
-
-def _present(target: Path) -> bool:
-    if target.is_file():
-        return True
-    return target.is_dir()
 
 
 def main(argv: list[str] | None = None) -> int:

@@ -7,6 +7,7 @@ from pathlib import Path
 from qca.evaluation import SCHEMA, finding, location, validate_finding
 from scripts.validation.check import exit_status, render_summary
 from scripts.validation.evaluators import basedpyright_findings, import_contract_findings, ruff_findings, vocabulary
+from scripts.validation.plugin_state import retained_state
 
 RETIRED = "snap" + "shot"
 
@@ -77,6 +78,58 @@ class ToolFindingTests(unittest.TestCase):
             findings = vocabulary(root, ["docs/deprecated/old.md", "notes.md", "image.png"])
         self.assertEqual([item["location"] for item in findings], [location("notes.md", 2)])
         self.assertEqual(findings[0]["evidence"], {"term": RETIRED.upper()})
+
+
+PLUGIN = """
+from copy import copy
+
+COUNT = 0
+
+
+class Counter:
+    plugin_id = "counter"
+
+    def __init__(self, step=1):
+        self.step = step
+        self.seen = []
+
+    def propose(self, context):
+        self._remember(context)
+        return copy(self)._scratch(context)
+
+    def status(self, shared_memory):
+        global COUNT
+        COUNT += 1
+
+    def _remember(self, context):
+        self.last, self.frames = context.frame_id, 1
+        self.seen.append(context.frame_id)
+
+    def _scratch(self, context):
+        self.note = context.frame_id  # on a per-call copy: not followed
+        return self.note
+
+
+class Helper:
+    def propose(self, context):
+        self.last = context
+"""
+
+
+class PluginStateTests(unittest.TestCase):
+    def test_writes_to_self_reached_from_a_step_method_are_found_once_per_attribute(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "plugins").mkdir()
+            (root / "shared").mkdir()
+            (root / "plugins" / "counter.py").write_text(PLUGIN)
+            (root / "shared" / "worker.py").write_text(PLUGIN)
+            findings = retained_state(root, ["plugins/counter.py", "shared/worker.py"])
+        found = {(item["evidence"]["method"], item["evidence"]["attribute"]) for item in findings}
+        self.assertEqual(found, {("status", "global"), ("_remember", "last"), ("_remember", "frames"),
+                                 ("_remember", "seen")})
+        self.assertEqual({item["location"]["path"] for item in findings}, {"plugins/counter.py"})
+        self.assertTrue(all(item["status"] == "blocking" for item in findings))
 
 
 class SummaryTests(unittest.TestCase):

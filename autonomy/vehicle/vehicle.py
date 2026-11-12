@@ -4,7 +4,7 @@ import math
 import time
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 
 FRONT_CAMERA_SENSOR_ID = "front_camera"
@@ -26,7 +26,11 @@ def clamp_unit(value: float) -> float:
 
 @dataclass(frozen=True)
 class VehicleAction:
-    """Executable RC-car-like input action."""
+    """Executable RC-car-like input action.
+
+    ``steering`` runs from -1 (full left) to +1 (full right) for every vehicle; an adapter
+    whose hardware or simulator uses another sign converts at its own boundary.
+    """
 
     forward: bool = False
     reverse: bool = False
@@ -37,7 +41,7 @@ class VehicleAction:
             raise ValueError("VehicleAction cannot be both forward and reverse")
         object.__setattr__(self, "steering", clamp_unit(self.steering))
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return asdict(self)
 
 
@@ -60,7 +64,7 @@ class VehiclePulse:
         object.__setattr__(self, "duration_s", max(0.0, duration_s))
         object.__setattr__(self, "settle_s", max(0.0, settle_s))
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         data = asdict(self)
         data["action"] = self.action.to_dict()
         return data
@@ -88,7 +92,7 @@ class SensorReadRequest:
         extension = self.image_extension.lstrip(".") or "jpg"
         return self.output_dir / f"{self.read_id}_{FRONT_CAMERA_SENSOR_ID}.{extension}"
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "output_dir": str(self.output_dir),
             "read_id": self.read_id,
@@ -106,10 +110,10 @@ class SensorReading:
     sensor_kind: str
     captured_at_ms: int
     path: str | None = None
-    value: Any = field(default=None, repr=False, compare=False)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    value: object = field(default=None, repr=False, compare=False)
+    metadata: dict[str, object] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "sensor_id": self.sensor_id,
             "sensor_kind": self.sensor_kind,
@@ -128,10 +132,10 @@ class SensorFrame:
     readings: dict[str, SensorReading]
     started_at_ms: int
     completed_at_ms: int
-    request: dict[str, Any] = field(default_factory=dict)
-    metadata: dict[str, Any] = field(default_factory=dict)
+    request: dict[str, object] = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "read_id": self.read_id,
             "started_at_ms": self.started_at_ms,
@@ -154,10 +158,10 @@ class VehicleCapabilities:
     can_capture_highres: bool = True
     steering_range: tuple[float, float] = (-1.0, 1.0)
     throttle_range: tuple[float, float] = (0.0, 1.0)
-    sensors: dict[str, Any] = field(default_factory=dict)
+    sensors: dict[str, object] = field(default_factory=dict)
     notes: tuple[str, ...] = ()
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return asdict(self)
 
 
@@ -169,7 +173,7 @@ class CarInterface(Protocol):
     def capabilities(self) -> VehicleCapabilities:
         ...
 
-    def prepare_for_external_control(self) -> dict[str, Any]:
+    def prepare_for_external_control(self) -> dict[str, object]:
         """Take the vehicle's external control input. Return the preparation receipt."""
         ...
 
@@ -182,17 +186,17 @@ class CarInterface(Protocol):
         *,
         throttle: float,
         recording: bool = False,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         ...
 
-    def execute_pulse(self, pulse: VehiclePulse) -> dict[str, Any]:
+    def execute_pulse(self, pulse: VehiclePulse) -> dict[str, object]:
         ...
 
     def read_sensors(self, request: SensorReadRequest) -> SensorFrame:
         ...
 
 
-def run_vehicle_pulse(car: CarInterface, pulse: VehiclePulse) -> dict[str, Any]:
+def run_vehicle_pulse(car: CarInterface, pulse: VehiclePulse) -> dict[str, object]:
     """Send the car's action, hold it, stop, then wait out any settle time.
 
     Each car still owns ``execute_action`` and ``stop``. Chase and PiCar share

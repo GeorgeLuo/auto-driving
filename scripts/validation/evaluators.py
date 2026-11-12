@@ -19,11 +19,24 @@ CONTRACTS = Path(__file__).with_name("import_contracts.py")
 METRIC = re.compile(r"\((\d+) > (\d+)\)")
 RETIRED = "snap" + "shot"  # Spelled apart so this file does not report itself.
 RETIRED_EXEMPT = ("docs/deprecated",)
+PYTHON_SUFFIXES = (".py", ".pyi")
 
 
 def ruff(tree: Path, paths: list[str]) -> list[Finding]:
-    completed = _run(tree, "-m", "ruff", "check", "--no-cache", "--force-exclude", "--output-format", "json", *paths)
+    sources = python_sources(tree, paths)
+    if not sources:
+        return []
+    completed = _run(tree, "-m", "ruff", "check", "--no-cache", "--force-exclude", "--output-format", "json", *sources)
     return ruff_findings(json.loads(completed.stdout), tree)
+
+
+def python_sources(tree: Path, paths: list[str]) -> list[str]:
+    """The paths Ruff should read: Python files, and directories, which it searches for Python itself.
+
+    Ruff parses any file it is named as Python, so a changed page's JavaScript or CSS would read as broken Python.
+    """
+
+    return [path for path in paths if path.endswith(PYTHON_SUFFIXES) or (tree / path).is_dir()]
 
 
 def ruff_findings(diagnostics: list[dict], tree: Path) -> list[Finding]:

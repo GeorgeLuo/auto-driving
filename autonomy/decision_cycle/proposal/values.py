@@ -72,7 +72,8 @@ _MATRIX: dict[str, tuple[str, bool, bool, int]] = {
 class ProposedVehicleCommand:
     """Canonical proposed vehicle command (not applied AutonomyControl).
 
-    Steering and throttle are signed and normalized to -1..1; the throttle's sign is the direction.
+    Steering and throttle are signed and normalized to -1..1: steering -1 is full left and +1 full
+    right, and the throttle's sign is the direction.
     ``gear`` is derived from it (``forward``, ``reverse``, or ``hold`` near zero) for readable
     reports, so a command cannot name a gear that contradicts its throttle.
     """

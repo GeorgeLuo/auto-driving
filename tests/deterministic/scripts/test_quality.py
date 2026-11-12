@@ -8,7 +8,13 @@ from pathlib import Path
 
 from qca.evaluation import SCHEMA, finding, location, validate_finding
 from scripts.validation.check import exit_status, render_summary
-from scripts.validation.evaluators import basedpyright_findings, import_contract_findings, ruff_findings, vocabulary
+from scripts.validation.evaluators import (
+    basedpyright_findings,
+    import_contract_findings,
+    python_sources,
+    ruff_findings,
+    vocabulary,
+)
 from scripts.validation.plugin_state import main as plugin_state_main, retained_state
 
 RETIRED = "snap" + "shot"
@@ -69,6 +75,13 @@ class ToolFindingTests(unittest.TestCase):
         self.assertEqual(item["related"], [location("pkg/bridge.py", 1)])
         self.assertEqual(item["evidence"]["chain"], ["pkg.shared -> pkg.bridge", "pkg.bridge -> pkg.plugin"])
         self.assertNotIn("guidance", item["evidence"])
+
+    def test_ruff_reads_python_files_and_directories_only(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "cli" / "page").mkdir(parents=True)
+            paths = ["cli/page", "cli/app.py", "cli/stubs.pyi", "cli/page/main.js", "cli/page/index.html", "cli/page/v2.css"]
+            self.assertEqual(python_sources(root, paths), ["cli/page", "cli/app.py", "cli/stubs.pyi"])
 
     def test_retired_vocabulary_is_found_in_text_outside_deprecated_documents(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

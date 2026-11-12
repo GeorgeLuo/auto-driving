@@ -8,15 +8,15 @@ from autonomy.decision_cycle.memory.runner import MemoryRunner
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
 
+SEEN = "feed_probe.seen"
+
+
 class _FeedProbe:
     plugin_id = "feed_probe"
     contract = MemoryPluginContract(description="Test memory plugin.")
 
-    def __init__(self) -> None:
-        self.seen: list[DecisionFrameContext] = []
-
-    def update(self, context) -> None:
-        self.seen.append(context)
+    def update(self, context: DecisionFrameContext) -> None:
+        context.shared_memory[SEEN] = context
 
     def reset(self, shared_memory) -> None:
         pass
@@ -41,15 +41,14 @@ def _sensor_frame() -> SensorFrame:
 
 class MemoryFeedIsolationTests(unittest.TestCase):
     def test_plugins_get_the_context_without_the_sensor_frame(self) -> None:
-        probe = _FeedProbe()
         shared_memory: dict = {}
         context = DecisionFrameContext(
             "frame_0", 0, 100, sensor_frame=_sensor_frame(), shared_memory=shared_memory
         )
 
-        MemoryRunner.from_plugins({"feed_probe": probe}).update(context)
+        MemoryRunner.from_plugins({"feed_probe": _FeedProbe()}).update(context)
 
-        (seen,) = probe.seen
+        seen = shared_memory[SEEN]
         self.assertIsNone(seen.sensor_frame)
         self.assertIs(seen.shared_memory, shared_memory)
         self.assertEqual((seen.frame_id, seen.frame_index, seen.timestamp_ms), ("frame_0", 0, 100))

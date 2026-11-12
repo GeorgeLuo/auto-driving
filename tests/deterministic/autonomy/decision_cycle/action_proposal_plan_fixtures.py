@@ -21,7 +21,7 @@ def _active_proposal(
         freshness="fresh",
         confidence=confidence,
         reason="test",
-        command=ProposedVehicleCommand(steering=steering, throttle=0.0, gear="hold"),
+        command=ProposedVehicleCommand(steering=steering, throttle=0.0),
         assumptions=("image_relative_only",),
         source_refs=(
             SourceRef(kind="memory_record", id="r1", frame_id=frame_id, note="primary"),
@@ -59,7 +59,7 @@ class WeightedMeanPlan:
                 )
                 for item in active
             ),
-            command=ProposedVehicleCommand(steering=steering, throttle=throttle, gear="hold"),
+            command=ProposedVehicleCommand(steering=steering, throttle=throttle),
             reason="weighted_mean",
             confidence=None,
         )

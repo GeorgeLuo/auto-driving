@@ -79,7 +79,7 @@ class ComposedPlanTests(unittest.TestCase):
                         plugin_id=candidate.plugin_id,
                     ),
                 ),
-                command=ProposedVehicleCommand(steering=0.9, throttle=0.0, gear="hold"),
+                command=ProposedVehicleCommand(steering=0.9, throttle=0.0),
                 reason=candidate.reason,
                 confidence=candidate.confidence,
             )

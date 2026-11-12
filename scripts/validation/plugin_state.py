@@ -72,8 +72,9 @@ def _class_findings(path: str, module: ast.Module) -> Iterator[Finding]:
 
 
 def _plugin_source(path: str, file: Path) -> bool:
-    in_shared_directory = "shared" in Path(path).parts[:-1]
-    return file.suffix == ".py" and file.is_file() and not in_shared_directory
+    if "shared" in Path(path).parts[:-1]:
+        return False
+    return file.suffix == ".py" and file.is_file()
 
 
 def _is_plugin(node: ast.ClassDef) -> bool:
@@ -98,16 +99,21 @@ def _reachable(methods: dict[str, ast.FunctionDef | ast.AsyncFunctionDef]) -> li
         if name in order:
             continue
         order.append(name)
-        called = (_self_method(node) for node in ast.walk(methods[name]))
-        pending += [method for method in called if method in methods and method not in order]
+        for method in (_self_method(node) for node in ast.walk(methods[name])):
+            if method not in methods:
+                continue
+            if method in order:
+                continue
+            pending.append(method)
     return order
 
 
 def _self_method(node: ast.AST) -> str | None:
     """The method name of a ``self.name(...)`` call; None for anything else."""
 
-    if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute) and _is_self(node.func.value):
-        return node.func.attr
+    function = node.func if isinstance(node, ast.Call) else None
+    if isinstance(function, ast.Attribute) and _is_self(function.value):
+        return function.attr
     return None
 
 
@@ -129,7 +135,9 @@ def _targets(node: ast.AST) -> list[ast.expr]:
 
     if isinstance(node, ast.Assign | ast.Delete):
         return node.targets
-    if isinstance(node, ast.AugAssign) or isinstance(node, ast.AnnAssign) and node.value is not None:
+    if isinstance(node, ast.AugAssign):
+        return [node.target]
+    if isinstance(node, ast.AnnAssign) and node.value is not None:
         return [node.target]
     return []
 
@@ -147,25 +155,47 @@ def _call_writes(node: ast.Call) -> Iterator[tuple[str, int]]:
 def _assigned_attribute(node: ast.Call) -> str | None:
     """The attribute a ``setattr`` or ``delattr`` call writes on ``self``."""
 
-    function = node.func
-    args = node.args
-    if isinstance(function, ast.Name) and function.id in {"setattr", "delattr"}:
-        if len(args) >= 2 and _is_self(args[0]) and _has_value(node, function.id, 3):
-            return _attribute_name(args[1])
-    elif isinstance(function, ast.Attribute) and function.attr in {"__setattr__", "__delattr__"}:
-        if _is_self(function.value) and args and _has_value(node, function.attr, 2):
-            return _attribute_name(args[0])
-        if len(args) >= 2 and _is_self(args[0]) and _has_value(node, function.attr, 3):
-            return _attribute_name(args[1])
+    call = _attribute_call(node)
+    if call is None:
+        return None
+    operation, receiver, arguments = call
+    if _is_self(receiver) and _written(node, operation, arguments):
+        return _attribute_name(arguments[0])
     return None
 
 
-def _has_value(node: ast.Call, operation: str, needed: int) -> bool:
-    """A deletion is the write; a set also needs its value, positional or by keyword."""
+def _attribute_call(node: ast.Call) -> tuple[str, ast.expr, list[ast.expr]] | None:
+    function = node.func
+    if isinstance(function, ast.Name):
+        return _builtin_call(node, function.id)
+    if isinstance(function, ast.Attribute):
+        return _method_call(node, function)
+    return None
+
+
+def _builtin_call(node: ast.Call, operation: str) -> tuple[str, ast.expr, list[ast.expr]] | None:
+    if operation not in {"setattr", "delattr"} or len(node.args) < 2:
+        return None
+    return operation, node.args[0], node.args[1:]
+
+
+def _method_call(node: ast.Call, function: ast.Attribute) -> tuple[str, ast.expr, list[ast.expr]] | None:
+    operation = function.attr
+    if operation not in {"__setattr__", "__delattr__"}:
+        return None
+    if _is_self(function.value):
+        return operation, function.value, node.args
+    if len(node.args) >= 2:
+        return operation, node.args[0], node.args[1:]
+    return None
+
+
+def _written(node: ast.Call, operation: str, arguments: list[ast.expr]) -> bool:
+    """A deletion names the attribute; a set also supplies a value."""
 
     if operation in {"delattr", "__delattr__"}:
-        return True
-    return len(node.args) >= needed or any(item.arg == "value" for item in node.keywords)
+        return bool(arguments)
+    return len(arguments) >= 2 or any(item.arg == "value" for item in node.keywords)
 
 
 def _attribute_name(node: ast.expr) -> str:
@@ -196,15 +226,25 @@ def _is_self(node: ast.expr) -> bool:
     return isinstance(node, ast.Name) and node.id == "self"
 
 
+def _report_missing(targets: list[Path]) -> bool:
+    missing = [target for target in targets if not _present(target)]
+    for target in missing:
+        print(f"{target}: not a file or directory", file=sys.stderr)
+    return bool(missing)
+
+
+def _present(target: Path) -> bool:
+    if target.is_file():
+        return True
+    return target.is_dir()
+
+
 def main(argv: list[str] | None = None) -> int:
     targets = [Path(item) for item in (sys.argv[1:] if argv is None else argv)]
     if not targets:
         print(__doc__.strip().splitlines()[-1].strip(), file=sys.stderr)
         return 2
-    missing = [target for target in targets if not target.is_file() and not target.is_dir()]
-    if missing:
-        for target in missing:
-            print(f"{target}: not a file or directory", file=sys.stderr)
+    if _report_missing(targets):
         return 2
     findings = []
     for target in targets:

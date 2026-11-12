@@ -18,7 +18,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
-from typing import Any, ClassVar
+from typing import ClassVar
 
 from autonomy.decision_cycle.activation import StepActivation
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -32,6 +32,7 @@ from autonomy.decision_cycle.memory.beliefs import Belief
 from autonomy.decision_cycle.memory.plugin import MemoryPlugin, MemoryPluginContract, plugin_status
 from autonomy.decision_cycle.memory.publication import BELIEF_KEY_PREFIX, EVIDENCE_KEY, belief_key
 from autonomy.decision_cycle.observation.publication import read_observation
+from autonomy.decision_cycle.plugin_state import unchanged_instance
 from autonomy.decision_cycle.runner import StepRunner, reset_plugin
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition
@@ -76,7 +77,8 @@ class MemoryPluginRuntime:
         if context.shared_memory is not None:
             self._shared_memory = context.shared_memory
         try:
-            self.implementation.update(context)
+            with unchanged_instance(self.implementation):
+                self.implementation.update(context)
             self.last_error = None
         except Exception as exc:  # noqa: BLE001 - step isolation boundary
             self.failure_count += 1
@@ -105,7 +107,7 @@ class MemoryPluginRuntime:
         self.last_duration_ms = elapsed_ms(started)
         self.reset_count += 1
 
-    def plugin_status(self) -> dict[str, Any] | None:
+    def plugin_status(self) -> dict[str, object] | None:
         """The plugin's own summary of its state, or None when it offers none."""
 
         try:
@@ -113,7 +115,7 @@ class MemoryPluginRuntime:
         except Exception as exc:  # noqa: BLE001 - status must not fail the caller
             return {"status_error": _diagnostic(exc)}
 
-    def status(self) -> dict[str, Any]:
+    def status(self) -> dict[str, object]:
         return {
             "plugin_id": self.plugin_id,
             "plugin_spec": self.definition.entrypoint,
@@ -178,7 +180,7 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
         source_path = self.activation.source_path if self.activation else None
         return MemoryPluginRuntime(definition, plugin, source_path=source_path)
 
-    def validate_plugin(self, plugin: Any, definition: PluginDefinition) -> None:
+    def validate_plugin(self, plugin: object, definition: PluginDefinition) -> None:
         if not isinstance(getattr(plugin, "contract", None), MemoryPluginContract):
             raise TypeError(f"plugin {definition.plugin_id!r} must expose MemoryPluginContract as contract")
         if not isinstance(plugin, MemoryPlugin):
@@ -191,12 +193,12 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
 
     def __call__(
         self, context: DecisionFrameContext,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         return self.update(context)
 
     def update(
         self, context: DecisionFrameContext,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         """Run each selected plugin in order and return the memory report.
 
         A selection that cannot load raises here, before any plugin runs, and
@@ -215,16 +217,7 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 observation = read_observation(context.shared_memory)
                 if observation is not None or FAILURE_POLICY.missing_input == "invoke":
                     for plugin in self.plugins.values():
-                        before = _evidence(self._shared_memory)
-                        try:
-                            try:
-                                plugin.update(memory_context)
-                            finally:
-                                self._record_plugin(
-                                    plugin.plugin_id, plugin.last_duration_ms, plugin.last_error
-                                )
-                        finally:
-                            self._note_evidence(plugin.plugin_id, before)
+                        self._update_plugin(plugin, memory_context)
             except Exception as exc:
                 self.failure_count += 1
                 self.last_error = _diagnostic(exc)
@@ -233,7 +226,19 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 self.run_count += 1
             return self._report()
 
-    def reset(self, shared_memory: SharedMemory | None = None) -> dict[str, Any]:
+    def _update_plugin(self, plugin: MemoryPluginRuntime, context: DecisionFrameContext) -> None:
+        """Run one plugin, recording its call and the evidence it published."""
+
+        before = _evidence(self._shared_memory)
+        try:
+            try:
+                plugin.update(context)
+            finally:
+                self._record_plugin(plugin.plugin_id, plugin.last_duration_ms, plugin.last_error)
+        finally:
+            self._note_evidence(plugin.plugin_id, before)
+
+    def reset(self, shared_memory: SharedMemory | None = None) -> dict[str, object]:
         """Reset each plugin and return the keys the plugins wrote while resetting.
 
         Memory overrides ``StepRunner.reset`` to count resets, record each
@@ -281,13 +286,13 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
                 return None
             return self._publisher
 
-    def report(self) -> dict[str, Any]:
+    def report(self) -> dict[str, object]:
         """Each applied plugin's own state summary, as the cycle records it."""
 
         with self._runtime_lock:
             return self._report()
 
-    def _report(self) -> dict[str, Any]:
+    def _report(self) -> dict[str, object]:
         return MemoryReport(
             schema=MEMORY_REPORT_SCHEMA,
             plugins=tuple(
@@ -301,7 +306,7 @@ class MemoryRunner(StepRunner[MemoryPluginRuntime]):
             beliefs={key: belief.summary() for key, belief in _published_beliefs(self._shared_memory).items()},
         ).to_dict()
 
-    def status(self) -> dict[str, Any]:
+    def status(self) -> dict[str, object]:
         with self._runtime_lock:
             return {
                 **super().status(),

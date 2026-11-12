@@ -35,16 +35,16 @@ from tests.shared.cli.workbench_fixtures import (
 RECORDING_STATE = "recording_test.state"
 
 
+PROBE_READS: list[tuple] = []  # what SharedMemoryProbe read, for the tests; the plugin keeps nothing
+
+
 class SharedMemoryProbe:
     plugin_id = "probe"
     contract = PerceptionPluginContract()
 
-    def __init__(self):
-        self.reads = []
-
     def perceive(self, inputs):
         shared_memory = inputs.shared_memory
-        self.reads.append((
+        PROBE_READS.append((
             shared_memory.get(RECORDING_STATE),
             shared_memory.get("test.step"),
         ))
@@ -145,6 +145,7 @@ class WorkbenchTests(unittest.TestCase):
             self.assertEqual(runner.state()["phase"], "paused")
 
     def test_shared_memory_connects_plugin_and_memory_step_across_frames(self):
+        PROBE_READS.clear()
         perception_step = PerceptionRunner.from_selection(
             plugins=["probe"],
             plugin_specs={"probe": f"{__name__}:SharedMemoryProbe"},
@@ -179,7 +180,7 @@ class WorkbenchTests(unittest.TestCase):
             runner.start()
             completed = runner.wait(5)
             self.assertEqual(completed["phase"], "completed")
-            reads = perception_step.plugins["probe"].reads
+            reads = PROBE_READS
             self.assertEqual(reads[0], (None, None))
             self.assertIs(reads[1][0], published[0])
             self.assertEqual(reads[1][1], step_reads[0])

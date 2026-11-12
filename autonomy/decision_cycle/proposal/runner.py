@@ -21,6 +21,7 @@ from autonomy.decision_cycle.action_identifiers import (
     require_safe_int,
 )
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.plugin_state import unchanged_instance
 from autonomy.decision_cycle.proposal.plugin import ProposalPlugin
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.proposal.values import (
@@ -150,7 +151,8 @@ class ProposalRunner(StepRunner[ProposalPlugin]):
         raised: BaseException | None = None
         returned: object = None
         try:
-            returned = plugin.propose(context)
+            with unchanged_instance(plugin):
+                returned = plugin.propose(context)
         except BaseException as exc:  # noqa: BLE001 - fail closed per proposal
             raised = exc
             error = describe_exception(exc)

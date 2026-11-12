@@ -16,6 +16,7 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.interface import FAILURE_POLICY
 from autonomy.decision_cycle.plan.plugin import PlanPlugin
 from autonomy.decision_cycle.plan.values import ActionPlan
+from autonomy.decision_cycle.plugin_state import unchanged_instance
 from autonomy.decision_cycle.proposal.result import ProposalResult
 from autonomy.decision_cycle.runner import StepRunner, describe_exception
 from autonomy.plugins import PluginDefinition
@@ -45,7 +46,8 @@ class PlanRunner(StepRunner[PlanPlugin]):
             self.run_count += 1
             with self._timed_single() as plugin:
                 try:
-                    plan = plugin.plan(context, tuple(candidates))
+                    with unchanged_instance(plugin):
+                        plan = plugin.plan(context, tuple(candidates))
                     _check_plan(plan, plugin.plugin_id, context.frame_id, candidates)
                 except Exception as exc:  # noqa: BLE001 - a failed plan fails the action closed
                     self.failure_count += 1

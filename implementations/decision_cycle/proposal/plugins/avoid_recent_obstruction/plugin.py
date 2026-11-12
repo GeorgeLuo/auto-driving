@@ -9,7 +9,7 @@ them.
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from typing import Sequence, cast
 
 from autonomy.decision_cycle.confidence import confidence_rank
 from autonomy.decision_cycle.proposal.values import (
@@ -171,18 +171,144 @@ def _source_ref(record: RetainedEvidence) -> SourceRef:
     )
 
 
-def _inactive(context: DecisionFrameContext, reason: str) -> ActionProposal:
+def _proposal(
+    context: DecisionFrameContext,
+    *,
+    lifecycle: str,
+    reason: str,
+    confidence: float = 0.0,
+    command: ProposedVehicleCommand | None = None,
+    source_refs: tuple[SourceRef, ...] = (),
+    available: bool = False,
+    freshness: str = "none",
+) -> ActionProposal:
     return ActionProposal(
         plugin_id=AvoidRecentObstruction.plugin_id,
         frame_id=context.frame_id,
-        lifecycle="inactive",
-        freshness="none",
-        confidence=0.0,
+        lifecycle=lifecycle,
+        freshness=freshness,
+        confidence=confidence,
         reason=reason,
-        command=None,
+        command=command,
         assumptions=BASE_ASSUMPTIONS,
-        source_refs=(),
-        available=False,
+        source_refs=source_refs,
+        available=available,
+    )
+
+
+def _inactive(context: DecisionFrameContext, reason: str) -> ActionProposal:
+    return _proposal(context, lifecycle="inactive", reason=reason)
+
+
+def _highest_confidence(records: list[RetainedEvidence]) -> RetainedEvidence:
+    return sorted(records, key=lambda record: (*confidence_rank(record.confidence), record.record_id))[0]
+
+
+def _admitted_candidates(
+    context: DecisionFrameContext,
+    *,
+    evidence_key: str,
+    accepted_kinds: Sequence[str],
+) -> ActionProposal | list[RetainedEvidence]:
+    shared_memory = context.shared_memory
+    records = shared_memory.get(evidence_key) if shared_memory is not None else None
+    if records is None:
+        return _proposal(context, lifecycle="missing_input", reason="memory_unavailable")
+    if not isinstance(records, (tuple, list)) or not all(
+        isinstance(record, RetainedEvidence) for record in records
+    ):
+        return _proposal(context, lifecycle="error", reason="invalid_memory_value")
+
+    kinds = set(accepted_kinds)
+    accepted_kind_records = [record for record in records if record.kind in kinds]
+    image_located = [
+        record
+        for record in accepted_kind_records
+        if _is_image_located_accepted_kind(record, accepted_kinds=kinds)
+    ]
+    # Lateral cue is part of candidate admission — no-cue records never enter
+    # freshness / future-dated classification.
+    candidates = [
+        record
+        for record in image_located
+        if _is_accepted_obstruction_candidate(record, accepted_kinds=kinds)
+    ]
+    if accepted_kind_records and not image_located:
+        return _proposal(
+            context,
+            lifecycle="incompatible",
+            reason="accepted_kind_non_image_location",
+        )
+    if not candidates:
+        return _inactive(context, "no_accepted_obstruction_evidence")
+    return candidates
+
+
+def _classified_pools(
+    context: DecisionFrameContext,
+    candidates: list[RetainedEvidence],
+    *,
+    retained_max_age_ms: int,
+) -> ActionProposal | tuple[list[RetainedEvidence] | None, str | None, list[RetainedEvidence]]:
+    classified = [
+        (
+            _freshness_class(
+                record,
+                now=context.timestamp_ms,
+                frame_id=context.frame_id,
+                retained_max_age_ms=retained_max_age_ms,
+            ),
+            record,
+        )
+        for record in candidates
+    ]
+    if classified and all(cls == "invalid_future" for cls, _record in classified):
+        return _proposal(context, lifecycle="error", reason="future_dated_provenance")
+    usable = [(cls, record) for cls, record in classified if cls != "invalid_future"]
+    fresh = [record for cls, record in usable if cls == "fresh"]
+    retained = [record for cls, record in usable if cls == "retained"]
+    stale = [record for cls, record in usable if cls == "stale"]
+    # Fresh pool first. A fresh pool with no lateral side does not fall through to retained.
+    if fresh:
+        return fresh, "fresh", stale
+    if retained:
+        return retained, "retained", stale
+    return None, None, stale
+
+
+def _steer_away(
+    context: DecisionFrameContext,
+    pool: list[RetainedEvidence],
+    lifecycle: str,
+    steer_magnitude: float,
+) -> ActionProposal | None:
+    # Confidence remains primary. For equal-confidence physical boundaries,
+    # prefer the foreground cue before the stable record-id tie-break.
+    ordered = sorted(
+        pool,
+        key=lambda record: (*confidence_rank(record.confidence), -_bbox_bottom(record), record.record_id),
+    )
+    primary = None
+    side = None
+    for record in ordered:
+        side = _lateral_side(record)
+        if side is not None:
+            primary = record
+            break
+    if primary is None or side is None:
+        return None
+    magnitude = float(steer_magnitude)
+    steering = magnitude if side == "left" else -magnitude
+    command = ProposedVehicleCommand(steering=steering, throttle=DEFAULT_FORWARD_THROTTLE)
+    return _proposal(
+        context,
+        lifecycle=lifecycle,
+        freshness=lifecycle,
+        confidence=primary.confidence,
+        reason=f"steer_away_{side}_obstruction",
+        command=command,
+        source_refs=(_source_ref(primary),),
+        available=True,
     )
 
 
@@ -196,167 +322,31 @@ def propose(
 ) -> ActionProposal:
     """Emit exactly one ActionProposal from the context and retained evidence."""
 
-    shared_memory = context.shared_memory
-    records = shared_memory.get(evidence_key) if shared_memory is not None else None
-    if records is None:
-        return ActionProposal(
-            plugin_id=AvoidRecentObstruction.plugin_id,
-            frame_id=context.frame_id,
-            lifecycle="missing_input",
-            freshness="none",
-            confidence=0.0,
-            reason="memory_unavailable",
-            command=None,
-            assumptions=BASE_ASSUMPTIONS,
-            available=False,
-        )
-
-    if not isinstance(records, (tuple, list)) or not all(
-        isinstance(record, RetainedEvidence) for record in records
-    ):
-        return ActionProposal(
-            plugin_id=AvoidRecentObstruction.plugin_id,
-            frame_id=context.frame_id,
-            lifecycle="error",
-            freshness="none",
-            confidence=0.0,
-            reason="invalid_memory_value",
-            command=None,
-            assumptions=BASE_ASSUMPTIONS,
-            available=False,
-        )
-
-    kinds = set(accepted_kinds)
-    accepted_kind_records = [r for r in records if r.kind in kinds]
-    image_located = [
-        r
-        for r in accepted_kind_records
-        if _is_image_located_accepted_kind(r, accepted_kinds=kinds)
-    ]
-    # Lateral cue is part of candidate admission — no-cue records never enter
-    # freshness / future-dated classification.
-    candidates = [
-        r
-        for r in image_located
-        if _is_accepted_obstruction_candidate(r, accepted_kinds=kinds)
-    ]
-
-    if accepted_kind_records and not image_located:
-        # Accepted kinds present but none image-located.
-        return ActionProposal(
-            plugin_id=AvoidRecentObstruction.plugin_id,
-            frame_id=context.frame_id,
-            lifecycle="incompatible",
-            freshness="none",
-            confidence=0.0,
-            reason="accepted_kind_non_image_location",
-            command=None,
-            assumptions=BASE_ASSUMPTIONS,
-            available=False,
-        )
-
-    if not candidates:
-        return _inactive(context, "no_accepted_obstruction_evidence")
-
-    classified: list[tuple[str, RetainedEvidence]] = []
-    for record in candidates:
-        cls = _freshness_class(
-            record,
-            now=context.timestamp_ms,
-            frame_id=context.frame_id,
-            retained_max_age_ms=retained_max_age_ms,
-        )
-        classified.append((cls, record))
-
-    if classified and all(cls == "invalid_future" for cls, _ in classified):
-        return ActionProposal(
-            plugin_id=AvoidRecentObstruction.plugin_id,
-            frame_id=context.frame_id,
-            lifecycle="error",
-            freshness="none",
-            confidence=0.0,
-            reason="future_dated_provenance",
-            command=None,
-            assumptions=BASE_ASSUMPTIONS,
-            source_refs=(),
-            available=False,
-        )
-
-    usable = [(cls, rec) for cls, rec in classified if cls != "invalid_future"]
-    fresh = [rec for cls, rec in usable if cls == "fresh"]
-    retained = [rec for cls, rec in usable if cls == "retained"]
-    stale = [rec for cls, rec in usable if cls == "stale"]
-
-    def pick(records: list[RetainedEvidence]) -> RetainedEvidence:
-        return sorted(records, key=lambda r: (*confidence_rank(r.confidence), r.record_id))[0]
-
-    # Fresh pool first if any fresh records exist — do not fall back to retained
-    # when the fresh pool is only center-band (no usable lateral side).
-    if fresh:
-        active_pool: list[RetainedEvidence] | None = fresh
-        pool_lifecycle = "fresh"
-    elif retained:
-        active_pool = retained
-        pool_lifecycle = "retained"
-    else:
-        active_pool = None
-        pool_lifecycle = None
-
+    admitted = _admitted_candidates(
+        context, evidence_key=evidence_key, accepted_kinds=accepted_kinds
+    )
+    if not isinstance(admitted, list):
+        return admitted
+    pooled = _classified_pools(context, admitted, retained_max_age_ms=retained_max_age_ms)
+    if not isinstance(pooled, tuple):
+        return pooled
+    active_pool, pool_lifecycle, stale = pooled
     if active_pool is not None:
-        # Confidence remains primary. For equal-confidence physical boundaries,
-        # prefer the foreground cue before the stable record-id tie-break.
-        ordered = sorted(
-            active_pool,
-            key=lambda r: (*confidence_rank(r.confidence), -_bbox_bottom(r), r.record_id),
-        )
-        primary = None
-        side = None
-        for record in ordered:
-            side = _lateral_side(record)
-            if side is not None:
-                primary = record
-                break
-        if primary is None:
-            # Active freshness class present but no lateral cue in that class.
-            return _inactive(context, "no_lateral_obstruction_evidence")
-
-        magnitude = float(steer_magnitude)
-
-        steering = magnitude if side == "left" else -magnitude
-        lifecycle = pool_lifecycle or "retained"
-
-        command = ProposedVehicleCommand(
-            steering=steering,
-            throttle=DEFAULT_FORWARD_THROTTLE,
-        )
-        return ActionProposal(
-            plugin_id=AvoidRecentObstruction.plugin_id,
-            frame_id=context.frame_id,
-            lifecycle=lifecycle,
-            freshness=lifecycle,
-            confidence=primary.confidence,
-            reason=f"steer_away_{side}_obstruction",
-            command=command,
-            assumptions=BASE_ASSUMPTIONS,
-            source_refs=(_source_ref(primary),),
-            available=True,
-        )
-
+        chosen = _steer_away(context, active_pool, pool_lifecycle or "retained", steer_magnitude)
+        if chosen is not None:
+            return chosen
+        # Active freshness class present but no lateral cue in that class.
+        return _inactive(context, "no_lateral_obstruction_evidence")
     if stale:
-        primary = pick(stale)
-        return ActionProposal(
-            plugin_id=AvoidRecentObstruction.plugin_id,
-            frame_id=context.frame_id,
+        primary = _highest_confidence(stale)
+        return _proposal(
+            context,
             lifecycle="stale",
             freshness="stale",
             confidence=primary.confidence,
             reason="stale_obstruction_evidence",
-            command=None,
-            assumptions=BASE_ASSUMPTIONS,
             source_refs=(_source_ref(primary),),
-            available=False,
         )
-
     return _inactive(context, "no_accepted_obstruction_evidence")
 
 
@@ -392,12 +382,14 @@ class AvoidRecentObstruction:
             raise ValueError("steer_magnitude must be numeric") from exc
         if not math.isfinite(magnitude) or not (0.0 < magnitude <= 1.0):
             raise ValueError("steer_magnitude must satisfy 0 < value <= 1")
-        if not isinstance(evidence_key, str) or not evidence_key.strip():
+        # Annotated str, but a caller can pass another type. Reject that with ValueError.
+        raw_key = cast(object, evidence_key)
+        if not isinstance(raw_key, str) or not raw_key.strip():
             raise ValueError("evidence_key must be a non-empty string")
         self.accepted_kinds = kinds
         self.retained_max_age_ms = retained_max_age_ms
         self.steer_magnitude = magnitude
-        self.evidence_key = evidence_key
+        self.evidence_key = raw_key
 
     def propose(self, context: DecisionFrameContext) -> ActionProposal:
         return propose(

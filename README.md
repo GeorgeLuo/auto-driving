@@ -129,8 +129,9 @@ The command groups intentionally distinguish different kinds of state:
 
 A host's local browser entrypoint is **Automa**, with links to
 **Perception** at `/perception` and **Memory** at `/memory`. `hosts viewer
---name <host>` serves and opens it until interrupted; `plugins stream` serves
-the same pages beside its terminal output. A run serves no pages, so ending a
+--name <host>` serves and opens it until interrupted; `hosts still --name <host>`
+saves and opens one JPEG of that host's latest processed frame. `plugins stream`
+serves the same pages beside its terminal output. A run serves no pages, so ending a
 viewer or stream leaves the run going. Perception owns its image buffer, while
 `RuntimeViewServer` owns the listener, routes, and shutdown.
 
@@ -141,6 +142,7 @@ viewer or stream leaves the run going. Perception owns its image buffer, while
 | `vehicles discover` | Lists the vehicle given by `--provider` (`chase-sim` or `picar`) and `--url` in `vehicles status` once it can take a host; `--force` lists it regardless. A simulator that `simulators create` started is already listed; after `vehicles remove`, discovering it lists it again without writing a second record. |
 | `vehicles remove` | Stops listing the vehicle at `--url`. A simulator that `simulators create` started keeps running until `simulators delete`, and `vehicles discover` lists it again. |
 | `hosts viewer` | Serves the runtime viewer (Perception, Memory, Action and Plugins) fed from the host named by `--name`, or at `--host-url` (the URL `hosts status` shows for it), and opens it in the browser until interrupted. Exits 2 when no such host exists, it is not running, or it does not answer. |
+| `hosts still` | Saves a JPEG of the latest processed frame from the host named by `--name`, prints its frame id, age and health, and opens it. An idle Chase host has no frame until a run is started. A PiCar with no frame has a camera that is not ready. Exits 2 when no such host exists, it is not running, it does not answer, or it has no frame. |
 | `hosts status` | Shows each host's state and whether its simulator lists it. When that simulator does not answer, the attachment line says it is not answering. `--long` adds its deployment and the release `hosts update` last packaged, then each step's staged selection, `saved` when `plugins save` saved it and otherwise the step's `default`, beside the selection the running host applied with its runs, failures and last error, then the run and its view. A step reads `as staged` only when the host runs the staged plugins with their staged configs; restaged configs wait for a restart, so until then status names the plugins whose configs differ. An invalid staged step and an unavailable host are each reported without hiding the other. `--json` carries the same under each host's `run`. With `--name`, exits 1 when that host is missing, stopped, not answering, or reports an error. |
 | `plugins list` | Offline: lists the packaged catalog, each step's `implementations/decision_cycle/<step>/catalog.json`, by step, defaults first and marked, then each step's presets and their plugins, its default marked; `--step` filters and `--json` adds each definition's entrypoint, default config and description, and `step_presets`, each preset as its catalog file lists it with `default` marking the step's. With `--host-name` (or a runtime `--url`), lists what that host has armed instead; `--long` lists the host's whole catalog, packaged and uploaded, with its version and the armed plugins marked. A workbench `--url` arms nothing and lists only with `--long`. Exits 2 while the host's last arming failed. See the [simulator prototype flow](docs/reference/cli-simulator-perception-journey.md#arm-on-an-existing-runtime-host). |
 | `plugins upload` | With `--host-name` (or a runtime or workbench `--url`), stores `--file` in that existing catalog as `--name <step>/<plugin>` with its `--entrypoint` and optional `--config`, refusing source that does not compile. `--arm` also arms it through the same operation as `plugins arm`. |
@@ -329,6 +331,7 @@ preserves the operator's simulator session:
 ./cli/automa hosts create --name chase-sim-chaser --provider chase-sim --url http://localhost:5050
 ./cli/automa hosts run --name chase-sim-chaser --observe-only
 ./cli/automa hosts viewer --name chase-sim-chaser   # Ctrl-C ends the view, not the run
+./cli/automa hosts still --name chase-sim-chaser
 ./cli/automa hosts status --name chase-sim-chaser
 ./cli/automa hosts stop --name chase-sim-chaser
 ./cli/automa hosts status --name chase-sim-chaser
@@ -782,6 +785,7 @@ control both vehicles. Change only the host name:
 ```sh
 ./cli/automa hosts run --name chase-sim-chaser --num-decisions 10
 ./cli/automa hosts viewer --name chase-sim-chaser
+./cli/automa hosts still --name chase-sim-chaser
 ./cli/automa hosts stop --name chase-sim-chaser
 ./cli/automa hosts run --name piracer --num-decisions 10
 ./cli/automa hosts stop --name piracer

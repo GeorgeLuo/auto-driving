@@ -10,7 +10,7 @@ import argparse
 
 from .deployment.commands import register_host_deployment
 from .runs.commands import register_host_runs
-from .views.commands import register_host_viewer
+from .views.commands import register_host_still, register_host_viewer
 
 
 def register_hosts(subcommands: argparse._SubParsersAction) -> None:
@@ -21,11 +21,12 @@ def register_hosts(subcommands: argparse._SubParsersAction) -> None:
     host_help.set_defaults(handler=_handle_hosts_help)
 
     register_host_viewer(host_commands)
+    register_host_still(host_commands)
     register_host_deployment(host_commands)
     register_host_runs(host_commands)
 
 
-def _handle_hosts_help(args: argparse.Namespace) -> int:
+def _handle_hosts_help(_args: argparse.Namespace) -> int:
     print(
         "\n".join(
             [
@@ -39,6 +40,7 @@ def _handle_hosts_help(args: argparse.Namespace) -> int:
                 "- restart     stop and start the run",
                 "- status      show each host's state and attachment",
                 "- viewer      open a host's runtime viewer",
+                "- still       save and open a host's latest frame",
                 "- help        show this summary",
                 "",
                 "Detailed help:",

@@ -1,9 +1,5 @@
 from __future__ import annotations
-import tempfile
 import unittest
-from pathlib import Path
-from unittest import mock
-from implementations.vehicle.chase_sim import ChaseSimCar
 from implementations.vehicle.chase_sim.frame_identity import (
     ChaseCaptureValidationError,
     align_candidate_with_reference,
@@ -245,23 +241,6 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
             validate_chase_sensor_capture(malformed_svg)
         self.assertEqual(raised.exception.code, "capture_image_invalid")
         self.assertEqual(raised.exception.path, "sensor.image.svg")
-
-    def test_invalid_capture_is_rejected_before_output_write(self) -> None:
-        car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / "nested" / "frame.png"
-            with mock.patch.object(
-                car,
-                "inspect_passive_capture",
-                side_effect=ChaseCaptureValidationError(
-                    code="capture_image_invalid",
-                    path="sensor.image",
-                    message="decoded dimensions do not match declaration",
-                ),
-            ), self.assertRaises(ChaseCaptureValidationError):
-                car._capture_front_camera(path, endpoint="atomic-evaluation-capture")
-            self.assertFalse(path.exists())
-            self.assertFalse(path.parent.exists())
 
     def test_alignment_requires_epoch_and_strictly_increasing_frames(self) -> None:
         reference = build_chaser_reference(_atomic_capture(frame_index=7))

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import signal
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import cast
 from urllib.parse import urlparse
 
 from autonomy.runtime.client import RuntimeClient
@@ -26,6 +27,7 @@ from ..step_activations import (
     staged_selections,
 )
 from ..vehicle_access import create_vehicle_access
+from .lifecycle import Claim, keep, section
 from .models import RestartResult, RunResult, StartResult, StopResult
 from .monitor import monitor_runtime
 from .process import (
@@ -33,6 +35,7 @@ from .process import (
     pid_matches_automation,
     process_command,
     stop_worker,
+    terminate_pid,
     wait_for_automation_startup,
     worker_command,
 )
@@ -67,7 +70,7 @@ def _host_name_at_host(host_url: str, *, timeout_s: float) -> str:
     """The host name reported by the runtime."""
 
     try:
-        status = RuntimeClient(host_url, timeout_s=max(0.1, timeout_s)).host_status()
+        status = cast(object, RuntimeClient(host_url, timeout_s=max(0.1, timeout_s)).host_status())
     except RuntimeError as exc:
         raise RuntimeHostError(f"Could not read the host at {host_url}: {exc}") from exc
     host_name = status.get("host_name") if isinstance(status, dict) else None
@@ -130,7 +133,7 @@ def run_host_automation(
     unbounded: bool = False,
     take_control: bool = True,
     record: bool = False,
-    emit: Callable[[dict[str, Any]], None] | None = None,
+    emit: Callable[[dict[str, object]], None] | None = None,
 ) -> RunResult:
     try:
         if host_name is not None:
@@ -207,136 +210,32 @@ def start_host_automation_background(
         return StartResult(2, "error", error=str(exc))
     automation_dir = run_directory(host_name, create=True)
     log_path = automation_dir / "automation.log"
-
     bundle = bundle_paths(host_name)
     problems = bundle_activation_problems(bundle, host_name)
     if problems:
         return StartResult(2, "activation_invalid", problems=problems)
 
-    existing = read_process_record(automation_dir)
-    existing_pid = existing.get("pid") if isinstance(existing, dict) else None
-    if isinstance(existing_pid, int) and pid_alive(existing_pid):
-        existing_state = read_run_state(automation_dir)
-        existing_status = (
-            existing_state.get("status")
-            if isinstance(existing_state, dict)
-            else "unknown"
-        )
-        session = (
-            existing_state.get("session")
-            if isinstance(existing_state, dict)
-            else None
-        )
-        session_status = session.get("status") if isinstance(session, dict) else None
-        if existing_status == "starting" or session_status == "starting":
-            return StartResult(
-                2,
-                "starting",
-                host_name=host_name,
-                pid=existing_pid,
-                state_path=automation_dir / "state.json",
-            )
-        existing_state_pid = (
-            existing_state.get("pid")
-            if isinstance(existing_state, dict)
-            and isinstance(existing_state.get("pid"), int)
-            else None
-        )
-        if existing_state_pid is not None and existing_state_pid != existing_pid:
-            return StartResult(
-                2,
-                "records_disagree",
-                host_name=host_name,
-                pid=existing_pid,
-                state_pid=existing_state_pid,
-            )
-        expected_authority = {
-            "action_policy": configuration.mode,
-            "control_application": control_application(configuration),
-        }
-        actual_authority = {
-            key: existing_state.get(key) if isinstance(existing_state, dict) else None
-            for key in expected_authority
-        }
-        if actual_authority != expected_authority:
-            return StartResult(
-                2,
-                "authority_mismatch",
-                host_name=host_name,
-                pid=existing_pid,
-                expected_authority=expected_authority,
-                actual_authority=actual_authority,
-            )
-        if session_status != "running":
-            return StartResult(
-                2,
-                "session_not_running",
-                host_name=host_name,
-                pid=existing_pid,
-                error=f"its runtime session is {session_status or 'missing'}",
-                state_path=automation_dir / "state.json",
-            )
-        return StartResult(
-            0,
-            "existing",
-            host_name=host_name,
-            pid=existing_pid,
-            state_path=automation_dir / "state.json",
-            process_record=existing,
-            log_path=log_path,
-        )
-
-    command = worker_command(
-        host_name=host_name,
-        host_url=host_url,
-        timeout_s=timeout_s,
-        configuration=configuration,
-        take_control=take_control,
-        record=record,
+    begun, started_at_ms, existing = _begin_start(
+        automation_dir, host_name=host_name, configuration=configuration, record=record, log_path=log_path,
     )
-
-    started_at_ms = timestamp_ms()
-    initialize_automation_startup(
-        automation_dir=automation_dir,
+    if existing is not None:
+        return existing
+    return _launch_start(
+        automation_dir,
         host_name=host_name,
+        command=worker_command(
+            host_name=host_name,
+            host_url=host_url,
+            timeout_s=timeout_s,
+            configuration=configuration,
+            take_control=take_control,
+            record=record,
+        ),
+        begun=begun,
         started_at_ms=started_at_ms,
-        configuration=configuration,
-        record=record,
-    )
-
-    try:
-        process = launch_worker(command, log_path=log_path if log_to_disk else None)
-    except OSError as exc:
-        mark_automation_startup_error(
-            automation_dir=automation_dir,
-            error=f"Could not launch automation worker: {type(exc).__name__}: {exc}",
-        )
-        return StartResult(
-            2,
-            "launch_failed",
-            host_name=host_name,
-            error=f"{type(exc).__name__}: {exc}",
-        )
-
-    process_record = record_background_worker(
-        automation_dir, host_name=host_name, pid=process.pid, started_at_ms=started_at_ms,
-        command=command, log_to_disk=log_to_disk,
-    )
-    startup = wait_for_automation_startup(
-        process=process,
-        automation_dir=automation_dir,
-        timeout_s=startup_wait_s,
-    )
-    process_record = record_worker_startup(automation_dir, process_record, startup)
-    return StartResult(
-        0 if startup["status"] in {"ready", "completed"} else 2,
-        "started",
-        host_name=host_name,
-        pid=process.pid,
-        startup=startup,
-        state_path=automation_dir / "state.json",
-        process_record=process_record,
+        log_to_disk=log_to_disk,
         log_path=log_path,
+        startup_wait_s=startup_wait_s,
     )
 
 
@@ -397,55 +296,216 @@ def stop_host_automation(
     wait_s: float = 3.0,
 ) -> StopResult:
     # The host ends the session and releases control; the monitor then
-    # finishes the run record.
+    # finishes the run record. The claim is after the runtime call so a
+    # failed release does not cancel a start, and before the worker is
+    # signalled so that start cannot publish once the stop will stand.
     try:
         base_url = running_base_url(host_name)
     except RuntimeHostError as exc:
         return StopResult(2, "error", host_name, error=str(exc))
-    if base_url is not None:
-        try:
-            RuntimeClient(base_url, timeout_s=max(1.0, wait_s)).stop()
-        except RuntimeError as exc:
-            if not PROVIDERS[staged_host(host_name)["provider"]].local_host:
-                return StopResult(2, "remote_failed", host_name, error=str(exc))
-            forced = _replace_unanswering_host(host_name, wait_s=wait_s)
-            if forced is not None:
-                return forced
+    failed = _release_runtime(host_name, base_url, wait_s)
+    if failed is not None:
+        return failed
     automation_dir = run_directory(host_name)
-    process_path = automation_dir / "process.json"
-    state_path = automation_dir / "state.json"
-    process = read_process_record(automation_dir)
-    pid = process.get("pid") if isinstance(process, dict) else None
+    with section(automation_dir) as run:
+        claim = run.claim()
+    result = _stop_claimed(host_name, automation_dir, claim, wait_s)
+    if result.exit_code != 0:
+        with section(automation_dir) as run:
+            run.release(claim)
+    return result
 
-    if not isinstance(pid, int):
-        mark_state_stopped(state_path, stopped_by="stop_command_no_pid")
-        return StopResult(0, "no_pid", host_name, state_path=state_path)
 
-    if not pid_alive(pid):
-        mark_process_stopped(
-            process_path, process, stopped_by="stop_command_already_dead"
+def _begin_start(
+    automation_dir: Path,
+    *,
+    host_name: str,
+    configuration: RunConfiguration,
+    record: bool,
+    log_path: Path,
+) -> tuple[int, int, StartResult | None]:
+    started_at_ms = timestamp_ms()
+    with section(automation_dir) as run:
+        begun = run.stops()
+        existing = _existing_start(
+            automation_dir, host_name=host_name, configuration=configuration, log_path=log_path,
         )
-        mark_state_stopped(state_path, stopped_by="stop_command_already_dead")
+        if existing is None:
+            initialize_automation_startup(
+                automation_dir=automation_dir,
+                host_name=host_name,
+                started_at_ms=started_at_ms,
+                configuration=configuration,
+                record=record,
+            )
+        return begun, started_at_ms, existing
+
+
+def _existing_start(
+    automation_dir: Path,
+    *,
+    host_name: str,
+    configuration: RunConfiguration,
+    log_path: Path,
+) -> StartResult | None:
+    existing = read_process_record(automation_dir)
+    existing_pid = existing.get("pid") if isinstance(existing, dict) else None
+    if not isinstance(existing_pid, int) or not pid_alive(existing_pid):
+        return None
+    existing_state = read_run_state(automation_dir)
+    state = existing_state if isinstance(existing_state, dict) else {}
+    session = state.get("session")
+    session_status = session.get("status") if isinstance(session, dict) else None
+    state_path = automation_dir / "state.json"
+    if state.get("status") == "starting" or session_status == "starting":
+        return StartResult(2, "starting", host_name=host_name, pid=existing_pid, state_path=state_path)
+    state_pid = state.get("pid") if isinstance(state.get("pid"), int) else None
+    if state_pid is not None and state_pid != existing_pid:
+        return StartResult(
+            2, "records_disagree", host_name=host_name, pid=existing_pid, state_pid=state_pid,
+        )
+    expected = {
+        "action_policy": configuration.mode,
+        "control_application": control_application(configuration),
+    }
+    actual = {key: state.get(key) for key in expected}
+    if actual != expected:
+        return StartResult(
+            2, "authority_mismatch", host_name=host_name, pid=existing_pid,
+            expected_authority=expected, actual_authority=actual,
+        )
+    if session_status != "running":
+        return StartResult(
+            2, "session_not_running", host_name=host_name, pid=existing_pid,
+            error=f"its runtime session is {session_status or 'missing'}", state_path=state_path,
+        )
+    return StartResult(
+        0, "existing", host_name=host_name, pid=existing_pid, state_path=state_path,
+        process_record=existing, log_path=log_path,
+    )
+
+
+def _launch_start(
+    automation_dir: Path,
+    *,
+    host_name: str,
+    command: list[str],
+    begun: int,
+    started_at_ms: int,
+    log_to_disk: bool,
+    log_path: Path,
+    startup_wait_s: float,
+) -> StartResult:
+    try:
+        process = launch_worker(command, log_path=log_path if log_to_disk else None)
+    except OSError as exc:
+        _record_launch_failure(automation_dir, begun, exc)
+        return StartResult(2, "launch_failed", host_name=host_name, error=f"{type(exc).__name__}: {exc}")
+    published = []
+
+    def write_pid() -> None:
+        published.append(record_background_worker(
+            automation_dir, host_name=host_name, pid=process.pid, started_at_ms=started_at_ms,
+            command=command, log_to_disk=log_to_disk,
+        ))
+
+    if not keep(automation_dir, begun, write_pid):
+        return _lose_start(automation_dir, host_name=host_name, pid=process.pid, published=False)
+    startup = wait_for_automation_startup(
+        process=process, automation_dir=automation_dir, timeout_s=startup_wait_s, begun=begun,
+    )
+
+    def write_startup() -> None:
+        published[0] = record_worker_startup(automation_dir, published[0], startup)
+
+    if not keep(automation_dir, begun, write_startup):
+        return _lose_start(automation_dir, host_name=host_name, pid=process.pid, published=True)
+    return StartResult(
+        0 if startup["status"] in {"ready", "completed"} else 2,
+        "started",
+        host_name=host_name,
+        pid=process.pid,
+        startup=startup,
+        state_path=automation_dir / "state.json",
+        process_record=published[0],
+        log_path=log_path,
+    )
+
+
+def _record_launch_failure(automation_dir: Path, begun: int, exc: OSError) -> None:
+    error = f"Could not launch automation worker: {type(exc).__name__}: {exc}"
+
+    def write() -> None:
+        mark_automation_startup_error(automation_dir=automation_dir, error=error)
+
+    keep(automation_dir, begun, write)
+
+
+def _lose_start(automation_dir: Path, *, host_name: str, pid: int, published: bool) -> StartResult:
+    """The stop claimed the run. Drop a worker the stop could not see."""
+
+    if not published:
+        terminate_pid(pid, signal.SIGKILL)
+        with section(automation_dir) as run:
+            if run.pid() == pid:
+                mark_process_stopped(
+                    automation_dir / "process.json", read_process_record(automation_dir),
+                    stopped_by="stop_command",
+                )
+            if run.pid() in (None, pid):
+                mark_state_stopped(automation_dir / "state.json", stopped_by="stop_command")
+    return StartResult(
+        2, "stopped", host_name=host_name, pid=pid, state_path=automation_dir / "state.json",
+    )
+
+
+def _release_runtime(host_name: str, base_url: str | None, wait_s: float) -> StopResult | None:
+    if base_url is None:
+        return None
+    try:
+        RuntimeClient(base_url, timeout_s=max(1.0, wait_s)).stop()
+    except RuntimeError as exc:
+        if not PROVIDERS[staged_host(host_name)["provider"]].local_host:
+            return StopResult(2, "remote_failed", host_name, error=str(exc))
+        return _replace_unanswering_host(host_name, wait_s=wait_s)
+    return None
+
+
+def _stop_claimed(host_name: str, automation_dir: Path, claim: Claim, wait_s: float) -> StopResult:
+    state_path = automation_dir / "state.json"
+    pid = claim.pid
+    if pid is None:
+        _mark_if_unclaimed(automation_dir)
+        return StopResult(0, "no_pid", host_name, state_path=state_path)
+    if not pid_alive(pid):
+        _mark_claimed(automation_dir, pid, "stop_command_already_dead")
         return StopResult(0, "already_dead", host_name, pid=pid, state_path=state_path)
     if not pid_matches_automation(pid, host_name):
-        mark_process_stopped(process_path, process, stopped_by="stop_command_stale_pid")
-        mark_state_stopped(state_path, stopped_by="stop_command_stale_pid")
+        _mark_claimed(automation_dir, pid, "stop_command_stale_pid")
         return StopResult(
-            0, "stale_pid", host_name, pid=pid, command=process_command(pid)
+            0, "stale_pid", host_name, pid=pid, state_path=state_path, command=process_command(pid),
         )
-
     outcome = stop_worker(pid, wait_s=wait_s)
     if outcome != "timeout":
         stopped_by = "stop_command_forced" if outcome == "forced" else "stop_command"
-        mark_process_stopped(process_path, process, stopped_by=stopped_by)
-        mark_state_stopped(state_path, stopped_by=stopped_by)
-    return StopResult(
-        2 if outcome == "timeout" else 0,
-        outcome,
-        host_name,
-        pid=pid,
-        state_path=state_path,
-    )
+        _mark_claimed(automation_dir, pid, stopped_by)
+    return StopResult(2 if outcome == "timeout" else 0, outcome, host_name, pid=pid, state_path=state_path)
+
+
+def _mark_if_unclaimed(automation_dir: Path) -> None:
+    with section(automation_dir) as run:
+        if run.pid() is None:
+            mark_state_stopped(automation_dir / "state.json", stopped_by="stop_command_no_pid")
+
+
+def _mark_claimed(automation_dir: Path, pid: int, stopped_by: str) -> None:
+    with section(automation_dir) as run:
+        if run.pid() != pid:
+            return
+        mark_process_stopped(
+            automation_dir / "process.json", read_process_record(automation_dir), stopped_by=stopped_by,
+        )
+        mark_state_stopped(automation_dir / "state.json", stopped_by=stopped_by)
 
 
 def _replace_unanswering_host(host_name: str, *, wait_s: float) -> StopResult | None:

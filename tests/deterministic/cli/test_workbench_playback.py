@@ -326,6 +326,46 @@ class WorkbenchTests(unittest.TestCase):
             finally:
                 runner.close()
 
+    def test_history_owns_the_completed_frame_and_the_live_pipeline_stays_separate(self) -> None:
+        with image_source(3) as root:
+            runner = ImageReplayRunner(root, cadence_ms=5000, step_factories={"perception": FixtureMapper})
+            try:
+                run_id = runner.start()["run_id"]
+                _wait_until(lambda: runner.state()["progress"]["completed"] == 1)
+                paused = runner.dispatch("pause", run_id=run_id)
+                frame_id = paused["current_frame"]["frame_id"]
+                owned = runner._history[frame_id]
+                self.assertIs(runner._state["cycle"], owned["cycle"])
+                self.assertIs(owned["perception"], owned["cycle"]["perception"])
+                self.assertIs(runner._state["summary"], owned["summary"])
+                self.assertIs(runner._state["timing"], owned["timing"])
+                self.assertIsNot(runner._state["machine_detail"]["pipeline"], owned["pipeline"])
+
+                returned = runner.state()
+                returned["cycle"]["memory"] = {"replaced": True}
+                returned["summary"].clear()
+                returned["timing"]["steps"].clear()
+                returned["machine_detail"]["pipeline"].clear()
+                self.assertNotIn("replaced", owned["cycle"])
+                self.assertEqual(owned["summary"]["frames_completed"], 1)
+                self.assertTrue(owned["timing"]["steps"])
+                self.assertTrue(owned["pipeline"])
+
+                runner.dispatch("step", run_id=run_id)
+                self.assertIs(runner._history[frame_id]["cycle"], owned["cycle"])
+                self.assertEqual(owned["summary"]["frames_completed"], 1)
+                self.assertIsNot(runner._state["machine_detail"]["pipeline"], owned["pipeline"])
+                runner._state["machine_detail"]["pipeline"]["later"] = True
+                self.assertNotIn("later", owned["pipeline"])
+
+                sought = runner.dispatch("seek", run_id=run_id, position=0)
+                self.assertIs(runner._state["cycle"], owned["cycle"])
+                self.assertEqual(sought["current_frame"]["frame_id"], frame_id)
+                self.assertEqual(sought["summary"]["frames_completed"], 1)
+                self.assertNotIn("later", sought["machine_detail"]["pipeline"])
+            finally:
+                runner.close()
+
     def test_loop_playback_reprocesses_the_capture_each_pass(self) -> None:
         with image_source(2) as root:
             perception_step = FixtureMapper()

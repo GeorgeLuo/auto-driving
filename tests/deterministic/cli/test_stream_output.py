@@ -81,7 +81,7 @@ def _frame_publication(*, health="healthy", status="ok", error=None, **cycle):
         host_name="fixture", run_id="run", generation_id="generation",
         frame_id="next", frame_index=0, timestamp_ms=1, published_at_ms=1,
         values={"source_id": "fixture:local", "stale_after_ms": 1000,
-                "activation": {"generation_id": "generation", "steps": {}}},
+                "activation": {"steps": {}}},
         cycle={**{step: None for step in CYCLE_RECORD_KEYS}, **cycle},
         application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
         status=status, error=error,
@@ -318,7 +318,6 @@ class StreamOutputTests(unittest.TestCase):
         report = NORMALIZED["report"].to_dict()
         report["cycle"]["memory"] = {"schema": "memory_report", "plugins": [], "evidence_publisher": None}
         report["values"].update(source_id="fixture:local", stale_after_ms=1000)
-        report["values"]["activation"]["generation_id"] = report["generation_id"]
         publication = {"schema": "host_frame_publication", "health": "healthy", "report": report}
         with (
             patch.object(memory, "runtime_base_url", return_value="http://host.invalid"),

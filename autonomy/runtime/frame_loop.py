@@ -16,7 +16,7 @@ import time
 from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Callable
+from typing import Callable
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.cycle import DecisionCycleResult
@@ -43,7 +43,7 @@ def timestamp_ms() -> int:
     return int(time.time() * 1000)
 
 
-def encode_jpeg(image_array: Any) -> bytes:
+def encode_jpeg(image_array: object) -> bytes:
     """Encode a grayscale or RGB array as JPEG bytes without writing to disk."""
     from PIL import Image
     import numpy as np
@@ -73,9 +73,9 @@ def stale_after_ms(cycle_duration_ms: float | None) -> int:
 @dataclass
 class _FrameJpegCache:
     data: bytes | None = field(default=None, repr=False)
-    lock: Any = field(default_factory=threading.Lock, repr=False, compare=False)
+    lock: object = field(default_factory=threading.Lock, repr=False, compare=False)
 
-    def get(self, image: Any) -> bytes:
+    def get(self, image: object) -> bytes:
         with self.lock:
             if self.data is None:
                 self.data = encode_jpeg(image)
@@ -86,8 +86,8 @@ class _FrameJpegCache:
 class LatestObservationState:
     """One completed frame: its report and the image that frame was computed from."""
 
-    report: dict[str, Any]
-    image: Any
+    report: dict[str, object]
+    image: object
     jpeg_cache: _FrameJpegCache = field(default_factory=_FrameJpegCache, repr=False, compare=False)
 
     @property
@@ -118,11 +118,11 @@ class LatestCameraFrame:
     frame_id: str
     frame_index: int
     captured_at_ms: int
-    image: Any
+    image: object
     sequence: int = 0
-    metadata: dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, object] = field(default_factory=dict)
     jpeg_cache: _FrameJpegCache = field(default_factory=_FrameJpegCache, repr=False, compare=False)
-    image_loader: Callable[[], Any] | None = field(default=None, repr=False, compare=False)
+    image_loader: Callable[[], object] | None = field(default=None, repr=False, compare=False)
 
 
 @dataclass(frozen=True)
@@ -186,7 +186,7 @@ class FrameLoop:
     def _frame_completed(self) -> None:
         pass
 
-    def observation_status(self) -> dict[str, Any]:
+    def observation_status(self) -> dict[str, object]:
         """Bounded observation counters for the cycle host's status providers.
 
         Must not call back into ``AutonomyCycleHost.status``; that re-enters
@@ -207,14 +207,14 @@ class FrameLoop:
                 },
             }
 
-    def publish_latest(self, *, now_ms: int | None = None) -> dict[str, Any]:
+    def publish_latest(self, *, now_ms: int | None = None) -> dict[str, object]:
         """Return one bounded latest frame/result publication computed at read time."""
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
             publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
         return deepcopy(publication)
 
-    def read_transaction(self) -> tuple[dict[str, Any], LatestObservationState | None, str]:
+    def read_transaction(self) -> tuple[dict[str, object], LatestObservationState | None, str]:
         """Borrow the frame publication and the state it was built from.
 
         Completed frame data is replaced, rather than updated in place. The
@@ -241,7 +241,7 @@ class FrameLoop:
         if thread.is_alive():
             raise TimeoutError("observation cycle did not finish")
 
-    def _recording_jpeg(self, image: Any) -> bytes:
+    def _recording_jpeg(self, image: object) -> bytes:
         # The owning worker's capture outlives its recording callback. The
         # per-capture cache serializes encoding without a publication lock.
         camera = self._inflight_camera
@@ -249,7 +249,7 @@ class FrameLoop:
             return self.frame_jpeg(camera)
         return encode_jpeg(image)
 
-    def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, Any]:
+    def start(self, configuration: RunConfiguration, *, record: bool = False) -> dict[str, object]:
         with self._lifecycle_lock:
             recording = None
             if record:
@@ -264,7 +264,7 @@ class FrameLoop:
                 self._discard_pending_locked()
             return self.host.start(configuration, recording=recording)
 
-    def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, Any]:
+    def stop(self, *, reason: str = "stopped", error: str | None = None) -> dict[str, object]:
         with self._lifecycle_lock:
             with self._lock:
                 self._discard_pending_locked()
@@ -285,7 +285,7 @@ class FrameLoop:
 
     def submit(
         self,
-        image: Any,
+        image: object,
         *,
         mode: str | None = None,
         user_steering: float | None = None,
@@ -293,9 +293,9 @@ class FrameLoop:
         captured_at_ms: int | None = None,
         frame_id: str | None = None,
         frame_index: int | None = None,
-        metadata: dict[str, Any] | None = None,
+        metadata: dict[str, object] | None = None,
         jpeg_bytes: bytes | None = None,
-        image_loader: Callable[[], Any] | None = None,
+        image_loader: Callable[[], object] | None = None,
     ) -> None:
         """Make one camera sample the newest pending frame.
 
@@ -343,7 +343,7 @@ class FrameLoop:
         self._pending_frame = None
         self._queue_generation += 1
 
-    def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, Any]:
+    def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, object]:
         """The frame envelope, borrowing the completed report."""
         latest = self.latest_state
         report = None
@@ -365,13 +365,13 @@ class FrameLoop:
             "report": report,
         }
 
-    def _capture_frame_report(self, result: DecisionCycleResult, *, error: str | None) -> dict[str, Any]:
+    def _capture_frame_report(self, result: DecisionCycleResult, *, error: str | None) -> dict[str, object]:
         """The report for this camera frame, naming the identity the host stamped on it."""
         metadata = result.context.metadata
         generation_id = metadata["generation_id"]
-        values: dict[str, Any] = {
+        values: dict[str, object] = {
             "source_id": self.source_id or f"{self.runtime}:local",
-            "activation": {"generation_id": generation_id, "steps": metadata["step_activations"]},
+            "activation": {"steps": metadata["step_activations"]},
             "stale_after_ms": stale_after_ms(result.duration_ms),
             **delivery_values(result.application),
         }
@@ -386,7 +386,7 @@ class FrameLoop:
             error=error,
         ).to_dict()
 
-    def _frame_report(self, result: DecisionCycleResult, *, error: str | None) -> dict[str, Any] | None:
+    def _frame_report(self, result: DecisionCycleResult, *, error: str | None) -> dict[str, object] | None:
         """This frame's report; step data that is not JSON publishes it with null steps."""
         try:
             return self._capture_frame_report(result, error=error)

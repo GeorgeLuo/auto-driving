@@ -11,7 +11,6 @@ import json
 import math
 from copy import deepcopy
 from functools import partial
-from typing import Any
 
 from autonomy.decision_cycle.action_identifiers import (
     require_ascii_id,
@@ -39,7 +38,7 @@ def _host_telemetry_error(
     message: str,
     *,
     field: str | None = None,
-    details: dict[str, Any] | None = None,
+    details: dict[str, object] | None = None,
 ) -> HostTelemetryError:
     if reason not in HOST_TELEMETRY_REASONS:
         reason = "field_invalid"
@@ -119,7 +118,7 @@ def _host_require_limits(value: object) -> dict[str, int]:
     return normalized
 
 
-def _host_strict_copy(value: object, *, field: str) -> Any:
+def _host_strict_copy(value: object, *, field: str) -> object:
     try:
         return json.loads(
             json.dumps(value, allow_nan=False, separators=(",", ":"), sort_keys=True)
@@ -132,7 +131,7 @@ def _host_strict_copy(value: object, *, field: str) -> Any:
         ) from exc
 
 
-def _host_status_error(publication: dict[str, Any]) -> None:
+def _host_status_error(publication: dict[str, object]) -> None:
     status = publication.get("status")
     if status == "healthy":
         return
@@ -205,8 +204,8 @@ def host_telemetry_failure(
     reason: str,
     *,
     message: str | None = None,
-    details: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+    details: dict[str, object] | None = None,
+) -> dict[str, object]:
     """Build an explicit empty host-telemetry panel without inventing values."""
 
     if reason not in HOST_TELEMETRY_REASONS:
@@ -238,17 +237,13 @@ def _host_identity_from_record(
     source_id: str,
     run_id: str,
     generation_id: str,
-    activation: dict[str, Any],
-    source_frame: dict[str, Any],
-) -> dict[str, Any]:
+    source_frame: dict[str, object],
+) -> dict[str, object]:
     return {
         "host_name": host_name,
         "source_id": source_id,
         "run_id": run_id,
         "generation_id": generation_id,
-        "activation": {
-            "generation_id": activation["generation_id"],
-        },
         "source_frame": {
             "frame_id": source_frame["frame_id"],
             "frame_index": source_frame["frame_index"],
@@ -258,24 +253,21 @@ def _host_identity_from_record(
     }
 
 
-def normalize_host_telemetry_record(
-    record: object,
-    *,
-    now_ms: int,
-    host_name: str | None = None,
-) -> dict[str, Any]:
-    """Validate one latest host telemetry point.
-
-    Sequence, gap, and skipped values remain producer facts on the point.
-    """
-
+def _checked_now(now_ms: int) -> None:
     if type(now_ms) is not int or now_ms < 0:
         raise ValueError("now_ms must be a non-negative non-bool int")
-    if host_name is not None:
-        try:
-            host_name = require_ascii_id(host_name, field_name="host_name")
-        except ValueError as exc:
-            raise ValueError("host_name must be a valid identity") from exc
+
+
+def _checked_host_name(host_name: str | None) -> str | None:
+    if host_name is None:
+        return None
+    try:
+        return require_ascii_id(host_name, field_name="host_name")
+    except ValueError as exc:
+        raise ValueError("host_name must be a valid identity") from exc
+
+
+def _telemetry_mapping(record: object) -> dict[str, object]:
     if not isinstance(record, dict):
         raise _host_telemetry_error(
             "schema_invalid",
@@ -288,13 +280,11 @@ def normalize_host_telemetry_record(
             field="schema",
         )
     _host_status_error(record)
-
     required = {
         "host_name",
         "source_id",
         "run_id",
         "generation_id",
-        "activation",
         "source_frame",
         "host_tick",
         "mode",
@@ -311,7 +301,10 @@ def normalize_host_telemetry_record(
             f"Host telemetry record is missing required fields: {', '.join(missing)}.",
             details={"missing": missing},
         )
+    return record
 
+
+def _record_identity(record: dict[str, object], *, host_name: str | None) -> dict[str, str]:
     record_host_name = _host_require_id(record.get("host_name"), field="host_name")
     if host_name is not None and record_host_name != host_name:
         raise _host_telemetry_error(
@@ -319,49 +312,25 @@ def normalize_host_telemetry_record(
             "Host telemetry host_name does not match the requested host.",
             field="host_name",
         )
-    source_id = _host_require_id(record.get("source_id"), field="source_id")
-    run_id = _host_require_id(record.get("run_id"), field="run_id")
-    generation_id = _host_require_id(record.get("generation_id"), field="generation_id")
-
-    activation = _host_require_mapping(record.get("activation"), field="activation")
-    activation_required = {"generation_id"}
-    missing_activation = sorted(activation_required - set(activation))
-    if missing_activation:
-        raise _host_telemetry_error(
-            "field_invalid",
-            "Host telemetry activation is missing required fields.",
-            field="activation",
-            details={"missing": missing_activation},
-        )
-    activation_generation_id = _host_require_id(
-        activation.get("generation_id"), field="activation.generation_id"
-    )
-    if activation_generation_id != generation_id:
-        raise _host_telemetry_error(
-            "field_invalid",
-            "Host telemetry activation.generation_id must equal generation_id.",
-            field="activation.generation_id",
-        )
-
-    source_frame = _host_require_mapping(record.get("source_frame"), field="source_frame")
-    source_frame_required = {
-        "frame_id",
-        "frame_index",
-        "captured_at_ms",
-        "completed_at_ms",
+    return {
+        "host_name": record_host_name,
+        "source_id": _host_require_id(record.get("source_id"), field="source_id"),
+        "run_id": _host_require_id(record.get("run_id"), field="run_id"),
+        "generation_id": _host_require_id(record.get("generation_id"), field="generation_id"),
     }
-    missing_source_frame = sorted(source_frame_required - set(source_frame))
-    if missing_source_frame:
+
+
+def _record_source_frame(record: dict[str, object]) -> dict[str, object]:
+    source_frame = _host_require_mapping(record.get("source_frame"), field="source_frame")
+    required = {"frame_id", "frame_index", "captured_at_ms", "completed_at_ms"}
+    missing = sorted(required - set(source_frame))
+    if missing:
         raise _host_telemetry_error(
             "field_invalid",
             "Host telemetry source_frame is missing required fields.",
             field="source_frame",
-            details={"missing": missing_source_frame},
+            details={"missing": missing},
         )
-    source_frame_id = _host_require_id(source_frame.get("frame_id"), field="source_frame.frame_id")
-    source_frame_index = _host_require_nonnegative_int(
-        source_frame.get("frame_index"), field="source_frame.frame_index"
-    )
     captured_at_ms = _host_require_epoch_ms(
         source_frame.get("captured_at_ms"), field="source_frame.captured_at_ms"
     )
@@ -374,9 +343,19 @@ def normalize_host_telemetry_record(
             "Host telemetry source_frame captured_at_ms cannot exceed completed_at_ms.",
             field="source_frame",
         )
+    return {
+        "frame_id": _host_require_id(source_frame.get("frame_id"), field="source_frame.frame_id"),
+        "frame_index": _host_require_nonnegative_int(
+            source_frame.get("frame_index"), field="source_frame.frame_index"
+        ),
+        "captured_at_ms": captured_at_ms,
+        "completed_at_ms": completed_at_ms,
+    }
 
+
+def _record_host_tick(record: dict[str, object]) -> dict[str, object]:
     host_tick = _host_require_mapping(record.get("host_tick"), field="host_tick")
-    tick_required = {
+    required = {
         "sequence",
         "observed_at_ms",
         "published_at_ms",
@@ -384,13 +363,13 @@ def normalize_host_telemetry_record(
         "gap_since_previous_ms",
         "skipped_since_previous",
     }
-    missing_tick = sorted(tick_required - set(host_tick))
-    if missing_tick:
+    missing = sorted(required - set(host_tick))
+    if missing:
         raise _host_telemetry_error(
             "field_invalid",
             "Host telemetry host_tick is missing required fields.",
             field="host_tick",
-            details={"missing": missing_tick},
+            details={"missing": missing},
         )
     sequence = _host_require_nonnegative_int(host_tick.get("sequence"), field="host_tick.sequence")
     if sequence < 1:
@@ -399,15 +378,6 @@ def normalize_host_telemetry_record(
             "Host telemetry host_tick.sequence must start at 1.",
             field="host_tick.sequence",
         )
-    observed_at_ms = _host_require_epoch_ms(
-        host_tick.get("observed_at_ms"), field="host_tick.observed_at_ms"
-    )
-    published_at_ms = _host_require_epoch_ms(
-        host_tick.get("published_at_ms"), field="host_tick.published_at_ms"
-    )
-    source_age_ms = _host_require_nonnegative_int(
-        host_tick.get("source_age_ms"), field="host_tick.source_age_ms"
-    )
     gap_value = host_tick.get("gap_since_previous_ms")
     skipped_value = host_tick.get("skipped_since_previous")
     if sequence == 1:
@@ -426,7 +396,23 @@ def normalize_host_telemetry_record(
         skipped_since_previous = _host_require_nonnegative_int(
             skipped_value, field="host_tick.skipped_since_previous"
         )
+    return {
+        "sequence": sequence,
+        "observed_at_ms": _host_require_epoch_ms(
+            host_tick.get("observed_at_ms"), field="host_tick.observed_at_ms"
+        ),
+        "published_at_ms": _host_require_epoch_ms(
+            host_tick.get("published_at_ms"), field="host_tick.published_at_ms"
+        ),
+        "source_age_ms": _host_require_nonnegative_int(
+            host_tick.get("source_age_ms"), field="host_tick.source_age_ms"
+        ),
+        "gap_since_previous_ms": gap_since_previous_ms,
+        "skipped_since_previous": skipped_since_previous,
+    }
 
+
+def _record_boundary(record: dict[str, object]) -> dict[str, object]:
     mode = record.get("mode")
     if type(mode) is not str or mode not in HOST_TELEMETRY_MODES:
         raise _host_telemetry_error(
@@ -434,11 +420,6 @@ def normalize_host_telemetry_record(
             "Host telemetry mode is not one of user, local_angle, or local.",
             field="mode",
         )
-    user_input = _host_require_command(record.get("user_input"), field="user_input")
-    pilot_output = _host_require_command(record.get("pilot_output"), field="pilot_output")
-    host_selected_output = _host_require_command(
-        record.get("host_selected_output"), field="host_selected_output"
-    )
     application = _host_require_mapping(record.get("application"), field="application")
     if application.get("boundary") != "post_drive_mode_pre_drivetrain":
         raise _host_telemetry_error(
@@ -452,8 +433,26 @@ def normalize_host_telemetry_record(
             "Host telemetry actuator feedback must remain unavailable.",
             field="application.actuator_feedback",
         )
-    limits = _host_require_limits(record.get("limits"))
+    return {
+        "mode": mode,
+        "user_input": _host_require_command(record.get("user_input"), field="user_input"),
+        "pilot_output": _host_require_command(record.get("pilot_output"), field="pilot_output"),
+        "host_selected_output": _host_require_command(
+            record.get("host_selected_output"), field="host_selected_output"
+        ),
+    }
 
+
+def _record_freshness(
+    *,
+    now_ms: int,
+    completed_at_ms: int,
+    host_tick: dict[str, object],
+    limits: dict[str, int],
+) -> dict[str, int]:
+    observed_at_ms = host_tick["observed_at_ms"]
+    published_at_ms = host_tick["published_at_ms"]
+    source_age_ms = host_tick["source_age_ms"]
     computed_source_age_ms = observed_at_ms - completed_at_ms
     if computed_source_age_ms < 0:
         raise _host_telemetry_error(
@@ -474,7 +473,6 @@ def normalize_host_telemetry_record(
             "Host telemetry published_at_ms cannot precede observed_at_ms.",
             field="host_tick.published_at_ms",
         )
-
     future_skew_ms = max(0, published_at_ms - now_ms)
     if observed_at_ms > now_ms + limits["future_skew_tolerance_ms"]:
         raise _host_telemetry_error(
@@ -490,7 +488,6 @@ def normalize_host_telemetry_record(
             field="host_tick.published_at_ms",
             details={"future_skew_ms": future_skew_ms},
         )
-
     publication_age_ms = now_ms - published_at_ms
     if source_age_ms > limits["max_source_age_ms"]:
         raise _host_telemetry_error(
@@ -504,63 +501,73 @@ def normalize_host_telemetry_record(
             f"Host telemetry publication age {publication_age_ms} ms exceeds its limit.",
             field="host_tick.published_at_ms",
         )
-
-    detached_record = _host_strict_copy(record, field="record")
-    normalized_host_tick = {
-        "sequence": sequence,
+    return {
         "observed_at_ms": observed_at_ms,
         "published_at_ms": published_at_ms,
         "source_age_ms": source_age_ms,
-        "gap_since_previous_ms": gap_since_previous_ms,
-        "skipped_since_previous": skipped_since_previous,
+        "publication_age_ms": publication_age_ms,
+        "future_skew_ms": future_skew_ms,
+        "max_source_age_ms": limits["max_source_age_ms"],
+        "max_publication_age_ms": limits["max_publication_age_ms"],
+        "max_gap_ms": limits["max_gap_ms"],
+        "future_skew_tolerance_ms": limits["future_skew_tolerance_ms"],
     }
+
+
+def normalize_host_telemetry_record(
+    record: object,
+    *,
+    now_ms: int,
+    host_name: str | None = None,
+) -> dict[str, object]:
+    """Validate one latest host telemetry point.
+
+    Sequence, gap, and skipped values remain producer facts on the point.
+    """
+
+    _checked_now(now_ms)
+    host_name = _checked_host_name(host_name)
+    body = _telemetry_mapping(record)
+    named = _record_identity(body, host_name=host_name)
+    source_frame = _record_source_frame(body)
+    host_tick = _record_host_tick(body)
+    boundary = _record_boundary(body)
+    limits = _host_require_limits(body.get("limits"))
+    freshness = _record_freshness(
+        now_ms=now_ms,
+        completed_at_ms=source_frame["completed_at_ms"],
+        host_tick=host_tick,
+        limits=limits,
+    )
     identity = _host_identity_from_record(
-        host_name=record_host_name,
-        source_id=source_id,
-        run_id=run_id,
-        generation_id=generation_id,
-        activation={
-            "generation_id": activation_generation_id,
-        },
-        source_frame={
-            "frame_id": source_frame_id,
-            "frame_index": source_frame_index,
-            "captured_at_ms": captured_at_ms,
-            "completed_at_ms": completed_at_ms,
-        },
+        host_name=named["host_name"],
+        source_id=named["source_id"],
+        run_id=named["run_id"],
+        generation_id=named["generation_id"],
+        source_frame=source_frame,
     )
     return {
         "schema": HOST_TELEMETRY_NORMALIZED_SCHEMA,
         "status": "healthy",
         "reason": "",
-        "record": detached_record,
+        "record": _host_strict_copy(body, field="record"),
         "identity": identity,
         "source_frame": deepcopy(identity["source_frame"]),
-        "host_tick": normalized_host_tick,
-        "mode": mode,
-        "user_input": user_input,
-        "pilot_output": pilot_output,
-        "host_selected_output": host_selected_output,
+        "host_tick": host_tick,
+        "mode": boundary["mode"],
+        "user_input": boundary["user_input"],
+        "pilot_output": boundary["pilot_output"],
+        "host_selected_output": boundary["host_selected_output"],
         "application": {
             "boundary": "post_drive_mode_pre_drivetrain",
             "actuator_feedback": "unavailable",
         },
         "limits": limits,
-        "freshness": {
-            "observed_at_ms": observed_at_ms,
-            "published_at_ms": published_at_ms,
-            "source_age_ms": source_age_ms,
-            "publication_age_ms": publication_age_ms,
-            "future_skew_ms": future_skew_ms,
-            "max_source_age_ms": limits["max_source_age_ms"],
-            "max_publication_age_ms": limits["max_publication_age_ms"],
-            "max_gap_ms": limits["max_gap_ms"],
-            "future_skew_tolerance_ms": limits["future_skew_tolerance_ms"],
-        },
+        "freshness": freshness,
     }
 
 
-def _decision_source_frame(report: HostReport) -> dict[str, Any]:
+def _decision_source_frame(report: HostReport) -> dict[str, object]:
     """The report's own frame: its id, index, capture, and completion."""
 
     try:
@@ -590,7 +597,7 @@ def _decision_source_frame(report: HostReport) -> dict[str, Any]:
     return frame
 
 
-def decision_publication_identity(normalized_decision: dict[str, Any]) -> dict[str, Any]:
+def decision_publication_identity(normalized_decision: dict[str, object]) -> dict[str, object]:
     """Extract the exact composite identity needed for a telemetry join."""
 
     report = normalized_decision.get("report")
@@ -599,18 +606,9 @@ def decision_publication_identity(normalized_decision: dict[str, Any]) -> dict[s
             "identity_mismatch",
             "Decision publication has no decision report.",
         )
-    values = report.values if isinstance(report.values, dict) else {}
-    activation = values.get("activation") if isinstance(values.get("activation"), dict) else None
-    if not isinstance(activation, dict):
-        raise _host_telemetry_error(
-            "identity_mismatch",
-            "Decision publication cannot expose activation identity.",
-        )
+    values = report.values
     try:
         source_id = _host_require_id(values.get("source_id"), field="decision.values.source_id")
-        activation_generation_id = _host_require_id(
-            activation.get("generation_id"), field="decision.values.activation.generation_id"
-        )
         source_frame = _decision_source_frame(report)
     except HostTelemetryError as exc:
         if exc.reason == "identity_mismatch":
@@ -620,31 +618,20 @@ def decision_publication_identity(normalized_decision: dict[str, Any]) -> dict[s
             "Decision publication cannot expose exact telemetry identity.",
             details=exc.details,
         ) from exc
-    host_name = report.host_name
-    run_id = report.run_id
-    generation_id = report.generation_id
-    if activation_generation_id != generation_id:
-        raise _host_telemetry_error(
-            "identity_mismatch",
-            "Decision activation generation does not match its envelope.",
-        )
     return {
-        "host_name": host_name,
+        "host_name": report.host_name,
         "source_id": source_id,
-        "run_id": run_id,
-        "generation_id": generation_id,
-        "activation": {
-            "generation_id": activation_generation_id,
-        },
+        "run_id": report.run_id,
+        "generation_id": report.generation_id,
         "source_frame": source_frame,
     }
 
 
 def _host_telemetry_panel_from_normalized(
-    normalized: dict[str, Any],
+    normalized: dict[str, object],
     *,
     joined: bool,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     return {
         "schema": HOST_TELEMETRY_PANEL_SCHEMA,
         "status": normalized.get("status"),
@@ -668,11 +655,11 @@ def _host_telemetry_panel_from_normalized(
 
 def join_host_telemetry_to_decision(
     telemetry: object,
-    normalized_decision: dict[str, Any],
+    normalized_decision: dict[str, object],
     *,
     now_ms: int | None = None,
     host_name: str | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Join a normalized/latest telemetry point to a decision exactly."""
 
     if isinstance(telemetry, dict) and telemetry.get("schema") == TELEMETRY_SCHEMA:

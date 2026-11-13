@@ -66,6 +66,8 @@ exists, it is not running, or it does not answer. While the host is not live,
 for example after its run stopped, it prints `Not live:` with the reason, and
 the Perception page keeps the host's last frame, marked Stale.
 
+`hosts still --name <host>` saves one JPEG of that host's latest processed frame, prints its frame id, age and health, and opens it. An idle Chase host has no frame until a run is started.
+
 Nothing is listed until you discover it or `simulators create` starts it.
 To list a simulator or a PiCar:
 

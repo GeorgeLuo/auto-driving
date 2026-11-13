@@ -1,4 +1,4 @@
 """Host runtime view composition, feeds, and discovery.
 
-``commands`` registers ``hosts viewer``.
+``commands`` registers ``hosts viewer`` and ``hosts still``.
 """

@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from ...shared.text import format_browser_result
-from .models import ViewerEvent, ViewerResult
+from .models import StillResult, ViewerEvent, ViewerResult
 
 
 def render_viewer_event(event: ViewerEvent) -> str:
@@ -11,6 +11,26 @@ def render_viewer_event(event: ViewerEvent) -> str:
         *([f"Not live: {event.not_live}"] if event.not_live is not None else []),
         format_browser_result(event.browser),
     ])
+
+
+def render_still_result(result: StillResult) -> str:
+    if result.kind == "error":
+        return result.error
+    if result.kind == "unavailable":
+        return f"Cannot read a frame from host {result.host_name} at {result.base_url}: {result.error}"
+    if result.kind == "missing":
+        return f"No frame from host {result.host_name}. {result.missing}"
+    age = f"{result.age_ms} ms" if result.age_ms is not None else "unknown"
+    lines = [
+        f"Still of host {result.host_name} at {result.base_url}",
+        f"frame: {result.frame_id}",
+        f"age: {age}",
+        f"health: {result.health}",
+        result.path,
+    ]
+    if result.browser is not None:
+        lines.append(format_browser_result(result.browser))
+    return "\n".join(lines)
 
 
 def render_viewer_result(result: ViewerResult) -> str:

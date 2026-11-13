@@ -64,7 +64,6 @@ def _record(
         "source_id": "donkeycar:piracer",
         "run_id": "run-1",
         "generation_id": GENERATION_ID,
-        "activation": {"generation_id": GENERATION_ID},
         "source_frame": {
             "frame_id": frame_id,
             "frame_index": frame_index,
@@ -125,7 +124,6 @@ def _decision(*, source_frame: dict | None = None) -> dict:
         values={
             "source_id": "donkeycar:piracer",
             "activation": {
-                "generation_id": GENERATION_ID,
                 "steps": {step: activation.to_payload() for step, activation in _STEPS.items()},
             },
             "stale_after_ms": 1_500,
@@ -254,7 +252,6 @@ class HostTelemetryConsumerTests(unittest.TestCase):
 
         def mismatch_generation(record: dict) -> None:
             record["generation_id"] = "other-gen"
-            record["activation"] = {"generation_id": "other-gen"}
 
         for name, mutate in (("frame", mismatch_frame), ("run", mismatch_run), ("generation", mismatch_generation)):
             with self.subTest(mismatch=name):

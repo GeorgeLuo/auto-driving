@@ -300,7 +300,7 @@ class ObservationPublicationTests(unittest.TestCase):
             {step: values["activation"]["steps"][step] for step in STEPS}, prefix="decision"
         )
         self.assertEqual(published["generation_id"], expected_generation)
-        self.assertEqual(values["activation"]["generation_id"], expected_generation)
+        self.assertNotIn("generation_id", values["activation"])
         self.assertEqual(expected_generation, part.host.applied_decision()["generation_id"])
         self.assertEqual(telemetry_generation(), expected_generation)
         self.assertEqual(sorted(values["activation"]["steps"]), sorted(STEPS))
@@ -350,7 +350,7 @@ class ObservationPublicationTests(unittest.TestCase):
         restaged = part.latest_state.report["generation_id"]
         self.assertNotEqual(restaged, expected_generation)
         self.assertEqual(restaged, part.host.applied_decision()["generation_id"])
-        self.assertEqual(part.latest_state.report["values"]["activation"]["generation_id"], restaged)
+        self.assertNotIn("generation_id", part.latest_state.report["values"]["activation"])
         self.assertEqual(telemetry_generation(), restaged)
         self.assertNotEqual(part.latest_state.frame_id, published["frame_id"])
 

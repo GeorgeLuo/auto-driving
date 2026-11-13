@@ -269,7 +269,7 @@ class ObservationSampleTests(unittest.TestCase):
         publication = _publication()
         publication["report"]["values"] = {
             "source_id": "fixture:local", "stale_after_ms": 1000,
-            "activation": {"generation_id": "decision-test", "steps": {}},
+            "activation": {"steps": {}},
         }
         pair = publication, _jpeg((4, 4), (1, 2, 3))
         with tempfile.TemporaryDirectory() as tmp, patch.object(viewer, "runtime_view_dir", return_value=Path(tmp)):

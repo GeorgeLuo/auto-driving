@@ -1,8 +1,6 @@
 from __future__ import annotations
 
 import time
-from pathlib import Path
-from typing import Any
 
 from .donkey_client import DonkeyClient
 from .defaults import (
@@ -14,9 +12,6 @@ from .defaults import (
 from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
     CarInterface,
-    SensorReadRequest,
-    SensorReading,
-    SensorFrame,
     VehicleAction,
     VehicleCapabilities,
     VehiclePulse,
@@ -24,16 +19,6 @@ from autonomy.vehicle import (
 )
 
 VEHICLE_KIND = "picar-donkey-http"
-
-
-def _timestamp_ms() -> int:
-    return int(time.time() * 1000)
-
-
-def _reject_unsupported_sensors(request: SensorReadRequest) -> None:
-    unsupported = set(request.requested_sensors) - {FRONT_CAMERA_SENSOR_ID}
-    if unsupported:
-        raise ValueError(f"unsupported PiCar sensors requested: {sorted(unsupported)}")
 
 
 class PiCar(CarInterface):
@@ -55,7 +40,6 @@ class PiCar(CarInterface):
                     "sensor_kind": "camera",
                     "pose": "fixed_front_low",
                     "available": True,
-                    "default_endpoint": "/frame.jpg",
                     "physical_limitations": (
                         "single low-mounted forward-facing camera",
                         "no side/rear view unless the vehicle moves or turns",
@@ -84,7 +68,7 @@ class PiCar(CarInterface):
             return action.steering, normalized_throttle
         return action.steering, 0.0
 
-    def prepare_for_external_control(self) -> dict[str, Any]:
+    def prepare_for_external_control(self) -> dict[str, object]:
         """The Donkey HTTP drive is already the external input."""
         now_ms = int(time.time() * 1000)
         return {
@@ -103,7 +87,7 @@ class PiCar(CarInterface):
         *,
         throttle: float,
         recording: bool = False,
-    ) -> dict[str, Any]:
+    ) -> dict[str, object]:
         angle, signed_throttle = self._action_to_drive(action, throttle)
         self.client.set_drive(
             angle=angle,
@@ -120,35 +104,8 @@ class PiCar(CarInterface):
             "sent_at_ms": int(time.time() * 1000),
         }
 
-    def execute_pulse(self, pulse: VehiclePulse) -> dict[str, Any]:
+    def execute_pulse(self, pulse: VehiclePulse) -> dict[str, object]:
         return run_vehicle_pulse(self, pulse)
-
-    def read_sensors(self, request: SensorReadRequest) -> SensorFrame:
-        _reject_unsupported_sensors(request)
-        started_ms = _timestamp_ms()
-        readings: dict[str, SensorReading] = {}
-
-        if request.sensor_requested(FRONT_CAMERA_SENSOR_ID):
-            capture = self.client.download_frame(
-                request.front_camera_path(),
-                endpoint=request.front_camera_endpoint,
-            )
-            readings[FRONT_CAMERA_SENSOR_ID] = SensorReading(
-                sensor_id=FRONT_CAMERA_SENSOR_ID,
-                sensor_kind="camera",
-                path=capture.get("path"),
-                captured_at_ms=int(capture.get("captured_at_ms") or _timestamp_ms()),
-                metadata=capture,
-            )
-
-        return SensorFrame(
-            read_id=request.read_id,
-            readings=readings,
-            started_at_ms=started_ms,
-            completed_at_ms=_timestamp_ms(),
-            request=request.to_dict(),
-            metadata={"vehicle": self.capabilities.to_dict()},
-        )
 
 
 def create_picar(
@@ -165,7 +122,7 @@ def create_picar(
     )
 
 
-def describe_picar(car: PiCar) -> dict[str, Any]:
+def describe_picar(car: PiCar) -> dict[str, object]:
     return {
         "base_url": car.base_url,
         "capabilities": car.capabilities.to_dict(),

@@ -3,7 +3,6 @@ from __future__ import annotations
 import math
 import time
 from dataclasses import asdict, dataclass, field
-from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 
@@ -68,38 +67,6 @@ class VehiclePulse:
         data = asdict(self)
         data["action"] = self.action.to_dict()
         return data
-
-
-@dataclass(frozen=True)
-class SensorReadRequest:
-    """Request for a vehicle sensor frame.
-
-    The vehicle boundary is generic, but today's implementations only expose a
-    fixed front camera. Additional sensors can be added without changing the
-    decision loop shape.
-    """
-
-    output_dir: Path
-    read_id: str = "sensor_read"
-    requested_sensors: tuple[str, ...] = (FRONT_CAMERA_SENSOR_ID,)
-    front_camera_endpoint: str = "/frame.jpg"
-    image_extension: str = "jpg"
-
-    def sensor_requested(self, sensor_id: str) -> bool:
-        return sensor_id in self.requested_sensors
-
-    def front_camera_path(self) -> Path:
-        extension = self.image_extension.lstrip(".") or "jpg"
-        return self.output_dir / f"{self.read_id}_{FRONT_CAMERA_SENSOR_ID}.{extension}"
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "output_dir": str(self.output_dir),
-            "read_id": self.read_id,
-            "requested_sensors": list(self.requested_sensors),
-            "front_camera_endpoint": self.front_camera_endpoint,
-            "image_extension": self.image_extension,
-        }
 
 
 @dataclass(frozen=True)
@@ -190,9 +157,6 @@ class CarInterface(Protocol):
         ...
 
     def execute_pulse(self, pulse: VehiclePulse) -> dict[str, object]:
-        ...
-
-    def read_sensors(self, request: SensorReadRequest) -> SensorFrame:
         ...
 
 

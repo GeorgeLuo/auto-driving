@@ -102,8 +102,6 @@ class RuntimeViewServer:
         self.hosts = hosts
         self.reads = reads or {}
         self.writes = writes or {}
-        # Write routes run one at a time: their commands read and rewrite the same records.
-        self.write_lock = threading.Lock()
         self._replay_runner = replay_runner
         self._replay_runner_factory = replay_runner_factory
         self._replay_runner_lock = threading.Lock()
@@ -257,10 +255,11 @@ class _RuntimeViewHandler(LoopbackHTTPRequestHandler):
         if error is not None:
             self._send_json(*error)
             return
+        # The command locks the record it changes. Holding one lock across every
+        # write would make a stop wait for another host's command or for plugin arming.
         try:
             body = read_json_object(self, what="request body")
-            with self.server.publisher.write_lock:
-                result = command(body)
+            result = command(body)
         except (OSError, ValueError, TypeError, RuntimeError) as exc:
             result = error_payload(str(exc))
         self._send_json(200 if result.get("ok") else 400, result)

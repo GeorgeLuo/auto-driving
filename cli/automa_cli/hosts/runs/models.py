@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 WORKER_MODULE = "cli.automa_cli.hosts.runs.worker"
 
@@ -22,18 +22,18 @@ MAX_STATUS_REASON_CHARS = 240
 class RunResult:
     exit_code: int
     message: str = ""
-    state: dict[str, Any] | None = None
+    state: dict[str, object] | None = None
     state_path: Path | None = None
     problems: list[dict[str, str]] | None = None
 
 
-def run_exit_code(state: dict[str, Any]) -> int:
+def run_exit_code(state: dict[str, object]) -> int:
     if state["status"] == "error":
         return 2
     return 130 if state.get("stop_reason") == "keyboard_interrupt" else 0
 
 
-def status_reason(value: Any, *, fallback: str) -> str:
+def status_reason(value: object, *, fallback: str) -> str:
     """The first line of a reason, truncated so a status row stays one line."""
 
     lines = (
@@ -59,6 +59,7 @@ class StartResult:
         "authority_mismatch",
         "existing",
         "launch_failed",
+        "stopped",
         "started",
     ]
     host_name: str = ""
@@ -67,10 +68,10 @@ class StartResult:
     state_pid: int | None = None
     state_path: Path | None = None
     log_path: Path | None = None
-    expected_authority: dict[str, Any] | None = None
-    actual_authority: dict[str, Any] | None = None
-    process_record: dict[str, Any] | None = None
-    startup: dict[str, Any] | None = None
+    expected_authority: dict[str, object] | None = None
+    actual_authority: dict[str, object] | None = None
+    process_record: dict[str, object] | None = None
+    startup: dict[str, object] | None = None
     problems: list[dict[str, str]] | None = None
 
 

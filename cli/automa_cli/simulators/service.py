@@ -14,6 +14,7 @@ from pathlib import Path
 from ..hosts.discovery import hosts_by_vehicle
 from ..providers.registry import CHASE_SIM
 from ..providers.urls import chase_operator_url, normalize_chase_url
+from ..shared.io.lock import registry
 from .models import SimulatorResult
 from .process import SimulatorStartError, start_simulator, stop_simulator
 from .store import simulator_records
@@ -37,16 +38,8 @@ def create_simulator(*, timeout_s: float = SIMULATOR_START_TIMEOUT_S) -> Simulat
     ui_dir, error = _metrics_ui_dir()
     if ui_dir is None:
         return SimulatorResult(2, "create_error", error=error)
-    port = next((port for port in SIMULATOR_PORTS if not _port_in_use(port)), None)
-    if port is None:
-        return SimulatorResult(2, "create_error", error=f"ports {SIMULATOR_PORTS[0]}-{SIMULATOR_PORTS[-1]} are all in use.")
-    try:
-        record = start_simulator(_headless_sim_command(port), cwd=ui_dir, port=port, timeout_s=timeout_s)
-    except OSError as exc:
-        return SimulatorResult(2, "create_error", error=str(exc))
-    except SimulatorStartError as exc:
-        return SimulatorResult(2, "error", error=str(exc))
-    return SimulatorResult(0, "created", url=record["url"])
+    with registry():
+        return _start_on_a_free_port(ui_dir, timeout_s)
 
 
 def delete_simulator(*, url: str) -> SimulatorResult:
@@ -60,6 +53,24 @@ def delete_simulator(*, url: str) -> SimulatorResult:
         ws_url = normalize_chase_url(url)
     except ValueError as exc:
         return SimulatorResult(2, "error", error=str(exc))
+    with registry():
+        return _delete_recorded(url, ws_url)
+
+
+def _start_on_a_free_port(ui_dir: Path, timeout_s: float) -> SimulatorResult:
+    port = next((port for port in SIMULATOR_PORTS if not _port_in_use(port)), None)
+    if port is None:
+        return SimulatorResult(2, "create_error", error=f"ports {SIMULATOR_PORTS[0]}-{SIMULATOR_PORTS[-1]} are all in use.")
+    try:
+        record = start_simulator(_headless_sim_command(port), cwd=ui_dir, port=port, timeout_s=timeout_s)
+    except OSError as exc:
+        return SimulatorResult(2, "create_error", error=str(exc))
+    except SimulatorStartError as exc:
+        return SimulatorResult(2, "error", error=str(exc))
+    return SimulatorResult(0, "created", url=record["url"])
+
+
+def _delete_recorded(url: str, ws_url: str) -> SimulatorResult:
     records = simulator_records()
     record = next((simulator for simulator in records if simulator["url"] == ws_url), None)
     if record is None:

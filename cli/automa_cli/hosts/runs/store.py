@@ -9,7 +9,6 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
 
 from autonomy.runtime.session import RunConfiguration
 
@@ -43,7 +42,7 @@ def new_run_state(
     control_source: str,
     run_dir: Path | None,
     started_at_ms: int | None = None,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     started_at_ms = timestamp_ms() if started_at_ms is None else started_at_ms
     return {
         "schema": RUN_STATE_SCHEMA,
@@ -67,7 +66,7 @@ def new_run_state(
     }
 
 
-def decision_record(identity: dict[str, Any]) -> dict[str, Any]:
+def decision_record(identity: dict[str, object]) -> dict[str, object]:
     return {
         "generation_id": identity["generation_id"],
         "steps": identity["steps"],
@@ -76,7 +75,7 @@ def decision_record(identity: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def step_status(host_status: dict[str, Any]) -> dict[str, Any]:
+def step_status(host_status: dict[str, object]) -> dict[str, object]:
     """Each step's plugin IDs and configs, preset, run and failure counts and last error, without the per-cycle records.
 
     A step whose report the host could not read keeps that error.
@@ -89,7 +88,7 @@ def step_status(host_status: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _step_report(item: Any) -> dict[str, Any] | None:
+def _step_report(item: object) -> dict[str, object] | None:
     if not isinstance(item, dict):
         return None
     if item.get("status") == "error":
@@ -105,8 +104,8 @@ def _step_report(item: Any) -> dict[str, Any] | None:
 
 
 def applied_selections(
-    selections: dict[str, dict[str, Any]], steps: Any,
-) -> dict[str, dict[str, Any]] | None:
+    selections: dict[str, dict[str, object]], steps: object,
+) -> dict[str, dict[str, object]] | None:
     """``selections`` as a running host reports applying them, when it reports its steps."""
 
     if not isinstance(steps, dict) or not any(step in steps for step in selections):
@@ -124,7 +123,7 @@ def applied_selections(
     return applied
 
 
-def latest_frame(host_status: dict[str, Any]) -> dict[str, Any] | None:
+def latest_frame(host_status: dict[str, object]) -> dict[str, object] | None:
     """The host's latest observed frame from its ``/host/status`` metadata, or ``None`` before one."""
 
     latest = observation_component(host_status).get("latest")
@@ -145,7 +144,7 @@ def latest_frame(host_status: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def record_host_status(state: dict[str, Any], host_status: dict[str, Any]) -> None:
+def record_host_status(state: dict[str, object], host_status: dict[str, object]) -> None:
     """Record the steps and selections the host applied, each selection's report, its decision, and latest frame.
 
     A run starts with the staged selections; once the host reports its
@@ -172,7 +171,7 @@ def record_host_status(state: dict[str, Any], host_status: dict[str, Any]) -> No
 
 
 def finish_run(
-    state: dict[str, Any],
+    state: dict[str, object],
     *,
     status: str,
     stop_reason: str | None = None,
@@ -193,7 +192,7 @@ def finish_run(
     state["completed_at_ms"] = state["updated_at_ms"] = timestamp_ms()
 
 
-def mark_process_stopped(path: Path, process: Any, *, stopped_by: str) -> None:
+def mark_process_stopped(path: Path, process: object, *, stopped_by: str) -> None:
     record = process if isinstance(process, dict) else {}
     updated = {
         **record,
@@ -304,18 +303,30 @@ def run_directory(host_name: str, *, create: bool = False) -> Path:
     return directory
 
 
-def read_process_record(automation_dir: Path) -> Any:
+def read_process_record(automation_dir: Path) -> object:
     return read_json(automation_dir / "process.json")
 
 
-def read_run_state(automation_dir: Path) -> Any:
+def read_stop_count(automation_dir: Path) -> int:
+    """Stops that have claimed this run. A missing record has claimed none."""
+
+    document = read_json(automation_dir / "order.json")
+    stops = document.get("stops") if isinstance(document, dict) else 0
+    return stops if type(stops) is int else 0
+
+
+def write_stop_count(automation_dir: Path, stops: int) -> None:
+    write_json_atomically(automation_dir / "order.json", {"stops": stops})
+
+
+def read_run_state(automation_dir: Path) -> object:
     return read_json(automation_dir / "state.json")
 
 
 def record_background_worker(
     automation_dir: Path, *, host_name: str, pid: int, started_at_ms: int,
     command: list[str], log_to_disk: bool,
-) -> dict[str, Any]:
+) -> dict[str, object]:
     """Record the launched worker before ``hosts run`` waits for its session."""
 
     log_path = automation_dir / "automation.log"
@@ -335,8 +346,8 @@ def record_background_worker(
 
 
 def record_worker_startup(
-    automation_dir: Path, process_record: dict[str, Any], startup: dict[str, Any],
-) -> dict[str, Any]:
+    automation_dir: Path, process_record: dict[str, object], startup: dict[str, object],
+) -> dict[str, object]:
     """Persist the startup verdict without duplicating the full run state."""
 
     record = {**process_record, "startup": {

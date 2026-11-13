@@ -10,12 +10,13 @@ import sys
 import time
 from contextlib import nullcontext
 from pathlib import Path
-from typing import Any, Literal
+from typing import Literal
 
 from autonomy.runtime.session import RunConfiguration
 
 from ...shared.io.processes import pid_alive, reap_on_exit
 from ...shared.paths import ROOT
+from .lifecycle import keep
 from .models import WORKER_MODULE
 from .store import mark_automation_startup_error, read_run_state
 
@@ -131,7 +132,7 @@ def worker_command(
 
 def launch_worker(
     command: list[str], *, log_path: Path | None
-) -> subprocess.Popen[Any]:
+) -> subprocess.Popen[str]:
     """Start one detached worker and release the parent's log descriptor."""
 
     target = (
@@ -173,21 +174,36 @@ def _wait_for_exit(pid: int, *, timeout_s: float, interval_s: float) -> bool:
     return False
 
 
-def _state_dict(automation_dir: Path) -> dict[str, Any]:
+def _state_dict(automation_dir: Path) -> dict[str, object]:
     state = read_run_state(automation_dir)
     return state if isinstance(state, dict) else {}
 
 
-def _failed(reason: str, state: dict[str, Any]) -> dict[str, Any]:
+def _failed(reason: str, state: dict[str, object]) -> dict[str, object]:
     return {"status": "failed", "reason": reason, "state": state}
+
+
+def _record_startup_exit(automation_dir: Path, reason: str, exit_code: int, begun: int | None) -> None:
+    """Record a worker that exited before its session was ready, unless a stop claimed the run."""
+
+    def write() -> None:
+        mark_automation_startup_error(
+            automation_dir=automation_dir, error=reason, exit_code=exit_code,
+        )
+
+    if begun is None:
+        write()
+        return
+    keep(automation_dir, begun, write)
 
 
 def wait_for_automation_startup(
     *,
-    process: subprocess.Popen[Any],
+    process: subprocess.Popen[str],
     automation_dir: Path,
     timeout_s: float,
-) -> dict[str, Any]:
+    begun: int | None = None,
+) -> dict[str, object]:
     """Wait until the worker's runtime session is running, or the worker ends its run.
 
     Only the record this worker's pid wrote counts. While the worker is alive,
@@ -211,7 +227,7 @@ def wait_for_automation_startup(
             return _failed(state.get("error") or state.get("stop_reason") or f"the run {status}", state)
         if exit_code is not None:
             reason = f"automation worker exited with code {exit_code} before the runtime session completed"
-            mark_automation_startup_error(automation_dir=automation_dir, error=reason, exit_code=exit_code)
+            _record_startup_exit(automation_dir, reason, exit_code, begun)
             return _failed(reason, _state_dict(automation_dir))
         if session.get("status") == "running":
             return {"status": "ready", "processed_count": session.get("processed_decisions", 0), "state": state}

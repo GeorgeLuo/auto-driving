@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 from ..providers.registry import CHASE_SIM, PROVIDERS
 from ..providers.models import DEFAULT_READINESS_TIMEOUT_S, Candidate
+from ..shared.io.lock import registry
 from ..simulators.store import created_simulators, write_simulator_record
 from .models import VehicleResult
 from .store import discovered_vehicles, write_discovered_vehicles
@@ -55,7 +54,8 @@ def discover_vehicle(*, provider: str, url: str, force: bool = False) -> Vehicle
 
     A simulator that ``simulators create`` started is already listed. After
     ``vehicles remove``, discovering it probes it and lists it again on its
-    simulator record, without writing a discovered entry.
+    simulator record, without writing a discovered entry. The probe stays
+    outside the registry lock, and the list is read again before it is written.
     """
 
     vehicle = PROVIDERS[provider]
@@ -63,25 +63,43 @@ def discover_vehicle(*, provider: str, url: str, force: bool = False) -> Vehicle
         url = vehicle.normalize_url(url)
     except ValueError as exc:
         return VehicleResult(2, "error", error=str(exc))
-    created = _created_record(url) if provider == CHASE_SIM.name else None
-    listed = discovered_vehicles()
-    entry = {"provider": provider, "url": url}
-    if entry in listed or (created is not None and created.get("listed", True)):
-        return VehicleResult(0, "listed", url=url, provider=provider)
+    with registry():
+        if _already_listed(provider, url):
+            return VehicleResult(0, "listed", url=url, provider=provider)
     probe = vehicle.probe(Candidate(provider, url, "discovered"), timeout_s=DEFAULT_READINESS_TIMEOUT_S)
     ready = vehicle.can_take_host(probe)
-    if not ready and not force:
-        return VehicleResult(2, "unready", url=url, provider=provider, ready=False, error=probe.error)
-    if created is not None:
-        write_simulator_record({**created, "listed": True})
-    else:
-        write_discovered_vehicles([*listed, entry])
+    with registry():
+        if _already_listed(provider, url):
+            return VehicleResult(0, "listed", url=url, provider=provider)
+        if not ready and not force:
+            return VehicleResult(2, "unready", url=url, provider=provider, ready=False, error=probe.error)
+        _record_discovered(provider, url)
     return VehicleResult(0, "discovered", url=url, provider=provider, ready=ready, error=probe.error)
 
 
 def remove_vehicle(*, url: str) -> VehicleResult:
     """Stop listing a vehicle. A created simulator keeps running, marked unlisted on its record."""
 
+    with registry():
+        return _remove_listed(url)
+
+
+def _already_listed(provider: str, url: str) -> bool:
+    created = _created_record(url) if provider == CHASE_SIM.name else None
+    entry = {"provider": provider, "url": url}
+    return entry in discovered_vehicles() or (created is not None and created.get("listed", True))
+
+
+def _record_discovered(provider: str, url: str) -> None:
+    created = _created_record(url) if provider == CHASE_SIM.name else None
+    if created is not None:
+        write_simulator_record({**created, "listed": True})
+        return
+    entry = {"provider": provider, "url": url}
+    write_discovered_vehicles([*discovered_vehicles(), entry])
+
+
+def _remove_listed(url: str) -> VehicleResult:
     discovered = discovered_vehicles()
     removed = [vehicle for vehicle in discovered if normalized_url(vehicle["provider"], url) == vehicle["url"]]
     created = _created_record(normalized_url(CHASE_SIM.name, url))
@@ -100,5 +118,5 @@ def remove_vehicle(*, url: str) -> VehicleResult:
     return VehicleResult(0, "removed", vehicles=tuple(removed))
 
 
-def _created_record(url: str | None) -> dict[str, Any] | None:
+def _created_record(url: str | None) -> dict[str, object] | None:
     return next((record for record in created_simulators() if record["url"] == url), None)

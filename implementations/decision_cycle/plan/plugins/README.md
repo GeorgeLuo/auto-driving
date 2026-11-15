@@ -5,7 +5,11 @@ plugin lives in `plugins/highest_confidence/`.
 
 Arm `plan/follow_policy` when a collection supplies a policy cycler and
 executors. It follows the published `proposal.policy` executor order, stops on
-an exit, and publishes `plan.action_log` from `plan.follow_policy.state`.
+an exit, and preserves the selected candidate unchanged, including its reason.
+It keeps no state or history. Also arm `memory/control_runs` by name; it publishes
+`memory.control_runs` for the cycler, executors and prompt builders. Applied
+controls carry proposer identity and the plan's metadata through
+`plan_control_metadata` in `autonomy/decision_cycle/action/values.py`.
 Configure definitions only on the cycler. Implementers use `PolicyCycle`,
 `read_policy`, `read_exit` and `write_exit` from
 `implementations/decision_cycle/shared/policy.py`; that module documents the

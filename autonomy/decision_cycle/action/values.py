@@ -10,13 +10,13 @@ plan's command. ``gate_id`` is the deciding action plugin's ID.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
 from autonomy.decision_cycle.plan.values import ActionPlan
 from autonomy.decision_cycle.proposal.values import ProposedVehicleCommand
 from autonomy.runtime.control import AutonomyControl
+from autonomy.serialization import frozen_mapping_to_dict
 
 AUTHORITY_RESULT_SCHEMA = "authority_result"
 COMMAND_EPS = 1e-9
@@ -30,18 +30,30 @@ class ActionDecision:
     applied: bool = False
 
 
-def plan_control_metadata(plan: ActionPlan) -> dict[str, Any]:
-    """The proposals behind an applied plan: every contribution, and the selected one."""
+def plan_control_metadata(plan: ActionPlan) -> dict[str, object]:
+    """JSON identity carried by a plan's authorized control.
 
-    metadata: dict[str, Any] = {
+    ``proposal_ids`` and ``plugin_ids`` follow contribution order. Selected
+    plans also carry ``proposal_id`` and the selected candidate's ``plugin_id``;
+    composed plans have neither singular key. ``selector_id`` names the plan
+    plugin and ``plan_metadata`` is its own metadata as detached, plain JSON.
+    Host-generated stops and older recordings lack these keys: missing means
+    unknown, never an inferred proposer or policy.
+    """
+
+    metadata: dict[str, object] = {
         "proposal_ids": [item.proposal_id for item in plan.contributions],
+        "plugin_ids": [item.plugin_id for item in plan.contributions],
+        "selector_id": plan.selector_id,
+        "plan_metadata": frozen_mapping_to_dict(plan.metadata),
     }
     if plan.selected_proposal_id is not None:
         metadata["proposal_id"] = plan.selected_proposal_id
+        metadata["plugin_id"] = plan.selected_candidate().plugin_id
     return metadata
 
 
-def control_output(control: AutonomyControl) -> dict[str, Any]:
+def control_output(control: AutonomyControl) -> dict[str, object]:
     return {
         "steering": control.steering,
         "throttle": control.throttle,
@@ -52,7 +64,7 @@ def control_output(control: AutonomyControl) -> dict[str, Any]:
 
 def proposed_equals_authorized(
     proposed: ProposedVehicleCommand | None,
-    authorized: dict[str, Any],
+    authorized: dict[str, object],
 ) -> bool:
     auth_s = float(authorized.get("steering", 0.0))
     auth_t = float(authorized.get("throttle", 0.0))
@@ -70,7 +82,7 @@ class AuthorityResult:
     gate_id: str
     proposed: ProposedVehicleCommand | None
     cycle_status: str
-    authorized_output: dict[str, Any]
+    authorized_output: dict[str, object]
     cycle_reason: str = ""
     drive_mode_gate: str | None = None
     proposed_applied: bool = False
@@ -95,22 +107,7 @@ class AuthorityResult:
                 raise ValueError(f"unknown cycle error reason {self.cycle_reason!r}")
             if self.proposed is not None:
                 raise ValueError("error requires proposed=null")
-        if self.proposed is not None and not isinstance(
-            self.proposed, ProposedVehicleCommand
-        ):
-            raise TypeError("proposed must be ProposedVehicleCommand or None")
-        if self.drive_mode_gate is not None and not isinstance(self.drive_mode_gate, str):
-            raise TypeError("drive_mode_gate must be a string or None")
-        output = self.authorized_output
-        if not isinstance(output, dict) or set(output) != {
-            "steering",
-            "throttle",
-            "confidence",
-            "reason",
-        }:
-            raise ValueError(
-                "authorized_output must hold steering, throttle, confidence, and reason"
-            )
+        _validate_authority_fields(self.proposed, self.drive_mode_gate, self.authorized_output)
         if type(self.proposed_applied) is not bool:
             raise TypeError("proposed_applied must be a bool")
         if self.proposed_applied and (
@@ -122,7 +119,7 @@ class AuthorityResult:
     def proposed_equals_authorized(self) -> bool:
         return proposed_equals_authorized(self.proposed, self.authorized_output)
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self) -> dict[str, object]:
         return {
             "schema": self.schema,
             "frame_id": self.frame_id,
@@ -135,6 +132,18 @@ class AuthorityResult:
             "gate_id": self.gate_id,
             "drive_mode_gate": self.drive_mode_gate,
         }
+
+
+def _validate_authority_fields(proposed: object, drive_mode_gate: object, output: object) -> None:
+    """Check runtime inputs even when a caller bypasses the annotated types."""
+    if proposed is not None and not isinstance(proposed, ProposedVehicleCommand):
+        raise TypeError("proposed must be ProposedVehicleCommand or None")
+    if drive_mode_gate is not None and not isinstance(drive_mode_gate, str):
+        raise TypeError("drive_mode_gate must be a string or None")
+    if not isinstance(output, dict) or set(output) != {
+        "steering", "throttle", "confidence", "reason",
+    }:
+        raise ValueError("authorized_output must hold steering, throttle, confidence, and reason")
 
 
 def build_authority(

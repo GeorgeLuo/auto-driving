@@ -35,7 +35,9 @@ class ControlExecutionTests(unittest.TestCase):
             result = SimpleNamespace(
                 context=DecisionFrameContext("frame-1", 0, 1000),
                 action=SimpleNamespace(status="ok"),
-                control=AutonomyControl(steering=-0.5, throttle=0.3, reason="turn"),
+                control=AutonomyControl(steering=-0.5, throttle=0.3, reason="turn", metadata={
+                    "plugin_id": "query", "plan_metadata": {"policy": {"name": "search", "epoch": 0}},
+                }),
             )
             application = execution.apply(result, execution.ticket())
             execution.set_mode("manual")
@@ -43,6 +45,9 @@ class ControlExecutionTests(unittest.TestCase):
         self.assertEqual([item.reason for item in history],
                          ["awaiting-fresh-decision", "turn", "mode-changed"])
         self.assertIs(history[1], application)
+        self.assertEqual(application.control.metadata, result.control.metadata)
+        self.assertEqual(history[0].control.metadata, {})
+        self.assertEqual(history[2].control.metadata, {})
         self.assertEqual((history[0].mode, history[1].mode, history[2].mode),
                          ("autonomy", "autonomy", "manual"))
         self.assertEqual((history[2].control.steering, history[2].control.throttle), (0.0, 0.0))

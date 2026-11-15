@@ -121,7 +121,11 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                 self.assertEqual(capture_times, [2003, 2001, 2000, 2002])
 
     def test_recording_encodes_partial_overlap_no_overlap_and_unchanged_windows(self):
-        records = tuple(ControlApplication(None, "autonomy", True, "idle", AutonomyControl(), 100)
+        records = tuple(ControlApplication(None, "autonomy", True, "idle", AutonomyControl(metadata={
+            "plugin_id": "query", "plugin_ids": ["query"], "proposal_id": "query:f0",
+            "proposal_ids": ["query:f0"], "selector_id": "follow_policy",
+            "plan_metadata": {"policy": {"name": "get free", "epoch": 4}},
+        }), 100)
                         for _ in range(5))
         windows = [records[:3], records[1:4], records[1:4], records[4:], None, (), records[:1]]
         with tempfile.TemporaryDirectory() as tmp:

@@ -1,11 +1,14 @@
 """Policy handoffs, minimum acting time and ordered executor runs."""
 
-from copy import deepcopy
 import unittest
 
 from autonomy.decision_cycle.context import DecisionFrameContext
+from autonomy.decision_cycle.action.publication import CONTROL_APPLICATIONS_KEY
+from autonomy.decision_cycle.action.selected import SelectedAction
+from autonomy.runtime.execution import CONTROL_APPLICATION_LIMIT, ControlApplication
 from autonomy.decision_cycle.proposal.values import ActionProposal, ProposedVehicleCommand, SourceRef
 from autonomy.shared_memory import shared_memory_document, shared_memory_from_document
+from implementations.decision_cycle.shared.control_runs import read_control_runs, record_control_runs
 from implementations.decision_cycle.shared.policy import (
     PolicyCycle, follow_policy_plan, read_exit, read_policy, write_exit,
 )
@@ -29,13 +32,19 @@ def candidate(plugin_id, at, *, name="search", epoch=0, command=(1, -1), active=
 
 
 def plan(memory, at, *candidates):
-    return follow_policy_plan(DecisionFrameContext(frame_id=f"f{at}", frame_index=at, timestamp_ms=at,
-                                                  shared_memory=memory), candidates)
+    context = DecisionFrameContext(frame_id=f"f{at}", frame_index=at, timestamp_ms=at, shared_memory=memory)
+    selected = follow_policy_plan(context, candidates)
+    control = SelectedAction().decide(context, selected).control
+    application = ControlApplication(context.frame_id, "autonomy", True, control.reason, control, at)
+    memory[CONTROL_APPLICATIONS_KEY] = (*memory.get(CONTROL_APPLICATIONS_KEY, ()), application)[-CONTROL_APPLICATION_LIMIT:]
+    record_control_runs(memory)
+    return selected
 
 
 class PolicyCycleTests(unittest.TestCase):
     def setUp(self):
-        self.memory = {}
+        self.memory = {CONTROL_APPLICATIONS_KEY: ()}
+        record_control_runs(self.memory)
         self.cycle = PolicyCycle(definitions(), initial="search", min_acting_ms=100)
 
     def test_initial_is_published_and_definitions_are_detached(self):
@@ -91,7 +100,8 @@ class PolicyCycleTests(unittest.TestCase):
     def test_any_choice_decides_after_exit_including_the_same_name(self):
         for name in ("search", "approach"):
             with self.subTest(name=name):
-                memory = {}
+                memory = {CONTROL_APPLICATIONS_KEY: ()}
+                record_control_runs(memory)
                 current = self.cycle.current(memory, now_ms=0)
                 write_exit(memory, "sweep", current, why="done", now_ms=1)
                 self.cycle.current(memory, now_ms=2)
@@ -126,6 +136,22 @@ class PolicyCycleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             write_exit(self.memory, "sweep", current, why="other", now_ms=3)
 
+    def test_choices_fail_when_control_runs_memory_is_not_armed(self):
+        memory = {}
+        self.cycle.current(memory, now_ms=0)
+        for name in ("search", "approach"):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "arm memory/control_runs"):
+                self.cycle.choose(memory, name, now_ms=1000)
+
+    def test_selection_alone_and_unapplied_controls_cannot_satisfy_floor(self):
+        self.cycle.current(self.memory, now_ms=0)
+        context = DecisionFrameContext("f0", 0, 0, shared_memory=self.memory)
+        selected = follow_policy_plan(context, (candidate("sweep", 0),))
+        control = SelectedAction().decide(context, selected).control
+        self.memory[CONTROL_APPLICATIONS_KEY] = (ControlApplication("f0", "autonomy", False, "stale", control),)
+        record_control_runs(self.memory)
+        self.assertEqual(self.cycle.choose(self.memory, "approach", now_ms=1000).epoch, 0)
+
     def test_bad_config_and_unknown_choice_are_rejected(self):
         for kwargs in ({"initial": "missing"}, {"initial": "search", "min_acting_ms": -1}):
             with self.subTest(kwargs=kwargs), self.assertRaises(ValueError):
@@ -140,7 +166,8 @@ class PolicyCycleTests(unittest.TestCase):
 
 class PolicyPlanTests(unittest.TestCase):
     def setUp(self):
-        self.memory = {}
+        self.memory = {CONTROL_APPLICATIONS_KEY: ()}
+        record_control_runs(self.memory)
         self.cycle = PolicyCycle(definitions(), initial="search", min_acting_ms=0)
         self.current = self.cycle.current(self.memory, now_ms=0)
 
@@ -148,7 +175,8 @@ class PolicyPlanTests(unittest.TestCase):
         original = candidate("sweep", 0)
         selected = plan(self.memory, 0, candidate("query", 0), original)
         self.assertEqual(selected.selected_candidate().plugin_id, "sweep")
-        self.assertEqual(selected.reason, "sweep:moving")
+        self.assertEqual(selected.reason, "moving")
+        self.assertIs(selected.selected_candidate(), original)
         self.assertEqual(selected.confidence, original.confidence)
         self.assertEqual(original.reason, "moving")
         self.assertEqual(selected.selected_candidate().reason, selected.reason)
@@ -173,7 +201,7 @@ class PolicyPlanTests(unittest.TestCase):
         write_exit(self.memory, "query", self.current, why="timeout", now_ms=10)
         idle = plan(self.memory, 10, candidate("sweep", 10), candidate("query", 10))
         self.assertEqual(idle.status, "idle")
-        self.assertEqual(self.memory["plan.action_log"][-1]["end_ms"], 10)
+        self.assertEqual(read_control_runs(self.memory)[-1]["end_ms"], 10)
         self.assertEqual(read_policy(self.memory).epoch, 0)  # cycler has not consumed the exit yet
 
     def test_stale_or_unlisted_exits_do_not_stop_selection(self):
@@ -181,33 +209,10 @@ class PolicyPlanTests(unittest.TestCase):
         self.memory["proposal.sweep.exit"] = {"epoch": -1, "why": "lost"}
         self.assertEqual(plan(self.memory, 0, candidate("sweep", 0)).status, "selected")
 
-    def test_runs_extend_split_on_command_owner_policy_epoch_and_close_on_idle(self):
-        plan(self.memory, 0, candidate("sweep", 0))
-        old = deepcopy(self.memory["plan.action_log"])
-        plan(self.memory, 10, candidate("sweep", 10))
-        self.assertEqual(self.memory["plan.action_log"], old)
-        plan(self.memory, 20, candidate("sweep", 20, command=(1, 1)))
-        plan(self.memory, 30, candidate("query", 30, command=(1, 1)))
-        write_exit(self.memory, "query", self.current, why="done", now_ms=40)
-        self.cycle.current(self.memory, now_ms=40)
-        self.cycle.choose(self.memory, "search", now_ms=40)
-        plan(self.memory, 40, candidate("query", 40, epoch=2, command=(1, 1)))
-        self.cycle.choose(self.memory, "approach", now_ms=50)
-        plan(self.memory, 50, candidate("center", 50, name="approach", epoch=3))
-        plan(self.memory, 60)
-        plan(self.memory, 70, candidate("center", 70, name="approach", epoch=3))
-        self.assertEqual([(r["start_ms"], r["end_ms"]) for r in self.memory["plan.action_log"]],
-                         [(0, 20), (20, 30), (30, 40), (40, 50), (50, 60), (70, None)])
-        self.assertIsNone(old[0]["end_ms"])
-
-    def test_log_is_bounded_and_publication_cannot_replace_owned_runs(self):
-        for at in range(45):
-            plan(self.memory, at, candidate("sweep", at, command=(1, (-1) ** at)))
-        self.assertEqual(len(self.memory["plan.action_log"]), 40)
-        self.assertEqual(self.memory["plan.action_log"][0]["start_ms"], 5)
-        self.memory["plan.action_log"].clear()
-        memory = shared_memory_from_document(shared_memory_document(self.memory))
-        plan(memory, 45)
-        self.assertEqual(len(memory["plan.action_log"]), 40)
-        self.assertEqual(memory["plan.action_log"][-1]["end_ms"], 45)
-        self.assertEqual(memory["plan.follow_policy.state"]["runs"], memory["plan.action_log"])
+    def test_selection_has_no_shared_memory_writes_and_keeps_candidate_metadata(self):
+        original = candidate("sweep", 0)
+        before = shared_memory_document(self.memory)
+        selected = follow_policy_plan(DecisionFrameContext("f0", 0, 0, shared_memory=self.memory), (original,))
+        self.assertIs(selected.selected_candidate(), original)
+        self.assertEqual(selected.selected_candidate().to_dict(), original.to_dict())
+        self.assertEqual(shared_memory_document(self.memory), before)

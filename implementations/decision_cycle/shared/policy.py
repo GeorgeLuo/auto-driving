@@ -15,31 +15,33 @@ Shared-memory keys and ownership:
   Executors and the plan read this publication, never the cycler's private key.
 * ``proposal.<executor_id>.exit``: that executor writes once per epoch through
   ``write_exit``; it, the cycler and plan read ``epoch, why, at_ms, detail``.
-* ``plan.<selector_id>.state``: the plan's ``runs`` (last forty), rewritten to
-  ``plan.action_log`` each frame. The cycler, executors and prompt builders read
-  the published log. Seed/reset the producer's state, not the publication.
+* ``memory.control_runs``: the packaged ``memory/control_runs`` plugin's
+  applied runs. The cycler measures its acting floor from this publication;
+  executors and prompt builders can read it through ``read_control_runs``.
+  See ``shared/control_runs.py`` for state, retention and clock rules.
 
 Executors use ``read_policy``, ``assigns``, ``read_exit`` and ``write_exit``;
-tag proposals with ``policy.tag()``. The host arms ``plan/follow_policy`` after
-uploading the collection. No plan config duplicates the policy definitions.
-An exit stops selection that frame, handing control up to the cycler next frame.
-The log describes commands selected at the plan interface, without a separate
-actuator acknowledgement. Open runs have ``end_ms=None``; idle closes them.
+tag proposals with ``policy.tag()``. After uploading the collection, arm both
+``plan/follow_policy`` by preset and ``memory/control_runs`` by name (appending
+memory without replacing the collection's plugins). No plan config duplicates
+the policy definitions. An exit stops selection that frame, handing control up
+to the cycler next frame. The plan only selects; it writes no history and keeps
+the candidate's reason, confidence, command and metadata unchanged.
 """
 
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.values import ActionPlan, PlanContribution
 from autonomy.decision_cycle.proposal.values import ActionProposal
 from autonomy.shared_memory import SharedMemory
+from implementations.decision_cycle.shared.control_runs import read_control_runs
 
 POLICY_KEY = "proposal.policy"
-ACTION_LOG_KEY = "plan.action_log"
 EXIT_REASONS = frozenset({"done", "lost", "blocked", "timeout"})
 
 
@@ -121,7 +123,10 @@ class PolicyCycle:
     A different choice is counted and discarded until the earliest non-zero
     run of this epoch is min_acting_ms old. This is elapsed frame time from
     that run, including any gaps, not a sum of run durations. Even a zero
-    minimum requires a real run. Undecided policies accept a choice at once.
+    minimum requires an applied run. Undecided policies accept a choice at once.
+    Choices require ``memory/control_runs`` to be armed. Frame timestamps and
+    application delivery times are host wall-clock milliseconds on current
+    hosts; a backwards clock step can delay the floor until the clock catches up.
     """
 
     def __init__(
@@ -172,9 +177,12 @@ class PolicyCycle:
         """Apply a judge's choice, or count a different choice held by the floor."""
         if name not in self._policies:
             raise ValueError("choice must be a configured policy")
+        runs = read_control_runs(shared_memory)
+        if runs is None:
+            raise ValueError("PolicyCycle choices require applied runs; arm memory/control_runs")
         state = self._state(shared_memory, now_ms)
         if name != state["name"]:
-            if state["name"] is None or self._acted(shared_memory, state["epoch"], now_ms):
+            if state["name"] is None or self._acted(runs, state["epoch"], now_ms):
                 self._change(state, name, now_ms, reason)
             else:
                 state["held"] += 1
@@ -183,9 +191,10 @@ class PolicyCycle:
     def held(self, shared_memory: SharedMemory) -> int:
         return int((shared_memory.get(self._key) or {}).get("held", 0))
 
-    def _acted(self, shared_memory: SharedMemory, epoch: int, now_ms: int) -> bool:
-        starts = [run["start_ms"] for run in shared_memory.get(ACTION_LOG_KEY) or []
-                  if run.get("epoch") == epoch and any(float(v) != 0.0 for v in run.get("command") or ())]
+    def _acted(self, runs: Sequence[dict], epoch: int, now_ms: int) -> bool:
+        starts = [run["start_ms"] for run in runs
+                  if (run["plan"].get("policy") or {}).get("epoch") == epoch
+                  and any(float(v) != 0.0 for v in run["command"])]
         return bool(starts) and now_ms - min(starts) >= self._min_acting_ms
 
 
@@ -204,49 +213,20 @@ def _select(
     return None
 
 
-def _record_run(
-    shared_memory: SharedMemory, selector_id: str, policy: Policy | None,
-    selected: ActionProposal | None, now_ms: int,
-) -> None:
-    state_key = f"plan.{selector_id}.state"
-    runs = deepcopy((shared_memory.get(state_key) or {}).get("runs", []))
-    entry = None
-    if selected is not None and selected.command is not None and policy is not None:
-        entry = {"by": selected.plugin_id, "policy": policy.name, "epoch": policy.epoch,
-                 "command": [selected.command.throttle, selected.command.steering],
-                 "start_ms": now_ms, "end_ms": None}
-    previous = runs[-1] if runs else None
-    unchanged = entry is not None and previous is not None and previous["end_ms"] is None and all(
-        previous[k] == entry[k] for k in ("by", "policy", "epoch", "command"))
-    if not unchanged:
-        if previous is not None and previous["end_ms"] is None:
-            previous["end_ms"] = now_ms
-        if entry is not None:
-            runs.append(entry)
-    shared_memory[state_key] = {"runs": deepcopy(runs[-40:])}
-    shared_memory[ACTION_LOG_KEY] = runs[-40:]
-
-
 def follow_policy_plan(
     context: DecisionFrameContext, candidates: Sequence[ActionProposal], *, selector_id: str = "follow_policy",
 ) -> ActionPlan:
-    """Select the first active assigned candidate, close/split/log its run."""
+    """Select the first active assigned candidate without changing it or memory."""
     memory, now = context.shared_memory, int(context.timestamp_ms)
     if memory is None:
         raise ValueError("follow_policy requires shared memory")
     policy = read_policy(memory)
     selected = _select(memory, policy, context.frame_id, candidates)
-    _record_run(memory, selector_id, policy, selected, now)
     if selected is None:
         return ActionPlan(frame_id=context.frame_id, timestamp_ms=now, status="idle",
                           candidates=tuple(candidates), selector_id=selector_id)
-    # Selected plans must repeat the candidate's reason and confidence. Name the
-    # executor on a detached candidate copy until the host carries its identity.
-    selected = replace(selected, reason=f"{selected.plugin_id}:{selected.reason}",
-                       metadata=selected.to_dict()["metadata"])
-    annotated = tuple(selected if c.plugin_id == selected.plugin_id else c for c in candidates)
     return ActionPlan(
-        frame_id=context.frame_id, timestamp_ms=now, status="selected", candidates=annotated,
+        frame_id=context.frame_id, timestamp_ms=now, status="selected", candidates=tuple(candidates),
         selector_id=selector_id, selected_proposal_id=selected.proposal_id,
         contributions=(PlanContribution(proposal_id=selected.proposal_id, plugin_id=selected.plugin_id),),
         command=selected.command, reason=selected.reason, confidence=selected.confidence,

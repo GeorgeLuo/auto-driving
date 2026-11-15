@@ -18,7 +18,7 @@
     },
     {
       "spec": "implementations.decision_cycle.plan.plugins.follow_policy.plugin:FollowPolicy",
-      "description": "Follow the published policy and log selected executor runs.",
+      "description": "Select the first active executor of the published policy.",
       "default_config": {}
     }
   ]

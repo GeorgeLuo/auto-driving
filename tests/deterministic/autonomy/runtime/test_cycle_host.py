@@ -9,7 +9,7 @@ import unittest
 import weakref
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from autonomy.decision_cycle.observation.publication import OBSERVATION_KEY
 from autonomy.decision_cycle.action.publication import (
@@ -33,6 +33,7 @@ from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.cycle_host import AutonomyCycleHost, sync_live_selection
 from autonomy.runtime.execution import ControlExecution
 from autonomy.runtime.session import RunConfiguration
+from tests.shared.autonomy.runtime.control_fixtures import RecordingTarget
 from tests.support.action_fixtures import INACTIVE_PROPOSAL_SPEC, action_runner, plan_runner, proposal_runner
 from tests.support.perception_fixtures import local_perception
 
@@ -125,7 +126,7 @@ class CycleHostMemoryTests(unittest.TestCase):
             return original(plugin, context)
         with tempfile.TemporaryDirectory() as tmp:
             host, _ = _host(memory=_memory_step(Path(tmp)))
-            host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+            host.execution = ControlExecution(RecordingTarget())
             self.addCleanup(host.close)
             host.set_mode("autonomy")
             expected = host.execution.ticket().control_applications
@@ -145,7 +146,7 @@ class CycleHostMemoryTests(unittest.TestCase):
 
     def test_mode_and_applications_are_captured_in_the_same_ticket(self):
         host, _ = _host()
-        host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+        host.execution = ControlExecution(RecordingTarget())
         self.addCleanup(host.close)
         host.set_mode("autonomy")
         original = host.execution.ticket
@@ -166,7 +167,7 @@ class CycleHostMemoryTests(unittest.TestCase):
 
     def test_new_runs_preserve_prior_applications(self):
         host, _ = _host()
-        host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+        host.execution = ControlExecution(RecordingTarget())
         self.addCleanup(host.close)
         host.start(RunConfiguration(mode="autonomy", num_decisions=None))
         old = host.execution.ticket().control_applications[0]
@@ -200,7 +201,7 @@ class CycleHostMemoryTests(unittest.TestCase):
 
     def test_a_failed_stop_keeps_the_error_that_ended_the_run(self):
         host, _ = _host()
-        host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+        host.execution = ControlExecution(RecordingTarget())
         self.addCleanup(host.close)
         host.start(RunConfiguration(mode="autonomy", num_decisions=None))
         with patch.object(host, "set_mode", side_effect=RuntimeError("Frontend not connected")):
@@ -216,7 +217,7 @@ class CycleHostMemoryTests(unittest.TestCase):
     def test_a_failed_cycle_keeps_its_error_when_its_stop_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             host, _ = _host(memory=_memory_step(Path(tmp), fail_on_update=True))
-            host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+            host.execution = ControlExecution(RecordingTarget())
             self.addCleanup(host.close)
             host.start(RunConfiguration(mode="autonomy", num_decisions=None))
             with patch.object(host, "set_mode", side_effect=RuntimeError("Frontend not connected")):
@@ -336,10 +337,9 @@ class CycleHostStepTests(unittest.TestCase):
         self.assertIsNone(context_ref())
 
     def test_an_inflight_success_cannot_clear_an_external_stop_error(self):
-        from unittest import mock
         from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
         perception = GatedPerception(1)
-        host = AutonomyCycleHost(steps=replace(decision_steps(), perception=perception), target=mock.Mock())
+        host = AutonomyCycleHost(steps=replace(decision_steps(), perception=perception), target=RecordingTarget())
         errors = []
         def run():
             try:

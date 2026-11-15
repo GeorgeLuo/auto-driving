@@ -6,7 +6,7 @@ import threading
 import unittest
 from dataclasses import replace
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from autonomy.decision_cycle.activation import STEPS, selected_definitions, step_activation, write_step_activation
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -21,6 +21,7 @@ from autonomy.runtime.plugin_loader import CodeSource, StagedStep
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
 from cli.automa_cli.releases.paths import controller_bundle_paths
 from tests.shared.autonomy.decision_cycle.memory.activation_fixtures import RECORDING_SPEC
+from tests.shared.autonomy.runtime.control_fixtures import RecordingTarget
 from tests.support.action_fixtures import FIRST_ACTIVE_PLAN_SPEC, INACTIVE_PROPOSAL_SPEC
 from tests.support.perception_fixtures import local_perception
 
@@ -50,7 +51,7 @@ class PipelineReplacementTests(unittest.TestCase):
 
     def test_perception_change_reconstructs_every_step_before_binding_a_fresh_map(self):
         host = self.host()
-        host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+        host.execution = ControlExecution(RecordingTarget())
         host.set_mode("observe_only")
         self.addCleanup(host.close)
         cycle(host)
@@ -232,7 +233,7 @@ class PipelineReplacementTests(unittest.TestCase):
 
     def test_mode_changes_keep_runners_map_and_generation(self):
         host = self.host()
-        host.execution = ControlExecution(Mock(write=Mock(return_value={})))
+        host.execution = ControlExecution(RecordingTarget())
         self.addCleanup(host.close)
         cycle(host)
         steps, memory, identity = host.steps, host.shared_memory, host.applied_decision()

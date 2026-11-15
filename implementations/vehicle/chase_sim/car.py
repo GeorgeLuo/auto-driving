@@ -321,7 +321,6 @@ class ChaseSimCar(CarInterface):
         self,
         *,
         timeout_s: float | None = None,
-        include_image: bool = False,
     ) -> dict[str, object]:
         """Read one atomic frame and prove that the simulator session was preserved."""
 
@@ -386,7 +385,7 @@ class ChaseSimCar(CarInterface):
         return self._passive_receipt_result(
             capture=capture, passive_observation=passive_observation,
             fallback_environment=before, phases=phases,
-            operation_timeout=operation_timeout, started=started, include_image=include_image,
+            operation_timeout=operation_timeout, started=started,
         )
 
     def _passive_receipt_result(
@@ -398,7 +397,6 @@ class ChaseSimCar(CarInterface):
         phases: dict[str, dict[str, object]],
         operation_timeout: float,
         started: float,
-        include_image: bool,
     ) -> dict[str, object]:
         supported = passive_observation.get("supported") is True
         reason_record = _record(passive_observation.get("reason"))
@@ -412,8 +410,8 @@ class ChaseSimCar(CarInterface):
             "path": "evaluator.reference",
         }
         if supported:
-            sensor, _, evaluator_status = _validated_capture(
-                capture, before=before, unknown_fields=preservation["unknown_fields"], include_image=include_image
+            sensor, evaluator_status = _validated_capture(
+                capture, before=before, unknown_fields=preservation["unknown_fields"]
             )
         status, code, reason = _receipt_status(
             supported=supported,
@@ -448,10 +446,6 @@ class ChaseSimCar(CarInterface):
                 "reason": reason_record or None,
             },
         }
-        if include_image and status == "available":
-            raw_sensor = capture.get("sensor")
-            raw_image = raw_sensor.get("image") if isinstance(raw_sensor, dict) else None
-            result["image"] = dict(raw_image) if isinstance(raw_image, dict) else None
         return result
 
     def _passive_phase(
@@ -607,11 +601,10 @@ def _validated_capture(
     *,
     before: dict[str, object],
     unknown_fields: list[str],
-    include_image: bool,
-) -> tuple[dict[str, object], dict[str, object], dict[str, object]]:
-    """The validated sensor, the evaluator reference and its status; the receipt must match the sensor's identity."""
+) -> tuple[dict[str, object], dict[str, object]]:
+    """The validated sensor and evaluator status; the receipt must match the sensor's identity."""
 
-    sensor = validate_chase_sensor_capture(capture, expected_actor_id="chaser", include_validated_bytes=include_image)
+    sensor = validate_chase_sensor_capture(capture, expected_actor_id="chaser")
     evaluator = evaluate_chase_evaluator_reference(capture, sensor=sensor)
     evaluator_status = {key: value for key, value in evaluator.items() if key != "reference" and value is not None}
     playback = _record(before.get("playback"))
@@ -648,7 +641,7 @@ def _validated_capture(
             path="passiveObservation.preservation.before." + mismatched_identity[0],
             message=f"preservation receipt does not match the captured sensor identity ({mismatched_identity})",
         )
-    return sensor, evaluator, evaluator_status
+    return sensor, evaluator_status
 
 
 def _receipt_status(

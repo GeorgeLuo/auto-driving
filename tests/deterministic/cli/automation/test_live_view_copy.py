@@ -1,16 +1,15 @@
 """A view's failures end only that view."""
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock, patch
+from unittest.mock import patch
 
 from autonomy.runtime.report import HostReport, ReportApplication
 from cli.automa_cli.hosts.views import view_feed as viewer
 from cli.automa_cli.plugins.stream import decision, session
-from cli.automa_cli.plugins.stream.commands import stream_host_step
-from cli.automa_cli.plugins.stream.models import StreamResult
 
 
 class LiveViewCopyTests(unittest.TestCase):
@@ -29,37 +28,47 @@ class LiveViewCopyTests(unittest.TestCase):
             feed.publish(publication)
 
     def test_decision_stream_pass_shares_one_observation_read_with_its_view(self):
-        feed = Mock()
-        publication = {"frame": {"frame_id": "one"}}
-        feed.read_observation.return_value = publication, None
-        def one_pass(**kwargs):
-            kwargs["probe"]()
-            return StreamResult(exit_code=0)
-        normalized = {
-            "result_age_ms": 0, "max_age_ms": 1000,
+        publication = {
+            "schema": "host_frame_publication", "health": "healthy", "result_age_ms": 0,
             "report": HostReport(
                 host_name="fixture", run_id="run", generation_id="generation",
                 frame_id="one", frame_index=0, timestamp_ms=1, published_at_ms=1,
-                values={"activation": {"steps": {"plan": {"plugins": []}}}},
+                values={"source_id": "fixture:local", "stale_after_ms": 1000,
+                        "activation": {"steps": {"plan": {"plugins": []}}}},
                 cycle={
                     "perception": None, "observation": None, "memory": None,
                     "proposal": {}, "plan": {}, "action": {},
                 },
                 application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
-            ),
+            ).to_dict(),
         }
+        events = []
         with (
+            tempfile.TemporaryDirectory() as tmp,
+            patch.object(viewer, "runtime_view_dir", return_value=Path(tmp)),
             patch.object(decision, "require_valid_activations"),
             patch.object(decision, "runtime_base_url", return_value="http://host.invalid"),
-            patch.object(session, "ViewFeed", return_value=feed),
-            patch.object(decision, "poll_events", side_effect=one_pass),
+            patch.object(viewer, "fetch_frame_sample", return_value=(publication, None)) as read,
+            patch("cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest",
+                  side_effect=ConnectionError("no telemetry")),
             patch.object(decision, "fetch_frame_publication", side_effect=AssertionError("second frame fetch")),
-            patch.object(decision, "accept_decision_publication", return_value=normalized),
         ):
-            result = stream_host_step("plan", host_name="fixture")
+            feed = viewer.ViewFeed("fixture", base_url="http://host.invalid", timeout_s=0.1)
+            self.addCleanup(feed.stop)
+            view = feed.server.perception
+            with patch.object(session, "ViewFeed", return_value=feed):
+                result = decision.stream_decision(
+                    "plan", host_name="fixture", refresh_s=0.5, once=True, timeout_s=0.1,
+                    serve_view=True, emit=events.append,
+                )
         self.assertEqual(result.exit_code, 0)
-        feed.read_observation.assert_called_once_with()
-        feed.publish.assert_called_once_with(publication)
+        self.assertEqual(read.call_count, 1)
+        self.assertEqual(len(events), 1)
+        shown = json.loads(view.latest_json())
+        self.assertEqual(events[0].live["frame_id"], shown["report"]["frame_id"])
+        self.assertEqual(events[0].live["record"], shown["report"]["cycle"]["plan"])
+        self.assertIsNone(feed.decision_error)
+        self.assertIsNone(feed.server)
 
     def test_a_partial_start_releases_its_socket_and_stop_is_idempotent(self):
         bound = []

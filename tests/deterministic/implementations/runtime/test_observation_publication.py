@@ -518,7 +518,7 @@ class ObservationPublicationTests(unittest.TestCase):
         namespace = {"RequestHandler": Handler, "asyncio": asyncio, "json": json}
         exec(code, namespace)
         for status, body in ((200, b"payload"), (304, b"")):
-            route = mock.Mock()
+            route = mock.Mock(spec_set=RuntimeRoutes)
             route.handle.return_value = status, {"ETag": "test"}, body
             handler = namespace["AutonomyRoutesAPI"]()
             handler.application = SimpleNamespace(autonomy_routes=route)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import socket
 import threading
 import time
 import unittest
@@ -11,7 +12,7 @@ from implementations.vehicle.chase_sim.metrics_ws import MetricsUiConnection, Me
 class WebSocketWriteTests(unittest.TestCase):
     def connection(self):
         connection = MetricsUiConnection('ws://example.invalid', timeout_s=0.1)
-        connection.sock = mock.Mock()
+        connection.sock = mock.Mock(spec_set=socket.socket)
         self.addCleanup(connection.abort)
         return connection
 

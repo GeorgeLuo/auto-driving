@@ -12,7 +12,6 @@ import threading
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest import mock
 from unittest.mock import patch
 from urllib.request import Request, urlopen
 
@@ -49,9 +48,8 @@ class StopOrderingTests(unittest.TestCase):
         return {"status": "ready", "processed_count": 0, "state": {}}
 
     def test_stop_during_start_is_the_run_that_remains(self) -> None:
-        client = mock.Mock()
         self.enterContext(patch.object(service, "running_base_url", return_value="http://127.0.0.1:9"))
-        self.enterContext(patch.object(service, "RuntimeClient", return_value=client))
+        stop = self.enterContext(patch.object(service.RuntimeClient, "stop", return_value={"ok": True}))
         self.enterContext(patch.object(service, "launch_worker", return_value=SimpleNamespace(pid=424242)))
         self.enterContext(patch.object(service, "wait_for_automation_startup", side_effect=self.wait))
         started = self._run(service.start_host_automation_background, host_name="car", take_control=False)
@@ -59,7 +57,7 @@ class StopOrderingTests(unittest.TestCase):
         self.held.wait()
         stopped = service.stop_host_automation(host_name="car")
         self.assertFalse(self.release.is_set())
-        client.stop.assert_called_once_with()
+        stop.assert_called_once_with()
         self.release.set()
         result = started()
 
@@ -72,9 +70,7 @@ class StopOrderingTests(unittest.TestCase):
     def test_a_failed_stop_does_not_cancel_the_start(self) -> None:
         self.enterContext(patch.object(service, "staged_host", return_value={"provider": "picar"}))
         self.enterContext(patch.object(service, "running_base_url", return_value="http://127.0.0.1:9"))
-        client = mock.Mock()
-        client.stop.side_effect = RuntimeError("offline")
-        self.enterContext(patch.object(service, "RuntimeClient", return_value=client))
+        self.enterContext(patch.object(service.RuntimeClient, "stop", side_effect=RuntimeError("offline")))
         self.enterContext(patch.object(service, "launch_worker", return_value=SimpleNamespace(pid=424242)))
         self.enterContext(patch.object(service, "wait_for_automation_startup", side_effect=self.wait))
         started = self._run(service.start_host_automation_background, host_name="car", take_control=False)

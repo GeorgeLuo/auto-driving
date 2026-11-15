@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import copy
+import io
 import json
 import math
 import unittest
 from dataclasses import replace
-from unittest.mock import Mock, patch
+from unittest.mock import patch
+
+from PIL import Image
 
 from autonomy.decision_cycle.activation import step_activation
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA
 from autonomy.runtime.report import HostReport
 from autonomy.runtime.routes import TELEMETRY_SCHEMA
+from cli.automa_cli.frontend.perception_view import PerceptionView
 from cli.automa_cli.hosts.views.decision_live import (
     DecisionViewAdapter,
     read_host_telemetry_panel,
@@ -161,8 +165,6 @@ READ_PANEL = "cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel
 
 class HostTelemetryConsumerTests(unittest.TestCase):
     def test_the_adapter_publishes_the_frame_then_joins_its_telemetry(self) -> None:
-        from cli.automa_cli.frontend.perception_view import PerceptionView
-
         normalized = _normalized_decision()
         view = PerceptionView(host_name="piracer")
         joined = join_host_telemetry_to_decision(normalize_host_telemetry_record(_record(), now_ms=NOW_MS), normalized)
@@ -188,15 +190,21 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         self.assertEqual(adapter.publication["host_telemetry"], joined)
 
     def test_telemetry_failure_still_publishes_the_decision_image(self) -> None:
-        perception = Mock()
+        perception = PerceptionView(host_name="piracer")
+        image = io.BytesIO()
+        Image.new("RGB", (4, 4), (1, 2, 3)).save(image, format="JPEG")
+        jpeg = image.getvalue()
         with patch(FETCH, side_effect=ConnectionError("down")):
             adapter = DecisionViewAdapter(
                 host_name="piracer", base_url="http://piracer.local:8887",
                 publisher=ObservationPublisher(perception), timeout_s=1.0,
             )
-            adapter.publish_frame(_normalized_decision(), b"jpeg-bytes")
+            adapter.publish_frame(_normalized_decision(), jpeg)
 
-        self.assertEqual(perception.publish.call_args.kwargs["frame_bytes"], b"jpeg-bytes")
+        self.assertEqual(perception.frame(), (jpeg, "image/jpeg"))
+        shown = json.loads(perception.latest_json())
+        self.assertEqual(shown["image"]["frame_id"], "frame-1")
+        self.assertIsNotNone(shown["image"]["url"])
         self.assertEqual(adapter.publication["report"]["frame_id"], "frame-1")
         panel = adapter.publication["host_telemetry"]
         self.assertEqual(

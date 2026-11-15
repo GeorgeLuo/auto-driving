@@ -24,6 +24,7 @@ from cli.automa_cli.plugins.stream.models import PerceptionPublication, StreamEv
 from cli.automa_cli.plugins.stream.polling import poll_events
 from cli.automa_cli.plugins.stream.render import render_stream
 from cli.automa_cli.hosts.errors import RuntimeHostError
+from cli.automa_cli.hosts.views.view_feed import ViewFeed
 
 
 # A fresh cycle whose plan record is empty.
@@ -192,7 +193,7 @@ class StreamOutputTests(unittest.TestCase):
         for json_output in (False, True):
             with self.subTest(json=json_output):
                 output = FlushedOutput()
-                feed = Mock(url="http://view/", error=None)
+                feed = Mock(spec_set=ViewFeed)
                 feed.read_observation.return_value = None, None
                 feed.state.return_value = ("http://view/", None, "/decision", None)
                 with patch("cli.automa_cli.plugins.stream.polling.time.sleep", side_effect=[None, KeyboardInterrupt]):
@@ -348,7 +349,7 @@ class StreamOutputTests(unittest.TestCase):
     def test_view_closes_on_completion_interruption_and_failure(self):
         for outcome in ("complete", "interrupt", "fail"):
             with self.subTest(outcome=outcome):
-                feed = Mock()
+                feed = Mock(spec_set=ViewFeed)
                 feed.state.return_value = ("http://view/", None, None, None)
                 feed.read_observation.return_value = ({"health": "absent"}, None)
 

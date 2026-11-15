@@ -28,6 +28,10 @@ stages the default.
 | Preset | Plugins |
 |---|---|
 | `most_confident` (default) | `highest_confidence` |
+| `follow_policy` | `follow_policy` |
+
+Arm `follow_policy` on a host whose collection supplies a policy cycler and
+its executors; `plugins/README.md` says what it selects and logs.
 
 ## Finding the default business logic
 

@@ -4,12 +4,21 @@
     "most_confident": {
       "description": "Select the most confident active candidate; otherwise plan idle.",
       "plugins": ["highest_confidence"]
+    },
+    "follow_policy": {
+      "description": "Follow the current policy's ordered executors; idle on an exit or without an active executor.",
+      "plugins": ["follow_policy"]
     }
   },
   "plugins": [
     {
       "spec": "implementations.decision_cycle.plan.plugins.highest_confidence.plugin:HighestConfidencePlan",
       "description": "Select the most confident active candidate; otherwise plan idle.",
+      "default_config": {}
+    },
+    {
+      "spec": "implementations.decision_cycle.plan.plugins.follow_policy.plugin:FollowPolicy",
+      "description": "Follow the published policy and log selected executor runs.",
       "default_config": {}
     }
   ]

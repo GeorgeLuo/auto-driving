@@ -1,8 +1,9 @@
 """The run record every host's run shares.
 
 Every runtime host executes the decision cycle while the CLI monitors it
-(``monitor``), writing this ``state.json`` record. A recording also appends
-the same ``manifest.json``, which replay loads. The lines a terminal prints
+(``monitor``), writing this ``state.json`` record. Recording appends each
+committed frame beside that run's ``manifest.json``, which replay loads. The
+host and the CLI export keep separate copies. The lines a terminal prints
 come from ``render``.
 """
 from __future__ import annotations

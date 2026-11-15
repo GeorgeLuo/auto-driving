@@ -428,7 +428,7 @@ Useful run options:
   before counting the decision. The host owns its history under
   `runtime/automation/host-runs/`; the CLI exports it under
   `runtime/automation/runs/`. Separate directories keep the local Chase host
-  and CLI from overwriting each other's manifests. PiCar recordings are copied
+  and CLI from writing each other's recordings. PiCar recordings are copied
   from the onboard run in order and drained on completion or stop; later manual observations
   stay outside the recording. A successful recorded run reports matching
   `Decisions recorded` and `Decisions completed` counts.

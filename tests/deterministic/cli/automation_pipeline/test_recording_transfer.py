@@ -10,7 +10,7 @@ from unittest.mock import patch
 from autonomy.decision_cycle.activation import STEPS, step_activation_path, write_step_activation
 from autonomy.runtime.assembly import staged_runtime
 from autonomy.runtime import recording as recording_module
-from autonomy.runtime.recording import RunRecording, host_runs_dir
+from autonomy.runtime.recording import RECORDING_ENTRIES_NAME, RunRecording, host_runs_dir, read_recording_entries
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs.monitor import _sync_recording
 from implementations.decision_cycle.catalog import packaged_activation
@@ -42,34 +42,38 @@ class RecordingTransferTests(unittest.TestCase):
                 def read_recording(self, run_id, *, after):
                     return recording.read(run_id=run_id, after=after)
 
-            original_write = recording_module.write_json_atomically
+            original_append = recording_module.append_recording_entry
             appended = False
 
-            def write_with_host_append(path: Path, payload: dict):
+            def append_with_host_frame(path: Path, entry: dict):
                 nonlocal appended
-                if path == export_dir / "manifest.json" and not appended:
-                    # The CLI has read the old manifest. A host append commits
-                    # before that CLI write, forcing the former lost-update race.
+                if path == export_dir / RECORDING_ENTRIES_NAME and not appended:
+                    # The CLI is committing this frame's entry. A host append
+                    # commits before that write returns.
                     appended = True
                     second = host.run(frame(root, 2))
                     timings[second.context.frame_id] = second.timing
                     completions[second.context.frame_id] = second.completed_at_ms
-                original_write(path, payload)
+                original_append(path, entry)
 
-            with patch.object(recording_module, "write_json_atomically", side_effect=write_with_host_append):
+            with patch.object(recording_module, "append_recording_entry", side_effect=append_with_host_frame):
                 for _ in range(2):
                     _sync_recording(Client(), state, run_dir=export_dir, recording_id=recording.run_id)
 
             self.assertTrue(appended)
             self.assertEqual(state["recorded_count"], 2)
             self.assertEqual(recording.status()["recorded_count"], 2)
-            authoritative = json.loads((recording.root / "manifest.json").read_text())
-            exported = json.loads((export_dir / "manifest.json").read_text())
-            self.assertEqual([item["frame_id"] for item in authoritative["frames"]], ["frame-1", "frame-2"])
+            authoritative = read_recording_entries(recording.root)
+            exported = read_recording_entries(export_dir)
+            self.assertEqual([item["frame_id"] for item in authoritative], ["frame-1", "frame-2"])
             self.assertEqual(exported, authoritative)
+            self.assertEqual(
+                (export_dir / "manifest.json").read_text(),
+                (recording.root / "manifest.json").read_text(),
+            )
             self.assertEqual(host.session_status()["status"], "completed")
             self.assertNotEqual(recording.root.resolve(), export_dir.resolve())
-            for entry in exported["frames"]:
+            for entry in exported:
                 self.assertEqual((export_dir / entry["image_path"]).read_bytes(),
                                  (recording.root / entry["image_path"]).read_bytes())
                 record = Path("perception") / entry["frame_id"] / "perception.json"

@@ -22,6 +22,7 @@ from autonomy.runtime.execution import CONTROL_APPLICATION_LIMIT, ControlApplica
 from autonomy.runtime.recording import (
     CONTROL_APPLICATION_CHANGE_FIELD, RECORDING_MANIFEST_NAME, RunRecording,
     control_application_windows,
+    read_recording_entries,
     write_recorded_frame,
 )
 from autonomy.runtime.session import RunConfiguration
@@ -61,8 +62,8 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                     result = host.run(DecisionFrameContext(f"f{index}", index, 2100 + index, sensor_frame=sensors),
                                       mode="local", user_steering=index / 10, user_throttle=0.4)
                     expected.append(result.context.shared_memory[CONTROL_APPLICATIONS_KEY])
-            manifest = json.loads((recording.root / RECORDING_MANIFEST_NAME).read_text())
-            entries = manifest["frames"]
+            header = (recording.root / RECORDING_MANIFEST_NAME).read_text()
+            entries = read_recording_entries(recording.root)
             self.assertEqual([entry["mode"] for entry in entries], ["autonomy"] * 4)
             self.assertTrue(all("action_policy" not in entry for entry in entries))
             self.assertEqual([entry["user_steering"] for entry in entries], [0, 0.1, 0.2, 0.3])
@@ -96,7 +97,8 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                     self.assertIn(key, recorded_frame)
                 write_recorded_frame(exported, frame, base64.b64decode(item["image_base64"]),
                                      item["image_extension"], {})
-            self.assertEqual(json.loads((exported / RECORDING_MANIFEST_NAME).read_text()), manifest)
+            self.assertEqual((exported / RECORDING_MANIFEST_NAME).read_text(), header)
+            self.assertEqual(read_recording_entries(exported), entries)
             for directory in (recording.root, exported):
                 source = load_image_source(directory)
                 seen = []
@@ -140,7 +142,7 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                 )
                 result = host.run(DecisionFrameContext(f"f{index}", index, index, sensor_frame=sensors))
                 recording.append(result, window)
-            entries = json.loads((recording.root / RECORDING_MANIFEST_NAME).read_text())["frames"]
+            entries = read_recording_entries(recording.root)
             self.assertTrue(all(
                 key not in entry for entry in entries for key in ("mode", "user_steering", "user_throttle")
             ))

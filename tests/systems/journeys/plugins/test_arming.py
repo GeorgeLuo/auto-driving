@@ -10,6 +10,7 @@ from pathlib import Path
 from tests.support.runtime_fixtures import stage_step, write_host_fixture, runtime_root_env
 from urllib.request import urlopen
 
+from autonomy.runtime.recording import read_recording_entries
 from cli.automa_cli.hosts.discovery import runtime_base_url
 from cli.automa_cli.hosts.local import stop_chase_host
 from implementations.decision_cycle.catalog import PRESET_STEPS, packaged_activation
@@ -186,10 +187,15 @@ class PluginArmingFlows(unittest.TestCase):
                 self.assertEqual(state["recorded_count"], state["processed_count"])
                 # The CLI exports beside the host's history, never into it.
                 self.assertEqual(Path(state["run_dir"]).resolve().parent, (automation_dir / "runs").resolve())
-                exported = json.loads((Path(state["run_dir"]) / "manifest.json").read_text())
-                host_manifest = automation_dir / "host-runs" / Path(state["run_dir"]).name / "manifest.json"
-                self.assertEqual(exported, json.loads(host_manifest.read_text()))
-                self.assertEqual(len(exported["frames"]), state["recorded_count"])
+                exported_root = Path(state["run_dir"])
+                host_root = automation_dir / "host-runs" / exported_root.name
+                self.assertEqual(
+                    (exported_root / "manifest.json").read_text(),
+                    (host_root / "manifest.json").read_text(),
+                )
+                exported_entries = read_recording_entries(exported_root)
+                self.assertEqual(exported_entries, read_recording_entries(host_root))
+                self.assertEqual(len(exported_entries), state["recorded_count"])
                 # The host outlives the run and keeps live deselections, like a PiCar's.
                 after = json.loads(run_automa("plugins", "list", "--host-name", "chase-sim-chaser", "--step", "proposal",
                                               "--json", runtime_root=runtime, extra_env=env).stdout)

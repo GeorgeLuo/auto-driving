@@ -13,7 +13,7 @@ from autonomy.decision_cycle.activation import step_activation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.plugins import uploaded_source
 from autonomy.runtime.plugin_loader import load_runner
-from autonomy.runtime.recording import RunRecording
+from autonomy.runtime.recording import RunRecording, read_recording_entries
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.workbench.runner import ImageReplayRunner
@@ -49,8 +49,8 @@ class RecordedPluginFlows(unittest.TestCase):
             self.assertEqual(result.proposal.candidates[0].metadata["revision"], 1)
             name = receipt["plugin"]["metadata"]["source_file"]
             self.assertEqual((recording.root / "plugins" / name).read_bytes(), file.read_bytes())
-            manifest = json.loads((recording.root / "manifest.json").read_text())
-            self.assertEqual(manifest["frames"][0]["steps"]["proposal"]["plugin_specs"], {"prototype": f"{name}:Prototype"})
+            entry = read_recording_entries(recording.root)[0]
+            self.assertEqual(entry["steps"]["proposal"]["plugin_specs"], {"prototype": f"{name}:Prototype"})
 
     def test_bundle_initialization_and_same_spec_source_transition_use_recorded_code(self):
         with image_source(1) as root:
@@ -111,7 +111,8 @@ class RecordedPluginFlows(unittest.TestCase):
                 originals.add(uploaded_source(receipt["plugin"]["metadata"]["source_file"]))
                 host.run(frame(root, 2))
                 self.assertEqual(host.session_status()["status"], "completed")
-                before = json.loads((recording.root / "manifest.json").read_text())
+                before_header = (recording.root / "manifest.json").read_text()
+                before_entries = read_recording_entries(recording.root)
                 view.stop()
                 host.close()
                 for directory in {path.parent for path in originals}:
@@ -119,7 +120,8 @@ class RecordedPluginFlows(unittest.TestCase):
                 self.assertTrue(all(not path.exists() for path in originals))
                 moved = root / "moved"
                 shutil.move(recording.root, moved)
-                self.assertEqual(json.loads((moved / "manifest.json").read_text()), before)
+                self.assertEqual((moved / "manifest.json").read_text(), before_header)
+                self.assertEqual(read_recording_entries(moved), before_entries)
                 cli = invoke_automa("workbench", str(moved), "--cadence-ms", "0")
                 self.assertIn("phase: completed", cli.stdout)
                 base, run_id = replay(self, moved)

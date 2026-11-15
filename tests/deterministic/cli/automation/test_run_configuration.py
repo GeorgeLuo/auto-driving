@@ -5,6 +5,7 @@ import io
 import shlex
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from autonomy.runtime.session import RunConfiguration
@@ -221,16 +222,15 @@ class RunConfigurationTests(unittest.TestCase):
             tempfile.TemporaryDirectory() as tmp,
             runtime_root_env(tmp),
             patch("cli.automa_cli.hosts.runs.service.RuntimeClient", _HostClient),
-            patch("cli.automa_cli.hosts.runs.process.subprocess.Popen") as popen,
+            patch("cli.automa_cli.hosts.runs.service.launch_worker", return_value=SimpleNamespace(pid=99)) as launch,
             patch(
                 "cli.automa_cli.hosts.runs.service.wait_for_automation_startup",
                 return_value={"status": "completed"},
             ),
         ):
-            popen.return_value.pid = 99
             result = start_host_automation_background(host_url="http://127.0.0.1:54355", **kwargs)
         self.assertEqual(result.exit_code, 0, render_start_result(result))
-        return popen.call_args.args[0]
+        return launch.call_args.args[0]
 
     def test_background_command_names_the_host_and_its_url(self):
         command = self._background_command(num_decisions=1, take_control=True)

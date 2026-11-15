@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
+from urllib.response import addinfourl
 
 from autonomy.decision_cycle.activation import STEPS
 from cli.automa_cli.hosts.bundles import sync_controller_bundle
@@ -37,10 +39,8 @@ TARGET = PicarTarget(
 )
 
 
-def _status_response(mode: str, steps: dict[str, list[str]]) -> MagicMock:
-    response = MagicMock()
-    response.__enter__.return_value = response
-    response.read.return_value = json.dumps(
+def _status_response(mode: str, steps: dict[str, list[str]]) -> addinfourl:
+    body = json.dumps(
         {
             "ok": True,
             "mode": mode,
@@ -50,7 +50,7 @@ def _status_response(mode: str, steps: dict[str, list[str]]) -> MagicMock:
             },
         }
     ).encode("utf-8")
-    return response
+    return addinfourl(io.BytesIO(body), {}, "http://piracer.local:8887/host/status", code=200)
 
 
 class PhysicalDeployTests(unittest.TestCase):

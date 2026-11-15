@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import json
 import unittest
-from pathlib import Path
 
 from autonomy.vehicle import (
     FRONT_CAMERA_SENSOR_ID,
-    SensorReadRequest,
     SensorReading,
     SensorFrame,
     VehicleCapabilities,
@@ -14,32 +12,6 @@ from autonomy.vehicle import (
 
 
 class SensorValueTests(unittest.TestCase):
-    def test_sensor_request_selects_sensors_and_normalizes_capture_path(self) -> None:
-        request = SensorReadRequest(
-            output_dir=Path("captures"),
-            read_id="frame_007",
-            requested_sensors=(FRONT_CAMERA_SENSOR_ID,),
-            image_extension=".png",
-        )
-
-        self.assertTrue(request.sensor_requested(FRONT_CAMERA_SENSOR_ID))
-        self.assertFalse(request.sensor_requested("imu"))
-        self.assertEqual(
-            request.front_camera_path(),
-            Path("captures/frame_007_front_camera.png"),
-        )
-        self.assertEqual(
-            SensorReadRequest(
-                output_dir=Path("captures"),
-                image_extension="",
-            ).front_camera_path().suffix,
-            ".jpg",
-        )
-
-        serialized = request.to_dict()
-        serialized["requested_sensors"].append("imu")
-        self.assertFalse(request.sensor_requested("imu"))
-
     def test_sensor_frame_serialization_omits_values_and_includes_nested_data(self) -> None:
         reading = SensorReading(
             sensor_id=FRONT_CAMERA_SENSOR_ID,

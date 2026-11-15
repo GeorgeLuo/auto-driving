@@ -8,6 +8,7 @@ from implementations.vehicle.chase_sim import (
     ChaseSimCar,
 )
 from implementations.vehicle.chase_sim.metrics_ws import MetricsUiCommandResponse, MetricsUiWebSocketError, MetricsUiWsClient
+from implementations.vehicle.chase_sim.frame_identity import ChaseCaptureValidationError
 from implementations.vehicle.chase_sim import build_chase_session_fingerprint, compare_chase_session_fingerprints
 from tests.deterministic.implementations.vehicle.chase_frame_identity_fixtures import (
     ChaseFrameIdentityFixture,
@@ -78,6 +79,10 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
             result = car.inspect_passive_capture()
 
         self.assertEqual(result["status"], "available")
+        self.assertNotIn("image", result)
+        self.assertNotIn("validated_bytes", result["sensor"]["image"])
+        self.assertNotIn("dataUrl", result["sensor"]["image"])
+        self.assertEqual(result["evaluator_reference"], {"status": "available"})
         self.assertFalse(result["mutation_attempted"])
         self.assertEqual(len(timeouts), 3)
         self.assertTrue(
@@ -105,6 +110,43 @@ class ChaseFrameIdentityTests(ChaseFrameIdentityFixture, unittest.TestCase):
             result["passive_observation"]["camera_id"],
             CHASE_PASSIVE_CAMERA_ID,
         )
+
+    def test_passive_probe_rejects_invalid_pixels_and_receipt_identity(self) -> None:
+        for invalid in ("pixels", "receipt_identity"):
+            with self.subTest(invalid=invalid):
+                capture = _atomic_capture()
+                if invalid == "pixels":
+                    capture["sensor"]["image"]["dataUrl"] = "data:image/png;base64,YmFk"
+                    expected_code = "capture_image_invalid"
+                else:
+                    for side in ("before", "after"):
+                        capture["passiveObservation"]["preservation"][side]["simulationEpoch"] = "other"
+                    expected_code = "capture_identity_invalid"
+                car = ChaseSimCar(ws_url="ws://example.test/ws")
+                with (
+                    mock.patch.object(car.client, "get_state", return_value=_session_state()),
+                    mock.patch.object(car.client, "get_play_debug", return_value=_session_debug()),
+                    mock.patch.object(car.client, "play_game_query", return_value=capture),
+                    self.assertRaises(ChaseCaptureValidationError) as raised,
+                ):
+                    car.inspect_passive_capture()
+                self.assertEqual(raised.exception.code, expected_code)
+
+    def test_passive_probe_keeps_status_when_evaluator_reference_is_missing(self) -> None:
+        capture = _atomic_capture()
+        capture.pop("evaluator")
+        car = ChaseSimCar(ws_url="ws://example.test/ws")
+        with (
+            mock.patch.object(car.client, "get_state", return_value=_session_state()),
+            mock.patch.object(car.client, "get_play_debug", return_value=_session_debug()),
+            mock.patch.object(car.client, "play_game_query", return_value=capture),
+        ):
+            result = car.inspect_passive_capture()
+        self.assertEqual(result["status"], "available")
+        self.assertTrue(result["session_preservation"]["preserved"])
+        self.assertEqual(result["evaluator_reference"], {
+            "status": "unavailable", "reason": "reference_missing", "path": "evaluator.reference",
+        })
 
     def test_passive_capture_rejects_invalid_declared_receipt(self) -> None:
         car = ChaseSimCar(ws_url="ws://example.test/ws", timeout_s=0.5)

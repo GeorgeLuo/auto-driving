@@ -929,9 +929,6 @@ duplicate it. Concrete camera decoding
 and every meaning-making algorithm live under
 `implementations/decision_cycle/perception/`.
 
-Both current vehicle adapters expose only the generic `front_camera` sensor
-through `CarInterface.read_sensors()`.
-
 ## Transitional Research Tools
 
 The scripts below are useful for inspection and calibration but are not part of

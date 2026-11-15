@@ -4,7 +4,6 @@ import io
 import threading
 import time
 from contextlib import ExitStack, contextmanager
-from dataclasses import replace
 from pathlib import Path
 import numpy as np
 
@@ -62,24 +61,12 @@ class _FakeCar:
         self.streams = []
         self.auto_emit = True
         self.simulator_frame_stride = simulator_frame_stride
-        self.last_capture_chaser_reference: dict | None = None
-        self.last_passive_capture: dict | None = None
 
     def prepare_for_external_control(self):
         raise AssertionError("observe-only automation must not take control")
 
     def stop(self):
         raise AssertionError("observe-only automation must not send idle control")
-
-    def read_sensors(self, request):
-        frame = self._camera_frame()
-        path = request.front_camera_path()
-        path.parent.mkdir(parents=True, exist_ok=True)
-        reading = frame.readings[FRONT_CAMERA_SENSOR_ID]
-        Image.fromarray(reading.value).save(path)
-        return replace(frame, read_id=request.read_id, request=request.to_dict(), readings={
-            FRONT_CAMERA_SENSOR_ID: replace(reading, path=str(path), value=None),
-        })
 
     def camera_stream(self):
         stream = _PushStream(self)
@@ -92,31 +79,6 @@ class _FakeCar:
         simulator_frame_index = 100 + self.simulator_frame_stride * self.capture_count
         image = np.array(Image.new("RGB", (64, 48), (self.capture_count % 256, 40, 60)))
         self.capture_count += 1
-        self.last_passive_capture = {
-            "status": "available",
-            "environment": {
-                "scenario_id": "fixture-current",
-                "playback": {"isPlaying": True},
-                "control_source": "builtin",
-                "control_input": {"motion": "forward"},
-            },
-            "session_preservation": {
-                "preserved": True,
-                "changed_fields": [],
-                "unknown_fields": [],
-            },
-            "mutation_attempted": False,
-        }
-        self.last_capture_chaser_reference = {
-            "schema": "chaser_reference",
-            "evaluator_only": True,
-            "simulator_frame_index": simulator_frame_index,
-            "simulation_epoch": "chase-run:test",
-            "frame_id": f"chase_frame_{simulator_frame_index:06d}",
-            "game_id": "chase",
-            "scenario": "chaser-depth-obstacles",
-            "chaser_control_source": "builtin",
-        }
         reading = SensorReading(
             sensor_id=FRONT_CAMERA_SENSOR_ID,
             sensor_kind="camera",

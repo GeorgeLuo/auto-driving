@@ -127,6 +127,7 @@ _MODULE_ROLES = {
     "hosts.views.runtime_view": "operation",
     "hosts.views.view_discovery": "operation",
     "hosts.views.view_feed": "operation",
+    "hosts.views.still": "operation",
     "hosts.views.viewer": "operation",
     "plugins.catalog.manifest": "operation",
     "plugins.inspect.replay": "operation",

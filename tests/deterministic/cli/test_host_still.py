@@ -2,16 +2,24 @@
 
 from __future__ import annotations
 
+import base64
+import json
 import tempfile
+import threading
 import unittest
 from contextlib import ExitStack
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
+from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
+from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FRAME_TRANSACTION_SCHEMA
+from autonomy.runtime.report import HostReport, ReportApplication
 from cli.automa_cli.providers.metadata import CHASE_SIM, PICAR
 from cli.automa_cli.shared.browser_result import BrowserOpenResult
 from cli.automa_cli.shared.paths import display_path
 from tests.shared.cli.invoke import invoke_automa
+from tests.support.runtime_fixtures import write_host_fixture
 
 _JPEG = b"\xff\xd8\xff\xd9"
 _URL = "http://127.0.0.1:9"
@@ -19,9 +27,16 @@ _URL = "http://127.0.0.1:9"
 
 def _publication(**extra: object) -> dict[str, object]:
     publication: dict[str, object] = {
+        "schema": FRAME_PUBLICATION_SCHEMA,
         "health": "healthy",
         "result_age_ms": 40,
-        "report": {"frame_id": "frame-7"},
+        "report": HostReport(
+            host_name="chase", run_id="run", generation_id="generation", frame_id="frame-7",
+            frame_index=7, timestamp_ms=900, published_at_ms=1000,
+            cycle=dict.fromkeys(CYCLE_RECORD_KEYS),
+            application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
+            values={"source_id": "chase", "stale_after_ms": 1500, "activation": {"steps": {}}},
+        ).to_dict(),
     }
     publication.update(extra)
     return publication
@@ -71,6 +86,43 @@ class HostStillTests(unittest.TestCase):
                 "",
             ]),
         )
+
+    def test_a_staged_picar_pointing_to_another_host_never_saves_or_opens_its_frame(self) -> None:
+        body = json.dumps({
+            "schema": FRAME_TRANSACTION_SCHEMA, "publication": _publication(),
+            "image_frame_id": "frame-7", "image_content_type": "image/jpeg",
+            "image_base64": base64.b64encode(_JPEG).decode(), "image_error": None,
+        }).encode()
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("ETag", 'W/"frame-7"')
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *_args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        thread = threading.Thread(target=server.serve_forever, kwargs={"poll_interval": 0.01}, daemon=True)
+        thread.start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(thread.join)
+        self.addCleanup(server.shutdown)
+        base_url = f"http://127.0.0.1:{server.server_port}"
+        write_host_fixture(self.runtime, "piracer", provider=PICAR.name, url=base_url)
+        path = self.view / "still.jpg"
+        for previous in (None, b"previous still"):
+            with self.subTest(previous=previous):
+                if previous is not None:
+                    path.write_bytes(previous)
+                result = self._still(host_name="piracer")
+                self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+                self.assertIn("Frame publication is from host 'chase', not 'piracer'.", result.stdout)
+                self.assertEqual(self.opened, [])
+                self.assertEqual(path.read_bytes() if path.exists() else None, previous)
 
     def test_a_stopped_chase_host_keeps_its_last_frame(self) -> None:
         sample = patch(

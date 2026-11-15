@@ -10,10 +10,10 @@ from pathlib import Path
 from tests.support.runtime_fixtures import stage_step, write_host_fixture, runtime_root_env
 from urllib.request import urlopen
 
-from autonomy.runtime.recording import read_recording_entries
 from cli.automa_cli.hosts.discovery import runtime_base_url
 from cli.automa_cli.hosts.local import stop_chase_host
 from implementations.decision_cycle.catalog import PRESET_STEPS, packaged_activation
+from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import (

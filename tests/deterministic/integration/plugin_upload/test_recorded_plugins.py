@@ -13,7 +13,7 @@ from autonomy.decision_cycle.activation import step_activation
 from autonomy.decision_cycle.steps import decision_steps
 from autonomy.plugins import uploaded_source
 from autonomy.runtime.plugin_loader import load_runner
-from autonomy.runtime.recording import RunRecording, read_recording_entries
+from autonomy.runtime.recording import RunRecording
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.workbench.runner import ImageReplayRunner
@@ -21,6 +21,7 @@ from implementations.decision_cycle.catalog import PRESET_STEPS
 from implementations.runtime.chase_sim import create_host as create_chase_host
 from implementations.runtime.picar import create_host as create_picar_host
 from implementations.vehicle.chase_sim import ChaseSimCar
+from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries
 from tests.shared.cli.invoke import invoke_automa
 from tests.shared.cli.workbench_fixtures import image_source, post_action, get_json
 from tests.shared.integration.plugin_flow_fixtures import (

@@ -10,11 +10,12 @@ from unittest.mock import patch
 from autonomy.decision_cycle.activation import STEPS, step_activation_path, write_step_activation
 from autonomy.runtime.assembly import staged_runtime
 from autonomy.runtime import recording as recording_module
-from autonomy.runtime.recording import RECORDING_ENTRIES_NAME, RunRecording, host_runs_dir, read_recording_entries
+from autonomy.runtime.recording import RECORDING_ENTRIES_NAME, RunRecording, host_runs_dir
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs.monitor import _sync_recording
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.picar import create_host
+from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import frame
 

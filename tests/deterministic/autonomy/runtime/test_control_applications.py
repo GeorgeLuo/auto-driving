@@ -22,7 +22,6 @@ from autonomy.runtime.execution import CONTROL_APPLICATION_LIMIT, ControlApplica
 from autonomy.runtime.recording import (
     CONTROL_APPLICATION_CHANGE_FIELD, RECORDING_MANIFEST_NAME, RunRecording,
     control_application_windows,
-    read_recording_entries,
     write_recorded_frame,
 )
 from autonomy.runtime.session import RunConfiguration
@@ -31,6 +30,7 @@ from cli.automa_cli.replay.frames import run_frame
 from cli.automa_cli.replay.source import load_image_source
 from cli.automa_cli.replay.models import SourceValidationError
 from implementations.runtime.picar.control import DonkeyControlTarget
+from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries
 from tests.shared.cli.workbench_fixtures import image_source, write_manifest
 
 

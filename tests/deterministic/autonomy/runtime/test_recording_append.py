@@ -18,10 +18,10 @@ from autonomy.runtime.recording import (
     RECORDING_ENTRIES_NAME,
     RECORDING_MANIFEST_NAME,
     RunRecording,
-    read_recording_entries,
     write_recorded_frame,
 )
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
+from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries
 
 
 def _camera(root: Path) -> Path:

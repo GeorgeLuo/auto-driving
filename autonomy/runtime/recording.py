@@ -338,16 +338,6 @@ def recording_entries(root: Path, manifest: Mapping[str, object]) -> list[object
     return list(frames)
 
 
-def read_recording_entries(root: Path) -> list[object]:
-    """Load the committed frame entries of one run directory."""
-
-    path = Path(root) / RECORDING_MANIFEST_NAME
-    manifest = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(manifest, dict):
-        raise ValueError("recording manifest must be a JSON object")
-    return recording_entries(path.parent, manifest)
-
-
 def uploaded_sources(steps: Mapping[str, object]) -> set[str]:
     """The uploaded source files, ``<sha256>.py``, these step selections name."""
 
@@ -532,7 +522,6 @@ class RunRecording:
                 frame[CONTROL_APPLICATION_CHANGE_FIELD] = {
                     "kept": kept, "added": [item.to_dict() for item in applications[kept:]],
                 }
-            _require_new_frame(self.root, context.frame_id)
             sources = {
                 name: uploaded_source(name).read_bytes()
                 for name in uploaded_sources(frame["step_activations"])

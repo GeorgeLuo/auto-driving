@@ -22,13 +22,13 @@ def definitions():
     }
 
 
-def candidate(plugin_id, at, *, name="search", epoch=0, command=(1, -1), active=True):
+def candidate(memory, plugin_id, at, *, name="search", epoch=0, command=(1, -1), active=True):
     return ActionProposal(
         plugin_id=plugin_id, frame_id=f"f{at}", lifecycle="fresh" if active else "inactive",
         freshness="fresh" if active else "none", available=active, reason="moving", confidence=.7,
         command=ProposedVehicleCommand(throttle=command[0], steering=command[1]) if active else None,
         source_refs=(SourceRef(kind="memory_record", id="proposal.policy", frame_id=f"f{at}"),) if active else (),
-        metadata={"policy": {"name": name, "epoch": epoch}})
+        metadata={"policy": {**read_policy(memory).tag(), "name": name, "epoch": epoch}})
 
 
 def plan(memory, at, *candidates):
@@ -68,7 +68,7 @@ class PolicyCycleTests(unittest.TestCase):
 
     def test_change_then_equal_choice_preserves_entry_time_and_reason(self):
         self.cycle.current(self.memory, now_ms=0)
-        plan(self.memory, 10, candidate("sweep", 10))
+        plan(self.memory, 10, candidate(self.memory, "sweep", 10))
         changed = self.cycle.choose(self.memory, "approach", now_ms=110, reason="judge")
         self.assertEqual((changed.name, changed.epoch, changed.since_ms, changed.reason), ("approach", 1, 110, "judge"))
         self.assertEqual(self.cycle.choose(self.memory, "approach", now_ms=200), changed)
@@ -79,7 +79,7 @@ class PolicyCycleTests(unittest.TestCase):
         for at in range(14):
             current = self.cycle.current(self.memory, now_ms=at * 200)
             executor = current.executors[0]
-            plan(self.memory, at * 200, candidate(executor, at * 200, name=current.name, epoch=current.epoch))
+            plan(self.memory, at * 200, candidate(self.memory, executor, at * 200, name=current.name, epoch=current.epoch))
             self.cycle.choose(self.memory, "approach" if at % 2 == 0 else "search", now_ms=at * 200 + 100)
         changes = self.memory["proposal.policy"]["changes"]
         self.assertEqual(len(changes), 10)
@@ -110,17 +110,25 @@ class PolicyCycleTests(unittest.TestCase):
 
     def test_placeholder_stop_does_not_start_floor_and_earliest_real_run_does(self):
         self.cycle.current(self.memory, now_ms=0)
-        plan(self.memory, 0, candidate("query", 0, command=(0, 0)))
+        plan(self.memory, 0, candidate(self.memory, "query", 0, command=(0, 0)))
         self.assertEqual(self.cycle.choose(self.memory, "approach", now_ms=200).epoch, 0)
-        plan(self.memory, 210, candidate("query", 210))
-        plan(self.memory, 250, candidate("sweep", 250))
+        plan(self.memory, 210, candidate(self.memory, "query", 210))
+        plan(self.memory, 250, candidate(self.memory, "sweep", 250))
         self.assertEqual(self.cycle.choose(self.memory, "approach", now_ms=309).epoch, 0)
         self.assertEqual(self.cycle.held(self.memory), 2)
         self.assertEqual(self.cycle.choose(self.memory, "approach", now_ms=310).epoch, 1)
 
+
+    def test_backwards_clock_still_measures_elapsed_time_from_earliest_current_run(self):
+        self.cycle.current(self.memory, now_ms=0)
+        plan(self.memory, 200, candidate(self.memory, "sweep", 200))
+        self.assertEqual(self.cycle.choose(self.memory, "approach", now_ms=100).epoch, 0)
+        self.assertEqual(self.cycle.choose(self.memory, "approach", now_ms=299).epoch, 0)
+        self.assertEqual(self.cycle.choose(self.memory, "approach", now_ms=300).epoch, 1)
+
     def test_prior_epoch_run_cannot_satisfy_new_epoch_floor(self):
         self.cycle.current(self.memory, now_ms=0)
-        plan(self.memory, 0, candidate("sweep", 0))
+        plan(self.memory, 0, candidate(self.memory, "sweep", 0))
         self.cycle.choose(self.memory, "approach", now_ms=100)
         self.assertEqual(self.cycle.choose(self.memory, "search", now_ms=1000).epoch, 1)
         self.assertEqual(self.cycle.held(self.memory), 1)
@@ -146,7 +154,7 @@ class PolicyCycleTests(unittest.TestCase):
     def test_selection_alone_and_unapplied_controls_cannot_satisfy_floor(self):
         self.cycle.current(self.memory, now_ms=0)
         context = DecisionFrameContext("f0", 0, 0, shared_memory=self.memory)
-        selected = follow_policy_plan(context, (candidate("sweep", 0),))
+        selected = follow_policy_plan(context, (candidate(self.memory, "sweep", 0),))
         control = SelectedAction().decide(context, selected).control
         self.memory[CONTROL_APPLICATIONS_KEY] = (ControlApplication("f0", "autonomy", False, "stale", control),)
         record_control_runs(self.memory)
@@ -172,8 +180,8 @@ class PolicyPlanTests(unittest.TestCase):
         self.current = self.cycle.current(self.memory, now_ms=0)
 
     def test_order_wins_over_candidate_order_and_confidence_is_preserved(self):
-        original = candidate("sweep", 0)
-        selected = plan(self.memory, 0, candidate("query", 0), original)
+        original = candidate(self.memory, "sweep", 0)
+        selected = plan(self.memory, 0, candidate(self.memory, "query", 0), original)
         self.assertEqual(selected.selected_candidate().plugin_id, "sweep")
         self.assertEqual(selected.reason, "moving")
         self.assertIs(selected.selected_candidate(), original)
@@ -181,25 +189,25 @@ class PolicyPlanTests(unittest.TestCase):
         self.assertEqual(original.reason, "moving")
         self.assertEqual(selected.selected_candidate().reason, selected.reason)
         self.assertEqual(dict(selected.metadata["policy"]), self.current.tag())
-        self.assertEqual(plan(self.memory, 10, candidate("sweep", 10, active=False), candidate("query", 10))
+        self.assertEqual(plan(self.memory, 10, candidate(self.memory, "sweep", 10, active=False), candidate(self.memory, "query", 10))
                          .selected_candidate().plugin_id, "query")
 
     def test_unlisted_wrong_name_and_wrong_epoch_cannot_drive(self):
-        idle = plan(self.memory, 0, candidate("center", 0), candidate("sweep", 0, epoch=1),
-                    candidate("query", 0, name="approach"))
+        idle = plan(self.memory, 0, candidate(self.memory, "center", 0), candidate(self.memory, "sweep", 0, epoch=1),
+                    candidate(self.memory, "query", 0, name="approach"))
         self.assertEqual(idle.status, "idle")
         self.assertIsNone(idle.command)
 
     def test_no_publication_and_undecided_are_idle(self):
-        self.assertEqual(plan({}, 0, candidate("sweep", 0)).status, "idle")
+        self.assertEqual(plan({}, 0, candidate(self.memory, "sweep", 0)).status, "idle")
         write_exit(self.memory, "sweep", self.current, why="lost", now_ms=1)
         self.cycle.current(self.memory, now_ms=2)
-        self.assertEqual(plan(self.memory, 2, candidate("query", 2, name=None, epoch=1)).status, "idle")
+        self.assertEqual(plan(self.memory, 2, candidate(self.memory, "query", 2, name=None, epoch=1)).status, "idle")
 
     def test_any_current_listed_exit_stops_sideways_handoff_and_closes_run(self):
-        plan(self.memory, 0, candidate("sweep", 0))
+        plan(self.memory, 0, candidate(self.memory, "sweep", 0))
         write_exit(self.memory, "query", self.current, why="timeout", now_ms=10)
-        idle = plan(self.memory, 10, candidate("sweep", 10), candidate("query", 10))
+        idle = plan(self.memory, 10, candidate(self.memory, "sweep", 10), candidate(self.memory, "query", 10))
         self.assertEqual(idle.status, "idle")
         self.assertEqual(read_control_runs(self.memory)[-1]["end_ms"], 10)
         self.assertEqual(read_policy(self.memory).epoch, 0)  # cycler has not consumed the exit yet
@@ -207,10 +215,10 @@ class PolicyPlanTests(unittest.TestCase):
     def test_stale_or_unlisted_exits_do_not_stop_selection(self):
         write_exit(self.memory, "center", self.current, why="blocked", now_ms=0)
         self.memory["proposal.sweep.exit"] = {"epoch": -1, "why": "lost"}
-        self.assertEqual(plan(self.memory, 0, candidate("sweep", 0)).status, "selected")
+        self.assertEqual(plan(self.memory, 0, candidate(self.memory, "sweep", 0)).status, "selected")
 
     def test_selection_has_no_shared_memory_writes_and_keeps_candidate_metadata(self):
-        original = candidate("sweep", 0)
+        original = candidate(self.memory, "sweep", 0)
         before = shared_memory_document(self.memory)
         selected = follow_policy_plan(DecisionFrameContext("f0", 0, 0, shared_memory=self.memory), (original,))
         self.assertIs(selected.selected_candidate(), original)

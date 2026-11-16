@@ -30,6 +30,11 @@ every update, so a restage clears it with any plugin of its step. The cycle
 publishes ``observation.current``; only the host writes the four action input
 keys. In-place mutation of another owner's value is not detected.
 
+Deferred results commit only inside the owning plugin call, using that call's
+current map. Workers keep private outcomes and never retain or write this map.
+``StepRunner._plugin_call`` establishes the owner and thread boundary; helpers
+use ``require_plugin_call`` before publishing a deferred result or history.
+
 Unowned seed keys survive restaging. A seed decodes into a fresh map per run.
 Plugin resets may leave fresh state, which ``MemoryRunner.reset`` returns.
 Declared beliefs are removed before their plugin resets.
@@ -40,13 +45,35 @@ from __future__ import annotations
 import importlib
 import json
 import math
-from collections.abc import Mapping, MutableMapping
+from collections.abc import Iterator, Mapping, MutableMapping
+from contextlib import contextmanager
+from contextvars import ContextVar
 from pathlib import Path
+from threading import get_ident
 
 SHARED_MEMORY_SCHEMA = "shared_memory"
 _RECORD_KEYS = frozenset({"$record", "data"})
 
 SharedMemory = MutableMapping[str, object]
+
+_CALL: ContextVar[tuple[SharedMemory | None, str, str, int] | None] = ContextVar("plugin_call", default=None)
+
+
+@contextmanager
+def plugin_call_memory(shared_memory: SharedMemory | None, step: str, plugin_id: str) -> Iterator[None]:
+    """Establish the map and owner for a runner's synchronous plugin invocation."""
+    token = _CALL.set((shared_memory, step, plugin_id, get_ident()))
+    try:
+        yield
+    finally:
+        _CALL.reset(token)
+
+
+def require_plugin_call(shared_memory: SharedMemory, key: str) -> None:
+    """Reject deferred commits outside the owning call, including worker threads."""
+    current = _CALL.get()
+    if current is None or current[0] is not shared_memory or current[3] != get_ident() or not key.startswith(f"{current[1]}.{current[2]}."):
+        raise RuntimeError(f"deferred state {key!r} must commit inside its owning plugin call")
 
 
 class SharedMemoryValueError(ValueError):

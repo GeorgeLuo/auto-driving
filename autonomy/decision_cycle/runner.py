@@ -40,7 +40,7 @@ from autonomy.plugins import (
     plugin_report as build_plugin_report,
     require_plugin_id,
 )
-from autonomy.shared_memory import SharedMemory
+from autonomy.shared_memory import SharedMemory, plugin_call_memory
 from autonomy.decision_cycle.restage import owner_of
 from autonomy.decision_cycle.plugin_state import RetainedStateError, unchanged_instance
 
@@ -231,7 +231,7 @@ class StepRunner(Generic[PluginT]):
         # Pin values so replacement cannot reuse a deleted object's identity.
         pinned = dict(shared_memory) if shared_memory is not None else {}
         before = {key: id(value) for key, value in pinned.items()}
-        with unchanged_instance(plugin):
+        with plugin_call_memory(shared_memory, self.step, plugin.plugin_id), unchanged_instance(plugin):
             yield
         after = {key: id(value) for key, value in shared_memory.items()} if shared_memory is not None else {}
         invalid = [

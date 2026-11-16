@@ -2,9 +2,11 @@
 
 A policy definition has ``when``, ``goal``, optional ``how``, and ordered
 ``executors`` (proposal plugin IDs). Configure a ``PolicyCycle`` on the judge
-plugin; call ``current`` before taking an epoch-scoped answer, then ``choose``
-and ask under the returned epoch. ``current`` consumes listed executors' exits,
+plugin; call ``current`` before taking an answer scoped by ``policy.tag()``, then ``choose``
+and ask under the returned tag. ``current`` consumes listed executors' exits,
 leaving the policy undecided until the next choice. Instances hold config only.
+The serialized state owns a lifetime token, created only when that state is absent. Restoring a recording seed preserves the token;
+a replay without that state starts a new lifetime and ignores earlier controls.
 
 Shared-memory keys and ownership:
 
@@ -13,8 +15,8 @@ Shared-memory keys and ownership:
   last ten ``changes``, and ``held``. Pass ``key`` for a differently named judge.
 * ``proposal.policy``: rewritten from that state on every current/choose call.
   Executors and the plan read this publication, never the cycler's private key.
-* ``proposal.<executor_id>.exit``: that executor writes once per epoch through
-  ``write_exit``; it, the cycler and plan read ``epoch, why, at_ms, detail``.
+* ``proposal.<executor_id>.exit``: that executor writes once per identity through
+  ``write_exit``; it, the cycler and plan read ``policy, why, at_ms, detail``.
 * ``memory.control_runs``: the packaged ``memory/control_runs`` plugin's
   applied runs. The cycler measures its acting floor from this publication;
   executors and prompt builders can read it through ``read_control_runs``.
@@ -31,18 +33,55 @@ the candidate's reason, confidence, command and metadata unchanged.
 
 from __future__ import annotations
 
+# pyright: basic
+
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
 from dataclasses import dataclass
+from typing import NotRequired, TypedDict, cast
+from uuid import uuid4
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.plan.values import ActionPlan, PlanContribution
 from autonomy.decision_cycle.proposal.values import ActionProposal
 from autonomy.shared_memory import SharedMemory
-from implementations.decision_cycle.shared.control_runs import read_control_runs
+from implementations.decision_cycle.shared.control_runs import ControlRun, read_control_runs
 
 POLICY_KEY = "proposal.policy"
 EXIT_REASONS = frozenset({"done", "lost", "blocked", "timeout"})
+
+
+class PolicyDefinition(TypedDict):
+    when: str
+    goal: str
+    how: NotRequired[str]
+    executors: list[str] | tuple[str, ...]
+
+
+class PolicyTag(TypedDict):
+    lifetime: str
+    name: str | None
+    epoch: int
+
+
+# Functional syntax keeps the JSON spelling of the reserved word 'from'.
+PolicyChange = TypedDict("PolicyChange", {"from": str | None, "to": str | None, "epoch": int,
+                                         "at_ms": int, "reason": str})
+
+
+class PolicyState(PolicyTag):
+    since_ms: int
+    reason: str
+    policies: dict[str, PolicyDefinition]
+    changes: list[PolicyChange]
+    held: int
+
+
+class PolicyExit(TypedDict):
+    policy: PolicyTag
+    why: str
+    at_ms: int
+    detail: dict[str, object]
 
 
 @dataclass(frozen=True)
@@ -53,54 +92,56 @@ class Policy:
     epoch: int
     since_ms: int
     reason: str
-    definition: dict
+    definition: PolicyDefinition | dict[str, object]
+    lifetime: str
 
     @property
     def executors(self) -> tuple[str, ...]:
-        return tuple(self.definition.get("executors", ()))
+        return tuple(cast(Sequence[str], self.definition.get("executors", ())))
 
     def assigns(self, plugin_id: str) -> bool:
         return plugin_id in self.executors
 
-    def tag(self) -> dict:
-        return {"name": self.name, "epoch": self.epoch}
+    def tag(self) -> PolicyTag:
+        return {"lifetime": self.lifetime, "name": self.name, "epoch": self.epoch}
 
 
-def _policy(record: dict) -> Policy:
+def _policy(record: PolicyState) -> Policy:
     return Policy(record["name"], record["epoch"], record["since_ms"], record["reason"],
-                  deepcopy(record["policies"].get(record["name"], {})))
+                  deepcopy(record["policies"].get(record["name"], {})) if record["name"] is not None else {},
+                  record["lifetime"])
 
 
 def read_policy(shared_memory: SharedMemory) -> Policy | None:
     """Read the published policy, or None before the cycler's first frame."""
-    record = shared_memory.get(POLICY_KEY)
+    record = cast(PolicyState | None, shared_memory.get(POLICY_KEY))
     return None if record is None else _policy(record)
 
 
-def read_exit(shared_memory: SharedMemory, plugin_id: str, policy: Policy | None) -> dict | None:
+def read_exit(shared_memory: SharedMemory, plugin_id: str, policy: Policy | None) -> PolicyExit | None:
     """Read only this policy epoch's exit, detached from shared memory."""
-    event = shared_memory.get(f"proposal.{plugin_id}.exit")
-    if policy is None or not event or event["epoch"] != policy.epoch:
+    event = cast(PolicyExit | None, shared_memory.get(f"proposal.{plugin_id}.exit"))
+    if policy is None or not event or event.get("policy") != policy.tag():
         return None
     return deepcopy(event)
 
 
 def write_exit(
     shared_memory: SharedMemory, plugin_id: str, policy: Policy, *,
-    why: str, now_ms: int, detail: dict | None = None,
-) -> dict:
+    why: str, now_ms: int, detail: dict[str, object] | None = None,
+) -> PolicyExit:
     """Publish a sticky exit: the first exit in an epoch wins."""
     if why not in EXIT_REASONS:
         raise ValueError("exit why must be done, lost, blocked or timeout")
-    event = read_exit(shared_memory, plugin_id, policy)
+    event: PolicyExit | None = read_exit(shared_memory, plugin_id, policy)
     if event is None:
-        event = {"epoch": policy.epoch, "why": why, "at_ms": now_ms,
+        event = {"policy": policy.tag(), "why": why, "at_ms": now_ms,
                  "detail": deepcopy({} if detail is None else detail)}
         shared_memory[f"proposal.{plugin_id}.exit"] = deepcopy(event)
     return event
 
 
-def _definitions(policies: object) -> dict:
+def _definitions(policies: object) -> dict[str, PolicyDefinition]:
     if not isinstance(policies, Mapping) or not policies:
         raise ValueError("policies must be a non-empty mapping")
     result = deepcopy(dict(policies))
@@ -114,7 +155,7 @@ def _definitions(policies: object) -> dict:
             raise ValueError("executors must list proposal plugin IDs")
         if "how" in rule and (not isinstance(rule["how"], str) or not rule["how"]):
             raise ValueError("how must be non-empty when supplied")
-    return result
+    return cast(dict[str, PolicyDefinition], result)
 
 
 class PolicyCycle:
@@ -130,7 +171,7 @@ class PolicyCycle:
     """
 
     def __init__(
-        self, policies: Mapping[str, dict], *, initial: str, min_acting_ms: int = 1000,
+        self, policies: Mapping[str, object], *, initial: str, min_acting_ms: int = 1000,
         key: str = "proposal.policy_cycler.policy",
     ) -> None:
         self._policies = _definitions(policies)
@@ -140,22 +181,22 @@ class PolicyCycle:
             raise ValueError("min_acting_ms must be a non-negative int")
         self._initial, self._min_acting_ms, self._key = initial, min_acting_ms, key
 
-    def _state(self, shared_memory: SharedMemory, now_ms: int) -> dict:
-        state = deepcopy(shared_memory.get(self._key))
+    def _state(self, shared_memory: SharedMemory, now_ms: int) -> PolicyState:
+        state: PolicyState | None = deepcopy(cast(PolicyState | None, shared_memory.get(self._key)))
         if state is None:
-            state = {"name": self._initial, "epoch": 0, "since_ms": now_ms, "reason": "initial",
+            state = {"lifetime": uuid4().hex, "policies": {}, "name": self._initial, "epoch": 0, "since_ms": now_ms, "reason": "initial",
                      "changes": [], "held": 0}
         state["policies"] = deepcopy(self._policies)
         return state
 
-    def _publish(self, shared_memory: SharedMemory, state: dict) -> Policy:
+    def _publish(self, shared_memory: SharedMemory, state: PolicyState) -> Policy:
         shared_memory[self._key] = deepcopy(state)
         shared_memory[POLICY_KEY] = deepcopy(state)
         return _policy(state)
 
     @staticmethod
-    def _change(state: dict, name: str | None, now_ms: int, reason: str) -> None:
-        change = {"from": state["name"], "to": name, "epoch": state["epoch"] + 1,
+    def _change(state: PolicyState, name: str | None, now_ms: int, reason: str) -> None:
+        change: PolicyChange = {"from": state["name"], "to": name, "epoch": state["epoch"] + 1,
                   "at_ms": now_ms, "reason": reason}
         state["changes"] = [*state["changes"], change][-10:]
         state.update(name=name, epoch=change["epoch"], since_ms=now_ms, reason=reason)
@@ -182,18 +223,20 @@ class PolicyCycle:
             raise ValueError("PolicyCycle choices require applied runs; arm memory/control_runs")
         state = self._state(shared_memory, now_ms)
         if name != state["name"]:
-            if state["name"] is None or self._acted(runs, state["epoch"], now_ms):
+            if state["name"] is None or self._acted(runs, _policy(state), now_ms):
                 self._change(state, name, now_ms, reason)
             else:
                 state["held"] += 1
         return self._publish(shared_memory, state)
 
     def held(self, shared_memory: SharedMemory) -> int:
-        return int((shared_memory.get(self._key) or {}).get("held", 0))
+        state = cast(PolicyState | None, shared_memory.get(self._key))
+        return 0 if state is None else state["held"]
 
-    def _acted(self, runs: Sequence[dict], epoch: int, now_ms: int) -> bool:
+    def _acted(self, runs: Sequence[ControlRun], policy: Policy, now_ms: int) -> bool:
         starts = [run["start_ms"] for run in runs
-                  if (run["plan"].get("policy") or {}).get("epoch") == epoch
+                  if run["plan"].get("policy") == policy.tag()
+                  and run["by"] in policy.executors
                   and any(float(v) != 0.0 for v in run["command"])]
         return bool(starts) and now_ms - min(starts) >= self._min_acting_ms
 
@@ -207,7 +250,7 @@ def _select(
         return None
     for executor in policy.executors:
         selected = next((c for c in candidates if c.plugin_id == executor and c.is_active(frame_id)
-                         and dict(c.metadata.get("policy") or {}) == policy.tag()), None)
+                         and c.metadata.get("policy") == policy.tag()), None)
         if selected is not None:
             return selected
     return None

@@ -26,7 +26,10 @@ claim of continuous motion across missing windows; ``gaps`` reports lost history
 
 from __future__ import annotations
 
+# pyright: basic
+
 from copy import deepcopy
+from typing import TypedDict, cast
 
 from autonomy.decision_cycle.action.publication import read_control_applications
 from autonomy.runtime.execution import ControlApplication
@@ -38,21 +41,44 @@ STATE_KEY = "memory.control_runs.state"
 CONTROL_RUN_LIMIT = 40
 
 
-def read_control_runs(shared_memory: SharedMemory | None) -> tuple[dict, ...] | None:
+class ControlRun(TypedDict):
+    by: str
+    plan: dict[str, object]
+    command: list[float]
+    start_ms: int
+    end_ms: int | None
+
+
+class ApplicationIdentity(TypedDict):
+    frame_id: str | None
+    delivered_at_ms: int | None
+    reason: str
+    control: object
+
+
+class ControlRunsState(TypedDict):
+    runs: list[ControlRun]
+    cursor: ApplicationIdentity | None
+    initialized: bool
+    gaps: int
+    window_known: bool
+
+
+def read_control_runs(shared_memory: SharedMemory | None) -> tuple[ControlRun, ...] | None:
     """Detached runs, oldest first; None when memory/control_runs is not armed."""
     runs = None if shared_memory is None else shared_memory.get(CONTROL_RUNS_KEY)
-    return None if runs is None else tuple(deepcopy(runs))
+    return None if runs is None else tuple(deepcopy(cast(list[ControlRun], runs)))
 
 
-def control_runs_status(shared_memory: SharedMemory | None) -> dict:
+def control_runs_status(shared_memory: SharedMemory | None) -> ControlRunsState:
     """Detached producer state, including whether the host window is known."""
     state = None if shared_memory is None else shared_memory.get(STATE_KEY)
-    return deepcopy(state) if state is not None else {
+    return deepcopy(cast(ControlRunsState, state)) if state is not None else {
         "runs": [], "cursor": None, "initialized": False, "gaps": 0, "window_known": False,
     }
 
 
-def _identity(application: ControlApplication) -> dict:
+def _identity(application: ControlApplication) -> ApplicationIdentity:
     return {
         "frame_id": application.frame_id,
         "delivered_at_ms": application.delivered_at_ms,
@@ -61,7 +87,7 @@ def _identity(application: ControlApplication) -> dict:
     }
 
 
-def _consume(runs: list[dict], application: ControlApplication) -> None:
+def _consume(runs: list[ControlRun], application: ControlApplication) -> None:
     if not application.applied:
         return
     at = application.delivered_at_ms
@@ -69,10 +95,10 @@ def _consume(runs: list[dict], application: ControlApplication) -> None:
         raise ValueError("an applied control requires delivered_at_ms")
     metadata = application.control.metadata
     by = metadata.get("plugin_id")
-    entry = None
-    if application.mode == "autonomy" and by is not None:
+    entry: ControlRun | None = None
+    if application.mode == "autonomy" and isinstance(by, str):
         entry = {
-            "by": by, "plan": deepcopy(metadata.get("plan_metadata") or {}),
+            "by": by, "plan": deepcopy(cast(dict[str, object], metadata.get("plan_metadata") or {})),
             "command": [application.control.throttle, application.control.steering],
             "start_ms": at, "end_ms": None,
         }

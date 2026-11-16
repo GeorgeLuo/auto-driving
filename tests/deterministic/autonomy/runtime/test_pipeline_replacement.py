@@ -106,14 +106,14 @@ class PipelineReplacementTests(unittest.TestCase):
         host = self.host()
         original = host.steps
         host.disarm({"perception": ["b"]})
-        pending = host._pending_steps
+        pending = host._pending_restage
         with patch.object(STEP_RUNNERS["proposal"], "validate_selection", side_effect=RuntimeError("second refused")):
             failed = host.disarm({"proposal": ["inactive"]})
         self.assertFalse(failed["ok"])
-        self.assertIs(host._pending_steps, pending)
+        self.assertIs(host._pending_restage, pending)
         self.assertIs(host.steps, original)
         cycle(host)
-        self.assertIs(host.steps, pending)
+        self.assertEqual({step: host.step(step) for step in STEPS}, pending.steps)
         self.assertEqual(host.step("perception").plugin_ids, ("a",))
         self.assertIn("second refused", host.selection_status()["error"])
 
@@ -124,10 +124,10 @@ class PipelineReplacementTests(unittest.TestCase):
         steps, memory, identity = host.steps, host.shared_memory, host.applied_decision()
         host.arm({"perception": ["a", "b"]})
         host.disarm({"perception": ["b"]})
-        pending = host._pending_steps
+        pending = host._pending_restage
         with patch("autonomy.runtime.cycle_host.load_runner", side_effect=AssertionError("rebuilt pending")):
             host.disarm({"perception": ["b"]})
-        self.assertIs(host._pending_steps, pending)
+        self.assertIs(host._pending_restage, pending)
         host.arm({"perception": ["b"]})
         cycle(host, 1)
         self.assertIs(host.steps, steps)
@@ -158,13 +158,13 @@ class PipelineReplacementTests(unittest.TestCase):
         host.note_host_name("one")
         payload = local_perception("a", "b", "c", preset="triple").to_payload()
         self.assertTrue(host.arm({"perception": payload})["ok"])
-        pending = host._pending_steps
+        pending = host._pending_restage
         with patch("autonomy.runtime.cycle_host.load_runner", side_effect=AssertionError("rebuilt pending")):
             request = host.arm({"perception": payload})
         self.assertEqual(request["status"], "requested")
-        self.assertIs(host._pending_steps, pending)
+        self.assertIs(host._pending_restage, pending)
         cycle(host)
-        self.assertIs(host.steps, pending)
+        self.assertEqual({step: host.step(step) for step in STEPS}, pending.steps)
 
     def test_bundled_metadata_rearm_updates_runner_and_identity_without_rebuilding(self):
         with tempfile.TemporaryDirectory() as tmp:

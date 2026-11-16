@@ -550,15 +550,15 @@ class AutonomyCycleHost:
                     self.stop(reason="error", error=self.last_error)
 
     def _record_frame_context(self, context: DecisionFrameContext) -> DecisionFrameContext:
-        """Stamp the applied selections on this frame, including failed cycles."""
-        activations = {
-            step: None if item is None else item.to_payload()
-            for step, item in self._applied_activations.items()
-        }
+        """Stamp the applied generation on this frame, including failed cycles.
+
+        Every frame of a generation shares the selections built when it was
+        applied; treat them as read-only.
+        """
         applied = self._applied_decision
         return replace(context, metadata={
             **context.metadata,
-            "step_activations": activations,
+            "step_activations": None if applied is None else applied["steps"],
             "generation_id": None if applied is None else applied["generation_id"],
         })
 

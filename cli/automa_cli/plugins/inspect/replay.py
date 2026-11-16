@@ -19,7 +19,6 @@ from autonomy.decision_cycle.activation import StepActivation
 from autonomy.plugins import uploaded_source
 from autonomy.runtime.recording import (
     UPLOADED_SOURCES_DIR,
-    recorded_selections,
     recording_frame_entry,
     uploaded_sources,
 )
@@ -78,7 +77,7 @@ class StepReplay:
         seed: SharedMemorySeed | None = None,
     ) -> None:
         self.overrides = dict(overrides or {})
-        first = recorded_selections(image_source.frames[0].metadata)
+        first = image_source.frames[0].selections
         self.activations = resolve_replay_activations(
             first, defaults={step: default_selection(step) for step in steps},
             overrides=self.overrides,
@@ -93,7 +92,7 @@ class StepReplay:
         """Install this frame's recorded pipeline, unless the step is overridden."""
 
         changed = replace_replay_pipeline(
-            self.runners, self.activations, recorded_selections(frame.metadata),
+            self.runners, self.activations, frame.selections,
             overrides=set(self.overrides),
         )
         if changed is None:

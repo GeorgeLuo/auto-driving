@@ -81,7 +81,9 @@ class ObservationPublicationTests(unittest.TestCase):
             self.assertEqual(len(files), 1)
             self.assertEqual(files[0].read_bytes(), wire)
             recorded = part.host.recording.read(run_id=part.host.recording.run_id, after=0)["frames"][0]["frame"]
-            self.assertNotIn("jpeg_bytes", recorded["context"]["sensor_frame"]["readings"]["front_camera"])
+            # The image is the frame file; the recorded line holds no sensor frame or image bytes.
+            self.assertNotIn("sensor_frame", recorded["context"])
+            self.assertNotIn("jpeg_bytes", json.dumps(recorded))
 
     def _part(self, **options) -> AutonomyPilotPart:
         """A part whose cycle proposes, plans and acts, with test plugins and the built-in action."""

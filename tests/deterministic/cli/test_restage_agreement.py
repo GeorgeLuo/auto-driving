@@ -57,9 +57,7 @@ class RestageAgreementTests(unittest.TestCase):
                         for shared in (host.shared_memory, replay.shared_memory, workbench._shared_memory):
                             shared["late-seed"] = object()
                         host._adopt_pending()
-                        frame = replace(source.frames[index], metadata={"steps": {
-                            name: item.to_payload() if item else None for name, item in selected.items()
-                        }})
+                        frame = replace(source.frames[index], selections=dict(selected))
                         replay.restage(frame)
                         workbench.dispatch("select_plugins", run_id=run_id, step=step, active_plugin_ids=list(plugins))
                         self.assertEqual(set(host.shared_memory), set(replay.shared_memory))

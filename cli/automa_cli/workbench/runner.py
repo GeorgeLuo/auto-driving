@@ -18,7 +18,6 @@ from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, cycle_result_of
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.plugins import LocalPluginCatalog
 from autonomy.runtime.plugin_catalog import PluginCatalogAPI
-from autonomy.runtime.recording import recorded_selections
 from implementations.decision_cycle.catalog import CUSTOM_PRESET
 
 from ..frontend.workbench_contract import (
@@ -766,7 +765,7 @@ class ImageReplayRunner:
 
     def _build_steps(self, first_frame: ReplayFrame | None = None) -> dict[str, object]:
         """Restore the first frame's selections before constructing any selectable step."""
-        recorded = recorded_selections(first_frame.metadata) if first_frame else {}
+        recorded = first_frame.selections if first_frame else {}
         defaults = {step: default_selection(step) for step in STEPS}
         defaults.update(self._default_activations)
         activations = resolve_replay_activations(
@@ -1049,7 +1048,7 @@ class ImageReplayRunner:
                 with self._condition:
                     try:
                         changed = replace_replay_pipeline(
-                            steps, self._replay_activations, recorded_selections(frame.metadata),
+                            steps, self._replay_activations, frame.selections,
                             overrides=self._selection_overrides, build=self._runner_for,
                         )
                     except Exception as exc:

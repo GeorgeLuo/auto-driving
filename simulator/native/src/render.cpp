@@ -78,9 +78,7 @@ std::vector<unsigned char> render_rgb(const World& world, int width, int height)
     auto rows = [&](int begin, int end) {
         for (int y=begin;y<end;++y) for (int x=0;x<width;++x) {
             double nx = 2*(x+.5)/width-1, ny = 1-2*(y+.5)/height;
-            double r2 = nx*nx+ny*ny;
-            double distortion_scale = 1+distortion*r2;
-            double px = nx*aspect*tan_fov*distortion_scale, py = ny*tan_fov*distortion_scale;
+            double px = nx*aspect*tan_fov, py = ny*tan_fov;
             Ray ray{d.x*(cp+py*sp)-d.z*px, -sp+py*cp, d.z*(cp+py*sp)+d.x*px};
             Hit hit{far,-1,1,0,0};
             if (ray.y < -1e-12) {
@@ -90,10 +88,23 @@ std::vector<unsigned char> render_rgb(const World& world, int width, int height)
                     hit = {distance,0,1,gx,gz};
             }
             for (const auto& b : boxes) intersect(origin,ray,b,near,hit);
-            double brightness = 1-vignette*std::min(1.0,r2/2);
+            double brightness = 1;
             auto color = hit.material < 0 ? std::array<int,3>{216,214,207} : colors[hit.material];
             if (hit.material >= 0) {
                 brightness *= hit.light;
+                // RC-indoor directional light: (-3, 6, 1.5), targeting the origin.
+                // Four nearby rays approximate the soft shadow-map footprint.
+                Ray surface{origin.x+hit.distance*ray.x, origin.y+hit.distance*ray.y,
+                            origin.z+hit.distance*ray.z};
+                int blocked = 0;
+                for (double dx : {-.002, .002}) for (double dz : {-.002, .002}) {
+                    Ray light{-0.5+dx, 1, 0.25+dz};
+                    Ray start{surface.x+light.x*.018, surface.y+.018, surface.z+light.z*.018};
+                    Hit shadow{30,-1,1,0,0};
+                    for (const auto& box : boxes) intersect(start,light,box,0,shadow);
+                    if (shadow.material >= 0) ++blocked;
+                }
+                brightness *= 1-(2.4/(.9+2.4))*blocked/4.0;
                 if (hit.material < 2) {
                     uint32_t grain = noise(int(std::floor(hit.u*80/scale)),int(std::floor(hit.v*80/scale)),seed);
                     brightness *= .92 + .16*(grain&255)/255.0;
@@ -107,6 +118,25 @@ std::vector<unsigned char> render_rgb(const World& world, int width, int height)
     std::array<std::future<void>,4> tasks;
     for (int i=0;i<4;++i) tasks[i] = std::async(std::launch::async,rows,height*i/4,height*(i+1)/4);
     for (auto& task : tasks) task.get();
+    // Metrics UI rendering/sensor.ts: radial resampling with clamp-to-edge
+    // linear filtering, followed by smoothstep(0.18, 1.0, radiusSquared).
+    auto source = rgb;
+    for (int y=0;y<height;++y) for (int x=0;x<width;++x) {
+        double nx=2*(x+.5)/width-1, ny=2*(y+.5)/height-1;
+        double r2=nx*nx+ny*ny, factor=1+distortion*r2;
+        double sx=std::clamp((.5+.5*nx*factor)*width-.5,0.0,double(width-1));
+        double sy=std::clamp((.5+.5*ny*factor)*height-.5,0.0,double(height-1));
+        int x0=int(sx), y0=int(sy), x1=std::min(x0+1,width-1), y1=std::min(y0+1,height-1);
+        double fx=sx-x0, fy=sy-y0;
+        double t=std::clamp((r2-.18)/.82,0.0,1.0);
+        double gain=1-vignette*t*t*(3-2*t);
+        for (int c=0;c<3;++c) {
+            auto at=[&](int xx,int yy){return source[(size_t(yy)*width+xx)*3+c];};
+            double value=(1-fy)*((1-fx)*at(x0,y0)+fx*at(x1,y0))
+                         +fy*((1-fx)*at(x0,y1)+fx*at(x1,y1));
+            rgb[(size_t(y)*width+x)*3+c]=static_cast<unsigned char>(std::round(value*gain));
+        }
+    }
     return rgb;
 }
 struct JpegError { jpeg_error_mgr manager; jmp_buf jump; };
@@ -153,7 +183,7 @@ std::string base64(const std::vector<unsigned char>& bytes) {
 }
 Json sensor_image(const World& world, const ImageRequest& request) {
     auto bytes = encode_jpeg(render_rgb(world,request.width,request.height),request);
-    return {{"image",{{"contentType","image/jpeg"},{"rendererId","native-software-v1"},
+    return {{"image",{{"contentType","image/jpeg"},{"rendererId","native-software-v2"},
         {"width",request.width},{"height",request.height},{"dataUrl","data:image/jpeg;base64,"+base64(bytes)}}}};
 }
 }

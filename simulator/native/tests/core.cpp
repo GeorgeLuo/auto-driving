@@ -60,6 +60,25 @@ int main(int argc, char** argv) {
         world.playing = false;
         world.configure({{"materials",{{"floor",{20,180,40}}}}});
         check(rgb!=sim::render_rgb(world,160,120),"material update must change pixels");
+        // An obstacle behind the camera still casts a shadow onto visible floor.
+        auto shadow_config = config;
+        shadow_config["map"]["obstacles"] = sim::Json::array();
+        shadow_config["camera"]["pitchDownRadians"] = sim::pi/3;
+        shadow_config["camera"]["barrelDistortion"] = 0;
+        shadow_config["camera"]["vignette"] = 0;
+        sim::World lit(shadow_config);
+        auto lit_rgb = sim::render_rgb(lit,160,120);
+        lit.boxes.push_back({"offscreen-caster",-.5,3.25,.2,.4,2,0,false});
+        auto shadow_rgb = sim::render_rgb(lit,160,120);
+        size_t center = (60*160+80)*3;
+        check(shadow_rgb[center] < lit_rgb[center],"offscreen obstacle casts a floor shadow");
+        sim::World sensor(shadow_config);
+        sensor.config["camera"]["vignette"] = .1;
+        auto vignette_rgb = sim::render_rgb(sensor,160,120);
+        check(vignette_rgb[center] == lit_rgb[center],"vignette preserves image center");
+        check(vignette_rgb[0] == std::round(lit_rgb[0]*.9),"vignette reaches configured strength at corners");
+        sensor.config["camera"]["barrelDistortion"] = .12;
+        check(sim::render_rgb(sensor,160,120) != vignette_rgb,"radial distortion resamples the image");
         auto epoch = world.epoch;
         sim::command(world,"load-map",config);
         check(world.epoch!=epoch && world.frame==0 && !world.playing,"map load changes epoch and stays paused");

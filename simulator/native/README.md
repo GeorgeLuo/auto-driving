@@ -116,7 +116,10 @@ rotated obstacles, boundary contact, reverse motion, and idle input.
 
 The default geometry and RC-indoor camera mount/projection parameters match
 that source. The software renderer is an approximation: it uses procedural
-grain and simple face shading, with no Three.js PBR, shadow maps, exact texture
+grain and simple face shading, with directional cast shadows using the RC-indoor light direction and a software
+soft-shadow approximation. Radial distortion uses clamped bilinear resampling
+and the source smoothstep vignette on RGB bytes; the source GPU pipeline uses
+a linear render target and applies tone mapping/color conversion afterward. It has no Three.js PBR, shadow maps, exact texture
 generation, antialiasing, or ACES tone mapping. Camera/perception equivalence
 has **not** been established. This is a motion/protocol prototype, not a
 drop-in visual replacement for existing experiment baselines.

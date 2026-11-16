@@ -18,7 +18,7 @@ import base64
 import binascii
 import json
 import tempfile
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 
 from autonomy.decision_cycle.activation import STEPS
@@ -78,7 +78,7 @@ def _provider(body: dict[str, object]) -> str:
     return provider
 
 
-def _fields(body: dict[str, object], allowed: set[str]) -> None:
+def _fields(body: dict[str, object], allowed: set[str] | frozenset[str]) -> None:
     unexpected = sorted(body.keys() - allowed)
     if unexpected:
         raise ValueError(f"unsupported fields: {', '.join(unexpected)}")
@@ -271,7 +271,7 @@ def _upload(body: dict[str, object]) -> dict[str, object]:
     or --manifest [--arm], the manifest a path on this machine, as the CLI reads it with its source directory."""
 
     if body.get("manifest") is not None:
-        _fields(body, {"host_name", "manifest", "arm"})
+        _fields(body, _UPLOAD_COLLECTION_FIELDS)
         result = upload_collection(url=None, host_name=_text(body, "host_name"),
                                    manifest=Path(_text(body, "manifest")).expanduser(), arm=_flag(body, "arm"))
         return _answer(result, render_upload(result, json_output=False))
@@ -291,7 +291,8 @@ def _upload(body: dict[str, object]) -> dict[str, object]:
                                plugin_id=plugin_id, entrypoint=_text(body, "entrypoint"),
                                config=None if config is None else json.dumps(config), arm=_flag(body, "arm"))
         # What it prints names the file as the page sent it, not the copy it uploaded.
-        return _answer(result, render_upload(result, json_output=False).replace(str(file), filename))
+        display = replace(result, recovery=replace(result.recovery, file=Path(filename)))
+        return _answer(result, render_upload(display, json_output=False))
 
 
 def _save(body: dict[str, object]) -> dict[str, object]:
@@ -317,20 +318,23 @@ VIEWER_READS = {
     "/api/plugins/stream": _plugins_stream,
 }
 _RUN_FIELDS = ("name", "observe_only", "num_decisions", "unbounded", "record")
-_UPLOAD_FIELDS = ("host_name", "arm", "manifest", "name", "entrypoint", "filename", "source_base64", "config")
+_UPLOAD_COLLECTION_FIELDS = frozenset({"host_name", "manifest", "arm"})
+_UPLOAD_FIELDS = _UPLOAD_COLLECTION_FIELDS | {"name", "entrypoint", "filename", "source_base64", "config"}
+_NAME_FIELDS = ("name",)
+_URL_FIELDS = ("url",)
 VIEWER_WRITES = {
     route: _accepting(command, *fields)
     for route, command, fields in [
         ("/api/vehicles/discover", _discover, ("provider", "url", "force")),
-        ("/api/vehicles/remove", _remove, ("url",)),
+        ("/api/vehicles/remove", _remove, _URL_FIELDS),
         ("/api/simulators/create", _create, ()),
-        ("/api/simulators/delete", _delete, ("url",)),
+        ("/api/simulators/delete", _delete, _URL_FIELDS),
         ("/api/hosts/create", _create_host,
          ("name", "provider", "url", "ssh_target", "pi_home", "drive_args", "dry_run", "verbose")),
         ("/api/hosts/update", _update_host, ("name", "dry_run", "restart", "drive_args", "verbose")),
-        ("/api/hosts/delete", _delete_host, ("name",)),
+        ("/api/hosts/delete", _delete_host, _NAME_FIELDS),
         ("/api/hosts/run", _run_host, _RUN_FIELDS),
-        ("/api/hosts/stop", _stop_host, ("name",)),
+        ("/api/hosts/stop", _stop_host, _NAME_FIELDS),
         ("/api/hosts/restart", _restart_host, _RUN_FIELDS),
         ("/api/plugins/arm", _arm, ("host_name", "name", "preset", "collection")),
         ("/api/plugins/disarm", _disarm, ("host_name", "name", "collection", "step", "all")),

@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import contextlib
 import os
-import shlex
 import signal
 import subprocess
 import time
@@ -17,7 +16,7 @@ from typing import Literal
 
 from ..hosts.local import log_tail
 from ..hosts.runs.process import process_command
-from ..shared.io.processes import pid_alive, reap_on_exit
+from ..shared.io.processes import command_tokens, command_option_matches, pid_alive, reap_on_exit
 from ..shared.timestamps import timestamp_ms
 from .store import SIMULATOR_SCHEMA, remove_simulator_record, simulator_dir, write_simulator_record
 
@@ -121,28 +120,12 @@ def start_simulator(command: list[str], *, cwd: Path, port: int, timeout_s: floa
         raise
 
 
-def _command_tokens(command: str) -> list[str] | None:
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return None
-    return tokens or None
-
-
-def _option_is(tokens: list[str], flag: str, value: str) -> bool:
-    if f"{flag}={value}" in tokens:
-        return True
-    pair = [flag, value]
-    return any(tokens[index:index + 2] == pair for index in range(len(tokens) - 1))
-
-
 def _launcher_matches(tokens: list[str]) -> bool:
     override = os.environ.get("AUTOMA_HEADLESS_SIM_COMMAND")
     if not override:
         return any(Path(token).name == _HEADLESS_SIM_NAME for token in tokens)
-    try:
-        prefix = shlex.split(override)
-    except ValueError:
+    prefix = command_tokens(override)
+    if prefix is None:
         return False
     # ps reports a resolved interpreter, so the executable token is not compared.
     return len(prefix) >= 2 and tokens[1:len(prefix)] == prefix[1:]
@@ -156,8 +139,8 @@ def simulator_command_matches(command: str, port: int) -> bool:
     exactly. The interpreter is ignored because ``ps`` may show a resolved binary.
     """
 
-    tokens = _command_tokens(command)
-    if tokens is None or not _option_is(tokens, "--port", str(port)):
+    tokens = command_tokens(command)
+    if tokens is None or not command_option_matches(tokens, "--port", str(port)):
         return False
     return _launcher_matches(tokens)
 

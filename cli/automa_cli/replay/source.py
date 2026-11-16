@@ -27,6 +27,7 @@ from autonomy.plugins import add_uploaded_source_root
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.recording import (
     CONTROL_APPLICATION_CHANGE_FIELD,
+    RECORDING_ENTRIES_FIELD,
     UPLOADED_SOURCES_DIR,
     control_application_windows,
     entry_selections,
@@ -198,7 +199,13 @@ def _manifest_frame_entries(
 ) -> list[object]:
     name = manifest_path.name if manifest_path is not None else "manifest.json"
     try:
-        entries = recording_entries(source_path, manifest)
+        if RECORDING_ENTRIES_FIELD in manifest:
+            entries = recording_entries(source_path, manifest)
+        else:
+            frames = manifest.get("frames")
+            if not isinstance(frames, list):
+                raise ValueError("frames must be a list")
+            entries = list(frames)
     except ValueError as exc:
         raise _manifest_entries_error(name, exc) from exc
     return entries

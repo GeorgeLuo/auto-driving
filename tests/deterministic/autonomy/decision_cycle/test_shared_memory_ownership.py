@@ -96,6 +96,20 @@ class OwnershipTests(unittest.TestCase):
                     with self.assertRaises(RetainedStateError):
                         invoke("memory", runner, {})
 
+    def test_a_plugin_may_publish_for_its_own_step_but_not_another_or_the_host(self):
+        for step in STEPS:
+            other = STEPS[(STEPS.index(step) + 1) % len(STEPS)]
+            for key, allowed in ((f"{step}.published", True), (f"{other}.published", False), ("action.mode", False)):
+                with self.subTest(step=step, key=key):
+                    runner = STEP_RUNNERS[step].from_plugins({"writer": Writer(step, key)})
+                    if not allowed and step in {"memory", "observation"}:
+                        with self.assertRaises(RetainedStateError):
+                            invoke(step, runner, {})
+                        continue
+                    invoke(step, runner, {})
+                    record = runner.plugin_report()["plugins"][0]
+                    self.assertEqual(record["error"] is None, allowed, record["error"])
+
     def test_resets_use_the_same_boundary_and_preserve_each_steps_failure_policy(self):
         for step in STEPS:
             for owned in (True, False):

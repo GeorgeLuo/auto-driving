@@ -227,9 +227,7 @@ class StepRunner(Generic[PluginT]):
             f"memory.beliefs.{belief_id}": frozenset({owner})
             for belief_id in getattr(getattr(plugin, "contract", None), "belief_ids", ())
         } if self.step == "memory" else {}
-        allowed = {owner}
-        if self.step == "memory":
-            allowed.add(("memory", None))
+        allowed = {owner, (self.step, None)}
         # Pin values so replacement cannot reuse a deleted object's identity.
         pinned = dict(shared_memory) if shared_memory is not None else {}
         before = {key: id(value) for key, value in pinned.items()}

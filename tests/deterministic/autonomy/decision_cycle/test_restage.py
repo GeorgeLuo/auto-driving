@@ -58,3 +58,16 @@ class RestageTests(unittest.TestCase):
                 for other in STEPS:
                     self.assertEqual(changed.steps[other] is steps[other], other != step)
                 self.assertEqual(set(shared), set(keys))
+
+    def test_a_steps_publication_is_cleared_with_any_of_its_plugins(self):
+        applied = {step: activation(step, step) for step in STEPS}
+        steps = {step: SimpleNamespace(applied=()) for step in STEPS}
+        shared = {"proposal.policy": object(), "proposal.proposal.policy": object()}
+
+        def build(name, selection):
+            return object()
+
+        proposal = restage(steps, applied, {**applied, "proposal": activation("proposal", "new")}, build=build)
+        plan = restage(steps, applied, {**applied, "plan": activation("plan", "new")}, build=build)
+        self.assertEqual(proposal.keep(shared), {})
+        self.assertEqual(plan.keep(shared), shared)

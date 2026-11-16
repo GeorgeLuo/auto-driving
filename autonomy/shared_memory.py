@@ -24,9 +24,11 @@ free of implementation imports.
 ``StepRunner`` enforces ownership for added, replaced, and removed keys:
 ``<step>.<plugin_id>.<name>`` belongs to that plugin; declared
 ``memory.beliefs.<belief_id>`` belongs to its declaring memory plugins.
-Memory plugins may also write ``memory.evidence``. The cycle publishes
-``observation.current``; the host writes the four action input keys.
-In-place mutation of another owner's value is not detected.
+A plugin may also write its step's publications, ``<step>.<name>`` such as
+``memory.evidence``. A publication is rewritten from its producer's state on
+every update, so a restage clears it with any plugin of its step. The cycle
+publishes ``observation.current``; only the host writes the four action input
+keys. In-place mutation of another owner's value is not detected.
 
 Unowned seed keys survive restaging. A seed decodes into a fresh map per run.
 Plugin resets may leave fresh state, which ``MemoryRunner.reset`` returns.

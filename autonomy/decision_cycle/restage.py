@@ -16,18 +16,19 @@ _HOST_KEYS = frozenset({
 
 
 def owner_of(key: str, belief_owners: Mapping[str, frozenset[Owner]]) -> frozenset[Owner]:
-    """Owners of a key; an empty set denotes an unowned seed value."""
+    """Owners of a key; an empty set denotes an unowned seed value.
+
+    ``<step>.<plugin_id>.<name>`` is that plugin's state. ``<step>.<name>``,
+    such as ``memory.evidence``, is a publication of the step, owned by
+    ``(step, None)``.
+    """
     if key in _HOST_KEYS:
         return frozenset({("host", None)})
-    if key == "memory.evidence":
-        return frozenset({("memory", None)})
-    if key == "observation.current":
-        return frozenset({("observation", None)})
     if key.startswith("memory.beliefs."):
         return belief_owners.get(key, frozenset())
     parts = key.split(".", 2)
-    if len(parts) == 3 and parts[0] in STEPS and parts[1] and parts[2]:
-        return frozenset({(parts[0], parts[1])})
+    if len(parts) in (2, 3) and parts[0] in STEPS and all(parts):
+        return frozenset({(parts[0], parts[1] if len(parts) == 3 else None)})
     return frozenset()
 
 

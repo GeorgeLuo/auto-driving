@@ -14,6 +14,8 @@ from qca.evaluation import Context, Finding, definitions, finding, location
 from scripts.validation.inspection import _parse, _sources
 
 COPY_MARKER = "quality: allow-identical-body"
+# Shorter bodies, such as stubs and one-line delegations, repeat by convention rather than by copying.
+MIN_STATEMENTS = 3
 
 
 @dataclass(frozen=True)
@@ -65,6 +67,7 @@ def identical_copies(context: Context, roots: tuple[str, ...]) -> list[Finding]:
     head = _bodies(context.head, roots)
     base = _bodies(context.base, roots) if context.base else []
     added = _added_bodies(base, head)
+    provenance = {} if context.base is None else {"introduced": True}  # Whole files have nothing to compare with.
     groups: defaultdict[str, list[Body]] = defaultdict(list)
     for body in head:
         groups[body.text].append(body)
@@ -73,7 +76,7 @@ def identical_copies(context: Context, roots: tuple[str, ...]) -> list[Finding]:
             "source-rules", "identical-copy", location(body.path, body.line, body.end, body.symbol),
             f"Share this function body with its existing owner, or add '# {COPY_MARKER} -- ' "
             "followed by why the copies must differ.",
-            status="blocking", evidence={"introduced": True, "override_marker": COPY_MARKER},
+            status="blocking", evidence={**provenance, "override_marker": COPY_MARKER},
             related=[location(other.path, other.line, other.end, other.symbol) for other in groups[body.text]
                      if other.path != body.path],
         )
@@ -109,7 +112,7 @@ def _bodies(tree: Path, roots: tuple[str, ...]) -> list[Body]:
             continue
         lines = source.splitlines()
         for node, symbol in definitions(_parse(source)):
-            if isinstance(node, ast.ClassDef):
+            if isinstance(node, ast.ClassDef) or _statements(node) < MIN_STATEMENTS:
                 continue
             end = node.end_lineno or node.lineno
             text = textwrap.dedent("\n".join(lines[node.body[0].lineno - 1:end]))
@@ -117,3 +120,10 @@ def _bodies(tree: Path, roots: tuple[str, ...]) -> list[Body]:
                          for line in lines[node.lineno - 1:end])
             bodies.append(Body(path, symbol, node.lineno, end, text, marked))
     return bodies
+
+
+def _statements(node: ast.FunctionDef | ast.AsyncFunctionDef) -> int:
+    """Statements in a function body, nested ones included and a docstring left out."""
+
+    body = node.body[1:] if ast.get_docstring(node) is not None else node.body
+    return sum(isinstance(child, ast.stmt) for statement in body for child in ast.walk(statement))

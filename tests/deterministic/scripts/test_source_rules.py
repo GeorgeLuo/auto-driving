@@ -19,17 +19,18 @@ class SourceRulesTests(unittest.TestCase):
         self.assertEqual([item["location"]["line"] for item in found], [3, 4])
         self.assertTrue(all(item["status"] == "blocking" and "object-typed input" in item["question"] for item in found))
 
-    def test_new_cross_module_copy_blocks_but_existing_same_module_tests_and_justified_copies_do_not(self):
+    def test_new_cross_module_copy_blocks_but_existing_same_module_stub_tests_and_justified_copies_do_not(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             base, head = root / "base", root / "head"
-            body = "    return value + 3\n"
-            old = "def original(value):\n" + body
+            body = "    total = value + 3\n    checked = check(total)\n    return checked\n"
+            old = "def original(value):\n" + body + "\ndef stop(self):\n    ...\n"
             files = {
                 "cli/original.py": old + "\ndef neighbor(value):\n" + body,
                 "cli/renamed.py": "def renamed(value):\n" + body,
                 "cli/copy.py": "def copied(value):\n" + body,
-                "cli/different.py": "def different(value):\n    return value + 4\n",
+                "cli/stub.py": "def reset(self):\n    ...\n",
+                "cli/different.py": "def different(value):\n" + body.replace("3", "4"),
                 "cli/justified.py": "def justified(value):  # quality: allow-identical-body -- protocol versions evolve independently\n" + body,
                 "tests/test_copy.py": "def test_copy(value):\n" + body,
             }
@@ -44,6 +45,10 @@ class SourceRulesTests(unittest.TestCase):
             found = source_rules.identical_copies(context, ("cli", "tests"))
             self.assertEqual([item["location"]["path"] for item in found], ["cli/copy.py"])
             self.assertIn(source_rules.COPY_MARKER, found[0]["question"])
+            self.assertTrue(found[0]["evidence"]["introduced"])
+            # Whole files report the copy without claiming the copy is new.
+            [whole] = source_rules.identical_copies(Context("files", head, ("cli/copy.py",)), ("cli",))
+            self.assertNotIn("introduced", whole["evidence"])
             # Empty marker cannot suppress a finding.
             (head / "cli/copy.py").write_text("def copied(value):  # quality: allow-identical-body --\n" + body)
             self.assertEqual(len(source_rules.identical_copies(context, ("cli",))), 1)

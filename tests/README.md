@@ -81,12 +81,14 @@ as callers broken by a signature change. Each check compares the head with its
 merge base to identify those findings elsewhere. Whole files and text report all
 their findings; type checking needs the project and skips text.
 
-Required checks report blocking findings; review checks remain advisory.
-The command exits 0 when clean, 1 for blocking findings, and 2 when a required
-check cannot run. `--ruff-only` skips the slower checks while editing.
+Required checks report blocking findings. The command exits 0 when clean, 1 for
+blocking findings, and 2 when a required check cannot run. `--ruff-only` skips
+the slower checks while editing. `python3 -m scripts.validation.plugin_state DIR`
+runs the plugin-state check on plugins outside the repository, such as an
+uploaded collection.
 
-Three checks only ask review questions, and a failure of one is reported in the
-summary without failing the command:
+Review checks only ask questions, and a failure of one is reported in the
+summary without failing the command. They include:
 
 - QCA: opaque conditionals, duplicated functions, functions above its size,
   complexity, and nesting limits, and weak tests (assertions that read back an

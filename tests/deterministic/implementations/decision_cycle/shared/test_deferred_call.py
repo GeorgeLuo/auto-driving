@@ -115,7 +115,7 @@ class DeferredCallTests(unittest.TestCase):
         answer = self.poll(call, scope=1, about="same", request=lambda: "new")
         self.assertEqual((answer.scope, answer.result), (1, "new"))
         self.assertEqual(call.record(self.memory)["counts"],
-                         {"asked": 2, "answered": 2, "failed": 0, "dropped": 1, "abandoned": 0})
+                         {"asked": 2, "answered": 2, "failed": 0, "dropped": 1, "abandoned": 0, "expired": 0})
 
     def test_drop_stale_counts_other_scopes_and_keeps_this_scopes_answer(self):
         call = self.call(lambda request: request, blocking=True)
@@ -153,6 +153,35 @@ class DeferredCallTests(unittest.TestCase):
         self.assertEqual(call.take(self.memory, scope=1).result, "new")
         self.assertIsNone(call.take(self.memory, scope=1))
         self.assertEqual(call.record(self.memory)["counts"]["answered"], 1)
+
+    def test_hung_call_expires_at_max_age_and_same_pair_is_asked_again(self):
+        hung, release = threading.Event(), threading.Event()
+
+        def run(request):
+            if request == "hung":
+                hung.set()
+                if not release.wait(3):
+                    raise AssertionError("test did not release call")
+            return request
+
+        call = self.call(run, workers=2, max_age_ms=500)
+        self.addCleanup(release.set)
+        self.assertIsNone(self.poll(call, now=100, request=lambda: "hung"))
+        self.assertTrue(hung.wait(3))
+        self.assertIsNone(self.poll(call, now=599, request=lambda: "unused"))  # younger than max_age_ms
+        self.assertEqual(call.record(self.memory)["counts"]["asked"], 1)
+        self.assertIsNone(self.poll(call, now=600, request=lambda: "fresh"))  # same pair, asked anew
+        self.settled(call)
+        self.assertEqual(call.take(self.memory, scope=0).result, "fresh")
+        release.set()
+        self.memory.until(lambda: call.record(self.memory)["counts"]["dropped"] == 1)
+        self.assertEqual(call.record(self.memory)["counts"],
+                         {"asked": 2, "answered": 1, "failed": 0, "dropped": 1, "abandoned": 0, "expired": 1})
+
+    def test_max_age_must_be_a_positive_int(self):
+        for value in (0, -1, True, 1.5):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                DeferredCall(lambda request: request, key=KEY, blocking=True, max_age_ms=value)
 
     def test_failure_clears_before_raising_and_same_pair_can_retry(self):
         run = Mock(side_effect=[ValueError("failed input"), {"ok": True}])
@@ -215,7 +244,7 @@ class DeferredCallTests(unittest.TestCase):
         original.shutdown()
         self.assertEqual(replacement.take(self.memory, scope=0).result, "new")
         self.assertEqual(replacement.record(self.memory)["counts"],
-                         {"asked": 2, "answered": 1, "failed": 0, "dropped": 1, "abandoned": 1})
+                         {"asked": 2, "answered": 1, "failed": 0, "dropped": 1, "abandoned": 1, "expired": 0})
 
     def test_plugin_passes_runtime_guard_and_static_state_check(self):
         plugin = ExamplePlugin(lambda request: request, blocking=True)

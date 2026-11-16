@@ -57,6 +57,16 @@ class DeclaredIdTests(unittest.TestCase):
 
 
 class PresetActivationTests(unittest.TestCase):
+    def test_follow_policy_is_listed_and_arms_without_changing_the_default(self) -> None:
+        self.assertIn("follow_policy", catalog.step_presets("plan"))
+        activation = catalog.preset_activation("plan", "follow_policy")
+        self.assertEqual(activation.plugins, ("follow_policy",))
+        self.assertEqual(activation.metadata, {"preset": "follow_policy"})
+        runner = STEP_RUNNERS["plan"].from_activation(activation)
+        self.assertEqual(tuple(runner.plugin_ids), ("follow_policy",))
+        self.assertEqual(catalog.selection_activation("plan").plugins, ("highest_confidence",))
+        self.assertEqual(catalog.DEFAULT_STEP_PRESETS["plan"], "most_confident")
+
     def test_perception_memory_proposal_and_plan_are_the_steps_with_presets(self) -> None:
         self.assertEqual(tuple(catalog.STEP_PRESETS), ("perception", "memory", "proposal", "plan"))
         self.assertEqual(set(catalog.DEFAULT_STEP_PRESETS), set(catalog.STEP_PRESETS))

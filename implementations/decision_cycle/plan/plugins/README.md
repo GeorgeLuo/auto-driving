@@ -3,6 +3,14 @@
 One folder per plugin, named for its `plugin_id`. The `highest_confidence`
 plugin lives in `plugins/highest_confidence/`.
 
+Arm `plan/follow_policy` when a collection supplies a policy cycler and
+executors. It follows the published `proposal.policy` executor order, stops on
+an exit, and publishes `plan.action_log` from `plan.follow_policy.state`.
+Configure definitions only on the cycler. Implementers use `PolicyCycle`,
+`read_policy`, `read_exit` and `write_exit` from
+`implementations/decision_cycle/shared/policy.py`; that module documents the
+keys and epoch rules. The default preset remains `most_confident`.
+
 ## Rules
 
 - The plan step runs exactly one plugin. Arming a plugin replaces the current one.

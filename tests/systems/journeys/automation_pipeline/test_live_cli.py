@@ -91,37 +91,44 @@ class LiveCommandsTests(LiveHostTestCase):
         self.assertIsNotNone(decision["report"]["cycle"]["proposal"])
         self.assertIn("evidence", decision)
 
-    def test_a_stream_poll_during_cycle_publication_receives_a_coherent_decision(self) -> None:
+    def test_a_stream_poll_during_cycle_publication_receives_the_previous_decision(self) -> None:
+        # The host builds a cycle's report outside the frame lock and swaps it
+        # in whole, so a poll during that build answers at once with the last
+        # complete cycle and never part of the one being published.
         self.observe()
         loop = self.host.loop
+        published: list[str] = []
+        held: list[str] = []
         publishing = threading.Event()
         release = threading.Event()
-        reading = threading.Event()
         returned = threading.Event()
         capture = loop._capture_frame_report
         publish = loop.publish_latest
 
-        def pause_publication(result, **kwargs):
-            if not publishing.is_set():
+        def hold_second_publication(result, **kwargs):
+            # The first report built under the stale patch publishes; the next is held.
+            if not published:
+                published.append(result.context.frame_id)
+            elif not held:
+                held.append(result.context.frame_id)
                 publishing.set()
                 if not release.wait(10):
                     raise TimeoutError("the test never released the completed cycle")
             return capture(result, **kwargs)
 
         def read_publication(*args, **kwargs):
-            reading.set()
             result = publish(*args, **kwargs)
-            returned.set()
+            if publishing.is_set():
+                returned.set()
             return result
 
-        # This check deliberately holds a completed cycle while a fresh CLI
-        # interpreter starts. Keep that artificial pause inside its display
-        # window; a stale frame stays readable and is covered by the publication tests.
+        # A fresh CLI interpreter starts while the host holds a cycle, so the
+        # published one must stay inside its display window until the poll.
         with patch("autonomy.runtime.frame_loop.stale_after_ms", return_value=10_000), \
-                patch.object(loop, "_capture_frame_report", side_effect=pause_publication), \
+                patch.object(loop, "_capture_frame_report", side_effect=hold_second_publication), \
                 patch.object(loop, "publish_latest", side_effect=read_publication):
             try:
-                self.assertTrue(publishing.wait(10), "the host never completed another cycle")
+                self.assertTrue(publishing.wait(10), "the host never completed two more cycles")
                 stream = start_automa(
                     "plugins", "stream", "--step", "proposal", "--host-name", HOST_NAME,
                     "--once", "--json", runtime_root=self.runtime_root,
@@ -129,14 +136,14 @@ class LiveCommandsTests(LiveHostTestCase):
                 self.addCleanup(stream.stdout.close)
                 self.addCleanup(stream.wait, 10)
                 self.addCleanup(stream.terminate)
-                self.assertTrue(reading.wait(10), "the CLI never polled the decision route")
-                self.assertFalse(returned.wait(0.1), "the decision route exposed a partly published cycle")
+                self.assertTrue(returned.wait(10), "the decision route waited for a cycle still being published")
+                output, _ = stream.communicate(timeout=10)
             finally:
                 release.set()
-            output, _ = stream.communicate(timeout=10)
         self.assertEqual(stream.returncode, 0, output)
         decision = json.loads(output)
-        self.assertEqual(decision["frame_id"], decision["record"]["frame_id"])
+        self.assertEqual(decision["frame_id"], published[0])
+        self.assertEqual(decision["record"]["frame_id"], published[0])
         self.assertEqual(decision["plugins"], ["avoid_recent_obstruction"])
 
 

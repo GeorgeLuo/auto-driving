@@ -18,6 +18,7 @@ from cli.automa_cli.hosts.runs.worker import startup_printer
 from cli.automa_cli.hosts.runs.render import render_run_result
 from implementations.runtime.picar import AutonomyPilotPart, create_host
 from tests.deterministic.cli.automation_pipeline.cadence_fixtures import GatedPerception
+from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries
 
 
 def _part(perception: GatedPerception, **steps) -> AutonomyPilotPart:
@@ -158,7 +159,7 @@ class OnboardCaptureCadenceTests(unittest.TestCase):
                 self.assertEqual(state["num_decisions"], 3)
                 self.assertNotIn("interval_s", state["session"]["configuration"])
                 recording_id = state["session"]["recording"]["run_id"]
-                records = [json.loads(p.read_text()) for p in (root / "runs" / recording_id).glob("perception/*/perception.json")]
+                records = read_recording_entries((root / "runs" / recording_id))
                 records.sort(key=lambda record: record["frame_index"])
                 # The recording keeps every completed decision.
                 self.assertEqual([record["frame_index"] for record in records], [0, 1, 2])

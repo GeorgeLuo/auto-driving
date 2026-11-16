@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import base64
-import json
 import tempfile
 import unittest
 from dataclasses import replace
@@ -20,9 +19,8 @@ from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import CONTROL_APPLICATION_LIMIT, ControlApplication
 from autonomy.runtime.recording import (
-    CONTROL_APPLICATION_CHANGE_FIELD, RECORDING_MANIFEST_NAME, RunRecording,
+    CONTROL_APPLICATION_CHANGE_FIELD, RECORDING_MANIFEST_NAME, RecordingWriter, RunRecording,
     control_application_windows,
-    write_recorded_frame,
 )
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
@@ -30,7 +28,7 @@ from cli.automa_cli.replay.frames import run_frame
 from cli.automa_cli.replay.source import load_image_source
 from cli.automa_cli.replay.models import SourceValidationError
 from implementations.runtime.picar.control import DonkeyControlTarget
-from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries
+from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries, read_recording_generations
 from tests.shared.cli.workbench_fixtures import image_source, write_manifest
 
 
@@ -68,7 +66,9 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             self.assertTrue(all("action_policy" not in entry for entry in entries))
             self.assertEqual([entry["user_steering"] for entry in entries], [0, 0.1, 0.2, 0.3])
             self.assertTrue(all(entry["user_throttle"] == 0.4 for entry in entries))
-            self.assertTrue(all(set(entry["context"]) == {"timestamp_ms"} for entry in entries))
+            self.assertTrue(all(set(entry["context"]) == {"timestamp_ms", "metadata"} for entry in entries))
+            self.assertTrue(all("step_activations" not in entry["context"]["metadata"] for entry in entries))
+            self.assertTrue(all("steps" not in entry and "step_activations" not in entry for entry in entries))
             changes = [entry[CONTROL_APPLICATION_CHANGE_FIELD] for entry in entries]
             self.assertEqual([len(change["added"]) for change in changes], [1, 3, 1, 1])
             self.assertEqual(changes[1]["added"][-1], changes[1]["added"][-2])
@@ -77,13 +77,13 @@ class ControlApplicationRecordingTests(unittest.TestCase):
             self.assertEqual([item.delivered_at_ms for item in expected[1]], [2000, 2000, 1000, 1000])
             exported = root / "export"
             batch = recording.read(run_id=recording.run_id, after=0)
+            writer = RecordingWriter(exported, host_name="picar", run_id=recording.run_id)
+            for generation_id, steps in batch["generations"].items():
+                writer.store_generation(generation_id, steps, {}.get)
             for item in batch["frames"]:
                 frame = item["frame"]
-                saved = recording.root / "perception" / frame["frame_id"] / "perception.json"
-                saved_text = saved.read_text()
-                self.assertNotIn(CONTROL_APPLICATION_CHANGE_FIELD, saved_text)
-                recorded_frame = json.loads(saved_text)
-                self.assertNotIn("decision_cycle", recorded_frame)
+                self.assertNotIn(CONTROL_APPLICATION_CHANGE_FIELD, frame["context"])
+                self.assertNotIn("decision_cycle", frame)
                 for key in (
                     "perception",
                     "observation",
@@ -94,11 +94,11 @@ class ControlApplicationRecordingTests(unittest.TestCase):
                     "control",
                     "context",
                 ):
-                    self.assertIn(key, recorded_frame)
-                write_recorded_frame(exported, frame, base64.b64decode(item["image_base64"]),
-                                     item["image_extension"], {})
+                    self.assertIn(key, frame)
+                writer.commit(frame, base64.b64decode(item["image_base64"]), item["image_extension"])
             self.assertEqual((exported / RECORDING_MANIFEST_NAME).read_text(), header)
             self.assertEqual(read_recording_entries(exported), entries)
+            self.assertEqual(read_recording_generations(exported), read_recording_generations(recording.root))
             for directory in (recording.root, exported):
                 source = load_image_source(directory)
                 seen = []

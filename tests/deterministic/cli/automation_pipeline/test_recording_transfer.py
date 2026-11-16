@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -10,12 +9,12 @@ from unittest.mock import patch
 from autonomy.decision_cycle.activation import STEPS, step_activation_path, write_step_activation
 from autonomy.runtime.assembly import staged_runtime
 from autonomy.runtime import recording as recording_module
-from autonomy.runtime.recording import RECORDING_ENTRIES_NAME, RunRecording, host_runs_dir
+from autonomy.runtime.recording import RECORDING_ENTRIES_NAME, RecordingWriter, RunRecording, host_runs_dir
 from autonomy.runtime.session import RunConfiguration
 from cli.automa_cli.hosts.runs.monitor import _sync_recording
 from implementations.decision_cycle.catalog import packaged_activation
 from implementations.runtime.picar import create_host
-from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries
+from tests.shared.autonomy.runtime.recording_fixtures import read_recording_entries, read_recording_generations
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import frame
 
@@ -55,11 +54,12 @@ class RecordingTransferTests(unittest.TestCase):
                     second = host.run(frame(root, 2))
                     timings[second.context.frame_id] = second.timing
                     completions[second.context.frame_id] = second.completed_at_ms
-                original_append(path, entry)
+                return original_append(path, entry)
 
+            writer = RecordingWriter(export_dir, host_name=HOST_NAME, run_id=recording.run_id)
             with patch.object(recording_module, "append_recording_entry", side_effect=append_with_host_frame):
                 for _ in range(2):
-                    _sync_recording(Client(), state, run_dir=export_dir, recording_id=recording.run_id)
+                    _sync_recording(Client(), state, writer=writer)
 
             self.assertTrue(appended)
             self.assertEqual(state["recorded_count"], 2)
@@ -74,17 +74,15 @@ class RecordingTransferTests(unittest.TestCase):
             )
             self.assertEqual(host.session_status()["status"], "completed")
             self.assertNotEqual(recording.root.resolve(), export_dir.resolve())
+            self.assertEqual(read_recording_generations(export_dir), read_recording_generations(recording.root))
             for entry in exported:
                 self.assertEqual((export_dir / entry["image_path"]).read_bytes(),
                                  (recording.root / entry["image_path"]).read_bytes())
-                record = Path("perception") / entry["frame_id"] / "perception.json"
-                self.assertEqual((export_dir / record).read_bytes(), (recording.root / record).read_bytes())
-                saved = json.loads((recording.root / record).read_text())
-                self.assertEqual(saved["timing"], timings[entry["frame_id"]])
-                self.assertEqual(saved["completed_at_ms"], completions[entry["frame_id"]])
+                self.assertEqual(entry["timing"], timings[entry["frame_id"]])
+                self.assertEqual(entry["completed_at_ms"], completions[entry["frame_id"]])
                 for alias in ("sensor_frame", "cycle_duration_ms", "perception_duration_ms", "perception_completed_at_ms"):
-                    self.assertNotIn(alias, saved)
-                self.assertTrue(any(step["plugins"] for step in saved["timing"]["steps"]))
+                    self.assertNotIn(alias, entry)
+                self.assertTrue(any(step["plugins"] for step in entry["timing"]["steps"]))
 
 
 if __name__ == "__main__":

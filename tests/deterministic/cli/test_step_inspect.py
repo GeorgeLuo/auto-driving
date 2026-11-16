@@ -68,8 +68,8 @@ def _record_steps(frames: Path, steps: dict[int, dict[str, StepActivation]]) -> 
     return frames
 
 
-def _source(metadata: dict | None = None) -> ImageSource:
-    frame = ReplayFrame("automation", "frame-0", 0, 0, 0, None, metadata=metadata or {})
+def _source(selections: dict[str, StepActivation | None] | None = None) -> ImageSource:
+    frame = ReplayFrame("automation", "frame-0", 0, 0, 0, None, selections=selections or {})
     return ImageSource(source_path=Path("automation"), source_id="automation", frames=(frame,))
 
 
@@ -283,7 +283,7 @@ class StepInspectTests(unittest.TestCase):
         self.assertIn("nope", unknown.message)
     def test_a_recording_that_disabled_a_selectable_step_replays_without_its_plugins(self) -> None:
         """A recorded absent slot stays absent, even when its step is clearable."""
-        replay = StepReplay(_source({"steps": dict.fromkeys(PRESET_STEPS)}), steps=PRESET_STEPS)
+        replay = StepReplay(_source(dict.fromkeys(PRESET_STEPS)), steps=PRESET_STEPS)
         for step in PRESET_STEPS:
             with self.subTest(step=step):
                 self.assertIsNone(replay.activations[step])
@@ -293,10 +293,10 @@ class StepInspectTests(unittest.TestCase):
         """Regression: a source that records selections only per frame built default
         runners, and frame 0's restage reset them over the map, replacing the ledger."""
 
-        recorded = _local("memory", {"recording_test": RECORDING_SPEC}).to_payload()
-        source = _source({"steps": {"memory": recorded}})
+        recorded = _local("memory", {"recording_test": RECORDING_SPEC})
+        source = _source({"memory": recorded})
         replay = StepReplay(source, steps=("memory",))
-        self.assertEqual(replay.activations["memory"].to_payload(), recorded)
+        self.assertEqual(replay.activations["memory"], recorded)
         runner = replay.runners["memory"]
         replay.shared_memory["memory.recording_test.state"] = {"epoch": 7, "records": ()}
 

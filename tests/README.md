@@ -95,8 +95,9 @@ summary without failing the command:
   assertion in four compares a string.
 - Vulture: production classes, functions, methods, properties, and attributes no
   production code refers to, with the tests that still use them. It matches names,
-  not bindings, so a name used anywhere counts as used, and code reached only by
-  reflection or configuration is reported. Findings sit at the definition.
+  not bindings, so a name used anywhere counts as used, and so does a plugin
+  spec in a `catalog.json`. Code reached only by other reflection or
+  configuration is reported. Findings sit at the definition.
 - Related functions: for each function, up to three in the same module, an
   importing module, or the same directory that make the same calls, weighted by how
   rare each call is. For functions in changed files, it asks whether similar

@@ -40,6 +40,18 @@ class UnusedCodeTests(unittest.TestCase):
         })
         self.assertEqual([item["location"]["symbol"] for item in found], ["Stale"])
 
+    def test_catalogs_outside_the_checked_paths_reference_nothing(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "implementations").mkdir()
+            (root / "implementations/plugins.py").write_text("class Stale:\n    pass\n")
+            # Such as another branch's worktree inside the checkout.
+            (root / ".claude/worktrees/other").mkdir(parents=True)
+            (root / ".claude/worktrees/other/catalog.json").write_text(
+                '{"plugins": [{"spec": "implementations.plugins:Stale"}]}')
+            found = unused(root, ["implementations"])
+        self.assertEqual([item["location"]["symbol"] for item in found], ["Stale"])
+
     def test_attributes_and_decorated_methods_are_named_within_their_class(self) -> None:
         findings = inspect(unused, {"cli/model.py": (
             "class Model:\n    def __init__(self):\n        self.cache = {}\n\n"

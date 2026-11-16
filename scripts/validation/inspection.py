@@ -47,7 +47,7 @@ def unused(tree: Path, paths: list[str]) -> list[Finding]:
     scanner = Vulture()
     for path, source in sorted(production.items()):
         scanner.scan(source, filename=path)
-    for spec in _catalog_specs(tree):
+    for spec in _catalog_specs(tree, paths):
         scanner.scan(spec.rsplit(":", 1)[-1], filename="<catalog references>")
     scanner.scavenge([])  # Applies Vulture's bundled allowances, such as AST visitor methods.
     owners = {path: definitions(_parse(source)) for path, source in production.items()}
@@ -261,12 +261,13 @@ def _parse(source: str) -> ast.AST:
         return ast.Module(body=[], type_ignores=[])  # Unparseable sources are reported by Ruff.
 
 
-def _catalog_specs(tree: Path) -> list[str]:
+def _catalog_specs(tree: Path, paths: list[str]) -> list[str]:
     """Catalog-loaded plugin symbols are production references, just like imports."""
 
     return [
         item["spec"]
-        for catalog in tree.rglob("catalog.json")
+        for root in paths
+        for catalog in sorted((tree / root).rglob("catalog.json"))
         for item in json.loads(catalog.read_text()).get("plugins", [])
         if isinstance(item, dict) and isinstance(item.get("spec"), str) and ":" in item["spec"]
     ]

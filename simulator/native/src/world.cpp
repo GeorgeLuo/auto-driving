@@ -103,8 +103,8 @@ World::World(const Json& c) : config(c), epoch(new_epoch()) {
     for (const auto& b : c["map"]["obstacles"])
         boxes.push_back({b["id"], b["x"], b["z"], b["width"], b["depth"], b["height"], b["rotationRadians"], b["boundary"]});
 }
-Vec bicycle(Vec position, Vec direction, double distance, double steering, double max_angle,
-            double wheelbase, Vec& next_direction) {
+Vec vehicle_motion(Vec position, Vec direction, double distance, double steering, double max_angle,
+                   double wheelbase, Vec& next_direction) {
     next_direction = direction;
     Vec travel = direction;
     if (std::abs(distance) > .001 && steering != 0 && max_angle > 0) {
@@ -157,13 +157,13 @@ void World::step() {
     double sign = input.forward ? 1 : input.reverse ? -1 : 0;
     double distance = v["speedUnitsPerFrame"].get<double>() * input.throttle * sign;
     Vec next_direction;
-    Vec intended = bicycle(position,direction,distance,input.steering,v["maxSteeringAngleRadians"],v["wheelbase"],next_direction);
+    Vec intended = vehicle_motion(position,direction,distance,input.steering,v["maxSteeringAngleRadians"],v["wheelbase"],next_direction);
     Vec next = collide(intended,position,config["map"]["columns"],config["map"]["rows"],v["radius"],boxes);
     double full = std::hypot(intended.x-position.x,intended.z-position.z);
     double traveled = std::hypot(next.x-position.x,next.z-position.z);
     double fraction = full > 0 ? std::min(1.0,traveled/full) : 0;
     if (fraction == 0) next_direction = direction;
-    else if (fraction < 1) bicycle(position,direction,distance*fraction,input.steering,v["maxSteeringAngleRadians"],v["wheelbase"],next_direction);
+    else if (fraction < 1) vehicle_motion(position,direction,distance*fraction,input.steering,v["maxSteeringAngleRadians"],v["wheelbase"],next_direction);
     position = next; direction = next_direction; ++frame;
     applied_command_sequence = command_sequence;
     simulation_time += 1/config["fps"].get<double>();

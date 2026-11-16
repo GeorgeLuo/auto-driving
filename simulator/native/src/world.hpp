@@ -42,8 +42,8 @@ Json read_config(const std::string& path);
 void validate_config(const Json& config);
 double number(const Json& object, const std::string& key, double low, double high);
 void require_keys(const Json& object, std::initializer_list<const char*> keys);
-Vec bicycle(Vec position, Vec direction, double distance, double steering, double max_angle,
-            double wheelbase, Vec& next_direction);
+Vec vehicle_motion(Vec position, Vec direction, double distance, double steering, double max_angle,
+                   double wheelbase, Vec& next_direction);
 Vec collide(Vec end, Vec start, double columns, double rows, double radius, const std::vector<Box>& boxes);
 uint64_t monotonic_us();
 std::string new_epoch();

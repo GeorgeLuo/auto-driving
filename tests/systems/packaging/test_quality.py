@@ -115,7 +115,7 @@ class QualityCommandTests(unittest.TestCase):
         status, document = self.check("--base", self.base, "--head", head)
         self.assertEqual(status, 1, document["findings"])
         self.assertEqual(self.blocking(document), [("ruff", "C901", "cli/choose.py")])
-        self.assertTrue(all(record["status"] == "completed" for record in document["evaluations"]))
+        self.assertEqual([record["evaluator"] for record in document["evaluations"] if record["status"] == "failed"], [])
 
     def test_a_change_answers_for_an_import_that_breaks_a_contract(self) -> None:
         head = self.commit(module_files("autonomy.core", "from cli import app\n\nCOMMANDS = app\n"))

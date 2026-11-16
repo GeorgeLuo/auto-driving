@@ -72,11 +72,7 @@ def _host_name_at_host(host_url: str, *, timeout_s: float) -> str:
         status = RuntimeClient(host_url, timeout_s=max(0.1, timeout_s)).host_status()
     except RuntimeError as exc:
         raise RuntimeHostError(f"Could not read the host at {host_url}: {exc}") from exc
-    return _reported_host_name(status, host_url)
-
-
-def _reported_host_name(status: object, host_url: str) -> str:
-    host_name = status.get("host_name") if isinstance(status, dict) else None
+    host_name = status.get("host_name")
     if not isinstance(host_name, str) or not host_name.strip():
         raise RuntimeHostError(f"The host at {host_url} did not report a host name.")
     return host_name

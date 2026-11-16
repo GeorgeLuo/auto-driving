@@ -42,7 +42,8 @@ def object_casts(tree: Path, paths: list[str]) -> list[Finding]:
             if _object_cast(node, casts, modules):
                 found.append(finding(
                     "source-rules", "object-cast", location(path, node.lineno),
-                    "Remove cast(object, ...); validate untrusted data at an object-typed input boundary.",
+                    "Remove cast(object, ...). If the declared type holds, delete the check the cast hides; "
+                    "otherwise validate the value at an object-typed input boundary.",
                     status="blocking",
                 ))
     return found

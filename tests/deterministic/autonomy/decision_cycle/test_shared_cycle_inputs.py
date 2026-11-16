@@ -45,7 +45,7 @@ class SharedCycleInputsTests(unittest.TestCase):
             def propose(self, context):
                 seen.append(read_observation(context.shared_memory))
                 seen.append(context.shared_memory[EVIDENCE_KEY])
-                context.shared_memory["proposal.test"] = observation
+                context.shared_memory["proposal.propose.test"] = observation
                 return ActionProposal(plugin_id=self.plugin_id, frame_id=context.frame_id,
                                       lifecycle="inactive", freshness="none", confidence=None,
                                       reason="test", command=None, available=False)
@@ -54,7 +54,7 @@ class SharedCycleInputsTests(unittest.TestCase):
             def plan(self, context, candidates):
                 seen.append(read_observation(context.shared_memory))
                 seen.append(context.shared_memory[EVIDENCE_KEY])
-                seen.append(context.shared_memory["proposal.test"])
+                seen.append(context.shared_memory["proposal.propose.test"])
                 return super().plan(context, candidates)
 
         result = DecisionCycle(DecisionSteps(

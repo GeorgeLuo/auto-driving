@@ -12,6 +12,7 @@ from dataclasses import replace
 from pathlib import Path
 from typing import Callable, NoReturn
 
+from autonomy.decision_cycle.restage import Restaged
 from autonomy.decision_cycle.activation import DECISION_STEPS, STEPS, StepActivation
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, cycle_result_of
 from autonomy.decision_cycle.perception.interface import PerceptionText
@@ -658,15 +659,13 @@ class ImageReplayRunner:
         refresh = False
         try:
             if active_phase:
-                runners, activations, changed = replace_replay_pipeline(
+                changed = replace_replay_pipeline(
                     self._steps, self._replay_activations, {step: activation},
                     overrides=set(self._replay_activations) - {step},
                     build=self._runner_for,
                 )
-                if changed:
-                    self._steps = runners
-                    self._replay_activations = activations
-                    self._shared_memory = {}
+                if changed is not None:
+                    self._accept_changed_pipeline_locked(changed)
                     refresh = (
                         self._state["phase"] == "paused"
                         and self._state["latest_processed_position"] is not None
@@ -1049,7 +1048,7 @@ class ImageReplayRunner:
             try:
                 with self._condition:
                     try:
-                        runners, activations, changed = replace_replay_pipeline(
+                        changed = replace_replay_pipeline(
                             steps, self._replay_activations, recorded_selections(frame.metadata),
                             overrides=self._selection_overrides, build=self._runner_for,
                         )
@@ -1060,9 +1059,9 @@ class ImageReplayRunner:
                         )
                         self._condition.notify_all()
                         return False
-                    if changed:
-                        steps = runners
-                        self._accept_changed_pipeline_locked(runners, activations)
+                    if changed is not None:
+                        steps = changed.steps
+                        self._accept_changed_pipeline_locked(changed)
                     self._apply_plugin_configuration_locked()
                 outcome = run_frame(frame, steps=steps, shared_memory=self._shared_memory)
                 result = outcome.result
@@ -1102,15 +1101,11 @@ class ImageReplayRunner:
                     self._condition.notify_all()
                 return False
 
-    def _accept_changed_pipeline_locked(
-        self,
-        runners: dict[str, object],
-        activations: Mapping[str, StepActivation | None],
-    ) -> None:
-        self._steps = runners
-        self._replay_activations = activations
-        self._shared_memory = {}
-        for name, activation in activations.items():
+    def _accept_changed_pipeline_locked(self, changed: Restaged) -> None:
+        self._steps = changed.steps
+        self._replay_activations = changed.activations
+        self._shared_memory = changed.keep(self._shared_memory)
+        for name, activation in changed.activations.items():
             if name not in self._selection_overrides:
                 self._store_recorded_activation(name, activation)
 

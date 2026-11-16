@@ -6,13 +6,10 @@ keys and include timing in values where needed. Writes are visible to subsequent
 consumers in execution order. Hosts own reset and synchronization; this mapping
 imposes no retention policy or domain-specific schema.
 
-Plugins must be replaceable between frames without changing results. All
-history affecting later frames belongs here, including previous image buffers,
-identity allocation, counters, and smoothing state. Configuration and reusable
-model resources may remain on instances. Plugins own namespacing, bounds,
-discontinuity handling, and when a completed update is committed. Hosts pass
-one map in execution order and clear/replace it at run boundaries; they do not
-interpret plugin histories.
+History affecting later frames belongs here; instances keep configuration and
+resources. Plugins own bounds, discontinuities, and update commits. A selection
+change clears state from the first changed plugin onward; unchanged upstream
+state survives. Hosts choose their run-boundary policy.
 
 A value is JSON data or a record. JSON data is a dict with string keys, a list
 or a tuple, a string, a number, a boolean, or None. A record has ``to_dict()``
@@ -24,26 +21,16 @@ either. ``shared_memory_document`` writes ``{"schema": "shared_memory",
 on every call. Loading a record by its ``module:Name`` spec keeps this module
 free of implementation imports.
 
-A plugin's own state lives at ``<step>.<plugin_id>.<name>``. A key a step
-publishes for others, such as ``memory.evidence``, is rewritten from its
-producer's state on every update. A value meant for a consumer is therefore
-set through the producer's state key. A host publishes what it alone knows the
-same way, under the step it belongs to, rewriting it before every cycle:
-``action.control_applications`` holds the controls the host applied.
+``StepRunner`` enforces ownership for added, replaced, and removed keys:
+``<step>.<plugin_id>.<name>`` belongs to that plugin; declared
+``memory.beliefs.<belief_id>`` belongs to its declaring memory plugins.
+Memory plugins may also write ``memory.evidence``. The cycle publishes
+``observation.current``; the host writes the four action input keys.
+In-place mutation of another owner's value is not detected.
 
-A host may start a run from a shared-memory file, decoding a fresh map per
-run. Resets and restages clear affected plugins' seeded keys as they clear
-history. Set a value a step publishes through its producer's state key.
-
-Steps reset plugins through ``reset_plugin``. A plugin's reset may omit the
-map and may leave fresh state behind, such as ``bounded_evidence``'s new
-epoch. ``MemoryRunner.reset`` returns that fresh state. A perception
-plugin's ``memory_required`` flag means that plugin needs this map to perceive.
-
-A memory plugin's belief at ``memory.beliefs.<belief_id>`` is both that
-plugin's state and its publication. The last write to each belief key wins.
-The runner removes a plugin's declared beliefs before its reset runs, so a
-fresh belief written by reset survives. Plugin state lives only in shared memory.
+Unowned seed keys survive restaging. A seed decodes into a fresh map per run.
+Plugin resets may leave fresh state, which ``MemoryRunner.reset`` returns.
+Declared beliefs are removed before their plugin resets.
 """
 
 from __future__ import annotations
@@ -53,12 +40,11 @@ import json
 import math
 from collections.abc import Mapping, MutableMapping
 from pathlib import Path
-from typing import Any
 
 SHARED_MEMORY_SCHEMA = "shared_memory"
 _RECORD_KEYS = frozenset({"$record", "data"})
 
-SharedMemory = MutableMapping[str, Any]
+SharedMemory = MutableMapping[str, object]
 
 
 class SharedMemoryValueError(ValueError):
@@ -69,7 +55,7 @@ class SharedMemoryValueError(ValueError):
         super().__init__(f"{path}: {detail}")
 
 
-def read_shared_memory_file(path: str | Path) -> tuple[dict[str, Any], dict[str, Any]]:
+def read_shared_memory_file(path: str | Path) -> tuple[dict[str, object], dict[str, object]]:
     """Decode a file into a fresh map; return the map and the document it holds."""
 
     try:
@@ -82,12 +68,12 @@ def read_shared_memory_file(path: str | Path) -> tuple[dict[str, Any], dict[str,
         raise SharedMemoryValueError(str(path), str(exc)) from exc
 
 
-def shared_memory_document(shared_memory: Mapping[str, Any]) -> dict[str, Any]:
+def shared_memory_document(shared_memory: object) -> dict[str, object]:
     """Encode ``shared_memory`` as a ``shared_memory`` document."""
 
     if not isinstance(shared_memory, Mapping):
         raise SharedMemoryValueError("values", "shared memory must be an object")
-    values: dict[str, Any] = {}
+    values: dict[str, object] = {}
     for key, value in shared_memory.items():
         if type(key) is not str:
             raise SharedMemoryValueError("values", f"dict key {key!r} is not a string")
@@ -95,7 +81,7 @@ def shared_memory_document(shared_memory: Mapping[str, Any]) -> dict[str, Any]:
     return {"schema": SHARED_MEMORY_SCHEMA, "values": values}
 
 
-def shared_memory_from_document(document: Mapping[str, Any]) -> dict[str, Any]:
+def shared_memory_from_document(document: object) -> dict[str, object]:
     """Decode a ``shared_memory`` document into a fresh map."""
 
     if not isinstance(document, Mapping):
@@ -107,7 +93,7 @@ def shared_memory_from_document(document: Mapping[str, Any]) -> dict[str, Any]:
     values = document.get("values")
     if not isinstance(values, Mapping):
         raise SharedMemoryValueError("values", "values must be an object")
-    decoded: dict[str, Any] = {}
+    decoded: dict[str, object] = {}
     for key, value in values.items():
         if type(key) is not str:
             raise SharedMemoryValueError("values", f"dict key {key!r} is not a string")
@@ -115,7 +101,7 @@ def shared_memory_from_document(document: Mapping[str, Any]) -> dict[str, Any]:
     return decoded
 
 
-def _encode(value: Any, path: str) -> Any:
+def _encode(value: object, path: str) -> object:
     if _json_scalar(value):
         return value
     if _is_record(value):
@@ -134,7 +120,7 @@ def _encode(value: Any, path: str) -> Any:
     if isinstance(value, dict):
         if "$record" in value:
             raise SharedMemoryValueError(path, "dict key '$record' is reserved for records")
-        encoded: dict[str, Any] = {}
+        encoded: dict[str, object] = {}
         for key, item in value.items():
             if type(key) is not str:
                 raise SharedMemoryValueError(path, f"dict key {key!r} is not a string")
@@ -145,7 +131,7 @@ def _encode(value: Any, path: str) -> Any:
     )
 
 
-def _decode(value: Any, path: str) -> Any:
+def _decode(value: object, path: str) -> object:
     if _json_scalar(value):
         return value
     if isinstance(value, list):
@@ -153,7 +139,7 @@ def _decode(value: Any, path: str) -> Any:
     if isinstance(value, dict):
         if "$record" in value:
             return _decode_record(value, path)
-        decoded: dict[str, Any] = {}
+        decoded: dict[str, object] = {}
         for key, item in value.items():
             if type(key) is not str:
                 raise SharedMemoryValueError(path, f"dict key {key!r} is not a string")
@@ -164,8 +150,8 @@ def _decode(value: Any, path: str) -> Any:
     )
 
 
-def _decode_record(value: dict[str, Any], path: str) -> Any:
-    if set(value) != _RECORD_KEYS:
+def _decode_record(value: dict[str, object], path: str) -> object:
+    if frozenset(value) != _RECORD_KEYS:
         raise SharedMemoryValueError(path, "record must be exactly {$record, data}")
     spec = value["$record"]
     if type(spec) is not str:
@@ -188,12 +174,9 @@ def _decode_record(value: dict[str, Any], path: str) -> Any:
 def _load_record_class(spec: str, path: str) -> type:
     module_name, separator, qualname = spec.partition(":")
     if (
-        not separator
-        or not module_name
-        or not qualname
+        not all((separator, module_name, qualname))
         or module_name.endswith(".py")
-        or "/" in module_name
-        or "\\" in module_name
+        or any(character in module_name for character in "/\\")
     ):
         raise SharedMemoryValueError(
             path, f"record spec must be 'module.path:QualName', got {spec!r}"
@@ -206,7 +189,7 @@ def _load_record_class(spec: str, path: str) -> type:
         raise SharedMemoryValueError(
             path, f"{module_name} import failed ({type(exc).__name__}: {exc})"
         ) from exc
-    current: Any = module
+    current: object = module
     for part in qualname.split("."):
         if not part.isidentifier():
             raise SharedMemoryValueError(path, f"unknown class {spec!r}")
@@ -229,7 +212,7 @@ def _record_spec(cls: type, path: str) -> str:
     return f"{module_name}:{qualname}"
 
 
-def _is_record(value: Any) -> bool:
+def _is_record(value: object) -> bool:
     if isinstance(value, (str, dict, list, tuple)):
         return False
     to_dict = getattr(value, "to_dict", None)
@@ -237,7 +220,7 @@ def _is_record(value: Any) -> bool:
     return callable(to_dict) and callable(from_dict)
 
 
-def _json_scalar(value: Any) -> bool:
+def _json_scalar(value: object) -> bool:
     if value is None or type(value) is str or type(value) is bool or type(value) is int:
         return True
     return type(value) is float and math.isfinite(value)

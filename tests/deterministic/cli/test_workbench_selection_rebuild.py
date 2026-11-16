@@ -1,4 +1,4 @@
-"""A workbench selection rebuilds the replay's steps on a fresh map.
+"""A workbench selection rebuilds changed steps and preserves upstream state.
 
 Selections use test plugins added to the workbench's catalog, so these tests
 hold whatever the packaged catalog offers.
@@ -78,7 +78,7 @@ class LiveSelectionTests(unittest.TestCase):
     def select(self, runner, run_id, plugins, step="perception"):
         return runner.dispatch("select_plugins", run_id=run_id, step=step, active_plugin_ids=plugins)
 
-    def test_bundled_selection_reconstructs_every_step_and_loads_additions_in_bundle(self):
+    def test_bundled_selection_rebuilds_changed_step_and_loads_additions_in_bundle(self):
         with tempfile.TemporaryDirectory() as directory, image_source(3) as root:
             bundle = controller_bundle_paths(Path(directory) / "vehicle")
             sync_controller_bundle(bundle, emit=None)
@@ -86,7 +86,7 @@ class LiveSelectionTests(unittest.TestCase):
             (code / "implementations/recorded_frame.py").write_text(
                 "from autonomy.decision_cycle.perception.evidence.values import PerceptionEvidenceBatch\n"
                 "from autonomy.decision_cycle.perception.plugin import PerceptionPluginContract\n"
-                "RESET_KEY = 'recorded.frame'\n"
+                "RESET_KEY = 'perception.recorded.history'\n"
                 "class RecordedFrame:\n"
                 "    contract = PerceptionPluginContract()\n"
                 "    def __init__(self, *, plugin_id='recorded'):\n"
@@ -124,12 +124,12 @@ class LiveSelectionTests(unittest.TestCase):
             self.assertEqual(step.plugin_ids, ("recorded", "second"))
             self.assertTrue(Path(step.plugins["second"].perceive.__code__.co_filename).is_relative_to(code))
             # Replacing the map cannot restore old plugin state.
-            runner._shared_memory["recorded.frame"] = True
+            runner._shared_memory["perception.recorded.history"] = True
             self.select(runner, run_id, ["second"])
-            self.assertNotIn("recorded.frame", runner._shared_memory)
+            self.assertNotIn("perception.recorded.history", runner._shared_memory)
             self.assertEqual(plugin.reset_count, 0)
 
-    def test_running_addition_reconstructs_plugins_with_tuned_configs_and_empty_history(self):
+    def test_running_addition_rebuilds_changed_step_with_tuned_configs_and_keeps_earlier_history(self):
         tuned = step_activation("perception", ["history"], {"history": HISTORY_SPEC}, {"history": {"window": 3}})
         with image_source(6) as root:
             runner, run_id = self.paused(root, plugins=None, activations={"perception": tuned})
@@ -149,13 +149,14 @@ class LiveSelectionTests(unittest.TestCase):
                 self.assertIsNot(runner._steps["perception"].plugins["history"], plugin)
                 # The running selection's config, not the catalog's.
                 self.assertEqual(runner._steps["perception"].plugins["history"].window, 3)
-                self.assertEqual(runner._shared_memory, {})
-                self.assertIsNot(runner._steps["memory"], memory)
+                self.assertIn(HISTORY_KEY, runner._shared_memory)
+                self.assertNotIn("memory.recording_test.state", runner._shared_memory)
+                self.assertIs(runner._steps["memory"], memory)
                 runner.dispatch("pause", run_id=run_id)
             next_frame = runner.dispatch("step", run_id=run_id)
             self.assertEqual(_runs(next_frame), ["history", "a"])
 
-    def test_paused_refresh_executes_only_latest_frame_without_advancing_memory_twice(self):
+    def test_paused_refresh_executes_only_latest_frame_with_invalidated_memory_state(self):
         with image_source(6) as root:
             runner, run_id = self.paused(root)
             runner.dispatch("seek", run_id=run_id, position=3)
@@ -168,7 +169,7 @@ class LiveSelectionTests(unittest.TestCase):
                 self.assertEqual([c.args[0].position for c in frames.call_args_list], [3, 3])
                 self.select(runner, run_id, ["a", "b"])
                 self.assertEqual(frames.call_count, 2)
-            self.assertIsNot(runner._steps["memory"], memory)
+            self.assertIs(runner._steps["memory"], memory)
             self.assertEqual(refreshed["phase"], "paused")
             self.assertEqual(refreshed["position"], 4)
             for index, earlier in enumerate(prefix):
@@ -178,7 +179,7 @@ class LiveSelectionTests(unittest.TestCase):
                 self.assertEqual(cached["machine_detail"]["pipeline"], earlier["machine_detail"]["pipeline"])
             self.assertEqual(refreshed["progress"]["completed"], 4)
             # Domain memory matches one execution of the frame with this selection.
-            self.assertEqual(runner._steps["memory"].update_count, 1)
+            self.assertEqual(runner._steps["memory"].status()["plugins"][0]["state"]["record_count"], 1)
 
     def test_new_history_plugin_warms_up_and_reenabled_plugin_does_not_restore_old_history(self):
         with image_source(6) as root:

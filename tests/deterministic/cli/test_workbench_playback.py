@@ -32,7 +32,7 @@ from tests.shared.cli.workbench_fixtures import (
 
 
 # Where the recording memory plugin keeps its state in the host map.
-RECORDING_STATE = "recording_test.state"
+RECORDING_STATE = "memory.recording_test.state"
 
 
 PROBE_READS: list[tuple] = []  # what SharedMemoryProbe read, for the tests; the plugin keeps nothing
@@ -48,7 +48,7 @@ class SharedMemoryProbe:
             shared_memory.get(RECORDING_STATE),
             shared_memory.get("test.step"),
         ))
-        shared_memory["test.perception"] = inputs.frame_id
+        shared_memory["perception.probe.history"] = inputs.frame_id
         return PerceptionEvidenceBatch(signals=(PerceptionSignal("probe_seen", True),))
 
 
@@ -161,7 +161,7 @@ class WorkbenchTests(unittest.TestCase):
 
             class RecordingStep:
                 def __call__(self, context):
-                    step_reads.append(context.shared_memory["test.perception"])
+                    step_reads.append(context.shared_memory["perception.probe.history"])
                     context.shared_memory["test.step"] = context.frame_id
                     report = step(context)
                     reports.append(report)

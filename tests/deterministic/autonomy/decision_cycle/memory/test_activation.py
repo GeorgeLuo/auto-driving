@@ -51,7 +51,7 @@ class MemoryActivationTests(unittest.TestCase):
                 remembered["records"][0]["origin"]["observation_id"],
                 "obs_1",
             )
-            self.assertEqual(shared["recording_test.state"]["records"][0].record_id, "rec-obs_1")
+            self.assertEqual(shared["memory.recording_test.state"]["records"][0].record_id, "rec-obs_1")
             status = step.status()
             self.assertEqual(status["plugin_ids"], ["recording_test"])
             # A step holds a list of plugins; none of them stands for the step.
@@ -74,7 +74,7 @@ class MemoryActivationTests(unittest.TestCase):
 
             written = step.reset(shared)
 
-            self.assertEqual(set(written), {"recording_test.state"})
+            self.assertEqual(set(written), {"memory.recording_test.state"})
             state = _state(step.report())
             self.assertEqual(state["record_count"], 0)
             self.assertEqual(state["epoch_id"], "epoch-2")
@@ -105,5 +105,5 @@ class MemoryActivationTests(unittest.TestCase):
             _state(report)["records"][0]["properties"]["extra"] = 1
             _state(report)["record_count"] = 99
 
-            self.assertEqual(shared["recording_test.state"]["records"][0].properties, {})
+            self.assertEqual(shared["memory.recording_test.state"]["records"][0].properties, {})
             self.assertEqual(_state(step.report())["record_count"], 1)

@@ -5,7 +5,7 @@ candidate command per cycle. Its candidate is admitted only under the plugin
 ID it was selected by. Plugins choose which shared-memory keys they read.
 
 An optional ``reset()`` or ``reset(shared_memory)`` clears a runner's history.
-A selection change constructs new runners with an empty map. Reset errors propagate. Return a
+A selection change rebuilds changed steps and clears downstream state. Reset errors propagate. Return a
 valid ``ActionProposal`` for this plugin and frame; wrong types or identities
 become synthetic error candidates, while lifecycle or size violations fail
 the whole step. ``ProposalRunner.plugin_report`` reports each plugin's last

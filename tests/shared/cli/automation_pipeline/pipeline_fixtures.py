@@ -184,6 +184,7 @@ def _write_activations(
     proposal_path.write_text(json.dumps(packaged_activation("proposal").to_payload()), encoding="utf-8")
 
 
+@contextmanager
 def staged_runners(*, perception=None, wrap=None):
     """Patch the worker's step loading: substitute ``perception`` and/or ``wrap`` loaded runners."""
 
@@ -199,7 +200,11 @@ def staged_runners(*, perception=None, wrap=None):
             wrap(activation.step, getattr(runner, "runner", runner))
         return runner
 
-    return patch("autonomy.decision_cycle.steps.load_runner", side_effect=load_runner)
+    with (
+        patch("autonomy.decision_cycle.steps.load_runner", side_effect=load_runner),
+        patch("autonomy.runtime.cycle_host.load_runner", side_effect=load_runner),
+    ):
+        yield
 
 
 @contextmanager

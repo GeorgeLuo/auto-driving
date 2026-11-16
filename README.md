@@ -674,13 +674,12 @@ at `/workbench/`; `--open` also opens that page in a browser.
 button. It opens an empty workbench with each step's default preset. Enter an
 image directory, then press Start. The Automa icon returns to the viewer's home page.
 
-Changing plugins keeps retained definitions and configs, builds every runner
-again, and starts an empty shared-memory map. Newly enabled plugins use catalog defaults.
+Changing plugins keeps retained definitions and configs, rebuilds changed steps,
+and clears state from the first changed plugin onward. Newly enabled plugins use catalog defaults.
 Submitting the same ordered selection again does no extra processing.
 
 While playing, selections apply at the next frame boundary without replaying history.
-While paused, a change refreshes only the latest frame on the empty map, so temporal
-plugins begin warming up. Earlier results keep the selection they
+While paused, a change refreshes only the latest frame using the surviving state. Earlier results keep the selection they
 were computed with. After seeking backward, use **Return to latest frame** before
 editing plugins. **Reset**, then **Start**, replays from the beginning with the selected
 plugins. A currently executing plugin finishes before a change takes effect.

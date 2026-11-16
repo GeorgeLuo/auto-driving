@@ -39,7 +39,7 @@ from tests.support.perception_fixtures import local_perception
 
 RECORDING_SPEC = "tests.shared.autonomy.decision_cycle.memory.activation_fixtures:_RecordingMemory"
 PUSHY_SPEC = "tests.deterministic.autonomy.runtime.test_cycle_host:_PushyAction"
-STATE_KEY = "recording_test.state"
+STATE_KEY = "memory.recording_test.state"
 
 
 class _PushyAction:
@@ -288,7 +288,7 @@ class CycleHostMemoryTests(unittest.TestCase):
             self.assertEqual(host.status()["error_count"], 0)
             selection = host.selection_status()
             self.assertEqual(selection["status"], "failed")
-            self.assertIn("cannot be reconstructed", selection["error"])
+            self.assertIn("no_such_module", selection["error"])
 
     def test_default_steps_idle_while_memory_updates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

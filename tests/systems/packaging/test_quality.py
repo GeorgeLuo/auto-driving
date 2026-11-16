@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import os
 import json
 import subprocess
 import tempfile
@@ -15,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[3]
 PERCEPTION = "implementations.decision_cycle.perception"
 # Modules the configured import contracts name; import-linter rejects a contract that matches nothing.
 CONTRACT_MODULES = (
-    "autonomy.core", "implementations.runtime.host", "implementations.vehicle.car",
+    "implementations.decision_cycle.shared.calls", "autonomy.core", "implementations.runtime.host", "implementations.vehicle.car",
     f"{PERCEPTION}.shared.math", f"{PERCEPTION}.bridge",
     f"{PERCEPTION}.plugins.first.plugin", f"{PERCEPTION}.plugins.second.plugin", "cli.app",
 )
@@ -123,6 +124,25 @@ class QualityCommandTests(unittest.TestCase):
         self.assertEqual(status, 1)
         self.assertEqual(self.blocking(document), [("import-linter", "harness", "autonomy/core.py")])
 
+
+    def test_new_source_rules_block_and_name_the_remedy(self):
+        head = self.commit({
+            "cli/copied.py": "def duplicate(raw: str) -> int | str:\n    return int(raw) if raw.isdigit() else raw\n",
+            "cli/cast_input.py": "from typing import cast\nvalue = cast(object, 1)\n",
+        })
+        status, document = self.check("--base", self.base, "--head", head)
+        self.assertEqual(status, 1)
+        self.assertEqual(self.blocking(document), [
+            ("source-rules", "identical-copy", "cli/copied.py"),
+            ("source-rules", "object-cast", "cli/cast_input.py"),
+        ])
+        head = self.commit({
+            "cli/copied.py": "def duplicate(raw: str) -> int | str:  # quality: allow-identical-body -- independent wire formats evolve separately\n    return int(raw) if raw.isdigit() else raw\n",
+            "cli/cast_input.py": "from typing import cast\nvalue = cast(str, 'a')\n",
+        })
+        status, document = self.check("--base", self.base, "--head", head)
+        self.assertEqual((status, self.blocking(document)), (0, []))
+
     def test_whole_files_report_their_existing_debt(self) -> None:
         status, document = self.check("cli/unused.py", "cli/choose.py")
         self.assertEqual(status, 1)
@@ -167,6 +187,7 @@ class ImportContractTests(unittest.TestCase):
         self.write(f"{PERCEPTION}.shared.math", "import autonomy.core\n")
         self.write(f"{PERCEPTION}.plugins.first.plugin", f"from {PERCEPTION}.shared import math\n")
         self.write(f"{PERCEPTION}.plugins.second.plugin", "from ..first import plugin\n")
+        self.write(f"{PERCEPTION}.plugins.first.plugin", "from implementations.decision_cycle.shared import calls\n")
         self.write("cli.app", f"from {PERCEPTION}.plugins.first import plugin\n")
         self.assertEqual(self.broken(), [])
 
@@ -189,6 +210,24 @@ class ImportContractTests(unittest.TestCase):
     def test_a_relative_aliased_plugin_import_from_shared_code_is_rejected(self) -> None:
         self.write(f"{PERCEPTION}.shared.math", "from ..plugins.first import plugin as reusable\n")
         self.assertEqual([rule for rule, *_ in self.broken()], ["shared"])
+
+
+    def test_cross_step_shared_cannot_import_plugins_vehicle_or_runtime(self):
+        for target in (f"{PERCEPTION}.plugins.first.plugin", "implementations.vehicle.car", "implementations.runtime.host"):
+            with self.subTest(target=target):
+                self.write("implementations.decision_cycle.shared.calls", f"import {target}\n")
+                self.assertEqual([rule for rule, *_ in self.broken()], ["shared"])
+
+    def test_cross_step_shared_relative_aliased_indirect_import_is_rejected(self):
+        self.write("implementations.decision_cycle.shared.calls", "from ..perception import bridge as reusable\n")
+        self.write(f"{PERCEPTION}.bridge", "from .plugins.first import plugin\n")
+        self.assertEqual([rule for rule, *_ in self.broken()], ["shared"])
+
+    def test_force_color_cannot_corrupt_import_contract_json(self):
+        with patch.dict(os.environ, {"FORCE_COLOR": "1"}):
+            self.assertEqual(self.broken(), [])
+            self.write("autonomy.core", "import cli.app\n")
+            self.assertEqual([rule for rule, *_ in self.broken()], ["harness"])
 
     def test_plugin_packages_cannot_import_each_other_in_a_cycle(self) -> None:
         self.write(f"{PERCEPTION}.plugins.first.plugin", "from ..second import plugin\n")

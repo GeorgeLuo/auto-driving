@@ -33,6 +33,13 @@ class UnusedCodeTests(unittest.TestCase):
         self.assertEqual((item["location"]["path"], item["location"]["line"], item["location"]["end_line"]), ("cli/service.py", 5, 5))
         self.assertEqual(item["evidence"]["test_references"], ["tests/test_service.py:5"])
 
+    def test_catalog_specs_reference_plugins_but_preset_strings_do_not_hide_unused_code(self):
+        found = inspect(unused, {
+            "implementations/plugins.py": "class Loaded:\n    pass\n\nclass Stale:\n    pass\n",
+            "implementations/catalog.json": '{"plugins": [{"spec": "implementations.plugins:Loaded"}], "presets": {"Stale": {}}}',
+        })
+        self.assertEqual([item["location"]["symbol"] for item in found], ["Stale"])
+
     def test_attributes_and_decorated_methods_are_named_within_their_class(self) -> None:
         findings = inspect(unused, {"cli/model.py": (
             "class Model:\n    def __init__(self):\n        self.cache = {}\n\n"

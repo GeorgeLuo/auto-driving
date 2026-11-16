@@ -64,7 +64,7 @@ forbidden_modules = ["cli"]
 id = "shared"
 name = "Shared step code does not depend on concrete plugins or hosts"
 type = "forbidden"
-source_modules = ["implementations.decision_cycle.*.shared"]
+source_modules = ["implementations.decision_cycle.*.shared", "implementations.decision_cycle.shared"]
 forbidden_modules = ["implementations.decision_cycle.*.plugins", "implementations.runtime", "implementations.vehicle"]
 broken_contract_guidance = "Move general step behavior into shared code; keep environment-specific behavior in plugins."
 
@@ -73,3 +73,8 @@ id = "plugin-cycles"
 name = "Plugin packages have no dependency cycles"
 type = "acyclic_siblings"
 ancestors = ["implementations.decision_cycle.*.plugins"]
+
+[tool.validation]
+lifecycle_paths = ["autonomy/decision_cycle/runner.py", "autonomy/decision_cycle/restage.py",
+                   "autonomy/decision_cycle/plugin_state.py", "autonomy/runtime/cycle_host.py",
+                   "autonomy/shared_memory.py", "implementations/decision_cycle/shared/"]

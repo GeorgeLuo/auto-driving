@@ -81,13 +81,9 @@ as callers broken by a signature change. Each check compares the head with its
 merge base to identify those findings elsewhere. Whole files and text report all
 their findings; type checking needs the project and skips text.
 
-Ruff, basedpyright, import-linter, the retired-vocabulary check, and the
-plugin-state check report blocking findings. The plugin-state check reads the
-plugins under `implementations/` for state kept on the instance between cycles,
-which belongs in shared memory; `python3 -m scripts.validation.plugin_state DIR`
-runs it on plugins outside the repository, such as an uploaded collection. The command exits 0 when clean, 1 for blocking findings, and 2
-when a required check cannot run. `--ruff-only` skips the slower checks while
-editing.
+Required checks report blocking findings; review checks remain advisory.
+The command exits 0 when clean, 1 for blocking findings, and 2 when a required
+check cannot run. `--ruff-only` skips the slower checks while editing.
 
 Three checks only ask review questions, and a failure of one is reported in the
 summary without failing the command:

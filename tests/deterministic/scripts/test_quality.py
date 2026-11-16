@@ -183,6 +183,17 @@ class SummaryTests(unittest.TestCase):
         self.assertIn("Showing 50; findings.json has all 52.", summary)
         self.assertNotIn("`cli/a.py:51`", summary)
 
+
+    def test_summary_labels_provenance_and_reports_totals_without_blocking(self):
+        new = finding("review", "new", location("cli/a.py", 1), "Owner?", evidence={"introduced": True})
+        old = finding("review", "old", location("cli/a.py", 2), "Owner?", evidence={"introduced": False})
+        document = self.document([new, old], [])
+        summary = render_summary(document, {"cli/a.py": (12, 14)})
+        self.assertIn("[introduced]", summary)
+        self.assertIn("[pre-existing]", summary)
+        self.assertIn("| `cli/a.py` | 12 | 14 |", summary)
+        self.assertEqual(exit_status(document), 0)
+
     def test_exit_status_fails_on_blocking_findings_and_required_failures_only(self) -> None:
         blocking = finding("ruff", "F821", location("cli/a.py", 2), "Undefined?", status="blocking")
         review = finding("qca", "structure.x", location("cli/a.py", 2), "Clearer?")

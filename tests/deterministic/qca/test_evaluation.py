@@ -101,6 +101,14 @@ class IntroducedFindingTests(unittest.TestCase):
 
 
 class EvaluateTests(unittest.TestCase):
+    def test_change_provenance_is_computed_once_and_preserved_for_summary(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            base = tree(root / "base", {"cli/a.py": "missing\n"})
+            head = tree(root / "head", {"cli/a.py": "missing\nmissing\n"})
+            document = evaluate(Context("change", head, ("cli/a.py",), base=base), [Evaluator("lint", lines_with("missing"))])
+        self.assertEqual([item["evidence"]["introduced"] for item in document["findings"]], [False, True])
+
     def test_text_is_evaluated_as_the_named_file_with_shared_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = tree(Path(directory), {"pyproject.toml": "[tool.example]\n"})

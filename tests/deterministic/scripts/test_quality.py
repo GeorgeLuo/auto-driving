@@ -183,13 +183,14 @@ class SummaryTests(unittest.TestCase):
         self.assertIn("Showing 50; findings.json has all 52.", summary)
         self.assertNotIn("`cli/a.py:51`", summary)
 
-
     def test_summary_labels_provenance_and_reports_totals_without_blocking(self):
-        new = finding("review", "new", location("cli/a.py", 1), "Owner?", evidence={"introduced": True})
-        old = finding("review", "old", location("cli/a.py", 2), "Owner?", evidence={"introduced": False})
-        document = self.document([new, old], [])
+        old = [finding("review", "old", location("cli/a.py", line), "Owner?", evidence={"introduced": False})
+               for line in range(1, 51)]
+        new = finding("review", "new", location("cli/a.py", 99), "Owner?", evidence={"introduced": True})
+        document = self.document([*old, new], [])
         summary = render_summary(document, {"cli/a.py": (12, 14)})
-        self.assertIn("[introduced]", summary)
+        # The change's own finding leads even when pre-existing ones fill the row limit.
+        self.assertIn("### Review questions (51)\n\n- [introduced] `cli/a.py:99`", summary)
         self.assertIn("[pre-existing]", summary)
         self.assertIn("| `cli/a.py` | 12 | 14 |", summary)
         self.assertEqual(exit_status(document), 0)

@@ -87,7 +87,7 @@ def render_summary(document: Document, totals: dict[str, tuple[int, int]] | None
     lines = ["## Python quality", "", _describe(document["context"]), "", "| Check | Result |", "| --- | --- |"]
     lines += [f"| {record['evaluator']} | {_outcome(record)} |" for record in document["evaluations"]]
     for status, title in (("blocking", "Blocking"), ("review", "Review questions")):
-        rows = [_row(item) for item in document["findings"] if item["status"] == status]
+        rows = [_row(item) for item in sorted(document["findings"], key=_pre_existing) if item["status"] == status]
         lines += ["", f"### {title} ({len(rows)})", "", *(rows[:LIMIT] or ["None."])]
         if len(rows) > LIMIT:
             lines += ["", f"Showing {LIMIT}; findings.json has all {len(rows)}."]
@@ -114,6 +114,12 @@ def _outcome(record: EvaluationRecord) -> str:
     return f"{record['status']}{'' if record['required'] else ' (informational)'}: {detail}"
 
 
+def _pre_existing(item: Finding) -> bool:
+    """Sorts a change's own findings first, so the row limit never hides them."""
+
+    return item["evidence"].get("introduced") is False
+
+
 def _row(item: Finding) -> str:
     place = item["location"]
     provenance = item["evidence"].get("introduced")
@@ -124,7 +130,6 @@ def _row(item: Finding) -> str:
 
 def _plain(text: str) -> str:
     return " ".join(text.split())
-
 
 
 def _change_checks(context: Context, document: Document) -> None:
@@ -153,6 +158,7 @@ def _totals(context: Context, document: Document) -> dict[str, tuple[int, int]]:
         record.update(status="failed", error=f"{type(exc).__name__}: {exc}")
         return {}
     return {path: (before.get(path, 0), after.get(path, 0)) for path in before.keys() | after.keys()}
+
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)

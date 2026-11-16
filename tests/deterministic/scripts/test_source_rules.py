@@ -27,6 +27,7 @@ class SourceRulesTests(unittest.TestCase):
             old = "def original(value):\n" + body
             files = {
                 "cli/original.py": old + "\ndef neighbor(value):\n" + body,
+                "cli/renamed.py": "def renamed(value):\n" + body,
                 "cli/copy.py": "def copied(value):\n" + body,
                 "cli/different.py": "def different(value):\n    return value + 4\n",
                 "cli/justified.py": "def justified(value):  # quality: allow-identical-body -- protocol versions evolve independently\n" + body,
@@ -35,6 +36,7 @@ class SourceRulesTests(unittest.TestCase):
             for tree in (base, head):
                 (tree / "cli").mkdir(parents=True)
                 (tree / "cli/original.py").write_text(files["cli/original.py"])
+            (base / "cli/renamed.py").write_text("def before(value):\n" + body)
             for name, text in files.items():
                 (head / name).parent.mkdir(parents=True, exist_ok=True)
                 (head / name).write_text(text)

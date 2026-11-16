@@ -5,7 +5,7 @@ from __future__ import annotations
 import ast
 import re
 import textwrap
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -63,7 +63,8 @@ def identical_copies(context: Context, roots: tuple[str, ...]) -> list[Finding]:
     """Only newly added verbatim bodies in another production module block a change."""
 
     head = _bodies(context.head, roots)
-    prior = {(body.path, body.symbol, body.text) for body in _bodies(context.base, roots)} if context.base else set()
+    base = _bodies(context.base, roots) if context.base else []
+    added = _added_bodies(base, head)
     groups: defaultdict[str, list[Body]] = defaultdict(list)
     for body in head:
         groups[body.text].append(body)
@@ -76,10 +77,29 @@ def identical_copies(context: Context, roots: tuple[str, ...]) -> list[Finding]:
             related=[location(other.path, other.line, other.end, other.symbol) for other in groups[body.text]
                      if other.path != body.path],
         )
-        for body in head
-        if body.path in context.paths and (body.path, body.symbol, body.text) not in prior and not body.override
+        for body in added
+        if body.path in context.paths and not body.override
         and any(other.path != body.path for other in groups[body.text])
     ]
+
+
+def _added_bodies(base: list[Body], head: list[Body]) -> list[Body]:
+    """Match unchanged owners first, then renames within a module, before calling a body added."""
+    owners = {(body.path, body.symbol, body.text) for body in base}
+    available = Counter((body.path, body.text) for body in base)
+    candidates = []
+    for body in head:
+        if (body.path, body.symbol, body.text) in owners:
+            available[body.path, body.text] -= 1
+        else:
+            candidates.append(body)
+    added = []
+    for body in candidates:
+        if available[body.path, body.text] > 0:
+            available[body.path, body.text] -= 1
+        else:
+            added.append(body)
+    return added
 
 
 def _bodies(tree: Path, roots: tuple[str, ...]) -> list[Body]:

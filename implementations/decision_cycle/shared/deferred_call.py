@@ -22,6 +22,13 @@ assigned, or exited) calls drop_stale with its scope, so calls from an older
 scope are counted when the scope changes rather than at its next poll. Call
 shutdown when retiring the resource.
 
+``max_age_ms`` caps how long a call this resource started may stay pending:
+an ask at least that long after the pending call was asked (frame time)
+expires it, counts ``expired``, permits the same pair again, and asks anew.
+The expired call keeps its worker until ``run`` returns; its completion then
+counts one drop. Without ``max_age_ms`` a hung call holds the resource until
+``run`` itself gives up, such as a transport timeout.
+
 A scope change discards a finished answer immediately. A running call is
 detached immediately, allowing another submission; its eventual completion
 counts one drop and never becomes current. A pending call this resource did
@@ -93,7 +100,7 @@ def _json_data(value: object) -> JSONValue:
 
 def _empty_record() -> dict:
     return {"current": None, "last_asked": None,
-            "counts": {"asked": 0, "answered": 0, "failed": 0, "dropped": 0, "abandoned": 0}}
+            "counts": {"asked": 0, "answered": 0, "failed": 0, "dropped": 0, "abandoned": 0, "expired": 0}}
 
 
 class DeferredCall(Generic[Request]):
@@ -101,11 +108,13 @@ class DeferredCall(Generic[Request]):
 
     def __init__(
         self, run: Callable[[Request], JSONValue], *, key: str,
-        blocking: bool = False, workers: int = 4,
+        blocking: bool = False, workers: int = 4, max_age_ms: int | None = None,
     ) -> None:
         if type(workers) is not int or workers < 1:
             raise ValueError("workers must be a positive int")
-        self._run, self._key = run, key
+        if max_age_ms is not None and (type(max_age_ms) is not int or max_age_ms < 1):
+            raise ValueError("max_age_ms must be a positive int or None")
+        self._run, self._key, self._max_age_ms = run, key, max_age_ms
         self._pool = None
         if not blocking:
             self._pool = ThreadPoolExecutor(max_workers=workers, thread_name_prefix="deferred-call")
@@ -117,7 +126,12 @@ class DeferredCall(Generic[Request]):
         with self._lock:
             return deepcopy(shared_memory.get(self._key) or _empty_record())
 
-    def _reconcile(self, shared_memory: SharedMemory, scope: JSONValue) -> dict:
+    def _overdue(self, current: dict, now_ms: int | None) -> bool:
+        if self._max_age_ms is None or now_ms is None or current["status"] != "pending":
+            return False
+        return now_ms - current["asked_ms"] >= self._max_age_ms
+
+    def _reconcile(self, shared_memory: SharedMemory, scope: JSONValue, now_ms: int | None = None) -> dict:
         record = self.record(shared_memory)
         current = record["current"]
         if current is None:
@@ -128,6 +142,10 @@ class DeferredCall(Generic[Request]):
         elif current["scope"] != scope:
             if current["status"] != "pending":
                 record["counts"]["dropped"] += 1
+        elif self._overdue(current, now_ms):
+            counts = record["counts"]
+            counts["expired"] = counts.get("expired", 0) + 1  # records saved before expiry had no count
+            record["last_asked"] = None
         else:
             return record
         record["current"] = None
@@ -164,10 +182,13 @@ class DeferredCall(Generic[Request]):
         self, shared_memory: SharedMemory, *, now_ms: int, scope: JSONValue,
         about: JSONValue, request: Callable[[], Request],
     ) -> None:
-        """Ask only for a new pair with no current call; build the request inline."""
+        """Ask only for a new pair with no current call; build the request inline.
+
+        A pending call older than ``max_age_ms`` is expired first, so this asks anew.
+        """
         scope, about = _json_data(scope), _json_data(about)
         with self._lock:
-            record = self._reconcile(shared_memory, scope)
+            record = self._reconcile(shared_memory, scope, now_ms)
             pair = {"scope": scope, "about": about}
             if record["current"] is not None:
                 return

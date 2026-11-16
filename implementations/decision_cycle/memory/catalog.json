@@ -20,6 +20,11 @@
         "max_property_bytes": 4096,
         "max_serialized_bytes": 262144
       }
+    },
+    {
+      "spec": "implementations.decision_cycle.memory.plugins.control_runs.plugin:ControlRuns",
+      "description": "Retain the last 40 runs of attributed applied autonomy controls. Arm by name to append to collection memory.",
+      "default_config": {}
     }
   ]
 }

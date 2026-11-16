@@ -1,7 +1,8 @@
 """Follow the published policy; arm with the plan/follow_policy preset.
 
 The collection supplies a policy cycler and tagged executor proposals. Policy
-selection, exit handling and action-log bookkeeping live in shared.policy.
+selection and exit handling live in shared.policy. Applied history belongs to
+the separately armed memory/control_runs plugin; selection writes no state.
 """
 
 from autonomy.decision_cycle.context import DecisionFrameContext

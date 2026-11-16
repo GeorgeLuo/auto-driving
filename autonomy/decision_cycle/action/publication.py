@@ -8,6 +8,9 @@ control execution also writes its recent ``ControlApplication`` records at
 ``CONTROL_APPLICATIONS_KEY``: a tuple or list, oldest first, of at most
 ``CONTROL_APPLICATION_LIMIT`` target writes, each with the mode it ran in.
 ``()`` means no writes are retained. History survives run boundaries.
+Each control's metadata identifies its contributing proposals, plugins and
+plan through ``plan_control_metadata`` in ``action/values.py``. Host-generated
+stops and older recordings have no such identity; missing keys mean unknown.
 The key is absent when the host has no execution or a replay source recorded
 none, so readers treat the car's motion as unknown.
 
@@ -84,7 +87,7 @@ def control_applications_over(
     if not applications or end_ms < start_ms:
         return None
     times = [item.delivered_at_ms for item in applications]
-    if any(at is None for at in times) or any(left > right for left, right in zip(times, times[1:])):
+    if any(at is None for at in times) or any(left > right for left, right in zip(times, times[1:], strict=False)):
         return None
     start = next((index for index in range(len(times) - 1, -1, -1) if times[index] <= start_ms), None)
     if start is None:

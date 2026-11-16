@@ -41,10 +41,8 @@ Run the tests your change reaches, not every suite. `commands` and `journeys` to
    blocking findings and report the result.
 4. For Python changes and reviews, inspect the review questions the same command
    lists for the final revision; the PR's Python quality summary lists them for
-   the committed head. Investigate material candidates and report their locations
-   and dispositions: fixed, retained with a code-based reason, or unresolved. If
-   a review check cannot run, the summary says why; report it. Review questions do not fail
-   the check, and a passing check does not mean they were reviewed.
+   the committed head. Report material ones as the
+   [engineer role](../docs/guidance/roles/engineer.md) step 6 describes.
 5. CI does not run `systems/`. Run the systems tests that drive the code you changed, chosen with a group and `-k`:
 
 | Change touches | Run |

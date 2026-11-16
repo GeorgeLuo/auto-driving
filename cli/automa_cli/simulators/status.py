@@ -6,8 +6,6 @@ keeps the live records only.
 
 from __future__ import annotations
 
-from typing import Any
-
 from ..hosts.discovery import hosts_by_vehicle
 from ..providers.metadata import CHASE_SIM
 from ..providers.models import DEFAULT_READINESS_TIMEOUT_S, Candidate
@@ -31,7 +29,7 @@ def simulators_status(
     *,
     url: str | None = None,
     timeout_s: float = DEFAULT_READINESS_TIMEOUT_S,
-) -> tuple[int, dict[str, Any]]:
+) -> tuple[int, dict[str, object]]:
     """The exit and the ``automa_simulators_status`` payload: each created simulator.
 
     ``url`` is a normalized Chase control URL. Listing exits 0, including
@@ -44,7 +42,7 @@ def simulators_status(
     selected = records if url is None else [record for record in records if record["url"] == url]
     alive = [record for record in selected if pid_alive(record.get("pid"))]
     probes = probe_candidates([Candidate(CHASE_SIM.name, record["url"], "created") for record in alive], timeout_s)
-    by_url = {record["url"]: probe for record, probe in zip(alive, probes)}
+    by_url = {record["url"]: probe for record, probe in zip(alive, probes, strict=True)}
     hosts = hosts_by_vehicle()
     simulators = [_simulator(record, by_url.get(record["url"]), hosts.get((CHASE_SIM.name, record["url"]), []))
                   for record in selected]
@@ -55,7 +53,7 @@ def simulators_status(
     return (1 if failed else 0), {"schema": STATUS_SCHEMA, "simulators": simulators}
 
 
-def _simulator(record: dict[str, Any], probe: dict[str, Any] | None, hosts: list[str]) -> dict[str, Any]:
+def _simulator(record: dict[str, object], probe: dict[str, object] | None, hosts: list[str]) -> dict[str, object]:
     """One simulator's entry; ``probe`` is ``None`` when its process has exited.
 
     ``log_tail`` is the exited log's last lines, ``None`` while it runs or unreadable.
@@ -77,4 +75,6 @@ def _simulator(record: dict[str, Any], probe: dict[str, Any] | None, hosts: list
         "config": record.get("config"),
         "log": display_path(log_path),
         "log_tail": read_log_tail(log_path) if exited else None,
+        **({"backend": "native", "executable": record.get("executable")}
+           if record.get("backend") == "native" else {}),
     }

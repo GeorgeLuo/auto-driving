@@ -20,6 +20,7 @@ from ..hosts.runs.process import process_command
 from ..shared.io.processes import pid_alive, reap_on_exit
 from ..shared.timestamps import timestamp_ms
 from .store import SIMULATOR_SCHEMA, remove_simulator_record, simulator_dir, write_simulator_record
+from .native import NATIVE_SIM_BINARY
 
 
 # Beside the simulator's record, in its ``simulator_dir``.
@@ -87,7 +88,8 @@ def _wait_for_simulator(log_path: Path, process: subprocess.Popen[bytes], timeou
         time.sleep(0.1)
 
 
-def start_simulator(command: list[str], *, cwd: Path, port: int, timeout_s: float) -> dict[str, object]:
+def start_simulator(command: list[str], *, cwd: Path, port: int, timeout_s: float,
+                    backend: str = "metrics-ui", config: str = "default") -> dict[str, object]:
     """Run a headless simulator launcher on ``port`` and record it once it prints its URL.
 
     The launcher leads its own session, so the simulator outlives this
@@ -110,10 +112,12 @@ def start_simulator(command: list[str], *, cwd: Path, port: int, timeout_s: floa
             "pid": process.pid,
             "port": port,
             "url": _wait_for_simulator(log_path, process, timeout_s),
-            "metrics_ui_dir": str(cwd),
-            "config": "default",
+            "metrics_ui_dir": str(cwd) if backend == "metrics-ui" else None,
+            "config": config,
             "started_at_ms": timestamp_ms(),
         }
+        if backend == "native":
+            record.update({"backend": backend, "executable": str(NATIVE_SIM_BINARY)})
         write_simulator_record(record)
         return record
     except BaseException:
@@ -137,6 +141,8 @@ def _option_is(tokens: list[str], flag: str, value: str) -> bool:
 
 
 def _launcher_matches(tokens: list[str]) -> bool:
+    if Path(tokens[0]).resolve() == NATIVE_SIM_BINARY.resolve():
+        return True
     override = os.environ.get("AUTOMA_HEADLESS_SIM_COMMAND")
     if not override:
         return any(Path(token).name == _HEADLESS_SIM_NAME for token in tokens)
@@ -151,9 +157,9 @@ def _launcher_matches(tokens: list[str]) -> bool:
 def simulator_command_matches(command: str, port: int) -> bool:
     """Pure check: command is the headless simulator on exactly ``port``.
 
-    ``simulators create`` runs ``node scripts/play-chase-headless.mjs --port``,
-    or the ``AUTOMA_HEADLESS_SIM_COMMAND`` it was given. ``--port`` matches
-    exactly. The interpreter is ignored because ``ps`` may show a resolved binary.
+    Matches the known native executable, Metrics UI's launcher, or its explicit
+    override. ``--port`` matches exactly. For interpreted launchers, ignore the
+    interpreter because ``ps`` may show its resolved path.
     """
 
     tokens = _command_tokens(command)

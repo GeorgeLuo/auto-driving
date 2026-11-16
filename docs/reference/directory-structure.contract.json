@@ -19,6 +19,12 @@
     "responsibility": "Local source of truth for automation engine code, concrete implementations, deployment bundles, generated runs, and CLI access.",
     "children": [
       {
+        "path": "simulator/",
+        "category": "implementation",
+        "commit_policy": "source",
+        "responsibility": "Optional native simulator prototype and its translated map, camera, motion, and Chase protocol. Built binaries stay ignored; cli/automa owns its lifecycle."
+      },
+      {
         "path": "autonomy/",
         "category": "stable-kernel",
         "commit_policy": "source",

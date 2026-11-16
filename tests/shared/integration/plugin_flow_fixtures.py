@@ -133,7 +133,7 @@ def write_plugin(file: Path, step: str, plugin_id: str, revision: int) -> None:
             "class Prototype(FrameObservationPlugin):\n"
             f"    plugin_id = {plugin_id!r}\n"
             "    def perceive(self, inputs):\n"
-            f"        inputs.shared_memory['prototype.perception'] = {revision}\n"
+            f"        inputs.shared_memory['perception.prototype-perception.state'] = {revision}\n"
             "        result = super().perceive(inputs)\n"
             f"        return replace(result, measurements={{**result.measurements, 'revision': {revision}}})\n"
         )
@@ -145,12 +145,12 @@ def write_plugin(file: Path, step: str, plugin_id: str, revision: int) -> None:
             "    contract = MemoryPluginContract(description='Test memory plugin.')\n"
             "    def update(self, context):\n"
             "        memory = context.shared_memory\n"
-            "        prior = memory.get('prototype.memory', {})\n"
-            f"        memory['prototype.memory'] = {{'revision': {revision}, 'perception': memory.get('prototype.perception'), 'count': prior.get('count', 0) + 1}}\n"
+            "        prior = memory.get('memory.prototype-memory.state', {})\n"
+            f"        memory['memory.prototype-memory.state'] = {{'revision': {revision}, 'perception': memory.get('perception.prototype-perception.state'), 'count': prior.get('count', 0) + 1}}\n"
             "    def reset(self, shared_memory):\n"
-            "        shared_memory.pop('prototype.memory', None)\n"
+            "        shared_memory.pop('memory.prototype-memory.state', None)\n"
             "    def status(self, shared_memory):\n"
-            "        return dict((shared_memory or {}).get('prototype.memory', {}))\n"
+            "        return dict((shared_memory or {}).get('memory.prototype-memory.state', {}))\n"
         )
     elif step == "proposal":
         source = (
@@ -158,7 +158,7 @@ def write_plugin(file: Path, step: str, plugin_id: str, revision: int) -> None:
             "class Prototype:\n"
             f"    plugin_id = {plugin_id!r}\n"
             "    def propose(self, context):\n"
-            "        memory = dict((context.shared_memory or {}).get('prototype.memory', {}))\n"
+            "        memory = dict((context.shared_memory or {}).get('memory.prototype-memory.state', {}))\n"
             "        return ActionProposal(plugin_id=self.plugin_id, frame_id=context.frame_id,\n"
             f"            lifecycle='inactive', freshness='none', confidence=0.0, reason='prototype revision {revision}',\n"
             f"            command=None, metadata={{'revision': {revision}, 'memory': memory}})\n"

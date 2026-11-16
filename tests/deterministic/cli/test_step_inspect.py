@@ -298,12 +298,12 @@ class StepInspectTests(unittest.TestCase):
         replay = StepReplay(source, steps=("memory",))
         self.assertEqual(replay.activations["memory"].to_payload(), recorded)
         runner = replay.runners["memory"]
-        replay.shared_memory["recording_test.state"] = {"epoch": 7, "records": ()}
+        replay.shared_memory["memory.recording_test.state"] = {"epoch": 7, "records": ()}
 
         replay.restage(source.frames[0])
 
         self.assertIs(replay.runners["memory"], runner)
-        self.assertEqual(replay.shared_memory["recording_test.state"]["epoch"], 7)
+        self.assertEqual(replay.shared_memory["memory.recording_test.state"]["epoch"], 7)
 
     def test_every_step_restages_the_selection_each_frame_records(self) -> None:
         local = _local("perception", LOCAL_PERCEPTION)

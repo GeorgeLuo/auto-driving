@@ -20,7 +20,6 @@ from autonomy.decision_cycle.perception.inputs import build_perception_request
 from autonomy.decision_cycle.runner import (
     StepRunner,
     describe_exception,
-    reset_plugin,
 )
 from autonomy.decision_cycle.timing import clock, elapsed_ms
 from autonomy.plugins import PluginDefinition
@@ -43,7 +42,6 @@ from autonomy.decision_cycle.perception.plugin import (
     PerceptionPluginInputs,
     PerceptionPluginWarmingUp,
 )
-from autonomy.decision_cycle.plugin_state import unchanged_instance
 
 
 @dataclass(frozen=True)
@@ -260,7 +258,7 @@ class PerceptionRunner(StepRunner[object]):
 
     def _reset_plugin(self, plugin: object, shared_memory=None) -> None:
         try:
-            reset_plugin(plugin, shared_memory)
+            super()._reset_plugin(plugin, shared_memory)
         except Exception:
             if FAILURE_POLICY.reset == "propagate":
                 raise
@@ -294,7 +292,7 @@ class PerceptionRunner(StepRunner[object]):
                 shared_memory=request.shared_memory,
                 prior_things=prior_things,
             )
-            with unchanged_instance(plugin):
+            with self._plugin_call(plugin, request.shared_memory):
                 batch = plugin.perceive(inputs)
             if not isinstance(batch, PerceptionEvidenceBatch):
                 raise TypeError(

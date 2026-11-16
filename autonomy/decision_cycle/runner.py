@@ -28,7 +28,7 @@ from contextlib import contextmanager
 from copy import deepcopy
 from dataclasses import dataclass
 from threading import RLock
-from typing import Any, ClassVar, Generic, TypeVar
+from typing import ClassVar, Generic, TypeVar
 
 from autonomy.decision_cycle.activation import (
     StepActivation, activation_presets, require_step, selected_definitions,
@@ -41,6 +41,8 @@ from autonomy.plugins import (
     require_plugin_id,
 )
 from autonomy.shared_memory import SharedMemory
+from autonomy.decision_cycle.restage import owner_of
+from autonomy.decision_cycle.plugin_state import RetainedStateError, unchanged_instance
 
 PluginT = TypeVar("PluginT")
 # Entrypoint module name for instances handed to ``StepRunner.from_plugins``.
@@ -117,7 +119,7 @@ class StepRunner(Generic[PluginT]):
 
     def __init__(
         self,
-        definitions: Sequence[PluginDefinition],
+        definitions: object,
         *,
         activation: StepActivation | None = None,
         provided: Mapping[str, PluginT] | None = None,
@@ -131,7 +133,7 @@ class StepRunner(Generic[PluginT]):
         self.last_error: str | None = None
         self.run_count = 0
         self.failure_count = 0
-        self._plugin_runs: dict[str, dict[str, Any]] = {}
+        self._plugin_runs: dict[str, dict[str, object]] = {}
         loaded: list[tuple[PluginDefinition, PluginT]] = []
         seen: set[str] = set()
         for definition in definitions:
@@ -154,12 +156,12 @@ class StepRunner(Generic[PluginT]):
         return cls(selected_definitions(activation), activation=activation)
 
     @classmethod
-    def from_plugins(cls, plugins: Mapping[str, PluginT]):
+    def from_plugins(cls, plugins: object):
         """Run already constructed plugins, selected in the mapping's order.
 
         For hosts and tools that build plugin instances themselves. This runner
-        cannot be rebuilt from an activation. A pipeline replacement does not
-        keep it.
+        cannot be rebuilt from an activation. A restage keeps it while this
+        step is unchanged.
         """
 
         if not isinstance(plugins, Mapping):
@@ -214,17 +216,40 @@ class StepRunner(Generic[PluginT]):
             self._clear_plugin_records()
 
     def _reset_plugin(self, plugin: PluginT, shared_memory: SharedMemory | None) -> None:
-        reset_plugin(plugin, shared_memory)
+        with self._plugin_call(plugin, shared_memory):
+            reset_plugin(plugin, shared_memory)
+
+    @contextmanager
+    def _plugin_call(self, plugin: object, shared_memory: SharedMemory | None) -> Iterator[None]:
+        """The boundary for every plugin update and reset, under its step policy."""
+        owner = (self.step, plugin.plugin_id)
+        beliefs = {
+            f"memory.beliefs.{belief_id}": frozenset({owner})
+            for belief_id in getattr(getattr(plugin, "contract", None), "belief_ids", ())
+        } if self.step == "memory" else {}
+        allowed = {owner, (self.step, None)}
+        # Pin values so replacement cannot reuse a deleted object's identity.
+        pinned = dict(shared_memory) if shared_memory is not None else {}
+        before = {key: id(value) for key, value in pinned.items()}
+        with unchanged_instance(plugin):
+            yield
+        after = {key: id(value) for key, value in shared_memory.items()} if shared_memory is not None else {}
+        invalid = [
+            key for key in sorted(before.keys() | after.keys())
+            if before.get(key) != after.get(key) and not owner_of(key, beliefs) & allowed
+        ]
+        if invalid:
+            raise RetainedStateError(f"plugin {plugin.plugin_id!r} changed unowned shared-memory keys: {', '.join(invalid)}")
 
     # Reports ---------------------------------------------------------------
 
-    def plugin_report(self) -> dict[str, Any]:
+    def plugin_report(self) -> dict[str, object]:
         """Report each fixed applied plugin and its execution record."""
 
         with self._runtime_lock:
             return build_plugin_report(self.applied, self._plugin_records())
 
-    def plugin_timing(self) -> list[dict[str, Any]]:
+    def plugin_timing(self) -> list[dict[str, object]]:
         """Each applied plugin's duration and error from the last step call.
 
         ``DecisionCycle`` copies this into the cycle's ``timing``; the cycle
@@ -257,7 +282,7 @@ class StepRunner(Generic[PluginT]):
             "error": error,
         }
 
-    def _plugin_records(self) -> list[dict[str, Any]]:
+    def _plugin_records(self) -> list[dict[str, object]]:
         """Each applied plugin's ``plugin_id``, ``duration_ms`` and ``error``."""
 
         return [
@@ -270,7 +295,7 @@ class StepRunner(Generic[PluginT]):
             for definition, _plugin in self.applied
         ]
 
-    def status(self) -> dict[str, Any]:
+    def status(self) -> dict[str, object]:
         with self._runtime_lock:
             return {
                 "step": self.step,
@@ -309,7 +334,7 @@ class StepRunner(Generic[PluginT]):
             self._record_plugin(definition.plugin_id, elapsed_ms(started), self.last_error)
 
 
-def reset_plugin(plugin: Any, shared_memory: SharedMemory | None = None) -> None:
+def reset_plugin(plugin: object, shared_memory: SharedMemory | None = None) -> None:
     """Call the plugin's optional ``reset``, passing the host map when it takes one."""
 
     reset = getattr(plugin, "reset", None)
@@ -321,7 +346,7 @@ def reset_plugin(plugin: Any, shared_memory: SharedMemory | None = None) -> None
         reset()
 
 
-def _accepts_argument(function: Any) -> bool:
+def _accepts_argument(function: object) -> bool:
     try:
         parameters = inspect.signature(function).parameters.values()
     except (TypeError, ValueError):

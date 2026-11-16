@@ -24,11 +24,9 @@ class _OnceMemory(_RecordingMemory):
 
 class _OrderedMemory(_RecordingMemory):
     def update(self, context):
-        context.shared_memory.setdefault("execution_order", []).append(self.plugin_id)
-        context.shared_memory.setdefault("previous_outputs", []).append(
-            context.shared_memory.get("last_writer")
-        )
-        context.shared_memory["last_writer"] = self.plugin_id
+        previous = context.shared_memory.get("memory.evidence")
+        context.shared_memory[f"memory.{self.plugin_id}.previous"] = previous
+        context.shared_memory["memory.evidence"] = self.plugin_id
         super().update(context)
 
 
@@ -69,7 +67,7 @@ class MemorySelectionTests(unittest.TestCase):
             activation = read_step_activation(path, "memory")
             self.assertEqual(activation.plugins, ("second",))
             step = MemoryRunner.from_activation(activation)
-            self.assertEqual(set(step.reset({})), {"second.state"})
+            self.assertEqual(set(step.reset({})), {"memory.second.state"})
             self.assertEqual(step.status()["activation"], str(path))
             self.assertEqual(step.plugin_ids, ("second",))
 
@@ -98,9 +96,9 @@ class MemorySelectionTests(unittest.TestCase):
         context = DecisionFrameContext("frame-1", 1, 100, shared_memory=shared)
         context.shared_memory[OBSERVATION_KEY] = Observation("obs-1", 90, {})
         report = step.update(context)
-        self.assertEqual(shared["execution_order"], ["first", "second"])
-        self.assertEqual(shared["previous_outputs"], [None, "first"])
-        self.assertEqual(shared["last_writer"], "second")
+        self.assertIsNone(shared["memory.first.previous"])
+        self.assertEqual(shared["memory.second.previous"], "first")
+        self.assertEqual(shared["memory.evidence"], "second")
         self.assertEqual([item["plugin_id"] for item in report["plugins"]], ["first", "second"])
         self.assertEqual([item["update_count"] for item in step.status()["plugins"]], [1, 1])
 
@@ -111,7 +109,7 @@ class MemorySelectionTests(unittest.TestCase):
         context.shared_memory[OBSERVATION_KEY] = Observation("obs-1", 90, {})
         step.update(context)
         step.reset()
-        self.assertEqual(shared["first.state"], {"epoch": 2, "records": ()})
+        self.assertEqual(shared["memory.first.state"], {"epoch": 2, "records": ()})
         self.assertEqual(step.status()["plugins"][0]["state"]["epoch_id"], "epoch-2")
 
     def test_a_new_selection_is_a_new_runner(self):

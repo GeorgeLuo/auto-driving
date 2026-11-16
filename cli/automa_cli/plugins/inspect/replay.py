@@ -14,7 +14,6 @@ import shutil
 import time
 import uuid
 from pathlib import Path
-from typing import Any
 
 from autonomy.decision_cycle.activation import StepActivation
 from autonomy.plugins import uploaded_source
@@ -62,8 +61,8 @@ class StepReplay:
     """Step runners that replay a source with the selections it recorded.
 
     Each step uses its override, else the selection the source's first frame
-    recorded, else ``default_selection``. A later frame installs a fresh
-    pipeline and an empty map only when its effective selection differs.
+    recorded, else ``default_selection``. A later frame rebuilds changed steps
+    and clears state from the first changed plugin onward.
     An override that cancels a recorded change keeps the runners and the map.
     Constructing the runners raises before any frame runs, including for a
     recorded release that is not available locally. A seed starts the run
@@ -93,21 +92,21 @@ class StepReplay:
     def restage(self, frame: ReplayFrame) -> None:
         """Install this frame's recorded pipeline, unless the step is overridden."""
 
-        runners, activations, changed = replace_replay_pipeline(
+        changed = replace_replay_pipeline(
             self.runners, self.activations, recorded_selections(frame.metadata),
             overrides=set(self.overrides),
         )
-        if not changed:
+        if changed is None:
             return
-        self.runners = runners
-        self.activations = activations
-        self.shared_memory = {}
+        self.runners = changed.steps
+        self.activations = changed.activations
+        self.shared_memory = changed.keep(self.shared_memory)
 
     def run(self, frame: ReplayFrame) -> FrameOutcome:
         self.restage(frame)
         return run_frame(frame, steps=self.runners, shared_memory=self.shared_memory)
 
-    def recording_entry(self, frame: ReplayFrame, outcome: FrameOutcome) -> dict[str, Any]:
+    def recording_entry(self, frame: ReplayFrame, outcome: FrameOutcome) -> dict[str, object]:
         """Executed inputs, including overrides, independent of the report's frame filter."""
         applications = frame.control_applications
         return recording_frame_entry(
@@ -123,7 +122,7 @@ class StepReplay:
             ),
         )
 
-    def step_payloads(self) -> dict[str, Any]:
+    def step_payloads(self) -> dict[str, object]:
         """Each step's current selection, as a frame records it for replay."""
 
         return {
@@ -131,7 +130,7 @@ class StepReplay:
             for step, activation in self.activations.items()
         }
 
-    def selection_records(self) -> dict[str, Any]:
+    def selection_records(self) -> dict[str, object]:
         """Each step's current selection, as a report records it for replay."""
 
         return {
@@ -146,8 +145,8 @@ def inspect_run_id(source_id: str) -> str:
 
 
 def record_inspect_run(
-    run_dir: Path, report: dict[str, Any], image_source: ImageSource,
-    replay_inputs: list[dict[str, Any]],
+    run_dir: Path, report: dict[str, object], image_source: ImageSource,
+    replay_inputs: list[dict[str, object]],
 ) -> None:
     """Archive executed inputs and images; the report may select only one frame.
 

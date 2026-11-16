@@ -8,7 +8,6 @@ from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.plugin import ObservationPlugin
 from autonomy.decision_cycle.observation.values import Observation
 from autonomy.decision_cycle.perception.interface import PerceptionText
-from autonomy.decision_cycle.plugin_state import unchanged_instance
 from autonomy.decision_cycle.runner import StepRunner, describe_exception
 from autonomy.plugins import PluginDefinition
 
@@ -29,7 +28,7 @@ class ObservationRunner(StepRunner[ObservationPlugin]):
         with self._runtime_lock, self._timed_single() as plugin:
             self.run_count += 1
             try:
-                with unchanged_instance(plugin):
+                with self._plugin_call(plugin, context.shared_memory):
                     returned = plugin.observe(context, perception)
                 observation = _observation(returned)
             except Exception as exc:

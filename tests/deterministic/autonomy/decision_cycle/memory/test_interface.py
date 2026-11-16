@@ -47,7 +47,7 @@ class _OwnedSummaryMemory:
     plugin_id = "owned_summary"
     contract = MemoryPluginContract(description="Test memory plugin.")
 
-    key = "owned_summary.state"
+    key = "memory.owned_summary.state"
 
     def update(self, context) -> None:
         state = context.shared_memory.setdefault(self.key, {

@@ -1,0 +1,6 @@
+{
+  "visuals": [
+    {"type": "strip", "x": 0, "y": 0, "z": 0, "width": 1.49, "depth": 1.04, "height": 0.012, "rotationRadians": 0, "material": "blue-rug"}
+  ],
+  "collision": null
+}

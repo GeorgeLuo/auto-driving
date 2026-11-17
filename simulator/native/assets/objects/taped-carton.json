@@ -1,0 +1,8 @@
+{
+  "visuals": [
+    {"type": "box", "x": 0, "y": 0, "z": 0, "width": 0.58, "depth": 0.43, "height": 0.37, "rotationRadians": 0, "material": "shipping-cardboard"},
+    {"type": "box", "x": 0, "y": 0.37, "z": 0.095, "width": 0.57, "depth": 0.245, "height": 0.012, "rotationRadians": 0, "material": "shipping-cardboard", "pitchRadians": -0.4},
+    {"type": "box", "x": 0, "y": 0.373, "z": -0.111, "width": 0.57, "depth": 0.21, "height": 0.011, "rotationRadians": 0, "material": "shipping-cardboard", "pitchRadians": 0.14}
+  ],
+  "collision": {"type": "box", "width": 0.58, "depth": 0.43}
+}

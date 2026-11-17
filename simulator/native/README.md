@@ -9,6 +9,9 @@ backend; this prototype is selected explicitly.
 Requires CMake 3.24+, a C++17 compiler, and libjpeg development files
 (`brew install cmake jpeg-turbo` on macOS; `libjpeg-dev` on Debian/Ubuntu).
 The first configure downloads hash-pinned IXWebSocket and nlohmann/json sources.
+For an offline build, point `FETCHCONTENT_SOURCE_DIR_IXWEBSOCKET` and
+`FETCHCONTENT_SOURCE_DIR_JSON` at existing source copies. The glTF and image
+loaders use the pinned headers in `third_party/`.
 
 From the auto-driving repository root:
 
@@ -48,7 +51,7 @@ properties, camera calibration, and procedural material settings. Launch it with
 ./cli/automa simulators create --backend native --config /absolute/path/to/map.json
 ```
 
-Coordinates and distances use Chase world units. `spawn.headingRadians` is
+Coordinates and distances use Chase world units (roughly metres). `spawn.headingRadians` is
 `atan2(z, x)`: `-pi/2` faces north. Obstacle rotations use Chase's original
 convention. Perimeter boxes marked `boundary` are visual geometry; physical
 perimeter contact is determined by map dimensions and vehicle radius.
@@ -62,12 +65,22 @@ for `floor` and `obstacle`. These fields work in map files and in the existing
 
 A map can also use `map.instances` to place named objects from
 `assets/objects/`. Each entry supplies `id`, `asset` (the filename stem),
-`x`, `z`, and `rotationRadians`. A map can mix `obstacles` and `instances`.
-The two lists together support up to 1,000 objects. Use `map.floorMaterial`
-to select a named floor material. `map.light` can override `direction`
-(an object with `x`, positive `y`, and `z`) and `shadowStrength` (0 to 1).
-The defaults are the RC-indoor direction `(-0.5, 1, 0.25)` and
-`2.4 / (0.9 + 2.4)` shadow strength.
+`x`, `z`, and `rotationRadians`. An optional `material` selects a named
+material for every part. An optional `color` (RGB integers) replaces the base
+color of each part's selected material and keeps its texture. A map can mix
+`obstacles` and `instances`, with up to 1,000 objects combined. Use
+`map.floorMaterial` to select a named floor material.
+
+`map.light` can specify `ambient` (0 to 4) and `directionals` (one to eight
+lights). Each light accepts `direction` (an object with `x`, positive `y`,
+and `z`), `intensity` (0 to 4), `shadowStrength` (0 to 1), and
+`shadowSoftness` (0 to 1). Softness sets the X/Z spread of four shadow rays
+around the supplied direction. Zero uses one hard-shadow ray. In this form,
+ambient defaults to 0.4 and directional intensity to 1. The original
+`map.light` form accepts `direction`, `shadowStrength`, and
+`shadowSoftness` without `ambient` or `directionals`. Omitting lighting
+keeps the original face shading, direction `(-0.5, 1, 0.25)`, shadow strength
+`2.4 / (0.9 + 2.4)`, and softness `0.002`.
 
 The existing Python control client can configure the running simulator:
 
@@ -125,9 +138,9 @@ the original JavaScript simulator, covering straight travel, steering,
 rotated obstacles, boundary contact, reverse motion, and idle input.
 
 The default geometry and RC-indoor camera mount/projection parameters match
-that source. The software renderer is an approximation: it uses procedural
-grain and simple face shading, with directional cast shadows using the RC-indoor light direction and a software
-soft-shadow approximation. The camera model clamps and truncates linear RGB to
+that source. The software renderer ray-casts visual parts and meshes through
+bounding volume hierarchies. It shades surfaces using material textures and
+the map's lights, with a four-ray soft-shadow approximation. The camera model clamps and truncates linear RGB to
 the original native code values, then applies clamped bilinear resampling, the
 smoothstep vignette, and JPEG encoding. The source GPU uses a linear render
 target with tone mapping and color conversion after sampling. Camera/perception equivalence
@@ -152,8 +165,11 @@ simulator/native/
   assets/
     materials.json
     objects/
+    textures/
   maps/
     chaser-depth-obstacles.json
+    showcase.json
+    showcase-boxes.json
   src/
     core/                Shared math, JSON, image types, and seeded noise
     scene/               Map, assets, materials, light, and loaders
@@ -163,6 +179,8 @@ simulator/native/
     sensor/              Camera effects, RGB bytes, and JPEG
     server/              Runtime, Chase protocol, renderer registration, and executable
   tests/
+  third_party/
+  tools/
 ```
 
 The source includes follow this dependency direction. CTest checks every local
@@ -179,28 +197,75 @@ interface.
 | `server` | `physics`, `render`, `sensor`, `scene` |
 
 - **Add a material.** Add an entry in `assets/materials.json` with a unique
-  name, an integer RGB `baseColor`, and a `texture` object. Use
-  `{"kind":"none"}` or `{"kind":"grain","seed":0,"scale":1.25}`. Reference its
-  name in a visual part's `material` or in `map.floorMaterial`.
+  name, an integer RGB `baseColor`, and a `texture` object. Use `none` for a
+  flat color, or `grain` for the original seeded grain. The other procedural
+  kinds are `carpet` (pile and mottling), `cardboard` (corrugation),
+  `leather` (creases and sheen), `wood` (grain), `fabric` (weave), and
+  `patterned_rug` (diamonds and a border). Each procedural kind takes an
+  unsigned 32-bit `seed` and a `scale` from 0.01 to 100. Larger scales
+  stretch the pattern. The six newer kinds also accept `strength` (0 to 1,
+  default 1). Cardboard accepts boolean `print` and `tape` decals.
+  For an image, use `{"kind":"image","file":"textures/label.png"}`. The path
+  is relative to `assets/`. The image repeats in UV space and multiplies
+  `baseColor`. Its optional `scale` defaults to 1. Reference the material
+  name on a visual part, on an instance, or in `map.floorMaterial`.
 - **Add a map.** Copy a file in `maps/`, give it a new `scenarioId`, and
-  set its dimensions, spawn, and objects. Use `--config FILE` at startup or
-  pass the map document to `load-map` while paused.
+  set its dimensions, spawn, objects, floor material, and lights. See
+  `maps/showcase.json` for named instances, color and material overrides,
+  and two directional lights. Use `--config FILE` at startup or pass the
+  map document to `load-map` while paused.
 - **Add an object.** Add `assets/objects/NAME.json` with a `visuals` array.
-  Each part has `type: "box"`, box dimensions, a local `x`, `y`, `z`
-  offset from the instance pose to the box's base center, `rotationRadians`,
-  and a named `material`. Set `collision` to a separate box footprint with
-  `type`, `width`, and `depth`, or to `null` for a visual-only object.
-  Place it in `map.instances` with `asset: "NAME"`. A future cgltf-backed
-  `GltfAssetLoader` implements `scene/asset_loader.hpp`'s `AssetLoader`
-  interface and plugs into catalog file-format selection.
+  Use `type` of `box`, `cylinder`, `ellipsoid`, or `strip`. Dimensions
+  `width`, `height`, and `depth` span X, Y, and Z. A cylinder has an
+  elliptical footprint. Use small dimensions on two axes for a long strip,
+  or a small height for a floor covering. The local `x`, `y`, `z` offset
+  puts the part's base center relative to the instance. `rotationRadians`
+  sets yaw. Optional `pitchRadians` and `rollRadians` rotate around local
+  X and Z. The part rotates around its base center, in roll, pitch, then yaw
+  order. Use pitch or roll on a thin box for a lid flap. Provide a named
+  `material` on each part. Image UVs span each box or strip face, wrap the
+  curved parts, and map the floor across the room.
+  Set `collision` to a separate centered box footprint with
+  `{"type":"box","width":0.5,"depth":0.4}` or `null` for a visual-only
+  object. Place the object in `map.instances` with `"asset":"NAME"`.
+- **Add a triangle mesh.** Place `NAME.gltf` or `NAME.glb` in
+  `assets/objects/`. The loader takes rigid, uncompressed triangle lists
+  from the default scene (or the first scene), applies node transforms,
+  and interpolates `TEXCOORD_0`. Mesh coordinates use Y up and the glTF
+  origin is the map instance's placement point. Materials shade with the
+  glTF base color factor and its optional base color image, or select a
+  named simulator material with `"extras":{"nativeMaterial":"NAME"}` on
+  the glTF material. Image overrides work best with authored UVs. Meshes
+  without UVs use a local X/Y projection. The loader is for static, opaque
+  geometry with geometric normals and base-color shading. Set an optional
+  box footprint in `asset.extras.collision` using the same fields as a JSON
+  object. See `assets/objects/tool-case.gltf`.
 - **Add a renderer backend.** Put its C++ sources in `src/render/NAME/` and
-  implement `render/renderer.hpp`'s `Renderer`. Return row-major linear RGB
+  implement `render/renderer.hpp`'s `Renderer`. Use the scene's visual parts,
+  meshes, materials, and lights. Return row-major linear RGB
   with 255 as reference white, and give the backend a stable `id()` for
   captures. Register the backend's name and factory in
   `src/server/renderers.cpp`. CMake discovers its `.cpp` files. Launch the
   native executable with `--renderer NAME`. The default is `software`.
 
 ## Verification and measurement
+
+The tour drives a fixed circle and writes deterministic JPEGs using the same
+camera pipeline as the server. With the showcase spawn and steering, the
+circle radius is about 1.2 m. From `simulator/native/`:
+
+```sh
+build/native-sim-tour maps/showcase.json build/tour/showcase
+build/native-sim-tour maps/showcase-boxes.json build/tour/boxes
+```
+
+The default run advances 420 steps and captures every third step at
+640x480. It writes `frame_00000.jpg` through `frame_00139.jpg` in the output
+directory and reports mean renderer time with the software renderer's four
+scanline workers. Optional arguments after the output directory set steps,
+capture interval, steering, width, and height in that order. Use an empty
+output directory if a previous run wrote more frames. The box-only map is a
+byte-for-byte copy of the original tour input for regression comparisons.
 
 ```sh
 ctest --test-dir simulator/native/build --output-on-failure
@@ -217,7 +282,8 @@ unchanged adapter, live updates, epoch termination, map replacement, discovery,
 host attachment, both run modes, and process deletion. They skip if the native
 binary has not been built. CTest checks the JavaScript motion reference, four
 pre-refactor RGB hashes and renderer IDs, and 40 pre-refactor trajectory poses.
-It also checks named assets, light configuration, and the camera pipeline.
+It also checks shape and mesh rendering, textures, instance overrides, light
+configuration, clearance along the showcase tour, and the camera pipeline.
 To regenerate the JavaScript reference from a Metrics UI checkout:
 
 ```sh

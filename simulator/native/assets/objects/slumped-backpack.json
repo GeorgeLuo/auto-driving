@@ -1,0 +1,10 @@
+{
+  "visuals": [
+    {"type": "ellipsoid", "x": 0, "y": 0.03, "z": 0, "width": 0.63, "depth": 0.41, "height": 0.38, "rotationRadians": -0.17, "material": "bag-fabric", "pitchRadians": 0.21, "rollRadians": -0.20},
+    {"type": "ellipsoid", "x": 0.065, "y": 0.045, "z": 0.166, "width": 0.43, "depth": 0.24, "height": 0.225, "rotationRadians": 0.13, "material": "pocket-fabric", "rollRadians": -0.14},
+    {"type": "strip", "x": 0.10, "y": 0.177, "z": 0.278, "width": 0.22, "depth": 0.016, "height": 0.01, "rotationRadians": 0.07, "material": "strap", "rollRadians": -0.14},
+    {"type": "strip", "x": -0.19, "y": 0.004, "z": 0.12, "width": 0.046, "depth": 0.37, "height": 0.012, "rotationRadians": 0.43, "material": "strap"},
+    {"type": "strip", "x": 0.2, "y": 0.006, "z": -0.11, "width": 0.043, "depth": 0.32, "height": 0.012, "rotationRadians": -0.38, "material": "strap"}
+  ],
+  "collision": {"type": "box", "width": 0.58, "depth": 0.42}
+}

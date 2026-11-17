@@ -144,6 +144,26 @@
     "rotationRadians": 0.35,
     "boundary": false
    }
+  ],
+  "floorMaterial": "room-carpet",
+  "light": {
+   "ambient": 0.48,
+   "directionals": [
+    {"direction": {"x": -0.5, "y": 1, "z": 0.25}, "intensity": 0.69, "shadowStrength": 0.86, "shadowSoftness": 0.055},
+    {"direction": {"x": 0.8, "y": 0.65, "z": -0.35}, "intensity": 0.25, "shadowStrength": 0.52, "shadowSoftness": 0.028}
+   ]
+  },
+  "instances": [
+   {"id": "round-wood-post", "asset": "wood-post", "x": 1.8, "z": -1.35, "rotationRadians": 0},
+   {"id": "stool", "asset": "three-leg-stool", "x": 0.35, "z": -2.02, "rotationRadians": 0.25},
+   {"id": "ottoman", "asset": "leather-ottoman", "x": -1.18, "z": -1.87, "rotationRadians": -0.35},
+   {"id": "backpack", "asset": "slumped-backpack", "x": -2.06, "z": -0.93, "rotationRadians": 1.78},
+   {"id": "carton", "asset": "taped-carton", "x": -2.19, "z": 0.19, "rotationRadians": -0.38},
+   {"id": "rug", "asset": "diamond-rug", "x": -1.69, "z": 1.32, "rotationRadians": 0.6},
+   {"id": "east-wall-cable", "asset": "baseboard-and-cable", "x": 4.385, "z": 0.50, "rotationRadians": 1.5707963267948966},
+   {"id": "russet-chair", "asset": "dining-chair", "x": -0.35, "z": 1.95, "rotationRadians": 2.6, "color": [153, 72, 47]},
+   {"id": "blue-chair", "asset": "dining-chair", "x": 1.15, "z": 1.69, "rotationRadians": -2.4, "material": "seat-fabric", "color": [57, 89, 141]},
+   {"id": "printed-tool-case", "asset": "tool-case", "x": 2.17, "z": 0.72, "rotationRadians": -0.43}
   ]
  },
  "spawn": {

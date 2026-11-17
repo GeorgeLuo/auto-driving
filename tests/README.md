@@ -78,8 +78,9 @@ python3 -m scripts.validation.check --text cli/draft.py < draft.py   # text, as 
 A change reports findings throughout its changed files, not just on changed
 lines. Project-wide checks also report findings introduced in other files, such
 as callers broken by a signature change. Each check compares the head with its
-merge base to identify those findings elsewhere. Whole files and text report all
-their findings; type checking needs the project and skips text.
+merge base to tell which findings the change introduced; only those block it,
+and the rest are review questions. Whole files and text report all their
+findings; type checking needs the project and skips text.
 
 Required checks report blocking findings. The command exits 0 when clean, 1 for
 blocking findings, and 2 when a required check cannot run. `--ruff-only` skips
@@ -104,10 +105,15 @@ summary without failing the command. They include:
   importing module, or the same directory that make the same calls, weighted by how
   rare each call is. For functions in changed files, it asks whether similar
   ones need the same edit, or whether they should share code.
+- Recovered types: production code that parses back a value it encoded
+  (`from_dict(x.to_dict())`), checks a value read from a dict against a class
+  rather than a builtin or a shape such as `Mapping`, or asserts on a
+  `from_dict` result. It asks whether the value could have stayed typed.
 
 Vulture, related functions, basedpyright, and import-linter read the whole project
 on both sides of a change, so a change answers for what it does to files it did
-not touch.
+not touch. A change's summary also reports each changed file's complexity and
+`isinstance`/`issubclass` calls on both sides.
 
 `--output DIR` writes `summary.md` and `findings.json`, whose findings share the
 fields described in [QCA's findings](../qca/README.md#findings-for-any-context).

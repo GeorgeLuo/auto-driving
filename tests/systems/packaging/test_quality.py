@@ -111,11 +111,12 @@ class QualityCommandTests(unittest.TestCase):
             ("ruff", "PLR0912", "cli/choose.py"),
         ])
 
-    def test_a_changed_file_reports_a_smaller_function_still_above_the_limit(self) -> None:
+    def test_a_changed_file_reports_a_smaller_function_still_above_the_limit_without_blocking(self) -> None:
         head = self.commit({"cli/choose.py": branches(11)})
         status, document = self.check("--base", self.base, "--head", head)
-        self.assertEqual(status, 1, document["findings"])
-        self.assertEqual(self.blocking(document), [("ruff", "C901", "cli/choose.py")])
+        self.assertEqual((status, self.blocking(document)), (0, []), document["findings"])
+        [existing] = [item for item in document["findings"] if item["rule"] == "C901"]
+        self.assertEqual((existing["status"], existing["evidence"]["introduced"]), ("review", False))
         self.assertEqual([record["evaluator"] for record in document["evaluations"] if record["status"] == "failed"], [])
 
     def test_a_change_answers_for_an_import_that_breaks_a_contract(self) -> None:
@@ -126,21 +127,23 @@ class QualityCommandTests(unittest.TestCase):
 
 
     def test_new_source_rules_block_and_name_the_remedy(self):
+        body = "    text = raw.strip()\n    if text.isdigit():\n        return int(text)\n    return text\n"
+        base = self.commit({"cli/original.py": "def parse_text(raw: str) -> int | str:\n" + body})
         head = self.commit({
-            "cli/copied.py": "def duplicate(raw: str) -> int | str:\n    return int(raw) if raw.isdigit() else raw\n",
+            "cli/copied.py": "def duplicate(raw: str) -> int | str:\n" + body,
             "cli/cast_input.py": "from typing import cast\nvalue = cast(object, 1)\n",
         })
-        status, document = self.check("--base", self.base, "--head", head)
+        status, document = self.check("--base", base, "--head", head)
         self.assertEqual(status, 1)
         self.assertEqual(self.blocking(document), [
             ("source-rules", "identical-copy", "cli/copied.py"),
             ("source-rules", "object-cast", "cli/cast_input.py"),
         ])
         head = self.commit({
-            "cli/copied.py": "def duplicate(raw: str) -> int | str:  # quality: allow-identical-body -- independent wire formats evolve separately\n    return int(raw) if raw.isdigit() else raw\n",
+            "cli/copied.py": "def duplicate(raw: str) -> int | str:  # quality: allow-identical-body -- independent wire formats evolve separately\n" + body,
             "cli/cast_input.py": "from typing import cast\nvalue = cast(str, 'a')\n",
         })
-        status, document = self.check("--base", self.base, "--head", head)
+        status, document = self.check("--base", base, "--head", head)
         self.assertEqual((status, self.blocking(document)), (0, []))
 
     def test_whole_files_report_their_existing_debt(self) -> None:

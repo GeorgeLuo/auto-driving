@@ -91,6 +91,19 @@ class IntroducedFindingTests(unittest.TestCase):
         new = self.compare(base, head, [undefined("a.py", 1)], [undefined("a.py", 1), undefined("a.py", 2)])
         self.assertEqual(len(new), 1)
 
+    def test_a_finding_at_the_definition_it_names_is_new_only_when_its_question_changes(self) -> None:
+        base = {"a.py": "@cache\ndef old(value):\n    return value\n"}
+        head = {"a.py": "@cache\ndef old(value: int) -> int:\n    return value + 1\n"}
+
+        def unused(question: str) -> dict:
+            return finding("dead", "unused-function", location("a.py", 1, symbol="old"), question)
+
+        self.assertEqual(self.compare(base, head, [unused("Is 'old' used?")], [unused("Is 'old' used?")]), [])
+        self.assertEqual(len(self.compare(base, head, [unused("Is 'old' used?")], [unused("Is 'old' still used?")])), 1)
+        # Inside a definition, a finding still matches by its source text.
+        inner = [finding("qca", "opaque", location("a.py", 3, symbol="old"), "Clearer?")]
+        self.assertEqual(len(self.compare(base, head, inner, inner)), 1)
+
     def test_a_measured_finding_is_new_only_when_it_grows(self) -> None:
         base = {"a.py": "def choose(value):\n    pass\n"}
         head = {"a.py": "def choose(value, extra=None):\n    pass\n"}
@@ -101,13 +114,14 @@ class IntroducedFindingTests(unittest.TestCase):
 
 
 class EvaluateTests(unittest.TestCase):
-    def test_change_provenance_is_computed_once_and_preserved_for_summary(self):
+    def test_change_provenance_is_computed_once_and_only_new_findings_block(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             base = tree(root / "base", {"cli/a.py": "missing\n"})
             head = tree(root / "head", {"cli/a.py": "missing\nmissing\n"})
             document = evaluate(Context("change", head, ("cli/a.py",), base=base), [Evaluator("lint", lines_with("missing"))])
-        self.assertEqual([item["evidence"]["introduced"] for item in document["findings"]], [False, True])
+        self.assertEqual([(item["evidence"]["introduced"], item["status"]) for item in document["findings"]],
+                         [(False, "review"), (True, "blocking")])
 
     def test_text_is_evaluated_as_the_named_file_with_shared_configuration(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

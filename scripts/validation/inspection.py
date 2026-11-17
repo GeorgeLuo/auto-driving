@@ -92,7 +92,7 @@ def related(tree: Path, paths: list[str]) -> list[Finding]:
         if not matches:
             continue
         names = ", ".join(other.name for other, *_ in matches)
-        # Located across the whole function, so any edit to it raises the comparison again.
+        # Located at the whole function, so a change introduces it only with a new function or new matches.
         findings.append(finding(
             "inspection",
             "related-functions",
@@ -191,7 +191,7 @@ def _first_line(node: ast.ClassDef | ast.FunctionDef | ast.AsyncFunctionDef) -> 
 
 def _callables(path: str, source: str) -> list[Callable]:
     return [
-        Callable(path, name, node.lineno, node.end_lineno or node.lineno, _direct_calls(node))
+        Callable(path, name, _first_line(node), node.end_lineno or node.lineno, _direct_calls(node))
         for node, name in definitions(_parse(source))
         if not isinstance(node, ast.ClassDef)
     ]

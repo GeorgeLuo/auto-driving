@@ -42,6 +42,7 @@ PATHS = ("autonomy", "cli", "implementations", "deploy", "qca", "scripts/validat
 SHARED = ("pyproject.toml", ".basedpyright")
 DEFAULT_BASE = "origin/main"
 LIMIT = 50
+TOTALS = {"Complexity": review.complexity_totals, "Runtime type checks": review.runtime_type_checks}
 
 
 def build_evaluators(*, ruff_only: bool = False) -> list[Evaluator]:
@@ -66,6 +67,7 @@ def build_evaluators(*, ruff_only: bool = False) -> list[Evaluator]:
                   required=False),
         Evaluator("related-functions", inspection.related, roots=PATHS, excluded=excluded, forms=projects,
                   reach="project", required=False),
+        Evaluator("recovered-types", source_rules.recovered_types, roots=PATHS, excluded=excluded, required=False),
     ]
 
 
@@ -83,7 +85,7 @@ def exit_status(document: Document) -> int:
     return int(any(item["status"] == "blocking" for item in document["findings"]))
 
 
-def render_summary(document: Document, totals: dict[str, tuple[int, int]] | None = None) -> str:
+def render_summary(document: Document, totals: dict[str, list[tuple[int, int]]] | None = None) -> str:
     lines = ["## Python quality", "", _describe(document["context"]), "", "| Check | Result |", "| --- | --- |"]
     lines += [f"| {record['evaluator']} | {_outcome(record)} |" for record in document["evaluations"]]
     for status, title in (("blocking", "Blocking"), ("review", "Review questions")):
@@ -92,8 +94,10 @@ def render_summary(document: Document, totals: dict[str, tuple[int, int]] | None
         if len(rows) > LIMIT:
             lines += ["", f"Showing {LIMIT}; findings.json has all {len(rows)}."]
     if totals:
-        lines += ["", "### Per-file complexity totals (report only)", "", "| File | Base | Head |", "| --- | --- | --- |"]
-        lines += [f"| `{path}` | {base} | {head} |" for path, (base, head) in sorted(totals.items())]
+        lines += ["", "### Per-file totals, base → head (report only)", "",
+                  f"| File | {' | '.join(TOTALS)} |", f"| --- |{' --- |' * len(TOTALS)}"]
+        lines += [f"| `{path}` | {' | '.join(f'{base} → {head}' for base, head in counts)} |"
+                  for path, counts in sorted(totals.items())]
     return "\n".join(lines)
 
 
@@ -148,16 +152,17 @@ def _change_checks(context: Context, document: Document) -> None:
         document["evaluations"].append(record)
 
 
-def _totals(context: Context, document: Document) -> dict[str, tuple[int, int]]:
-    record = EvaluationRecord(evaluator="complexity-totals", required=False, status="completed")
+def _totals(context: Context, document: Document) -> dict[str, list[tuple[int, int]]]:
+    record = EvaluationRecord(evaluator="file-totals", required=False, status="completed")
     document["evaluations"].append(record)
     try:
-        before = review.complexity_totals(context.base, context.paths) if context.base else {}
-        after = review.complexity_totals(context.head, context.paths)
+        sides = [(total(context.base, context.paths) if context.base else {}, total(context.head, context.paths))
+                 for total in TOTALS.values()]
     except Exception as exc:
         record.update(status="failed", error=f"{type(exc).__name__}: {exc}")
         return {}
-    return {path: (before.get(path, 0), after.get(path, 0)) for path in before.keys() | after.keys()}
+    paths = {path for before, after in sides for path in before.keys() | after.keys()}
+    return {path: [(before.get(path, 0), after.get(path, 0)) for before, after in sides] for path in paths}
 
 
 def main(argv: list[str] | None = None) -> int:

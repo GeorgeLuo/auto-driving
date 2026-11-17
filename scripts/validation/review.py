@@ -1,4 +1,4 @@
-"""Change-level review questions and report-only per-file complexity totals."""
+"""Change-level review questions and report-only per-file totals."""
 
 from __future__ import annotations
 
@@ -20,14 +20,25 @@ EXTRACTION_QUESTION = "What does each new function own, and what can its callers
 
 
 def complexity_totals(tree: Path, paths: tuple[str, ...]) -> dict[str, int]:
-    sources = {path: (tree / path).read_text() for path in paths
-               if path.endswith(".py") and (tree / path).is_file()}
+    sources = _python_sources(tree, paths)
     totals: defaultdict[str, int] = defaultdict(int, {path: 0 for path in sources})
     if sources:
         report = analyze_sources(sources, config=AnalyzerConfig(languages=("python",)))
         for function in report.head.callables:
             totals[function.path] += function.cyclomatic_complexity
     return dict(totals)
+
+
+def runtime_type_checks(tree: Path, paths: tuple[str, ...]) -> dict[str, int]:
+    """``isinstance`` and ``issubclass`` calls per file; typing a boundary should lower them."""
+
+    return {path: sum(isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                      and node.func.id in {"isinstance", "issubclass"} for node in ast.walk(_parse(source)))
+            for path, source in _python_sources(tree, paths).items()}
+
+
+def _python_sources(tree: Path, paths: tuple[str, ...]) -> dict[str, str]:
+    return {path: (tree / path).read_text() for path in paths if path.endswith(".py") and (tree / path).is_file()}
 
 
 def change_questions(context: Context) -> list[Finding]:

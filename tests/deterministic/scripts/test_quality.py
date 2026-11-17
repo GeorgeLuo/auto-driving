@@ -188,11 +188,12 @@ class SummaryTests(unittest.TestCase):
                for line in range(1, 51)]
         new = finding("review", "new", location("cli/a.py", 99), "Owner?", evidence={"introduced": True})
         document = self.document([*old, new], [])
-        summary = render_summary(document, {"cli/a.py": (12, 14)})
+        summary = render_summary(document, {"cli/a.py": [(12, 14), (3, 1)]})
         # The change's own finding leads even when pre-existing ones fill the row limit.
         self.assertIn("### Review questions (51)\n\n- [introduced] `cli/a.py:99`", summary)
         self.assertIn("[pre-existing]", summary)
-        self.assertIn("| `cli/a.py` | 12 | 14 |", summary)
+        self.assertIn("| File | Complexity | Runtime type checks |", summary)
+        self.assertIn("| `cli/a.py` | 12 → 14 | 3 → 1 |", summary)
         self.assertEqual(exit_status(document), 0)
 
     def test_exit_status_fails_on_blocking_findings_and_required_failures_only(self) -> None:

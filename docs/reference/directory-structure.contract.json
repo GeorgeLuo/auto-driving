@@ -22,7 +22,101 @@
         "path": "simulator/",
         "category": "implementation",
         "commit_policy": "source",
-        "responsibility": "Optional native simulator prototype and its translated map, camera, motion, and Chase protocol. Built binaries stay ignored; cli/automa owns its lifecycle."
+        "responsibility": "Optional native simulator.",
+        "children": [
+          {
+            "path": "simulator/native/",
+            "category": "implementation",
+            "commit_policy": "source",
+            "responsibility": "Standalone native Chase simulator. cli/automa owns its lifecycle.",
+            "children": [
+              {
+                "path": "simulator/native/assets/",
+                "category": "implementation",
+                "commit_policy": "source",
+                "responsibility": "Named materials and reusable object definitions.",
+                "children": [
+                  {
+                    "path": "simulator/native/assets/objects/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Visual parts and independent collision shapes for named objects."
+                  }
+                ]
+              },
+              {
+                "path": "simulator/native/maps/",
+                "category": "implementation",
+                "commit_policy": "source",
+                "responsibility": "Map configuration, object placement, light, spawn, and calibration."
+              },
+              {
+                "path": "simulator/native/src/",
+                "category": "implementation",
+                "commit_policy": "source",
+                "responsibility": "Acyclic native C++ layers checked by the native include-graph test.",
+                "children": [
+                  {
+                    "path": "simulator/native/src/core/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Shared math, JSON and image types, and seeded noise."
+                  },
+                  {
+                    "path": "simulator/native/src/scene/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Maps, objects, materials, lights, and loaders."
+                  },
+                  {
+                    "path": "simulator/native/src/physics/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Vehicle motion and contact against scene collision shapes."
+                  },
+                  {
+                    "path": "simulator/native/src/render/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Renderer interface consuming scenes and camera poses.",
+                    "children": [
+                      {
+                        "path": "simulator/native/src/render/software/",
+                        "category": "implementation",
+                        "commit_policy": "source",
+                        "responsibility": "Software ray casting and shading."
+                      }
+                    ]
+                  },
+                  {
+                    "path": "simulator/native/src/sensor/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Camera distortion, vignette, RGB conversion, and JPEG encoding."
+                  },
+                  {
+                    "path": "simulator/native/src/server/",
+                    "category": "implementation",
+                    "commit_policy": "source",
+                    "responsibility": "Runtime composition, renderer selection, Chase protocol, and server."
+                  }
+                ]
+              },
+              {
+                "path": "simulator/native/tests/",
+                "category": "verification",
+                "commit_policy": "source",
+                "responsibility": "Native reference fixtures and regression and dependency checks."
+              },
+              {
+                "path": "simulator/native/build/",
+                "category": "generated-runtime",
+                "commit_policy": "generated",
+                "responsibility": "Generated CMake build and native executables."
+              }
+            ]
+          }
+        ]
       },
       {
         "path": "autonomy/",

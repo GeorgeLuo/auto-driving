@@ -40,7 +40,7 @@ control at `/ws/control` and does not serve a dashboard.
 
 ## Maps, materials, and runtime changes
 
-Copy `scenarios/chaser-depth-obstacles.json` to author a map. The schema contains
+Copy `maps/chaser-depth-obstacles.json` to author a map. The schema contains
 map dimensions and rotated box obstacles, spawn position and heading, vehicle
 properties, camera calibration, and procedural material settings. Launch it with:
 
@@ -55,9 +55,19 @@ perimeter contact is determined by map dimensions and vehicle radius.
 Obstacle dimensions and spawn clearance are validated. Only one chaser is
 supported; no evader or internal autonomy is carried into this prototype.
 
-`materials.floor`, `obstacle`, and `wall` are RGB integer triples. `seed` and
-`textureScale` change deterministic procedural texture. Arbitrary texture-file
-loading is not implemented.
+`materials.floor`, `obstacle`, and `wall` are RGB integer triples that override
+the matching named materials. `seed` and `textureScale` set the grain parameters
+for `floor` and `obstacle`. These fields work in map files and in the existing
+`configure` command. `native-state` reports the supplied JSON and its patches.
+
+A map can also use `map.instances` to place named objects from
+`assets/objects/`. Each entry supplies `id`, `asset` (the filename stem),
+`x`, `z`, and `rotationRadians`. A map can mix `obstacles` and `instances`.
+The two lists together support up to 1,000 objects. Use `map.floorMaterial`
+to select a named floor material. `map.light` can override `direction`
+(an object with `x`, positive `y`, and `z`) and `shadowStrength` (0 to 1).
+The defaults are the RC-indoor direction `(-0.5, 1, 0.25)` and
+`2.4 / (0.9 + 2.4)` shadow strength.
 
 The existing Python control client can configure the running simulator:
 
@@ -87,7 +97,7 @@ For map replacement or reproducible stepping:
 ```python
 import json
 sim.command({"type": "pause"}, wait_for_frontend_ack=True)
-with open("simulator/native/scenarios/chaser-depth-obstacles.json") as source:
+with open("simulator/native/maps/chaser-depth-obstacles.json") as source:
     sim.play_game_command("load-map", json.load(source))
 sim.play_game_command("set-chaser-input", {"motion": "forward", "steering": 0.25})
 sim.play_game_command("step", {"frames": 60})
@@ -117,10 +127,10 @@ rotated obstacles, boundary contact, reverse motion, and idle input.
 The default geometry and RC-indoor camera mount/projection parameters match
 that source. The software renderer is an approximation: it uses procedural
 grain and simple face shading, with directional cast shadows using the RC-indoor light direction and a software
-soft-shadow approximation. Radial distortion uses clamped bilinear resampling
-and the source smoothstep vignette on RGB bytes; the source GPU pipeline uses
-a linear render target and applies tone mapping/color conversion afterward. It has no Three.js PBR, shadow maps, exact texture
-generation, antialiasing, or ACES tone mapping. Camera/perception equivalence
+soft-shadow approximation. The camera model clamps and truncates linear RGB to
+the original native code values, then applies clamped bilinear resampling, the
+smoothstep vignette, and JPEG encoding. The source GPU uses a linear render
+target with tone mapping and color conversion after sampling. Camera/perception equivalence
 has **not** been established. This is a motion/protocol prototype, not a
 drop-in visual replacement for existing experiment baselines.
 
@@ -134,6 +144,61 @@ adapter quantizes throttle. Direct native commands additionally accept
 `throttle` magnitude in `[0,1]`. `speedUnitsPerFrame` and `fps` retain Chase's
 semantics: changing FPS changes wall-clock travel speed. This prototype does
 not claim a more realistic tire, acceleration, or actuator model.
+
+## Native layout and extension points
+
+```text
+simulator/native/
+  assets/
+    materials.json
+    objects/
+  maps/
+    chaser-depth-obstacles.json
+  src/
+    core/                Shared math, JSON, image types, and seeded noise
+    scene/               Map, assets, materials, light, and loaders
+    physics/             Vehicle motion and contact
+    render/              Renderer interface
+      software/          Ray casting and shading
+    sensor/              Camera effects, RGB bytes, and JPEG
+    server/              Runtime, Chase protocol, renderer registration, and executable
+  tests/
+```
+
+The source includes follow this dependency direction. CTest checks every local
+include against these edges and keeps renderer implementations behind the
+interface.
+
+| Directory | May include |
+| --- | --- |
+| `core` | Standard and external headers |
+| `scene` | `core` |
+| `physics` | `scene`, `core` |
+| `render` | `scene`, `core` |
+| `sensor` | `core` |
+| `server` | `physics`, `render`, `sensor`, `scene` |
+
+- **Add a material.** Add an entry in `assets/materials.json` with a unique
+  name, an integer RGB `baseColor`, and a `texture` object. Use
+  `{"kind":"none"}` or `{"kind":"grain","seed":0,"scale":1.25}`. Reference its
+  name in a visual part's `material` or in `map.floorMaterial`.
+- **Add a map.** Copy a file in `maps/`, give it a new `scenarioId`, and
+  set its dimensions, spawn, and objects. Use `--config FILE` at startup or
+  pass the map document to `load-map` while paused.
+- **Add an object.** Add `assets/objects/NAME.json` with a `visuals` array.
+  Each part has `type: "box"`, box dimensions, a local `x`, `y`, `z`
+  offset from the instance pose to the box's base center, `rotationRadians`,
+  and a named `material`. Set `collision` to a separate box footprint with
+  `type`, `width`, and `depth`, or to `null` for a visual-only object.
+  Place it in `map.instances` with `asset: "NAME"`. A future cgltf-backed
+  `GltfAssetLoader` implements `scene/asset_loader.hpp`'s `AssetLoader`
+  interface and plugs into catalog file-format selection.
+- **Add a renderer backend.** Put its C++ sources in `src/render/NAME/` and
+  implement `render/renderer.hpp`'s `Renderer`. Return row-major linear RGB
+  with 255 as reference white, and give the backend a stable `id()` for
+  captures. Register the backend's name and factory in
+  `src/server/renderers.cpp`. CMake discovers its `.cpp` files. Launch the
+  native executable with `--renderer NAME`. The default is `software`.
 
 ## Verification and measurement
 
@@ -150,8 +215,10 @@ The native systems tests use ephemeral ports and disposable runtime roots.
 They exercise real JPEG decoding, passive preservation, steering through the
 unchanged adapter, live updates, epoch termination, map replacement, discovery,
 host attachment, both run modes, and process deletion. They skip if the native
-binary has not been built. CTest uses the checked-in JavaScript reference and
-does not require Node. To regenerate that reference from a Metrics UI checkout:
+binary has not been built. CTest checks the JavaScript motion reference, four
+pre-refactor RGB hashes and renderer IDs, and 40 pre-refactor trajectory poses.
+It also checks named assets, light configuration, and the camera pipeline.
+To regenerate the JavaScript reference from a Metrics UI checkout:
 
 ```sh
 node --import /path/to/metrics-ui/node_modules/tsx/dist/loader.mjs \

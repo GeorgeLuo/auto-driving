@@ -91,10 +91,9 @@ def _probe_memory(
     if fetch_error is not None or publication is None:
         return {**probe, "status": "error", "error": fetch_error or "No publication was read."}
     try:
-        frame = read_frame_publication(publication, host_name=host_name)
+        report = read_frame_publication(publication, host_name=host_name)
     except FramePublicationError as exc:
         return {**probe, "status": "unavailable", "error": exc.message_text}
-    report = frame["report"]
     memory = report.cycle["memory"]
     probe.update(
         frame_id=report.frame_id, generation_id=report.generation_id,

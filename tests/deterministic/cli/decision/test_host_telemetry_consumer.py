@@ -99,7 +99,7 @@ def _record(
     }
 
 
-def _decision(*, source_frame: dict | None = None) -> dict:
+def _decision(*, source_frame: dict | None = None) -> HostReport:
     frame = source_frame or {
         "frame_id": "frame-1",
         "frame_index": 1,
@@ -133,11 +133,11 @@ def _decision(*, source_frame: dict | None = None) -> dict:
             "stale_after_ms": 1_500,
         },
     )
-    return {"report": HostReport.from_dict(report)}
+    return HostReport.from_dict(report)
 
 
 def _physical_publication() -> dict:
-    decision = _decision()["report"].to_dict()
+    decision = _decision().to_dict()
     return {
         "schema": FRAME_PUBLICATION_SCHEMA,
         "health": "healthy",
@@ -149,13 +149,14 @@ def _physical_publication() -> dict:
     }
 
 
-def _normalized_decision() -> dict:
-    """The publication join and identity actually read: one HostReport."""
+def _publication() -> FramePublication:
+    return FramePublication.from_dict(_physical_publication())
 
-    return read_frame_publication(
-        FramePublication.from_dict(_physical_publication()),
-        host_name="piracer",
-    )
+
+def _normalized_decision() -> HostReport:
+    """The report the publication join and identity actually read."""
+
+    return read_frame_publication(_publication(), host_name="piracer")
 
 
 FETCH = "cli.automa_cli.hosts.views.decision_live.fetch_host_telemetry_latest"
@@ -175,16 +176,16 @@ class HostTelemetryConsumerTests(unittest.TestCase):
         seen = []
 
         def read_panel(*_args, **kwargs):
-            seen.append((json.loads(view.latest_json())["report"], kwargs["normalized_decision"]))
+            seen.append((json.loads(view.latest_json())["report"], kwargs["report"]))
             return joined
 
         with patch(READ_PANEL, side_effect=read_panel):
-            adapter.publish_frame(normalized, None)
+            adapter.publish_frame(_publication(), normalized, None)
 
         # The completed frame was visible before telemetry answered.
         self.assertEqual(len(seen), 1)
         published, joined_against = seen[0]
-        self.assertEqual(published, normalized["report"].to_dict())
+        self.assertEqual(published, normalized.to_dict())
         self.assertIs(joined_against, normalized)
         self.assertEqual(adapter.host_telemetry, joined)
 
@@ -198,7 +199,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
                 host_name="piracer", base_url="http://piracer.local:8887",
                 publisher=ObservationPublisher(perception), timeout_s=1.0,
             )
-            adapter.publish_frame(_normalized_decision(), jpeg)
+            adapter.publish_frame(_publication(), _normalized_decision(), jpeg)
 
         self.assertEqual(perception.frame(), (jpeg, "image/jpeg"))
         shown = json.loads(perception.latest_json())
@@ -220,7 +221,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
                       side_effect=AssertionError("telemetry refresh slept")):
             panel = read_host_telemetry_panel(
                 "http://piracer.local:8887",
-                normalized_decision=_normalized_decision(),
+                report=_normalized_decision(),
                 host_name="piracer",
                 timeout_s=1.0,
                 now_ms=NOW_MS,
@@ -308,7 +309,7 @@ class HostTelemetryConsumerTests(unittest.TestCase):
             first, second = (
                 read_host_telemetry_panel(
                     "http://piracer.local:8887",
-                    normalized_decision=_normalized_decision(),
+                    report=_normalized_decision(),
                     host_name="piracer",
                     timeout_s=1.0,
                     now_ms=NOW_MS,
@@ -337,9 +338,8 @@ class HostTelemetryConsumerTests(unittest.TestCase):
 
         mismatched = copy.deepcopy(_record())
         mismatched["source_frame"]["captured_at_ms"] += 1
-        later_decision = _decision()
-        report = later_decision["report"]
-        later_decision["report"] = replace(report, timestamp_ms=report.timestamp_ms + 1)
+        report = _decision()
+        later_decision = replace(report, timestamp_ms=report.timestamp_ms + 1)
         # The decision's timestamp is part of the source identity, like the frame's capture time.
         for point, decision in (
             (normalize_host_telemetry_record(mismatched, now_ms=NOW_MS), _normalized_decision()),

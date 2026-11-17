@@ -7,7 +7,6 @@ from typing import Callable
 
 from autonomy.decision_cycle.activation import DECISION_STEPS
 from autonomy.runtime.frame_loop import FramePublication
-from autonomy.runtime.report import HostReport
 
 from ...hosts.publications.decision import (
     DecisionSurfaceError,
@@ -94,10 +93,7 @@ def _read_decision_frame(
             publication = fetch_frame_publication(base_url, timeout_s=timeout_s)
     except (ConnectionError, OSError) as exc:
         raise _unreadable(base_url, host_name, str(exc)) from exc
-    normalized = accept_decision_publication(publication, host_name=host_name)
-    report = normalized["report"]
-    if not isinstance(report, HostReport):
-        raise _unreadable(base_url, host_name, "the accepted frame has no report")
+    report = accept_decision_publication(publication, host_name=host_name)
     activation = report.values["activation"]
     frame = {
         "schema": f"host_{step}_stream",
@@ -108,7 +104,7 @@ def _read_decision_frame(
         "frame_index": report.frame_index,
         "timestamp_ms": report.timestamp_ms,
         # The host computes the result age on its own clock.
-        "freshness": {"age_ms": normalized["result_age_ms"], "max_age_ms": normalized["max_age_ms"]},
+        "freshness": {"age_ms": publication.result_age_ms, "max_age_ms": publication.stale_after_ms},
         "plugins": list((activation["steps"].get(step) or {}).get("plugins") or []),
         "record": deepcopy(report.cycle.get(step)),
         # The cycle's timing; a host that does not publish it leaves None.

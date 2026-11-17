@@ -37,9 +37,8 @@ from tests.shared.cli.invoke import invoke_automa
 class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
     def test_decision_adapter_publishes_the_same_record_for_every_page(self) -> None:
         now = int(time.time() * 1000)
-        normalized = accept_decision_publication(
-            FramePublication.from_dict(self._physical_publication(published_at_ms=now)), host_name="piracer",
-        )
+        publication = FramePublication.from_dict(self._physical_publication(published_at_ms=now))
+        report = accept_decision_publication(publication, host_name="piracer")
         server = RuntimeViewServer(host_name="piracer", automation_dir=None, port=0, replay_runner_factory=ImageReplayRunner).start()
         self.addCleanup(server.stop)
         buffer = io.BytesIO()
@@ -50,10 +49,10 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
             publisher=ObservationPublisher(server.perception), timeout_s=0.1,
         )
         with patch("cli.automa_cli.hosts.views.decision_live.read_host_telemetry_panel", return_value={"status": "unavailable"}):
-            adapter.publish_frame(normalized, jpeg)
+            adapter.publish_frame(publication, report, jpeg)
         with urlopen(f"{server.url}api/latest", timeout=1) as response:
             payload = json.loads(response.read())
-        self.assertEqual(payload["report"], normalized["report"].to_dict())
+        self.assertEqual(payload["report"], report.to_dict())
         self.assertEqual(payload["host_telemetry"], {"status": "unavailable"})
         with urlopen(f"{server.url.rstrip('/')}{payload['image']['url']}", timeout=1) as response:
             self.assertEqual(response.read(), jpeg)
@@ -66,15 +65,12 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
     ) -> None:
         now_ms = 2_000
         publication = self._physical_publication(published_at_ms=now_ms)
-        accepted = accept_decision_publication(
-            FramePublication.from_dict(publication),
-            host_name="piracer",
-        )
-        self.assertEqual(accepted["source_id"], "donkeycar:piracer")
-        self.assertEqual(accepted["generation_id"], packaged_identity()["generation_id"])
-        self.assertNotIn("decision", accepted)
-        self.assertEqual(accepted["publication"].to_dict()["report"], accepted["report"].to_dict())
-        self.assertNotIn("producer_pid", accepted["report"].to_dict())
+        frame = FramePublication.from_dict(publication)
+        accepted = accept_decision_publication(frame, host_name="piracer")
+        self.assertEqual(accepted.values["source_id"], "donkeycar:piracer")
+        self.assertEqual(accepted.generation_id, packaged_identity()["generation_id"])
+        self.assertEqual(frame.to_dict()["report"], accepted.to_dict())
+        self.assertNotIn("producer_pid", accepted.to_dict())
 
         for name, candidate in (
             ("future_dated", self._physical_publication(published_at_ms=now_ms + 1)),
@@ -84,9 +80,9 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
                 readable = accept_decision_publication(
                     FramePublication.from_dict(candidate), host_name="piracer",
                 )
-                self.assertEqual(readable["frame_id"], "frame_001")
-                self.assertEqual(readable["report"].status, "ok")
-                self.assertIsNone(readable["report"].error)
+                self.assertEqual(readable.frame_id, "frame_001")
+                self.assertEqual(readable.status, "ok")
+                self.assertIsNone(readable.error)
 
         with self.subTest(reason="incomplete"), self.assertRaises(ValueError):
             FramePublication.from_dict({"schema": "automa_physical_decision_publication"})

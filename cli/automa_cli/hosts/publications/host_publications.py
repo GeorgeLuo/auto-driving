@@ -30,29 +30,29 @@ from .host_telemetry import HostTelemetryError
 
 @dataclass
 class TransactionCache:
+    """The last 200 transaction, its parsed frame, and its decoded image."""
+
     etag: str | None = None
     payload: dict[str, object] | None = None
     image: tuple[bytes, str] | None = None
+    frame: FramePublication | None = None
 
     def clear(self) -> None:
         self.etag = None
         self.payload = None
         self.image = None
+        self.frame = None
 
 
-def _cached_transaction(cache: TransactionCache, read_at_ms: int | None = None) -> dict[str, object]:
-    payload = deepcopy(cache.payload)
-    if payload is None:
+def _cached_frame(cache: TransactionCache, read_at_ms: int | None) -> FramePublication:
+    """The cached frame, aged to the time the host answered 304."""
+    frame = cache.frame
+    if frame is None:
         raise ConnectionError("Host returned 304 without a cached transaction")
-    publication = payload.get("publication")
-    if not isinstance(publication, FramePublication):
-        raise ConnectionError("Host returned 304 without a cached transaction")
-    if read_at_ms is not None:
-        age = publication.result_age_ms
-        if publication.report is not None:
-            age = max(0, read_at_ms - publication.report.published_at_ms)
-        payload["publication"] = replace(publication, read_at_ms=read_at_ms, result_age_ms=age)
-    return payload
+    if read_at_ms is None:
+        return frame
+    age = frame.result_age_ms if frame.report is None else max(0, read_at_ms - frame.report.published_at_ms)
+    return replace(frame, read_at_ms=read_at_ms, result_age_ms=age)
 
 
 def _json_object(body: bytes, url: str, status_code: int) -> dict[str, object]:
@@ -69,11 +69,11 @@ def _get_json(base_url: str, path: str, *, timeout_s: float) -> dict[str, object
 
 
 def _get_transaction(base_url: str, path: str, *, timeout_s: float,
-                     cache: TransactionCache | None) -> dict[str, object]:
+                     cache: TransactionCache | None) -> tuple[dict[str, object], FramePublication | None]:
     """Read a transaction under the current conditional-image contract.
 
-    Only a 304 keeps the cache; every other outcome clears it, and a 200
-    refills it.
+    Only a 304 keeps the cache, and answers with its cached frame; every
+    other outcome clears it, and a 200 refills it.
     """
     url = f"{base_url.rstrip('/')}{path}"
     headers = {"If-None-Match": cache.etag} if cache and cache.etag else None
@@ -83,7 +83,7 @@ def _get_transaction(base_url: str, path: str, *, timeout_s: float,
             if cache is None or cache.payload is None:
                 raise ConnectionError("Host returned 304 without a cached transaction")
             read_at = response_headers.get("X-Read-At-Ms")
-            return _cached_transaction(cache, int(read_at) if read_at is not None else None)
+            return deepcopy(cache.payload), _cached_frame(cache, int(read_at) if read_at is not None else None)
         if status_code == 404:
             raise ConnectionError(f"Incompatible host: GET {url} is missing; update the host.")
         if status_code not in {200, 503}:
@@ -100,7 +100,7 @@ def _get_transaction(base_url: str, path: str, *, timeout_s: float,
         cache.clear()
         if status_code == 200:
             cache.etag, cache.payload = etag, deepcopy(payload)
-    return payload
+    return payload, None
 
 
 def fetch_autonomy_status(base_url: str, *, timeout_s: float = 3.0) -> dict[str, object]:
@@ -187,8 +187,6 @@ def _frame_from_transaction(
     payload: dict[str, object], cache: TransactionCache | None,
 ) -> FramePublication:
     publication = payload.get("publication")
-    if isinstance(publication, FramePublication):
-        return publication
     if payload.get("http_status") == 503 and isinstance(publication, dict) and (
         payload.get("schema") != FRAME_TRANSACTION_SCHEMA
     ):
@@ -202,7 +200,7 @@ def _frame_from_transaction(
             cache.clear()
         raise
     if cache is not None and cache.payload is not None:
-        cache.payload["publication"] = frame
+        cache.frame = frame
     return frame
 
 
@@ -210,8 +208,8 @@ def fetch_frame_sample(
     base_url: str, *, timeout_s: float = 3.0, cache: TransactionCache | None = None,
 ) -> tuple[FramePublication, bytes | None]:
     """Read one completed frame and, when the JPEG names that frame, its image."""
-    payload = _get_transaction(base_url, OBSERVATION_TRANSACTION_PATH, timeout_s=timeout_s, cache=cache)
-    frame = _frame_from_transaction(payload, cache)
+    payload, cached = _get_transaction(base_url, OBSERVATION_TRANSACTION_PATH, timeout_s=timeout_s, cache=cache)
+    frame = cached if cached is not None else _frame_from_transaction(payload, cache)
     report = frame.report
     if payload.get("http_status") == 503 or report is None:
         return frame, None

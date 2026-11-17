@@ -8,6 +8,7 @@ stays in the report.
 from __future__ import annotations
 
 from autonomy.runtime.frame_loop import FramePublication
+from autonomy.runtime.report import HostReport
 from ..step_activations import bundle_activation_problems
 from ..step_formatting import format_activation_problems
 from .frame_publication import (
@@ -78,8 +79,8 @@ def accept_decision_publication(
     publication: FramePublication,
     *,
     host_name: str,
-) -> dict[str, object]:
-    """Normalize and accept a host's decision publication without fabricating local state."""
+) -> HostReport:
+    """Accept a host's decision report without fabricating local state."""
 
     try:
         return read_frame_publication(publication, host_name=host_name)

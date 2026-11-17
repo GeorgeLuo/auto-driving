@@ -5,6 +5,7 @@ from __future__ import annotations
 import time
 
 from autonomy.runtime.frame_loop import FramePublication
+from autonomy.runtime.report import HostReport
 
 from ..publications.decision import accept_decision_publication
 from ..publications.host_publications import fetch_host_telemetry_latest
@@ -36,15 +37,13 @@ class DecisionViewAdapter:
         self.publication: FramePublication | None = None
         self.host_telemetry: dict[str, object] | None = None
 
-    def publish_frame(self, normalized: dict[str, object], jpeg: bytes | None) -> None:
-        publication = normalized["publication"]
-        if not isinstance(publication, FramePublication):
-            raise TypeError("decision publication is missing its frame")
+    def publish_frame(self, publication: FramePublication, report: HostReport, jpeg: bytes | None) -> None:
+        """Show ``publication``, then join its accepted ``report`` to the host's telemetry."""
         if self.publication is None or publication_capture(publication) != publication_capture(self.publication):
             # A new frame shows before its telemetry read answers.
             self.publisher.publish(publication, jpeg)
         telemetry = read_host_telemetry_panel(
-            self.base_url, normalized_decision=normalized,
+            self.base_url, report=report,
             host_name=self.host_name, timeout_s=self.timeout_s,
         )
         self.publication = publication
@@ -52,14 +51,14 @@ class DecisionViewAdapter:
         self.publisher.publish(publication, jpeg, host_telemetry=telemetry)
 
     def publish_publication(self, publication: FramePublication, jpeg: bytes | None) -> None:
-        normalized = accept_decision_publication(publication, host_name=self.host_name)
-        self.publish_frame(normalized, jpeg)
+        report = accept_decision_publication(publication, host_name=self.host_name)
+        self.publish_frame(publication, report, jpeg)
 
 
 def read_host_telemetry_panel(
     base_url: str,
     *,
-    normalized_decision: dict[str, object],
+    report: HostReport,
     host_name: str,
     timeout_s: float = 3.0,
     now_ms: int | None = None,
@@ -80,7 +79,7 @@ def read_host_telemetry_panel(
         )
         return join_host_telemetry_to_decision(
             point,
-            normalized_decision,
+            report,
             host_name=host_name,
         )
     except HostTelemetryError as exc:

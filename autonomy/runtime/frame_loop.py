@@ -13,6 +13,7 @@ import logging
 import secrets
 import threading
 import time
+from copy import deepcopy
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Callable
@@ -38,6 +39,22 @@ PUBLICATION_HEALTH_HEALTHY = "healthy"
 PUBLICATION_HEALTH_STALE = "stale"
 
 
+def _envelope(
+    *, health: str, read_at_ms: int, result_age_ms: int | None, stale_after_ms: int,
+    report: dict[str, object] | None,
+) -> dict[str, object]:
+    """The frame publication as served; ``report`` is used as given, not copied."""
+    return {
+        "schema": FRAME_PUBLICATION_SCHEMA,
+        "ok": report is not None,
+        "health": health,
+        "read_at_ms": read_at_ms,
+        "result_age_ms": result_age_ms,
+        "stale_after_ms": stale_after_ms,
+        "report": report,
+    }
+
+
 def _publication_int(value: object, field: str) -> int:
     if type(value) is not int:
         raise ValueError(f"frame publication {field} must be an int")
@@ -46,10 +63,11 @@ def _publication_int(value: object, field: str) -> int:
 
 @dataclass(frozen=True)
 class FramePublication:
-    """The latest frame a host serves, parsed once at the boundary.
+    """The latest frame a host serves, as a reader parses it once.
 
-    ``from_dict`` is the only check of this envelope. The host builds one and
-    serves ``to_dict``; a reader does not look through the dict again.
+    ``from_dict`` is the only check of this envelope. The host serves the same
+    envelope without parsing its own report; a reader does not look through
+    the dict again.
     """
 
     health: str
@@ -59,15 +77,10 @@ class FramePublication:
     report: HostReport | None
 
     def to_dict(self) -> dict[str, object]:
-        return {
-            "schema": FRAME_PUBLICATION_SCHEMA,
-            "ok": self.report is not None,
-            "health": self.health,
-            "read_at_ms": self.read_at_ms,
-            "result_age_ms": self.result_age_ms,
-            "stale_after_ms": self.stale_after_ms,
-            "report": None if self.report is None else self.report.to_dict(),
-        }
+        return _envelope(
+            health=self.health, read_at_ms=self.read_at_ms, result_age_ms=self.result_age_ms,
+            stale_after_ms=self.stale_after_ms, report=None if self.report is None else self.report.to_dict(),
+        )
 
     @classmethod
     def from_dict(cls, payload: object) -> "FramePublication":
@@ -280,19 +293,20 @@ class FrameLoop:
         read_at_ms = timestamp_ms() if now_ms is None else int(now_ms)
         with self._lock:
             publication = self._publication_from_locked_state(read_at_ms=read_at_ms)
-        return publication.to_dict()
+        return deepcopy(publication)
 
     def read_transaction(self) -> tuple[dict[str, object], LatestObservationState | None, str]:
-        """The frame publication and the state it was built from.
+        """Borrow the frame publication and the state it was built from.
 
         Completed frame data is replaced, rather than updated in place. The
-        publication is the shared contract's ``to_dict``. The capture is
-        borrowed: callers must only read it.
+        route may retain these references across JPEG work without copying
+        the report, including when an ETag avoids serialization entirely.
+        Callers must only read the borrowed nested values.
         """
         with self._lock:
             publication = self._publication_from_locked_state(read_at_ms=timestamp_ms())
             revision = f"{self.run_id}:frame:{self._publication_revision}:{self._queue_generation}"
-            return publication.to_dict(), self.latest_state, revision
+            return publication, self.latest_state, revision
 
     @staticmethod
     def frame_jpeg(frame: LatestCameraFrame | LatestObservationState) -> bytes:
@@ -410,27 +424,19 @@ class FrameLoop:
         self._pending_frame = None
         self._queue_generation += 1
 
-    def _publication_from_locked_state(self, *, read_at_ms: int) -> FramePublication:
-        """The frame envelope. A stored report is the one ``to_dict`` will serve."""
+    def _publication_from_locked_state(self, *, read_at_ms: int) -> dict[str, object]:
+        """The frame envelope, borrowing the completed report."""
         latest = self.latest_state
         if latest is None:
-            return FramePublication(
-                health=PUBLICATION_HEALTH_WARMING,
-                read_at_ms=read_at_ms,
-                result_age_ms=None,
-                stale_after_ms=stale_after_ms(None),
-                report=None,
+            return _envelope(
+                health=PUBLICATION_HEALTH_WARMING, read_at_ms=read_at_ms, result_age_ms=None,
+                stale_after_ms=stale_after_ms(None), report=None,
             )
-        report = HostReport.from_dict(latest.report)
-        age_ms = max(0, read_at_ms - report.published_at_ms)
-        ceiling_ms = _publication_int(report.values.get("stale_after_ms"), "stale_after_ms")
-        health = PUBLICATION_HEALTH_STALE if age_ms > ceiling_ms else PUBLICATION_HEALTH_HEALTHY
-        return FramePublication(
-            health=health,
-            read_at_ms=read_at_ms,
-            result_age_ms=age_ms,
-            stale_after_ms=ceiling_ms,
-            report=report,
+        age_ms = max(0, read_at_ms - latest.completed_at_ms)
+        ceiling_ms = latest.report["values"]["stale_after_ms"]
+        return _envelope(
+            health=PUBLICATION_HEALTH_STALE if age_ms > ceiling_ms else PUBLICATION_HEALTH_HEALTHY,
+            read_at_ms=read_at_ms, result_age_ms=age_ms, stale_after_ms=ceiling_ms, report=latest.report,
         )
 
     def _capture_frame_report(self, result: DecisionCycleResult, *, error: str | None) -> dict[str, object]:

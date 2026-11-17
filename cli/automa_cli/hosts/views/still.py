@@ -35,7 +35,7 @@ def save_host_still(*, host_name: str, timeout_s: float = 3.0) -> StillResult:
     if jpeg is None:
         return _no_image(host_name, base_url, publication, timeout_s)
     try:
-        frame = read_frame_publication(publication, host_name=host_name)
+        report = read_frame_publication(publication, host_name=host_name)
     except FramePublicationError as exc:
         return StillResult(2, "unavailable", host_name=host_name, base_url=base_url, error=str(exc))
     directory = runtime_view_dir(host_name)
@@ -47,8 +47,8 @@ def save_host_still(*, host_name: str, timeout_s: float = 3.0) -> StillResult:
         "saved",
         host_name=host_name,
         base_url=base_url,
-        frame_id=frame["frame_id"],
-        age_ms=frame["result_age_ms"],
+        frame_id=report.frame_id,
+        age_ms=publication.result_age_ms,
         health=publication.health,
         path=display_path(path),
         browser=launch_browser(path.resolve().as_uri()),

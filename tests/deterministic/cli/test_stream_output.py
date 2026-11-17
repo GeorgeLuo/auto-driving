@@ -30,22 +30,19 @@ from cli.automa_cli.hosts.views.view_feed import ViewFeed
 
 
 # A fresh cycle whose plan record is empty.
-NORMALIZED = {
-    "result_age_ms": 0, "max_age_ms": 1000,
-    "report": HostReport(
-        host_name="fixture", run_id="run", generation_id="generation",
-        frame_id="next", frame_index=0, timestamp_ms=1, published_at_ms=1,
-        values={"activation": {"steps": {"plan": {"plugins": []}}}},
-        cycle={
-            "perception": None, "observation": None, "memory": None,
-            "proposal": {}, "plan": {}, "action": {},
-        },
-        application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
-    ),
-}
+NORMALIZED = HostReport(
+    host_name="fixture", run_id="run", generation_id="generation",
+    frame_id="next", frame_index=0, timestamp_ms=1, published_at_ms=1,
+    values={"activation": {"steps": {"plan": {"plugins": []}}}},
+    cycle={
+        "perception": None, "observation": None, "memory": None,
+        "proposal": {}, "plan": {}, "action": {},
+    },
+    application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
+)
 # What the host serves for NORMALIZED; acceptance itself is patched.
 PUBLICATION = FramePublication(
-    health="healthy", read_at_ms=1, result_age_ms=0, stale_after_ms=1000, report=NORMALIZED["report"],
+    health="healthy", read_at_ms=1, result_age_ms=0, stale_after_ms=1000, report=NORMALIZED,
 )
 OFFLINE = "Could not read the decision publication at http://host.invalid: offline"
 ROOT = Path(__file__).resolve().parents[3]
@@ -321,7 +318,7 @@ class StreamOutputTests(unittest.TestCase):
                     view.assert_not_called()
 
     def test_memory_text_and_json_read_the_same_completed_report(self):
-        report = NORMALIZED["report"].to_dict()
+        report = NORMALIZED.to_dict()
         report["cycle"]["memory"] = {"schema": "memory_report", "plugins": [], "evidence_publisher": None}
         report["values"].update(source_id="fixture:local", stale_after_ms=1000)
         publication = FramePublication.from_dict({

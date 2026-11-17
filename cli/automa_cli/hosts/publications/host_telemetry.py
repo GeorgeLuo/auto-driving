@@ -593,15 +593,9 @@ def _decision_source_frame(report: HostReport) -> dict[str, object]:
     return frame
 
 
-def decision_publication_identity(normalized_decision: dict[str, object]) -> dict[str, object]:
+def decision_publication_identity(report: HostReport) -> dict[str, object]:
     """Extract the exact composite identity needed for a telemetry join."""
 
-    report = normalized_decision.get("report")
-    if not isinstance(report, HostReport):
-        raise _host_telemetry_error(
-            "identity_mismatch",
-            "Decision publication has no decision report.",
-        )
     values = report.values
     try:
         source_id = _host_require_id(values.get("source_id"), field="decision.values.source_id")
@@ -651,7 +645,7 @@ def _host_telemetry_panel_from_normalized(
 
 def join_host_telemetry_to_decision(
     telemetry: object,
-    normalized_decision: dict[str, object],
+    report: HostReport,
     *,
     now_ms: int | None = None,
     host_name: str | None = None,
@@ -677,7 +671,7 @@ def join_host_telemetry_to_decision(
             reason if reason in HOST_TELEMETRY_REASONS else "field_invalid",
             "Host telemetry point is not healthy enough to join.",
         )
-    decision_identity = decision_publication_identity(normalized_decision)
+    decision_identity = decision_publication_identity(report)
     telemetry_identity = telemetry.get("identity")
     if not isinstance(telemetry_identity, dict) or telemetry_identity != decision_identity:
         raise _host_telemetry_error(

@@ -58,16 +58,13 @@ def _require_activation_steps(values: dict[str, object]) -> None:
         )
 
 
-def read_frame_publication(
-    publication: FramePublication,
-    *,
-    host_name: str,
-) -> dict[str, object]:
-    """Read one completed frame. A null step, a raised cycle, or a stale age stays visible.
+def read_frame_publication(publication: FramePublication, *, host_name: str) -> HostReport:
+    """The completed report of one frame. A null step, a raised cycle, or a stale age stays visible.
 
     The envelope was already parsed. This checks that the report is the
     requested host's, that its stale ceiling is the one advertised, and that
-    the selection and source are present.
+    the selection and source are present. Its age and ceiling stay on
+    ``publication``.
     """
 
     host_name = require_host_name(host_name)
@@ -99,21 +96,8 @@ def read_frame_publication(
             field="stale_after_ms",
         )
     _require_activation_steps(report.values)
-    return {
-        "host_name": report.host_name,
-        "source_id": _required_id(report.values.get("source_id"), field="report.values.source_id"),
-        "run_id": report.run_id,
-        "generation_id": report.generation_id,
-        "frame_id": report.frame_id,
-        "frame_index": report.frame_index,
-        "timestamp_ms": report.timestamp_ms,
-        "published_at_ms": report.published_at_ms,
-        "read_at_ms": publication.read_at_ms,
-        "result_age_ms": publication.result_age_ms,
-        "max_age_ms": ceiling,
-        "report": report,
-        "publication": publication,
-    }
+    _required_id(report.values.get("source_id"), field="report.values.source_id")
+    return report
 
 
 def presets_text(presets: object) -> str:
@@ -177,7 +161,7 @@ def perception_text_from_publication(publication: FramePublication) -> str:
             return text.strip()
     if report is not None and report.status == "error" and report.error:
         return f"status=error\nerror={report.error}"
-    return f"health={publication.health or 'unknown'}\n(no perception payload in latest state)"
+    return f"health={publication.health}\n(no perception payload in latest state)"
 
 
 def health_error(publication: FramePublication | None) -> str | None:
@@ -188,7 +172,7 @@ def health_error(publication: FramePublication | None) -> str | None:
 
     if publication is None:
         return "No frame publication was read."
-    health = publication.health or "unknown"
+    health = publication.health
     if publication.report is None:
         return f"The frame publication health is {health!r}."
     if health == "stale":

@@ -4,6 +4,7 @@ import json
 import threading
 import time
 from collections import OrderedDict
+from copy import deepcopy
 from io import BytesIO
 from pathlib import Path
 from urllib.parse import quote, urljoin, urlparse
@@ -43,7 +44,7 @@ class PerceptionView:
     ) -> None:
         """Replace the latest report. The JPEG is the display image when encoding produced one."""
         # Copy at publish so a later edit of the caller's report stays off the page.
-        stored = FramePublication.from_dict(publication.to_dict())
+        stored = deepcopy(publication)
         report = stored.report
         if report is None:
             raise ValueError("frame publication requires report.frame_id")

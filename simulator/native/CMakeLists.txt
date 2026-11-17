@@ -26,3 +26,8 @@ enable_testing()
 add_executable(native_sim_tests tests/core.cpp)
 target_link_libraries(native_sim_tests PRIVATE sim_core)
 add_test(NAME native_sim_core COMMAND native_sim_tests ${CMAKE_CURRENT_SOURCE_DIR}/tests/reference.json ${CMAKE_CURRENT_SOURCE_DIR}/scenarios/chaser-depth-obstacles.json)
+add_executable(native_sim_regression tests/regression.cpp)
+target_link_libraries(native_sim_regression PRIVATE sim_core)
+add_test(NAME native_sim_regression COMMAND native_sim_regression
+  ${CMAKE_CURRENT_SOURCE_DIR}/scenarios/chaser-depth-obstacles.json
+  ${CMAKE_CURRENT_SOURCE_DIR}/tests/native-baseline.json)

@@ -9,7 +9,7 @@ from __future__ import annotations
 import math
 from collections.abc import Mapping
 from dataclasses import dataclass, field
-from typing import Literal, cast
+from typing import Literal
 
 from autonomy.decision_cycle.action_identifiers import (
     proposal_id_for,
@@ -279,10 +279,7 @@ class ActionProposal:
         _allowed_freshness, _available, _command_required, min_refs = _MATRIX[self.lifecycle]
         # The field annotation is the stored tuple. Callers also pass a list,
         # so the element check has to see the raw value.
-        raw_refs = cast(object, self.source_refs)
-        if type(raw_refs) not in (list, tuple):
-            raise TypeError("source_refs must be a list or tuple of SourceRef")
-        refs = cast(tuple[object, ...], tuple(raw_refs))
+        refs = _source_refs(self.source_refs)
         if len(refs) > MAX_SOURCE_REFS:
             raise ValueError(f"source_refs exceed {MAX_SOURCE_REFS}")
         if len(refs) < min_refs:
@@ -398,3 +395,9 @@ def synthetic_error_proposal(
         available=False,
         metadata={},
     )
+
+
+def _source_refs(value: object) -> tuple[object, ...]:
+    if type(value) not in (list, tuple):
+        raise TypeError("source_refs must be a list or tuple of SourceRef")
+    return tuple(value)

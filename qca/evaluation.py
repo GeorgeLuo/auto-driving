@@ -251,6 +251,7 @@ def _evaluate(evaluator: Evaluator, context: Context) -> list[Finding] | None:
         if not evaluator.covers(path):
             continue
         if in_scope(path, requested) or id(item) in new_ids:
+            item["evidence"]["introduced"] = id(item) in new_ids
             findings.append(item)
     return findings
 

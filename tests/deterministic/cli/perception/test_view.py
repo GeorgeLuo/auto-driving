@@ -14,7 +14,7 @@ from PIL import Image
 
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
-from autonomy.runtime.report import HostReport, ReportApplication
+from autonomy.runtime.report import HostReport, ReportApplication, ReportValues
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.workbench.runner import ImageReplayRunner
 from cli.automa_cli.frontend.perception_view import (
@@ -260,13 +260,16 @@ def _publication(*, frame_id: str = "frame_000004", frame_index: int = 4) -> Fra
             published_at_ms=1242,
             cycle=cycle,
             application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
-            values={
+            values=ReportValues.from_dict({
+                "source_id": "fixture",
+                "activation": {"steps": {}},
                 "stale_after_ms": 1000,
+                "delivered_at_ms": None, "delivery_error": None, "receipt": None,
                 "timing": {
                     "duration_ms": 17,
                     "steps": [{"step": "perception", "duration_ms": 8, "plugins": []}],
                 },
-            },
+            }),
         ),
     )
 

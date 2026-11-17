@@ -18,7 +18,7 @@ from autonomy.decision_cycle.perception.runner import PerceptionRunner
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
-from autonomy.runtime.report import report_from_host_result
+from autonomy.runtime.report import ReportValues, report_from_host_result
 from cli.automa_cli.frontend.perception_view import PerceptionView
 from cli.automa_cli.plugins.inspect.replay import read_replay_source
 from cli.automa_cli.replay.frames import run_frame
@@ -110,7 +110,10 @@ class ViewerCycleAgreementTests(unittest.TestCase):
                 run_id="run",
                 generation_id="generation",
                 published_at_ms=published_at_ms,
-                values={"source_id": "runtime-host", "stale_after_ms": 5000},
+                values=ReportValues.from_dict({
+                    "source_id": "runtime-host", "stale_after_ms": 5000, "activation": {"steps": {}},
+                    "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+                }),
             )
             view = PerceptionView(host_name="fixture")
             view.publish(

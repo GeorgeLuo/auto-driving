@@ -24,7 +24,13 @@ from autonomy.decision_cycle.memory.errors import MemoryUpdateError
 from autonomy.fields import FieldError, require_choice, require_nested, require_safe_int, require_schema
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.runtime.recording import RunRecording
-from autonomy.runtime.report import HostReport, delivery_values, report_from_host_result
+from autonomy.runtime.report import (
+    HostReport,
+    ReportActivation,
+    ReportValues,
+    delivery_values,
+    report_from_host_result,
+)
 from autonomy.runtime.session import RunConfiguration
 from autonomy.vehicle import FRONT_CAMERA_SENSOR_ID, SensorFrame, SensorReading
 
@@ -267,7 +273,7 @@ class FrameLoop:
                     "frame_index": latest.frame_index,
                     "captured_at_ms": latest.captured_at_ms,
                     "completed_at_ms": latest.completed_at_ms,
-                    "duration_ms": latest.report["values"].get("timing", {}).get("duration_ms", 0),
+                    "duration_ms": (latest.report["values"]["timing"] or {}).get("duration_ms", 0),
                 },
             }
 
@@ -426,12 +432,15 @@ class FrameLoop:
         """The report for this camera frame, naming the identity the host stamped on it."""
         metadata = result.context.metadata
         generation_id = metadata["generation_id"]
-        values: dict[str, object] = {
-            "source_id": self.source_id or f"{self.runtime}:local",
-            "activation": {"steps": metadata["step_activations"]},
-            "stale_after_ms": stale_after_ms(result.duration_ms),
-            **delivery_values(result.application),
-        }
+        delivered_at_ms, delivery_error, receipt = delivery_values(result.application)
+        values = ReportValues(
+            source_id=self.source_id or f"{self.runtime}:local",
+            activation=ReportActivation(metadata["step_activations"]),
+            stale_after_ms=stale_after_ms(result.duration_ms),
+            delivered_at_ms=delivered_at_ms,
+            delivery_error=delivery_error,
+            receipt=receipt,
+        )
         return report_from_host_result(
             result,
             host_name=self.host_name or self.runtime,

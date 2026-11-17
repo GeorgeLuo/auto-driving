@@ -18,7 +18,7 @@ from dataclasses import replace
 
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
-from autonomy.runtime.report import HostReport, ReportApplication
+from autonomy.runtime.report import HostReport, ReportApplication, ReportValues
 from autonomy.decision_cycle.perception.interface import PerceptionPluginRun, PerceptionText
 from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, PerceptionSignal, ViewLocation
 from cli.automa_cli.plugins.stream import decision, memory, perception, session
@@ -34,7 +34,11 @@ from cli.automa_cli.hosts.views.view_feed import ViewFeed
 NORMALIZED = HostReport(
     host_name="fixture", run_id="run", generation_id="generation",
     frame_id="next", frame_index=0, timestamp_ms=1, published_at_ms=1,
-    values={"activation": {"steps": {"plan": {"plugins": []}}}},
+    values=ReportValues.from_dict({
+        "source_id": "fixture:local", "stale_after_ms": 1000,
+        "activation": {"steps": {"plan": {"plugins": []}}},
+        "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+    }),
     cycle={
         "perception": None, "observation": None, "memory": None,
         "proposal": {}, "plan": {}, "action": {},
@@ -83,8 +87,9 @@ def _frame_publication(*, health="healthy", status="ok", error=None, **cycle):
     report = HostReport(
         host_name="fixture", run_id="run", generation_id="generation",
         frame_id="next", frame_index=0, timestamp_ms=1, published_at_ms=1,
-        values={"source_id": "fixture:local", "stale_after_ms": 1000,
-                "activation": {"steps": {}}},
+        values=ReportValues.from_dict({
+            "source_id": "fixture:local", "stale_after_ms": 1000, "activation": {"steps": {}}, "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+        }),
         cycle={**{step: None for step in CYCLE_RECORD_KEYS}, **cycle},
         application=ReportApplication(False, "observe_only", "observe-only", 0, 0),
         status=status, error=error,
@@ -411,10 +416,13 @@ class StreamOutputTests(unittest.TestCase):
                 frame_id="f-12", frame_index=12, timestamp_ms=1000, published_at_ms=1000,
                 cycle={**dict.fromkeys(CYCLE_RECORD_KEYS), "perception": evidence},
                 application=ReportApplication(False, "observe_only", "hold", 0.1, 0.2),
-                values={
-                    "timing": {"duration_ms": 33}, "stale_after_ms": 1000,
+                values=ReportValues.from_dict({
+                    "source_id": "fixture:local",
+                    "stale_after_ms": 1000,
                     "activation": {"steps": {"perception": {"metadata": {"preset": "lightweight_observer"}}}},
-                },
+                    "delivered_at_ms": None, "delivery_error": None, "receipt": None,
+                    "timing": {"duration_ms": 33},
+                }),
             ),
         ))
         self.assertEqual((summary.frame_id, summary.signal_count, summary.thing_count, summary.text),

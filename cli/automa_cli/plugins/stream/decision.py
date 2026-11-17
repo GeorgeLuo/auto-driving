@@ -94,7 +94,7 @@ def _read_decision_frame(
     except (ConnectionError, OSError) as exc:
         raise _unreadable(base_url, host_name, str(exc)) from exc
     report = accept_decision_publication(publication, host_name=host_name)
-    activation = report.values["activation"]
+    steps = report.values.activation.steps
     frame = {
         "schema": f"host_{step}_stream",
         "host_name": report.host_name,
@@ -105,10 +105,10 @@ def _read_decision_frame(
         "timestamp_ms": report.timestamp_ms,
         # The host computes the result age on its own clock.
         "freshness": {"age_ms": publication.result_age_ms, "max_age_ms": publication.stale_after_ms},
-        "plugins": list((activation["steps"].get(step) or {}).get("plugins") or []),
+        "plugins": list((steps.get(step) or {}).get("plugins") or []),
         "record": deepcopy(report.cycle.get(step)),
         # The cycle's timing; a host that does not publish it leaves None.
-        "timing": deepcopy(report.values.get("timing")),
+        "timing": deepcopy(report.values.timing),
     }
     if step == "action":
         frame["application"] = report.application.to_dict()

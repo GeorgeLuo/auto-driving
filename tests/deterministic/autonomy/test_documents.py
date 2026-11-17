@@ -35,7 +35,7 @@ from autonomy.decision_cycle.perception.interface import PerceptionPluginRun, Pe
 from autonomy.decision_cycle.proposal.values import ActionProposal, ProposedVehicleCommand, SourceRef
 from autonomy.fields import ROOT, FieldError
 from autonomy.runtime.frame_loop import FramePublication
-from autonomy.runtime.report import HostReport, ReportApplication
+from autonomy.runtime.report import HostReport, ReportActivation, ReportApplication, ReportValues
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.session import RunConfiguration
@@ -55,12 +55,32 @@ def _application() -> ReportApplication:
     return ReportApplication(applied=True, mode="autonomy", reason="applied", steering=0.25, throttle=-0.5)
 
 
+def _activation(steps: dict[str, object] | None = None) -> ReportActivation:
+    return ReportActivation({} if steps is None else steps)
+
+
+def _values_null() -> ReportValues:
+    return ReportValues(source_id="fixture:local", activation=_activation(), stale_after_ms=1000)
+
+
+def _values_set() -> ReportValues:
+    return ReportValues(
+        source_id="fixture:local",
+        activation=_activation({"perception": {"preset": "chase"}}),
+        stale_after_ms=1000,
+        delivered_at_ms=1100,
+        delivery_error="not applied",
+        receipt={"ok": True},
+        timing={"duration_ms": 12, "steps": []},
+    )
+
+
 def _report(**fields: object) -> HostReport:
     return HostReport(**{
         "host_name": "fixture", "run_id": "run-1", "generation_id": "decision-1", "frame_id": "frame-1",
         "frame_index": 3, "timestamp_ms": 1000, "published_at_ms": 1010,
         "cycle": dict.fromkeys(CYCLE_RECORD_KEYS), "application": _application(),
-        "values": {"source_id": "fixture:local", "stale_after_ms": 1000, "activation": {"steps": {}}},
+        "values": _values_null(),
         **fields,
     })
 
@@ -196,13 +216,23 @@ DOCUMENTS = {
         startup={"status": "ready"}, status="stopped", stopped_by="stop_command", stopped_at_ms=1100,
     )], opaque=("startup",)),
     "autonomy.runtime.report.ReportApplication": Document(lambda: [_application()]),
+    "autonomy.runtime.report.ReportActivation": Document(
+        lambda: [_activation(), _activation({"perception": {"preset": "chase"}})], opaque=("steps",),
+    ),
+    "autonomy.runtime.report.ReportValues": Document(
+        lambda: [_values_null(), _values_set()],
+        opaque=("activation.steps", "receipt", "timing"),
+    ),
     "autonomy.runtime.report.HostReport": Document(
-        lambda: [_report(), _report(status="error", error="cycle raised")], opaque=("values",),
+        lambda: [_report(), _report(status="error", error="cycle raised")],
+        opaque=("values.activation.steps", "values.receipt", "values.timing"),
     ),
     "autonomy.runtime.frame_loop.FramePublication": Document(lambda: [
         FramePublication(health="healthy", read_at_ms=1100, result_age_ms=90, stale_after_ms=1000, report=_report()),
         FramePublication(health="warming", read_at_ms=1100, result_age_ms=None, stale_after_ms=1000, report=None),
-    ], opaque=("report.values",)),
+    ], opaque=(
+        "report.values.activation.steps", "report.values.receipt", "report.values.timing",
+    )),
 }
 # Documents that predate the field rules. Remove a name when its class follows autonomy.fields and registers above.
 PENDING: frozenset[str] = frozenset()

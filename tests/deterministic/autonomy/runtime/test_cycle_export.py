@@ -27,7 +27,7 @@ from autonomy.decision_cycle.records import DecisionRecords
 from autonomy.runtime.control import AutonomyControl
 from autonomy.runtime.execution import ControlApplication
 from autonomy.runtime.recording import RunRecording
-from autonomy.runtime.report import report_from_host_result
+from autonomy.runtime.report import ReportValues, report_from_host_result
 from autonomy.serialization import FrozenJsonObject
 from tests.shared.cli.workbench_fixtures import image_source
 from tests.shared.integration.plugin_flow_fixtures import frame
@@ -139,6 +139,10 @@ class CycleExportTests(unittest.TestCase):
                 status = json.loads(json.dumps(result.to_dict()))
                 report = report_from_host_result(
                     result, host_name="fixture", run_id="run", generation_id="generation",
+                    values=ReportValues.from_dict({
+                        "source_id": "fixture", "activation": {"steps": {}}, "stale_after_ms": 1000,
+                "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+                    }),
                 ).to_dict()
                 recorded = recording.read(run_id="run", after=0)["frames"][0]["frame"]
                 for key in report["cycle"]:
@@ -162,6 +166,10 @@ class CycleExportTests(unittest.TestCase):
 
             report = report_from_host_result(
                 result, host_name="fixture", run_id="run", generation_id="generation",
+                values=ReportValues.from_dict({
+                    "source_id": "fixture", "activation": {"steps": {}}, "stale_after_ms": 1000,
+                "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+                }),
             )
             report.cycle["memory"]["plugins"][0]["state"]["count"] = 30
             self.assertEqual(result.export_cycle()["memory"], retained["memory"])

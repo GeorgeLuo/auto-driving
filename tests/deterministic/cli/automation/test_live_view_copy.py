@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from autonomy.runtime.frame_loop import FramePublication
-from autonomy.runtime.report import HostReport, ReportApplication
+from autonomy.runtime.report import HostReport, ReportApplication, ReportValues
 from cli.automa_cli.hosts.views import view_feed as viewer
 from cli.automa_cli.plugins.stream import decision, session
 
@@ -34,8 +34,11 @@ class LiveViewCopyTests(unittest.TestCase):
             report=HostReport(
                 host_name="fixture", run_id="run", generation_id="generation",
                 frame_id="one", frame_index=0, timestamp_ms=1, published_at_ms=1,
-                values={"source_id": "fixture:local", "stale_after_ms": 1000,
-                        "activation": {"steps": {"plan": {"plugins": []}}}},
+                values=ReportValues.from_dict({
+                    "source_id": "fixture:local", "stale_after_ms": 1000,
+                    "activation": {"steps": {"plan": {"plugins": []}}},
+        "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+                }),
                 cycle={
                     "perception": None, "observation": None, "memory": None,
                     "proposal": {}, "plan": {}, "action": {},

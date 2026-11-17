@@ -12,8 +12,8 @@ from autonomy.decision_cycle.activation import activation_presets
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.decision_cycle.timing import step_timing
 from autonomy.runtime.frame_loop import FramePublication
-from autonomy.runtime.report import HostReport, diagnostic_ceiling
-from .publication_fields import PublicationError, require_host_name, require_id, require_mapping
+from autonomy.runtime.report import HostReport
+from .publication_fields import PublicationError, require_host_name, require_id
 
 
 class FramePublicationError(PublicationError):
@@ -37,25 +37,6 @@ def _frame_field_error(text: str, field: str) -> FramePublicationError:
 
 
 _required_id = partial(require_id, invalid=_frame_field_error)
-_require_mapping = partial(require_mapping, invalid=_frame_field_error)
-
-
-def _require_activation_steps(values: dict[str, object]) -> None:
-    """The selection rides in ``activation.steps``. Generation stays on the report."""
-
-    activation = _require_mapping(values.get("activation"), field="report.values.activation")
-    if "steps" not in activation:
-        raise _publication_error(
-            "incomplete",
-            "Frame publication report.values.activation.steps is missing.",
-            field="report.values.activation.steps",
-        )
-    if not isinstance(activation.get("steps"), dict):
-        raise _publication_error(
-            "incomplete",
-            "Frame activation steps must be an object.",
-            field="report.values.activation.steps",
-        )
 
 
 def read_frame_publication(publication: FramePublication, *, host_name: str) -> HostReport:
@@ -63,8 +44,7 @@ def read_frame_publication(publication: FramePublication, *, host_name: str) -> 
 
     The envelope was already parsed. This checks that the report is the
     requested host's, that its stale ceiling is the one advertised, and that
-    the selection and source are present. Its age and ceiling stay on
-    ``publication``.
+    the source is present. Its age and ceiling stay on ``publication``.
     """
 
     host_name = require_host_name(host_name)
@@ -81,22 +61,13 @@ def read_frame_publication(publication: FramePublication, *, host_name: str) -> 
             f"Frame publication is from host {report.host_name!r}, not {host_name!r}.",
             field="report.host_name",
         )
-    try:
-        ceiling = diagnostic_ceiling(report.values)
-    except ValueError as exc:
-        raise _publication_error(
-            "incomplete",
-            str(exc),
-            field="report.values.stale_after_ms",
-        ) from exc
-    if publication.stale_after_ms != ceiling:
+    if publication.stale_after_ms != report.values.stale_after_ms:
         raise _publication_error(
             "incomplete",
             "Frame publication stale_after_ms does not match the report.",
             field="stale_after_ms",
         )
-    _require_activation_steps(report.values)
-    _required_id(report.values.get("source_id"), field="report.values.source_id")
+    _required_id(report.values.source_id, field="report.values.source_id")
     return report
 
 
@@ -111,9 +82,7 @@ def presets_text(presets: object) -> str:
 def _steps(report: HostReport | None) -> dict[str, object] | None:
     if report is None:
         return None
-    activation = report.values.get("activation")
-    steps = activation.get("steps") if isinstance(activation, dict) else None
-    return steps if isinstance(steps, dict) else None
+    return report.values.activation.steps
 
 
 def publication_capture(publication: FramePublication) -> tuple[object, ...]:
@@ -145,8 +114,7 @@ def perception_duration_ms(publication: FramePublication) -> object:
     """The perception step's duration from the cycle timing, or None without it."""
 
     report = publication.report
-    timing = None if report is None else report.values.get("timing")
-    step = step_timing(timing, "perception")
+    step = None if report is None else step_timing(report.values.timing, "perception")
     return None if step is None else step.get("duration_ms")
 
 

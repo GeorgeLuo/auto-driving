@@ -67,7 +67,7 @@ class DecisionSurfaceTests(DecisionSurfaceFixture, unittest.TestCase):
         publication = self._physical_publication(published_at_ms=now_ms)
         frame = FramePublication.from_dict(publication)
         accepted = accept_decision_publication(frame, host_name="piracer")
-        self.assertEqual(accepted.values["source_id"], "donkeycar:piracer")
+        self.assertEqual(accepted.values.source_id, "donkeycar:piracer")
         self.assertEqual(accepted.generation_id, packaged_identity()["generation_id"])
         self.assertEqual(frame.to_dict()["report"], accepted.to_dict())
         self.assertNotIn("producer_pid", accepted.to_dict())

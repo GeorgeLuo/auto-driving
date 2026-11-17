@@ -5,7 +5,7 @@ import unittest
 
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
 from autonomy.decision_cycle.perception.interface import PerceptionText
-from autonomy.runtime.report import HostReport, error_application
+from autonomy.runtime.report import HostReport, ReportValues, error_application
 
 
 class HostReportTests(unittest.TestCase):
@@ -14,7 +14,12 @@ class HostReportTests(unittest.TestCase):
             host_name="fixture", run_id="run", generation_id="decision-test",
             frame_id="frame", frame_index=0, timestamp_ms=100, published_at_ms=110,
             cycle={step: None for step in CYCLE_RECORD_KEYS},
-            application=error_application("observe_only"), values={}, **fields,
+            application=error_application("observe_only"),
+            values=ReportValues.from_dict({
+                "source_id": "fixture", "activation": {"steps": {}}, "stale_after_ms": 1000,
+                "delivered_at_ms": None, "delivery_error": None, "receipt": None, "timing": None,
+            }),
+            **fields,
         )
 
     def test_six_nullable_steps_and_required_status_round_trip(self):

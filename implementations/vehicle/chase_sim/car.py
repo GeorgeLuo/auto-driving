@@ -4,7 +4,6 @@ import logging
 import math
 import time
 
-from .state import nested_get, play_sidebar_values
 from .camera_stream import ChaseCameraStream
 from .defaults import DEFAULT_CHASE_UI_WS_URL, get_default_chase_ui_ws_url
 from .frame_identity import (
@@ -49,6 +48,7 @@ from .session import (
     normalize_passive_receipt_fingerprint, compare_passive_receipt_fingerprints,
     passive_receipt_environment, build_chase_session_fingerprint,
 )
+from .state import nested_get, play_sidebar_values
 from .steering import chase_steering
 
 

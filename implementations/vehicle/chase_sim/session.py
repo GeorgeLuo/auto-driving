@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import math
+
 from .state import nested_get, play_sidebar_values
 
 RUN_STABLE_FIELDS = ("game_id", "scenario_id", "simulation_epoch", "control_source")

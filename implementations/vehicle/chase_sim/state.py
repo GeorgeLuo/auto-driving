@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+
 def nested_get(record: dict[str, object], path: tuple[str, ...]) -> object:
     value: object = record
     for key in path:
@@ -9,7 +10,6 @@ def nested_get(record: dict[str, object], path: tuple[str, ...]) -> object:
             return None
         value = value.get(key)
     return value
-
 
 
 def play_sidebar_values(state: dict[str, object]) -> dict[str, object]:

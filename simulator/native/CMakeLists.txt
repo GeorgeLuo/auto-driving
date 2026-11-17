@@ -43,6 +43,10 @@ target_link_libraries(automa-native-sim PRIVATE sim_protocol ixwebsocket Threads
 target_compile_definitions(automa-native-sim PRIVATE
   DEFAULT_CONFIG="${default_map}" DEFAULT_ASSETS="${asset_directory}")
 
+add_executable(native-sim-tour tools/tour.cpp)
+target_link_libraries(native-sim-tour PRIVATE sim_protocol)
+target_compile_definitions(native-sim-tour PRIVATE SIM_ASSETS="${asset_directory}")
+
 foreach(target sim_core sim_scene sim_physics sim_render sim_sensor sim_protocol)
   target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
 endforeach()

@@ -1,36 +1,38 @@
 from __future__ import annotations
 
 import unittest
+from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
+from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FramePublication
+from autonomy.runtime.report import HostReport, ReportApplication
 from cli.automa_cli.shared.memory_report import evidence_publisher, plugin_states
-from cli.automa_cli.frontend.perception_view import (
-    PUBLICATION_SCHEMA,
-    _publication_payload,
-)
+from cli.automa_cli.frontend.perception_view import _publication_payload
 from tests.support.memory_fixtures import TWO_PLUGIN_IDS, memory_report, two_plugin_runner
 
 
-def _frame_record(*, frame_id: str, memory: dict, perception: dict | None = None, duration_ms: int = 12) -> dict:
-    return {
-        "schema": "host_frame_publication",
-        "health": "healthy",
-        "ok": True,
-        "host_name": "piracer",
-        "stale_after_ms": 1_000,
-        "report": {
-            "host_name": "piracer",
-            "frame_id": frame_id,
-            "frame_index": 1,
-            "timestamp_ms": 100,
-            "published_at_ms": 110,
-            "status": "ok",
-            "error": None,
-            "cycle": {
-                "perception": perception if perception is not None else {"things": []},
-                "memory": memory,
-            },
-            "values": {"timing": {"duration_ms": duration_ms, "steps": []}},
-        },
-    }
+def _publication(
+    *, frame_id: str, memory: dict, perception: dict | None = None, duration_ms: int = 12,
+) -> FramePublication:
+    cycle = dict.fromkeys(CYCLE_RECORD_KEYS)
+    cycle["perception"] = perception if perception is not None else {"things": []}
+    cycle["memory"] = memory
+    return FramePublication(
+        health="healthy",
+        read_at_ms=110,
+        result_age_ms=0,
+        stale_after_ms=1000,
+        report=HostReport(
+            host_name="piracer",
+            run_id="run",
+            generation_id="generation",
+            frame_id=frame_id,
+            frame_index=1,
+            timestamp_ms=100,
+            published_at_ms=110,
+            cycle=cycle,
+            application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
+            values={"stale_after_ms": 1000, "timing": {"duration_ms": duration_ms, "steps": []}},
+        ),
+    )
 
 
 class MemoryViewPublicationTests(unittest.TestCase):
@@ -72,7 +74,7 @@ class MemoryViewPublicationTests(unittest.TestCase):
                 "height_px": 480,
                 "url": "/frame?v=donkey_frame_1",
             },
-            frame_record=_frame_record(
+            publication=_publication(
                 frame_id="donkey_frame_1",
                 memory=memory,
                 perception={
@@ -90,10 +92,12 @@ class MemoryViewPublicationTests(unittest.TestCase):
                     ]
                 },
             ),
+            host_telemetry=None,
+            evidence=None,
             generated_at_ms=200,
         )
-        self.assertEqual(view_payload["schema"], PUBLICATION_SCHEMA)
-        self.assertEqual(PUBLICATION_SCHEMA, "host_frame_publication")
+        self.assertEqual(view_payload["schema"], FRAME_PUBLICATION_SCHEMA)
+        self.assertEqual(FRAME_PUBLICATION_SCHEMA, "host_frame_publication")
         self.assertEqual(view_payload["report"]["values"]["timing"]["duration_ms"], 12)
         self.assertNotIn("memory", view_payload)
         shown_memory = view_payload["report"]["cycle"]["memory"]
@@ -112,7 +116,9 @@ class MemoryViewPublicationTests(unittest.TestCase):
         view_payload = _publication_payload(
             host_name="piracer",
             image={"frame_id": "donkey_frame_1", "frame_index": 1},
-            frame_record=_frame_record(frame_id="donkey_frame_1", memory=report, perception={"things": []}),
+            publication=_publication(frame_id="donkey_frame_1", memory=report, perception={"things": []}),
+            host_telemetry=None,
+            evidence=None,
             generated_at_ms=200,
         )
         shown_memory = view_payload["report"]["cycle"]["memory"]

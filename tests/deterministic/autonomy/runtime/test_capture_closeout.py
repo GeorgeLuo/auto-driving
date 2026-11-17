@@ -195,10 +195,7 @@ class CaptureCloseoutTests(unittest.TestCase):
         path = "/host/observation/transaction"
         status, headers, body = routes.handle("GET", path)
         self.assertEqual(status, 200, body)
-        with (
-            patch.object(FrameLoop, "frame_jpeg", side_effect=AssertionError("unchanged image encoded")),
-            patch("autonomy.runtime.frame_loop.deepcopy", side_effect=AssertionError("unchanged report copied")),
-        ):
+        with patch.object(FrameLoop, "frame_jpeg", side_effect=AssertionError("unchanged image encoded")):
             status, again, body = routes.handle("GET", path, headers={"If-None-Match": headers["ETag"]})
         self.assertEqual((status, body), (304, b""))
         self.assertEqual(again["ETag"], headers["ETag"])

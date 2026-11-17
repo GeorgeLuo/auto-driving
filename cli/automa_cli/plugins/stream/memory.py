@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Callable
 
 from autonomy.decision_cycle.timing import step_timing
 
-from autonomy.runtime.frame_loop import LATEST_JSON_PATH
+from autonomy.runtime.frame_loop import FramePublication, LATEST_JSON_PATH
 from ...hosts.publications.frame_publication import (
     FramePublicationError,
     read_frame_publication,
@@ -46,7 +46,7 @@ def stream_memory(
         )
     view = StreamView(host_name, base_url=base_url, timeout_s=timeout_s) if serve_view else None
 
-    def probe() -> tuple[dict[str, Any], Any]:
+    def probe() -> tuple[dict[str, object], MemoryPublication | None]:
         publication, fetch_error = (view.read_observation() if view is not None
                                     else read_publication(base_url, timeout_s=timeout_s))
         if view is not None:
@@ -67,7 +67,7 @@ def stream_memory(
             view.close()
 
 
-def probe_live_memory(*, host_name: str, timeout_s: float = 3.0) -> dict[str, Any]:
+def probe_live_memory(*, host_name: str, timeout_s: float = 3.0) -> dict[str, object]:
     """Return a normalized live-memory probe without requiring stream mode."""
 
     try:
@@ -81,20 +81,19 @@ def probe_live_memory(*, host_name: str, timeout_s: float = 3.0) -> dict[str, An
 
 
 def _probe_memory(
-    *, host_name: str, base_url: str, publication: dict[str, Any] | None, fetch_error: str | None,
-) -> dict[str, Any]:
+    *, host_name: str, base_url: str, publication: FramePublication | None, fetch_error: str | None,
+) -> dict[str, object]:
     """Select memory from the same completed report the other step commands read."""
-    probe = {
+    probe: dict[str, object] = {
         "schema": MEMORY_LIVE_SCHEMA, "host_name": host_name,
         "endpoint": f"{base_url}{LATEST_JSON_PATH}", "probed_at_ms": timestamp_ms(),
     }
-    if fetch_error is not None:
-        return {**probe, "status": "error", "error": fetch_error}
+    if fetch_error is not None or publication is None:
+        return {**probe, "status": "error", "error": fetch_error or "No publication was read."}
     try:
-        frame = read_frame_publication(publication, host_name=host_name, now_ms=timestamp_ms())
+        report = read_frame_publication(publication, host_name=host_name)
     except FramePublicationError as exc:
         return {**probe, "status": "unavailable", "error": exc.message_text}
-    report = frame["report"]
     memory = report.cycle["memory"]
     probe.update(
         frame_id=report.frame_id, generation_id=report.generation_id,
@@ -108,7 +107,7 @@ def _probe_memory(
     activation = report.values["activation"]["steps"].get("memory") or {}
     entry = step_timing(report.values.get("timing"), "memory")
     return {
-        **probe, "status": "live", "health": publication.get("health"),
+        **probe, "status": "live", "health": publication.health,
         "activation": activation,
         "plugin_ids": [item["plugin_id"] for item in memory.get("plugins", [])],
         "plugins": _probe_plugins(memory), "evidence_publisher": evidence_publisher(memory),
@@ -116,7 +115,7 @@ def _probe_memory(
     }
 
 
-def _probe_plugins(status: dict[str, Any]) -> list[dict[str, Any]]:
+def _probe_plugins(status: dict[str, object]) -> list[dict[str, object]]:
     """Each applied plugin's step status with its ledger summary beside it.
 
     An entry keeps the step's per-plugin status (counters, ``last_error``,

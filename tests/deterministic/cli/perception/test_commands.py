@@ -9,6 +9,9 @@ from pathlib import Path
 
 from PIL import Image
 
+from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
+from autonomy.runtime.frame_loop import FramePublication
+from autonomy.runtime.report import HostReport, ReportApplication
 from cli.automa_cli.frontend.server import RuntimeViewServer
 from cli.automa_cli.workbench.runner import ImageReplayRunner
 from tests.shared.cli.invoke import invoke_automa
@@ -35,19 +38,17 @@ class PerceptionCommandTests(unittest.TestCase):
             ).start()
             frame_bytes = io.BytesIO()
             Image.new("RGB", (16, 12), (20, 40, 60)).save(frame_bytes, format="JPEG")
-            frame_record = {
-                "schema": "host_frame_publication",
-                "health": "healthy",
-                "ok": True,
-                "report": {
-                    "frame_id": "frame_000002",
-                    "frame_index": 2,
-                    "timestamp_ms": 1000,
-                    "published_at_ms": 1000,
-                    "cycle": {"perception": {"things": [], "signals": []}},
-                },
-            }
-            server.perception.publish(frame_bytes=frame_bytes.getvalue(), frame_record=frame_record)
+            publication = FramePublication(
+                health="healthy", read_at_ms=1000, result_age_ms=0, stale_after_ms=1000,
+                report=HostReport(
+                    host_name=host_name, run_id="run", generation_id="generation",
+                    frame_id="frame_000002", frame_index=2, timestamp_ms=1000, published_at_ms=1000,
+                    cycle={**dict.fromkeys(CYCLE_RECORD_KEYS), "perception": {"things": [], "signals": []}},
+                    application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
+                    values={"stale_after_ms": 1000},
+                ),
+            )
+            server.perception.publish(frame_bytes=frame_bytes.getvalue(), publication=publication)
             expected_url = server.url
             try:
                 text_result = invoke_automa(

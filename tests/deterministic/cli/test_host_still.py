@@ -12,8 +12,10 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from unittest.mock import patch
 
+from dataclasses import replace
+
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS
-from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA, FRAME_TRANSACTION_SCHEMA
+from autonomy.runtime.frame_loop import FRAME_TRANSACTION_SCHEMA, FramePublication
 from autonomy.runtime.report import HostReport, ReportApplication
 from cli.automa_cli.providers.metadata import CHASE_SIM, PICAR
 from cli.automa_cli.shared.browser_result import BrowserOpenResult
@@ -25,21 +27,21 @@ _JPEG = b"\xff\xd8\xff\xd9"
 _URL = "http://127.0.0.1:9"
 
 
-def _publication(**extra: object) -> dict[str, object]:
-    publication: dict[str, object] = {
-        "schema": FRAME_PUBLICATION_SCHEMA,
-        "health": "healthy",
-        "result_age_ms": 40,
-        "report": HostReport(
+def _publication(**extra: object) -> FramePublication:
+    publication = FramePublication(
+        health="healthy",
+        read_at_ms=1000,
+        result_age_ms=40,
+        stale_after_ms=1500,
+        report=HostReport(
             host_name="chase", run_id="run", generation_id="generation", frame_id="frame-7",
             frame_index=7, timestamp_ms=900, published_at_ms=1000,
             cycle=dict.fromkeys(CYCLE_RECORD_KEYS),
             application=ReportApplication(False, "observe_only", "idle", 0.0, 0.0),
             values={"source_id": "chase", "stale_after_ms": 1500, "activation": {"steps": {}}},
-        ).to_dict(),
-    }
-    publication.update(extra)
-    return publication
+        ),
+    )
+    return replace(publication, **extra) if extra else publication
 
 
 class HostStillTests(unittest.TestCase):
@@ -89,7 +91,7 @@ class HostStillTests(unittest.TestCase):
 
     def test_a_staged_picar_pointing_to_another_host_never_saves_or_opens_its_frame(self) -> None:
         body = json.dumps({
-            "schema": FRAME_TRANSACTION_SCHEMA, "publication": _publication(),
+            "schema": FRAME_TRANSACTION_SCHEMA, "publication": _publication().to_dict(),
             "image_frame_id": "frame-7", "image_content_type": "image/jpeg",
             "image_base64": base64.b64encode(_JPEG).decode(), "image_error": None,
         }).encode()

@@ -13,7 +13,6 @@ from copy import deepcopy
 from functools import partial
 
 from autonomy.decision_cycle.action_identifiers import (
-    require_ascii_id,
     require_safe_int,
 )
 from autonomy.runtime.report import HostReport
@@ -23,7 +22,7 @@ from implementations.runtime.picar.host_telemetry import (
     HOST_TELEMETRY_MODES,
     HOST_TELEMETRY_REASONS,
 )
-from .publication_fields import PublicationError, require_id, require_mapping
+from .publication_fields import PublicationError, require_host_name, require_id, require_mapping
 
 HOST_TELEMETRY_PANEL_SCHEMA = "automa_host_boundary_telemetry_panel"
 HOST_TELEMETRY_NORMALIZED_SCHEMA = "automa_host_boundary_telemetry_normalized"
@@ -261,10 +260,7 @@ def _checked_now(now_ms: int) -> None:
 def _checked_host_name(host_name: str | None) -> str | None:
     if host_name is None:
         return None
-    try:
-        return require_ascii_id(host_name, field_name="host_name")
-    except ValueError as exc:
-        raise ValueError("host_name must be a valid identity") from exc
+    return require_host_name(host_name)
 
 
 def _telemetry_mapping(record: object) -> dict[str, object]:

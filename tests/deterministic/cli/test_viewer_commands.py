@@ -265,6 +265,22 @@ class ViewerCommandTests(unittest.TestCase):
                               upload_collection, upload_plugin):
                 operation.assert_not_called()
 
+
+    def test_rejected_file_upload_renders_the_sent_filename_from_structured_recovery(self):
+        from cli.automa_cli.plugins.catalog.models import UploadResult, Receipt, Recovery
+        def rejected(**kwargs):
+            return UploadResult("car", None, "proposal", "demo", Receipt(
+                ok=False, answered=True, status="failed", error="invalid source", body={},
+            ), None, Recovery(kind="rejected", file=kwargs["file"]))
+        with mock.patch.object(viewer_commands, "upload_plugin", side_effect=rejected):
+            code, result = self.post("/api/plugins/upload", {
+                "host_name": "car", "name": "proposal/demo", "entrypoint": "demo:Demo",
+                "filename": "demo.py", "source_base64": "cGFzcw==",
+            })
+        self.assertEqual((code, result["ok"]), (400, False))
+        self.assertIn("Next: Fix demo.py, then upload it again.", result["text"])
+        self.assertEqual(result["upload"]["error"], "invalid source")
+
     def test_a_null_or_false_selector_does_not_conflict_with_the_one_given(self) -> None:
         with (mock.patch.object(viewer_commands, "disarm_collection", wraps=viewer_commands.disarm_collection) as disarm,
               mock.patch.object(viewer_commands, "arm_preset", wraps=viewer_commands.arm_preset) as arm):

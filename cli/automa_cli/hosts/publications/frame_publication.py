@@ -8,13 +8,12 @@ from __future__ import annotations
 
 from functools import partial
 
-from autonomy.decision_cycle.action_identifiers import require_ascii_id
 from autonomy.decision_cycle.activation import activation_presets
 from autonomy.decision_cycle.perception.interface import PerceptionText
 from autonomy.decision_cycle.timing import step_timing
 from autonomy.runtime.frame_loop import FRAME_PUBLICATION_SCHEMA
 from autonomy.runtime.report import HostReport, diagnostic_ceiling
-from .publication_fields import PublicationError, require_id, require_mapping
+from .publication_fields import PublicationError, require_host_name, require_id, require_mapping
 
 
 class FramePublicationError(PublicationError):
@@ -62,10 +61,7 @@ def _publication_object(publication: object) -> dict[str, object]:
 
 
 def _host_report(publication: dict[str, object], host_name: str) -> HostReport:
-    try:
-        host_name = require_ascii_id(host_name, field_name="host_name")
-    except ValueError as exc:
-        raise ValueError("host_name must be a valid identity") from exc
+    host_name = require_host_name(host_name)
     try:
         report = HostReport.from_dict(publication.get("report"))
     except (TypeError, ValueError) as exc:

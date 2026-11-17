@@ -48,48 +48,20 @@ from .session import (
     normalize_passive_receipt_fingerprint, compare_passive_receipt_fingerprints,
     passive_receipt_environment, build_chase_session_fingerprint,
 )
+from .state import nested_get, play_sidebar_values
 from .steering import chase_steering
-
-
-def _nested_get(record: dict[str, object], path: tuple[str, ...]) -> object:
-    value: object = record
-    for key in path:
-        if not isinstance(value, dict):
-            return None
-        value = value.get(key)
-    return value
 
 
 def _debug_chaser_action_sources(debug: dict[str, object]) -> dict[str, object]:
     return {
-        "actions.chaserInput.source": _nested_get(debug, ("actions", "chaserInput", "source")),
-        "actions.chaserAction.source": _nested_get(debug, ("actions", "chaserAction", "source")),
-        "actors.chaser.action.source": _nested_get(debug, ("actors", "chaser", "action", "source")),
+        "actions.chaserInput.source": nested_get(debug, ("actions", "chaserInput", "source")),
+        "actions.chaserAction.source": nested_get(debug, ("actions", "chaserAction", "source")),
+        "actors.chaser.action.source": nested_get(debug, ("actors", "chaser", "action", "source")),
     }
 
 
 def _debug_has_ws_chaser_source(debug: dict[str, object]) -> bool:
     return any(value == "ws" for value in _debug_chaser_action_sources(debug).values())
-
-
-def _play_sidebar_values(state: dict[str, object]) -> dict[str, object]:
-    values: dict[str, object] = {}
-    sections = state.get("playSidebarSections")
-    if not isinstance(sections, list):
-        return values
-    for section in sections:
-        if not isinstance(section, dict):
-            continue
-        rows = section.get("rows")
-        if not isinstance(rows, list):
-            continue
-        for row in rows:
-            if not isinstance(row, dict):
-                continue
-            row_id = row.get("id")
-            if isinstance(row_id, str) and "value" in row:
-                values[row_id] = row.get("value")
-    return values
 
 
 class ChaseSimCar(CarInterface):
@@ -261,7 +233,7 @@ class ChaseSimCar(CarInterface):
             latest = debug
             try:
                 state = self.client.get_state(timeout_s=min(1.0, max(0.1, deadline - time.monotonic())))
-                latest_sidebar_source = _play_sidebar_values(state).get("chaser-control-source")
+                latest_sidebar_source = play_sidebar_values(state).get("chaser-control-source")
             except MetricsUiWebSocketError:
                 latest_sidebar_source = None
             frame_index = debug.get("frameIndex")

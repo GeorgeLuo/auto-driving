@@ -230,19 +230,9 @@ def _read_appended_entries(path: Path) -> list[object]:
 
 
 def recording_entries(root: Path, manifest: Mapping[str, object]) -> list[object]:
-    """Frame entries for a manifest header, in record order.
+    """Committed entries of an append-only run recording, in record order."""
 
-    ``entries`` names an append-only file of one JSON object per line. A line
-    without a terminating newline was never committed. Otherwise ``frames`` is
-    the inline list.
-    """
-
-    if RECORDING_ENTRIES_FIELD in manifest:
-        return _read_appended_entries(_entries_path(root, manifest[RECORDING_ENTRIES_FIELD]))
-    frames = manifest.get("frames")
-    if not isinstance(frames, list):
-        raise ValueError("frames must be a list")
-    return list(frames)
+    return _read_appended_entries(_entries_path(root, manifest.get(RECORDING_ENTRIES_FIELD)))
 
 
 def uploaded_sources(steps: Mapping[str, object]) -> set[str]:

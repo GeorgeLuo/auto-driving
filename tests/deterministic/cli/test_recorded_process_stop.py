@@ -19,6 +19,9 @@ from cli.automa_cli.hosts.local import (
     supervisor_command_matches,
 )
 from cli.automa_cli.hosts.local_worker import BOOT
+from cli.automa_cli.hosts.runs.process import automation_command_matches_host
+from cli.automa_cli.hosts.runs.models import WORKER_MODULE
+from cli.automa_cli.shared.io.processes import command_tokens, command_option_matches
 from cli.automa_cli.hosts.staging import automation_dir
 from cli.automa_cli.simulators.process import simulator_command_matches, stop_simulator
 from cli.automa_cli.simulators.store import SIMULATOR_SCHEMA, simulator_dir, write_simulator_record
@@ -60,6 +63,25 @@ class RecordedProcessStopTests(unittest.TestCase):
         os.environ.pop("AUTOMA_HEADLESS_SIM_COMMAND", None)
         self.signals: list[tuple[int, signal.Signals]] = []
         self.groups: list[tuple[int, signal.Signals]] = []
+
+
+    def test_shared_command_parser_preserves_quotes_exact_options_and_invalid_input(self):
+        for command in ("", "   ", "python --name 'unterminated"):
+            with self.subTest(command=command):
+                self.assertIsNone(command_tokens(command))
+        for command in ("python --name 'car with spaces'", "python '--name=car with spaces'"):
+            tokens = command_tokens(command)
+            self.assertTrue(command_option_matches(tokens, "--name", "car with spaces"))
+            self.assertFalse(command_option_matches(tokens, "--name", "car"))
+        for command in ("python --names car", "python --name car-2", "python --name", "python --name=car-2"):
+            self.assertFalse(command_option_matches(command_tokens(command), "--name", "car"))
+
+    def test_worker_recognizer_uses_shared_parsing_and_keeps_module_and_name_policies(self):
+        for flag in ("--name 'car with spaces'", "'--name=car with spaces'"):
+            self.assertTrue(automation_command_matches_host(f"python -m {WORKER_MODULE} {flag}", " car with spaces "))
+        for command in ("", "python --name 'car", f"python -m {WORKER_MODULE} --name car-2",
+                        f"python -m={WORKER_MODULE} --name car", "python -m other --name car"):
+            self.assertFalse(automation_command_matches_host(command, "car"))
 
     def test_supervisor_command_is_the_local_worker_and_the_exact_host_name(self) -> None:
         self.assertTrue(supervisor_command_matches(_supervisor(), HOST))

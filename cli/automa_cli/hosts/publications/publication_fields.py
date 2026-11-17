@@ -7,7 +7,7 @@ reason.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from typing import Callable
 
 from autonomy.decision_cycle.action_identifiers import require_ascii_id
 
@@ -20,7 +20,7 @@ class PublicationError(ValueError):
         reason: str,
         message: str,
         *,
-        details: dict[str, Any] | None = None,
+        details: dict[str, object] | None = None,
     ) -> None:
         super().__init__(message)
         self.reason = reason
@@ -31,7 +31,7 @@ class PublicationError(ValueError):
 Invalid = Callable[[str, str], PublicationError]
 
 
-def require_mapping(value: object, *, field: str, invalid: Invalid) -> dict[str, Any]:
+def require_mapping(value: object, *, field: str, invalid: Invalid) -> dict[str, object]:
     if not isinstance(value, dict):
         raise invalid(f"{field} must be an object.", field)
     return value
@@ -42,3 +42,11 @@ def require_id(value: object, *, field: str, invalid: Invalid) -> str:
         return require_ascii_id(value, field_name=field)
     except ValueError as exc:
         raise invalid(f"{field} is not a valid identity.", field) from exc
+
+
+def require_host_name(host_name: str) -> str:
+    """Validate a requested host identity with the shared caller-facing error."""
+    try:
+        return require_ascii_id(host_name, field_name="host_name")
+    except ValueError as exc:
+        raise ValueError("host_name must be a valid identity") from exc

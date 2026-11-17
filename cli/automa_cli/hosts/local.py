@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import json
 import os
-import shlex
 import signal
 import subprocess
 import sys
@@ -22,7 +21,7 @@ from implementations.runtime.chase_sim.service import HOST_RECORD_SCHEMA
 from .errors import RuntimeHostError
 from ..releases.store import release_code_dir, release_manifest, release_summary
 from ..shared.io.log_files import read_log_tail
-from ..shared.io.processes import pid_alive, reap_on_exit
+from ..shared.io.processes import command_tokens, command_option_matches, pid_alive, reap_on_exit
 from ..shared.paths import ROOT, display_path
 from ..shared.text import automa_command, format_log_tail
 from .runs.process import process_command
@@ -136,21 +135,6 @@ def ensure_chase_host(host_name: str, *, timeout_s: float = HOST_START_TIMEOUT_S
         raise
 
 
-def _command_tokens(command: str) -> list[str] | None:
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return None
-    return tokens or None
-
-
-def _option_is(tokens: list[str], flag: str, value: str) -> bool:
-    if f"{flag}={value}" in tokens:
-        return True
-    pair = [flag, value]
-    return any(tokens[index:index + 2] == pair for index in range(len(tokens) - 1))
-
-
 def supervisor_command_matches(command: str, host_name: str) -> bool:
     """Pure check: command is the local Chase supervisor for exactly ``host_name``.
 
@@ -158,7 +142,7 @@ def supervisor_command_matches(command: str, host_name: str) -> bool:
     The host name is the next token, matched exactly.
     """
 
-    tokens = _command_tokens(command)
+    tokens = command_tokens(command)
     if tokens is None or not host_name:
         return False
     return any(
@@ -173,10 +157,10 @@ def chase_host_command_matches(command: str, host_name: str) -> bool:
     The service is the supervisor's ``-c`` boot plus an exact ``--host-name``.
     """
 
-    tokens = _command_tokens(command)
+    tokens = command_tokens(command)
     if tokens is None or not host_name:
         return False
-    return any(_CHASE_SERVICE in token for token in tokens) and _option_is(tokens, "--host-name", host_name)
+    return any(_CHASE_SERVICE in token for token in tokens) and command_option_matches(tokens, "--host-name", host_name)
 
 
 def _command_allows(pid: int, matches: Callable[[str, str], bool], host_name: str) -> bool:

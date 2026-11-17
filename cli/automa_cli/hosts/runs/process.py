@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import shlex
 import signal
 import subprocess
 import sys
@@ -14,7 +13,7 @@ from typing import Literal
 
 from autonomy.runtime.session import RunConfiguration
 
-from ...shared.io.processes import pid_alive, reap_on_exit
+from ...shared.io.processes import command_tokens, command_option_matches, pid_alive, reap_on_exit
 from ...shared.paths import ROOT
 from .lifecycle import keep
 from .models import WORKER_MODULE
@@ -45,10 +44,7 @@ def automation_command_matches_host(command: str, host_name: str) -> bool:
     if not host_name or not str(host_name).strip():
         return False
     host_key = str(host_name).strip()
-    try:
-        tokens = shlex.split(command)
-    except ValueError:
-        return False
+    tokens = command_tokens(command)
     if not tokens:
         return False
     if not any(
@@ -56,14 +52,7 @@ def automation_command_matches_host(command: str, host_name: str) -> bool:
         for index in range(len(tokens) - 1)
     ):
         return False
-    for index, token in enumerate(tokens):
-        if token == "--name":
-            if index + 1 < len(tokens) and tokens[index + 1] == host_key:
-                return True
-        elif token.startswith("--name="):
-            if token[len("--name=") :] == host_key:
-                return True
-    return False
+    return command_option_matches(tokens, "--name", host_key)
 
 
 def process_command(pid: int) -> str | None:

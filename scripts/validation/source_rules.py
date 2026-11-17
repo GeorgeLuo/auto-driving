@@ -26,6 +26,22 @@ RECOVERED_QUESTION = (
     "Was this value typed before it was stored in a dict or encoded? "
     "Could it travel typed instead of being checked or parsed again?"
 )
+FIELD_RULES = "autonomy/fields.py"
+FIELD_QUESTIONS = {
+    "inline-field-rule": (
+        "Does autonomy.fields already state this rule, such as require_safe_int, require_number, require_text, "
+        "or require_ascii_id? Using it keeps the rule and its FieldError the same in every document."
+    ),
+    "omitted-key": (
+        "Is this key left out when its value is None or empty? Documents write null instead, so a reader can "
+        "require every key. Keep the omission only for another program's shape."
+    ),
+    "optional-read": (
+        "Does from_dict read this key as optional? Require it with autonomy.fields; a document writes null "
+        "rather than leaving a key out."
+    ),
+}
+NUMBERS = frozenset({"int", "float"})
 # Checking a value read from a dict against these validates data; another class means it was typed before.
 SHAPES = frozenset({*vars(builtins), *dir(collections.abc), *dir(typing), *dir(numbers)})
 FUNCTIONS = (ast.FunctionDef, ast.AsyncFunctionDef)
@@ -83,13 +99,16 @@ def recovered_types(tree: Path, paths: list[str]) -> list[Finding]:
     ``assert`` on the result of ``from_dict``.
     """
 
-    found = []
-    for path, source in _sources(tree, paths).items():
-        if classify_source(path, source) != "production":
-            continue
-        found += [finding("source-rules", "recovered-type", location(path, node.lineno, node.end_lineno), RECOVERED_QUESTION)
-                  for nodes in _scopes(_parse(source)) for node in _recovering(nodes)]
+    found = [finding("source-rules", "recovered-type", location(path, node.lineno, node.end_lineno), RECOVERED_QUESTION)
+             for path, parsed in _production_trees(tree, paths)
+             for nodes in _scopes(parsed) for node in _recovering(nodes)]
     return sorted(found, key=lambda item: (item["location"]["path"], item["location"]["line"]))
+
+
+def _production_trees(tree: Path, paths: list[str]) -> Iterator[tuple[str, ast.AST]]:
+    for path, source in _sources(tree, paths).items():
+        if classify_source(path, source) == "production":
+            yield path, _parse(source)
 
 
 def _recovering(nodes: list[ast.AST]) -> Iterator[ast.AST]:
@@ -179,6 +198,120 @@ def _owned(node: ast.AST) -> Iterator[ast.AST]:
         yield child
         if not isinstance(child, FUNCTIONS):
             yield from _owned(child)
+
+
+def field_rules(tree: Path, paths: list[str]) -> list[Finding]:
+    """Ask where production code decides a field rule that ``autonomy/fields.py`` owns.
+
+    Three shapes: an inline check for a non-bool int, a nonempty string, or a
+    finite number; a key left out of a dict when its value is None or empty;
+    and a ``from_dict`` that reads a key with ``.get()``. One question per rule
+    and line.
+    """
+
+    found = []
+    for path, parsed in _production_trees(tree, paths):
+        if path == FIELD_RULES:
+            continue
+        first: dict[tuple[str, int], ast.AST] = {}
+        for rule, node in _field_rule_nodes(parsed):
+            first.setdefault((rule, node.lineno), node)
+        found += [finding("source-rules", rule, location(path, line, getattr(node, "end_lineno", None)), FIELD_QUESTIONS[rule])
+                  for (rule, line), node in first.items()]
+    return sorted(found, key=lambda item: (item["location"]["path"], item["location"]["line"], item["rule"]))
+
+
+def _field_rule_nodes(parsed: ast.AST) -> Iterator[tuple[str, ast.AST]]:
+    for node in ast.walk(parsed):
+        if _inline_field_rule(node):
+            yield "inline-field-rule", node
+        if _omits_key(node):
+            yield "omitted-key", node
+        if isinstance(node, FUNCTIONS) and node.name == "from_dict":
+            yield from (("optional-read", read) for read in ast.walk(node) if _called(read, "get")
+                        and read.args and isinstance(read.args[0], ast.Constant) and isinstance(read.args[0].value, str))
+
+
+def _inline_field_rule(node: ast.AST) -> bool:
+    if _called(node, "isfinite"):
+        return True
+    if isinstance(node, ast.Compare):
+        return bool(_type_compared(node) & NUMBERS)
+    if not isinstance(node, ast.BoolOp):
+        return False
+    kinds = {kind for part in node.values for kind in _checked_kinds(part)}
+    return ("bool" in kinds and bool(kinds & NUMBERS)) or ("str" in kinds and any(map(_truth_test, node.values)))
+
+
+def _checked_kinds(node: ast.expr) -> set[str]:
+    """The builtin types ``isinstance(x, ...)`` or ``type(x) is ...`` checks, under any ``not``."""
+
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return _checked_kinds(node.operand)
+    if isinstance(node, ast.Compare):
+        return _type_compared(node)
+    if _isinstance_call(node) and len(node.args) == 2:
+        kinds = node.args[1]
+        return {kind.id for kind in (kinds.elts if isinstance(kinds, ast.Tuple) else [kinds]) if isinstance(kind, ast.Name)}
+    return set()
+
+
+def _type_compared(node: ast.Compare) -> set[str]:
+    left = node.left
+    if not (isinstance(left, ast.Call) and isinstance(left.func, ast.Name) and left.func.id == "type"):
+        return set()
+    if not all(isinstance(op, (ast.Is, ast.IsNot)) for op in node.ops):
+        return set()
+    return {kind.id for kind in node.comparators if isinstance(kind, ast.Name)}
+
+
+def _truth_test(node: ast.expr) -> bool:
+    """A value used as a condition by itself, such as ``value``, ``not value``, or ``value.strip()``."""
+
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.Not):
+        return _truth_test(node.operand)
+    return isinstance(node, (ast.Name, ast.Attribute, ast.Subscript)) or _called(node, "strip")
+
+
+def _omits_key(node: ast.AST) -> bool:
+    if isinstance(node, ast.If):
+        tested = _present_value(node.test)
+        return not node.orelse and tested is not None and all(_sets_named_key(item, tested) for item in node.body)
+    if isinstance(node, ast.DictComp):
+        return any(_compares_to_none(condition) for generator in node.generators for condition in generator.ifs)
+    return isinstance(node, ast.Dict) and any(
+        key is None and isinstance(value, ast.IfExp) for key, value in zip(node.keys, node.values, strict=True))
+
+
+def _present_value(test: ast.expr) -> str | None:
+    """The value ``value is not None`` or a bare ``value`` tests, dumped for comparison; None for other tests."""
+
+    if isinstance(test, ast.Compare) and isinstance(test.ops[0], ast.IsNot) and _compares_to_none(test):
+        test = test.left
+    return ast.dump(test) if isinstance(test, (ast.Name, ast.Attribute)) else None
+
+
+def _compares_to_none(node: ast.expr) -> bool:
+    if not isinstance(node, ast.Compare):
+        return False
+    constants = [item for comparator in node.comparators
+                 for item in (comparator.elts if isinstance(comparator, ast.Tuple) else [comparator])]
+    return any(isinstance(item, ast.Constant) and item.value is None for item in constants)
+
+
+def _sets_named_key(statement: ast.stmt, tested: str) -> bool:
+    """Writes the tested value under a named key; a flag that only chooses whether to add a key does not count."""
+
+    if isinstance(statement, ast.Assign) and len(statement.targets) == 1:
+        target, written = statement.targets[0], statement.value
+        if not (isinstance(target, ast.Subscript) and isinstance(target.slice, ast.Constant)
+                and isinstance(target.slice.value, str)):
+            return False
+    elif isinstance(statement, ast.Expr) and _called(statement.value, "update"):
+        written = statement.value
+    else:
+        return False
+    return any(ast.dump(node) == tested for node in ast.walk(written))
 
 
 def identical_copies(context: Context, roots: tuple[str, ...]) -> list[Finding]:

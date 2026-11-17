@@ -12,9 +12,7 @@ import math
 from copy import deepcopy
 from functools import partial
 
-from autonomy.decision_cycle.action_identifiers import (
-    require_safe_int,
-)
+from autonomy.fields import require_safe_int
 from autonomy.runtime.report import HostReport
 from autonomy.runtime.routes import TELEMETRY_SCHEMA
 from implementations.runtime.picar.host_telemetry import (

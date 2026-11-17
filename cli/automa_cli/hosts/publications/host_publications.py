@@ -62,10 +62,10 @@ def _json_object(body: bytes, url: str, status_code: int) -> dict[str, object]:
 
 
 def _get_json(base_url: str, path: str, *, timeout_s: float) -> dict[str, object]:
-    """Read a JSON object; an HTTP error's JSON body is the answer."""
+    """Read a JSON object as the host wrote it; an HTTP error's JSON body is the answer."""
     url = f"{base_url.rstrip('/')}{path}"
     status_code, _headers, body = http_json.request(url, timeout_s=timeout_s)
-    return _json_object(body, url, status_code)
+    return http_json.json_object(body, url, status_code)
 
 
 def _get_transaction(base_url: str, path: str, *, timeout_s: float,

@@ -46,6 +46,14 @@ Confirm changes adhere to the priorities defined in this document.
    run, report why. Review questions are observations, not a merge gate; a passing check
    does not mean they were reviewed.
 
+A document the code writes and reads back follows `autonomy/fields.py`: every
+key is written and `None` is written as `null`, identifiers are rejected rather
+than trimmed, and a bad field raises `FieldError` naming it. A class with
+`from_dict` and `to_dict` registers samples in
+`tests/deterministic/autonomy/test_documents.py`, which checks it against those
+rules. Messages from another program keep that program's shape; parse them once
+into a typed value.
+
 Do not create extra planning documents, alternate implementations, or process
 artifacts unless the user explicitly asks for them or the repository requires
 one for the requested deliverable.

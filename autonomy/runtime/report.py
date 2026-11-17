@@ -18,13 +18,22 @@ duration. A report from a host that does not record it has no such key.
 
 from __future__ import annotations
 
-import math
 import time
 from dataclasses import dataclass
 from typing import Any, Mapping
 
-from autonomy.decision_cycle.action_identifiers import require_ascii_id, require_safe_int
 from autonomy.decision_cycle.cycle import CYCLE_RECORD_KEYS, DecisionCycleResult
+from autonomy.fields import (
+    FieldError,
+    require_ascii_id,
+    require_choice,
+    require_keys,
+    require_nested,
+    require_number,
+    require_safe_int,
+    require_schema,
+    require_text,
+)
 from autonomy.runtime.execution import require_mode
 
 REPORT_SCHEMA = "host_report"
@@ -48,16 +57,7 @@ REPORT_EXACT_KEYS = frozenset(
 FRAME_STATUSES = frozenset({"ok", "error"})
 CYCLE_EXACT_KEYS = frozenset(CYCLE_RECORD_KEYS)
 APPLICATION_EXACT_KEYS = frozenset({"applied", "mode", "reason", "steering", "throttle"})
-
-
-def _exact_keys(payload: Mapping[str, Any], expected: frozenset[str], *, field: str) -> None:
-    actual = set(payload)
-    missing = sorted(expected - actual)
-    extra = sorted(actual - expected)
-    if missing or extra:
-        raise ValueError(
-            f"{field} keys must be {sorted(expected)}; missing={missing} extra={extra}"
-        )
+UNIT = (-1.0, 1.0)
 
 
 def _json_copy(value: object, *, field: str) -> Any:
@@ -70,28 +70,17 @@ def _json_copy(value: object, *, field: str) -> Any:
     if type(value) is int:
         return value
     if type(value) is float:
-        if not math.isfinite(value):
-            raise ValueError(f"{field} must be finite")
-        return value
+        return require_number(value, field_name=field)
     if type(value) in (list, tuple):
         return [_json_copy(item, field=field) for item in value]
     if type(value) is dict:
         copied: dict[str, Any] = {}
         for key, item in value.items():
             if type(key) is not str:
-                raise ValueError(f"{field} keys must be strings")
+                raise FieldError(field, "keys must be strings")
             copied[key] = _json_copy(item, field=f"{field}.{key}")
         return copied
-    raise ValueError(f"{field} must be JSON data; got {type(value).__name__}")
-
-
-def _unit(value: object, *, field: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{field} must be a finite number in [-1, 1]")
-    number = float(value)
-    if not math.isfinite(number) or number < -1.0 or number > 1.0:
-        raise ValueError(f"{field} must be a finite number in [-1, 1]")
-    return number
+    raise FieldError(field, f"must be JSON data; got {type(value).__name__}")
 
 
 def _cycle_record(record: object, *, key: str) -> Any:
@@ -100,7 +89,7 @@ def _cycle_record(record: object, *, key: str) -> Any:
     if record is None:
         return None
     if type(record) is not dict:
-        raise ValueError(f"cycle.{key} must be an object or null")
+        raise FieldError(f"cycle.{key}", "must be an object or null")
     return record
 
 
@@ -116,12 +105,11 @@ class ReportApplication:
 
     def __post_init__(self) -> None:
         if type(self.applied) is not bool:
-            raise ValueError("application.applied must be a bool")
+            raise FieldError("applied", "must be a bool")
         object.__setattr__(self, "mode", require_mode(self.mode))
-        if type(self.reason) is not str:
-            raise ValueError("application.reason must be a string")
-        object.__setattr__(self, "steering", _unit(self.steering, field="application.steering"))
-        object.__setattr__(self, "throttle", _unit(self.throttle, field="application.throttle"))
+        object.__setattr__(self, "reason", require_text(self.reason, field_name="reason"))
+        object.__setattr__(self, "steering", require_number(self.steering, field_name="steering", bounds=UNIT))
+        object.__setattr__(self, "throttle", require_number(self.throttle, field_name="throttle", bounds=UNIT))
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -134,15 +122,13 @@ class ReportApplication:
 
     @classmethod
     def from_dict(cls, payload: object) -> "ReportApplication":
-        if not isinstance(payload, Mapping):
-            raise ValueError("application must be an object")
-        _exact_keys(payload, APPLICATION_EXACT_KEYS, field="application")
+        document = require_keys(payload, APPLICATION_EXACT_KEYS)
         return cls(
-            applied=payload["applied"],
-            mode=payload["mode"],
-            reason=payload["reason"],
-            steering=payload["steering"],
-            throttle=payload["throttle"],
+            applied=document["applied"],
+            mode=document["mode"],
+            reason=document["reason"],
+            steering=document["steering"],
+            throttle=document["throttle"],
         )
 
 
@@ -165,8 +151,7 @@ class HostReport:
     schema: str = REPORT_SCHEMA
 
     def __post_init__(self) -> None:
-        if self.schema != REPORT_SCHEMA:
-            raise ValueError(f"schema must be {REPORT_SCHEMA!r}")
+        require_choice(self.schema, (REPORT_SCHEMA,), field_name="schema")
         object.__setattr__(
             self, "host_name", require_ascii_id(self.host_name, field_name="host_name")
         )
@@ -186,9 +171,7 @@ class HostReport:
             "published_at_ms",
             require_safe_int(self.published_at_ms, field_name="published_at_ms"),
         )
-        if not isinstance(self.cycle, Mapping):
-            raise ValueError("cycle must be an object")
-        _exact_keys(self.cycle, CYCLE_EXACT_KEYS, field="cycle")
+        require_keys(self.cycle, CYCLE_EXACT_KEYS, field_name="cycle")
         cycle = {
             key: _cycle_record(
                 _json_copy(self.cycle[key], field=f"cycle.{key}"),
@@ -200,18 +183,17 @@ class HostReport:
         if not isinstance(self.application, ReportApplication):
             raise TypeError("application must be ReportApplication")
         if not isinstance(self.values, Mapping):
-            raise ValueError("values must be an object")
+            raise FieldError("values", "must be an object")
         values = _json_copy(dict(self.values), field="values")
         if type(values) is not dict:
-            raise ValueError("values must be an object")
+            raise FieldError("values", "must be an object")
         object.__setattr__(self, "values", values)
-        if self.status not in FRAME_STATUSES:
-            raise ValueError("status must be 'ok' or 'error'")
+        require_choice(self.status, FRAME_STATUSES, field_name="status")
         if self.status == "ok":
             if self.error is not None:
-                raise ValueError("error must be null when status is ok")
-        elif type(self.error) is not str or not self.error:
-            raise ValueError("error must be a nonempty string when status is error")
+                raise FieldError("error", "must be null when status is ok")
+        else:
+            require_text(self.error, field_name="error")
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -232,25 +214,21 @@ class HostReport:
 
     @classmethod
     def from_dict(cls, payload: object) -> "HostReport":
-        if not isinstance(payload, Mapping):
-            raise ValueError("report must be an object")
-        if payload.get("schema") != REPORT_SCHEMA:
-            raise ValueError(f"report.schema must be {REPORT_SCHEMA!r}")
-        _exact_keys(payload, REPORT_EXACT_KEYS, field="report")
+        document = require_schema(payload, REPORT_SCHEMA, REPORT_EXACT_KEYS)
         return cls(
-            schema=payload["schema"],
-            host_name=payload["host_name"],
-            run_id=payload["run_id"],
-            generation_id=payload["generation_id"],
-            frame_id=payload["frame_id"],
-            frame_index=payload["frame_index"],
-            timestamp_ms=payload["timestamp_ms"],
-            published_at_ms=payload["published_at_ms"],
-            cycle=payload["cycle"],
-            application=ReportApplication.from_dict(payload["application"]),
-            values=payload["values"],
-            status=payload["status"],
-            error=payload["error"],
+            schema=document["schema"],
+            host_name=document["host_name"],
+            run_id=document["run_id"],
+            generation_id=document["generation_id"],
+            frame_id=document["frame_id"],
+            frame_index=document["frame_index"],
+            timestamp_ms=document["timestamp_ms"],
+            published_at_ms=document["published_at_ms"],
+            cycle=document["cycle"],
+            application=require_nested(ReportApplication.from_dict, document["application"], field_name="application"),
+            values=document["values"],
+            status=document["status"],
+            error=document["error"],
         )
 
 

@@ -115,6 +115,7 @@ class ViewerCycleAgreementTests(unittest.TestCase):
             view.publish(
                 publication=FramePublication.from_dict({
                     "schema": FRAME_PUBLICATION_SCHEMA,
+                    "ok": True,
                     "health": "healthy",
                     "read_at_ms": published_at_ms,
                     "result_age_ms": 0,

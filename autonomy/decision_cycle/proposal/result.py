@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from autonomy.decision_cycle.action_identifiers import require_ascii_id
+from autonomy.fields import require_ascii_id
 from autonomy.decision_cycle.errors import CYCLE_ERROR_REASONS
 from autonomy.decision_cycle.proposal.values import ActionProposal
 

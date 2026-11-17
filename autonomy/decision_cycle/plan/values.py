@@ -26,11 +26,8 @@ from autonomy.serialization import (
     deep_freeze,
     frozen_mapping_to_dict,
 )
-from autonomy.decision_cycle.action_identifiers import (
-    plan_id_for,
-    require_ascii_id,
-    require_safe_int,
-)
+from autonomy.decision_cycle.action_identifiers import plan_id_for
+from autonomy.fields import require_ascii_id, require_safe_int
 
 ACTION_PLAN_SCHEMA = "action_plan"
 

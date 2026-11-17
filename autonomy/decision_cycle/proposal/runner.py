@@ -17,9 +17,8 @@ from autonomy.decision_cycle.action_identifiers import (
     ActionInputError,
     ActionProposalMatrixError,
     proposal_id_for,
-    require_ascii_id,
-    require_safe_int,
 )
+from autonomy.fields import require_ascii_id, require_safe_int
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.proposal.plugin import ProposalPlugin
 from autonomy.decision_cycle.proposal.result import ProposalResult

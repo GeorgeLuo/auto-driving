@@ -109,6 +109,12 @@ summary without failing the command. They include:
   (`from_dict(x.to_dict())`), checks a value read from a dict against a class
   rather than a builtin or a shape such as `Mapping`, or asserts on a
   `from_dict` result. It asks whether the value could have stayed typed.
+- Field rules: production code that checks a non-bool int, a nonempty string,
+  or a finite number itself instead of using `autonomy/fields.py`; leaves a key
+  out of a dict when its value is None or empty; or reads a key with `.get()`
+  in `from_dict`. Documents write every key and `None` as `null`.
+  `tests/deterministic/autonomy/test_documents.py` checks each document class
+  against those rules; a new class with `from_dict` and `to_dict` registers there.
 
 Vulture, related functions, basedpyright, and import-linter read the whole project
 on both sides of a change, so a change answers for what it does to files it did

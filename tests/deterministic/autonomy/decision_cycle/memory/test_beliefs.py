@@ -6,6 +6,7 @@ from dataclasses import FrozenInstanceError
 
 from autonomy.decision_cycle.memory.beliefs import Belief, Check, Trial
 from autonomy.decision_cycle.memory.publication import belief_key, read_belief
+from autonomy.fields import FieldError
 from autonomy.shared_memory import shared_memory_document, shared_memory_from_document
 
 
@@ -90,10 +91,34 @@ class BeliefTests(unittest.TestCase):
         encoded = json.loads(json.dumps(belief.to_dict()))
         self.assertEqual(Belief.from_dict(encoded), belief)
         forged = {**encoded, "confidence": 1.0, "by_method": {}, "corroborated": True}
-        self.assertEqual(Belief.from_dict(forged).to_dict(), belief.to_dict())
+        with self.assertRaises(FieldError) as invalid:
+            Belief.from_dict(forged)
+        self.assertEqual(invalid.exception.field_name, "confidence")
         for value, attribute in ((belief, "value"), (belief.checks[0], "method"), (belief.trials[0], "method")):
             with self.assertRaises(FrozenInstanceError):
                 setattr(value, attribute, None)
+
+    def test_polymorphic_json_payloads_round_trip_without_coercion(self):
+        for payload in (None, True, 1, 1.5, "", "prediction", [], {"row": [12, 13]}):
+            with self.subTest(payload=payload):
+                check = Check(100, "arrival", "support", payload, payload)
+                trial = Trial("trial-1", "arrival", 100, payload, {"frame": "frame-1"})
+                belief = Belief("fixture.row", payload, "fixture", 110, (check,), (trial,), {"samples": 3})
+                for value in (check, trial, belief):
+                    restored = type(value).from_dict(json.loads(json.dumps(value.to_dict())))
+                    self.assertEqual(restored, value)
+
+    def test_seed_fields_cannot_forge_derived_belief_values(self):
+        belief = hypothesis().checked(Check(1, "arrival", "support"), 5)
+        for field, value in (("confidence", 1.0), ("by_method", {"arrival": {"support": True, "contradict": 0}}), ("corroborated", 0)):
+            with self.subTest(field=field), self.assertRaises(FieldError) as invalid:
+                Belief.from_dict({**belief.to_dict(), field: value})
+            self.assertTrue(invalid.exception.field_name.startswith(field))
+        document = belief.to_dict()
+        del document["checks"][0]["method"]
+        with self.assertRaises(FieldError) as invalid:
+            Belief.from_dict(document)
+        self.assertEqual(invalid.exception.field_name, "checks.0.method")
 
     def test_invalid_values_and_bounds_are_rejected(self):
         factories = (

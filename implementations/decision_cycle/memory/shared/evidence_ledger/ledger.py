@@ -13,6 +13,10 @@ from typing import Any
 from autonomy.decision_cycle.memory.evidence import RetainedEvidence
 from autonomy.decision_cycle.memory.interface import LEDGER_HEALTH_VALUES
 from autonomy.serialization import canonical_json_size_bytes
+from autonomy.fields import (
+    FieldError, require_ascii_id, require_choice, require_keys, require_nested,
+    require_safe_int, require_schema, require_text,
+)
 
 LEDGER_SCHEMA = "bounded_evidence_ledger"
 
@@ -41,24 +45,16 @@ class LedgerBounds:
             value = getattr(self, name)
             if value is not None:
                 object.__setattr__(self, name, _require_positive_int(value, field_name=name))
-        if not isinstance(self.eviction_policy, str) or not self.eviction_policy.strip():
-            raise ValueError("eviction_policy must be a non-empty string")
+        require_choice(self.eviction_policy, (DEFAULT_EVICTION_POLICY,), field_name="eviction_policy")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "LedgerBounds":
-        max_age = data.get("max_age_ms")
-        max_property = data.get("max_property_bytes", DEFAULT_MAX_PROPERTY_BYTES)
-        max_serialized = data.get("max_serialized_bytes", DEFAULT_MAX_SERIALIZED_BYTES)
-        return cls(
-            max_records=int(data.get("max_records") or 0),
-            max_age_ms=int(max_age) if max_age is not None else None,
-            eviction_policy=str(data.get("eviction_policy") or DEFAULT_EVICTION_POLICY),
-            max_property_bytes=int(max_property) if max_property is not None else None,
-            max_serialized_bytes=int(max_serialized) if max_serialized is not None else None,
-        )
+        return cls(**require_keys(data, (
+            "max_records", "max_age_ms", "eviction_policy", "max_property_bytes", "max_serialized_bytes",
+        )))
 
 
 def bounds_from_config(config: dict[str, Any]) -> LedgerBounds:
@@ -93,34 +89,27 @@ class EvidenceLedger:
 
     def __post_init__(self) -> None:
         for name in ("memory_id", "epoch_id"):
-            value = getattr(self, name)
-            if not isinstance(value, str) or not value.strip():
-                raise ValueError(f"{name} must be a non-empty string")
-        if self.health not in LEDGER_HEALTH_VALUES:
-            raise ValueError(
-                f"ledger health must be one of {sorted(LEDGER_HEALTH_VALUES)}; got {self.health!r}"
-            )
+            require_ascii_id(getattr(self, name), field_name=name)
+        if self.plugin_id is not None:
+            require_ascii_id(self.plugin_id, field_name="plugin_id")
+        require_choice(self.health, LEDGER_HEALTH_VALUES, field_name="health")
         if not isinstance(self.bounds, LedgerBounds):
-            raise TypeError("ledger bounds must be LedgerBounds")
-        object.__setattr__(
-            self,
-            "created_at_ms",
-            _require_non_negative_int(self.created_at_ms, field_name="created_at_ms"),
-        )
+            raise FieldError("bounds", "must be LedgerBounds")
+        require_safe_int(self.created_at_ms, field_name="created_at_ms")
         records = tuple(self.records)
         if len(records) > self.bounds.max_records:
-            raise ValueError(
+            raise FieldError("records",
                 f"ledger has {len(records)} records but max_records={self.bounds.max_records}"
             )
         record_ids = [record.record_id for record in records]
         if len(record_ids) != len(set(record_ids)):
-            raise ValueError("ledger cannot repeat record ids")
+            raise FieldError("records", "cannot repeat record ids")
         if self.health == "empty" and records:
-            raise ValueError("an empty ledger cannot retain records")
+            raise FieldError("health", "an empty ledger cannot retain records")
         if self.health == "healthy" and not records:
-            raise ValueError("a healthy ledger requires at least one record")
+            raise FieldError("health", "a healthy ledger requires at least one record")
         object.__setattr__(self, "records", records)
-        object.__setattr__(self, "summary", tuple(str(item) for item in self.summary))
+        object.__setattr__(self, "summary", tuple(self.summary))
 
     @property
     def record_count(self) -> int:
@@ -143,27 +132,32 @@ class EvidenceLedger:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "EvidenceLedger":
-        bounds_data = data.get("bounds")
-        if not isinstance(bounds_data, dict):
-            raise ValueError("ledger requires bounds")
-        return cls(
-            memory_id=str(data.get("memory_id") or ""),
-            epoch_id=str(data.get("epoch_id") or ""),
-            health=str(data.get("health") or "empty"),
-            bounds=LedgerBounds.from_dict(bounds_data),
-            created_at_ms=int(data.get("created_at_ms") or 0),
-            records=tuple(
-                RetainedEvidence.from_dict(item)
-                for item in (data.get("records") or ())
-                if isinstance(item, dict)
-            ),
-            summary=tuple(str(item) for item in (data.get("summary") or ())),
-            plugin_id=(
-                str(data["plugin_id"]) if data.get("plugin_id") is not None else None
-            ),
-            metadata=data.get("metadata") or {},
-            schema=str(data.get("schema") or LEDGER_SCHEMA),
+        document = require_schema(data, LEDGER_SCHEMA, (
+            "schema", "memory_id", "epoch_id", "health", "bounds", "created_at_ms",
+            "record_count", "records", "summary", "plugin_id", "metadata",
+        ))
+        records = document["records"]
+        if not isinstance(records, (list, tuple)):
+            raise FieldError("records", "must be an array")
+        summary = document["summary"]
+        if not isinstance(summary, (list, tuple)):
+            raise FieldError("summary", "must be an array")
+        for index, item in enumerate(summary):
+            require_text(item, field_name=f"summary.{index}")
+        if not isinstance(document["metadata"], dict):
+            raise FieldError("metadata", "must be an object")
+        ledger = cls(
+            memory_id=document["memory_id"], epoch_id=document["epoch_id"], health=document["health"],
+            bounds=require_nested(LedgerBounds.from_dict, document["bounds"], field_name="bounds"),
+            created_at_ms=document["created_at_ms"],
+            records=tuple(require_nested(RetainedEvidence.from_dict, item, field_name=f"records.{index}")
+                          for index, item in enumerate(records)),
+            summary=document["summary"], plugin_id=document["plugin_id"],
+            metadata=document["metadata"], schema=document["schema"],
         )
+        if require_safe_int(document["record_count"], field_name="record_count") != ledger.record_count:
+            raise FieldError("record_count", "must agree with records")
+        return ledger
 
 
 def empty_ledger(
@@ -197,18 +191,8 @@ def serialized_ledger_bytes(ledger: EvidenceLedger) -> int:
     return canonical_json_size_bytes(ledger.to_dict())
 
 
-def _require_non_negative_int(value: Any, *, field_name: str) -> int:
-    try:
-        normalized = int(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"{field_name} must be an integer") from exc
-    if normalized < 0:
-        raise ValueError(f"{field_name} must be >= 0")
-    return normalized
-
-
 def _require_positive_int(value: Any, *, field_name: str) -> int:
-    normalized = _require_non_negative_int(value, field_name=field_name)
-    if normalized <= 0:
-        raise ValueError(f"{field_name} must be > 0")
+    normalized = require_safe_int(value, field_name=field_name)
+    if normalized == 0:
+        raise FieldError(field_name, "must be > 0")
     return normalized

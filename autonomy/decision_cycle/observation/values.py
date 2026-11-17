@@ -39,9 +39,6 @@ class Observation:
             value = getattr(self, name)
             if value is not None:
                 require_ascii_id(value, field_name=name)
-        for name in ("sensor_frame", "metadata"):
-            if not isinstance(getattr(self, name), dict):
-                raise FieldError(name, "must be an object")
         for name, item_type in (("things", PerceivedThing), ("signals", PerceptionSignal)):
             values = getattr(self, name)
             if not isinstance(values, (list, tuple)):
@@ -50,10 +47,6 @@ class Observation:
                 if not isinstance(value, item_type):
                     raise FieldError(f"{name}.{index}", f"must be {item_type.__name__}")
             object.__setattr__(self, name, tuple(values))
-        if not isinstance(self.summary, (list, tuple)):
-            raise FieldError("summary", "must be an array")
-        for index, value in enumerate(self.summary):
-            require_text(value, field_name=f"summary.{index}")
         object.__setattr__(self, "summary", tuple(self.summary))
 
     def to_dict(self) -> dict[str, Any]:
@@ -71,6 +64,14 @@ class Observation:
             "schema", "observation_id", "created_at_ms", "sensor_frame", "perception_schema",
             "perception_plugin_id", "summary", "things", "signals", "metadata",
         ))
+        for name in ("sensor_frame", "metadata"):
+            if not isinstance(document[name], dict):
+                raise FieldError(name, "must be an object")
+        summary = document["summary"]
+        if not isinstance(summary, (list, tuple)):
+            raise FieldError("summary", "must be an array")
+        for index, value in enumerate(summary):
+            require_text(value, field_name=f"summary.{index}")
         parsed = {}
         for name, parse in (("things", PerceivedThing.from_dict), ("signals", PerceptionSignal.from_dict)):
             values = document[name]

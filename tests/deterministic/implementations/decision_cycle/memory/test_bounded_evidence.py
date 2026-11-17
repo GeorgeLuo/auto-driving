@@ -6,7 +6,7 @@ from __future__ import annotations
 import unittest
 from copy import deepcopy
 from dataclasses import replace
-from autonomy.fields import FieldError
+from autonomy.fields import FieldError, require_ascii_id
 from autonomy.serialization import frozen_mapping_to_dict
 
 from autonomy.decision_cycle.context import DecisionFrameContext
@@ -117,6 +117,7 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         self.assertEqual(thing.origin.observation_id, "obs_1")
         self.assertEqual(thing.origin.frame_id, "frame_1")
         self.assertEqual(thing.origin.source_plugin_id, "floor_plane")
+        self.assertIs(thing.location, observation.things[0].location)
         self.assertEqual(thing.location.zone, "left")
 
     def test_recurring_evidence_updates_same_slot_without_identity_claim(self) -> None:
@@ -199,6 +200,18 @@ class BoundedEvidenceLedgerTests(unittest.TestCase):
         # prior evidence must not reappear after reset
         after = ledger.update(DecisionFrameContext("f2", 2, 200), None)
         self.assertEqual(after.health, "empty")
+
+    def test_long_namespaced_ids_fit_the_field_standard(self) -> None:
+        observed_id = "x" * 64
+        plugin_id = "p" * 64
+        first = namespaced_record_id("thing", observed_id, plugin_id)
+        self.assertEqual(require_ascii_id(first, field_name="record_id"), first)
+        self.assertEqual(namespaced_record_id("thing", observed_id, plugin_id), first)
+        self.assertNotEqual(namespaced_record_id("thing", observed_id, plugin_id[:-1]), first)
+        state = _ledger().update(_ctx("f1", 1, 100), _observation(
+            "o1", created_at_ms=90, things=(_thing(observed_id, source_plugin_id=plugin_id),),
+        ))
+        self.assertEqual(state.records[0].record_id, first)
 
     def test_record_ids_keep_plugins_with_one_local_id_apart(self) -> None:
         self.assertEqual(namespaced_record_id("thing", "shared", "plugin:a"), "thing:1:8:plugin:a:6:shared")

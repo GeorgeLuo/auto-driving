@@ -11,7 +11,6 @@ from autonomy.runtime.report import report_from_host_result
 from implementations.runtime.picar.control import DonkeyControlTarget
 from autonomy.runtime.cycle_host import AutonomyCycleHost
 from autonomy.decision_cycle.memory.beliefs import Belief, Check
-from autonomy.decision_cycle.memory.interface import MemoryReport
 from autonomy.decision_cycle.memory.plugin import MemoryPluginContract
 from autonomy.decision_cycle.memory.publication import belief_key, read_belief
 from autonomy.decision_cycle.memory.runner import MemoryRunner
@@ -139,15 +138,12 @@ class BeliefRunnerTests(unittest.TestCase):
         second = runner.update(_context(shared, 20))
         self.assertAlmostEqual(first["beliefs"]["learner.row"]["confidence"], 2 / 3)
         self.assertAlmostEqual(second["beliefs"]["learner.row"]["confidence"], 3 / 4)
-        decoded = MemoryReport.from_dict(json.loads(json.dumps(first)))
-        self.assertEqual(decoded.to_dict(), first)
+        self.assertEqual(json.loads(json.dumps(first)), first)
         self.assertEqual(set(first["beliefs"]["learner.row"]), {
             "value", "source_plugin_id", "updated_at_ms", "confidence", "by_method",
             "corroborated", "open_trials",
         })
         self.assertIn("checks", runner.status()["beliefs"]["learner.row"])
-        self.assertIsNot(MemoryReport.from_dict(first).beliefs["learner.row"], first["beliefs"]["learner.row"])
-        self.assertIsNot(decoded.to_dict()["beliefs"]["learner.row"], decoded.beliefs["learner.row"])
         self.assertAlmostEqual(runner.status()["beliefs"]["learner.row"]["confidence"], 3 / 4)
 
     def test_reset_and_deselection_remove_only_declared_beliefs_even_on_reset_failure(self):

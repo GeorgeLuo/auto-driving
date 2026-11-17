@@ -421,7 +421,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                     "source": thing.properties.get("source"),
                     "bbox_xyxy_norm": thing.location.bbox_xyxy_norm,
                     "confidence": thing.confidence,
-                    "properties": dict(thing.properties),
+                    "properties": json_safe(thing.properties),
                 }
                 for thing in tracking_candidates
             ],
@@ -821,7 +821,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                 {
                     "thing_id": thing.thing_id,
                     "bbox_xyxy_norm": thing.location.bbox_xyxy_norm,
-                    "properties": dict(thing.properties),
+                    "properties": json_safe(thing.properties),
                 }
                 for thing in tracking_candidates
                 if thing.thing_id.startswith("composite_geometry_")
@@ -831,7 +831,7 @@ class CompositeBoxFusionPlugin(MultiObstructionTracksPlugin):
                     "thing_id": thing.thing_id,
                     "bbox_xyxy_norm": thing.location.bbox_xyxy_norm,
                     "confidence": thing.confidence,
-                    "properties": dict(thing.properties),
+                    "properties": json_safe(thing.properties),
                 }
                 for thing in tracking_candidates
             ],

@@ -17,6 +17,8 @@ reducer uses mutable working data for one update and is then discarded.
 from __future__ import annotations
 
 from dataclasses import replace
+import base64
+import hashlib
 
 from autonomy.decision_cycle.context import DecisionFrameContext
 from autonomy.decision_cycle.observation.values import Observation
@@ -395,7 +397,7 @@ def namespaced_record_id(
     observed_id: str,
     source_plugin_id: str | None,
 ) -> str:
-    """Build an injective plugin-safe ledger key.
+    """Build a plugin-safe ledger key within the field standard's 64 characters.
 
     Formats:
     - absent source: ``{kind}:0:{observed_len}:{observed}``
@@ -404,16 +406,20 @@ def namespaced_record_id(
     Optional presence is encoded explicitly so ``None`` never collides with a
     plugin literally named ``\"unknown\"``. Plugin and observed strings are kept
     exactly as supplied (no strip), so whitespace-distinct IDs remain distinct.
-    Length-prefixed components keep delimiter-containing IDs collision-free.
+    Length-prefixed components keep delimiter-containing IDs distinct. Keys over
+    64 characters use a SHA-256 suffix of that complete key.
     """
 
     observed = str(observed_id)
     if source_plugin_id is None:
-        return f"{kind_prefix}:0:{len(observed)}:{observed}"
-    plugin = str(source_plugin_id)
-    return (
-        f"{kind_prefix}:1:{len(plugin)}:{plugin}:{len(observed)}:{observed}"
-    )
+        record_id = f"{kind_prefix}:0:{len(observed)}:{observed}"
+    else:
+        plugin = str(source_plugin_id)
+        record_id = f"{kind_prefix}:1:{len(plugin)}:{plugin}:{len(observed)}:{observed}"
+    if len(record_id) <= 64:
+        return record_id
+    digest = base64.urlsafe_b64encode(hashlib.sha256(record_id.encode("utf-8")).digest()).decode("ascii").rstrip("=")
+    return f"{kind_prefix}:sha256:{digest}"
 
 
 def location_geometry_signature(
@@ -459,14 +465,7 @@ def payload_equal(left: RetainedEvidence, right: RetainedEvidence) -> bool:
         and left.kind == right.kind
         and left.label == right.label
         and left.confidence == right.confidence
-        and (
-            (left.location is None and right.location is None)
-            or (
-                left.location is not None
-                and right.location is not None
-                and left.location.to_dict() == right.location.to_dict()
-            )
-        )
+        and left.location == right.location
         and json_values_equal(left.properties, right.properties)
     )
 

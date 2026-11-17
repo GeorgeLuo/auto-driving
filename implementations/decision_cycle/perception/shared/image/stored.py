@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import base64
+import binascii
 from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+
+from autonomy.fields import FieldError, require_keys, require_safe_int, require_text
 
 
 @dataclass(eq=False)
@@ -20,7 +23,7 @@ class StoredImage:
     pixels: np.ndarray
 
     def to_dict(self) -> dict[str, Any]:
-        array = np.ascontiguousarray(self.pixels)
+        array = self.pixels
         return {
             "dtype": array.dtype.str,
             "shape": [int(dim) for dim in array.shape],
@@ -29,20 +32,40 @@ class StoredImage:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> StoredImage:
-        if not isinstance(data, dict):
-            raise ValueError("stored image data must be an object")
+        document = require_keys(data, ("dtype", "shape", "base64"))
+        dtype_name = require_text(document["dtype"], field_name="dtype")
         try:
-            dtype = np.dtype(data["dtype"])
-            shape = tuple(int(dim) for dim in data["shape"])
-            raw = base64.b64decode(data["base64"], validate=True)
-        except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError(f"stored image data is invalid: {exc}") from exc
-        if dtype.hasobject or any(dim < 0 for dim in shape):
-            raise ValueError("stored image dtype or shape is invalid")
-        expected = int(dtype.itemsize)
+            dtype = np.dtype(dtype_name)
+        except (TypeError, ValueError) as exc:
+            raise FieldError("dtype", str(exc)) from exc
+        if dtype.hasobject or dtype.itemsize == 0 or dtype.str != dtype_name:
+            raise FieldError("dtype", "must be a canonical, fixed-size, non-object dtype")
+        dimensions = document["shape"]
+        if not isinstance(dimensions, (list, tuple)):
+            raise FieldError("shape", "must be an array")
+        shape = tuple(require_safe_int(dim, field_name=f"shape.{index}") for index, dim in enumerate(dimensions))
+        encoded = document["base64"]
+        if not isinstance(encoded, str):
+            raise FieldError("base64", "must be a string")
+        try:
+            raw = base64.b64decode(encoded, validate=True)
+        except (ValueError, binascii.Error) as exc:
+            raise FieldError("base64", str(exc)) from exc
+        if base64.b64encode(raw).decode("ascii") != encoded:
+            raise FieldError("base64", "must be canonical base64")
+        expected = dtype.itemsize
         for dim in shape:
-            expected *= int(dim)
+            expected *= dim
         if len(raw) != expected:
-            raise ValueError("stored image byte length does not match dtype and shape")
-        pixels = np.array(np.frombuffer(raw, dtype=dtype).reshape(shape), copy=True)
+            raise FieldError("base64", "byte length must match dtype and shape")
+        try:
+            pixels = np.array(np.frombuffer(raw, dtype=dtype).reshape(shape), copy=True)
+        except (ValueError, OverflowError) as exc:
+            raise FieldError("shape", str(exc)) from exc
         return cls(pixels)
+
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, StoredImage):
+            return NotImplemented
+        return (self.pixels.dtype == other.pixels.dtype and self.pixels.shape == other.pixels.shape
+                and self.pixels.tobytes() == other.pixels.tobytes())

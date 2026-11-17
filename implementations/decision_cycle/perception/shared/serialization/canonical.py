@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from typing import Any
 
 import numpy as np
@@ -11,7 +12,7 @@ import numpy as np
 def json_safe(value: Any) -> Any:
     if isinstance(value, np.generic):
         return value.item()
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {str(key): json_safe(item) for key, item in value.items()}
     if isinstance(value, (tuple, list)):
         return [json_safe(item) for item in value]

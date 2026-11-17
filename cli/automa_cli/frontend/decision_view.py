@@ -1,42 +1,30 @@
 """Project retained evidence onto the completed report's exact source image."""
 from __future__ import annotations
 
-import json
-import math
 from typing import Any
 
 from autonomy.decision_cycle.memory.interface import evidence_records
+from autonomy.decision_cycle.memory.evidence import RetainedEvidence
+from autonomy.decision_cycle.observation.values import Observation
+from autonomy.decision_cycle.perception.evidence.values import PerceivedThing, ViewLocation
+from autonomy.runtime.report import HostReport
+from autonomy.fields import require_nested
 
 
-def _json_copy(value: Any) -> Any:
-    return json.loads(json.dumps(value, allow_nan=False))
+def _supported_image_bbox(location: ViewLocation | None) -> bool:
+    """Whether the view supports this validated location's geometry."""
 
-
-def _supported_image_bbox(location: Any) -> bool:
-    """Return whether D2 can render this location without coercion or guessing."""
-
-    if not isinstance(location, dict) or location.get("frame") != "image":
+    if location is None or location.frame != "image" or location.bbox_xyxy_norm is None:
         return False
-    raw = location.get("bbox_xyxy_norm")
-    if not isinstance(raw, list) or len(raw) != 4:
-        return False
-    values: list[float] = []
-    for value in raw:
-        if type(value) not in {int, float} or not math.isfinite(value):
-            return False
-        normalized = float(value)
-        if not 0.0 <= normalized <= 1.0:
-            return False
-        values.append(normalized)
-    x1, y1, x2, y2 = values
+    x1, y1, x2, y2 = location.bbox_xyxy_norm
     return x2 > x1 and y2 > y1
 
 
 def _evidence_projection(
     *,
     frame_id: str,
-    observation: Any,
-    evidence_input: Any,
+    observation: Observation | None,
+    evidence_input: tuple[RetainedEvidence, ...],
 ) -> dict[str, Any]:
     """Project only evidence that is exactly attributable to the current image.
 
@@ -45,48 +33,27 @@ def _evidence_projection(
     origin but never carries renderable geometry.
     """
 
-    raw_records = evidence_input if isinstance(evidence_input, list) else []
-    observation_id = (
-        observation.get("observation_id")
-        if isinstance(observation, dict)
-        else None
-    )
-    observation_things = (
-        observation.get("things")
-        if isinstance(observation, dict)
-        else None
-    )
-    things = observation_things if isinstance(observation_things, list) else []
-    observation_plugin_id = (
-        observation.get("perception_plugin_id")
-        if isinstance(observation, dict)
-        else None
-    )
+    observation_id = None if observation is None else observation.observation_id
+    things = () if observation is None else observation.things
+    observation_plugin_id = None if observation is None else observation.perception_plugin_id
 
     projected: list[dict[str, Any]] = []
-    for record in raw_records:
-        record_id = record.get("record_id") if isinstance(record, dict) else None
-        origin = record.get("origin") if isinstance(record, dict) else None
+    for record in evidence_input:
+        record_id = record.record_id
+        origin = record.origin
         reason = ""
-        matched_thing: dict[str, Any] | None = None
-        if not isinstance(record, dict) or type(record_id) is not str or not record_id:
-            reason = "invalid_record"
-        elif not isinstance(origin, dict):
-            reason = "provenance_unavailable"
-        elif origin.get("frame_id") != frame_id:
+        matched_thing: PerceivedThing | None = None
+        if origin.frame_id != frame_id:
             reason = "source_image_unavailable"
-        elif type(observation_id) is not str or not observation_id:
+        elif observation_id is None:
             reason = "observation_unavailable"
-        elif origin.get("observation_id") != observation_id:
+        elif origin.observation_id != observation_id:
             reason = "observation_mismatch"
-        elif type(origin.get("observed_id")) is not str or not origin.get("observed_id"):
-            reason = "provenance_unavailable"
         else:
             matches = [
                 thing
                 for thing in things
-                if isinstance(thing, dict)
-                and thing.get("thing_id") == origin["observed_id"]
+                if thing.thing_id == origin.observed_id
             ]
             if not matches:
                 reason = "evidence_missing"
@@ -96,32 +63,32 @@ def _evidence_projection(
                 matched_thing = matches[0]
 
         if not reason and matched_thing is not None:
-            source_plugin_id = matched_thing.get("source_plugin_id")
+            source_plugin_id = matched_thing.source_plugin_id
             if source_plugin_id is None:
                 source_plugin_id = observation_plugin_id
             if (
-                origin.get("coordinate_frame") != "image"
-                or origin.get("source_plugin_id") != source_plugin_id
+                origin.coordinate_frame != "image"
+                or origin.source_plugin_id != source_plugin_id
             ):
                 reason = "provenance_mismatch"
-            elif not _supported_image_bbox(record.get("location")):
+            elif not _supported_image_bbox(record.location):
                 reason = "unsupported_geometry"
-            elif record.get("location") != matched_thing.get("location"):
+            elif record.location != matched_thing.location:
                 reason = "geometry_mismatch"
             elif (
-                record.get("kind") != matched_thing.get("kind")
-                or record.get("label") != matched_thing.get("label")
+                record.kind != matched_thing.kind
+                or record.label != matched_thing.label
             ):
                 reason = "evidence_mismatch"
 
         available = not reason
         projected.append(
             {
-                "record_id": record_id if type(record_id) is str else None,
+                "record_id": record_id,
                 "status": "available" if available else "unavailable",
                 "reason": reason,
-                "origin": _json_copy(origin) if isinstance(origin, dict) else None,
-                "record": _json_copy(record) if available else None,
+                "origin": origin.to_dict(),
+                "record": record.to_dict() if available else None,
             }
         )
 
@@ -145,11 +112,16 @@ def _evidence_projection(
     }
 
 
-def report_evidence(report: dict[str, Any]) -> dict[str, Any]:
-    """Retained evidence attributable to this completed frame's observation."""
-    cycle = report.get("cycle") or {}
+def report_evidence(report: HostReport) -> dict[str, object]:
+    """Parse the host frame's evidence once, then associate typed values."""
+    cycle = report.cycle
+    observation = cycle["observation"]
+    records = evidence_records(cycle["memory"]) or []
     return _evidence_projection(
-        frame_id=report["frame_id"],
-        observation=cycle.get("observation"),
-        evidence_input=evidence_records(cycle.get("memory")),
+        frame_id=report.frame_id,
+        observation=None if observation is None else require_nested(
+            Observation.from_dict, observation, field_name="observation",
+        ),
+        evidence_input=tuple(require_nested(RetainedEvidence.from_dict, record, field_name=f"records.{index}")
+                             for index, record in enumerate(records)),
     )

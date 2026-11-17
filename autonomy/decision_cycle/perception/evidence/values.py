@@ -52,14 +52,14 @@ class PerceivedThing:
     label: str
     location: ViewLocation
     confidence: float | None = None
-    properties: Mapping[str, Any] = field(default_factory=dict)
+    properties: Mapping[str, object] = field(default_factory=dict)
     source_plugin_id: str | None = None
 
     def __post_init__(self) -> None:
         require_ascii_id(self.thing_id, field_name="thing_id")
         require_ascii_id(self.kind, field_name="kind")
         require_text(self.label, field_name="label")
-        if not isinstance(self.location, ViewLocation):
+        if not isinstance(self.location, ViewLocation):  # pyright: ignore[reportUnnecessaryIsInstance]  # Uploaded plugins construct these values.
             raise FieldError("location", "must be ViewLocation")
         if self.source_plugin_id is not None:
             require_ascii_id(self.source_plugin_id, field_name="source_plugin_id")
@@ -108,7 +108,7 @@ class PerceptionSignal:
     signal_id: str
     value: bool | int | float | str | None
     confidence: float | None = None
-    properties: Mapping[str, Any] = field(default_factory=dict)
+    properties: Mapping[str, object] = field(default_factory=dict)
     source_plugin_id: str | None = None
 
     def __post_init__(self) -> None:

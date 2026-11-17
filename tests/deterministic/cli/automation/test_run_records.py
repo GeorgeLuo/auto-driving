@@ -8,7 +8,9 @@ from unittest.mock import patch
 
 from autonomy.fields import FieldError, MAX_SAFE_INT
 from cli.automa_cli.hosts.runs.models import RunState, WorkerProcess
-from cli.automa_cli.hosts.runs.store import mark_automation_startup_error, read_process_record, read_run_state
+from cli.automa_cli.hosts.runs.store import (
+    convert_legacy_run_record, mark_automation_startup_error, read_process_record, read_run_state,
+)
 
 
 class RunRecordTests(unittest.TestCase):
@@ -24,19 +26,92 @@ class RunRecordTests(unittest.TestCase):
                             read(root)
                         self.assertEqual(caught.exception.field_name, "$")
 
-    def test_older_partial_records_are_rejected_with_the_missing_field(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            for name, read, record, later in (
-                ("state.json", read_run_state, RunState(), "completed_at_ms"),
-                ("process.json", read_process_record, WorkerProcess(), "startup"),
-            ):
+    def test_main_5f0cf136_records_load_and_round_trip(self):
+        # Literal outputs of that build's to_dict, not documents from this branch's writer.
+        fresh_state = {
+            "schema": None, "host_name": None, "run_id": None, "status": None, "pid": None,
+            "started_at_ms": None, "updated_at_ms": None, "frames_received": 0, "frames_dropped": None,
+            "processed_count": 0, "num_decisions": None, "pipeline": None, "control_source": None,
+            "action_policy": None, "control_application": None, "recording": None, "recorded_count": 0,
+            "run_dir": None,
+        }
+        fresh_process = {
+            "schema": None, "host_name": None, "pid": None, "started_at_ms": None, "command": None,
+            "log_to_disk": False, "log_path": None, "state_path": None, "stream_command": None,
+        }
+        running_state = {
+            "schema": "automa_automation_run_state", "host_name": "car", "run_id": "run-1",
+            "status": "running", "pid": 123, "started_at_ms": 1000, "updated_at_ms": 1100,
+            "frames_received": 2, "frames_dropped": 0, "processed_count": 1, "num_decisions": 3,
+            "pipeline": "latest_frame_async_decision", "control_source": "runtime_host",
+            "action_policy": "observe_only", "control_application": "not_applied", "recording": False,
+            "recorded_count": 0, "run_dir": None,
+        }
+        running_process = {
+            "schema": "automa_automation_process", "host_name": "car", "pid": 123, "started_at_ms": 1000,
+            "command": ["python", "-m", "cli.automa_cli.hosts.runs.worker"], "log_to_disk": False,
+            "log_path": None, "state_path": "runtime/state.json", "stream_command": "automa hosts stream",
+        }
+        for name, read, cls, payload in (
+            ("state.json", read_run_state, RunState, fresh_state),
+            ("process.json", read_process_record, WorkerProcess, fresh_process),
+            ("state.json", read_run_state, RunState, running_state),
+            ("process.json", read_process_record, WorkerProcess, running_process),
+        ):
+            with self.subTest(name=name, payload=payload), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                path = root / name
+                path.write_text(json.dumps(payload))
+                record = read(root)
+                self.assertEqual(record, cls(**payload))
+                converted = convert_legacy_run_record(payload, record_name=name)
+                self.assertEqual(record.to_dict(), converted)
+                self.assertEqual(cls.from_dict(converted), record)
+                path.write_text(json.dumps(record.to_dict()))
+                self.assertEqual(read(root), record)
+
+    def test_conversion_preserves_present_later_fields_and_has_no_shared_defaults(self):
+        state = RunState(
+            completed_at_ms=123, session={}, execution={"mode": "manual"},
+            selections={"proposal": {"plugins": ["fixture"]}}, error="failed",
+        )
+        process = WorkerProcess(startup={}, status="stopped", stopped_at_ms=123)
+        for name, record in (("state.json", state), ("process.json", process)):
+            document = record.to_dict()
+            self.assertEqual(convert_legacy_run_record(document, record_name=name), document)
+        first = convert_legacy_run_record({}, record_name="state.json")
+        first["selections"]["proposal"] = {}
+        self.assertEqual(convert_legacy_run_record({}, record_name="state.json")["selections"], {})
+
+    def test_only_the_listed_absent_fields_are_converted(self):
+        for name, read, record in (
+            ("state.json", read_run_state, RunState()), ("process.json", read_process_record, WorkerProcess()),
+        ):
+            for change, field in (("missing", "pid"), ("extra", "unexpected"), ("invalid", "started_at_ms")):
                 document = record.to_dict()
-                del document[later]
+                if change == "missing":
+                    del document[field]
+                else:
+                    document[field] = -1
+                with self.subTest(name=name, change=change), tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp)
+                    (root / name).write_text(json.dumps(document))
+                    with self.assertRaises(FieldError) as caught:
+                        read(root)
+                    self.assertEqual(caught.exception.field_name, field)
+        # A present invalid later field is never replaced by its default.
+        for name, read, record, field in (
+            ("state.json", read_run_state, RunState(), "session"),
+            ("process.json", read_process_record, WorkerProcess(), "startup"),
+        ):
+            document = record.to_dict()
+            document[field] = []
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
                 (root / name).write_text(json.dumps(document))
-                with self.subTest(name=name), self.assertRaises(FieldError) as caught:
+                with self.assertRaises(FieldError) as caught:
                     read(root)
-                self.assertEqual(caught.exception.field_name, later)
+                self.assertEqual(caught.exception.field_name, field)
 
     def test_invalid_counts_and_identifiers_are_rejected(self):
         for record, field, value in (

@@ -12,6 +12,7 @@ import json
 import os
 from collections.abc import Mapping
 from pathlib import Path
+from typing import Literal
 
 from autonomy.fields import FieldError
 from autonomy.runtime.session import RunConfiguration
@@ -286,7 +287,28 @@ def _read_record(path: Path) -> dict | None:
         raise FieldError("$", f"{path.name} must contain valid JSON") from exc
     if not isinstance(payload, dict):
         raise FieldError("$", f"{path.name} must contain an object")
-    return payload
+    return convert_legacy_run_record(payload, record_name=path.name)
+
+
+def convert_legacy_run_record(
+    payload: dict[str, object], *, record_name: Literal["state.json", "process.json"],
+) -> dict[str, object]:
+    """Restore only fields omitted by main build 5f0cf136's run-record writers.
+
+    That build omits later fields equal to None or {}. Absent nullable fields
+    recover their default None; selections, decision and last_frame recover {}.
+    Present values and all other keys are left for the strict document parser.
+    """
+
+    if record_name == "state.json":
+        defaults: dict[str, object] = dict.fromkeys((
+            "completed_at_ms", "stop_reason", "error", "exit_code", "activation_problems",
+            "session", "execution", "steps", "arming",
+        ))
+        defaults.update(selections={}, decision={}, last_frame={})
+    else:
+        defaults = dict.fromkeys(("startup", "status", "stopped_by", "stopped_at_ms"))
+    return defaults | payload
 
 
 def record_background_worker(
